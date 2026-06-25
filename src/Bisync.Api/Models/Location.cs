@@ -6,6 +6,17 @@ public class Location
     public string ExternalId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
+
+    public int? CompanyId { get; set; }
+    public Company? Company { get; set; }
+    public string AddressLine1 { get; set; } = string.Empty;
+    public string AddressLine2 { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string StateProvince { get; set; } = string.Empty;
+    public string Postcode { get; set; } = string.Empty;
+    public int? PrincipalContactUserId { get; set; }
+    public AppUser? PrincipalContact { get; set; }
+
     public decimal SalesToday { get; set; }
     public decimal SalesWtd { get; set; }
     public decimal SalesMtd { get; set; }

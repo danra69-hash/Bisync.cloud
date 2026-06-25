@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
 import {
-  TrendingUp, Users, ShoppingBag, AlertTriangle, MapPin,
-  Menu, X, Moon, Sun, Bell, ArrowUpRight, ArrowDownRight,
-  ExternalLink, CheckCircle2, Package
+  TrendingUp, Users, ShoppingBag, AlertTriangle,
+  ArrowUpRight, ArrowDownRight, Package, FileText
 } from 'lucide-react';
 import { api, type Location, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
+import { Sidebar } from './components/layout/Sidebar';
+import { Header } from './components/layout/Header';
+import { RevenueSection } from './components/revenue/RevenueSection';
+import { ProgressPanel } from './components/overview/ProgressPanel';
+import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
+import { HumanResourcesPage } from './components/hr/HumanResourcesPage';
+import { aggregateLocationMetrics, filterLocations } from './utils/locationMetrics';
+import type { NavItem } from './data/revenueManagement';
 
 function fmtUsd(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -55,38 +62,15 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
   );
 }
 
-function ProgressPanel({ progress }: { progress: ProgressData | null }) {
-  if (!progress) return null;
+function PlaceholderModule({ title }: { title: string }) {
   return (
-    <div className="bg-card border border-border rounded-lg p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-sm font-semibold">Development Progress</h2>
-          <p className="text-xs text-muted-foreground">Auto-tracked from Bisync.cloud API</p>
+    <div className="p-6">
+      <div className="bg-card border border-border rounded-lg flex flex-col items-center justify-center text-center gap-3 p-12">
+        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+          <FileText size={18} className="text-muted-foreground" />
         </div>
-        <span className="text-2xl font-bold text-primary">{progress.overallPercent}%</span>
-      </div>
-      <div className="w-full bg-muted rounded-full h-2 mb-4">
-        <div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${progress.overallPercent}%` }} />
-      </div>
-      <div className="space-y-4">
-        {progress.milestones.map(phase => (
-          <div key={phase.phase}>
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">{phase.phase}</p>
-            <div className="space-y-2">
-              {phase.items.map(item => (
-                <div key={item.id} className="flex items-center gap-3 text-xs">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${
-                    item.status === 'completed' ? 'bg-[#5A7A2A]' :
-                    item.status === 'in_progress' ? 'bg-primary' : 'bg-muted-foreground/40'
-                  }`} />
-                  <span className="flex-1">{item.title}</span>
-                  <span className="font-mono text-muted-foreground">{item.progressPercent}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground font-mono max-w-xs">This module is ready to be configured.</p>
       </div>
     </div>
   );
@@ -95,9 +79,9 @@ function ProgressPanel({ progress }: { progress: ProgressData | null }) {
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [activeNav, setActiveNav] = useState('Overview');
-  const [apiStatus, setApiStatus] = useState<'loading' | 'ok' | 'error'>('loading');
-
+  const [editLayout, setEditLayout] = useState(false);
+  const [activeNav, setActiveNav] = useState<NavItem>('Overview');
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -111,95 +95,61 @@ export default function App() {
 
   useEffect(() => {
     async function load() {
-      try {
-        await api.health();
-        const [locs, menu, pos, inv, rev, prog] = await Promise.all([
-          api.locations(), api.menu(), api.purchaseOrders(),
-          api.inventoryAlerts(), api.revenue(), api.progress(),
-        ]);
-        setLocations(locs);
-        setMenuItems(menu);
-        setOrders(pos);
-        setAlerts(inv);
-        setRevenue(rev);
-        setProgress(prog);
-        setApiStatus('ok');
-      } catch {
-        setApiStatus('error');
-      }
+      const results = await Promise.allSettled([
+        api.locations(),
+        api.menu(),
+        api.purchaseOrders(),
+        api.inventoryAlerts(),
+        api.revenue(),
+        api.progress(),
+      ]);
+
+      if (results[0].status === 'fulfilled') setLocations(results[0].value);
+      if (results[1].status === 'fulfilled') setMenuItems(results[1].value);
+      if (results[2].status === 'fulfilled') setOrders(results[2].value);
+      if (results[3].status === 'fulfilled') setAlerts(results[3].value);
+      if (results[4].status === 'fulfilled') setRevenue(results[4].value);
+      if (results[5].status === 'fulfilled') setProgress(results[5].value);
     }
     load();
   }, []);
 
-  const totalSales = locations.reduce((s, l) => s + l.salesToday, 0);
-  const totalSalesPrev = locations.reduce((s, l) => s + Math.round(l.salesToday * 0.92), 0);
-  const totalCovers = locations.reduce((s, l) => s + l.coversToday, 0);
-  const totalCoversPrev = locations.reduce((s, l) => s + Math.round(l.coversToday * 0.95), 0);
-  const aov = totalCovers > 0 ? totalSales / totalCovers : 0;
+  const activeLocations = filterLocations(locations, selectedLocationIds);
+  const { totalSales, totalSalesPrev, totalCovers, totalCoversPrev, aov, aovPrev } = aggregateLocationMetrics(activeLocations);
 
-  const navItems = ['Overview', 'Revenue Management', 'Point-of-Sales', 'Development'];
+  const isRevenueSection = activeNav === 'Revenue Management' || activeNav === 'Point-of-Sales';
+  const isHrSection = activeNav === 'Human Resources';
+  const isFullBleed = isRevenueSection || isHrSection;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {sidebarOpen && <div className="fixed inset-0 z-40" onClick={() => setSidebarOpen(false)} />}
-      <aside className={`fixed top-0 left-0 h-full w-56 z-50 transition-transform duration-200 flex flex-col ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ background: '#2C1A0A' }}>
-        <div className="px-5 py-4 flex items-center justify-between border-b border-white/10">
-          <span className="text-white font-bold text-sm">Bisync.cloud</span>
-          <button onClick={() => setSidebarOpen(false)} className="p-1 rounded hover:bg-white/10"><X size={14} className="text-white/60" /></button>
-        </div>
-        <nav className="flex-1 p-3 space-y-0.5">
-          {navItems.map(item => (
-            <button key={item} onClick={() => { setActiveNav(item); setSidebarOpen(false); }}
-              className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors"
-              style={{
-                background: activeNav === item ? '#E87722' : 'transparent',
-                color: activeNav === item ? '#2C1A0A' : 'rgba(255,255,255,0.6)',
-                fontWeight: activeNav === item ? 700 : 500,
-              }}>
-              {item}
-            </button>
-          ))}
-        </nav>
-      </aside>
+      <Sidebar
+        open={sidebarOpen}
+        activeNav={activeNav}
+        onClose={() => setSidebarOpen(false)}
+        onNavigate={setActiveNav}
+      />
 
       <div className="flex flex-col min-h-screen">
-        <header className="sticky top-0 z-30 px-4 py-3 flex items-center gap-3" style={{ background: '#2C1A0A' }}>
-          <button onClick={() => setSidebarOpen(v => !v)} className="p-2 rounded-md hover:bg-white/10">
-            <Menu size={16} className="text-white" />
-          </button>
-          <div>
-            <h1 className="text-sm font-bold text-white">{activeNav === 'Overview' ? 'Operations Overview' : activeNav}</h1>
-            <p className="text-[10px] text-white/45">Imported from Figma Make · Connected to C# API</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className={`text-[10px] font-mono px-2 py-1 rounded ${apiStatus === 'ok' ? 'bg-[#5A7A2A]/20 text-[#5A7A2A]' : apiStatus === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white/60'}`}>
-              API {apiStatus}
-            </span>
-            <button onClick={() => setDarkMode(v => !v)} className="p-2 rounded-md hover:bg-white/10">
-              {darkMode ? <Sun size={15} className="text-primary" /> : <Moon size={15} className="text-white/70" />}
-            </button>
-            <button className="relative p-2 rounded-md hover:bg-white/10">
-              <Bell size={14} className="text-white/70" />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
-            </button>
-          </div>
-        </header>
+        <Header
+          activeNav={activeNav}
+          darkMode={darkMode}
+          editLayout={editLayout}
+          locations={locations}
+          selectedLocationIds={selectedLocationIds}
+          onLocationChange={setSelectedLocationIds}
+          onToggleSidebar={() => setSidebarOpen(v => !v)}
+          onToggleDark={() => setDarkMode(v => !v)}
+          onToggleEditLayout={() => setEditLayout(v => !v)}
+        />
 
-        <main className="flex-1 p-6 space-y-6">
-          {activeNav === 'Development' ? (
-            <ProgressPanel progress={progress} />
-          ) : activeNav === 'Overview' ? (
+        <main className={`flex-1 flex flex-col min-h-0 ${isFullBleed ? '' : 'p-6 space-y-6'}`}>
+          {activeNav === 'Overview' ? (
             <>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <MapPin size={12} className="text-primary" />
-                {locations.length} locations · Live data from SQLite
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <MetricCard title="Sales Today" value={fmtUsd(totalSales)} deltaVal={delta(totalSales, totalSalesPrev)} icon={TrendingUp} accent />
                 <MetricCard title="Covers Today" value={totalCovers.toLocaleString()} deltaVal={delta(totalCovers, totalCoversPrev)} icon={Users} />
-                <MetricCard title="Avg Order Value" value={`$${aov.toFixed(2)}`} deltaVal={3.2} icon={ShoppingBag} />
+                <MetricCard title="Avg Order Value" value={`$${aov.toFixed(2)}`} deltaVal={delta(aov, aovPrev)} icon={ShoppingBag} />
                 <MetricCard title="Open POs" value={String(orders.length)} deltaVal={0} icon={Package} />
               </div>
 
@@ -288,18 +238,14 @@ export default function App() {
                 </table>
               </div>
             </>
+          ) : isRevenueSection ? (
+            <RevenueSection section={activeNav} />
+          ) : activeNav === 'System Configuration' ? (
+            <SystemConfigurationPage />
+          ) : activeNav === 'Human Resources' ? (
+            <HumanResourcesPage />
           ) : (
-            <div className="bg-card border border-border rounded-lg flex flex-col items-center justify-center p-12 text-center gap-3">
-              <CheckCircle2 size={24} className="text-primary" />
-              <p className="text-sm font-medium">{activeNav}</p>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Module scaffolded from Figma design. Backend API endpoints are ready — connect UI components from the full Figma Make export.
-              </p>
-              <a href="https://www.figma.com/make/QgoQ4Z3lguzeuUlJU7ycoe/Bisync.cloud" target="_blank" rel="noreferrer"
-                className="flex items-center gap-1 text-xs text-primary hover:underline">
-                View Figma design <ExternalLink size={10} />
-              </a>
-            </div>
+            <PlaceholderModule title={activeNav} />
           )}
         </main>
       </div>

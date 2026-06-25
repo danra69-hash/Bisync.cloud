@@ -1,0 +1,162 @@
+export type RevMgmtItem = { label: string };
+export type RevMgmtSubSection = { subtitle?: string; items: RevMgmtItem[] };
+export type RevMgmtSection = { title: string; subs: RevMgmtSubSection[] };
+
+export const revMgmtNav: RevMgmtSection[] = [
+  {
+    title: 'Operation',
+    subs: [
+      {
+        subtitle: 'Order',
+        items: [
+          { label: 'Create Order' },
+          { label: 'Cash Purchase' },
+          { label: 'Order Template' },
+          { label: 'Offline Sales' },
+        ],
+      },
+      {
+        subtitle: 'Production',
+        items: [
+          { label: 'Product Management' },
+          { label: 'Batch & Stock Adjustment' },
+        ],
+      },
+      {
+        subtitle: 'Inventory',
+        items: [
+          { label: 'Inventory' },
+          { label: 'Wastage' },
+          { label: 'Transfer' },
+          { label: 'Inventory Config' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Component',
+    subs: [
+      {
+        items: [
+          { label: 'Smart Component' },
+          { label: 'Component Config' },
+          { label: 'Account Mapping' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Vendors',
+    subs: [
+      {
+        items: [
+          { label: 'Vendor List' },
+          { label: 'Compare Price' },
+          { label: 'Account Mapping' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Products',
+    subs: [
+      {
+        items: [
+          { label: 'Products' },
+          { label: 'Sub-Products' },
+          { label: 'Account Mapping' },
+          { label: 'External POS Mapping' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Sales',
+    subs: [
+      {
+        items: [
+          { label: 'Customer List' },
+          { label: 'Customer Group' },
+          { label: 'Customer Management' },
+          { label: 'Promotion Scheduler' },
+          { label: 'Account Mapping' },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Reports',
+    subs: [
+      {
+        items: [
+          { label: 'Itemized Sales Summary' },
+          { label: 'Inventory Summary' },
+          { label: 'Detailed Purchase Summary' },
+          { label: 'Production Report' },
+          { label: 'Wastage Report' },
+        ],
+      },
+    ],
+  },
+];
+
+export const posItems = [
+  'POS Menu',
+  'POS Modifier Group',
+  'Promotion Scheduler',
+  'Device Management',
+  'E-Invoice',
+];
+
+export const NAV_ITEMS = [
+  'Overview',
+  'Revenue Management',
+  'Point-of-Sales',
+  'Human Resources',
+  'Accounting',
+  'Report',
+  'System Configuration',
+] as const;
+
+export type NavItem = (typeof NAV_ITEMS)[number];
+
+export const siCategories = ['All', 'Assets', 'Ops Expenses', 'FF&E', 'Maintenance', 'MarComm', 'Food', 'Beverage', 'Retail'];
+export const siGroups = ['All', 'Proteins', 'Dairy', 'Produce', 'Dry Goods', 'Beverages', 'Spirits', 'Cleaning', 'Equipment', 'Packaging'];
+
+export type IngredientRow = {
+  name: string;
+  category: string;
+  group: string;
+  recipeUOM: string;
+  inventoryUOM: string;
+  lastPriceRecipe: number;
+  lastPriceInventory: number;
+  dailyUsage: number;
+  orderFreqDays: number;
+  storage: string[];
+  attachedProducts: number;
+  attachedVendors: number;
+  active: boolean;
+  locations: string[];
+};
+
+export const siDataInit: IngredientRow[] = [
+  { name: 'Wagyu Beef A5', category: 'Food', group: 'Proteins', recipeUOM: 'g', inventoryUOM: 'kg', lastPriceRecipe: 0.38, lastPriceInventory: 380, dailyUsage: 2.4, orderFreqDays: 3, storage: ['Freezer'], attachedProducts: 3, attachedVendors: 2, active: true, locations: ['downtown', 'midtown'] },
+  { name: 'Black Truffle', category: 'Food', group: 'Produce', recipeUOM: 'g', inventoryUOM: 'g', lastPriceRecipe: 1.8, lastPriceInventory: 1.8, dailyUsage: 45, orderFreqDays: 7, storage: ['Chiller'], attachedProducts: 2, attachedVendors: 1, active: true, locations: ['downtown'] },
+  { name: 'Burrata', category: 'Food', group: 'Dairy', recipeUOM: 'pcs', inventoryUOM: 'pcs', lastPriceRecipe: 8.75, lastPriceInventory: 8.75, dailyUsage: 8, orderFreqDays: 2, storage: ['Chiller'], attachedProducts: 4, attachedVendors: 1, active: true, locations: ['downtown', 'midtown', 'westend'] },
+  { name: 'Merlot Reserve 2019', category: 'Beverage', group: 'Spirits', recipeUOM: 'ml', inventoryUOM: 'btl', lastPriceRecipe: 0.127, lastPriceInventory: 95, dailyUsage: 3.2, orderFreqDays: 5, storage: ['Wine Cellar'], attachedProducts: 1, attachedVendors: 1, active: true, locations: ['all'] },
+  { name: 'Espresso Beans', category: 'Beverage', group: 'Beverages', recipeUOM: 'g', inventoryUOM: 'kg', lastPriceRecipe: 0.028, lastPriceInventory: 28, dailyUsage: 0.8, orderFreqDays: 10, storage: ['Dry Store'], attachedProducts: 2, attachedVendors: 1, active: true, locations: ['all'] },
+];
+
+export const VENDOR_DISTANCES: Record<string, number | 'online'> = {
+  V001: 8.2, V002: 12.5, V003: 22.1, V004: 'online',
+  V005: 45.8, V006: 'online', V007: 38.4, V008: 'online',
+};
+
+export const VENDOR_PRICES: Record<string, Record<string, { deliveryUnit: string; deliveryQty: number; pricePerDelivery: number }>> = {
+  'Wagyu Beef A5': { V001: { deliveryUnit: 'kg', deliveryQty: 1, pricePerDelivery: 380 } },
+  'Black Truffle': { V002: { deliveryUnit: '100g', deliveryQty: 100, pricePerDelivery: 180 } },
+  'Burrata': { V003: { deliveryUnit: '6pcs', deliveryQty: 6, pricePerDelivery: 52.5 } },
+  'Merlot Reserve 2019': { V004: { deliveryUnit: 'btl', deliveryQty: 1, pricePerDelivery: 95 } },
+  'Espresso Beans': { V010: { deliveryUnit: 'kg', deliveryQty: 1, pricePerDelivery: 26 } },
+};

@@ -40,6 +40,15 @@
   --color-accent: var(--accent);
   --color-border: var(--border);
   --font-sans: "Nunito", sans-serif;
+  /* HR module (HrBackend) palette */
+  --color-herme: #F37021;
+  --color-herme-dark: #C4561A;
+  --color-herme-darker: #8F3F12;
+  --color-herme-light: #FEF3EB;
+  --color-herme-soft: #FDE8D8;
+  --color-herme-muted: #F5C9A8;
+  --color-herme-cream: #FAF7F2;
+  --color-herme-ink: #1A1A1A;
 }
 
 @layer base {

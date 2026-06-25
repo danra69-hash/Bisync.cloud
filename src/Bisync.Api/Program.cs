@@ -1,5 +1,6 @@
 using Bisync.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,7 +15,11 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod());
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -23,7 +28,10 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<BisyncDbContext>();
     await db.Database.EnsureCreatedAsync();
+    await SchemaPatcher.ApplyAsync(db);
     await DataSeeder.SeedAsync(db);
+    await ConfigurationSeeder.SeedAsync(db);
+    await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
 }
 
 if (app.Environment.IsDevelopment())

@@ -10,8 +10,84 @@ namespace Bisync.Api.Controllers;
 public class LocationsController(BisyncDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Location>>> GetAll() =>
-        Ok(await db.Locations.OrderBy(l => l.Name).ToListAsync());
+    public async Task<ActionResult<IEnumerable<object>>> GetAll() =>
+        Ok(await db.Locations
+            .AsNoTracking()
+            .OrderBy(l => l.Name)
+            .Select(l => new
+            {
+                l.Id,
+                l.ExternalId,
+                l.Name,
+                l.Address,
+                l.CompanyId,
+                l.AddressLine1,
+                l.AddressLine2,
+                l.City,
+                l.StateProvince,
+                l.Postcode,
+                l.PrincipalContactUserId,
+                l.SalesToday,
+                l.SalesWtd,
+                l.SalesMtd,
+                l.SalesYtd,
+                l.SalesPrevToday,
+                l.SalesPrevWtd,
+                l.SalesPrevMtd,
+                l.SalesPrevYtd,
+                l.CoversToday,
+                l.CoversWtd,
+                l.CoversMtd,
+                l.CoversYtd,
+                l.CoversPrevToday,
+                l.CoversPrevWtd,
+                l.CoversPrevMtd,
+                l.CoversPrevYtd,
+            })
+            .ToListAsync());
+
+    [HttpGet("config")]
+    public async Task<ActionResult<IEnumerable<object>>> GetConfig() =>
+        Ok(await db.Locations
+            .AsNoTracking()
+            .Include(l => l.Company)
+            .Include(l => l.PrincipalContact)
+            .OrderBy(l => l.Name)
+            .Select(l => new
+            {
+                l.Id,
+                l.ExternalId,
+                l.Name,
+                l.CompanyId,
+                companyName = l.Company != null ? l.Company.Name : null,
+                countryCode = l.Company != null ? l.Company.CountryCode : "MY",
+                l.AddressLine1,
+                l.AddressLine2,
+                l.City,
+                l.StateProvince,
+                l.Postcode,
+                l.PrincipalContactUserId,
+                principalContactName = l.PrincipalContact != null ? l.PrincipalContact.FullName : null,
+            })
+            .ToListAsync());
+
+    [HttpPut("{id:int}/config")]
+    public async Task<ActionResult<object>> UpdateConfig(int id, [FromBody] LocationConfigUpdate body)
+    {
+        var loc = await db.Locations.FindAsync(id);
+        if (loc is null) return NotFound();
+        loc.CompanyId = body.CompanyId;
+        loc.Name = body.Name;
+        loc.AddressLine1 = body.AddressLine1;
+        loc.AddressLine2 = body.AddressLine2;
+        loc.City = body.City;
+        loc.StateProvince = body.StateProvince;
+        loc.Postcode = body.Postcode;
+        loc.PrincipalContactUserId = body.PrincipalContactUserId;
+        loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        await db.SaveChangesAsync();
+        return Ok(new { loc.Id, loc.Name, loc.CompanyId });
+    }
 
     [HttpGet("{externalId}")]
     public async Task<ActionResult<Location>> GetById(string externalId)
@@ -75,11 +151,24 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
         item.Name = updated.Name;
         item.Category = updated.Category;
         item.Group = updated.Group;
+        item.RecipeUom = updated.RecipeUom;
+        item.InventoryUom = updated.InventoryUom;
         item.Active = updated.Active;
         item.LastPriceRecipe = updated.LastPriceRecipe;
         item.LastPriceInventory = updated.LastPriceInventory;
+        item.StorageJson = updated.StorageJson;
+        item.DailyUsage = updated.DailyUsage;
+        item.OrderFreqDays = updated.OrderFreqDays;
         await db.SaveChangesAsync();
         return Ok(item);
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<Ingredient>> Create([FromBody] Ingredient ingredient)
+    {
+        db.Ingredients.Add(ingredient);
+        await db.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetAll), new { id = ingredient.Id }, ingredient);
     }
 }
 
@@ -88,8 +177,30 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
 public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<PurchaseOrder>>> GetAll() =>
-        Ok(await db.PurchaseOrders.Include(p => p.Items).OrderByDescending(p => p.OrderDate).ToListAsync());
+    public async Task<ActionResult<IEnumerable<object>>> GetAll() =>
+        Ok(await db.PurchaseOrders
+            .AsNoTracking()
+            .Include(p => p.Items)
+            .OrderByDescending(p => p.OrderDate)
+            .Select(p => new
+            {
+                p.Id,
+                poNumber = p.PoNumber,
+                vendorName = p.VendorName,
+                orderDate = p.OrderDate,
+                deliveryDate = p.DeliveryDate,
+                status = p.Status,
+                items = p.Items.Select(i => new
+                {
+                    i.Id,
+                    i.Name,
+                    i.Quantity,
+                    i.UnitPrice,
+                    i.Unit,
+                    deliveryPackage = i.DeliveryPackage,
+                }),
+            })
+            .ToListAsync());
 }
 
 [ApiController]
