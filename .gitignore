@@ -1,0 +1,29 @@
+# Build outputs
+bin/
+obj/
+*.db
+*.db-shm
+*.db-wal
+
+# .NET
+.vs/
+*.user
+*.suo
+
+# Node
+node_modules/
+client/dist/
+dist/
+
+# Environment
+.env
+.env.local
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp

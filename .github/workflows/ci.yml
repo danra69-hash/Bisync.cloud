@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore & build API
+        run: |
+          dotnet restore src/Bisync.Api/Bisync.Api.csproj
+          dotnet build src/Bisync.Api/Bisync.Api.csproj --no-restore -c Release
+      - name: Test API starts
+        run: |
+          cd src/Bisync.Api
+          dotnet run --no-build -c Release &
+          sleep 5
+          curl -f http://localhost:5299/api/health || curl -f http://127.0.0.1:5299/api/health
+
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - name: Install & build client
+        run: |
+          cd client
+          npm ci
+          npm run build
+
+  update-progress:
+    runs-on: ubuntu-latest
+    needs: [build-api, build-client]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Generate progress from API seed data
+        run: |
+          cd src/Bisync.Api
+          dotnet run --no-launch-profile &
+          sleep 6
+          PROGRESS_JSON=$(curl -s http://localhost:5299/api/progress)
+          echo "$PROGRESS_JSON" > /tmp/progress.json
+          OVERALL=$(echo "$PROGRESS_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['overallPercent'])")
+          COMPLETED=$(echo "$PROGRESS_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['completedCount'])")
+          TOTAL=$(echo "$PROGRESS_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['totalCount'])")
+          DATE=$(date -u +%Y-%m-%d)
+          cat > PROGRESS.md << EOF
+          # Bisync.cloud — Development Progress
+
+          > Auto-updated by GitHub Actions. Last sync: **${DATE}**
+
+          ## Overall: ${OVERALL}%
+
+          Completed milestones: **${COMPLETED} / ${TOTAL}**
+
+          See [README.md](./README.md) for setup instructions.
+
+          ### Live API snapshot
+
+          \`\`\`json
+          $(echo "$PROGRESS_JSON" | python3 -m json.tool 2>/dev/null | head -40)
+          ...
+          \`\`\`
+          EOF
+
+      - name: Commit progress update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PROGRESS.md
+          git diff --staged --quiet || git commit -m "chore: auto-update development progress [skip ci]"
+          git push
