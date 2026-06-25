@@ -35,6 +35,8 @@ export function toEmployeeRequest(e: Employee): EmployeeRequest {
     shiftType: e.shiftType,
     posEnabled: e.posEnabled,
     bisyncEnabled: e.bisyncEnabled,
+    active: e.active ?? true,
+    checkinMethod: e.checkinMethod ?? 'Biometrics',
     workingHoursPerDay: e.workingHoursPerDay,
     employeeLevelId: e.employeeLevelId,
     reportsToId: e.reportsToId,

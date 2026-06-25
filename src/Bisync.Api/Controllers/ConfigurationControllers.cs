@@ -80,52 +80,75 @@ public class UsersController(BisyncDbContext db) : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
     {
-        var users = await db.AppUsers.AsNoTracking().OrderBy(u => u.FullName).ToListAsync();
+        var users = await db.AppUsers
+            .AsNoTracking()
+            .Include(u => u.Employee)
+            .OrderBy(u => u.FullName)
+            .ToListAsync();
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
         var locations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
 
-        return Ok(users.Select(u =>
-        {
-            var locationIds = ParseLocationIds(u.LocationIdsJson);
-            return new
+        return Ok(users.Select(u => MapUser(u, companies, locations)));
+    }
+
+    [HttpGet("available-employees")]
+    public async Task<ActionResult<IEnumerable<object>>> GetAvailableEmployees()
+    {
+        var linkedIds = await db.AppUsers
+            .AsNoTracking()
+            .Where(u => u.EmployeeId != null)
+            .Select(u => u.EmployeeId!.Value)
+            .ToListAsync();
+
+        var employees = await db.Employees
+            .AsNoTracking()
+            .Where(e => !linkedIds.Contains(e.Id))
+            .OrderBy(e => e.Name)
+            .Select(e => new
             {
-                u.Id,
-                u.FullName,
-                u.Email,
-                u.Role,
-                u.Phone,
-                u.Active,
-                u.AccessJson,
-                u.CompanyId,
-                companyName = u.CompanyId is int cid && companies.TryGetValue(cid, out var cn) ? cn : null,
-                locationIds,
-                locationNames = locationIds
-                    .Where(id => locations.ContainsKey(id))
-                    .Select(id => locations[id])
-                    .ToList(),
-                locationIdsJson = u.LocationIdsJson,
-            };
-        }));
+                e.Id,
+                e.EmployeeCode,
+                e.Name,
+                e.Email,
+                e.Mobile,
+                e.Position,
+                e.Department,
+                e.BisyncEnabled,
+            })
+            .ToListAsync();
+
+        return Ok(employees);
     }
 
     [HttpPost]
     public async Task<ActionResult<AppUser>> Create([FromBody] UserUpsertRequest request)
     {
+        if (request.EmployeeId is not int employeeId)
+            return BadRequest("EmployeeId is required. Create the employee in Human Resources first.");
         if (request.CompanyId is null) return BadRequest("Company is required.");
         if (!await ValidateLocationsAsync(request.CompanyId.Value, request.LocationIdsJson))
             return BadRequest("One or more locations do not belong to the selected company.");
 
+        var employee = await db.Employees.FindAsync(employeeId);
+        if (employee is null) return NotFound("Employee not found.");
+
+        if (await db.AppUsers.AnyAsync(u => u.EmployeeId == employeeId))
+            return Conflict("This employee already has platform access configured.");
+
         var user = new AppUser
         {
-            FullName = request.FullName,
-            Email = request.Email,
-            Role = request.Role,
-            Phone = request.Phone,
+            EmployeeId = employeeId,
+            FullName = employee.Name,
+            Email = employee.Email,
+            Role = employee.Position,
+            Phone = employee.Mobile,
             Active = request.Active,
             AccessJson = request.AccessJson ?? """{"modules":[]}""",
             CompanyId = request.CompanyId,
             LocationIdsJson = request.LocationIdsJson ?? "[]",
         };
+
+        employee.BisyncEnabled = true;
         db.AppUsers.Add(user);
         await db.SaveChangesAsync();
         return Ok(user);
@@ -138,18 +161,60 @@ public class UsersController(BisyncDbContext db) : ControllerBase
         if (!await ValidateLocationsAsync(request.CompanyId.Value, request.LocationIdsJson))
             return BadRequest("One or more locations do not belong to the selected company.");
 
-        var user = await db.AppUsers.FindAsync(id);
+        var user = await db.AppUsers.Include(u => u.Employee).FirstOrDefaultAsync(u => u.Id == id);
         if (user is null) return NotFound();
-        user.FullName = request.FullName;
-        user.Email = request.Email;
-        user.Role = request.Role;
-        user.Phone = request.Phone;
+
+        if (user.EmployeeId is int employeeId)
+        {
+            var employee = user.Employee ?? await db.Employees.FindAsync(employeeId);
+            if (employee is not null)
+            {
+                user.FullName = employee.Name;
+                user.Email = employee.Email;
+                user.Role = employee.Position;
+                user.Phone = employee.Mobile;
+                employee.BisyncEnabled = request.Active;
+            }
+        }
+        else
+        {
+            user.FullName = request.FullName;
+            user.Email = request.Email;
+            user.Role = request.Role;
+            user.Phone = request.Phone;
+        }
+
         user.Active = request.Active;
         user.AccessJson = request.AccessJson ?? user.AccessJson;
         user.CompanyId = request.CompanyId;
         user.LocationIdsJson = request.LocationIdsJson ?? "[]";
         await db.SaveChangesAsync();
         return Ok(user);
+    }
+
+    static object MapUser(AppUser u, Dictionary<int, string> companies, Dictionary<int, string> locations)
+    {
+        var locationIds = ParseLocationIds(u.LocationIdsJson);
+        return new
+        {
+            u.Id,
+            u.EmployeeId,
+            employeeCode = u.Employee?.EmployeeCode,
+            u.FullName,
+            u.Email,
+            u.Role,
+            u.Phone,
+            u.Active,
+            u.AccessJson,
+            u.CompanyId,
+            companyName = u.CompanyId is int cid && companies.TryGetValue(cid, out var cn) ? cn : null,
+            locationIds,
+            locationNames = locationIds
+                .Where(id => locations.ContainsKey(id))
+                .Select(id => locations[id])
+                .ToList(),
+            locationIdsJson = u.LocationIdsJson,
+        };
     }
 
     static List<int> ParseLocationIds(string? json)
@@ -179,6 +244,7 @@ public class UsersController(BisyncDbContext db) : ControllerBase
 }
 
 public record UserUpsertRequest(
+    int? EmployeeId,
     string FullName,
     string Email,
     string Role,

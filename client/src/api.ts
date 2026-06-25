@@ -74,6 +74,8 @@ export interface Company {
 
 export interface AppUser {
   id: number;
+  employeeId?: number | null;
+  employeeCode?: string | null;
   fullName: string;
   email: string;
   role: string;
@@ -87,7 +89,19 @@ export interface AppUser {
   locationIdsJson: string;
 }
 
+export interface AvailableEmployee {
+  id: number;
+  employeeCode: string;
+  name: string;
+  email: string;
+  mobile: string;
+  position: string;
+  department: string;
+  bisyncEnabled: boolean;
+}
+
 export interface UserUpsert {
+  employeeId?: number | null;
   fullName: string;
   email: string;
   role: string;
@@ -190,6 +204,7 @@ export const api = {
   createCompany: (data: Omit<Company, 'id' | 'locationCount'>) => fetchJsonWithMethod<Company>('/api/companies', 'POST', data),
   updateCompany: (id: number, data: Company) => fetchJsonWithMethod<Company>(`/api/companies/${id}`, 'PUT', data),
   users: () => fetchJson<AppUser[]>('/api/users'),
+  availableEmployees: () => fetchJson<AvailableEmployee[]>('/api/users/available-employees'),
   createUser: (data: UserUpsert) => fetchJsonWithMethod<AppUser>('/api/users', 'POST', data),
   updateUser: (id: number, data: UserUpsert) => fetchJsonWithMethod<AppUser>(`/api/users/${id}`, 'PUT', data),
   menu: (category?: string) => fetchJson<MenuItem[]>(`/api/menu${category ? `?category=${category}` : ''}`),

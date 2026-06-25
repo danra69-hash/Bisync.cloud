@@ -110,14 +110,14 @@ function LocationPanel({
   );
 }
 
-export function LocationsConfigTab() {
+export function LocationsConfigTab({ onOrgDataChanged }: { onOrgDataChanged?: () => void }) {
   const [locations, setLocations] = useState<LocationConfig[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [editLocation, setEditLocation] = useState<LocationConfig | null>(null);
 
-  function load() {
+  function refreshList() {
     setLoading(true);
     Promise.all([api.locationsConfig(), api.companies(), api.users()])
       .then(([locs, comps, usrs]) => {
@@ -129,7 +129,12 @@ export function LocationsConfigTab() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, []);
+  function afterSave() {
+    refreshList();
+    onOrgDataChanged?.();
+  }
+
+  useEffect(() => { refreshList(); }, []);
 
   return (
     <div className="space-y-4">
@@ -170,7 +175,7 @@ export function LocationsConfigTab() {
           companies={companies}
           users={users}
           onClose={() => setEditLocation(null)}
-          onSave={load}
+          onSave={afterSave}
         />
       )}
     </div>

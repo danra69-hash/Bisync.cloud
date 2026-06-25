@@ -11,7 +11,11 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id'];
 
-export function SystemConfigurationPage() {
+type Props = {
+  onOrgDataChanged?: () => void;
+};
+
+export function SystemConfigurationPage({ onOrgDataChanged }: Props) {
   const [tab, setTab] = useState<TabId>('companies');
 
   return (
@@ -38,8 +42,8 @@ export function SystemConfigurationPage() {
         ))}
       </div>
 
-      {tab === 'companies' && <CompaniesTab />}
-      {tab === 'locations' && <LocationsConfigTab />}
+      {tab === 'companies' && <CompaniesTab onOrgDataChanged={onOrgDataChanged} />}
+      {tab === 'locations' && <LocationsConfigTab onOrgDataChanged={onOrgDataChanged} />}
       {tab === 'users' && <UsersTab />}
     </div>
   );

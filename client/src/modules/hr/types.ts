@@ -35,6 +35,8 @@ export interface PerformanceAppraisal {
   comments?: string;
 }
 
+export type CheckinMethod = 'POS' | 'Biometrics' | 'AccessTag';
+
 export interface Employee {
   id: number;
   employeeCode: string;
@@ -54,6 +56,8 @@ export interface Employee {
   posPin?: string | null;
   posPinMustChange?: boolean;
   bisyncEnabled: boolean;
+  active: boolean;
+  checkinMethod: CheckinMethod;
   workingHoursPerDay: number;
   employeeLevelId?: number | null;
   employeeLevel?: EmployeeLevel | null;
@@ -189,6 +193,8 @@ export interface EmployeeRequest {
   shiftType?: string | null;
   posEnabled: boolean;
   bisyncEnabled: boolean;
+  active?: boolean;
+  checkinMethod?: CheckinMethod;
   workingHoursPerDay: number;
   employeeLevelId?: number | null;
   reportsToId?: number | null;

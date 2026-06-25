@@ -8,6 +8,20 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<EducationRecord> EducationRecords => Set<EducationRecord>();
+    public DbSet<PreviousEmployment> PreviousEmployments => Set<PreviousEmployment>();
+    public DbSet<EmployeeMovement> EmployeeMovements => Set<EmployeeMovement>();
+    public DbSet<PerformanceAppraisal> PerformanceAppraisals => Set<PerformanceAppraisal>();
+    public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+    public DbSet<LeaveBalance> LeaveBalances => Set<LeaveBalance>();
+    public DbSet<ShiftSchedule> ShiftSchedules => Set<ShiftSchedule>();
+    public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
+    public DbSet<EmployeeLevel> EmployeeLevels => Set<EmployeeLevel>();
+    public DbSet<CompanySetting> CompanySettings => Set<CompanySetting>();
+    public DbSet<Division> Divisions => Set<Division>();
+    public DbSet<Department> Departments => Set<Department>();
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
     public DbSet<Vendor> Vendors => Set<Vendor>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
@@ -30,6 +44,20 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .WithMany()
             .HasForeignKey(l => l.PrincipalContactUserId)
             .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<AppUser>(e =>
+        {
+            e.ToTable("AppUsers");
+            e.Property(x => x.FullName).HasMaxLength(200);
+            e.Property(x => x.Email).HasMaxLength(256);
+            e.Property(x => x.Role).HasMaxLength(100);
+            e.Property(x => x.Phone).HasMaxLength(30);
+            e.HasOne(u => u.Employee)
+                .WithMany()
+                .HasForeignKey(u => u.EmployeeId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(u => u.EmployeeId).IsUnique();
+        });
+        HrModelConfiguration.Configure(modelBuilder);
         modelBuilder.Entity<Vendor>().HasIndex(v => v.ExternalId).IsUnique();
         modelBuilder.Entity<PurchaseOrder>().HasIndex(p => p.PoNumber).IsUnique();
         modelBuilder.Entity<PurchaseOrder>()

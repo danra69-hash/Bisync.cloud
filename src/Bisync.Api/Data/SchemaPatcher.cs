@@ -32,7 +32,10 @@ public static class SchemaPatcher
                 "Email" TEXT NOT NULL,
                 "Role" TEXT NOT NULL,
                 "Phone" TEXT NOT NULL,
-                "Active" INTEGER NOT NULL
+                "Active" INTEGER NOT NULL,
+                "AccessJson" TEXT NOT NULL DEFAULT '',
+                "CompanyId" INTEGER NULL,
+                "LocationIdsJson" TEXT NOT NULL DEFAULT '[]'
             );
             """);
 
@@ -43,9 +46,10 @@ public static class SchemaPatcher
         await TryAddColumnAsync(db, "Locations", "StateProvince", "TEXT NOT NULL DEFAULT ''");
         await TryAddColumnAsync(db, "Locations", "Postcode", "TEXT NOT NULL DEFAULT ''");
         await TryAddColumnAsync(db, "Locations", "PrincipalContactUserId", "INTEGER");
-        await TryAddColumnAsync(db, "AppUsers", "AccessJson", "TEXT NOT NULL DEFAULT '{\"modules\":[]}'");
+        await TryAddColumnAsync(db, "AppUsers", "AccessJson", "TEXT NOT NULL DEFAULT ''");
         await TryAddColumnAsync(db, "AppUsers", "CompanyId", "INTEGER");
         await TryAddColumnAsync(db, "AppUsers", "LocationIdsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await TryAddColumnAsync(db, "AppUsers", "EmployeeId", "INTEGER");
     }
 
     static async Task TryAddColumnAsync(BisyncDbContext db, string table, string column, string definition)

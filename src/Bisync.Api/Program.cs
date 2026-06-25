@@ -1,4 +1,5 @@
 using Bisync.Api.Data;
+using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
 
@@ -6,6 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<BisyncDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddHttpClient<PublicHolidayCatalogService>();
+builder.Services.AddScoped<PublicHolidaySyncService>();
 
 builder.Services.AddCors(options =>
 {
@@ -19,6 +23,7 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 builder.Services.AddOpenApi();
 
@@ -32,6 +37,7 @@ using (var scope = app.Services.CreateScope())
     await DataSeeder.SeedAsync(db);
     await ConfigurationSeeder.SeedAsync(db);
     await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
+    await HrStartup.InitializeAsync(db);
 }
 
 if (app.Environment.IsDevelopment())

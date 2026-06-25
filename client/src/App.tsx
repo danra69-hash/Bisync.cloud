@@ -3,14 +3,16 @@ import {
   TrendingUp, Users, ShoppingBag, AlertTriangle,
   ArrowUpRight, ArrowDownRight, Package, FileText
 } from 'lucide-react';
-import { api, type Location, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
+import { api, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { RevenueSection } from './components/revenue/RevenueSection';
 import { ProgressPanel } from './components/overview/ProgressPanel';
 import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
 import { HumanResourcesPage } from './components/hr/HumanResourcesPage';
-import { aggregateLocationMetrics, filterLocations } from './utils/locationMetrics';
+import { aggregateLocationMetrics } from './utils/locationMetrics';
+import { configLocationToDropdown, filterMetricsByOrg } from './utils/orgFilters';
+import { useOrgFilters } from './hooks/useOrgFilters';
 import type { NavItem } from './data/revenueManagement';
 
 function fmtUsd(n: number) {
@@ -81,8 +83,16 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [editLayout, setEditLayout] = useState(false);
   const [activeNav, setActiveNav] = useState<NavItem>('Overview');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const {
+    companies,
+    configLocations,
+    metricsLocations,
+    loading: orgLoading,
+    error: orgError,
+    refreshOrgFilters,
+  } = useOrgFilters();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
@@ -96,7 +106,6 @@ export default function App() {
   useEffect(() => {
     async function load() {
       const results = await Promise.allSettled([
-        api.locations(),
         api.menu(),
         api.purchaseOrders(),
         api.inventoryAlerts(),
@@ -104,17 +113,35 @@ export default function App() {
         api.progress(),
       ]);
 
-      if (results[0].status === 'fulfilled') setLocations(results[0].value);
-      if (results[1].status === 'fulfilled') setMenuItems(results[1].value);
-      if (results[2].status === 'fulfilled') setOrders(results[2].value);
-      if (results[3].status === 'fulfilled') setAlerts(results[3].value);
-      if (results[4].status === 'fulfilled') setRevenue(results[4].value);
-      if (results[5].status === 'fulfilled') setProgress(results[5].value);
+      if (results[0].status === 'fulfilled') setMenuItems(results[0].value);
+      if (results[1].status === 'fulfilled') setOrders(results[1].value);
+      if (results[2].status === 'fulfilled') setAlerts(results[2].value);
+      if (results[3].status === 'fulfilled') setRevenue(results[3].value);
+      if (results[4].status === 'fulfilled') setProgress(results[4].value);
     }
     load();
   }, []);
 
-  const activeLocations = filterLocations(locations, selectedLocationIds);
+  useEffect(() => {
+    if (selectedCompanyId && !companies.some(c => c.id === selectedCompanyId)) {
+      setSelectedCompanyId(null);
+      setSelectedLocationIds([]);
+    }
+  }, [companies, selectedCompanyId]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    const allowed = new Set(
+      configLocations.filter(l => l.companyId === selectedCompanyId).map(l => l.externalId),
+    );
+    setSelectedLocationIds(prev => prev.filter(id => allowed.has(id)));
+  }, [configLocations, selectedCompanyId]);
+
+  const companyScopedConfigLocations = selectedCompanyId
+    ? configLocations.filter(l => l.companyId === selectedCompanyId)
+    : [];
+  const headerLocations = companyScopedConfigLocations.map(configLocationToDropdown);
+  const activeLocations = filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds);
   const { totalSales, totalSalesPrev, totalCovers, totalCoversPrev, aov, aovPrev } = aggregateLocationMetrics(activeLocations);
 
   const isRevenueSection = activeNav === 'Revenue Management' || activeNav === 'Point-of-Sales';
@@ -135,8 +162,17 @@ export default function App() {
           activeNav={activeNav}
           darkMode={darkMode}
           editLayout={editLayout}
-          locations={locations}
+          companies={companies}
+          orgLoading={orgLoading}
+          orgError={orgError}
+          onRefreshOrg={refreshOrgFilters}
+          selectedCompanyId={selectedCompanyId}
+          locations={headerLocations}
           selectedLocationIds={selectedLocationIds}
+          onCompanyChange={(companyId) => {
+            setSelectedCompanyId(companyId);
+            setSelectedLocationIds([]);
+          }}
           onLocationChange={setSelectedLocationIds}
           onToggleSidebar={() => setSidebarOpen(v => !v)}
           onToggleDark={() => setDarkMode(v => !v)}
@@ -241,7 +277,7 @@ export default function App() {
           ) : isRevenueSection ? (
             <RevenueSection section={activeNav} />
           ) : activeNav === 'System Configuration' ? (
-            <SystemConfigurationPage />
+            <SystemConfigurationPage onOrgDataChanged={refreshOrgFilters} />
           ) : activeNav === 'Human Resources' ? (
             <HumanResourcesPage />
           ) : (

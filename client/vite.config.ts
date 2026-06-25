@@ -11,11 +11,6 @@ export default defineConfig({
         target: 'http://localhost:5299',
         changeOrigin: true,
       },
-      '/hr-api': {
-        target: 'http://localhost:5158',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/hr-api/, '/api'),
-      },
     },
   },
 })

@@ -125,18 +125,26 @@ function CompanyPanel({
   );
 }
 
-export function CompaniesTab() {
+export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => void }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [editCompany, setEditCompany] = useState<Company | null>(null);
   const [isNew, setIsNew] = useState(false);
 
-  function load() {
+  function refreshList() {
     setLoading(true);
-    api.companies().then(setCompanies).catch(() => setCompanies([])).finally(() => setLoading(false));
+    api.companies()
+      .then(setCompanies)
+      .catch(() => setCompanies([]))
+      .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, []);
+  function afterSave() {
+    refreshList();
+    onOrgDataChanged?.();
+  }
+
+  useEffect(() => { refreshList(); }, []);
 
   return (
     <div className="space-y-4">
@@ -189,7 +197,7 @@ export function CompaniesTab() {
           company={editCompany}
           isNew={isNew}
           onClose={() => { setEditCompany(null); setIsNew(false); }}
-          onSave={load}
+          onSave={afterSave}
         />
       )}
     </div>

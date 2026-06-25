@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, MapPin, X } from 'lucide-react';
-import type { Location } from '../../api';
+import type { DropdownLocation } from '../../utils/orgFilters';
 
 type Props = {
-  locations: Location[];
+  locations: DropdownLocation[];
   selected: string[];
   onChange: (externalIds: string[]) => void;
   variant?: 'default' | 'header';
+  disabled?: boolean;
+  loading?: boolean;
 };
 
-export function LocationDropdown({ locations, selected, onChange, variant = 'default' }: Props) {
+export function LocationDropdown({ locations, selected, onChange, variant = 'default', disabled = false, loading = false }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -21,13 +23,19 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
   const allSelected = selected.length === 0;
 
   function toggleAll() {
+    if (disabled) return;
     onChange([]);
   }
 
   function toggleLocation(externalId: string) {
+    if (disabled) return;
     if (allSelected) {
       onChange(locations.filter(l => l.externalId !== externalId).map(l => l.externalId));
     } else if (selected.includes(externalId)) {
@@ -43,32 +51,37 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
     return allSelected || selected.includes(externalId);
   }
 
-  const label = allSelected
-    ? 'All Locations'
-    : selected.length === 1
-      ? locations.find(l => l.externalId === selected[0])?.name ?? '1 location'
-      : `${selected.length} locations`;
+  const label = disabled
+    ? 'Select Company First'
+    : loading
+      ? 'Loading locations…'
+      : allSelected
+      ? 'All Locations'
+      : selected.length === 1
+        ? locations.find(l => l.externalId === selected[0])?.name ?? '1 location'
+        : `${selected.length} locations`;
 
   const isHeader = variant === 'header';
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => !disabled && setOpen(v => !v)}
+        disabled={disabled}
         className={`flex items-center gap-2 text-xs font-mono rounded-md px-3 py-1.5 transition-colors whitespace-nowrap ${
           isHeader
             ? 'text-white hover:bg-white/10'
             : 'border border-border bg-card hover:border-primary/40 text-foreground py-2'
-        }`}
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         style={isHeader ? { background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' } : undefined}
       >
-        <MapPin size={12} className={`shrink-0 ${isHeader ? 'text-primary' : 'text-primary'}`} />
+        <MapPin size={12} className="shrink-0 text-primary" />
         <span className={isHeader ? 'hidden lg:inline' : ''}>{label}</span>
-        <span className={isHeader ? 'lg:hidden' : 'hidden'}>{allSelected ? 'All' : selected.length}</span>
+        <span className={isHeader ? 'lg:hidden' : 'hidden'}>{disabled ? '—' : allSelected ? 'All' : selected.length}</span>
         <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''} ${isHeader ? 'text-white/40' : 'text-muted-foreground'}`} />
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div className={`absolute top-full mt-1.5 w-60 bg-card border border-border rounded-lg shadow-2xl z-50 overflow-hidden ${isHeader ? 'right-0' : 'left-0'}`}>
           <button
             onClick={toggleAll}
@@ -84,7 +97,9 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
           </button>
 
           <div className="py-1 max-h-64 overflow-y-auto">
-            {locations.map(loc => {
+            {locations.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-muted-foreground">No locations for this company.</p>
+            ) : locations.map(loc => {
               const checked = isChecked(loc.externalId);
               return (
                 <button

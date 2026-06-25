@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Plus, X } from 'lucide-react';
-import { api, type AppUser, type Company, type LocationConfig, type UserUpsert } from '../../api';
+import { api, type AppUser, type AvailableEmployee, type Company, type LocationConfig, type UserUpsert } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
 import {
   ACCESS_MODULES,
@@ -20,6 +20,7 @@ import {
 import { ToggleSwitch } from './ToggleSwitch';
 
 const blankUser = (): UserUpsert => ({
+  employeeId: null,
   fullName: '',
   email: '',
   role: '',
@@ -199,10 +200,11 @@ function ModulePlaceholder({ module }: { module: AccessModule }) {
 }
 
 function UserPanel({
-  user, isNew, onClose, onSave,
+  user, isNew, availableEmployees, onClose, onSave,
 }: {
   user: AppUser | UserUpsert;
   isNew: boolean;
+  availableEmployees: AvailableEmployee[];
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -226,6 +228,20 @@ function UserPanel({
 
   const companyLocations = allLocations.filter(l => l.companyId === form.companyId);
   const selectedLocationIds = parseLocationIds(form.locationIdsJson);
+  const profileLocked = isNew ? !!form.employeeId : ('employeeId' in user && !!user.employeeId);
+
+  function selectEmployee(employeeId: number) {
+    const employee = availableEmployees.find(e => e.id === employeeId);
+    if (!employee) return;
+    setForm(f => ({
+      ...f,
+      employeeId,
+      fullName: employee.name,
+      email: employee.email,
+      role: employee.position,
+      phone: employee.mobile,
+    }));
+  }
 
   function set<K extends keyof UserUpsert>(key: K, val: UserUpsert[K]) {
     setForm(f => ({ ...f, [key]: val }));
@@ -249,7 +265,8 @@ function UserPanel({
   }
 
   async function save() {
-    if (!form.fullName.trim() || !form.email.trim() || !form.companyId) return;
+    if (isNew && !form.employeeId) return;
+    if (!form.companyId) return;
     const payload: UserUpsert = { ...form, accessJson: JSON.stringify(access) };
     if (isNew) await api.createUser(payload);
     else if ('id' in form) await api.updateUser(form.id, payload);
@@ -257,7 +274,7 @@ function UserPanel({
     onClose();
   }
 
-  const canSave = form.fullName.trim() && form.email.trim() && form.companyId;
+  const canSave = (isNew ? !!form.employeeId : true) && form.companyId;
 
   return (
     <>
@@ -266,7 +283,7 @@ function UserPanel({
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">User</p>
-            <h3 className="text-sm font-semibold">{isNew ? 'New User' : form.fullName}</h3>
+            <h3 className="text-sm font-semibold">{isNew ? 'Grant Platform Access' : form.fullName}</h3>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted"><X size={14} className="text-muted-foreground" /></button>
         </div>
@@ -274,25 +291,46 @@ function UserPanel({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           <div className="rounded-md bg-muted/30 border border-border px-3 py-2">
             <p className="text-[10px] font-mono text-muted-foreground">
-              Employee profile details (personal info, employment, payroll) will be managed in Human Resources.
+              Employees are created in Human Resources first. Select an employee below, then assign company, locations, and module access.
             </p>
           </div>
 
-          <div className="space-y-3">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Full Name *</label>
-            <input className={inputCls} value={form.fullName} onChange={e => set('fullName', e.target.value)} placeholder="e.g. James Dubois" />
+          {isNew && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee *</label>
+              <select
+                className={selectCls}
+                value={form.employeeId ?? ''}
+                onChange={e => selectEmployee(Number(e.target.value))}
+              >
+                <option value="">— Select employee from directory —</option>
+                {availableEmployees.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.employeeCode} · {e.name} · {e.position}
+                  </option>
+                ))}
+              </select>
+              {availableEmployees.length === 0 && (
+                <p className="text-[10px] text-muted-foreground">All employees already have access, or none exist yet. Add employees in Human Resources.</p>
+              )}
+            </div>
+          )}
 
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Email *</label>
-            <input type="email" className={inputCls} value={form.email} onChange={e => set('email', e.target.value)} placeholder="name@bisync.cloud" />
+          <div className="space-y-3">
+            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Full Name</label>
+            <input className={inputCls} value={form.fullName} readOnly={profileLocked} onChange={e => set('fullName', e.target.value)} placeholder="From employee record" />
+
+            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Email</label>
+            <input type="email" className={inputCls} value={form.email} readOnly={profileLocked} onChange={e => set('email', e.target.value)} placeholder="From employee record" />
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Role</label>
-                <input className={inputCls} value={form.role} onChange={e => set('role', e.target.value)} placeholder="e.g. Head Chef" />
+                <input className={inputCls} value={form.role} readOnly={profileLocked} onChange={e => set('role', e.target.value)} placeholder="From employee record" />
               </div>
               <div>
                 <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Phone</label>
-                <input className={inputCls} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+60 12-345 6789" />
+                <input className={inputCls} value={form.phone} readOnly={profileLocked} onChange={e => set('phone', e.target.value)} placeholder="From employee record" />
               </div>
             </div>
 
@@ -387,7 +425,7 @@ function UserPanel({
             disabled={!canSave}
             className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
           >
-            {isNew ? 'Create User' : 'Save Changes'}
+            {isNew ? 'Grant Access' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -402,13 +440,23 @@ function accessBadges(accessJson: string): string[] {
 
 export function UsersTab() {
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [editUser, setEditUser] = useState<AppUser | UserUpsert | null>(null);
   const [isNew, setIsNew] = useState(false);
 
   function load() {
     setLoading(true);
-    api.users().then(setUsers).catch(() => setUsers([])).finally(() => setLoading(false));
+    Promise.all([api.users(), api.availableEmployees()])
+      .then(([usrs, emps]) => {
+        setUsers(usrs);
+        setAvailableEmployees(emps);
+      })
+      .catch(() => {
+        setUsers([]);
+        setAvailableEmployees([]);
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => { load(); }, []);
@@ -417,13 +465,14 @@ export function UsersTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          {users.length} users · shared with Human Resources · assign as principal contacts per location
+          {users.length} users with platform access · sourced from Employee Directory · assign company, locations, and modules
         </p>
         <button
           onClick={() => { setIsNew(true); setEditUser(blankUser()); }}
-          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md"
+          disabled={availableEmployees.length === 0}
+          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md disabled:opacity-50"
         >
-          <Plus size={12} /> Create User
+          <Plus size={12} /> Grant Access
         </button>
       </div>
 
@@ -434,7 +483,7 @@ export function UsersTab() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {['Name', 'Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (
+                {['Employee ID', 'Name', 'Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (
                   <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
                 ))}
               </tr>
@@ -446,6 +495,7 @@ export function UsersTab() {
                   className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
                   onClick={() => { setIsNew(false); setEditUser(u); }}
                 >
+                  <td className="px-4 py-3 font-mono text-muted-foreground">{u.employeeCode || '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold">
@@ -487,7 +537,7 @@ export function UsersTab() {
                 </tr>
               ))}
               {users.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No users configured yet.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No platform access granted yet. Create employees in Human Resources, then grant access here.</td></tr>
               )}
             </tbody>
           </table>
@@ -498,6 +548,7 @@ export function UsersTab() {
         <UserPanel
           user={editUser}
           isNew={isNew}
+          availableEmployees={availableEmployees}
           onClose={() => { setEditUser(null); setIsNew(false); }}
           onSave={load}
         />

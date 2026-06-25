@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Users } from 'lucide-react';
-import { HR_BACKEND_DEV_PORT, HR_BACKEND_REPO } from '../../config/hrBackend';
 import { probeHrApi } from '../../modules/hr/api';
 
 const HrModule = lazy(() => import('../../modules/hr/HrModule'));
@@ -13,19 +12,16 @@ function HrOfflinePanel({ onRetry }: { onRetry: () => void }) {
           <Users size={22} className="text-muted-foreground" />
         </div>
         <div>
-          <p className="text-sm font-semibold">Human Resources API is not running</p>
+          <p className="text-sm font-semibold">Human Resources API is not reachable</p>
           <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-            The HR module is built into Bisync.cloud and talks to{' '}
-            <a href={HR_BACKEND_REPO} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-              HrBackend
-            </a>
-            {' '}for employee data. Start the API, then retry.
+            The HR module is part of Bisync.cloud and uses the same API as the rest of the platform.
+            Start the Bisync API, then retry.
           </p>
         </div>
         <div className="w-full text-left bg-muted/40 border border-border rounded-md px-4 py-3 space-y-2">
           <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Local setup</p>
-          <code className="block text-[11px] font-mono text-foreground">dotnet run --project src/HrBackend.Api</code>
-          <p className="text-[10px] text-muted-foreground">API at http://localhost:{HR_BACKEND_DEV_PORT} · proxied via /hr-api</p>
+          <code className="block text-[11px] font-mono text-foreground">dotnet run --project src/Bisync.Api</code>
+          <p className="text-[10px] text-muted-foreground">API at http://localhost:5299</p>
         </div>
         <button
           onClick={onRetry}

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import React from 'react';
-import { Users, Calendar, FileText, Plus, Minus, Edit2, Trash2, Check, X, Eye, Clock, Settings, LayoutDashboard } from 'lucide-react';
+import { Users, Calendar, FileText, Plus, Minus, Edit2, Trash2, Check, X, Clock, Settings, LayoutDashboard } from 'lucide-react';
 import { hrApi as api, toEmployeeRequest } from './api';
+import { api as bisyncApi, type AppUser } from '../../api';
+import { parseUserAccess } from '../../data/userAccess';
 import EmployeePortal from './EmployeePortal';
 import ShiftScheduleGrid, { initialScheduleWeekStart } from './ShiftScheduleGrid';
 import type {
   AttendanceRecord, CompanySetting, CountryOption, DivisionTreeNode, Employee, EmployeeLevel,
+  CheckinMethod,
   LeaveBalanceRow, LeaveRequest, PublicHoliday, ScheduleType, ShiftSchedule,
 } from './types';
 
@@ -72,28 +75,27 @@ const getLeaveTypeLabel = (type: string) => {
 
 const DEFAULT_POS_PIN = '1234';
 
+const CHECKIN_METHODS: CheckinMethod[] = ['POS', 'Biometrics', 'AccessTag'];
+
+const checkinMethodLabel = (method: CheckinMethod) => {
+  switch (method) {
+    case 'POS': return 'POS';
+    case 'Biometrics': return 'Biometrics';
+    case 'AccessTag': return 'Access Tag';
+  }
+};
+
 const emptyEmployeeForm = {
   name: '', email: '', mobile: '', position: '', joinDate: '',
   divisionId: null as number | null,
   departmentId: null as number | null,
   fingerprintEnrolled: false, faceRecognitionEnrolled: false,
   posEnabled: false, bisyncEnabled: false,
+  active: true,
+  checkinMethod: 'Biometrics' as CheckinMethod,
   employeeLevelId: null as number | null,
   reportsToId: null as number | null,
 };
-
-function resolveEmployeeOrg(employee: Employee, tree: DivisionTreeNode[]) {
-  if (employee.divisionId && employee.departmentId) {
-    return { divisionId: employee.divisionId, departmentId: employee.departmentId };
-  }
-  for (const division of tree) {
-    const department = division.departments.find((d) =>
-      d.id === employee.departmentId || d.name === employee.department,
-    );
-    if (department) return { divisionId: division.id, departmentId: department.id };
-  }
-  return { divisionId: employee.divisionId ?? null, departmentId: employee.departmentId ?? null };
-}
 
 const emptyLevelForm = {
   levelName: '', annualLeaveDays: 0, sickLeaveDays: 0, overtimeEligible: false,
@@ -112,6 +114,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
   const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'admin' | 'portal'>('employees');
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [platformUsers, setPlatformUsers] = useState<AppUser[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceRow[]>([]);
@@ -127,8 +130,8 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
   const [selectedAttendanceEmployee, setSelectedAttendanceEmployee] = useState<Employee | null>(null);
 
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
   const [formData, setFormData] = useState({ ...emptyEmployeeForm });
 
   const [showLevelForm, setShowLevelForm] = useState(false);
@@ -169,7 +172,14 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
     run(async () => setCountryOptions(await api.settings.countries()));
   }, [activeTab, countryOptions.length, run]);
 
-  const refreshEmployees = useCallback(async () => setEmployees(await api.employees.list()), []);
+  const refreshEmployees = useCallback(async () => {
+    const [emps, users] = await Promise.all([
+      api.employees.list(),
+      bisyncApi.users().catch(() => [] as AppUser[]),
+    ]);
+    setEmployees(emps);
+    setPlatformUsers(users);
+  }, []);
   const refreshHolidays = useCallback(async () => setPublicHolidays(await api.holidays.list()), []);
   const refreshOrgTree = useCallback(async () => setOrgTree(await api.org.tree()), []);
   const refreshLeave = useCallback(async () => {
@@ -181,14 +191,16 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
 
   useEffect(() => {
     run(async () => {
-      const [emps, att, holidays, levels, set] = await Promise.all([
+      const [emps, att, holidays, levels, set, users] = await Promise.all([
         api.employees.list(),
         api.attendance.list(monthStart, monthEnd),
         api.holidays.list(),
         api.levels.list(),
         api.settings.get(),
+        bisyncApi.users().catch(() => [] as AppUser[]),
       ]);
       setEmployees(emps);
+      setPlatformUsers(users);
       setAttendance(att);
       setPublicHolidays(holidays);
       setEmployeeLevels(levels);
@@ -225,11 +237,22 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
     if (level) return level.isShift;
     return employee.isShiftEmployee;
   };
+
+  const platformUserFor = (employee: Employee) =>
+    platformUsers.find(u => u.employeeId === employee.id)
+    ?? platformUsers.find(u => u.email.toLowerCase() === employee.email.toLowerCase());
+
+  const employeeCompanyName = (employee: Employee) => platformUserFor(employee)?.companyName ?? '—';
+  const employeeLocationLabel = (employee: Employee) => {
+    const names = platformUserFor(employee)?.locationNames;
+    if (!names?.length) return '—';
+    return names.join(', ');
+  };
+
   // ---------- employee actions ----------
 
   const openAddEmployeeForm = () => {
     setShowEmployeeForm(true);
-    setEditingEmployee(null);
     setFormData({ ...emptyEmployeeForm, joinDate: iso(today) });
   };
 
@@ -247,83 +270,36 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
       setError(`Please fill in required fields: ${missing.join(', ')}.`);
       return;
     }
-    if (editingEmployee) {
-      await api.employees.update(editingEmployee.id, {
-        employeeCode: editingEmployee.employeeCode,
-        name,
-        email,
-        mobile,
-        divisionId,
-        departmentId,
-        position,
-        joinDate,
-        fingerprintEnrolled: formData.fingerprintEnrolled,
-        faceRecognitionEnrolled: formData.faceRecognitionEnrolled,
-        isShiftEmployee: false,
-        shiftType: null,
-        posEnabled: formData.posEnabled,
-        bisyncEnabled: formData.bisyncEnabled,
-        workingHoursPerDay: editingEmployee.workingHoursPerDay,
-        employeeLevelId: formData.employeeLevelId,
-        reportsToId: formData.reportsToId,
-        nationality: editingEmployee.nationality ?? null,
-        idPassportNumber: editingEmployee.idPassportNumber ?? null,
-        dateOfBirth: editingEmployee.dateOfBirth ?? null,
-        personalEmail: editingEmployee.personalEmail ?? null,
-        permanentAddress: editingEmployee.permanentAddress ?? null,
-      });
-    } else {
-      await api.employees.create({
-        name,
-        email,
-        mobile,
-        divisionId,
-        departmentId,
-        position,
-        joinDate,
-        fingerprintEnrolled: formData.fingerprintEnrolled,
-        faceRecognitionEnrolled: formData.faceRecognitionEnrolled,
-        isShiftEmployee: false,
-        shiftType: null,
-        posEnabled: formData.posEnabled,
-        bisyncEnabled: formData.bisyncEnabled,
-        workingHoursPerDay: 8,
-        employeeLevelId: formData.employeeLevelId,
-        reportsToId: formData.reportsToId,
-        nationality: null,
-        idPassportNumber: null,
-        dateOfBirth: null,
-        personalEmail: null,
-        permanentAddress: null,
-      });
-    }
+    await api.employees.create({
+      name,
+      email,
+      mobile,
+      divisionId,
+      departmentId,
+      position,
+      joinDate,
+      fingerprintEnrolled: false,
+      faceRecognitionEnrolled: false,
+      isShiftEmployee: false,
+      shiftType: null,
+      posEnabled: false,
+      bisyncEnabled: false,
+      active: true,
+      checkinMethod: 'Biometrics',
+      workingHoursPerDay: 8,
+      employeeLevelId: formData.employeeLevelId,
+      reportsToId: formData.reportsToId,
+      nationality: null,
+      idPassportNumber: null,
+      dateOfBirth: null,
+      personalEmail: null,
+      permanentAddress: null,
+    });
     setShowEmployeeForm(false);
-    setEditingEmployee(null);
     setFormData({ ...emptyEmployeeForm });
     await refreshEmployees();
     await refreshLeave();
   });
-
-  const handleEditEmployee = (employee: Employee) => {
-    const org = resolveEmployeeOrg(employee, orgTree);
-    setEditingEmployee(employee);
-    setFormData({
-      name: employee.name,
-      email: employee.email,
-      mobile: employee.mobile,
-      divisionId: org.divisionId,
-      departmentId: org.departmentId,
-      position: employee.position,
-      joinDate: employee.joinDate,
-      fingerprintEnrolled: employee.fingerprintEnrolled,
-      faceRecognitionEnrolled: employee.faceRecognitionEnrolled,
-      posEnabled: employee.posEnabled,
-      bisyncEnabled: employee.bisyncEnabled,
-      employeeLevelId: employee.employeeLevelId ?? null,
-      reportsToId: employee.reportsToId ?? null,
-    });
-    setShowEmployeeForm(true);
-  };
 
   const handleDeleteEmployee = (id: number) => run(async () => {
     await api.employees.remove(id);
@@ -332,29 +308,51 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
   });
 
   const resetPosPin = () => run(async () => {
-    if (!editingEmployee) return;
-    const updated = await api.employees.resetPosPin(editingEmployee.id);
-    setEditingEmployee(updated);
+    if (!detailDraft) return;
+    const updated = await api.employees.resetPosPin(detailDraft.id);
+    setDetailDraft(updated);
+    setSelectedEmployee(updated);
     await refreshEmployees();
   });
 
-  const toggleEmployeeFlag = (employee: Employee, patch: Partial<Employee>) => run(async () => {
-    const updated = { ...employee, ...patch };
-    await api.employees.update(employee.id, toEmployeeRequest(updated));
-    setEmployees(prev => prev.map(e => (e.id === employee.id ? updated : e)));
-  });
-
   const openEmployeeDetail = (id: number) => run(async () => {
-    setSelectedEmployee(await api.employees.get(id));
+    const emp = await api.employees.get(id);
+    setSelectedEmployee(emp);
+    setDetailDraft(emp);
   });
 
-  const updateSelectedEmployee = (patch: Partial<Employee>) => run(async () => {
-    if (!selectedEmployee) return;
-    const updated = { ...selectedEmployee, ...patch };
-    const saved = await api.employees.update(updated.id, toEmployeeRequest(updated));
+  const closeEmployeeDetail = () => {
+    setSelectedEmployee(null);
+    setDetailDraft(null);
+  };
+
+  const saveEmployeeDetail = () => run(async () => {
+    if (!detailDraft) return;
+    const saved = await api.employees.update(detailDraft.id, toEmployeeRequest(detailDraft));
     setSelectedEmployee(saved);
+    setDetailDraft(saved);
     setEmployees(prev => prev.map(e => (e.id === saved.id ? saved : e)));
+    const users = await bisyncApi.users().catch(() => [] as AppUser[]);
+    setPlatformUsers(users);
   });
+
+  const toggleEmployeeActive = (employee: Employee, active: boolean) => run(async () => {
+    const updated = { ...employee, active };
+    const saved = await api.employees.update(employee.id, toEmployeeRequest(updated));
+    setEmployees(prev => prev.map(e => (e.id === employee.id ? saved : e)));
+    if (detailDraft?.id === employee.id) setDetailDraft(saved);
+    if (selectedEmployee?.id === employee.id) setSelectedEmployee(saved);
+    const users = await bisyncApi.users().catch(() => [] as AppUser[]);
+    setPlatformUsers(users);
+  });
+
+  const updateDetailDraft = (patch: Partial<Employee>) => {
+    if (!detailDraft) return;
+    const next = { ...detailDraft, ...patch };
+    if (patch.checkinMethod === 'POS') next.posEnabled = true;
+    if (patch.checkinMethod && patch.checkinMethod !== 'POS') next.posEnabled = false;
+    setDetailDraft(next);
+  };
 
   // ---------- leave actions ----------
 
@@ -617,10 +615,8 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
 
             {showEmployeeForm && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                <h3 className="text-xl text-gray-900 mb-4">{editingEmployee ? 'Edit Employee' : 'Add New Employee'}</h3>
-                {!editingEmployee && (
-                  <p className="text-sm text-gray-500 mb-4">Employee ID is assigned automatically (6-digit minimum).</p>
-                )}
+                <h3 className="text-xl text-gray-900 mb-4">Add New Employee</h3>
+                <p className="text-sm text-gray-500 mb-4">Employee ID is assigned automatically. Configure check-in method and other details after creation.</p>
                 {error && (
                   <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm flex justify-between">
                     <span>{error}</span>
@@ -628,17 +624,6 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4 mb-4">
-                  {editingEmployee && (
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Employee ID</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={editingEmployee.employeeCode}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
-                      />
-                    </div>
-                  )}
                   {([
                     ['Full Name', 'name', 'text', 'John Doe'],
                     ['Email', 'email', 'email', 'john.doe@company.com'],
@@ -675,9 +660,6 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                         <option key={division.id} value={division.id}>{division.name}</option>
                       ))}
                     </select>
-                    {orgTree.length === 0 && (
-                      <p className="text-xs text-gray-500 mt-1">Add divisions under Admin → Divisions &amp; Departments.</p>
-                    )}
                   </div>
                   <div>
                     <label className="block text-sm text-gray-700 mb-1">Department</label>
@@ -724,78 +706,18 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
                     >
                       <option value="">— Select manager —</option>
-                      {employees
-                        .filter((e) => e.id !== editingEmployee?.id)
-                        .map((e) => (
-                          <option key={e.id} value={e.id}>{e.name} — {e.position}</option>
-                        ))}
+                      {employees.map((e) => (
+                        <option key={e.id} value={e.id}>{e.name} — {e.position}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
-                <div className="mb-4">
-                  <label className="block text-sm text-gray-700 mb-2">Biometrics Data</label>
-                  <div className="flex flex-wrap gap-6 mb-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.fingerprintEnrolled}
-                        onChange={(e) => setFormData({ ...formData, fingerprintEnrolled: e.target.checked })}
-                        className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                      />
-                      <span className="text-sm text-gray-700">Fingerprint Enrolled</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.faceRecognitionEnrolled}
-                        onChange={(e) => setFormData({ ...formData, faceRecognitionEnrolled: e.target.checked })}
-                        className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                      />
-                      <span className="text-sm text-gray-700">Face Recognition Enrolled</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.posEnabled}
-                        onChange={(e) => setFormData({ ...formData, posEnabled: e.target.checked })}
-                        className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                      />
-                      <span className="text-sm text-gray-700">POS</span>
-                    </label>
-                  </div>
-                  {formData.posEnabled && (
-                    <div className="flex flex-wrap items-end gap-3 p-4 bg-herme-light border border-herme-muted rounded-lg">
-                      <div className="flex-1 min-w-[200px]">
-                        <label className="block text-sm text-gray-700 mb-1">Temporary POS PIN</label>
-                        <input
-                          type="text"
-                          readOnly
-                          value={editingEmployee?.posPin ?? DEFAULT_POS_PIN}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 font-mono tracking-widest"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Employee must change this PIN on first POS login.
-                          {editingEmployee?.posPinMustChange && ' (Change required)'}
-                        </p>
-                      </div>
-                      {editingEmployee && (
-                        <button
-                          type="button"
-                          onClick={resetPosPin}
-                          className="px-4 py-2 text-sm border border-herme text-herme rounded-lg hover:bg-herme-soft transition-colors"
-                        >
-                          Reset PIN to {DEFAULT_POS_PIN}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
                 <div className="flex gap-3">
                   <button type="button" onClick={submitEmployeeForm} className="bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors">
-                    {editingEmployee ? 'Update Employee' : 'Add Employee'}
+                    Add Employee
                   </button>
                   <button
-                    onClick={() => { setShowEmployeeForm(false); setEditingEmployee(null); setFormData({ ...emptyEmployeeForm }); }}
+                    onClick={() => { setShowEmployeeForm(false); setFormData({ ...emptyEmployeeForm }); }}
                     className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
                   >
                     Cancel
@@ -804,40 +726,47 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
               </div>
             )}
 
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <table className="w-full">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+              <table className="w-full min-w-[1100px]">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-6 py-3 text-left text-sm text-gray-700">Employee ID</th>
                     <th className="px-6 py-3 text-left text-sm text-gray-700">Employee</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Mobile</th>
+                    <th className="px-6 py-3 text-left text-sm text-gray-700">Company</th>
+                    <th className="px-6 py-3 text-left text-sm text-gray-700">Location</th>
                     <th className="px-6 py-3 text-left text-sm text-gray-700">Division</th>
                     <th className="px-6 py-3 text-left text-sm text-gray-700">Department</th>
                     <th className="px-6 py-3 text-left text-sm text-gray-700">Position</th>
                     <th className="px-6 py-3 text-left text-sm text-gray-700">Employee Level</th>
                     <th className="px-6 py-3 text-center text-sm text-gray-700">Shift</th>
-                    <th className="px-6 py-3 text-center text-sm text-gray-700">POS</th>
-                    <th className="px-6 py-3 text-center text-sm text-gray-700">Bisync</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Biometrics</th>
-                    <th className="px-6 py-3 text-right text-sm text-gray-700">Actions</th>
+                    <th className="px-6 py-3 text-left text-sm text-gray-700">Platform Access</th>
+                    <th className="px-6 py-3 text-left text-sm text-gray-700">Check-in Method</th>
+                    <th className="px-6 py-3 text-center text-sm text-gray-700">Active</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {employees.map((employee) => (
-                    <tr key={employee.id} className="hover:bg-gray-50">
+                    <tr key={employee.id} className={`hover:bg-gray-50 ${employee.active === false ? 'opacity-60' : ''}`}>
                       <td className="px-6 py-4 text-sm text-gray-900">{employee.employeeCode}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-herme text-white flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-full bg-herme text-white flex items-center justify-center shrink-0">
                             {initials(employee.name)}
                           </div>
-                          <div>
-                            <div className="text-sm text-gray-900">{employee.name}</div>
-                            <div className="text-sm text-gray-500">{employee.email}</div>
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => openEmployeeDetail(employee.id)}
+                              className="text-sm text-herme hover:text-herme-dark hover:underline font-medium text-left"
+                            >
+                              {employee.name}
+                            </button>
+                            <div className="text-sm text-gray-500 truncate">{employee.email}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{employee.mobile}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{employeeCompanyName(employee)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900 max-w-[160px] truncate" title={employeeLocationLabel(employee)}>{employeeLocationLabel(employee)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{employeeDivisionName(employee)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{departmentName(employee)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">{employee.position}</td>
@@ -859,47 +788,42 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                           title="Set via Admin → Employee Levels"
                         />
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={employee.posEnabled}
-                          onChange={(e) => toggleEmployeeFlag(employee, { posEnabled: e.target.checked })}
-                          className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                        />
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={employee.bisyncEnabled}
-                          onChange={(e) => toggleEmployeeFlag(employee, { bisyncEnabled: e.target.checked })}
-                          className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                        />
-                      </td>
                       <td className="px-6 py-4">
-                        <div className="flex gap-2">
-                          {employee.fingerprintEnrolled && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-md bg-green-100 text-green-800 text-xs">👆 Fingerprint</span>
-                          )}
-                          {employee.faceRecognitionEnrolled && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-md bg-herme-soft text-herme-darker text-xs">👤 Face ID</span>
-                          )}
-                          {!employee.fingerprintEnrolled && !employee.faceRecognitionEnrolled && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 text-gray-600 text-xs">None</span>
-                          )}
-                        </div>
+                        {(() => {
+                          const user = platformUserFor(employee);
+                          if (!user) {
+                            return <span className="text-xs text-gray-400">Not granted</span>;
+                          }
+                          const modules = parseUserAccess(user.accessJson).modules;
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {modules.length > 0 ? modules.map(m => (
+                                <span key={m} className="inline-flex px-2 py-0.5 rounded bg-herme-soft text-herme-darker text-xs font-medium">{m}</span>
+                              )) : (
+                                <span className="text-xs text-gray-500">No modules</span>
+                              )}
+                              {!user.active && (
+                                <span className="inline-flex px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Inactive</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => openEmployeeDetail(employee.id)} className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors" title="View Details">
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleEditEmployee(employee)} className="p-2 text-herme hover:bg-herme-light rounded-lg transition-colors" title="Edit">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDeleteEmployee(employee.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        <span className="inline-flex px-2 py-1 rounded-md bg-gray-100 text-gray-800 text-xs">
+                          {checkinMethodLabel(employee.checkinMethod ?? 'Biometrics')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <label className="inline-flex items-center cursor-pointer" title={employee.active === false ? 'Activate employee' : 'Deactivate employee'}>
+                          <input
+                            type="checkbox"
+                            checked={employee.active !== false}
+                            onChange={(e) => toggleEmployeeActive(employee, e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <span className="relative w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-herme transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full after:transition-transform peer-checked:after:translate-x-5" />
+                        </label>
                       </td>
                     </tr>
                   ))}
@@ -1833,50 +1757,104 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
     )}
 
     {/* Employee Detail Modal */}
-    {selectedEmployee && (
+    {selectedEmployee && detailDraft && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-auto">
           <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 flex justify-between items-start z-10">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-herme text-white flex items-center justify-center text-2xl">
-                {initials(selectedEmployee.name)}
+                {initials(detailDraft.name)}
               </div>
               <div>
-                <h2 className="text-2xl text-gray-900">{selectedEmployee.name}</h2>
-                <p className="text-gray-600">{selectedEmployee.position} - {selectedEmployee.department}</p>
-                <p className="text-sm text-gray-500">Employee ID: {selectedEmployee.employeeCode}</p>
+                <h2 className="text-2xl text-gray-900">{detailDraft.name}</h2>
+                <p className="text-gray-600">{detailDraft.position} — {departmentName(detailDraft)}</p>
+                <p className="text-sm text-gray-500">Employee ID: {detailDraft.employeeCode}</p>
                 <p className="text-sm text-gray-500">
-                  Employee Level: {levelName(selectedEmployee.employeeLevelId) ?? selectedEmployee.employeeLevel?.levelName ?? '—'}
-                </p>
-                <p className="text-sm text-gray-500">
-                  Reports To: {selectedEmployee.reportsTo?.name
-                    ?? (selectedEmployee.reportsToId ? employeeName(selectedEmployee.reportsToId) : '—')}
+                  Company: {employeeCompanyName(detailDraft)} · Location: {employeeLocationLabel(detailDraft)}
                 </p>
               </div>
             </div>
-            <button onClick={() => setSelectedEmployee(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            <button onClick={closeEmployeeDetail} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
           </div>
 
           <div className="p-8 space-y-8">
-            {/* Personal Details */}
             <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">1. Personal Details</h3>
-
-              <div className="mb-6 p-4 bg-herme-light rounded-lg border border-herme-muted">
-                <div className="text-sm text-gray-700">
-                  <span className="font-medium">Shift status:</span>{' '}
-                  {employeeIsShift(selectedEmployee)
-                    ? 'Shift employee'
-                    : 'Non-shift (set via Employee Level in Admin)'}
-                </div>
-              </div>
+              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">1. Personal &amp; Employment Details</h3>
 
               <div className="grid grid-cols-2 gap-6">
                 <div>
+                  <label className="block text-sm text-gray-600 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    value={detailDraft.name}
+                    onChange={(e) => updateDetailDraft({ name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Work Email</label>
+                  <input
+                    type="email"
+                    value={detailDraft.email}
+                    onChange={(e) => updateDetailDraft({ email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Position</label>
+                  <input
+                    type="text"
+                    value={detailDraft.position}
+                    onChange={(e) => updateDetailDraft({ position: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Join Date</label>
+                  <input
+                    type="date"
+                    value={detailDraft.joinDate}
+                    onChange={(e) => updateDetailDraft({ joinDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Division</label>
+                  <select
+                    value={detailDraft.divisionId ?? ''}
+                    onChange={(e) => updateDetailDraft({
+                      divisionId: e.target.value ? Number(e.target.value) : null,
+                      departmentId: null,
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
+                  >
+                    <option value="">— Select division —</option>
+                    {orgTree.map((division) => (
+                      <option key={division.id} value={division.id}>{division.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Department</label>
+                  <select
+                    value={detailDraft.departmentId ?? ''}
+                    disabled={!detailDraft.divisionId}
+                    onChange={(e) => updateDetailDraft({
+                      departmentId: e.target.value ? Number(e.target.value) : null,
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white disabled:bg-gray-50"
+                  >
+                    <option value="">— Select department —</option>
+                    {(orgTree.find((d) => d.id === detailDraft.divisionId)?.departments ?? []).map((department) => (
+                      <option key={department.id} value={department.id}>{department.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm text-gray-600 mb-1">Employee Level</label>
                   <select
-                    value={selectedEmployee.employeeLevelId ?? ''}
-                    onChange={(e) => updateSelectedEmployee({
+                    value={detailDraft.employeeLevelId ?? ''}
+                    onChange={(e) => updateDetailDraft({
                       employeeLevelId: e.target.value ? Number(e.target.value) : null,
                     })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
@@ -1888,42 +1866,157 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Full Name</label>
-                  <p className="text-gray-900">{selectedEmployee.name}</p>
+                  <label className="block text-sm text-gray-600 mb-1">Reports To</label>
+                  <select
+                    value={detailDraft.reportsToId ?? ''}
+                    onChange={(e) => updateDetailDraft({
+                      reportsToId: e.target.value ? Number(e.target.value) : null,
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
+                  >
+                    <option value="">— Select manager —</option>
+                    {employees.filter((e) => e.id !== detailDraft.id).map((e) => (
+                      <option key={e.id} value={e.id}>{e.name} — {e.position}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Nationality</label>
-                  <p className="text-gray-900">{selectedEmployee.nationality || '-'}</p>
+                  <input
+                    type="text"
+                    value={detailDraft.nationality ?? ''}
+                    onChange={(e) => updateDetailDraft({ nationality: e.target.value || null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">ID / Passport Number</label>
-                  <p className="text-gray-900">{selectedEmployee.idPassportNumber || '-'}</p>
+                  <input
+                    type="text"
+                    value={detailDraft.idPassportNumber ?? ''}
+                    onChange={(e) => updateDetailDraft({ idPassportNumber: e.target.value || null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Date of Birth</label>
-                  <p className="text-gray-900">{selectedEmployee.dateOfBirth || '-'}</p>
+                  <input
+                    type="date"
+                    value={detailDraft.dateOfBirth ?? ''}
+                    onChange={(e) => updateDetailDraft({ dateOfBirth: e.target.value || null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Contact Number</label>
-                  <p className="text-gray-900">{selectedEmployee.mobile}</p>
+                  <input
+                    type="tel"
+                    value={detailDraft.mobile}
+                    onChange={(e) => updateDetailDraft({ mobile: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Personal Email Address</label>
-                  <p className="text-gray-900">{selectedEmployee.personalEmail || '-'}</p>
+                  <label className="block text-sm text-gray-600 mb-1">Personal Email</label>
+                  <input
+                    type="email"
+                    value={detailDraft.personalEmail ?? ''}
+                    onChange={(e) => updateDetailDraft({ personalEmail: e.target.value || null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm text-gray-600 mb-1">Permanent Address</label>
-                  <p className="text-gray-900">{selectedEmployee.permanentAddress || '-'}</p>
+                  <textarea
+                    value={detailDraft.permanentAddress ?? ''}
+                    onChange={(e) => updateDetailDraft({ permanentAddress: e.target.value || null })}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
+                  />
                 </div>
               </div>
             </div>
 
+            <div>
+              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">2. Check-in Method</h3>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Method</label>
+                  <select
+                    value={detailDraft.checkinMethod ?? 'Biometrics'}
+                    onChange={(e) => updateDetailDraft({ checkinMethod: e.target.value as CheckinMethod })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
+                  >
+                    {CHECKIN_METHODS.map((method) => (
+                      <option key={method} value={method}>{checkinMethodLabel(method)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <p className="text-sm text-gray-500">
+                    Shift status: {employeeIsShift(detailDraft) ? 'Shift employee' : 'Non-shift'} (via Employee Level)
+                  </p>
+                </div>
+              </div>
+
+              {detailDraft.checkinMethod === 'Biometrics' && (
+                <div className="mt-4 flex flex-wrap gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={detailDraft.fingerprintEnrolled}
+                      onChange={(e) => updateDetailDraft({ fingerprintEnrolled: e.target.checked })}
+                      className="w-4 h-4 text-herme border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Fingerprint enrolled</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={detailDraft.faceRecognitionEnrolled}
+                      onChange={(e) => updateDetailDraft({ faceRecognitionEnrolled: e.target.checked })}
+                      className="w-4 h-4 text-herme border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Face recognition enrolled</span>
+                  </label>
+                </div>
+              )}
+
+              {detailDraft.checkinMethod === 'POS' && (
+                <div className="mt-4 flex flex-wrap items-end gap-3 p-4 bg-herme-light border border-herme-muted rounded-lg">
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-sm text-gray-700 mb-1">POS PIN</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={detailDraft.posPin ?? DEFAULT_POS_PIN}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-mono tracking-widest"
+                    />
+                    {detailDraft.posPinMustChange && (
+                      <p className="text-xs text-gray-500 mt-1">PIN change required on next login</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetPosPin}
+                    className="px-4 py-2 text-sm border border-herme text-herme rounded-lg hover:bg-herme-soft"
+                  >
+                    Reset PIN to {DEFAULT_POS_PIN}
+                  </button>
+                </div>
+              )}
+
+              {detailDraft.checkinMethod === 'AccessTag' && (
+                <p className="mt-4 text-sm text-gray-500">Employee will check in using an assigned access tag.</p>
+              )}
+            </div>
+
             {/* Education */}
             <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">2. Educational Details & Certificates</h3>
-              {selectedEmployee.education?.length ? (
+              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">3. Educational Details &amp; Certificates</h3>
+              {detailDraft.education?.length ? (
                 <div className="space-y-4">
-                  {selectedEmployee.education.map((edu) => (
+                  {detailDraft.education.map((edu) => (
                     <div key={edu.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="grid grid-cols-3 gap-4">
                         <div>
@@ -1951,10 +2044,10 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
 
             {/* Previous Employment */}
             <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">3. Previous Employment History</h3>
-              {selectedEmployee.previousEmployments?.length ? (
+              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">4. Previous Employment History</h3>
+              {detailDraft.previousEmployments?.length ? (
                 <div className="space-y-4">
-                  {selectedEmployee.previousEmployments.map((emp) => (
+                  {detailDraft.previousEmployments.map((emp) => (
                     <div key={emp.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="grid grid-cols-3 gap-4">
                         <div>
@@ -1978,10 +2071,10 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
 
             {/* Movements */}
             <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">4. Movement & Promotions Within Company</h3>
-              {selectedEmployee.movements?.length ? (
+              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">5. Movement &amp; Promotions Within Company</h3>
+              {detailDraft.movements?.length ? (
                 <div className="space-y-4">
-                  {selectedEmployee.movements.map((movement) => (
+                  {detailDraft.movements.map((movement) => (
                     <div key={movement.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="grid grid-cols-4 gap-4">
                         <div>
@@ -2013,10 +2106,10 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
 
             {/* Appraisals */}
             <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">5. Annual Performance Appraisal</h3>
-              {selectedEmployee.performanceAppraisals?.length ? (
+              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">6. Annual Performance Appraisal</h3>
+              {detailDraft.performanceAppraisals?.length ? (
                 <div className="space-y-4">
-                  {selectedEmployee.performanceAppraisals.map((appraisal) => (
+                  {detailDraft.performanceAppraisals.map((appraisal) => (
                     <div key={appraisal.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="grid grid-cols-4 gap-4 mb-3">
                         <div>
@@ -2049,6 +2142,24 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                   ))}
                 </div>
               ) : <p className="text-gray-500 italic">No performance appraisal records</p>}
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t border-gray-200 -mx-8 px-8 py-4 flex justify-between items-center">
+              <button
+                type="button"
+                onClick={() => { if (confirm('Delete this employee permanently?')) { handleDeleteEmployee(detailDraft.id); closeEmployeeDetail(); } }}
+                className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+              >
+                Delete Employee
+              </button>
+              <div className="flex gap-3">
+                <button type="button" onClick={closeEmployeeDetail} className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                  Cancel
+                </button>
+                <button type="button" onClick={saveEmployeeDetail} className="px-4 py-2 text-sm bg-herme text-white rounded-lg hover:bg-herme-dark">
+                  Save Changes
+                </button>
+              </div>
             </div>
           </div>
         </div>
