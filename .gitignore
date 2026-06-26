@@ -1,9 +1,16 @@
 # Build outputs
 bin/
 obj/
-*.db
+
+# SQLite temp/lock files (never commit these)
 *.db-shm
 *.db-wal
+
+# Ignore other databases; allow the Bisync app database (all HR/payroll data)
+*.db
+!src/Bisync.Api/bisync.db
+
+# Local backup copies (optional — run scripts/backup-data.ps1)
 data-backups/
 
 # .NET
