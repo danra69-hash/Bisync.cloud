@@ -10,6 +10,7 @@ import { RevenueSection } from './components/revenue/RevenueSection';
 import { ProgressPanel } from './components/overview/ProgressPanel';
 import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
 import { HumanResourcesPage } from './components/hr/HumanResourcesPage';
+import { AccountingPage } from './components/accounting/AccountingPage';
 import { aggregateLocationMetrics } from './utils/locationMetrics';
 import { configLocationToDropdown, filterMetricsByOrg } from './utils/orgFilters';
 import { useOrgFilters } from './hooks/useOrgFilters';
@@ -280,6 +281,8 @@ export default function App() {
             <SystemConfigurationPage onOrgDataChanged={refreshOrgFilters} />
           ) : activeNav === 'Human Resources' ? (
             <HumanResourcesPage />
+          ) : activeNav === 'Accounting' ? (
+            <AccountingPage />
           ) : (
             <PlaceholderModule title={activeNav} />
           )}

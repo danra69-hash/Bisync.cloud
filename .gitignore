@@ -4,6 +4,7 @@ obj/
 *.db
 *.db-shm
 *.db-wal
+data-backups/
 
 # .NET
 .vs/

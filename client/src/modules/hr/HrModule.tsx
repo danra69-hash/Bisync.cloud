@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import React from 'react';
-import { Users, Calendar, FileText, Plus, Minus, Edit2, Trash2, Check, X, Clock, Settings, LayoutDashboard } from 'lucide-react';
-import { hrApi as api, toEmployeeRequest } from './api';
-import { api as bisyncApi, type AppUser } from '../../api';
-import { parseUserAccess } from '../../data/userAccess';
+import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet } from 'lucide-react';
+import { hrApi as api } from './api';
 import EmployeePortal from './EmployeePortal';
+import { PayrollSection } from '../../components/payroll/PayrollSection';
 import ShiftScheduleGrid, { initialScheduleWeekStart } from './ShiftScheduleGrid';
+import { HrEmployeeConfigSection } from '../../components/admin/HrEmployeeConfigSection';
+import type { HrEmployeeConfigTabId } from '../../components/admin/hrConfigTabs';
 import type {
-  AttendanceRecord, CompanySetting, CountryOption, DivisionTreeNode, Employee, EmployeeLevel,
-  CheckinMethod,
+  AttendanceRecord, Employee, EmployeeLevel,
   LeaveBalanceRow, LeaveRequest, PublicHoliday, ScheduleType, ShiftSchedule,
 } from './types';
 
@@ -37,8 +37,6 @@ const calcHours = (schedIn: string, schedOut: string, actIn: string, actOut: str
 
 const isLate = (schedIn: string, actIn: string) => toMinutes(actIn) > toMinutes(schedIn);
 const isEarlyOut = (schedOut: string, actOut: string) => toMinutes(actOut) < toMinutes(schedOut);
-
-const initials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase();
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -73,79 +71,26 @@ const getLeaveTypeLabel = (type: string) => {
   }
 };
 
-const DEFAULT_POS_PIN = '1234';
-
-const CHECKIN_METHODS: CheckinMethod[] = ['POS', 'Biometrics', 'AccessTag'];
-
-const checkinMethodLabel = (method: CheckinMethod) => {
-  switch (method) {
-    case 'POS': return 'POS';
-    case 'Biometrics': return 'Biometrics';
-    case 'AccessTag': return 'Access Tag';
-  }
-};
-
-const emptyEmployeeForm = {
-  name: '', email: '', mobile: '', position: '', joinDate: '',
-  divisionId: null as number | null,
-  departmentId: null as number | null,
-  fingerprintEnrolled: false, faceRecognitionEnrolled: false,
-  posEnabled: false, bisyncEnabled: false,
-  active: true,
-  checkinMethod: 'Biometrics' as CheckinMethod,
-  employeeLevelId: null as number | null,
-  reportsToId: null as number | null,
-};
-
-const emptyLevelForm = {
-  levelName: '', annualLeaveDays: 0, sickLeaveDays: 0, overtimeEligible: false,
-  workingHoursPerDay: 8, breakHoursPerShift: 1, publicHolidayEligible: false,
-  isShift: false,
-};
-
-const emptyDivisionForm = { name: '', code: '' };
-const emptyDepartmentForm = { name: '', divisionId: 0 };
-
 // ---------- app ----------
 
 type HrModuleProps = { embedded?: boolean };
 
 export default function HrModule({ embedded = false }: HrModuleProps) {
-  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'admin' | 'portal'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'portal' | 'payroll'>('employees');
+  const [hrConfigTab, setHrConfigTab] = useState<HrEmployeeConfigTabId>('employee');
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [platformUsers, setPlatformUsers] = useState<AppUser[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceRow[]>([]);
   const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>([]);
   const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
   const [employeeLevels, setEmployeeLevels] = useState<EmployeeLevel[]>([]);
-  const [setting, setSetting] = useState<CompanySetting | null>(null);
-  const [countryOptions, setCountryOptions] = useState<CountryOption[]>([]);
-  const [changingCountry, setChangingCountry] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [attendanceView, setAttendanceView] = useState<'month' | 'week'>('month');
   const [selectedAttendanceEmployee, setSelectedAttendanceEmployee] = useState<Employee | null>(null);
 
-  const [showEmployeeForm, setShowEmployeeForm] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
-  const [formData, setFormData] = useState({ ...emptyEmployeeForm });
-
-  const [showLevelForm, setShowLevelForm] = useState(false);
-  const [editingLevel, setEditingLevel] = useState<EmployeeLevel | null>(null);
-  const [levelFormData, setLevelFormData] = useState({ ...emptyLevelForm });
-
-  const [holidaysExpanded, setHolidaysExpanded] = useState(false);
-  const [orgTree, setOrgTree] = useState<DivisionTreeNode[]>([]);
-  const [showDivisionForm, setShowDivisionForm] = useState(false);
-  const [editingDivision, setEditingDivision] = useState<DivisionTreeNode | null>(null);
-  const [divisionFormData, setDivisionFormData] = useState({ ...emptyDivisionForm });
-  const [showDepartmentForm, setShowDepartmentForm] = useState(false);
-  const [editingDepartment, setEditingDepartment] = useState<{ id: number; name: string; divisionId: number } | null>(null);
-  const [departmentFormData, setDepartmentFormData] = useState({ ...emptyDepartmentForm });
   const [scheduleWeekStart, setScheduleWeekStart] = useState(initialScheduleWeekStart);
 
   const today = new Date();
@@ -167,21 +112,9 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
     }
   }, []);
 
-  useEffect(() => {
-    if (activeTab !== 'admin' || countryOptions.length > 0) return;
-    run(async () => setCountryOptions(await api.settings.countries()));
-  }, [activeTab, countryOptions.length, run]);
-
   const refreshEmployees = useCallback(async () => {
-    const [emps, users] = await Promise.all([
-      api.employees.list(),
-      bisyncApi.users().catch(() => [] as AppUser[]),
-    ]);
-    setEmployees(emps);
-    setPlatformUsers(users);
+    setEmployees(await api.employees.list());
   }, []);
-  const refreshHolidays = useCallback(async () => setPublicHolidays(await api.holidays.list()), []);
-  const refreshOrgTree = useCallback(async () => setOrgTree(await api.org.tree()), []);
   const refreshLeave = useCallback(async () => {
     const [reqs, bals] = await Promise.all([api.leaveRequests.list(), api.leaveBalances.list()]);
     setLeaveRequests(reqs);
@@ -189,169 +122,33 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
   }, []);
   const refreshSchedules = useCallback(async () => setShiftSchedules(await api.schedules.list(yearStart, yearEnd)), [yearStart, yearEnd]);
 
+  const refreshHrConfigData = useCallback(async () => {
+    setEmployeeLevels(await api.levels.list());
+    setPublicHolidays(await api.holidays.list());
+  }, []);
+
   useEffect(() => {
     run(async () => {
-      const [emps, att, holidays, levels, set, users] = await Promise.all([
+      const [emps, att, holidays, levels] = await Promise.all([
         api.employees.list(),
         api.attendance.list(monthStart, monthEnd),
         api.holidays.list(),
         api.levels.list(),
-        api.settings.get(),
-        bisyncApi.users().catch(() => [] as AppUser[]),
       ]);
       setEmployees(emps);
-      setPlatformUsers(users);
       setAttendance(att);
       setPublicHolidays(holidays);
       setEmployeeLevels(levels);
-      setSetting(set);
       await refreshLeave();
       await refreshSchedules();
-      await refreshOrgTree();
     });
-  }, [run, refreshLeave, refreshSchedules, refreshOrgTree, monthStart, monthEnd]);
+  }, [run, refreshLeave, refreshSchedules, monthStart, monthEnd]);
 
   const employeeName = (id: number) => employees.find(e => e.id === id)?.name ?? `#${id}`;
-  const levelName = (id?: number | null) => employeeLevels.find(l => l.id === id)?.levelName;
-  const divisionName = (id?: number | null) => orgTree.find(d => d.id === id)?.name ?? '—';
-  const employeeDivisionName = (employee: Employee) => {
-    if (employee.divisionId) return divisionName(employee.divisionId);
-    for (const division of orgTree) {
-      if (division.departments.some((d) => d.id === employee.departmentId || d.name === employee.department)) {
-        return division.name;
-      }
-    }
-    return '—';
-  };
-  const departmentName = (employee: Employee) => {
-    if (employee.departmentId) {
-      for (const division of orgTree) {
-        const department = division.departments.find((d) => d.id === employee.departmentId);
-        if (department) return department.name;
-      }
-    }
-    return employee.department || '—';
-  };
   const employeeIsShift = (employee: Employee) => {
     const level = employee.employeeLevel ?? employeeLevels.find(l => l.id === employee.employeeLevelId);
     if (level) return level.isShift;
     return employee.isShiftEmployee;
-  };
-
-  const platformUserFor = (employee: Employee) =>
-    platformUsers.find(u => u.employeeId === employee.id)
-    ?? platformUsers.find(u => u.email.toLowerCase() === employee.email.toLowerCase());
-
-  const employeeCompanyName = (employee: Employee) => platformUserFor(employee)?.companyName ?? '—';
-  const employeeLocationLabel = (employee: Employee) => {
-    const names = platformUserFor(employee)?.locationNames;
-    if (!names?.length) return '—';
-    return names.join(', ');
-  };
-
-  // ---------- employee actions ----------
-
-  const openAddEmployeeForm = () => {
-    setShowEmployeeForm(true);
-    setFormData({ ...emptyEmployeeForm, joinDate: iso(today) });
-  };
-
-  const submitEmployeeForm = () => run(async () => {
-    const { name, email, mobile, position, joinDate, divisionId, departmentId } = formData;
-    const missing: string[] = [];
-    if (!name.trim()) missing.push('Full Name');
-    if (!email.trim()) missing.push('Email');
-    if (!mobile.trim()) missing.push('Mobile Number');
-    if (!divisionId) missing.push('Division');
-    if (!departmentId) missing.push('Department');
-    if (!position.trim()) missing.push('Position');
-    if (!joinDate) missing.push('Join Date');
-    if (missing.length > 0) {
-      setError(`Please fill in required fields: ${missing.join(', ')}.`);
-      return;
-    }
-    await api.employees.create({
-      name,
-      email,
-      mobile,
-      divisionId,
-      departmentId,
-      position,
-      joinDate,
-      fingerprintEnrolled: false,
-      faceRecognitionEnrolled: false,
-      isShiftEmployee: false,
-      shiftType: null,
-      posEnabled: false,
-      bisyncEnabled: false,
-      active: true,
-      checkinMethod: 'Biometrics',
-      workingHoursPerDay: 8,
-      employeeLevelId: formData.employeeLevelId,
-      reportsToId: formData.reportsToId,
-      nationality: null,
-      idPassportNumber: null,
-      dateOfBirth: null,
-      personalEmail: null,
-      permanentAddress: null,
-    });
-    setShowEmployeeForm(false);
-    setFormData({ ...emptyEmployeeForm });
-    await refreshEmployees();
-    await refreshLeave();
-  });
-
-  const handleDeleteEmployee = (id: number) => run(async () => {
-    await api.employees.remove(id);
-    await refreshEmployees();
-    await refreshLeave();
-  });
-
-  const resetPosPin = () => run(async () => {
-    if (!detailDraft) return;
-    const updated = await api.employees.resetPosPin(detailDraft.id);
-    setDetailDraft(updated);
-    setSelectedEmployee(updated);
-    await refreshEmployees();
-  });
-
-  const openEmployeeDetail = (id: number) => run(async () => {
-    const emp = await api.employees.get(id);
-    setSelectedEmployee(emp);
-    setDetailDraft(emp);
-  });
-
-  const closeEmployeeDetail = () => {
-    setSelectedEmployee(null);
-    setDetailDraft(null);
-  };
-
-  const saveEmployeeDetail = () => run(async () => {
-    if (!detailDraft) return;
-    const saved = await api.employees.update(detailDraft.id, toEmployeeRequest(detailDraft));
-    setSelectedEmployee(saved);
-    setDetailDraft(saved);
-    setEmployees(prev => prev.map(e => (e.id === saved.id ? saved : e)));
-    const users = await bisyncApi.users().catch(() => [] as AppUser[]);
-    setPlatformUsers(users);
-  });
-
-  const toggleEmployeeActive = (employee: Employee, active: boolean) => run(async () => {
-    const updated = { ...employee, active };
-    const saved = await api.employees.update(employee.id, toEmployeeRequest(updated));
-    setEmployees(prev => prev.map(e => (e.id === employee.id ? saved : e)));
-    if (detailDraft?.id === employee.id) setDetailDraft(saved);
-    if (selectedEmployee?.id === employee.id) setSelectedEmployee(saved);
-    const users = await bisyncApi.users().catch(() => [] as AppUser[]);
-    setPlatformUsers(users);
-  });
-
-  const updateDetailDraft = (patch: Partial<Employee>) => {
-    if (!detailDraft) return;
-    const next = { ...detailDraft, ...patch };
-    if (patch.checkinMethod === 'POS') next.posEnabled = true;
-    if (patch.checkinMethod && patch.checkinMethod !== 'POS') next.posEnabled = false;
-    setDetailDraft(next);
   };
 
   // ---------- leave actions ----------
@@ -385,139 +182,6 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
         await refreshSchedules();
       }
     });
-
-  // ---------- admin actions ----------
-
-  const toggleHoliday = (id: number) => run(async () => {
-    const updated = await api.holidays.toggle(id);
-    setPublicHolidays(prev => prev.map(h => (h.id === id ? updated : h)));
-  });
-
-  const saveMultiplier = (value: number) => run(async () => {
-    if (!Number.isFinite(value) || value < 1) return;
-    setSetting(await api.settings.update({ publicHolidayPayMultiplier: value }));
-  });
-
-  const changeOperatingCountry = (countryCode: string) => run(async () => {
-    if (!countryCode || countryCode === setting?.operatingCountryCode) return;
-    setChangingCountry(true);
-    try {
-      const updated = await api.settings.update({ operatingCountryCode: countryCode });
-      setSetting(updated);
-      await refreshHolidays();
-    } finally {
-      setChangingCountry(false);
-    }
-  });
-
-  const operatingCountryName = countryOptions.find(c => c.countryCode === setting?.operatingCountryCode)?.name
-    ?? setting?.operatingCountryCode
-    ?? '—';
-
-  const submitLevelForm = () => run(async () => {
-    if (!levelFormData.levelName) return;
-    const payload = { ...levelFormData, shiftType: null };
-    if (editingLevel) await api.levels.update(editingLevel.id, payload);
-    else await api.levels.create(payload);
-    setShowLevelForm(false);
-    setEditingLevel(null);
-    setLevelFormData({ ...emptyLevelForm });
-    setEmployeeLevels(await api.levels.list());
-    await refreshEmployees();
-  });
-
-  const handleEditLevel = (level: EmployeeLevel) => {
-    setEditingLevel(level);
-    setLevelFormData({
-      levelName: level.levelName,
-      annualLeaveDays: level.annualLeaveDays,
-      sickLeaveDays: level.sickLeaveDays,
-      overtimeEligible: level.overtimeEligible,
-      workingHoursPerDay: level.workingHoursPerDay,
-      breakHoursPerShift: level.breakHoursPerShift,
-      publicHolidayEligible: level.publicHolidayEligible,
-      isShift: level.isShift,
-    });
-    setShowLevelForm(true);
-  };
-
-  const handleDeleteLevel = (id: number) => run(async () => {
-    await api.levels.remove(id);
-    setEmployeeLevels(await api.levels.list());
-  });
-
-  const toggleLevelFlag = (level: EmployeeLevel, patch: Partial<EmployeeLevel>) => run(async () => {
-    const updated = { ...level, ...patch, shiftType: null };
-    await api.levels.update(level.id, updated);
-    setEmployeeLevels(prev => prev.map(l => (l.id === level.id ? updated : l)));
-    await refreshEmployees();
-  });
-
-  const submitDivisionForm = () => run(async () => {
-    if (!divisionFormData.name.trim()) {
-      setError('Division name is required.');
-      return;
-    }
-    const payload = {
-      name: divisionFormData.name.trim(),
-      code: divisionFormData.code.trim() || null,
-    };
-    if (editingDivision) await api.org.divisions.update(editingDivision.id, payload);
-    else await api.org.divisions.create(payload);
-    setShowDivisionForm(false);
-    setEditingDivision(null);
-    setDivisionFormData({ ...emptyDivisionForm });
-    await refreshOrgTree();
-  });
-
-  const handleEditDivision = (division: DivisionTreeNode) => {
-    setEditingDivision(division);
-    setDivisionFormData({ name: division.name, code: division.code ?? '' });
-    setShowDivisionForm(true);
-  };
-
-  const handleDeleteDivision = (id: number) => run(async () => {
-    await api.org.divisions.remove(id);
-    await refreshOrgTree();
-  });
-
-  const openAddDepartmentForm = (divisionId: number) => {
-    setEditingDepartment(null);
-    setDepartmentFormData({ name: '', divisionId });
-    setShowDepartmentForm(true);
-  };
-
-  const submitDepartmentForm = () => run(async () => {
-    if (!departmentFormData.name.trim()) {
-      setError('Department name is required.');
-      return;
-    }
-    if (!departmentFormData.divisionId) {
-      setError('Please select a division for this department.');
-      return;
-    }
-    const payload = {
-      name: departmentFormData.name.trim(),
-      divisionId: departmentFormData.divisionId,
-    };
-    if (editingDepartment) await api.org.departments.update(editingDepartment.id, payload);
-    else await api.org.departments.create(payload);
-    setShowDepartmentForm(false);
-    setEditingDepartment(null);
-    setDepartmentFormData({ ...emptyDepartmentForm });
-    await refreshOrgTree();
-  });
-
-  const handleEditDepartment = (department: { id: number; name: string; divisionId: number }) => {
-    setEditingDepartment(department);
-    setDepartmentFormData({ name: department.name, divisionId: department.divisionId });
-    setShowDepartmentForm(true);
-  };
-
-  const handleDeleteDepartment = (id: number) => run(async () => {
-    await api.org.departments.remove(id);
-    await refreshOrgTree();
-  });
 
   // ---------- derived ----------
 
@@ -567,12 +231,12 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
         <div className={embedded ? 'px-4' : 'px-8'}>
           <div className="flex gap-4 md:gap-8 overflow-x-auto">
             {([
-              ['employees', Users, 'Employees'],
+              ['employees', Users, 'Employee Directory'],
               ['attendance', Calendar, 'Attendance'],
               ['leave', FileText, 'Leave Requests'],
               ['schedule', Clock, 'Schedule'],
-              ['admin', Settings, 'Admin'],
               ['portal', LayoutDashboard, 'Employee Portal'],
+              ['payroll', Wallet, 'Payroll'],
             ] as const).map(([tab, Icon, label]) => (
               <button
                 key={tab}
@@ -594,243 +258,31 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
       {error && (
         <div className={`${embedded ? 'mx-4' : 'mx-8'} mt-4 px-4 py-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm flex justify-between`}>
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">×</button>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">Ã—</button>
         </div>
       )}
 
       <div className={embedded ? 'p-4' : 'p-8'}>
         {/* Employees Tab */}
         {activeTab === 'employees' && (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl text-gray-900">Employee Directory</h2>
-              <button
-                onClick={openAddEmployeeForm}
-                className="flex items-center gap-2 bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-                Add Employee
-              </button>
-            </div>
-
-            {showEmployeeForm && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                <h3 className="text-xl text-gray-900 mb-4">Add New Employee</h3>
-                <p className="text-sm text-gray-500 mb-4">Employee ID is assigned automatically. Configure check-in method and other details after creation.</p>
-                {error && (
-                  <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-800 rounded-lg text-sm flex justify-between">
-                    <span>{error}</span>
-                    <button type="button" onClick={() => setError(null)} className="text-red-600 hover:text-red-800">×</button>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  {([
-                    ['Full Name', 'name', 'text', 'John Doe'],
-                    ['Email', 'email', 'email', 'john.doe@company.com'],
-                    ['Mobile Number', 'mobile', 'tel', '+1 (555) 123-4567'],
-                    ['Position', 'position', 'text', 'Software Engineer'],
-                    ['Join Date', 'joinDate', 'date', ''],
-                  ] as const).map(([label, key, type, placeholder]) => (
-                    <div key={key}>
-                      <label className="block text-sm text-gray-700 mb-1">{label}</label>
-                      <input
-                        type={type}
-                        required
-                        value={formData[key]}
-                        onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                        placeholder={placeholder}
-                      />
-                    </div>
-                  ))}
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">Division</label>
-                    <select
-                      required
-                      value={formData.divisionId ?? ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        divisionId: e.target.value ? Number(e.target.value) : null,
-                        departmentId: null,
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                    >
-                      <option value="">— Select division —</option>
-                      {orgTree.map((division) => (
-                        <option key={division.id} value={division.id}>{division.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">Department</label>
-                    <select
-                      required
-                      value={formData.departmentId ?? ''}
-                      disabled={!formData.divisionId}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        departmentId: e.target.value ? Number(e.target.value) : null,
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white disabled:bg-gray-50 disabled:text-gray-500"
-                    >
-                      <option value="">— Select department —</option>
-                      {(orgTree.find((d) => d.id === formData.divisionId)?.departments ?? []).map((department) => (
-                        <option key={department.id} value={department.id}>{department.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">Employee Level</label>
-                    <select
-                      value={formData.employeeLevelId ?? ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        employeeLevelId: e.target.value ? Number(e.target.value) : null,
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                    >
-                      <option value="">— Select level —</option>
-                      {employeeLevels.map((level) => (
-                        <option key={level.id} value={level.id}>{level.levelName}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">Reports To</label>
-                    <select
-                      value={formData.reportsToId ?? ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        reportsToId: e.target.value ? Number(e.target.value) : null,
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                    >
-                      <option value="">— Select manager —</option>
-                      {employees.map((e) => (
-                        <option key={e.id} value={e.id}>{e.name} — {e.position}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <button type="button" onClick={submitEmployeeForm} className="bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors">
-                    Add Employee
-                  </button>
-                  <button
-                    onClick={() => { setShowEmployeeForm(false); setFormData({ ...emptyEmployeeForm }); }}
-                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
+          <HrEmployeeConfigSection
+            tab={hrConfigTab}
+            onTabChange={setHrConfigTab}
+            onDataChanged={() => {
+              void refreshHrConfigData();
+              void refreshEmployees();
+              void refreshLeave();
+            }}
+            header={(
+              <div>
+                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Human Resources</p>
+                <h2 className="text-lg font-semibold">Employee Directory</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Manage employee records, platform access, holidays, levels, and organizational structure.
+                </p>
               </div>
             )}
-
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
-              <table className="w-full min-w-[1100px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Employee ID</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Employee</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Company</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Location</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Division</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Department</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Position</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Employee Level</th>
-                    <th className="px-6 py-3 text-center text-sm text-gray-700">Shift</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Platform Access</th>
-                    <th className="px-6 py-3 text-left text-sm text-gray-700">Check-in Method</th>
-                    <th className="px-6 py-3 text-center text-sm text-gray-700">Active</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {employees.map((employee) => (
-                    <tr key={employee.id} className={`hover:bg-gray-50 ${employee.active === false ? 'opacity-60' : ''}`}>
-                      <td className="px-6 py-4 text-sm text-gray-900">{employee.employeeCode}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-herme text-white flex items-center justify-center shrink-0">
-                            {initials(employee.name)}
-                          </div>
-                          <div className="min-w-0">
-                            <button
-                              type="button"
-                              onClick={() => openEmployeeDetail(employee.id)}
-                              className="text-sm text-herme hover:text-herme-dark hover:underline font-medium text-left"
-                            >
-                              {employee.name}
-                            </button>
-                            <div className="text-sm text-gray-500 truncate">{employee.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{employeeCompanyName(employee)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900 max-w-[160px] truncate" title={employeeLocationLabel(employee)}>{employeeLocationLabel(employee)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{employeeDivisionName(employee)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{departmentName(employee)}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{employee.position}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        {levelName(employee.employeeLevelId) ? (
-                          <span className="inline-flex px-2.5 py-1 rounded-md bg-herme-soft text-herme-darker text-xs font-medium">
-                            {levelName(employee.employeeLevelId)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={employeeIsShift(employee)}
-                          disabled
-                          className="w-4 h-4 text-herme border-gray-300 rounded opacity-70"
-                          title="Set via Admin → Employee Levels"
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        {(() => {
-                          const user = platformUserFor(employee);
-                          if (!user) {
-                            return <span className="text-xs text-gray-400">Not granted</span>;
-                          }
-                          const modules = parseUserAccess(user.accessJson).modules;
-                          return (
-                            <div className="flex flex-wrap gap-1">
-                              {modules.length > 0 ? modules.map(m => (
-                                <span key={m} className="inline-flex px-2 py-0.5 rounded bg-herme-soft text-herme-darker text-xs font-medium">{m}</span>
-                              )) : (
-                                <span className="text-xs text-gray-500">No modules</span>
-                              )}
-                              {!user.active && (
-                                <span className="inline-flex px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs">Inactive</span>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <span className="inline-flex px-2 py-1 rounded-md bg-gray-100 text-gray-800 text-xs">
-                          {checkinMethodLabel(employee.checkinMethod ?? 'Biometrics')}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <label className="inline-flex items-center cursor-pointer" title={employee.active === false ? 'Activate employee' : 'Deactivate employee'}>
-                          <input
-                            type="checkbox"
-                            checked={employee.active !== false}
-                            onChange={(e) => toggleEmployeeActive(employee, e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <span className="relative w-10 h-5 bg-gray-300 rounded-full peer-checked:bg-herme transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full after:transition-transform peer-checked:after:translate-x-5" />
-                        </label>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          />
         )}
 
         {/* Attendance Tab */}
@@ -920,7 +372,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                                 {record.status === 'Absent' ? <span className="text-red-600">Absent</span> : (
                                   <div className="flex flex-col items-center">
                                     <span className="text-gray-900">{ai || '-'}</span>
-                                    {late && <span className="text-red-600">⚠</span>}
+                                    {late && <span className="text-red-600">âš </span>}
                                   </div>
                                 )}
                               </td>
@@ -929,7 +381,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                                 {record.status === 'Absent' ? <span className="text-gray-400">-</span> : (
                                   <div className="flex flex-col items-center">
                                     <span className="text-gray-900">{ao || '-'}</span>
-                                    {earlyOut && <span className="text-orange-600">⚠</span>}
+                                    {earlyOut && <span className="text-orange-600">âš </span>}
                                   </div>
                                 )}
                               </td>
@@ -1151,7 +603,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
 
             {shiftEmployees.length === 0 ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-                <p className="text-gray-500">No employees are assigned to shifts. Mark a level as Shift under Admin → Employee Levels & Entitlements.</p>
+                <p className="text-gray-500">No employees are assigned to shifts. Mark a level as Shift under HR Config â†’ Level & Entitlement.</p>
               </div>
             ) : (
               <ShiftScheduleGrid
@@ -1167,442 +619,6 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
           </div>
         )}
 
-        {/* Admin Tab */}
-        {activeTab === 'admin' && (
-          <div className="space-y-8">
-            <h2 className="text-2xl text-gray-900">Admin Settings</h2>
-
-            {/* Public Holidays */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-4">
-                <div className="flex items-start gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setHolidaysExpanded(prev => !prev)}
-                    className="mt-1 p-2 text-herme hover:bg-herme-light rounded-lg transition-colors"
-                    title={holidaysExpanded ? 'Collapse holiday list' : 'Expand holiday list'}
-                    aria-expanded={holidaysExpanded}
-                    aria-label={holidaysExpanded ? 'Collapse holiday list' : 'Expand holiday list'}
-                  >
-                    {holidaysExpanded ? <Minus className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                  </button>
-                  <div>
-                    <h3 className="text-xl text-gray-900">Public Holidays</h3>
-                    <p className="text-sm text-gray-600 mt-1">Select holidays recognized by your company</p>
-                  </div>
-                </div>
-                <div className="min-w-[220px]">
-                  <label className="block text-sm text-gray-700 mb-2">Operating Country</label>
-                  <select
-                    value={setting?.operatingCountryCode ?? ''}
-                    onChange={(e) => changeOperatingCountry(e.target.value)}
-                    disabled={changingCountry}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                  >
-                    {setting?.operatingCountryCode
-                      && !countryOptions.some(c => c.countryCode === setting.operatingCountryCode) && (
-                      <option value={setting.operatingCountryCode}>{operatingCountryName}</option>
-                    )}
-                    {countryOptions.map((country) => (
-                      <option key={country.countryCode} value={country.countryCode}>
-                        {country.name}
-                      </option>
-                    ))}
-                  </select>
-                  {changingCountry && <p className="text-xs text-gray-500 mt-1">Loading holidays…</p>}
-                </div>
-              </div>
-              {holidaysExpanded && (
-                <div className="overflow-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-sm text-gray-700">Holiday Name</th>
-                        <th className="px-6 py-3 text-left text-sm text-gray-700">Date</th>
-                        <th className="px-6 py-3 text-center text-sm text-gray-700">Recognized by Company</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {publicHolidays.map((holiday) => (
-                        <tr key={holiday.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 text-sm text-gray-900">{holiday.name}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            {new Date(holiday.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <input
-                              type="checkbox"
-                              checked={holiday.isRecognized}
-                              onChange={() => toggleHoliday(holiday.id)}
-                              className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Payment Rule */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h3 className="text-xl text-gray-900 mb-4">Public Holiday Payment Rule</h3>
-              <p className="text-sm text-gray-600 mb-4">Define payment multiplier for working on public holidays</p>
-              <div className="max-w-md">
-                <label className="block text-sm text-gray-700 mb-2">Payment Multiplier</label>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-600">Base Salary ×</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    value={setting?.publicHolidayPayMultiplier ?? 1.5}
-                    onChange={(e) => saveMultiplier(parseFloat(e.target.value))}
-                    className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Example: 1.5 means employees receive 150% of base salary when working on public holidays</p>
-              </div>
-            </div>
-
-            {/* Employee Levels */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h3 className="text-xl text-gray-900">Employee Levels & Entitlements</h3>
-                  <p className="text-sm text-gray-600">Define leave and overtime entitlements by employee level</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setShowLevelForm(true); setEditingLevel(null); setLevelFormData({ ...emptyLevelForm }); }}
-                  className="flex items-center gap-2 bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors"
-                >
-                  <Plus className="w-5 h-5" />
-                  Add Level
-                </button>
-              </div>
-
-              {showLevelForm && (
-                <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
-                  <h4 className="text-lg text-gray-900 mb-3">{editingLevel ? 'Edit Employee Level' : 'Add New Employee Level'}</h4>
-                  <div className="grid grid-cols-4 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Level Name</label>
-                      <input
-                        type="text"
-                        value={levelFormData.levelName}
-                        onChange={(e) => setLevelFormData({ ...levelFormData, levelName: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                        placeholder="e.g., Junior, Senior"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Annual Leave (days)</label>
-                      <input
-                        type="number" min="0"
-                        value={levelFormData.annualLeaveDays}
-                        onChange={(e) => setLevelFormData({ ...levelFormData, annualLeaveDays: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Sick Leave (days)</label>
-                      <input
-                        type="number" min="0"
-                        value={levelFormData.sickLeaveDays}
-                        onChange={(e) => setLevelFormData({ ...levelFormData, sickLeaveDays: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Working Hours/Day</label>
-                      <input
-                        type="number" min="0" step="0.5"
-                        value={levelFormData.workingHoursPerDay}
-                        onChange={(e) => setLevelFormData({ ...levelFormData, workingHoursPerDay: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Break Hours/Shift</label>
-                      <input
-                        type="number" min="0" step="0.5"
-                        value={levelFormData.breakHoursPerShift}
-                        onChange={(e) => setLevelFormData({ ...levelFormData, breakHoursPerShift: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                      />
-                    </div>
-                    <div className="flex items-end pb-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={levelFormData.overtimeEligible}
-                          onChange={(e) => setLevelFormData({ ...levelFormData, overtimeEligible: e.target.checked })}
-                          className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                        />
-                        <span className="text-sm text-gray-700">Overtime</span>
-                      </label>
-                    </div>
-                    <div className="flex items-end pb-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={levelFormData.publicHolidayEligible}
-                          onChange={(e) => setLevelFormData({ ...levelFormData, publicHolidayEligible: e.target.checked })}
-                          className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                        />
-                        <span className="text-sm text-gray-700">Public Holiday</span>
-                      </label>
-                    </div>
-                  </div>
-                  <div className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={levelFormData.isShift}
-                        onChange={(e) => setLevelFormData({ ...levelFormData, isShift: e.target.checked })}
-                        className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                      />
-                      <span className="text-sm font-medium text-gray-700">Shift</span>
-                    </label>
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={submitLevelForm} className="bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors">
-                      {editingLevel ? 'Update Level' : 'Add Level'}
-                    </button>
-                    <button
-                      onClick={() => { setShowLevelForm(false); setEditingLevel(null); setLevelFormData({ ...emptyLevelForm }); }}
-                      className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="overflow-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-sm text-gray-700">Level Name</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Annual Leave</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Sick Leave</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Working Hours/Day</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Break Hours/Shift</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Shift</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Overtime</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Public Holiday</th>
-                      <th className="px-6 py-3 text-right text-sm text-gray-700">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {employeeLevels.map((level) => (
-                      <tr key={level.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">{level.levelName}</td>
-                        <td className="px-6 py-4 text-center text-sm text-gray-900">{level.annualLeaveDays} days</td>
-                        <td className="px-6 py-4 text-center text-sm text-gray-900">{level.sickLeaveDays} days</td>
-                        <td className="px-6 py-4 text-center text-sm text-gray-900">{level.workingHoursPerDay} hrs</td>
-                        <td className="px-6 py-4 text-center text-sm text-gray-900">{level.breakHoursPerShift} hrs</td>
-                        <td className="px-6 py-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={level.isShift}
-                            onChange={(e) => toggleLevelFlag(level, { isShift: e.target.checked })}
-                            className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                          />
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={level.overtimeEligible}
-                            onChange={(e) => toggleLevelFlag(level, { overtimeEligible: e.target.checked })}
-                            className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                          />
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <input
-                            type="checkbox"
-                            checked={level.publicHolidayEligible}
-                            onChange={(e) => toggleLevelFlag(level, { publicHolidayEligible: e.target.checked })}
-                            className="w-4 h-4 text-herme border-gray-300 rounded focus:ring-2 focus:ring-herme"
-                          />
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex justify-end gap-2">
-                            <button onClick={() => handleEditLevel(level)} className="p-2 text-herme hover:bg-herme-light rounded-lg transition-colors" title="Edit">
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => handleDeleteLevel(level.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Divisions & Departments */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h3 className="text-xl text-gray-900">Divisions &amp; Departments</h3>
-                  <p className="text-sm text-gray-600">Organize company structure by division and department</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDivisionForm(true);
-                    setEditingDivision(null);
-                    setDivisionFormData({ ...emptyDivisionForm });
-                  }}
-                  className="flex items-center gap-2 bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors"
-                >
-                  <Plus className="w-5 h-5" />
-                  Add Division
-                </button>
-              </div>
-
-              {showDivisionForm && (
-                <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
-                  <h4 className="text-lg text-gray-900 mb-3">{editingDivision ? 'Edit Division' : 'Add New Division'}</h4>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Division Name</label>
-                      <input
-                        type="text"
-                        value={divisionFormData.name}
-                        onChange={(e) => setDivisionFormData({ ...divisionFormData, name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                        placeholder="e.g. Operations"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Code (optional)</label>
-                      <input
-                        type="text"
-                        value={divisionFormData.code}
-                        onChange={(e) => setDivisionFormData({ ...divisionFormData, code: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                        placeholder="e.g. OPS"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={submitDivisionForm} className="bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors">
-                      {editingDivision ? 'Save Changes' : 'Add Division'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setShowDivisionForm(false); setEditingDivision(null); setDivisionFormData({ ...emptyDivisionForm }); }}
-                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {showDepartmentForm && (
-                <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
-                  <h4 className="text-lg text-gray-900 mb-3">{editingDepartment ? 'Edit Department' : 'Add New Department'}</h4>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Department Name</label>
-                      <input
-                        type="text"
-                        value={departmentFormData.name}
-                        onChange={(e) => setDepartmentFormData({ ...departmentFormData, name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                        placeholder="e.g. Engineering"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-1">Division</label>
-                      <select
-                        value={departmentFormData.divisionId || ''}
-                        onChange={(e) => setDepartmentFormData({ ...departmentFormData, divisionId: Number(e.target.value) })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                      >
-                        <option value="">Select division</option>
-                        {orgTree.map((division) => (
-                          <option key={division.id} value={division.id}>{division.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={submitDepartmentForm} className="bg-herme text-white px-4 py-2 rounded-lg hover:bg-herme-dark transition-colors">
-                      {editingDepartment ? 'Save Changes' : 'Add Department'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setShowDepartmentForm(false); setEditingDepartment(null); setDepartmentFormData({ ...emptyDepartmentForm }); }}
-                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {orgTree.length === 0 ? (
-                <p className="text-sm text-gray-500">No divisions yet. Add a division to get started.</p>
-              ) : (
-                <div className="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-                  {orgTree.map((division) => (
-                    <div key={division.id}>
-                      <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
-                        <div>
-                          <span className="text-sm font-medium text-gray-900">{division.name}</span>
-                          {division.code && <span className="ml-2 text-xs text-gray-500">({division.code})</span>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => openAddDepartmentForm(division.id)}
-                            className="flex items-center gap-1 px-2 py-1 text-sm text-herme hover:bg-herme-light rounded-lg transition-colors"
-                            title="Add department"
-                          >
-                            <Plus className="w-4 h-4" />
-                            Department
-                          </button>
-                          <button onClick={() => handleEditDivision(division)} className="p-2 text-herme hover:bg-herme-light rounded-lg transition-colors" title="Edit division">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDeleteDivision(division.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete division">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                      {division.departments.length === 0 ? (
-                        <div className="px-8 py-2 text-sm text-gray-500 italic">No departments</div>
-                      ) : (
-                        division.departments.map((department) => (
-                          <div key={department.id} className="flex items-center justify-between px-8 py-2 hover:bg-gray-50">
-                            <span className="text-sm text-gray-800">{department.name}</span>
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => handleEditDepartment(department)} className="p-2 text-herme hover:bg-herme-light rounded-lg transition-colors" title="Edit department">
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button onClick={() => handleDeleteDepartment(department.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete department">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {activeTab === 'portal' && (
           <EmployeePortal
@@ -1614,6 +630,8 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
             onSubmitLeave={handlePortalSubmitLeave}
           />
         )}
+
+        {activeTab === 'payroll' && <PayrollSection embedded />}
       </div>
     </div>
 
@@ -1627,7 +645,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
               <p className="text-gray-600">{selectedAttendanceEmployee.position} - {selectedAttendanceEmployee.department}</p>
               <p className="text-sm text-gray-500">{attendanceView === 'week' ? 'Week to Date' : 'Month to Date'} Attendance Detail</p>
             </div>
-            <button onClick={() => setSelectedAttendanceEmployee(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+            <button onClick={() => setSelectedAttendanceEmployee(null)} className="text-gray-400 hover:text-gray-600 text-2xl">Ã—</button>
           </div>
 
           <div className="p-8 space-y-6">
@@ -1724,7 +742,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                             {record.status === 'Absent' ? <span className="text-red-600">Absent</span> : (
                               <div className="flex items-center justify-center gap-2">
                                 <span className="text-gray-900">{ai || '-'}</span>
-                                {late && <span className="text-red-600 text-xs">⚠ Late</span>}
+                                {late && <span className="text-red-600 text-xs">âš  Late</span>}
                               </div>
                             )}
                           </td>
@@ -1733,7 +751,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                             {record.status === 'Absent' ? <span className="text-gray-400">-</span> : (
                               <div className="flex items-center justify-center gap-2">
                                 <span className="text-gray-900">{ao || '-'}</span>
-                                {earlyOut && <span className="text-orange-600 text-xs">⚠ Early</span>}
+                                {earlyOut && <span className="text-orange-600 text-xs">âš  Early</span>}
                               </div>
                             )}
                           </td>
@@ -1749,416 +767,6 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                     })}
                   </tbody>
                 </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {/* Employee Detail Modal */}
-    {selectedEmployee && detailDraft && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-auto">
-          <div className="sticky top-0 bg-white border-b border-gray-200 px-8 py-6 flex justify-between items-start z-10">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-herme text-white flex items-center justify-center text-2xl">
-                {initials(detailDraft.name)}
-              </div>
-              <div>
-                <h2 className="text-2xl text-gray-900">{detailDraft.name}</h2>
-                <p className="text-gray-600">{detailDraft.position} — {departmentName(detailDraft)}</p>
-                <p className="text-sm text-gray-500">Employee ID: {detailDraft.employeeCode}</p>
-                <p className="text-sm text-gray-500">
-                  Company: {employeeCompanyName(detailDraft)} · Location: {employeeLocationLabel(detailDraft)}
-                </p>
-              </div>
-            </div>
-            <button onClick={closeEmployeeDetail} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
-          </div>
-
-          <div className="p-8 space-y-8">
-            <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">1. Personal &amp; Employment Details</h3>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    value={detailDraft.name}
-                    onChange={(e) => updateDetailDraft({ name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Work Email</label>
-                  <input
-                    type="email"
-                    value={detailDraft.email}
-                    onChange={(e) => updateDetailDraft({ email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Position</label>
-                  <input
-                    type="text"
-                    value={detailDraft.position}
-                    onChange={(e) => updateDetailDraft({ position: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Join Date</label>
-                  <input
-                    type="date"
-                    value={detailDraft.joinDate}
-                    onChange={(e) => updateDetailDraft({ joinDate: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Division</label>
-                  <select
-                    value={detailDraft.divisionId ?? ''}
-                    onChange={(e) => updateDetailDraft({
-                      divisionId: e.target.value ? Number(e.target.value) : null,
-                      departmentId: null,
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                  >
-                    <option value="">— Select division —</option>
-                    {orgTree.map((division) => (
-                      <option key={division.id} value={division.id}>{division.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Department</label>
-                  <select
-                    value={detailDraft.departmentId ?? ''}
-                    disabled={!detailDraft.divisionId}
-                    onChange={(e) => updateDetailDraft({
-                      departmentId: e.target.value ? Number(e.target.value) : null,
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white disabled:bg-gray-50"
-                  >
-                    <option value="">— Select department —</option>
-                    {(orgTree.find((d) => d.id === detailDraft.divisionId)?.departments ?? []).map((department) => (
-                      <option key={department.id} value={department.id}>{department.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Employee Level</label>
-                  <select
-                    value={detailDraft.employeeLevelId ?? ''}
-                    onChange={(e) => updateDetailDraft({
-                      employeeLevelId: e.target.value ? Number(e.target.value) : null,
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                  >
-                    <option value="">— Select level —</option>
-                    {employeeLevels.map((level) => (
-                      <option key={level.id} value={level.id}>{level.levelName}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Reports To</label>
-                  <select
-                    value={detailDraft.reportsToId ?? ''}
-                    onChange={(e) => updateDetailDraft({
-                      reportsToId: e.target.value ? Number(e.target.value) : null,
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                  >
-                    <option value="">— Select manager —</option>
-                    {employees.filter((e) => e.id !== detailDraft.id).map((e) => (
-                      <option key={e.id} value={e.id}>{e.name} — {e.position}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Nationality</label>
-                  <input
-                    type="text"
-                    value={detailDraft.nationality ?? ''}
-                    onChange={(e) => updateDetailDraft({ nationality: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">ID / Passport Number</label>
-                  <input
-                    type="text"
-                    value={detailDraft.idPassportNumber ?? ''}
-                    onChange={(e) => updateDetailDraft({ idPassportNumber: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Date of Birth</label>
-                  <input
-                    type="date"
-                    value={detailDraft.dateOfBirth ?? ''}
-                    onChange={(e) => updateDetailDraft({ dateOfBirth: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Contact Number</label>
-                  <input
-                    type="tel"
-                    value={detailDraft.mobile}
-                    onChange={(e) => updateDetailDraft({ mobile: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Personal Email</label>
-                  <input
-                    type="email"
-                    value={detailDraft.personalEmail ?? ''}
-                    onChange={(e) => updateDetailDraft({ personalEmail: e.target.value || null })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm text-gray-600 mb-1">Permanent Address</label>
-                  <textarea
-                    value={detailDraft.permanentAddress ?? ''}
-                    onChange={(e) => updateDetailDraft({ permanentAddress: e.target.value || null })}
-                    rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">2. Check-in Method</h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Method</label>
-                  <select
-                    value={detailDraft.checkinMethod ?? 'Biometrics'}
-                    onChange={(e) => updateDetailDraft({ checkinMethod: e.target.value as CheckinMethod })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-herme bg-white"
-                  >
-                    {CHECKIN_METHODS.map((method) => (
-                      <option key={method} value={method}>{checkinMethodLabel(method)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-end">
-                  <p className="text-sm text-gray-500">
-                    Shift status: {employeeIsShift(detailDraft) ? 'Shift employee' : 'Non-shift'} (via Employee Level)
-                  </p>
-                </div>
-              </div>
-
-              {detailDraft.checkinMethod === 'Biometrics' && (
-                <div className="mt-4 flex flex-wrap gap-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={detailDraft.fingerprintEnrolled}
-                      onChange={(e) => updateDetailDraft({ fingerprintEnrolled: e.target.checked })}
-                      className="w-4 h-4 text-herme border-gray-300 rounded"
-                    />
-                    <span className="text-sm text-gray-700">Fingerprint enrolled</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={detailDraft.faceRecognitionEnrolled}
-                      onChange={(e) => updateDetailDraft({ faceRecognitionEnrolled: e.target.checked })}
-                      className="w-4 h-4 text-herme border-gray-300 rounded"
-                    />
-                    <span className="text-sm text-gray-700">Face recognition enrolled</span>
-                  </label>
-                </div>
-              )}
-
-              {detailDraft.checkinMethod === 'POS' && (
-                <div className="mt-4 flex flex-wrap items-end gap-3 p-4 bg-herme-light border border-herme-muted rounded-lg">
-                  <div className="flex-1 min-w-[200px]">
-                    <label className="block text-sm text-gray-700 mb-1">POS PIN</label>
-                    <input
-                      type="text"
-                      readOnly
-                      value={detailDraft.posPin ?? DEFAULT_POS_PIN}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-mono tracking-widest"
-                    />
-                    {detailDraft.posPinMustChange && (
-                      <p className="text-xs text-gray-500 mt-1">PIN change required on next login</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={resetPosPin}
-                    className="px-4 py-2 text-sm border border-herme text-herme rounded-lg hover:bg-herme-soft"
-                  >
-                    Reset PIN to {DEFAULT_POS_PIN}
-                  </button>
-                </div>
-              )}
-
-              {detailDraft.checkinMethod === 'AccessTag' && (
-                <p className="mt-4 text-sm text-gray-500">Employee will check in using an assigned access tag.</p>
-              )}
-            </div>
-
-            {/* Education */}
-            <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">3. Educational Details &amp; Certificates</h3>
-              {detailDraft.education?.length ? (
-                <div className="space-y-4">
-                  {detailDraft.education.map((edu) => (
-                    <div key={edu.id} className="bg-gray-50 rounded-lg p-4">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Degree</label>
-                          <p className="text-gray-900">{edu.degree}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Institution</label>
-                          <p className="text-gray-900">{edu.institution}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Year</label>
-                          <p className="text-gray-900">{edu.year}</p>
-                        </div>
-                        <div className="col-span-3">
-                          <label className="block text-sm text-gray-600 mb-1">Certificate</label>
-                          <p className="text-gray-900">{edu.certificate}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="text-gray-500 italic">No education records available</p>}
-            </div>
-
-            {/* Previous Employment */}
-            <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">4. Previous Employment History</h3>
-              {detailDraft.previousEmployments?.length ? (
-                <div className="space-y-4">
-                  {detailDraft.previousEmployments.map((emp) => (
-                    <div key={emp.id} className="bg-gray-50 rounded-lg p-4">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Company Name</label>
-                          <p className="text-gray-900">{emp.companyName}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Position</label>
-                          <p className="text-gray-900">{emp.position}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Years of Service</label>
-                          <p className="text-gray-900">{emp.yearsOfService} years ({emp.startYear} - {emp.endYear})</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="text-gray-500 italic">No previous employment records</p>}
-            </div>
-
-            {/* Movements */}
-            <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">5. Movement &amp; Promotions Within Company</h3>
-              {detailDraft.movements?.length ? (
-                <div className="space-y-4">
-                  {detailDraft.movements.map((movement) => (
-                    <div key={movement.id} className="bg-gray-50 rounded-lg p-4">
-                      <div className="grid grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Date</label>
-                          <p className="text-gray-900">{movement.date}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">From Position</label>
-                          <p className="text-gray-900">{movement.fromPosition}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">To Position</label>
-                          <p className="text-gray-900">{movement.toPosition}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Type</label>
-                          <span className={`inline-flex px-3 py-1 rounded-full text-xs ${
-                            movement.type === 'Promotion' ? 'bg-green-100 text-green-800' :
-                            movement.type === 'Transfer' ? 'bg-herme-soft text-herme-darker' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>{movement.type}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="text-gray-500 italic">No movement records</p>}
-            </div>
-
-            {/* Appraisals */}
-            <div>
-              <h3 className="text-xl text-gray-900 mb-4 pb-2 border-b-2 border-herme">6. Annual Performance Appraisal</h3>
-              {detailDraft.performanceAppraisals?.length ? (
-                <div className="space-y-4">
-                  {detailDraft.performanceAppraisals.map((appraisal) => (
-                    <div key={appraisal.id} className="bg-gray-50 rounded-lg p-4">
-                      <div className="grid grid-cols-4 gap-4 mb-3">
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Year</label>
-                          <p className="text-gray-900">{appraisal.year}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Rating</label>
-                          <span className={`inline-flex px-3 py-1 rounded-full text-xs ${
-                            appraisal.rating === 'Exceptional' ? 'bg-purple-100 text-purple-800' :
-                            appraisal.rating === 'Excellent' ? 'bg-green-100 text-green-800' :
-                            appraisal.rating === 'Very Good' ? 'bg-herme-soft text-herme-darker' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>{appraisal.rating}</span>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Score</label>
-                          <p className="text-gray-900">{appraisal.score} / 5.0</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Reviewer</label>
-                          <p className="text-gray-900">{appraisal.reviewer}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">Comments</label>
-                        <p className="text-gray-900">{appraisal.comments}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="text-gray-500 italic">No performance appraisal records</p>}
-            </div>
-
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 -mx-8 px-8 py-4 flex justify-between items-center">
-              <button
-                type="button"
-                onClick={() => { if (confirm('Delete this employee permanently?')) { handleDeleteEmployee(detailDraft.id); closeEmployeeDetail(); } }}
-                className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
-              >
-                Delete Employee
-              </button>
-              <div className="flex gap-3">
-                <button type="button" onClick={closeEmployeeDetail} className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
-                  Cancel
-                </button>
-                <button type="button" onClick={saveEmployeeDetail} className="px-4 py-2 text-sm bg-herme text-white rounded-lg hover:bg-herme-dark">
-                  Save Changes
-                </button>
               </div>
             </div>
           </div>

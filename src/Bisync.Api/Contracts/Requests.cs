@@ -46,6 +46,62 @@ public class EmployeeRequest
     public string? PersonalEmail { get; set; }
     [MaxLength(500)]
     public string? PermanentAddress { get; set; }
+
+    [MaxLength(100)]
+    public string? BankName { get; set; }
+    [MaxLength(30)]
+    public string? BankAccountNumber { get; set; }
+    [MaxLength(200)]
+    public string? BankAccountHolderName { get; set; }
+
+    [Range(0, 999999999)]
+    public decimal? BaseSalary { get; set; }
+    [Range(0, 999999999)]
+    public decimal? ServiceAllowance { get; set; }
+    [Range(0, 999999999)]
+    public decimal? TransportAllowance { get; set; }
+    [Range(0, 999999999)]
+    public decimal? AccommodationAllowance { get; set; }
+    [Range(0, 999999999)]
+    public decimal? MobileAllowance { get; set; }
+    public List<PayrollOtherAllowanceRequest>? OtherAllowances { get; set; }
+    public bool? WorkPermitByCompany { get; set; }
+
+    public bool TransportProvided { get; set; }
+    [MaxLength(100)]
+    public string? TransportCarModel { get; set; }
+    [MaxLength(20)]
+    public string? TransportPlateNumber { get; set; }
+
+    public bool AccommodationProvided { get; set; }
+    [MaxLength(500)]
+    public string? AccommodationAddress { get; set; }
+    public DateOnly? AccommodationLeaseStart { get; set; }
+    public DateOnly? AccommodationLeaseEnd { get; set; }
+
+    public bool MobileProvided { get; set; }
+    [MaxLength(30)]
+    public string? MobileAllowancePhone { get; set; }
+    [MaxLength(50)]
+    public string? MobileProvider { get; set; }
+
+    public bool OvertimeAllowanceEnabled { get; set; }
+
+    public bool BonusEnabled { get; set; }
+    public bool BonusMonthly { get; set; }
+    public bool BonusAnnually { get; set; }
+    [Range(0, 999999999)]
+    public decimal? BonusAmount { get; set; }
+    public bool BonusByBasicSalary { get; set; }
+    public bool BonusByService { get; set; }
+}
+
+public class PayrollOtherAllowanceRequest
+{
+    [Required, MaxLength(100)]
+    public string Name { get; set; } = "";
+    [Range(0, 999999999)]
+    public decimal Amount { get; set; }
 }
 
 public class EducationRecordRequest
@@ -99,6 +155,17 @@ public class PerformanceAppraisalRequest
     public string Reviewer { get; set; } = null!;
     [MaxLength(2000)]
     public string? Comments { get; set; }
+}
+
+public class PayrollPinVerifyRequest
+{
+    [Required, MinLength(6), MaxLength(6)]
+    public string Pin { get; set; } = null!;
+}
+
+public class PayrollPinVerifyResult
+{
+    public bool Valid { get; set; }
 }
 
 public class AttendanceRecordRequest
@@ -165,6 +232,7 @@ public class EmployeeLevelRequest
     public bool IsShift { get; set; }
     [MaxLength(100)]
     public string? ShiftType { get; set; }
+    public bool Active { get; set; } = true;
 }
 
 public class PublicHolidayRequest
@@ -180,6 +248,7 @@ public class PayMultiplierRequest
 {
     [Range(1, 10)]
     public decimal? PublicHolidayPayMultiplier { get; set; }
+    public bool? ReplacementPublicHolidayEnabled { get; set; }
     [MaxLength(2)]
     public string? OperatingCountryCode { get; set; }
 }
@@ -213,4 +282,155 @@ public class DivisionTreeNode
     public string Name { get; set; } = null!;
     public string? Code { get; set; }
     public List<DepartmentNode> Departments { get; set; } = [];
+}
+
+public class MandatoryContributionItem
+{
+    public int? Id { get; set; }
+    [Required, MaxLength(100)]
+    public string Name { get; set; } = null!;
+    [Range(0, 100)]
+    public decimal EmployerPct { get; set; }
+    [Range(0, 100)]
+    public decimal EmployeePct { get; set; }
+}
+
+public class ProvidentFundBracketItem
+{
+    public int? Id { get; set; }
+    public int? MinAge { get; set; }
+    public int? MaxAge { get; set; }
+    public decimal? MinMonthlySalary { get; set; }
+    public decimal? MaxMonthlySalary { get; set; }
+    [Range(0, 100)]
+    public decimal EmployerPct { get; set; }
+    [Range(0, 100)]
+    public decimal EmployeePct { get; set; }
+    public bool NoContribution { get; set; }
+}
+
+public class SocsoBracketItem
+{
+    public int? Id { get; set; }
+    public int? MinAge { get; set; }
+    public int? MaxAge { get; set; }
+    public decimal? MinMonthlySalary { get; set; }
+    public decimal? MaxMonthlySalary { get; set; }
+    [Range(0, 10000)]
+    public decimal EmployerAmount { get; set; }
+    [Range(0, 10000)]
+    public decimal EmployeeAmount { get; set; }
+}
+
+public class PayStructureRequest
+{
+    [Required]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(50)]
+    public string PayType { get; set; } = null!;
+    [Required, MaxLength(50)]
+    public string PayCycle { get; set; } = null!;
+    [Range(0, 100)]
+    public decimal ProvidentFundEmployerPct { get; set; }
+    [Range(0, 100)]
+    public decimal ProvidentFundEmployeePct { get; set; }
+    [Range(0, 100)]
+    public decimal ForeignProvidentFundEmployerPct { get; set; } = 2;
+    [Range(0, 100)]
+    public decimal ForeignProvidentFundEmployeePct { get; set; } = 2;
+    [Range(0, 100)]
+    public decimal ForeignSocsoEmployerPct { get; set; } = 1.25m;
+    [Range(1, 10)]
+    public decimal OvertimeRateMultiplier { get; set; } = 1.5m;
+    [MaxLength(20)]
+    public string OvertimeCalculationMode { get; set; } = "Calculated";
+    [Range(0, 999999999)]
+    public decimal? OvertimeFixedHourlyRate { get; set; }
+    public bool Active { get; set; } = true;
+
+    public List<ProvidentFundBracketItem> ProvidentFundBrackets { get; set; } = [];
+    public List<SocsoBracketItem> SocsoBrackets { get; set; } = [];
+    public List<MandatoryContributionItem> MandatoryContributions { get; set; } = [];
+}
+
+public class PayStructureDetail
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string CompanyName { get; set; } = null!;
+    public string CountryCode { get; set; } = null!;
+    public string PayType { get; set; } = null!;
+    public string PayCycle { get; set; } = null!;
+    public decimal ProvidentFundEmployerPct { get; set; }
+    public decimal ProvidentFundEmployeePct { get; set; }
+    public decimal ForeignProvidentFundEmployerPct { get; set; }
+    public decimal ForeignProvidentFundEmployeePct { get; set; }
+    public decimal ForeignSocsoEmployerPct { get; set; }
+    public decimal OvertimeRateMultiplier { get; set; }
+    public string OvertimeCalculationMode { get; set; } = "";
+    public decimal? OvertimeFixedHourlyRate { get; set; }
+    public bool Active { get; set; }
+    public List<ProvidentFundBracketItem> ProvidentFundBrackets { get; set; } = [];
+    public List<SocsoBracketItem> SocsoBrackets { get; set; } = [];
+    public List<MandatoryContributionItem> MandatoryContributions { get; set; } = [];
+}
+
+public class PayrollProcessRequest
+{
+    public int CompanyId { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+}
+
+public class PayrollRunSummary
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string CompanyName { get; set; } = "";
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string PayCycle { get; set; } = "";
+    public string PayType { get; set; } = "";
+    public string CountryCode { get; set; } = "";
+    public string PeriodLabel { get; set; } = "";
+    public DateOnly PeriodStart { get; set; }
+    public DateOnly PeriodEnd { get; set; }
+    public DateTime ProcessedAt { get; set; }
+    public decimal TotalGross { get; set; }
+    public decimal TotalPayout { get; set; }
+    public int EmployeeCount { get; set; }
+}
+
+public class PayrollRunLineItem
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public string EmployeeCode { get; set; } = "";
+    public string EmployeeName { get; set; } = "";
+    public string Department { get; set; } = "";
+    public string Position { get; set; } = "";
+    public decimal PresentDays { get; set; }
+    public decimal WorkingDays { get; set; }
+    public decimal TotalHours { get; set; }
+    public decimal OvertimeHours { get; set; }
+    public decimal AttendanceRatio { get; set; }
+    public decimal BaseSalary { get; set; }
+    public decimal ServiceAllowance { get; set; }
+    public decimal AccommodationAllowance { get; set; }
+    public decimal TransportAllowance { get; set; }
+    public decimal MobileAllowance { get; set; }
+    public decimal BonusAmount { get; set; }
+    public decimal OvertimeAmount { get; set; }
+    public decimal EpfEmployeeAmount { get; set; }
+    public decimal EpfEmployerAmount { get; set; }
+    public decimal SocsoEmployeeAmount { get; set; }
+    public decimal SocsoEmployerAmount { get; set; }
+    public decimal IncomeTaxAmount { get; set; }
+    public decimal GrossPay { get; set; }
+    public decimal TotalPayout { get; set; }
+}
+
+public class PayrollRunDetail : PayrollRunSummary
+{
+    public List<PayrollRunLineItem> Lines { get; set; } = [];
 }

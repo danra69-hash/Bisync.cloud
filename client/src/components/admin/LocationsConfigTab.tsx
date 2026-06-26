@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type AppUser } from '../../api';
+import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
+import type { AddressParts } from '../../utils/countryFormat';
+import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 
 function LocationPanel({
   location, companies, users, onClose, onSave,
@@ -13,14 +16,42 @@ function LocationPanel({
   onSave: () => void;
 }) {
   const [form, setForm] = useState(location);
+  const [error, setError] = useState<string | null>(null);
   const company = companies.find(c => c.id === form.companyId);
   const country = getCountry(company?.countryCode ?? form.countryCode);
 
   function set<K extends keyof LocationConfig>(key: K, val: LocationConfig[K]) {
     setForm(f => ({ ...f, [key]: val }));
+    setError(null);
+  }
+
+  const addressParts: AddressParts = {
+    addressLine1: form.addressLine1,
+    addressLine2: form.addressLine2,
+    city: form.city,
+    stateProvince: form.stateProvince,
+    postcode: form.postcode,
+  };
+
+  function setAddressParts(parts: AddressParts) {
+    setForm(f => ({
+      ...f,
+      addressLine1: parts.addressLine1,
+      addressLine2: parts.addressLine2,
+      city: parts.city,
+      stateProvince: parts.stateProvince,
+      postcode: parts.postcode,
+    }));
+    setError(null);
   }
 
   async function save() {
+    const addressError = getAddressValidationError(company?.countryCode ?? form.countryCode, addressParts);
+    if (addressError) {
+      setError(addressError);
+      return;
+    }
+
     await api.updateLocationConfig(form.id, {
       companyId: form.companyId,
       name: form.name,
@@ -37,8 +68,8 @@ function LocationPanel({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-foreground/10" onClick={onClose} />
-      <div className="fixed top-0 right-0 h-full w-[480px] bg-card border-l border-border z-50 flex flex-col shadow-2xl">
+      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
+      <div className={SIDE_PANEL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Location</p>
@@ -48,6 +79,11 @@ function LocationPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {error && (
+            <div className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs">
+              {error}
+            </div>
+          )}
           <div>
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company *</label>
             <select className={selectCls} value={form.companyId ?? ''} onChange={e => set('companyId', e.target.value ? Number(e.target.value) : null)}>
@@ -66,28 +102,11 @@ function LocationPanel({
             <p className="text-xs font-medium mt-0.5">{country.name}</p>
           </div>
 
-          <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Address Line 1</label>
-          <input className={inputCls} value={form.addressLine1} onChange={e => set('addressLine1', e.target.value)} />
-
-          <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Address Line 2</label>
-          <input className={inputCls} value={form.addressLine2} onChange={e => set('addressLine2', e.target.value)} />
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.cityLabel}</label>
-              <input className={inputCls} value={form.city} onChange={e => set('city', e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.stateLabel}</label>
-              <select className={selectCls} value={form.stateProvince} onChange={e => set('stateProvince', e.target.value)}>
-                <option value="">— Select —</option>
-                {country.states.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.postcodeLabel}</label>
-          <input className={inputCls} value={form.postcode} onChange={e => set('postcode', e.target.value)} placeholder={country.postcodePlaceholder} />
+          <CountryAddressFields
+            countryCode={company?.countryCode ?? form.countryCode}
+            value={addressParts}
+            onChange={setAddressParts}
+          />
 
           <div>
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Principal Contact</label>

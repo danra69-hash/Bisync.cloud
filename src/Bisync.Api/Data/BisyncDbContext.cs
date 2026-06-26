@@ -22,6 +22,12 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<CompanySetting> CompanySettings => Set<CompanySetting>();
     public DbSet<Division> Divisions => Set<Division>();
     public DbSet<Department> Departments => Set<Department>();
+    public DbSet<PayStructure> PayStructures => Set<PayStructure>();
+    public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
+    public DbSet<PayrollRunLine> PayrollRunLines => Set<PayrollRunLine>();
+    public DbSet<ProvidentFundBracket> ProvidentFundBrackets => Set<ProvidentFundBracket>();
+    public DbSet<SocsoBracket> SocsoBrackets => Set<SocsoBracket>();
+    public DbSet<MandatoryContribution> MandatoryContributions => Set<MandatoryContribution>();
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
     public DbSet<Vendor> Vendors => Set<Vendor>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();

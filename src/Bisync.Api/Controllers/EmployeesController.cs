@@ -12,6 +12,7 @@ namespace Bisync.Api.Controllers;
 public class EmployeesController(BisyncDbContext db) : ControllerBase
 {
     public const string DefaultPosPin = "1234";
+    public const string DefaultPayrollPin = "000000";
 
     [HttpGet]
     public async Task<IEnumerable<Employee>> GetAll([FromQuery] string? department, [FromQuery] bool? shift)
@@ -118,6 +119,35 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
 
         employee.PosPin = DefaultPosPin;
         employee.PosPinMustChange = true;
+        await db.SaveChangesAsync();
+        return employee;
+    }
+
+    [HttpPost("{id:int}/verify-payroll-pin")]
+    public async Task<ActionResult<PayrollPinVerifyResult>> VerifyPayrollPin(int id, PayrollPinVerifyRequest request)
+    {
+        var employee = await db.Employees.FindAsync(id);
+        if (employee is null) return NotFound();
+
+        EnsurePayrollPin(employee);
+        if (db.Entry(employee).State == EntityState.Modified)
+            await db.SaveChangesAsync();
+
+        var pin = request.Pin.Trim();
+        if (pin.Length != 6 || !pin.All(char.IsDigit))
+            return BadRequest("Payroll PIN must be exactly 6 digits.");
+
+        return new PayrollPinVerifyResult { Valid = employee.PayrollPin == pin };
+    }
+
+    [HttpPost("{id:int}/reset-payroll-pin")]
+    public async Task<ActionResult<Employee>> ResetPayrollPin(int id)
+    {
+        var employee = await db.Employees.FindAsync(id);
+        if (employee is null) return NotFound();
+
+        employee.PayrollPin = DefaultPayrollPin;
+        employee.PayrollPinMustChange = true;
         await db.SaveChangesAsync();
         return employee;
     }
@@ -258,6 +288,40 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         employee.DateOfBirth = request.DateOfBirth;
         employee.PersonalEmail = request.PersonalEmail;
         employee.PermanentAddress = request.PermanentAddress;
+        employee.BankName = request.BankName?.Trim();
+        employee.BankAccountNumber = request.BankAccountNumber?.Trim();
+        employee.BankAccountHolderName = request.BankAccountHolderName?.Trim();
+        employee.BaseSalary = request.BaseSalary;
+        employee.ServiceAllowance = request.ServiceAllowance;
+        employee.TransportAllowance = request.TransportAllowance;
+        employee.AccommodationAllowance = request.AccommodationAllowance;
+        employee.MobileAllowance = request.MobileAllowance;
+        employee.WorkPermitByCompany = request.WorkPermitByCompany;
+        if (request.OtherAllowances is not null)
+        {
+            employee.OtherAllowances = request.OtherAllowances
+                .Select(a => new PayrollOtherAllowance { Name = a.Name.Trim(), Amount = a.Amount })
+                .ToList();
+        }
+        employee.WorkPermitByCompany = request.WorkPermitByCompany;
+        employee.TransportProvided = request.TransportProvided;
+        employee.TransportCarModel = request.TransportProvided ? request.TransportCarModel?.Trim() : null;
+        employee.TransportPlateNumber = request.TransportProvided ? request.TransportPlateNumber?.Trim() : null;
+        employee.AccommodationProvided = request.AccommodationProvided;
+        employee.AccommodationAddress = request.AccommodationProvided ? request.AccommodationAddress?.Trim() : null;
+        employee.AccommodationLeaseStart = request.AccommodationProvided ? request.AccommodationLeaseStart : null;
+        employee.AccommodationLeaseEnd = request.AccommodationProvided ? request.AccommodationLeaseEnd : null;
+        employee.MobileProvided = request.MobileProvided;
+        employee.MobileAllowancePhone = request.MobileProvided ? request.MobileAllowancePhone?.Trim() : null;
+        employee.MobileProvider = request.MobileProvided ? request.MobileProvider?.Trim() : null;
+        employee.OvertimeAllowanceEnabled = request.OvertimeAllowanceEnabled;
+        employee.BonusEnabled = request.BonusEnabled;
+        employee.BonusMonthly = request.BonusEnabled && request.BonusMonthly;
+        employee.BonusAnnually = request.BonusEnabled && request.BonusAnnually;
+        employee.BonusAmount = request.BonusEnabled ? request.BonusAmount : null;
+        employee.BonusByBasicSalary = request.BonusEnabled && request.BonusByBasicSalary;
+        employee.BonusByService = request.BonusEnabled && request.BonusByService;
+        EnsurePayrollPin(employee);
 
         if (request.DepartmentId is int departmentId)
         {
@@ -320,6 +384,15 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         {
             employee.PosPin = null;
             employee.PosPinMustChange = false;
+        }
+    }
+
+    private static void EnsurePayrollPin(Employee employee)
+    {
+        if (string.IsNullOrEmpty(employee.PayrollPin))
+        {
+            employee.PayrollPin = DefaultPayrollPin;
+            employee.PayrollPinMustChange = true;
         }
     }
 }

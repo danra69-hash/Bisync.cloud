@@ -2,7 +2,7 @@ import { HR_API_BASE } from '../../config/hrBackend';
 import type {
   AttendanceRecord, CompanySetting, CountryOption, Department, Division, DivisionTreeNode,
   Employee, EmployeeCreateRequest, EmployeeLevel, EmployeeRequest,
-  LeaveBalanceRow, LeaveRequest, LeaveType, PublicHoliday, ScheduleType, ShiftSchedule,
+  LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, ScheduleType, ShiftSchedule,
 } from './types';
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -45,6 +45,33 @@ export function toEmployeeRequest(e: Employee): EmployeeRequest {
     dateOfBirth: e.dateOfBirth,
     personalEmail: e.personalEmail,
     permanentAddress: e.permanentAddress,
+    bankName: e.bankName,
+    bankAccountNumber: e.bankAccountNumber,
+    bankAccountHolderName: e.bankAccountHolderName,
+    baseSalary: e.baseSalary,
+    serviceAllowance: e.serviceAllowance,
+    transportAllowance: e.transportAllowance,
+    accommodationAllowance: e.accommodationAllowance,
+    mobileAllowance: e.mobileAllowance,
+    otherAllowances: e.otherAllowances,
+    workPermitByCompany: e.workPermitByCompany,
+    transportProvided: e.transportProvided ?? false,
+    transportCarModel: e.transportCarModel,
+    transportPlateNumber: e.transportPlateNumber,
+    accommodationProvided: e.accommodationProvided ?? false,
+    accommodationAddress: e.accommodationAddress,
+    accommodationLeaseStart: e.accommodationLeaseStart,
+    accommodationLeaseEnd: e.accommodationLeaseEnd,
+    mobileProvided: e.mobileProvided ?? false,
+    mobileAllowancePhone: e.mobileAllowancePhone,
+    mobileProvider: e.mobileProvider,
+    overtimeAllowanceEnabled: e.overtimeAllowanceEnabled ?? false,
+    bonusEnabled: e.bonusEnabled ?? false,
+    bonusMonthly: e.bonusMonthly ?? false,
+    bonusAnnually: e.bonusAnnually ?? false,
+    bonusAmount: e.bonusAmount,
+    bonusByBasicSalary: e.bonusByBasicSalary ?? false,
+    bonusByService: e.bonusByService ?? false,
   };
 }
 
@@ -56,6 +83,14 @@ export const hrApi = {
     update: (id: number, body: EmployeeRequest) => http<Employee>(`/employees/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     remove: (id: number) => http<void>(`/employees/${id}`, { method: 'DELETE' }),
     resetPosPin: (id: number) => http<Employee>(`/employees/${id}/reset-pos-pin`, { method: 'POST' }),
+    verifyPayrollPin: async (id: number, pin: string) => {
+      const result = await http<{ valid?: boolean; Valid?: boolean }>(`/employees/${id}/verify-payroll-pin`, {
+        method: 'POST',
+        body: JSON.stringify({ pin }),
+      });
+      return { valid: result.valid ?? result.Valid ?? false };
+    },
+    resetPayrollPin: (id: number) => http<Employee>(`/employees/${id}/reset-payroll-pin`, { method: 'POST' }),
   },
   attendance: {
     list: (from: string, to: string) => http<AttendanceRecord[]>(`/attendance?from=${from}&to=${to}`),
@@ -89,7 +124,7 @@ export const hrApi = {
   settings: {
     get: () => http<CompanySetting>('/settings'),
     countries: () => http<CountryOption[]>('/settings/countries'),
-    update: (body: { publicHolidayPayMultiplier?: number; operatingCountryCode?: string }) =>
+    update: (body: { publicHolidayPayMultiplier?: number; replacementPublicHolidayEnabled?: boolean; operatingCountryCode?: string }) =>
       http<CompanySetting>('/settings', { method: 'PUT', body: JSON.stringify(body) }),
   },
   org: {
@@ -110,6 +145,26 @@ export const hrApi = {
         http<Department>(`/departments/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
       remove: (id: number) => http<void>(`/departments/${id}`, { method: 'DELETE' }),
     },
+  },
+  payStructures: {
+    list: () => http<PayStructure[]>('/pay-structures'),
+    get: (id: number) => http<PayStructure>(`/pay-structures/${id}`),
+    create: (body: PayStructureRequest) => http<PayStructure>('/pay-structures', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: number, body: PayStructureRequest) => http<PayStructure>(`/pay-structures/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  },
+  payrollRuns: {
+    preview: (companyId: number, year: number, month: number) =>
+      http<PayrollPreview>(`/payroll-runs/preview?companyId=${companyId}&year=${year}&month=${month}`),
+    list: (companyId?: number, year?: number) => {
+      const params = new URLSearchParams();
+      if (companyId != null) params.set('companyId', String(companyId));
+      if (year != null) params.set('year', String(year));
+      const query = params.toString();
+      return http<PayrollRunSummary[]>(`/payroll-runs${query ? `?${query}` : ''}`);
+    },
+    get: (id: number) => http<PayrollRunDetail>(`/payroll-runs/${id}`),
+    process: (body: { companyId: number; year: number; month: number }) =>
+      http<PayrollRunDetail>('/payroll-runs/process', { method: 'POST', body: JSON.stringify(body) }),
   },
 };
 

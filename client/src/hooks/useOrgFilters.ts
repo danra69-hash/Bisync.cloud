@@ -46,7 +46,7 @@ export function useOrgFilters() {
     }
 
     if (failures.length > 0) {
-      setError(`Could not load ${failures.join(' and ')} from Admin Settings. Is the API running on port 5299?`);
+      setError(`Could not load ${failures.join(' and ')} from HR Config. Is the API running on port 5299?`);
 
       if (retryRef.current < MAX_RETRIES) {
         retryRef.current += 1;

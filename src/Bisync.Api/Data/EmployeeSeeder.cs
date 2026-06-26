@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Bisync.Api.Controllers;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -73,6 +74,7 @@ public static class EmployeeSeeder
             employee.JoinDate = seed.JoinDate;
             employee.FingerprintEnrolled = false;
             employee.FaceRecognitionEnrolled = false;
+            employee.FaceRecognitionEnrolled = false;
             employee.PosEnabled = seed.PosEnabled;
             employee.BisyncEnabled = true;
             employee.WorkingHoursPerDay = 8;
@@ -90,6 +92,12 @@ public static class EmployeeSeeder
                 employee.PosPinMustChange = true;
             }
 
+            if (string.IsNullOrEmpty(employee.PayrollPin))
+            {
+                employee.PayrollPin = EmployeesController.DefaultPayrollPin;
+                employee.PayrollPinMustChange = true;
+            }
+
             await db.SaveChangesAsync();
 
             if (employee.EmployeeLevelId is int levelId)
@@ -101,6 +109,8 @@ public static class EmployeeSeeder
 
             await db.SaveChangesAsync();
             await EmployeeAppUserSync.SyncAsync(db, employee);
+
+            await AssignOrgAsync(db, employee, seed.Department);
 
             var locationIds = seed.LocationExternalIds
                 .Where(locationIdsByExternalId.ContainsKey)
@@ -148,5 +158,18 @@ public static class EmployeeSeeder
         }
 
         return map;
+    }
+
+    static async Task AssignOrgAsync(BisyncDbContext db, Employee employee, string departmentName)
+    {
+        var department = await db.Departments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Name == departmentName);
+
+        if (department is null) return;
+
+        employee.DepartmentId = department.Id;
+        employee.DivisionId = department.DivisionId;
+        await db.SaveChangesAsync();
     }
 }

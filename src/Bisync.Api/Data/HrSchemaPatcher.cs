@@ -70,7 +70,8 @@ public static class HrSchemaPatcher
             CREATE TABLE IF NOT EXISTS "CompanySettings" (
                 "Id" INTEGER NOT NULL CONSTRAINT "PK_CompanySettings" PRIMARY KEY AUTOINCREMENT,
                 "PublicHolidayPayMultiplier" REAL NOT NULL DEFAULT 1.5,
-                "OperatingCountryCode" TEXT NOT NULL DEFAULT 'MY'
+                "OperatingCountryCode" TEXT NOT NULL DEFAULT 'MY',
+                "ReplacementPublicHolidayEnabled" INTEGER NOT NULL DEFAULT 0
             );
             """);
 
@@ -95,6 +96,7 @@ public static class HrSchemaPatcher
                 "ScheduledOut" TEXT NULL,
                 "ActualIn" TEXT NULL,
                 "ActualOut" TEXT NULL,
+                "RphAccruedDays" REAL NOT NULL DEFAULT 0,
                 FOREIGN KEY("EmployeeId") REFERENCES "Employees"("Id") ON DELETE CASCADE
             );
             """);

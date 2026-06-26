@@ -130,6 +130,7 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
         level.PublicHolidayEligible = request.PublicHolidayEligible;
         level.IsShift = request.IsShift;
         level.ShiftType = null;
+        level.Active = request.Active;
     }
 
     private async Task SyncEmployeesToLevel(EmployeeLevel level)
@@ -175,6 +176,9 @@ public class SettingsController(
 
         if (request.PublicHolidayPayMultiplier is { } multiplier)
             setting.PublicHolidayPayMultiplier = multiplier;
+
+        if (request.ReplacementPublicHolidayEnabled is { } replacementEnabled)
+            setting.ReplacementPublicHolidayEnabled = replacementEnabled;
 
         var countryChanged = false;
         if (!string.IsNullOrWhiteSpace(request.OperatingCountryCode))

@@ -14,6 +14,7 @@ import {
   toApiUom,
   toForm,
 } from '../../data/componentForm';
+import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_OVERFLOW_CLS } from '../layout/sidePanelShared';
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -104,9 +105,9 @@ export function ComponentEditPanel({ row, isNew = false, onClose, onSave }: Prop
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-foreground/10" onClick={onClose} />
+      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
 
-      <div className="fixed top-0 right-0 h-full w-[480px] bg-card border-l border-border z-50 flex flex-col shadow-2xl overflow-hidden">
+      <div className={SIDE_PANEL_SHELL_OVERFLOW_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Smart Ingredient</p>

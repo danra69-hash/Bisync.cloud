@@ -18,6 +18,7 @@ import {
   type UserAccess,
 } from '../../data/userAccess';
 import { ToggleSwitch } from './ToggleSwitch';
+import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
 
 const blankUser = (): UserUpsert => ({
   employeeId: null,
@@ -199,12 +200,30 @@ function ModulePlaceholder({ module }: { module: AccessModule }) {
   );
 }
 
+export function userUpsertForEmployee(
+  employee: { id: number; name: string; email: string; position: string; mobile: string },
+  existing?: AppUser | null,
+): AppUser | UserUpsert {
+  if (existing) return existing;
+  return {
+    ...blankUser(),
+    employeeId: employee.id,
+    fullName: employee.name,
+    email: employee.email,
+    role: employee.position,
+    phone: employee.mobile,
+  };
+}
+
+export { blankUser };
+
 function UserPanel({
-  user, isNew, availableEmployees, onClose, onSave,
+  user, isNew, availableEmployees, lockEmployee = false, onClose, onSave,
 }: {
   user: AppUser | UserUpsert;
   isNew: boolean;
   availableEmployees: AvailableEmployee[];
+  lockEmployee?: boolean;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -278,8 +297,8 @@ function UserPanel({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-foreground/10" onClick={onClose} />
-      <div className="fixed top-0 right-0 h-full w-[560px] bg-card border-l border-border z-50 flex flex-col shadow-2xl">
+      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
+      <div className={SIDE_PANEL_SHELL_WIDE_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">User</p>
@@ -289,13 +308,15 @@ function UserPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          <div className="rounded-md bg-muted/30 border border-border px-3 py-2">
-            <p className="text-[10px] font-mono text-muted-foreground">
-              Employees are created in Human Resources first. Select an employee below, then assign company, locations, and module access.
-            </p>
-          </div>
+          {!lockEmployee && (
+            <div className="rounded-md bg-muted/30 border border-border px-3 py-2">
+              <p className="text-[10px] font-mono text-muted-foreground">
+                Employees are created in Human Resources first. Select an employee below, then assign company, locations, and module access.
+              </p>
+            </div>
+          )}
 
-          {isNew && (
+          {isNew && !lockEmployee && (
             <div className="space-y-2">
               <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee *</label>
               <select
@@ -433,12 +454,14 @@ function UserPanel({
   );
 }
 
+export const PlatformAccessPanel = UserPanel;
+
 function accessBadges(accessJson: string): string[] {
   const access = parseUserAccess(accessJson);
   return access.modules;
 }
 
-export function UsersTab() {
+export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -457,6 +480,11 @@ export function UsersTab() {
         setAvailableEmployees([]);
       })
       .finally(() => setLoading(false));
+  }
+
+  function handleSave() {
+    load();
+    onDataChanged?.();
   }
 
   useEffect(() => { load(); }, []);
@@ -550,7 +578,7 @@ export function UsersTab() {
           isNew={isNew}
           availableEmployees={availableEmployees}
           onClose={() => { setEditUser(null); setIsNew(false); }}
-          onSave={load}
+          onSave={handleSave}
         />
       )}
     </div>

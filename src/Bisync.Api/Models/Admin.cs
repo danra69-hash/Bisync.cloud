@@ -28,6 +28,7 @@ public class EmployeeLevel
     public bool PublicHolidayEligible { get; set; }
     public bool IsShift { get; set; }
     public string? ShiftType { get; set; }
+    public bool Active { get; set; } = true;
 }
 
 public class Division
@@ -54,6 +55,8 @@ public class CompanySetting
     public int Id { get; set; }
     /// <summary>Pay multiplier when working on a public holiday, e.g. 1.5.</summary>
     public decimal PublicHolidayPayMultiplier { get; set; } = 1.5m;
+    /// <summary>When enabled, employees who work on a recognized public holiday earn RPH balance.</summary>
+    public bool ReplacementPublicHolidayEnabled { get; set; }
     /// <summary>ISO 3166-1 alpha-2 code for the company's operating country (public holiday source).</summary>
     public string OperatingCountryCode { get; set; } = "MY";
 }

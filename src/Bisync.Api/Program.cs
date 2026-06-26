@@ -1,6 +1,7 @@
 using Bisync.Api.Data;
 using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +11,8 @@ builder.Services.AddDbContext<BisyncDbContext>(options =>
 
 builder.Services.AddHttpClient<PublicHolidayCatalogService>();
 builder.Services.AddScoped<PublicHolidaySyncService>();
+builder.Services.AddScoped<PayrollCalculationService>();
+builder.Services.AddScoped<ReplacementPublicHolidayService>();
 
 builder.Services.AddCors(options =>
 {
@@ -22,6 +25,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });

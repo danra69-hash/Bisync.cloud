@@ -37,6 +37,11 @@ export interface PerformanceAppraisal {
 
 export type CheckinMethod = 'POS' | 'Biometrics' | 'AccessTag';
 
+export interface PayrollOtherAllowance {
+  name: string;
+  amount: number;
+}
+
 export interface Employee {
   id: number;
   employeeCode: string;
@@ -55,6 +60,7 @@ export interface Employee {
   posEnabled: boolean;
   posPin?: string | null;
   posPinMustChange?: boolean;
+  payrollPinMustChange?: boolean;
   bisyncEnabled: boolean;
   active: boolean;
   checkinMethod: CheckinMethod;
@@ -68,10 +74,37 @@ export interface Employee {
   dateOfBirth?: string | null;
   personalEmail?: string | null;
   permanentAddress?: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolderName?: string | null;
   education?: EducationRecord[];
   previousEmployments?: PreviousEmployment[];
   movements?: EmployeeMovement[];
   performanceAppraisals?: PerformanceAppraisal[];
+  baseSalary?: number | null;
+  serviceAllowance?: number | null;
+  transportAllowance?: number | null;
+  accommodationAllowance?: number | null;
+  mobileAllowance?: number | null;
+  otherAllowances?: PayrollOtherAllowance[];
+  workPermitByCompany?: boolean | null;
+  transportProvided?: boolean;
+  transportCarModel?: string | null;
+  transportPlateNumber?: string | null;
+  accommodationProvided?: boolean;
+  accommodationAddress?: string | null;
+  accommodationLeaseStart?: string | null;
+  accommodationLeaseEnd?: string | null;
+  mobileProvided?: boolean;
+  mobileAllowancePhone?: string | null;
+  mobileProvider?: string | null;
+  overtimeAllowanceEnabled?: boolean;
+  bonusEnabled?: boolean;
+  bonusMonthly?: boolean;
+  bonusAnnually?: boolean;
+  bonusAmount?: number | null;
+  bonusByBasicSalary?: boolean;
+  bonusByService?: boolean;
 }
 
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'HalfDay';
@@ -139,11 +172,13 @@ export interface EmployeeLevel {
   publicHolidayEligible: boolean;
   isShift: boolean;
   shiftType?: string | null;
+  active: boolean;
 }
 
 export interface CompanySetting {
   id: number;
   publicHolidayPayMultiplier: number;
+  replacementPublicHolidayEnabled: boolean;
   operatingCountryCode: string;
 }
 
@@ -203,6 +238,157 @@ export interface EmployeeRequest {
   dateOfBirth?: string | null;
   personalEmail?: string | null;
   permanentAddress?: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolderName?: string | null;
+  baseSalary?: number | null;
+  serviceAllowance?: number | null;
+  transportAllowance?: number | null;
+  accommodationAllowance?: number | null;
+  mobileAllowance?: number | null;
+  otherAllowances?: PayrollOtherAllowance[];
+  workPermitByCompany?: boolean | null;
+  transportProvided?: boolean;
+  transportCarModel?: string | null;
+  transportPlateNumber?: string | null;
+  accommodationProvided?: boolean;
+  accommodationAddress?: string | null;
+  accommodationLeaseStart?: string | null;
+  accommodationLeaseEnd?: string | null;
+  mobileProvided?: boolean;
+  mobileAllowancePhone?: string | null;
+  mobileProvider?: string | null;
+  overtimeAllowanceEnabled?: boolean;
+  bonusEnabled?: boolean;
+  bonusMonthly?: boolean;
+  bonusAnnually?: boolean;
+  bonusAmount?: number | null;
+  bonusByBasicSalary?: boolean;
+  bonusByService?: boolean;
 }
 
 export type EmployeeCreateRequest = Omit<EmployeeRequest, 'employeeCode'>;
+
+export interface MandatoryContributionItem {
+  id?: number | null;
+  name: string;
+  employerPct: number;
+  employeePct: number;
+}
+
+export interface ProvidentFundBracketItem {
+  id?: number | null;
+  minAge?: number | null;
+  maxAge?: number | null;
+  minMonthlySalary?: number | null;
+  maxMonthlySalary?: number | null;
+  employerPct: number;
+  employeePct: number;
+  noContribution: boolean;
+}
+
+export interface SocsoBracketItem {
+  id?: number | null;
+  minAge?: number | null;
+  maxAge?: number | null;
+  minMonthlySalary?: number | null;
+  maxMonthlySalary?: number | null;
+  employerAmount: number;
+  employeeAmount: number;
+}
+
+export interface PayStructure {
+  id: number;
+  companyId: number;
+  companyName: string;
+  countryCode: string;
+  payType: string;
+  payCycle: string;
+  providentFundEmployerPct: number;
+  providentFundEmployeePct: number;
+  foreignProvidentFundEmployerPct: number;
+  foreignProvidentFundEmployeePct: number;
+  foreignSocsoEmployerPct: number;
+  overtimeRateMultiplier: number;
+  overtimeCalculationMode: string;
+  overtimeFixedHourlyRate?: number | null;
+  active: boolean;
+  providentFundBrackets: ProvidentFundBracketItem[];
+  socsoBrackets: SocsoBracketItem[];
+  mandatoryContributions: MandatoryContributionItem[];
+}
+
+export type PayStructureRequest = Omit<PayStructure, 'id' | 'companyName' | 'countryCode' | 'mandatoryContributions' | 'providentFundBrackets' | 'socsoBrackets'> & {
+  providentFundBrackets: ProvidentFundBracketItem[];
+  socsoBrackets: SocsoBracketItem[];
+  mandatoryContributions: MandatoryContributionItem[];
+};
+
+export interface PayrollRunLine {
+  id?: number;
+  employeeId: number;
+  employeeCode: string;
+  employeeName: string;
+  department: string;
+  position: string;
+  presentDays: number;
+  workingDays: number;
+  totalHours: number;
+  overtimeHours: number;
+  attendanceRatio: number;
+  baseSalary: number;
+  serviceAllowance: number;
+  accommodationAllowance: number;
+  transportAllowance: number;
+  mobileAllowance: number;
+  bonusAmount: number;
+  overtimeAmount: number;
+  epfEmployeeAmount: number;
+  epfEmployerAmount: number;
+  socsoEmployeeAmount: number;
+  socsoEmployerAmount: number;
+  incomeTaxAmount: number;
+  grossPay: number;
+  totalPayout: number;
+}
+
+export interface PayrollPreview {
+  companyId: number;
+  companyName: string;
+  year: number;
+  month: number;
+  payCycle: string;
+  payType: string;
+  countryCode: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  totalGross: number;
+  totalPayout: number;
+  employeeCount: number;
+  alreadyProcessed: boolean;
+  existingRunId: number | null;
+  lines: PayrollRunLine[];
+}
+
+export interface PayrollRunSummary {
+  id: number;
+  companyId: number;
+  companyName: string;
+  year: number;
+  month: number;
+  payCycle: string;
+  payType: string;
+  countryCode: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  processedAt: string;
+  totalGross: number;
+  totalPayout: number;
+  employeeCount: number;
+}
+
+export interface PayrollRunDetail extends PayrollRunSummary {
+  lines: PayrollRunLine[];
+}

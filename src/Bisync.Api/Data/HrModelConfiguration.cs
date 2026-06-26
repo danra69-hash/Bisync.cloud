@@ -1,5 +1,6 @@
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Bisync.Api.Data;
 
@@ -22,7 +23,26 @@ public static class HrModelConfiguration
             e.Property(x => x.IdPassportNumber).HasMaxLength(50);
             e.Property(x => x.PersonalEmail).HasMaxLength(256);
             e.Property(x => x.PermanentAddress).HasMaxLength(500);
+            e.Property(x => x.BankName).HasMaxLength(100);
+            e.Property(x => x.BankAccountNumber).HasMaxLength(30);
+            e.Property(x => x.BankAccountHolderName).HasMaxLength(200);
             e.Property(x => x.WorkingHoursPerDay).HasPrecision(4, 2);
+            e.Property(x => x.BaseSalary).HasPrecision(12, 2);
+            e.Property(x => x.ServiceAllowance).HasPrecision(12, 2);
+            e.Property(x => x.TransportAllowance).HasPrecision(12, 2);
+            e.Property(x => x.AccommodationAllowance).HasPrecision(12, 2);
+            e.Property(x => x.MobileAllowance).HasPrecision(12, 2);
+            e.Property(x => x.TransportCarModel).HasMaxLength(100);
+            e.Property(x => x.TransportPlateNumber).HasMaxLength(20);
+            e.Property(x => x.AccommodationAddress).HasMaxLength(500);
+            e.Property(x => x.MobileAllowancePhone).HasMaxLength(30);
+            e.Property(x => x.MobileProvider).HasMaxLength(50);
+            e.Property(x => x.BonusAmount).HasPrecision(12, 2);
+            e.Property(x => x.OtherAllowances)
+                .HasColumnName("OtherAllowancesJson")
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v),
+                    v => JsonSerializer.Deserialize<List<PayrollOtherAllowance>>(v) ?? new List<PayrollOtherAllowance>());
 
             e.HasOne(x => x.EmployeeLevel)
                 .WithMany()
@@ -30,6 +50,7 @@ public static class HrModelConfiguration
                 .OnDelete(DeleteBehavior.SetNull);
 
             e.Property(x => x.PosPin).HasMaxLength(10);
+            e.Property(x => x.PayrollPin).HasMaxLength(6);
             e.Property(x => x.CheckinMethod).HasConversion<string>().HasMaxLength(20);
             e.HasOne(x => x.ReportsTo)
                 .WithMany()
@@ -101,6 +122,7 @@ public static class HrModelConfiguration
         modelBuilder.Entity<AttendanceRecord>(e =>
         {
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.RphAccruedDays).HasPrecision(5, 1);
             e.HasIndex(x => new { x.EmployeeId, x.Date }).IsUnique();
             e.HasOne(x => x.Employee)
                 .WithMany()
@@ -180,6 +202,71 @@ public static class HrModelConfiguration
             e.HasOne(x => x.Division)
                 .WithMany(x => x.Departments)
                 .HasForeignKey(x => x.DivisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PayStructure>(e =>
+        {
+            e.Property(x => x.CountryCode).HasMaxLength(2);
+            e.Property(x => x.PayType).HasMaxLength(50);
+            e.Property(x => x.PayCycle).HasMaxLength(50);
+            e.Property(x => x.OvertimeRateMultiplier).HasPrecision(4, 2);
+            e.Property(x => x.OvertimeCalculationMode).HasMaxLength(20);
+            e.Property(x => x.OvertimeFixedHourlyRate).HasPrecision(12, 2);
+            e.HasIndex(x => x.CompanyId).IsUnique();
+            e.HasOne(x => x.Company)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProvidentFundBracket>(e =>
+        {
+            e.HasOne(x => x.PayStructure)
+                .WithMany(x => x.ProvidentFundBrackets)
+                .HasForeignKey(x => x.PayStructureId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SocsoBracket>(e =>
+        {
+            e.HasOne(x => x.PayStructure)
+                .WithMany(x => x.SocsoBrackets)
+                .HasForeignKey(x => x.PayStructureId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MandatoryContribution>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasOne(x => x.PayStructure)
+                .WithMany(x => x.MandatoryContributions)
+                .HasForeignKey(x => x.PayStructureId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PayrollRun>(e =>
+        {
+            e.Property(x => x.PayCycle).HasMaxLength(50);
+            e.Property(x => x.PayType).HasMaxLength(50);
+            e.Property(x => x.CountryCode).HasMaxLength(2);
+            e.Property(x => x.PeriodLabel).HasMaxLength(120);
+            e.HasIndex(x => new { x.CompanyId, x.Year, x.Month }).IsUnique();
+            e.HasOne(x => x.Company)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PayrollRunLine>(e =>
+        {
+            e.Property(x => x.EmployeeCode).HasMaxLength(20);
+            e.Property(x => x.EmployeeName).HasMaxLength(200);
+            e.Property(x => x.Department).HasMaxLength(100);
+            e.Property(x => x.Position).HasMaxLength(100);
+            e.HasOne(x => x.PayrollRun)
+                .WithMany(x => x.Lines)
+                .HasForeignKey(x => x.PayrollRunId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

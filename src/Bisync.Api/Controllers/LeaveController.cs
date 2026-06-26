@@ -51,19 +51,28 @@ public class LeaveRequestsController(BisyncDbContext db) : ControllerBase
 
         if (leave.Type != LeaveType.UPL)
         {
+            var days = leave.EndDate.DayNumber - leave.StartDate.DayNumber + 1;
             var balance = await db.LeaveBalances.FindAsync(leave.EmployeeId);
+            if (balance is null && leave.Type is LeaveType.RPH or LeaveType.RDO or LeaveType.AL)
+                return BadRequest("Employee has no leave balance record.");
+
             if (balance is not null)
             {
-                var days = leave.EndDate.DayNumber - leave.StartDate.DayNumber + 1;
                 switch (leave.Type)
                 {
                     case LeaveType.RDO:
+                        if (balance.RdoBalance < days)
+                            return BadRequest($"Insufficient RDO balance ({balance.RdoBalance} days available, {days} requested).");
                         balance.RdoBalance = Math.Max(0, balance.RdoBalance - days);
                         break;
                     case LeaveType.RPH:
+                        if (balance.RphBalance < days)
+                            return BadRequest($"Insufficient RPH balance ({balance.RphBalance} days available, {days} requested).");
                         balance.RphBalance = Math.Max(0, balance.RphBalance - days);
                         break;
                     case LeaveType.AL:
+                        if (balance.AlBalance < days)
+                            return BadRequest($"Insufficient annual leave balance ({balance.AlBalance} days available, {days} requested).");
                         balance.AlBalance = Math.Max(0, balance.AlBalance - days);
                         break;
                 }

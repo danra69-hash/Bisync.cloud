@@ -1,6 +1,7 @@
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,7 +9,7 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/attendance")]
-public class AttendanceController(BisyncDbContext db) : ControllerBase
+public class AttendanceController(BisyncDbContext db, ReplacementPublicHolidayService rphService) : ControllerBase
 {
     /// <summary>Records for the attendance grid; filter by date range and/or employee.</summary>
     [HttpGet]
@@ -35,6 +36,7 @@ public class AttendanceController(BisyncDbContext db) : ControllerBase
         var record = new AttendanceRecord();
         Apply(record, request);
         db.AttendanceRecords.Add(record);
+        await rphService.SyncAccrualAsync(record);
         await db.SaveChangesAsync();
         return record;
     }
@@ -45,6 +47,7 @@ public class AttendanceController(BisyncDbContext db) : ControllerBase
         var record = await db.AttendanceRecords.FindAsync(id);
         if (record is null) return NotFound();
         Apply(record, request);
+        await rphService.SyncAccrualAsync(record);
         await db.SaveChangesAsync();
         return record;
     }
@@ -54,6 +57,7 @@ public class AttendanceController(BisyncDbContext db) : ControllerBase
     {
         var record = await db.AttendanceRecords.FindAsync(id);
         if (record is null) return NotFound();
+        await rphService.ReverseAccrualAsync(record);
         db.AttendanceRecords.Remove(record);
         await db.SaveChangesAsync();
         return NoContent();

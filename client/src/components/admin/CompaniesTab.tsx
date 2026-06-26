@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { api, type Company } from '../../api';
+import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
+import { CountryPhoneInput, getPhoneValidationError } from '../shared/CountryPhoneInput';
 import { COUNTRIES, getCountry, inputCls, selectCls } from '../../data/countries';
+import type { AddressParts } from '../../utils/countryFormat';
+import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 
 const blankCompany = (): Omit<Company, 'id' | 'locationCount'> => ({
   name: '',
@@ -28,14 +32,45 @@ function CompanyPanel({
   onSave: () => void;
 }) {
   const [form, setForm] = useState(company);
-  const country = getCountry(form.countryCode);
+  const [error, setError] = useState<string | null>(null);
 
   function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: val }));
+    setError(null);
+  }
+
+  const addressParts: AddressParts = {
+    addressLine1: form.addressLine1,
+    addressLine2: form.addressLine2,
+    city: form.city,
+    stateProvince: form.stateProvince,
+    postcode: form.postcode,
+  };
+
+  function setAddressParts(parts: AddressParts) {
+    setForm(f => ({
+      ...f,
+      addressLine1: parts.addressLine1,
+      addressLine2: parts.addressLine2,
+      city: parts.city,
+      stateProvince: parts.stateProvince,
+      postcode: parts.postcode,
+    }));
+    setError(null);
   }
 
   async function save() {
     if (!form.name.trim()) return;
+
+    const phoneError = getPhoneValidationError(form.countryCode, form.phone, 'Phone', false);
+    const faxError = getPhoneValidationError(form.countryCode, form.fax, 'Fax', false);
+    const addressError = getAddressValidationError(form.countryCode, addressParts);
+    const validationError = phoneError ?? faxError ?? addressError;
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     if (isNew) await api.createCompany(form);
     else if ('id' in form) await api.updateCompany(form.id, form as Company);
     onSave();
@@ -44,8 +79,8 @@ function CompanyPanel({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-foreground/10" onClick={onClose} />
-      <div className="fixed top-0 right-0 h-full w-[480px] bg-card border-l border-border z-50 flex flex-col shadow-2xl">
+      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
+      <div className={SIDE_PANEL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Company</p>
@@ -55,6 +90,11 @@ function CompanyPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {error && (
+            <div className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs">
+              {error}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3">
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company Name *</label>
             <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Bisync Hospitality Sdn Bhd" />
@@ -71,42 +111,42 @@ function CompanyPanel({
             </div>
 
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Country *</label>
-            <select className={selectCls} value={form.countryCode} onChange={e => set('countryCode', e.target.value)}>
+            <select className={selectCls} value={form.countryCode} onChange={e => {
+              setForm(f => ({
+                ...f,
+                countryCode: e.target.value,
+                addressLine1: '',
+                addressLine2: '',
+                city: '',
+                stateProvince: '',
+                postcode: '',
+                phone: '',
+                fax: '',
+              }));
+              setError(null);
+            }}>
               {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
             </select>
 
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Address Line 1</label>
-            <input className={inputCls} value={form.addressLine1} onChange={e => set('addressLine1', e.target.value)} placeholder="Street address" />
-
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Address Line 2</label>
-            <input className={inputCls} value={form.addressLine2} onChange={e => set('addressLine2', e.target.value)} placeholder="Suite, unit, building (optional)" />
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.cityLabel}</label>
-                <input className={inputCls} value={form.city} onChange={e => set('city', e.target.value)} />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.stateLabel}</label>
-                <select className={selectCls} value={form.stateProvince} onChange={e => set('stateProvince', e.target.value)}>
-                  <option value="">— Select —</option>
-                  {country.states.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.postcodeLabel}</label>
-            <input className={inputCls} value={form.postcode} onChange={e => set('postcode', e.target.value)} placeholder={country.postcodePlaceholder} />
+            <CountryAddressFields
+              countryCode={form.countryCode}
+              value={addressParts}
+              onChange={setAddressParts}
+            />
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Phone</label>
-                <input className={inputCls} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder={country.phonePlaceholder} />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Fax</label>
-                <input className={inputCls} value={form.fax} onChange={e => set('fax', e.target.value)} placeholder={country.faxPlaceholder} />
-              </div>
+              <CountryPhoneInput
+                countryCode={form.countryCode}
+                value={form.phone}
+                onChange={value => set('phone', value)}
+                label="Phone"
+              />
+              <CountryPhoneInput
+                countryCode={form.countryCode}
+                value={form.fax}
+                onChange={value => set('fax', value)}
+                label="Fax"
+              />
             </div>
 
             <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">General Email</label>

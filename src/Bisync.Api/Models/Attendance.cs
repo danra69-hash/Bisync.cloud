@@ -17,4 +17,6 @@ public class AttendanceRecord
     public TimeOnly? ScheduledOut { get; set; }
     public TimeOnly? ActualIn { get; set; }
     public TimeOnly? ActualOut { get; set; }
+    /// <summary>RPH days credited to the employee for working this public holiday date.</summary>
+    public decimal RphAccruedDays { get; set; }
 }
