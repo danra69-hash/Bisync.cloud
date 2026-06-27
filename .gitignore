@@ -6,9 +6,10 @@ obj/
 *.db-shm
 *.db-wal
 
-# Ignore other databases; allow the Bisync app database (all HR/payroll data)
+# Ignore other databases; allow Bisync app DB and named backups under src/Bisync.Api/
 *.db
-!src/Bisync.Api/bisync.db
+!src/Bisync.Api/
+!src/Bisync.Api/*.db
 
 # Local backup copies (optional — run scripts/backup-data.ps1)
 data-backups/
