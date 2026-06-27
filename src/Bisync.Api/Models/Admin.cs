@@ -13,6 +13,10 @@ public class PublicHoliday
     public string? CountryCode { get; set; }
     /// <summary>Stable key from the public holiday catalog (country + date + name).</summary>
     public string? CatalogKey { get; set; }
+    /// <summary>When true, this holiday repeats on the same month/day every year.</summary>
+    public bool IsRecurringAnnually { get; set; }
+    /// <summary>Whether this is an officially gazetted public holiday.</summary>
+    public bool IsGazetted { get; set; }
 }
 
 /// <summary>Leave and overtime entitlements per employee level (Admin settings).</summary>
@@ -59,4 +63,8 @@ public class CompanySetting
     public bool ReplacementPublicHolidayEnabled { get; set; }
     /// <summary>ISO 3166-1 alpha-2 code for the company's operating country (public holiday source).</summary>
     public string OperatingCountryCode { get; set; } = "MY";
+    public bool GazettedPhReplacementDayEnabled { get; set; }
+    public decimal GazettedPhNormalHoursRate { get; set; } = 1.5m;
+    public decimal GazettedPhOvertimeHoursRate { get; set; } = 2.0m;
+    public bool NonGazettedPhReplacementDayEnabled { get; set; }
 }

@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import type { AppUser, Company } from '../../api';
+import type { AppUser } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
 import { parseUserAccess } from '../../data/userAccess';
 import type { CheckinMethod, DivisionTreeNode, Employee, EmployeeLevel } from '../../modules/hr/types';
@@ -23,15 +23,13 @@ type EmployeeFormData = {
 };
 
 type Props = {
-  companies: Company[];
-  selectedCompanyId: number | null;
-  onCompanyChange: (companyId: number | null) => void;
   employees: Employee[];
   employeeLevels: EmployeeLevel[];
   orgTree: DivisionTreeNode[];
   formData: EmployeeFormData;
   showEmployeeForm: boolean;
   error: string | null;
+  noCompanySelected?: boolean;
   platformUserFor: (employee: Employee) => AppUser | undefined;
   employeeCompanyName: (employee: Employee) => string;
   employeeLocationLabel: (employee: Employee) => string;
@@ -60,15 +58,13 @@ function accessBadges(accessJson: string): string[] {
 }
 
 export function EmployeeDirectoryTab({
-  companies,
-  selectedCompanyId,
-  onCompanyChange,
   employees,
   employeeLevels,
   orgTree,
   formData,
   showEmployeeForm,
   error,
+  noCompanySelected = false,
   platformUserFor,
   employeeCompanyName,
   employeeLocationLabel,
@@ -93,46 +89,24 @@ export function EmployeeDirectoryTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <label htmlFor="hr-directory-company" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-            Company
-          </label>
-          <select
-            id="hr-directory-company"
-            value={selectedCompanyId ?? ''}
-            onChange={e => onCompanyChange(e.target.value ? Number(e.target.value) : null)}
-            disabled={companies.length === 0}
-            className={`${selectCls} min-w-[220px]`}
-          >
-            {companies.length === 0 ? (
-              <option value="">No companies available</option>
-            ) : (
-              companies.map(company => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))
-            )}
-          </select>
-          {companies.find(c => c.id === selectedCompanyId) && (
-            <span className="text-xs text-muted-foreground">
-              {companies.find(c => c.id === selectedCompanyId)?.countryCode}
-            </span>
-          )}
-        </div>
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={onOpenAdd}
-          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md"
+          disabled={noCompanySelected}
+          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={12} /> Add Employee
         </button>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        {employees.length} employees in directory · manage records and platform access from employee details
-      </p>
+      {noCompanySelected && (
+        <p className="text-xs text-muted-foreground py-8 text-center border border-dashed border-border rounded-lg">
+          Select a company in the header to view and manage employees.
+        </p>
+      )}
 
-      {showEmployeeForm && (
+      {!noCompanySelected && showEmployeeForm && (
         <div className="bg-card border border-border rounded-lg p-5 space-y-4">
           <div>
             <h3 className="text-sm font-semibold">New Employee</h3>
@@ -239,6 +213,7 @@ export function EmployeeDirectoryTab({
         </div>
       )}
 
+      {!noCompanySelected && (
       <div className="bg-card border border-border rounded-lg overflow-x-auto">
         <table className="w-full text-xs min-w-[1100px]">
           <thead>
@@ -341,6 +316,7 @@ export function EmployeeDirectoryTab({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

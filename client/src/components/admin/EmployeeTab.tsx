@@ -14,15 +14,15 @@ import { parseAddress } from '../../utils/countryFormat';
 
 type Props = {
   onDataChanged?: () => void;
+  selectedCompanyId?: number | null;
 };
 
-export function EmployeeTab({ onDataChanged }: Props) {
+export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [platformUsers, setPlatformUsers] = useState<AppUser[]>([]);
   const [employeeLevels, setEmployeeLevels] = useState<EmployeeLevel[]>([]);
   const [orgTree, setOrgTree] = useState<DivisionTreeNode[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [operatingCountryCode, setOperatingCountryCode] = useState('MY');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,9 +49,6 @@ export function EmployeeTab({ onDataChanged }: Props) {
     setOrgTree(tree);
     setOperatingCountryCode(settings.operatingCountryCode || 'MY');
     setCompanies(comps);
-    const active = comps.filter(c => c.active);
-    const list = active.length > 0 ? active : comps;
-    setSelectedCompanyId(prev => (prev && list.some(c => c.id === prev) ? prev : list[0]?.id ?? null));
   }, []);
 
   useEffect(() => {
@@ -108,13 +105,8 @@ export function EmployeeTab({ onDataChanged }: Props) {
     platformUsers.find(u => u.employeeId === employee.id)
     ?? platformUsers.find(u => u.email.toLowerCase() === employee.email.toLowerCase());
 
-  const activeCompanies = useMemo(() => {
-    const active = companies.filter(c => c.active);
-    return active.length > 0 ? active : companies;
-  }, [companies]);
-
   const filteredEmployees = useMemo(() => {
-    if (!selectedCompanyId) return employees;
+    if (!selectedCompanyId) return [];
     return employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
   }, [employees, platformUsers, selectedCompanyId]);
 
@@ -305,15 +297,13 @@ export function EmployeeTab({ onDataChanged }: Props) {
   return (
     <>
       <EmployeeDirectoryTab
-        companies={activeCompanies}
-        selectedCompanyId={selectedCompanyId}
-        onCompanyChange={setSelectedCompanyId}
         employees={filteredEmployees}
         employeeLevels={employeeLevels}
         orgTree={orgTree}
         formData={formData}
         showEmployeeForm={showEmployeeForm}
         error={error}
+        noCompanySelected={!selectedCompanyId}
         platformUserFor={platformUserFor}
         employeeCompanyName={employeeCompanyName}
         employeeLocationLabel={employeeLocationLabel}

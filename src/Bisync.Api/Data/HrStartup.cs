@@ -19,9 +19,15 @@ public static class HrStartup
             "ALTER TABLE EmployeeLevels ADD COLUMN Active INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE CompanySettings ADD COLUMN OperatingCountryCode TEXT NOT NULL DEFAULT 'MY'",
             "ALTER TABLE CompanySettings ADD COLUMN ReplacementPublicHolidayEnabled INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE CompanySettings ADD COLUMN GazettedPhReplacementDayEnabled INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE CompanySettings ADD COLUMN GazettedPhNormalHoursRate REAL NOT NULL DEFAULT 1.5",
+            "ALTER TABLE CompanySettings ADD COLUMN GazettedPhOvertimeHoursRate REAL NOT NULL DEFAULT 2.0",
+            "ALTER TABLE CompanySettings ADD COLUMN NonGazettedPhReplacementDayEnabled INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE AttendanceRecords ADD COLUMN RphAccruedDays REAL NOT NULL DEFAULT 0",
             "ALTER TABLE PublicHolidays ADD COLUMN CountryCode TEXT NULL",
             "ALTER TABLE PublicHolidays ADD COLUMN CatalogKey TEXT NULL",
+            "ALTER TABLE PublicHolidays ADD COLUMN IsRecurringAnnually INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE PublicHolidays ADD COLUMN IsGazetted INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE Employees ADD COLUMN DivisionId INTEGER NULL",
             "ALTER TABLE Employees ADD COLUMN DepartmentId INTEGER NULL",
             "ALTER TABLE Employees ADD COLUMN Active INTEGER NOT NULL DEFAULT 1",
@@ -83,12 +89,24 @@ public static class HrStartup
         try
         {
             await db.Database.ExecuteSqlRawAsync("UPDATE PublicHolidays SET CountryCode = 'MY' WHERE CountryCode IS NULL");
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE PublicHolidays SET IsGazetted = 1 WHERE CatalogKey IS NOT NULL AND CatalogKey NOT LIKE 'CUSTOM|%'");
         }
         catch { /* HR tables may not exist yet */ }
 
         try
         {
             await db.Database.ExecuteSqlRawAsync("UPDATE CompanySettings SET OperatingCountryCode = 'MY' WHERE OperatingCountryCode IS NULL OR OperatingCountryCode = ''");
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE CompanySettings SET
+                    GazettedPhReplacementDayEnabled = ReplacementPublicHolidayEnabled
+                WHERE GazettedPhReplacementDayEnabled = 0 AND ReplacementPublicHolidayEnabled = 1
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE CompanySettings SET
+                    GazettedPhNormalHoursRate = PublicHolidayPayMultiplier
+                WHERE GazettedPhNormalHoursRate = 1.5 AND PublicHolidayPayMultiplier != 1.5
+                """);
         }
         catch { /* HR tables may not exist yet */ }
 
@@ -236,6 +254,8 @@ public static class HrStartup
             await db.Database.ExecuteSqlRawAsync("UPDATE Employees SET PayrollPin = '000000', PayrollPinMustChange = 1 WHERE PayrollPin IS NULL OR PayrollPin = ''");
         }
         catch { /* HR tables may not exist yet */ }
+
+        await EmployeeLevelNormalizer.NormalizeAsync(db);
 
         var employeesWithLevels = await db.Employees
             .Include(e => e.EmployeeLevel)

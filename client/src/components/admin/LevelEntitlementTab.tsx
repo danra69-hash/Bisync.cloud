@@ -93,7 +93,7 @@ function LevelPanel({
                 className={`${inputCls} mt-1`}
                 value={form.levelName}
                 onChange={e => setForm({ ...form, levelName: e.target.value })}
-                placeholder="e.g. Senior"
+                placeholder="e.g. Management"
               />
             </div>
             <div>

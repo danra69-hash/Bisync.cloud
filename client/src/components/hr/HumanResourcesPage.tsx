@@ -34,7 +34,7 @@ function HrOfflinePanel({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-export function HumanResourcesPage() {
+export function HumanResourcesPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
   const [status, setStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   const check = useCallback(async () => {
@@ -48,25 +48,31 @@ export function HumanResourcesPage() {
 
   if (status === 'checking') {
     return (
-      <div className="flex-1 flex items-center justify-center p-12">
+      <div className="flex-1 min-h-0 flex items-center justify-center p-12">
         <p className="text-xs text-muted-foreground font-mono">Loading Human Resources…</p>
       </div>
     );
   }
 
   if (status === 'offline') {
-    return <HrOfflinePanel onRetry={check} />;
+    return (
+      <div className="flex-1 min-h-0 overflow-auto">
+        <HrOfflinePanel onRetry={check} />
+      </div>
+    );
   }
 
   return (
-    <Suspense
-      fallback={
-        <div className="flex-1 flex items-center justify-center p-12">
-          <p className="text-xs text-muted-foreground font-mono">Loading HR module…</p>
-        </div>
-      }
-    >
-      <HrModule embedded />
-    </Suspense>
+    <div className="flex-1 min-h-0 flex flex-col">
+      <Suspense
+        fallback={
+          <div className="flex-1 flex items-center justify-center p-12">
+            <p className="text-xs text-muted-foreground font-mono">Loading HR module…</p>
+          </div>
+        }
+      >
+        <HrModule embedded selectedCompanyId={selectedCompanyId} />
+      </Suspense>
+    </div>
   );
 }

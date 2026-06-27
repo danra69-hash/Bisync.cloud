@@ -185,6 +185,8 @@ public static class HrModelConfiguration
         modelBuilder.Entity<CompanySetting>(e =>
         {
             e.Property(x => x.PublicHolidayPayMultiplier).HasPrecision(4, 2);
+            e.Property(x => x.GazettedPhNormalHoursRate).HasPrecision(4, 2);
+            e.Property(x => x.GazettedPhOvertimeHoursRate).HasPrecision(4, 2);
             e.Property(x => x.OperatingCountryCode).HasMaxLength(2);
         });
 
@@ -277,10 +279,8 @@ public static class HrModelConfiguration
     {
         modelBuilder.Entity<EmployeeLevel>().HasData(
             new EmployeeLevel { Id = 1, LevelName = "Junior", AnnualLeaveDays = 12, SickLeaveDays = 14, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Morning Shift" },
-            new EmployeeLevel { Id = 2, LevelName = "Mid-Level", AnnualLeaveDays = 16, SickLeaveDays = 14, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift" },
-            new EmployeeLevel { Id = 3, LevelName = "Senior", AnnualLeaveDays = 20, SickLeaveDays = 18, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true },
-            new EmployeeLevel { Id = 4, LevelName = "Manager", AnnualLeaveDays = 24, SickLeaveDays = 22, OvertimeEligible = false, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = false },
-            new EmployeeLevel { Id = 5, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, OvertimeEligible = false, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = false });
+            new EmployeeLevel { Id = 2, LevelName = "Management", AnnualLeaveDays = 20, SickLeaveDays = 18, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift" },
+            new EmployeeLevel { Id = 3, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, OvertimeEligible = false, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = false });
 
         modelBuilder.Entity<PublicHoliday>().HasData(
             new PublicHoliday { Id = 1, Name = "New Year's Day", Date = new DateOnly(2026, 1, 1), IsRecognized = true, CountryCode = "MY" },

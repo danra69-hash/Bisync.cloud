@@ -15,6 +15,12 @@ public class PublicHolidayCatalogService(HttpClient http)
     public static string BuildCatalogKey(string countryCode, DateOnly date, string name) =>
         $"{countryCode.ToUpperInvariant()}|{date:yyyy-MM-dd}|{name.Trim().ToUpperInvariant()}";
 
+    public static string BuildCustomCatalogKey(string countryCode, DateOnly date, string name) =>
+        $"CUSTOM|{countryCode.ToUpperInvariant()}|{date:MM-dd}|{name.Trim().ToUpperInvariant()}";
+
+    public static bool IsCustomCatalogKey(string? catalogKey) =>
+        catalogKey is not null && catalogKey.StartsWith("CUSTOM|", StringComparison.OrdinalIgnoreCase);
+
     public async Task<IReadOnlyList<CountryOption>> GetAvailableCountriesAsync(CancellationToken ct = default)
     {
         try

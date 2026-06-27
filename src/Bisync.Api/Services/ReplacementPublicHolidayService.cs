@@ -32,11 +32,19 @@ public class ReplacementPublicHolidayService(BisyncDbContext db)
     async Task<decimal> CalcTargetAccrualAsync(AttendanceRecord record, CancellationToken ct)
     {
         var setting = await db.CompanySettings.AsNoTracking().FirstOrDefaultAsync(ct);
-        if (setting is null || !setting.ReplacementPublicHolidayEnabled) return 0m;
+        if (setting is null) return 0m;
 
-        var isRecognizedPh = await db.PublicHolidays.AsNoTracking()
-            .AnyAsync(h => h.Date == record.Date && h.IsRecognized, ct);
-        if (!isRecognizedPh) return 0m;
+        var holiday = await db.PublicHolidays.AsNoTracking()
+            .Where(h => h.IsRecognized && (
+                h.Date == record.Date
+                || (h.IsRecurringAnnually && h.Date.Month == record.Date.Month && h.Date.Day == record.Date.Day)))
+            .FirstOrDefaultAsync(ct);
+        if (holiday is null) return 0m;
+
+        var replacementEnabled = holiday.IsGazetted
+            ? setting.GazettedPhReplacementDayEnabled
+            : setting.NonGazettedPhReplacementDayEnabled;
+        if (!replacementEnabled) return 0m;
 
         return WorkingDayCredit(record.Status);
     }

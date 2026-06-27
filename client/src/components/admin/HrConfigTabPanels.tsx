@@ -1,21 +1,19 @@
 import { DivisionsDepartmentsTab } from './DivisionsDepartmentsTab';
-import { EmployeeTab } from './EmployeeTab';
 import { LevelEntitlementTab } from './LevelEntitlementTab';
 import { PayStructureTab } from './PayStructureTab';
 import { PhSettingTab } from './PhSettingTab';
-import type { HrEmployeeConfigTabId } from './hrConfigTabs';
+import type { HrConfigTabId } from './hrConfigTabs';
 
 type Props = {
-  tab: HrEmployeeConfigTabId;
+  tab: HrConfigTabId;
   onDataChanged?: () => void;
+  selectedCompanyId?: number | null;
 };
 
-export function HrConfigTabPanels({ tab, onDataChanged }: Props) {
+export function HrConfigTabPanels({ tab, onDataChanged, selectedCompanyId = null }: Props) {
   switch (tab) {
-    case 'employee':
-      return <EmployeeTab onDataChanged={onDataChanged} />;
     case 'ph':
-      return <PhSettingTab />;
+      return <PhSettingTab selectedCompanyId={selectedCompanyId} />;
     case 'levels':
       return <LevelEntitlementTab onDataChanged={onDataChanged} />;
     case 'pay':

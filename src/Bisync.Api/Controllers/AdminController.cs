@@ -9,12 +9,24 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/public-holidays")]
-public class PublicHolidaysController(BisyncDbContext db) : ControllerBase
+public class PublicHolidaysController(BisyncDbContext db, PublicHolidaySyncService sync) : ControllerBase
 {
     [HttpGet]
-    public async Task<IEnumerable<PublicHoliday>> GetAll([FromQuery] bool? recognized)
+    public async Task<IEnumerable<PublicHoliday>> GetAll([FromQuery] bool? recognized, [FromQuery] string? countryCode)
     {
+        if (!string.IsNullOrWhiteSpace(countryCode))
+        {
+            var code = countryCode.Trim().ToUpperInvariant();
+            if (!await db.PublicHolidays.AsNoTracking().AnyAsync(h => h.CountryCode == code))
+                await sync.SyncOperatingCountryAsync(db, code, recognitionByDate: null);
+        }
+
         var query = db.PublicHolidays.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(countryCode))
+        {
+            var code = countryCode.Trim().ToUpperInvariant();
+            query = query.Where(h => h.CountryCode == code);
+        }
         if (recognized is not null) query = query.Where(h => h.IsRecognized == recognized);
         return await query.OrderBy(h => h.Date).ToListAsync();
     }
@@ -22,16 +34,25 @@ public class PublicHolidaysController(BisyncDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<PublicHoliday>> Create(PublicHolidayRequest request)
     {
-        var operatingCountry = await GetOperatingCountryCodeAsync();
+        var countryCode = !string.IsNullOrWhiteSpace(request.CountryCode)
+            ? request.CountryCode.Trim().ToUpperInvariant()
+            : await GetOperatingCountryCodeAsync();
+        if (string.IsNullOrWhiteSpace(countryCode))
+            return BadRequest("Country code is required.");
+
+        var name = request.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return BadRequest("Holiday name is required.");
+
         var holiday = new PublicHoliday
         {
-            Name = request.Name,
+            Name = name,
             Date = request.Date,
             IsRecognized = request.IsRecognized,
-            CountryCode = operatingCountry,
-            CatalogKey = operatingCountry is null
-                ? null
-                : PublicHolidayCatalogService.BuildCatalogKey(operatingCountry, request.Date, request.Name),
+            IsRecurringAnnually = request.IsRecurringAnnually,
+            IsGazetted = request.IsGazetted,
+            CountryCode = countryCode,
+            CatalogKey = PublicHolidayCatalogService.BuildCustomCatalogKey(countryCode, request.Date, name),
         };
         db.PublicHolidays.Add(holiday);
         await db.SaveChangesAsync();
@@ -43,11 +64,15 @@ public class PublicHolidaysController(BisyncDbContext db) : ControllerBase
     {
         var holiday = await db.PublicHolidays.FindAsync(id);
         if (holiday is null) return NotFound();
-        holiday.Name = request.Name;
+        holiday.Name = request.Name.Trim();
         holiday.Date = request.Date;
         holiday.IsRecognized = request.IsRecognized;
-        if (holiday.CountryCode is not null)
-            holiday.CatalogKey = PublicHolidayCatalogService.BuildCatalogKey(holiday.CountryCode, request.Date, request.Name);
+        holiday.IsRecurringAnnually = request.IsRecurringAnnually;
+        holiday.IsGazetted = request.IsGazetted;
+        if (PublicHolidayCatalogService.IsCustomCatalogKey(holiday.CatalogKey) && holiday.CountryCode is not null)
+            holiday.CatalogKey = PublicHolidayCatalogService.BuildCustomCatalogKey(holiday.CountryCode, request.Date, holiday.Name);
+        else if (holiday.CountryCode is not null)
+            holiday.CatalogKey = PublicHolidayCatalogService.BuildCatalogKey(holiday.CountryCode, request.Date, holiday.Name);
         await db.SaveChangesAsync();
         return holiday;
     }
@@ -58,6 +83,16 @@ public class PublicHolidaysController(BisyncDbContext db) : ControllerBase
         var holiday = await db.PublicHolidays.FindAsync(id);
         if (holiday is null) return NotFound();
         holiday.IsRecognized = !holiday.IsRecognized;
+        await db.SaveChangesAsync();
+        return holiday;
+    }
+
+    [HttpPost("{id:int}/toggle-gazetted")]
+    public async Task<ActionResult<PublicHoliday>> ToggleGazetted(int id)
+    {
+        var holiday = await db.PublicHolidays.FindAsync(id);
+        if (holiday is null) return NotFound();
+        holiday.IsGazetted = !holiday.IsGazetted;
         await db.SaveChangesAsync();
         return holiday;
     }
@@ -179,6 +214,21 @@ public class SettingsController(
 
         if (request.ReplacementPublicHolidayEnabled is { } replacementEnabled)
             setting.ReplacementPublicHolidayEnabled = replacementEnabled;
+
+        if (request.GazettedPhReplacementDayEnabled is { } gazettedReplacement)
+            setting.GazettedPhReplacementDayEnabled = gazettedReplacement;
+
+        if (request.GazettedPhNormalHoursRate is { } normalRate)
+        {
+            setting.GazettedPhNormalHoursRate = normalRate;
+            setting.PublicHolidayPayMultiplier = normalRate;
+        }
+
+        if (request.GazettedPhOvertimeHoursRate is { } overtimeRate)
+            setting.GazettedPhOvertimeHoursRate = overtimeRate;
+
+        if (request.NonGazettedPhReplacementDayEnabled is { } nonGazettedReplacement)
+            setting.NonGazettedPhReplacementDayEnabled = nonGazettedReplacement;
 
         var countryChanged = false;
         if (!string.IsNullOrWhiteSpace(request.OperatingCountryCode))

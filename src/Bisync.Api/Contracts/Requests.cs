@@ -241,7 +241,11 @@ public class PublicHolidayRequest
     public string Name { get; set; } = null!;
     [Required]
     public DateOnly Date { get; set; }
-    public bool IsRecognized { get; set; }
+    public bool IsRecognized { get; set; } = true;
+    public bool IsRecurringAnnually { get; set; }
+    public bool IsGazetted { get; set; }
+    [MaxLength(2)]
+    public string? CountryCode { get; set; }
 }
 
 public class PayMultiplierRequest
@@ -251,6 +255,12 @@ public class PayMultiplierRequest
     public bool? ReplacementPublicHolidayEnabled { get; set; }
     [MaxLength(2)]
     public string? OperatingCountryCode { get; set; }
+    public bool? GazettedPhReplacementDayEnabled { get; set; }
+    [Range(0.1, 10)]
+    public decimal? GazettedPhNormalHoursRate { get; set; }
+    [Range(0.1, 10)]
+    public decimal? GazettedPhOvertimeHoursRate { get; set; }
+    public bool? NonGazettedPhReplacementDayEnabled { get; set; }
 }
 
 public class DivisionRequest

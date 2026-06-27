@@ -80,6 +80,31 @@ public class LeaveRequestsController(BisyncDbContext db) : ControllerBase
         }
 
         leave.Status = LeaveStatus.Approved;
+
+        var scheduleType = leave.Type switch
+        {
+            LeaveType.RDO => ScheduleType.RDO,
+            LeaveType.RPH => ScheduleType.RPH,
+            LeaveType.AL => ScheduleType.AL,
+            LeaveType.UPL => ScheduleType.UPL,
+            _ => ScheduleType.AL,
+        };
+
+        for (var date = leave.StartDate; date <= leave.EndDate; date = date.AddDays(1))
+        {
+            var schedule = await db.ShiftSchedules
+                .FirstOrDefaultAsync(s => s.EmployeeId == leave.EmployeeId && s.Date == date);
+            if (schedule is null)
+            {
+                schedule = new ShiftSchedule { EmployeeId = leave.EmployeeId, Date = date };
+                db.ShiftSchedules.Add(schedule);
+            }
+
+            schedule.Type = scheduleType;
+            schedule.StartTime = null;
+            schedule.EndTime = null;
+        }
+
         await db.SaveChangesAsync();
         return leave;
     }

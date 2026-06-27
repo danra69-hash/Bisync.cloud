@@ -214,10 +214,8 @@ public static class HrSchemaPatcher
 
         db.EmployeeLevels.AddRange(
             new Models.EmployeeLevel { Id = 1, LevelName = "Junior", AnnualLeaveDays = 12, SickLeaveDays = 14, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Morning Shift" },
-            new Models.EmployeeLevel { Id = 2, LevelName = "Mid-Level", AnnualLeaveDays = 16, SickLeaveDays = 14, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift" },
-            new Models.EmployeeLevel { Id = 3, LevelName = "Senior", AnnualLeaveDays = 20, SickLeaveDays = 18, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true },
-            new Models.EmployeeLevel { Id = 4, LevelName = "Manager", AnnualLeaveDays = 24, SickLeaveDays = 22, OvertimeEligible = false, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = false },
-            new Models.EmployeeLevel { Id = 5, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, OvertimeEligible = false, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = false }
+            new Models.EmployeeLevel { Id = 2, LevelName = "Management", AnnualLeaveDays = 20, SickLeaveDays = 18, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift" },
+            new Models.EmployeeLevel { Id = 3, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, OvertimeEligible = false, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = false }
         );
         await db.SaveChangesAsync();
     }

@@ -1,6 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, GripVertical, Trash2 } from 'lucide-react';
-import type { Employee, EmployeeLevel, ScheduleType, ShiftSchedule } from './types';
+import type { Employee, EmployeeLevel, LeaveRequest, ScheduleType, ShiftSchedule } from './types';
+
+import ShiftScheduleType2View from './ShiftScheduleType2View';
+
+const SCHEDULE_LAYOUT_STORAGE_KEY = 'bisync.hr.scheduleLayout';
+
+export type ScheduleLayoutType = 'type1' | 'type2';
+
+function readScheduleLayout(): ScheduleLayoutType {
+  try {
+    const stored = localStorage.getItem(SCHEDULE_LAYOUT_STORAGE_KEY);
+    if (stored === 'type1' || stored === 'type2') return stored;
+  } catch {
+    /* ignore */
+  }
+  return 'type1';
+}
 
 const SLOT_MINUTES = 30;
 const SCHEDULE_START_MIN = 9 * 60;
@@ -17,16 +33,27 @@ const LEAVE_TYPES: { value: ScheduleType; label: string }[] = [
   { value: 'UPL', label: 'UPL — Unpaid Leave' },
 ];
 
-const BAR_COLORS = [
-  'bg-herme border-herme-dark',
-  'bg-blue-600 border-blue-700',
-  'bg-violet-600 border-violet-700',
-  'bg-teal-600 border-teal-700',
-  'bg-orange-600 border-orange-700',
-  'bg-rose-600 border-rose-700',
-  'bg-cyan-600 border-cyan-700',
-  'bg-indigo-600 border-indigo-700',
-];
+const LEVEL_COLORS: Record<number, { bar: string; tag: string; dot: string }> = {
+  1: { bar: 'bg-blue-600 border-blue-700', tag: 'border-blue-300 bg-blue-50 text-blue-900', dot: 'bg-blue-600' },
+  2: { bar: 'bg-orange-600 border-orange-700', tag: 'border-orange-300 bg-orange-50 text-orange-900', dot: 'bg-orange-600' },
+  3: { bar: 'bg-indigo-600 border-indigo-700', tag: 'border-indigo-300 bg-indigo-50 text-indigo-900', dot: 'bg-indigo-600' },
+};
+
+const DEFAULT_LEVEL_COLORS = {
+  bar: 'bg-gray-600 border-gray-700',
+  tag: 'border-gray-300 bg-gray-50 text-gray-900',
+  dot: 'bg-gray-500',
+};
+
+function resolveEmployeeLevel(employee: Employee, levels: EmployeeLevel[]) {
+  return employee.employeeLevel ?? levels.find((l) => l.id === employee.employeeLevelId);
+}
+
+function levelColors(employee: Employee, levels: EmployeeLevel[]) {
+  const level = resolveEmployeeLevel(employee, levels);
+  if (level && LEVEL_COLORS[level.id]) return LEVEL_COLORS[level.id];
+  return DEFAULT_LEVEL_COLORS;
+}
 
 const LEAVE_BADGE: Record<string, string> = {
   DO: 'bg-gray-200 text-gray-800',
@@ -88,6 +115,29 @@ function shiftHours(employee: Employee, levels: EmployeeLevel[]): number {
   return level?.workingHoursPerDay ?? employee.workingHoursPerDay ?? 8;
 }
 
+function barColumnStyle(index: number, total: number): CSSProperties {
+  if (total <= 1) return { left: 2, right: 2 };
+  const gap = 2;
+  const widthPct = 100 / total;
+  const leftPct = index * widthPct;
+  return {
+    left: `calc(${leftPct}% + ${gap}px)`,
+    width: `calc(${widthPct}% - ${gap * 2}px)`,
+    right: 'auto',
+  };
+}
+
+function sortedWorkBars(schedules: ShiftSchedule[], date: string) {
+  return schedules
+    .filter((s) => s.date === date && s.type === 'Work' && s.startTime)
+    .sort((a, b) => {
+      const ta = a.startTime ?? '';
+      const tb = b.startTime ?? '';
+      if (ta !== tb) return ta.localeCompare(tb);
+      return a.employeeId - b.employeeId;
+    });
+}
+
 function barMetrics(startTime: string, hours: number, rowHeight: number) {
   const startMin = toMinutes(startTime);
   const clampedStart = Math.max(startMin, SCHEDULE_START_MIN);
@@ -130,32 +180,55 @@ export function initialScheduleWeekStart(): string {
   return mondayOfWeek(new Date());
 }
 
+function dateInLeaveRange(date: string, start: string, end: string) {
+  return date >= start && date <= end;
+}
+
 type Props = {
   shiftEmployees: Employee[];
   employeeLevels: EmployeeLevel[];
   shiftSchedules: ShiftSchedule[];
+  approvedLeaveRequests?: LeaveRequest[];
   weekStart: string;
   onWeekChange: (mondayIso: string) => void;
   onUpsert: (employeeId: number, date: string, type: ScheduleType, startTime?: string) => void;
   onClear: (employeeId: number, date: string) => void;
+  onSaveBatch: (changes: import('./types').ScheduleBatchChange[]) => Promise<void>;
+  departments?: { id: number; name: string }[];
+  selectedDepartmentId?: number | null;
+  onDepartmentChange?: (departmentId: number | null) => void;
 };
 
 export default function ShiftScheduleGrid({
   shiftEmployees,
   employeeLevels,
   shiftSchedules,
+  approvedLeaveRequests = [],
   weekStart,
   onWeekChange,
   onUpsert,
   onClear,
+  onSaveBatch,
+  departments = [],
+  selectedDepartmentId = null,
+  onDepartmentChange,
 }: Props) {
   const [dragEmployeeId, setDragEmployeeId] = useState<number | null>(null);
   const [dragPreview, setDragPreview] = useState<{ employeeId: number; date: string; top: number } | null>(null);
+  const [layoutType, setLayoutType] = useState<ScheduleLayoutType>(readScheduleLayout);
   const barDragRef = useRef<BarDragState | null>(null);
   const slots = useMemo(() => timeSlots(), []);
   const weekDates = useMemo(() => weekDatesFrom(weekStart), [weekStart]);
   const [rowHeight, setRowHeight] = useState(16);
   const gridHeight = slots.length * rowHeight;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SCHEDULE_LAYOUT_STORAGE_KEY, layoutType);
+    } catch {
+      /* ignore */
+    }
+  }, [layoutType]);
 
   useEffect(() => {
     const updateRowHeight = () => {
@@ -171,10 +244,42 @@ export default function ShiftScheduleGrid({
   const scheduleFor = (employeeId: number, date: string) =>
     shiftSchedules.find((s) => s.employeeId === employeeId && s.date === date);
 
-  const workSchedulesForDay = (date: string) =>
-    shiftSchedules.filter((s) => s.date === date && s.type === 'Work' && s.startTime);
+  const approvedLeaveFor = (employeeId: number, date: string) =>
+    approvedLeaveRequests.find(
+      (r) =>
+        r.employeeId === employeeId &&
+        r.status === 'Approved' &&
+        dateInLeaveRange(date, r.startDate, r.endDate),
+    );
 
-  const employeeColor = (id: number) => BAR_COLORS[id % BAR_COLORS.length];
+  const hasWorkShift = (employeeId: number, date: string) => {
+    const schedule = scheduleFor(employeeId, date);
+    return schedule?.type === 'Work' && !!schedule.startTime;
+  };
+
+  const effectiveLeaveType = (employeeId: number, date: string): ScheduleType | '' => {
+    const schedule = scheduleFor(employeeId, date);
+    if (schedule && schedule.type !== 'Work') return schedule.type;
+    const approved = approvedLeaveFor(employeeId, date);
+    if (approved) return approved.type;
+    return '';
+  };
+
+  const isOnLeave = (employeeId: number, date: string) => !!effectiveLeaveType(employeeId, date);
+
+  const isApprovedLeaveLocked = (employeeId: number, date: string) => !!approvedLeaveFor(employeeId, date);
+
+  const workSchedulesForDay = (date: string) =>
+    sortedWorkBars(shiftSchedules, date).filter((s) => !isOnLeave(s.employeeId, date));
+
+  const levelsInView = useMemo(() => {
+    const seen = new Map<number, EmployeeLevel>();
+    for (const employee of shiftEmployees) {
+      const level = resolveEmployeeLevel(employee, employeeLevels);
+      if (level) seen.set(level.id, level);
+    }
+    return [...seen.values()].sort((a, b) => a.id - b.id);
+  }, [shiftEmployees, employeeLevels]);
 
   const shiftWeek = (delta: number) => {
     const d = new Date(`${weekStart}T12:00:00`);
@@ -183,6 +288,10 @@ export default function ShiftScheduleGrid({
   };
 
   const handleDrop = (employeeId: number, date: string, slotTime: string) => {
+    if (isOnLeave(employeeId, date)) {
+      setDragEmployeeId(null);
+      return;
+    }
     onUpsert(employeeId, date, 'Work', slotTime);
     setDragEmployeeId(null);
   };
@@ -223,7 +332,9 @@ export default function ShiftScheduleGrid({
       const drag = barDragRef.current;
       if (!drag || e.pointerId !== drag.pointerId) return;
       const startTime = topToSlotTime(drag.draftTop, rowHeight);
-      onUpsert(drag.employeeId, drag.date, 'Work', startTime);
+      if (!isOnLeave(drag.employeeId, drag.date)) {
+        onUpsert(drag.employeeId, drag.date, 'Work', startTime);
+      }
       barDragRef.current = null;
       setDragPreview(null);
     };
@@ -236,7 +347,7 @@ export default function ShiftScheduleGrid({
       document.removeEventListener('pointerup', onEnd);
       document.removeEventListener('pointercancel', onEnd);
     };
-  }, [onUpsert, rowHeight]);
+  }, [onUpsert, rowHeight, shiftSchedules, approvedLeaveRequests]);
 
   const weekLabel = (() => {
     const start = new Date(`${weekDates[0]}T12:00:00`);
@@ -253,8 +364,8 @@ export default function ShiftScheduleGrid({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
           <button
             type="button"
             onClick={() => shiftWeek(-1)}
@@ -280,14 +391,77 @@ export default function ShiftScheduleGrid({
             This week
           </button>
         </div>
-        <p className="text-xs text-gray-500">Drop on a slot or drag bars vertically</p>
+
+        <div
+          className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5"
+          role="group"
+          aria-label="Schedule layout"
+        >
+          <button
+            type="button"
+            onClick={() => setLayoutType('type1')}
+            aria-pressed={layoutType === 'type1'}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              layoutType === 'type1'
+                ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Type 1
+          </button>
+          <button
+            type="button"
+            onClick={() => setLayoutType('type2')}
+            aria-pressed={layoutType === 'type2'}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              layoutType === 'type2'
+                ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Type 2
+          </button>
+        </div>
+
+        <div className="flex flex-col items-end gap-1 flex-1 min-w-[200px]">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {departments.length > 0 && onDepartmentChange && (
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <span className="font-medium text-gray-700">Department</span>
+                <select
+                  value={selectedDepartmentId ?? ''}
+                  onChange={(e) => onDepartmentChange(e.target.value ? Number(e.target.value) : null)}
+                  className="min-w-[140px] rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-herme/30"
+                >
+                  <option value="">All departments</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>{department.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <span className="text-xs text-gray-600">{shiftEmployees.length} on shift</span>
+          </div>
+          {layoutType === 'type1' && (
+            <p className="text-xs text-gray-500">Drop multiple workers on the same day — bars share the column width</p>
+          )}
+        </div>
       </div>
 
-      {/* Shift workers — compact horizontal strip */}
+      {/* Shift workers — compact horizontal strip (Type 1 only) */}
+      {layoutType === 'type1' && (
       <div className="bg-white rounded-lg border border-gray-200 px-2 py-1.5">
+        {shiftEmployees.length === 0 ? (
+          <p className="text-xs text-gray-500 py-2 text-center">
+            No shift workers in this department. Choose another department or assign employees under HR Config.
+          </p>
+        ) : (
         <div className="flex items-center gap-2 overflow-x-auto">
           <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide shrink-0">Shift workers</span>
-          {shiftEmployees.map((employee) => (
+          {shiftEmployees.map((employee) => {
+            const colors = levelColors(employee, employeeLevels);
+            const level = resolveEmployeeLevel(employee, employeeLevels);
+            return (
             <div
               key={employee.id}
               draggable
@@ -299,19 +473,47 @@ export default function ShiftScheduleGrid({
               onDragEnd={() => setDragEmployeeId(null)}
               className={`flex items-center gap-1.5 px-2 py-1 rounded-md border cursor-grab active:cursor-grabbing text-xs select-none shrink-0 ${
                 dragEmployeeId === employee.id
-                  ? 'border-herme ring-1 ring-herme/30 bg-herme-light'
-                  : 'border-gray-200 bg-gray-50 hover:border-herme-muted'
-              }`}
+                  ? 'ring-1 ring-herme/40'
+                  : 'hover:brightness-95'
+              } ${colors.tag}`}
+              title={level ? `${employee.name} · ${level.levelName}` : employee.name}
             >
-              <GripVertical className="w-3 h-3 text-gray-400 shrink-0" />
-              <span className="font-medium text-gray-900 whitespace-nowrap">{employee.name}</span>
-              <span className="text-[10px] text-gray-500">{shiftHours(employee, employeeLevels)}h</span>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${colors.dot}`} aria-hidden />
+              <GripVertical className="w-3 h-3 opacity-40 shrink-0" />
+              <span className="font-medium whitespace-nowrap">{employee.name}</span>
+              <span className="text-[10px] opacity-70">{shiftHours(employee, employeeLevels)}h</span>
             </div>
-          ))}
+            );
+          })}
         </div>
+        )}
+        {levelsInView.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 mt-1.5 pt-1.5 border-t border-gray-100">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Level</span>
+            {levelsInView.map((level) => {
+              const colors = LEVEL_COLORS[level.id] ?? DEFAULT_LEVEL_COLORS;
+              return (
+                <span key={level.id} className="inline-flex items-center gap-1 text-[10px] text-gray-600">
+                  <span className={`w-2.5 h-2.5 rounded-sm ${colors.dot}`} aria-hidden />
+                  {level.levelName}
+                </span>
+              );
+            })}
+          </div>
+        )}
       </div>
+      )}
 
-      {/* Weekly time grid */}
+      {layoutType === 'type2' ? (
+        <ShiftScheduleType2View
+          shiftEmployees={shiftEmployees}
+          employeeLevels={employeeLevels}
+          shiftSchedules={shiftSchedules}
+          approvedLeaveRequests={approvedLeaveRequests}
+          weekDates={weekDates}
+          onSave={onSaveBatch}
+        />
+      ) : (
       <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
         <div className="min-w-[640px]">
           {/* Day headers with leave controls */}
@@ -320,11 +522,11 @@ export default function ShiftScheduleGrid({
             {weekDates.map((date) => {
               const d = new Date(`${date}T12:00:00`);
               const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-              const hasLeaveForDay = shiftSchedules.some((s) => s.date === date && s.type !== 'Work');
-              const withoutWork = shiftEmployees.filter((emp) => {
-                const s = scheduleFor(emp.id, date);
-                return !s || s.type !== 'Work';
-              });
+              const hasLeaveForDay = shiftEmployees.some((emp) => isOnLeave(emp.id, date));
+              const employeesOnLeave = shiftEmployees.filter((emp) => isOnLeave(emp.id, date));
+              const availableForLeave = shiftEmployees.filter(
+                (emp) => !hasWorkShift(emp.id, date) && !isOnLeave(emp.id, date),
+              );
               return (
                 <div
                   key={date}
@@ -337,36 +539,68 @@ export default function ShiftScheduleGrid({
                   </div>
                   <div className="text-[10px] text-gray-500">{d.getDate()}</div>
                   <div className="mt-1 border-t border-gray-200/80 pt-1 space-y-0.5 max-h-16 overflow-y-auto text-left">
-                    {withoutWork.length === 0 ? (
-                      <span className="text-[9px] text-gray-400 block text-center">OK</span>
+                    {employeesOnLeave.length === 0 && availableForLeave.length === 0 ? (
+                      <span className="text-[9px] text-gray-400 block text-center">—</span>
                     ) : (
-                      withoutWork.map((employee) => {
-                        const schedule = scheduleFor(employee.id, date);
-                        const leaveType = schedule && schedule.type !== 'Work' ? schedule.type : '';
-                        return (
-                          <div key={employee.id} className="flex items-center gap-0.5">
-                            <span className="text-[9px] text-gray-600 truncate max-w-[40%]" title={employee.name}>
-                              {employee.name.split(' ')[0]}
-                            </span>
-                            <select
-                              value={leaveType}
-                              onChange={(e) => {
-                                const type = e.target.value as ScheduleType | '';
-                                if (type) onUpsert(employee.id, date, type);
-                                else onClear(employee.id, date);
-                              }}
-                              className={`flex-1 min-w-0 px-0.5 py-0 border border-gray-300 rounded text-[9px] bg-white focus:outline-none focus:ring-1 focus:ring-herme ${
-                                leaveType ? LEAVE_BADGE[leaveType] ?? '' : ''
-                              }`}
-                            >
-                              <option value="">—</option>
-                              {LEAVE_TYPES.map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.value}</option>
-                              ))}
-                            </select>
-                          </div>
-                        );
-                      })
+                      <>
+                        {employeesOnLeave.map((employee) => {
+                          const leaveType = effectiveLeaveType(employee.id, date);
+                          const locked = isApprovedLeaveLocked(employee.id, date);
+                          return (
+                            <div key={employee.id} className="flex items-center gap-0.5">
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${levelColors(employee, employeeLevels).dot}`}
+                                aria-hidden
+                              />
+                              <span className="text-[9px] text-gray-600 truncate max-w-[40%]" title={employee.name}>
+                                {employee.name.split(' ')[0]}
+                              </span>
+                              {locked ? (
+                                <span
+                                  className={`flex-1 min-w-0 px-0.5 py-0 rounded text-[9px] text-center ${
+                                    LEAVE_BADGE[leaveType] ?? 'bg-gray-100 text-gray-700'
+                                  }`}
+                                  title="Approved leave request"
+                                >
+                                  {leaveType}
+                                </span>
+                              ) : (
+                                <select
+                                  value={leaveType}
+                                  onChange={(e) => {
+                                    const type = e.target.value as ScheduleType | '';
+                                    if (type) onUpsert(employee.id, date, type);
+                                    else onClear(employee.id, date);
+                                  }}
+                                  className={`flex-1 min-w-0 px-0.5 py-0 border border-gray-300 rounded text-[9px] bg-white focus:outline-none focus:ring-1 focus:ring-herme ${
+                                    leaveType ? LEAVE_BADGE[leaveType] ?? '' : ''
+                                  }`}
+                                >
+                                  <option value="">—</option>
+                                  {LEAVE_TYPES.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.value}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {availableForLeave.length > 0 && (
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              const employeeId = Number(e.target.value);
+                              if (employeeId) onUpsert(employeeId, date, 'DO');
+                            }}
+                            className="w-full px-0.5 py-0 border border-dashed border-gray-300 rounded text-[9px] bg-white text-gray-500 focus:outline-none focus:ring-1 focus:ring-herme"
+                          >
+                            <option value="">+ Assign leave</option>
+                            {availableForLeave.map((employee) => (
+                              <option key={employee.id} value={employee.id}>{employee.name}</option>
+                            ))}
+                          </select>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -392,7 +626,7 @@ export default function ShiftScheduleGrid({
             {weekDates.map((date) => {
                 const d = new Date(`${date}T12:00:00`);
                 const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                const hasLeaveForDay = shiftSchedules.some((s) => s.date === date && s.type !== 'Work');
+                const hasLeaveForDay = shiftEmployees.some((emp) => isOnLeave(emp.id, date));
                 const workBars = workSchedulesForDay(date);
 
                 return (
@@ -426,7 +660,7 @@ export default function ShiftScheduleGrid({
                     ))}
 
                     {/* Work shift bars */}
-                    {workBars.map((schedule) => {
+                    {workBars.map((schedule, barIndex) => {
                       const employee = shiftEmployees.find((e) => e.id === schedule.employeeId);
                       if (!employee || !schedule.startTime) return null;
                       const hours = shiftHours(employee, employeeLevels);
@@ -439,22 +673,40 @@ export default function ShiftScheduleGrid({
                       const draftEndM = draftEndMin % 60;
                       const draftEnd = `${String(draftEndH).padStart(2, '0')}:${String(draftEndM).padStart(2, '0')}`;
                       const endTime = isDragging ? draftEnd : hm(schedule.endTime);
+                      const barCount = workBars.length;
+                      const columnStyle = barColumnStyle(barIndex, barCount);
+                      const compact = barCount >= 2;
+                      const veryCompact = barCount >= 3;
+                      const label = veryCompact
+                        ? employee.name.split(' ')[0]
+                        : employee.name;
+                      const barFontSize = veryCompact ? 8 : compact ? 9 : rowHeight < 16 ? 9 : 11;
                       return (
                         <div
                           key={schedule.id}
                           onPointerDown={(e) => startBarDrag(e, employee.id, date, hours, top)}
-                          className={`group absolute left-0.5 right-0.5 rounded border text-white shadow-sm cursor-grab overflow-hidden z-10 select-none touch-none ${
+                          className={`group absolute rounded border text-white shadow-sm cursor-grab overflow-hidden z-10 select-none touch-none ${
                             isDragging ? 'cursor-grabbing ring-1 ring-white/60 shadow-md z-20' : ''
-                          } ${employeeColor(employee.id)}`}
-                          style={{ top: displayTop, height: Math.max(height, rowHeight), fontSize: rowHeight < 16 ? 9 : 11 }}
+                          } ${levelColors(employee, employeeLevels).bar}`}
+                          style={{
+                            top: displayTop,
+                            height: Math.max(height, rowHeight),
+                            fontSize: barFontSize,
+                            ...columnStyle,
+                          }}
                           title={`${employee.name}: ${draftStart} – ${endTime}`}
                         >
-                          <div className="flex items-center justify-between gap-0.5 px-1 py-0.5 min-h-0 h-full">
+                          <div className={`flex items-center justify-between min-h-0 h-full ${veryCompact ? 'px-0.5 py-px' : 'gap-0.5 px-1 py-0.5'}`}>
                             <div className="min-w-0 flex-1 leading-tight">
-                              <div className="font-semibold truncate">{employee.name}</div>
-                              {height >= rowHeight * 2 && (
+                              <div className={`truncate ${veryCompact ? 'font-medium' : 'font-semibold'}`}>{label}</div>
+                              {!compact && height >= rowHeight * 2 && (
                                 <div className="opacity-90 truncate" style={{ fontSize: rowHeight < 16 ? 8 : 9 }}>
                                   {draftStart}–{endTime}
+                                </div>
+                              )}
+                              {compact && !veryCompact && height >= rowHeight * 2 && (
+                                <div className="opacity-90 truncate" style={{ fontSize: 8 }}>
+                                  {draftStart}
                                 </div>
                               )}
                             </div>
@@ -465,11 +717,11 @@ export default function ShiftScheduleGrid({
                                 e.stopPropagation();
                                 onClear(employee.id, date);
                               }}
-                              className="shrink-0 p-px rounded bg-black/25 hover:bg-red-600 text-white transition-colors"
+                              className="shrink-0 p-0.5 rounded bg-black/25 hover:bg-red-600 text-white transition-colors"
                               title="Delete shift"
                               aria-label={`Delete shift for ${employee.name}`}
                             >
-                              <Trash2 style={{ width: rowHeight < 16 ? 10 : 12, height: rowHeight < 16 ? 10 : 12 }} />
+                              <Trash2 style={{ width: veryCompact ? 12 : rowHeight < 16 ? 15 : 18, height: veryCompact ? 12 : rowHeight < 16 ? 15 : 18 }} />
                             </button>
                           </div>
                         </div>
@@ -482,6 +734,7 @@ export default function ShiftScheduleGrid({
 
           </div>
         </div>
-      </div>
+      )}
+    </div>
   );
 }

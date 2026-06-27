@@ -1,8 +1,8 @@
 import { HR_API_BASE } from '../../config/hrBackend';
 import type {
-  AttendanceRecord, CompanySetting, CountryOption, Department, Division, DivisionTreeNode,
+  AttendanceRecord, CompanySetting, CompanySettingUpdate, CountryOption, Department, Division, DivisionTreeNode,
   Employee, EmployeeCreateRequest, EmployeeLevel, EmployeeRequest,
-  LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, ScheduleType, ShiftSchedule,
+  LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, PublicHolidayRequest, ScheduleType, ShiftSchedule,
 } from './types';
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -112,8 +112,14 @@ export const hrApi = {
     remove: (id: number) => http<void>(`/shift-schedules/${id}`, { method: 'DELETE' }),
   },
   holidays: {
-    list: () => http<PublicHoliday[]>('/public-holidays'),
-    toggle: (id: number) => http<PublicHoliday>(`/public-holidays/${id}/toggle-recognized`, { method: 'POST' }),
+    list: (countryCode?: string) => {
+      const params = countryCode ? `?countryCode=${encodeURIComponent(countryCode)}` : '';
+      return http<PublicHoliday[]>(`/public-holidays${params}`);
+    },
+    create: (body: PublicHolidayRequest) =>
+      http<PublicHoliday>('/public-holidays', { method: 'POST', body: JSON.stringify(body) }),
+    toggleRecognized: (id: number) => http<PublicHoliday>(`/public-holidays/${id}/toggle-recognized`, { method: 'POST' }),
+    toggleGazetted: (id: number) => http<PublicHoliday>(`/public-holidays/${id}/toggle-gazetted`, { method: 'POST' }),
   },
   levels: {
     list: () => http<EmployeeLevel[]>('/employee-levels'),
@@ -124,7 +130,7 @@ export const hrApi = {
   settings: {
     get: () => http<CompanySetting>('/settings'),
     countries: () => http<CountryOption[]>('/settings/countries'),
-    update: (body: { publicHolidayPayMultiplier?: number; replacementPublicHolidayEnabled?: boolean; operatingCountryCode?: string }) =>
+    update: (body: CompanySettingUpdate) =>
       http<CompanySetting>('/settings', { method: 'PUT', body: JSON.stringify(body) }),
   },
   org: {

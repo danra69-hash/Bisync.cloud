@@ -10,7 +10,7 @@ public static class OrgSeeder
     static readonly DivisionSeed[] Seeds =
     [
         new("Operations", "OPS", ["Operations", "Location Management"]),
-        new("Food & Beverage", "FNB", ["Kitchen"]),
+        new("Food & Beverage", "FNB", ["Kitchen", "Service"]),
         new("Finance", "FIN", ["Finance"]),
         new("Retail", "RTL", ["Retail", "Merchandising", "Customer Experience"]),
         new("Human Resources", "HR", ["People"]),

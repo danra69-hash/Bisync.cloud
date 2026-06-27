@@ -152,6 +152,12 @@ export interface ShiftSchedule {
   type: ScheduleType;
 }
 
+export type ScheduleLeaveType = Exclude<ScheduleType, 'Work'>;
+
+export type ScheduleBatchChange =
+  | { action: 'clear'; employeeId: number; date: string }
+  | { action: 'upsert'; employeeId: number; date: string; type: ScheduleType; startTime?: string };
+
 export interface PublicHoliday {
   id: number;
   name: string;
@@ -159,6 +165,17 @@ export interface PublicHoliday {
   isRecognized: boolean;
   countryCode?: string | null;
   catalogKey?: string | null;
+  isRecurringAnnually?: boolean;
+  isGazetted?: boolean;
+}
+
+export interface PublicHolidayRequest {
+  name: string;
+  date: string;
+  isRecognized: boolean;
+  isRecurringAnnually: boolean;
+  isGazetted?: boolean;
+  countryCode: string;
 }
 
 export interface EmployeeLevel {
@@ -180,7 +197,21 @@ export interface CompanySetting {
   publicHolidayPayMultiplier: number;
   replacementPublicHolidayEnabled: boolean;
   operatingCountryCode: string;
+  gazettedPhReplacementDayEnabled: boolean;
+  gazettedPhNormalHoursRate: number;
+  gazettedPhOvertimeHoursRate: number;
+  nonGazettedPhReplacementDayEnabled: boolean;
 }
+
+export type CompanySettingUpdate = Partial<Pick<CompanySetting,
+  | 'publicHolidayPayMultiplier'
+  | 'replacementPublicHolidayEnabled'
+  | 'operatingCountryCode'
+  | 'gazettedPhReplacementDayEnabled'
+  | 'gazettedPhNormalHoursRate'
+  | 'gazettedPhOvertimeHoursRate'
+  | 'nonGazettedPhReplacementDayEnabled'
+>>;
 
 export interface CountryOption {
   countryCode: string;

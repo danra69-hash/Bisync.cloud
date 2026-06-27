@@ -1,26 +1,24 @@
-import type { ReactNode } from 'react';
 import { HrConfigTabBar } from './HrConfigTabBar';
 import { HrConfigTabPanels } from './HrConfigTabPanels';
-import { HR_EMPLOYEE_CONFIG_TABS, type HrEmployeeConfigTabId } from './hrConfigTabs';
+import { HR_CONFIG_TABS, type HrConfigTabId } from './hrConfigTabs';
 
 type Props = {
-  tab: HrEmployeeConfigTabId;
-  onTabChange: (tab: HrEmployeeConfigTabId) => void;
+  tab: HrConfigTabId;
+  onTabChange: (tab: HrConfigTabId) => void;
   onDataChanged?: () => void;
-  header?: ReactNode;
+  selectedCompanyId?: number | null;
 };
 
 export function HrEmployeeConfigSection({
   tab,
   onTabChange,
   onDataChanged,
-  header,
+  selectedCompanyId = null,
 }: Props) {
   return (
     <div className="space-y-6">
-      {header}
-      <HrConfigTabBar tabs={HR_EMPLOYEE_CONFIG_TABS} active={tab} onChange={onTabChange} />
-      <HrConfigTabPanels tab={tab} onDataChanged={onDataChanged} />
+      <HrConfigTabBar tabs={HR_CONFIG_TABS} active={tab} onChange={onTabChange} />
+      <HrConfigTabPanels tab={tab} onDataChanged={onDataChanged} selectedCompanyId={selectedCompanyId} />
     </div>
   );
 }

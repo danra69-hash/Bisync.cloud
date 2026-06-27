@@ -1,14 +1,18 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
-import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet } from 'lucide-react';
+import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
+import { api as bisyncApi, type AppUser } from '../../api';
 import { hrApi as api } from './api';
 import EmployeePortal from './EmployeePortal';
 import { PayrollSection } from '../../components/payroll/PayrollSection';
 import ShiftScheduleGrid, { initialScheduleWeekStart } from './ShiftScheduleGrid';
+import { AttendanceDatePicker } from './AttendanceDatePicker';
+import { EmployeeTab } from '../../components/admin/EmployeeTab';
+import { resolveEmployeeOrg } from '../../components/admin/orgSelectShared';
 import { HrEmployeeConfigSection } from '../../components/admin/HrEmployeeConfigSection';
-import type { HrEmployeeConfigTabId } from '../../components/admin/hrConfigTabs';
+import type { HrConfigTabId } from '../../components/admin/hrConfigTabs';
 import type {
-  AttendanceRecord, Employee, EmployeeLevel,
+  AttendanceRecord, DivisionTreeNode, Employee, EmployeeLevel,
   LeaveBalanceRow, LeaveRequest, PublicHoliday, ScheduleType, ShiftSchedule,
 } from './types';
 
@@ -19,6 +23,21 @@ const iso = (d: Date) => {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+};
+
+const parseIsoLocal = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const formatDayHeader = (s: string) =>
+  parseIsoLocal(s).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+const mondayOfWeekFromDate = (date: Date) => {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d;
 };
 
 /** "09:00:00" -> "09:00" */
@@ -73,33 +92,40 @@ const getLeaveTypeLabel = (type: string) => {
 
 // ---------- app ----------
 
-type HrModuleProps = { embedded?: boolean };
+type HrModuleProps = { embedded?: boolean; selectedCompanyId?: number | null };
 
-export default function HrModule({ embedded = false }: HrModuleProps) {
-  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'portal' | 'payroll'>('employees');
-  const [hrConfigTab, setHrConfigTab] = useState<HrEmployeeConfigTabId>('employee');
+export default function HrModule({ embedded = false, selectedCompanyId = null }: HrModuleProps) {
+  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'hrconfig' | 'portal' | 'payroll'>('employees');
+  const [hrConfigTab, setHrConfigTab] = useState<HrConfigTabId>('ph');
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [platformUsers, setPlatformUsers] = useState<AppUser[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalanceRow[]>([]);
   const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>([]);
   const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>([]);
   const [employeeLevels, setEmployeeLevels] = useState<EmployeeLevel[]>([]);
+  const [orgTree, setOrgTree] = useState<DivisionTreeNode[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const [attendanceView, setAttendanceView] = useState<'month' | 'week'>('month');
+  const [attendanceView, setAttendanceView] = useState<'month' | 'week'>('week');
+  const [attendanceAnchorDate, setAttendanceAnchorDate] = useState(() => iso(new Date()));
+  const [attendanceCalendarOpen, setAttendanceCalendarOpen] = useState(false);
+  const [attendanceCalendarMonth, setAttendanceCalendarMonth] = useState(() => new Date().getMonth());
+  const [attendanceCalendarYear, setAttendanceCalendarYear] = useState(() => new Date().getFullYear());
   const [selectedAttendanceEmployee, setSelectedAttendanceEmployee] = useState<Employee | null>(null);
+  const shiftAttendanceScrollRef = useRef<HTMLDivElement>(null);
+  const nonShiftAttendanceScrollRef = useRef<HTMLDivElement>(null);
 
   const [scheduleWeekStart, setScheduleWeekStart] = useState(initialScheduleWeekStart);
+  const [scheduleDepartmentId, setScheduleDepartmentId] = useState<number | null>(null);
 
   const today = new Date();
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const monthDates = Array.from({ length: daysInMonth }, (_, i) => iso(new Date(currentYear, currentMonth, i + 1)));
-  const monthStart = monthDates[0];
-  const monthEnd = monthDates[monthDates.length - 1];
   const yearStart = `${currentYear}-01-01`;
   const yearEnd = `${currentYear}-12-31`;
 
@@ -129,20 +155,39 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
 
   useEffect(() => {
     run(async () => {
-      const [emps, att, holidays, levels] = await Promise.all([
+      const [emps, users, holidays, levels, tree] = await Promise.all([
         api.employees.list(),
-        api.attendance.list(monthStart, monthEnd),
+        bisyncApi.users().catch(() => [] as AppUser[]),
         api.holidays.list(),
         api.levels.list(),
+        api.org.tree(),
       ]);
       setEmployees(emps);
-      setAttendance(att);
+      setPlatformUsers(users);
       setPublicHolidays(holidays);
       setEmployeeLevels(levels);
+      setOrgTree(tree);
       await refreshLeave();
       await refreshSchedules();
     });
-  }, [run, refreshLeave, refreshSchedules, monthStart, monthEnd]);
+  }, [run, refreshLeave, refreshSchedules]);
+
+  const attendanceFetchRange = useMemo(() => {
+    const anchor = parseIsoLocal(attendanceAnchorDate);
+    if (attendanceView === 'week') {
+      const monday = mondayOfWeekFromDate(anchor);
+      const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+      return { start: iso(monday), end: iso(sunday) };
+    }
+    const start = iso(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
+    return { start, end: attendanceAnchorDate };
+  }, [attendanceAnchorDate, attendanceView]);
+
+  useEffect(() => {
+    run(async () => {
+      setAttendance(await api.attendance.list(attendanceFetchRange.start, attendanceFetchRange.end));
+    });
+  }, [run, attendanceFetchRange.start, attendanceFetchRange.end]);
 
   const employeeName = (id: number) => employees.find(e => e.id === id)?.name ?? `#${id}`;
   const employeeIsShift = (employee: Employee) => {
@@ -163,6 +208,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
     if (status === 'approved') await api.leaveRequests.approve(id);
     else await api.leaveRequests.reject(id);
     await refreshLeave();
+    await refreshSchedules();
   });
 
   // ---------- schedule actions ----------
@@ -170,6 +216,15 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
   const upsertSchedule = (employeeId: number, date: string, type: ScheduleType, startTime?: string) =>
     run(async () => {
       if (type === 'Work' && !startTime) return;
+      if (type === 'Work') {
+        const scheduledLeave = shiftSchedules.find(s => s.employeeId === employeeId && s.date === date && s.type !== 'Work');
+        const approvedLeave = companyApprovedLeaves.some(r =>
+          r.employeeId === employeeId && date >= r.startDate && date <= r.endDate);
+        if (scheduledLeave || approvedLeave) {
+          setError('Cannot place a shift while the employee is on leave for this date.');
+          return;
+        }
+      }
       await api.schedules.upsert({ employeeId, date, type, startTime: startTime ? `${startTime}:00` : null });
       await refreshSchedules();
     });
@@ -186,20 +241,18 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
   // ---------- derived ----------
 
   const getAttendanceDates = () => {
+    const anchor = parseIsoLocal(attendanceAnchorDate);
     const dates: string[] = [];
     if (attendanceView === 'week') {
-      const currentDay = today.getDay();
-      const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
-      const monday = new Date(today);
-      monday.setDate(today.getDate() + mondayOffset);
+      const monday = mondayOfWeekFromDate(anchor);
       for (let i = 0; i < 7; i++) {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
+        const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
         dates.push(iso(d));
       }
     } else {
-      const d = new Date(currentYear, currentMonth, 1);
-      while (d <= today) {
+      const d = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      const end = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+      while (d <= end) {
         dates.push(iso(d));
         d.setDate(d.getDate() + 1);
       }
@@ -208,17 +261,163 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
   };
 
   const attendanceDates = getAttendanceDates();
-  const shiftEmployees = employees.filter(e => employeeIsShift(e));
-  const approvedLeaves = leaveRequests.filter(r => r.status === 'Approved');
+  const attendanceWeekView = attendanceView === 'week';
+
+  const scrollAttendanceTablesRight = useCallback(() => {
+    for (const el of [shiftAttendanceScrollRef.current, nonShiftAttendanceScrollRef.current]) {
+      if (el) el.scrollLeft = el.scrollWidth;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'attendance') setAttendanceCalendarOpen(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'attendance' && attendanceView === 'month') {
+      requestAnimationFrame(() => scrollAttendanceTablesRight());
+    }
+  }, [activeTab, attendanceView, attendanceDates.length, scrollAttendanceTablesRight]);
+
+  const platformUserFor = useCallback(
+    (employee: Employee) =>
+      platformUsers.find(u => u.employeeId === employee.id)
+      ?? platformUsers.find(u => u.email.toLowerCase() === employee.email.toLowerCase()),
+    [platformUsers],
+  );
+
+  const companyEmployees = useMemo(() => {
+    if (!selectedCompanyId) return [];
+    return employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
+  }, [employees, platformUsers, selectedCompanyId, platformUserFor]);
+
+  useEffect(() => {
+    if (selectedAttendanceEmployee && !companyEmployees.some(e => e.id === selectedAttendanceEmployee.id)) {
+      setSelectedAttendanceEmployee(null);
+    }
+  }, [companyEmployees, selectedAttendanceEmployee]);
+
+  const shiftEmployees = companyEmployees.filter(e => employeeIsShift(e));
+  const nonShiftEmployees = companyEmployees.filter(e => !employeeIsShift(e));
+
+  const companyEmployeeIds = useMemo(
+    () => new Set(companyEmployees.map(e => e.id)),
+    [companyEmployees],
+  );
+
+  const companyLeaveRequests = useMemo(
+    () => leaveRequests.filter(r => companyEmployeeIds.has(r.employeeId)),
+    [leaveRequests, companyEmployeeIds],
+  );
+
+  const companyLeaveBalances = useMemo(
+    () => leaveBalances.filter(b => companyEmployeeIds.has(b.employeeId)),
+    [leaveBalances, companyEmployeeIds],
+  );
+
+  const companyApprovedLeaves = useMemo(
+    () => companyLeaveRequests.filter(r => r.status === 'Approved'),
+    [companyLeaveRequests],
+  );
+
+  const saveScheduleBatch = (changes: import('./types').ScheduleBatchChange[]) =>
+    run(async () => {
+      for (const change of changes) {
+        if (change.action === 'clear') {
+          const schedule = shiftSchedules.find(
+            (s) => s.employeeId === change.employeeId && s.date === change.date,
+          );
+          if (schedule) await api.schedules.remove(schedule.id);
+          continue;
+        }
+
+        if (change.type === 'Work') {
+          const scheduledLeave = shiftSchedules.find(
+            (s) =>
+              s.employeeId === change.employeeId &&
+              s.date === change.date &&
+              s.type !== 'Work',
+          );
+          const approvedLeave = companyApprovedLeaves.some(
+            (r) =>
+              r.employeeId === change.employeeId &&
+              change.date >= r.startDate &&
+              change.date <= r.endDate,
+          );
+          if (scheduledLeave || approvedLeave) {
+            setError('Cannot place a shift while the employee is on leave for this date.');
+            return;
+          }
+        }
+
+        await api.schedules.upsert({
+          employeeId: change.employeeId,
+          date: change.date,
+          type: change.type,
+          startTime: change.startTime ? `${change.startTime}:00` : null,
+        });
+      }
+      await refreshSchedules();
+    });
+
+  const companyShiftSchedules = useMemo(
+    () => shiftSchedules.filter(s => companyEmployeeIds.has(s.employeeId)),
+    [shiftSchedules, companyEmployeeIds],
+  );
+
+  const scheduleDepartments = useMemo(() => {
+    const departments = orgTree.flatMap(d => d.departments);
+    return [...departments].sort((a, b) => a.name.localeCompare(b.name));
+  }, [orgTree]);
+
+  const employeeInDepartment = useCallback((employee: Employee, departmentId: number | null) => {
+    if (!departmentId) return true;
+    return resolveEmployeeOrg(employee, orgTree).departmentId === departmentId;
+  }, [orgTree]);
+
+  const scheduleShiftEmployees = useMemo(
+    () => shiftEmployees.filter(e => employeeInDepartment(e, scheduleDepartmentId)),
+    [shiftEmployees, scheduleDepartmentId, employeeInDepartment],
+  );
+
+  const scheduleShiftSchedules = useMemo(
+    () => companyShiftSchedules.filter(s => {
+      const employee = employees.find(e => e.id === s.employeeId);
+      return employee ? employeeInDepartment(employee, scheduleDepartmentId) : false;
+    }),
+    [companyShiftSchedules, employees, scheduleDepartmentId, employeeInDepartment],
+  );
+
+  useEffect(() => {
+    setScheduleDepartmentId(null);
+  }, [selectedCompanyId]);
 
   const recordFor = (employeeId: number, date: string) =>
     attendance.find(a => a.employeeId === employeeId && a.date === date);
+
+  const openAttendanceCalendar = () => {
+    const anchor = parseIsoLocal(attendanceAnchorDate);
+    setAttendanceCalendarMonth(anchor.getMonth());
+    setAttendanceCalendarYear(anchor.getFullYear());
+    setAttendanceCalendarOpen(true);
+  };
+
+  const handleAttendanceDateSelect = (date: string) => {
+    setAttendanceAnchorDate(date);
+    setAttendanceCalendarOpen(false);
+  };
+
+  const attendanceDateLabel = parseIsoLocal(attendanceAnchorDate).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
   // ---------- render ----------
 
   return (
     <>
-    <div className={`${embedded ? 'min-h-0' : 'size-full'} bg-herme-cream overflow-auto`}>
+    <div className={`${embedded ? 'flex-1 min-h-[calc(100vh-5.5rem)]' : 'size-full'} bg-herme-cream overflow-auto flex flex-col`}>
       {!embedded && (
         <div className="bg-white border-b border-herme-muted px-8 py-6">
           <h1 className="text-3xl text-herme-ink mb-2">HR Management System</h1>
@@ -235,6 +434,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
               ['attendance', Calendar, 'Attendance'],
               ['leave', FileText, 'Leave Requests'],
               ['schedule', Clock, 'Schedule'],
+              ['hrconfig', Settings, 'HR Config'],
               ['portal', LayoutDashboard, 'Employee Portal'],
               ['payroll', Wallet, 'Payroll'],
             ] as const).map(([tab, Icon, label]) => (
@@ -265,23 +465,26 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
       <div className={embedded ? 'p-4' : 'p-8'}>
         {/* Employees Tab */}
         {activeTab === 'employees' && (
-          <HrEmployeeConfigSection
-            tab={hrConfigTab}
-            onTabChange={setHrConfigTab}
+          <EmployeeTab
+            selectedCompanyId={selectedCompanyId}
             onDataChanged={() => {
               void refreshHrConfigData();
               void refreshEmployees();
               void refreshLeave();
             }}
-            header={(
-              <div>
-                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Human Resources</p>
-                <h2 className="text-lg font-semibold">Employee Directory</h2>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Manage employee records, platform access, holidays, levels, and organizational structure.
-                </p>
-              </div>
-            )}
+          />
+        )}
+
+        {activeTab === 'hrconfig' && (
+          <HrEmployeeConfigSection
+            tab={hrConfigTab}
+            onTabChange={setHrConfigTab}
+            selectedCompanyId={selectedCompanyId}
+            onDataChanged={() => {
+              void refreshHrConfigData();
+              void refreshEmployees();
+              void refreshLeave();
+            }}
           />
         )}
 
@@ -305,44 +508,77 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                     Month to Date
                   </button>
                 </div>
-                <div className="text-sm text-gray-600">
-                  {today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={openAttendanceCalendar}
+                    className="text-sm text-gray-600 hover:text-herme border-b border-dotted border-gray-400 hover:border-herme transition-colors"
+                  >
+                    {attendanceDateLabel}
+                  </button>
+                  {attendanceCalendarOpen && (
+                    <AttendanceDatePicker
+                      selectedDate={attendanceAnchorDate}
+                      viewMode={attendanceView}
+                      viewMonth={attendanceCalendarMonth}
+                      viewYear={attendanceCalendarYear}
+                      onViewMonthChange={(month, year) => {
+                        setAttendanceCalendarMonth(month);
+                        setAttendanceCalendarYear(year);
+                      }}
+                      onSelect={handleAttendanceDateSelect}
+                      onClose={() => setAttendanceCalendarOpen(false)}
+                    />
+                  )}
                 </div>
               </div>
             </div>
 
+            {!selectedCompanyId ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-600">
+                Select a company in the header to view attendance.
+              </div>
+            ) : (
+            <>
             {/* Shift Employees */}
             <div>
               <h3 className="text-xl text-gray-900 mb-4">Shift Employees</h3>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-auto">
-                <table className="w-full">
+              <div
+                ref={shiftAttendanceScrollRef}
+                className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : 'overflow-x-auto'}`}
+              >
+                <table className={attendanceWeekView ? 'w-full table-fixed' : 'min-w-max'}>
                   <thead className="bg-gray-50">
                     <tr>
-                      <th rowSpan={2} className="px-4 py-3 text-left text-sm text-gray-700 border-b-2 border-gray-200 sticky left-0 bg-gray-50 z-10">Name</th>
+                      <th rowSpan={2} className={`px-2 py-2 text-left text-xs text-gray-700 border-b-2 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 min-w-[120px]'}`}>Name</th>
                       {attendanceDates.map((date) => (
-                        <th key={date} colSpan={6} className="px-2 py-2 text-center text-sm text-gray-700 border-b border-l border-gray-200">
-                          {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        <th key={date} colSpan={4} className={`px-0.5 py-1.5 text-center text-[11px] text-gray-700 border-b border-l border-gray-200 ${attendanceWeekView ? '' : 'min-w-[128px]'}`}>
+                          {formatDayHeader(date)}
                         </th>
                       ))}
                     </tr>
                     <tr>
                       {attendanceDates.map((date) => (
                         <React.Fragment key={date}>
-                          <th className="px-2 py-2 text-center text-xs text-gray-600 border-b border-l border-gray-200">Sched In</th>
-                          <th className="px-2 py-2 text-center text-xs text-gray-600 border-b border-gray-200">Act In</th>
-                          <th className="px-2 py-2 text-center text-xs text-gray-600 border-b border-gray-200">Sched Out</th>
-                          <th className="px-2 py-2 text-center text-xs text-gray-600 border-b border-gray-200">Act Out</th>
-                          <th className="px-2 py-2 text-center text-xs text-gray-600 border-b border-gray-200">Hours</th>
-                          <th className="px-2 py-2 text-center text-xs text-gray-600 border-b border-gray-200">OT</th>
+                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-l border-gray-200">In</th>
+                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-gray-200">Out</th>
+                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-gray-200">Hrs</th>
+                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-gray-200">OT</th>
                         </React.Fragment>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {shiftEmployees.map((employee) => (
+                    {shiftEmployees.length === 0 ? (
+                      <tr>
+                        <td colSpan={1 + attendanceDates.length * 4} className="px-4 py-6 text-center text-sm text-gray-500">
+                          No shift employees for this company.
+                        </td>
+                      </tr>
+                    ) : shiftEmployees.map((employee) => (
                       <tr key={employee.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm sticky left-0 bg-white border-r border-gray-200">
-                          <button onClick={() => setSelectedAttendanceEmployee(employee)} className="text-herme hover:text-herme-dark hover:underline">
+                        <td className={`px-2 py-2 text-xs text-gray-900 border-r border-gray-200 truncate ${attendanceWeekView ? '' : 'sticky left-0 z-10 bg-white'}`}>
+                          <button onClick={() => setSelectedAttendanceEmployee(employee)} className="text-herme hover:text-herme-dark hover:underline text-left truncate max-w-full">
                             {employee.name}
                           </button>
                         </td>
@@ -351,12 +587,10 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                           if (!record) {
                             return (
                               <React.Fragment key={date}>
-                                <td className="px-2 py-3 text-center text-xs text-gray-400 border-l border-gray-200">-</td>
-                                <td className="px-2 py-3 text-center text-xs text-gray-400">-</td>
-                                <td className="px-2 py-3 text-center text-xs text-gray-400">-</td>
-                                <td className="px-2 py-3 text-center text-xs text-gray-400">-</td>
-                                <td className="px-2 py-3 text-center text-xs text-gray-400">-</td>
-                                <td className="px-2 py-3 text-center text-xs text-gray-400">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400 border-l border-gray-200">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400">-</td>
                               </React.Fragment>
                             );
                           }
@@ -367,27 +601,29 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                           const earlyOut = so && ao ? isEarlyOut(so, ao) : false;
                           return (
                             <React.Fragment key={date}>
-                              <td className="px-2 py-3 text-center text-xs text-gray-900 border-l border-gray-200">{si || '-'}</td>
-                              <td className="px-2 py-3 text-center text-xs">
-                                {record.status === 'Absent' ? <span className="text-red-600">Absent</span> : (
-                                  <div className="flex flex-col items-center">
-                                    <span className="text-gray-900">{ai || '-'}</span>
-                                    {late && <span className="text-red-600">âš </span>}
-                                  </div>
+                              <td className="px-0.5 py-1.5 text-center text-[10px] border-l border-gray-200 leading-tight">
+                                {record.status === 'Absent' ? (
+                                  <span className="text-red-600">Absent</span>
+                                ) : (
+                                  <>
+                                    <div className="text-gray-500">{si || '-'}</div>
+                                    <div className={late ? 'text-red-600' : 'text-gray-900'}>{ai || '-'}</div>
+                                  </>
                                 )}
                               </td>
-                              <td className="px-2 py-3 text-center text-xs text-gray-900">{so || '-'}</td>
-                              <td className="px-2 py-3 text-center text-xs">
-                                {record.status === 'Absent' ? <span className="text-gray-400">-</span> : (
-                                  <div className="flex flex-col items-center">
-                                    <span className="text-gray-900">{ao || '-'}</span>
-                                    {earlyOut && <span className="text-orange-600">âš </span>}
-                                  </div>
+                              <td className="px-0.5 py-1.5 text-center text-[10px] leading-tight">
+                                {record.status === 'Absent' ? (
+                                  <span className="text-gray-400">-</span>
+                                ) : (
+                                  <>
+                                    <div className="text-gray-500">{so || '-'}</div>
+                                    <div className={earlyOut ? 'text-orange-600' : 'text-gray-900'}>{ao || '-'}</div>
+                                  </>
                                 )}
                               </td>
-                              <td className="px-2 py-3 text-center text-xs text-gray-900">{hours ? `${hours.actual.toFixed(1)}h` : '-'}</td>
-                              <td className="px-2 py-3 text-center text-xs">
-                                {hours && hours.overtime > 0 ? <span className="text-herme">{hours.overtime.toFixed(1)}h</span> : <span className="text-gray-400">-</span>}
+                              <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-900">{hours ? `${hours.actual.toFixed(1)}` : '-'}</td>
+                              <td className="px-0.5 py-1.5 text-center text-[10px]">
+                                {hours && hours.overtime > 0 ? <span className="text-herme">{hours.overtime.toFixed(1)}</span> : <span className="text-gray-400">-</span>}
                               </td>
                             </React.Fragment>
                           );
@@ -402,30 +638,39 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
             {/* Non-Shift Employees */}
             <div>
               <h3 className="text-xl text-gray-900 mb-4">Non-Shift Employees</h3>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-auto">
-                <table className="w-full">
+              <div
+                ref={nonShiftAttendanceScrollRef}
+                className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : 'overflow-x-auto'}`}
+              >
+                <table className={attendanceWeekView ? 'w-full table-fixed' : 'min-w-max'}>
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-6 py-3 text-left text-sm text-gray-700">Name</th>
+                      <th className={`px-2 py-2 text-left text-xs text-gray-700 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 min-w-[120px]'}`}>Name</th>
                       {attendanceDates.map((date) => (
-                        <th key={date} className="px-4 py-3 text-center text-sm text-gray-700">
-                          {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        <th key={date} className={`px-0.5 py-2 text-center text-[11px] text-gray-700 border-l border-gray-200 ${attendanceWeekView ? '' : 'min-w-[52px]'}`}>
+                          {formatDayHeader(date)}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {employees.filter(e => !employeeIsShift(e)).map((employee) => (
+                    {nonShiftEmployees.length === 0 ? (
+                      <tr>
+                        <td colSpan={1 + attendanceDates.length} className="px-4 py-6 text-center text-sm text-gray-500">
+                          No non-shift employees for this company.
+                        </td>
+                      </tr>
+                    ) : nonShiftEmployees.map((employee) => (
                       <tr key={employee.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">{employee.name}</td>
+                        <td className={`px-2 py-2 text-xs text-gray-900 border-r border-gray-200 truncate ${attendanceWeekView ? '' : 'sticky left-0 z-10 bg-white'}`}>{employee.name}</td>
                         {attendanceDates.map((date) => {
                           const record = recordFor(employee.id, date);
                           return (
-                            <td key={date} className="px-4 py-3 text-center text-xs">
-                              {record?.status === 'Present' ? <span className="text-green-600">Present</span>
-                                : record?.status === 'Absent' ? <span className="text-red-600">Absent</span>
-                                : record?.status === 'Late' ? <span className="text-orange-600">Late</span>
-                                : record?.status === 'HalfDay' ? <span className="text-herme">Half Day</span>
+                            <td key={date} className="px-0.5 py-2 text-center text-[10px] border-l border-gray-200">
+                              {record?.status === 'Present' ? <span className="text-green-600">P</span>
+                                : record?.status === 'Absent' ? <span className="text-red-600">A</span>
+                                : record?.status === 'Late' ? <span className="text-orange-600">L</span>
+                                : record?.status === 'HalfDay' ? <span className="text-herme">½</span>
                                 : <span className="text-gray-400">-</span>}
                             </td>
                           );
@@ -436,6 +681,8 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                 </table>
               </div>
             </div>
+            </>
+            )}
           </div>
         )}
 
@@ -444,21 +691,33 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl text-gray-900">Leave Requests</h2>
+              {selectedCompanyId && (
               <div className="flex gap-4 text-sm">
                 <div className="flex items-center gap-2">
                   <span className={`w-3 h-3 rounded-full ${getStatusColor('Pending')}`}></span>
-                  <span className="text-gray-600">Pending: {leaveRequests.filter(r => r.status === 'Pending').length}</span>
+                  <span className="text-gray-600">Pending: {companyLeaveRequests.filter(r => r.status === 'Pending').length}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`w-3 h-3 rounded-full ${getStatusColor('Approved')}`}></span>
-                  <span className="text-gray-600">Approved: {leaveRequests.filter(r => r.status === 'Approved').length}</span>
+                  <span className="text-gray-600">Approved: {companyLeaveRequests.filter(r => r.status === 'Approved').length}</span>
                 </div>
               </div>
+              )}
             </div>
 
+            {!selectedCompanyId ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-600">
+                Select a company in the header to view leave requests.
+              </div>
+            ) : (
+            <>
             <div className="space-y-4">
-              {leaveRequests.map((request) => {
-                const balance = leaveBalances.find(b => b.employeeId === request.employeeId);
+              {companyLeaveRequests.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-500">
+                  No leave requests for this company.
+                </div>
+              ) : companyLeaveRequests.map((request) => {
+                const balance = companyLeaveBalances.find(b => b.employeeId === request.employeeId);
                 const days = Math.ceil((new Date(request.endDate).getTime() - new Date(request.startDate).getTime()) / 86400000) + 1;
                 return (
                   <div key={request.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -533,7 +792,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {leaveBalances.map((balance) => (
+                      {companyLeaveBalances.map((balance) => (
                         <tr key={balance.employeeId} className="hover:bg-gray-50">
                           <td className="px-6 py-4 text-sm text-gray-900">{balance.employeeName}</td>
                           <td className="px-6 py-4 text-center text-sm text-gray-900">{balance.rdoBalance}</td>
@@ -568,7 +827,7 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                       <div key={`empty-${i}`} className="aspect-square"></div>
                     ))}
                     {monthDates.map((date) => {
-                      const leavesOnDate = approvedLeaves.filter(leave => date >= leave.startDate && date <= leave.endDate);
+                      const leavesOnDate = companyApprovedLeaves.filter(leave => date >= leave.startDate && date <= leave.endDate);
                       return (
                         <div key={date} className="aspect-square border border-gray-200 rounded p-1 hover:bg-gray-50">
                           <div className="text-sm text-gray-900 mb-1">{new Date(date).getDate()}</div>
@@ -590,30 +849,40 @@ export default function HrModule({ embedded = false }: HrModuleProps) {
                 </div>
               </div>
             </div>
+            </>
+            )}
           </div>
         )}
 
         {/* Schedule Tab */}
         {activeTab === 'schedule' && (
           <div>
-            <div className="flex justify-between items-center mb-3">
+            <div className="mb-3">
               <h2 className="text-xl text-gray-900">Monthly Shift Schedule</h2>
-              <div className="text-xs text-gray-600">{shiftEmployees.length} on shift</div>
             </div>
 
-            {shiftEmployees.length === 0 ? (
+            {!selectedCompanyId ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-600">
+                Select a company in the header to view the schedule.
+              </div>
+            ) : shiftEmployees.length === 0 ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-                <p className="text-gray-500">No employees are assigned to shifts. Mark a level as Shift under HR Config â†’ Level & Entitlement.</p>
+                <p className="text-gray-500">No shift employees for this company. Mark a level as Shift under HR Config → Level & Entitlement.</p>
               </div>
             ) : (
               <ShiftScheduleGrid
-                shiftEmployees={shiftEmployees}
+                shiftEmployees={scheduleShiftEmployees}
                 employeeLevels={employeeLevels}
-                shiftSchedules={shiftSchedules}
+                shiftSchedules={scheduleShiftSchedules}
+                approvedLeaveRequests={companyApprovedLeaves}
                 weekStart={scheduleWeekStart}
                 onWeekChange={setScheduleWeekStart}
                 onUpsert={upsertSchedule}
                 onClear={clearSchedule}
+                onSaveBatch={saveScheduleBatch}
+                departments={scheduleDepartments}
+                selectedDepartmentId={scheduleDepartmentId}
+                onDepartmentChange={setScheduleDepartmentId}
               />
             )}
           </div>

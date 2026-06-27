@@ -280,7 +280,7 @@ export default function App() {
           ) : activeNav === 'System Configuration' ? (
             <SystemConfigurationPage onOrgDataChanged={refreshOrgFilters} />
           ) : activeNav === 'Human Resources' ? (
-            <HumanResourcesPage />
+            <HumanResourcesPage selectedCompanyId={selectedCompanyId} />
           ) : activeNav === 'Accounting' ? (
             <AccountingPage />
           ) : (

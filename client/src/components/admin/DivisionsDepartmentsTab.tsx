@@ -168,39 +168,114 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
       )}
 
       {tree.length === 0 ? (
-        <p className="text-xs text-muted-foreground py-8 text-center border border-dashed border-border rounded-lg">No divisions yet. Add a division to get started.</p>
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/40 border-b border-border">
+              <tr>
+                {['Division', 'Code', 'Department', 'Actions'].map(h => (
+                  <th
+                    key={h}
+                    className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ${
+                      h === 'Actions' ? 'text-right' : 'text-left'
+                    }`}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  No divisions yet. Add a division to get started.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <div className="border border-border rounded-lg overflow-hidden divide-y divide-border">
-          {tree.map(division => (
-            <div key={division.id}>
-              <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                <div>
-                  <span className="text-sm font-medium">{division.name}</span>
-                  {division.code && <span className="ml-2 text-[10px] font-mono text-muted-foreground">({division.code})</span>}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => openAddDepartment(division.id)} className="flex items-center gap-1 px-2 py-1 text-xs text-primary hover:bg-muted rounded-md">
-                    <Plus size={12} /> Department
-                  </button>
-                  <button type="button" onClick={() => openEditDivision(division)} className="p-1.5 rounded hover:bg-muted text-primary"><Edit2 size={13} /></button>
-                  <button type="button" onClick={() => void removeDivision(division.id)} className="p-1.5 rounded hover:bg-muted text-destructive"><Trash2 size={13} /></button>
-                </div>
-              </div>
-              {division.departments.length === 0 ? (
-                <div className="px-8 py-2 text-xs text-muted-foreground italic">No departments</div>
-              ) : (
-                division.departments.map(department => (
-                  <div key={department.id} className="flex items-center justify-between px-8 py-2.5 hover:bg-muted/20">
-                    <span className="text-xs">{department.name}</span>
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => openEditDepartment(department)} className="p-1.5 rounded hover:bg-muted text-primary"><Edit2 size={13} /></button>
-                      <button type="button" onClick={() => void removeDepartment(department.id)} className="p-1.5 rounded hover:bg-muted text-destructive"><Trash2 size={13} /></button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          ))}
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/40 border-b border-border">
+              <tr>
+                {['Division', 'Code', 'Department', 'Actions'].map(h => (
+                  <th
+                    key={h}
+                    className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ${
+                      h === 'Actions' ? 'text-right' : 'text-left'
+                    } ${h === 'Code' ? 'w-28' : ''} ${h === 'Actions' ? 'w-44' : ''}`}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {tree.flatMap(division => {
+                if (division.departments.length === 0) {
+                  return [(
+                    <tr key={`division-${division.id}`} className="hover:bg-muted/20">
+                      <td className="px-4 py-3 font-medium">{division.name}</td>
+                      <td className="px-4 py-3 font-mono text-muted-foreground">{division.code || '—'}</td>
+                      <td className="px-4 py-3 text-muted-foreground italic">No departments</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <button type="button" onClick={() => openAddDepartment(division.id)} className="flex items-center gap-1 px-2 py-1 text-primary hover:bg-muted rounded-md">
+                            <Plus size={12} /> Department
+                          </button>
+                          <button type="button" onClick={() => openEditDivision(division)} className="p-1.5 rounded hover:bg-muted text-primary" title="Edit division">
+                            <Edit2 size={13} />
+                          </button>
+                          <button type="button" onClick={() => void removeDivision(division.id)} className="p-1.5 rounded hover:bg-muted text-destructive" title="Delete division">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )];
+                }
+
+                return division.departments.map((department, index) => (
+                  <tr key={department.id} className="hover:bg-muted/20">
+                    {index === 0 && (
+                      <>
+                        <td rowSpan={division.departments.length} className="px-4 py-3 font-medium align-top border-r border-border/50">
+                          {division.name}
+                        </td>
+                        <td rowSpan={division.departments.length} className="px-4 py-3 font-mono text-muted-foreground align-top border-r border-border/50">
+                          {division.code || '—'}
+                        </td>
+                      </>
+                    )}
+                    <td className="px-4 py-3">{department.name}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {index === 0 && (
+                          <>
+                            <button type="button" onClick={() => openAddDepartment(division.id)} className="flex items-center gap-1 px-2 py-1 text-primary hover:bg-muted rounded-md">
+                              <Plus size={12} /> Department
+                            </button>
+                            <button type="button" onClick={() => openEditDivision(division)} className="p-1.5 rounded hover:bg-muted text-primary" title="Edit division">
+                              <Edit2 size={13} />
+                            </button>
+                            <button type="button" onClick={() => void removeDivision(division.id)} className="p-1.5 rounded hover:bg-muted text-destructive" title="Delete division">
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        )}
+                        <button type="button" onClick={() => openEditDepartment(department)} className="p-1.5 rounded hover:bg-muted text-primary" title="Edit department">
+                          <Edit2 size={13} />
+                        </button>
+                        <button type="button" onClick={() => void removeDepartment(department.id)} className="p-1.5 rounded hover:bg-muted text-destructive" title="Delete department">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ));
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
