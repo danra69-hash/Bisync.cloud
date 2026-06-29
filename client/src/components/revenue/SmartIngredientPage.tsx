@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { api, type Ingredient } from '../../api';
 import { siCategories, siGroups } from '../../data/revenueManagement';
-import { blankComponentRow, fromApiUom, type ComponentRow } from '../../data/componentForm';
+import { blankComponentRow, fromApiUom, readDetailConfigJsonFromIngredient, resolveDetailConfigForRow, resolveDetailConfigJsonForSave, type ComponentRow } from '../../data/componentForm';
 import { ComponentEditPanel } from './ComponentEditPanel';
 
 function ingredientToRow(i: Ingredient): ComponentRow {
@@ -10,8 +10,10 @@ function ingredientToRow(i: Ingredient): ComponentRow {
   try { storage = JSON.parse(i.storageJson); } catch { storage = []; }
   let locations: string[] = [];
   try { locations = JSON.parse(i.locationsJson); } catch { locations = ['all']; }
+  const detailConfigJson = readDetailConfigJsonFromIngredient(i);
   return {
     id: i.id,
+    componentId: i.componentId ?? '',
     name: i.name,
     category: i.category,
     group: i.group,
@@ -22,17 +24,23 @@ function ingredientToRow(i: Ingredient): ComponentRow {
     dailyUsage: i.dailyUsage,
     orderFreqDays: i.orderFreqDays,
     storage,
+    storageNote: i.storageNote ?? '',
     attachedProducts: i.attachedProducts,
     attachedVendors: i.attachedVendors,
     active: i.active,
     locations,
+    detailConfigJson,
+    detailConfig: resolveDetailConfigForRow({ detailConfigJson }),
   };
 }
 
 function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ingredient {
   const merged = { ...row, ...partial };
+  const detailConfig = resolveDetailConfigForRow(merged);
+  const detailConfigJson = resolveDetailConfigJsonForSave(row, partial);
   return {
     id: merged.id ?? 0,
+    componentId: merged.componentId,
     name: merged.name,
     category: merged.category,
     group: merged.group,
@@ -43,11 +51,28 @@ function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ing
     dailyUsage: merged.dailyUsage,
     orderFreqDays: merged.orderFreqDays,
     storageJson: JSON.stringify(merged.storage),
+    storageNote: merged.storageNote ?? '',
+    detailConfigJson,
     attachedProducts: merged.attachedProducts,
-    attachedVendors: merged.attachedVendors,
+    attachedVendors: detailConfig.taggedVendorProductIds.length || merged.attachedVendors,
     active: merged.active,
     locationsJson: JSON.stringify(merged.locations),
   };
+}
+
+function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentRow {
+  const savedRow = ingredientToRow(saved);
+  const sentConfig = resolveDetailConfigForRow(sent);
+  if (sentConfig.taggedVendorProductIds.length > 0
+    && savedRow.detailConfig?.taggedVendorProductIds.length === 0) {
+    return {
+      ...savedRow,
+      detailConfig: sentConfig,
+      detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }),
+      attachedVendors: sentConfig.taggedVendorProductIds.length,
+    };
+  }
+  return savedRow;
 }
 
 function FilterSelect({ label, value, options, onChange }: {
@@ -67,29 +92,44 @@ function FilterSelect({ label, value, options, onChange }: {
   );
 }
 
-export function SmartIngredientPage() {
+export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
   const [rows, setRows] = useState<ComponentRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [catFilter, setCatFilter] = useState('All');
   const [grpFilter, setGrpFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [uomType, setUomType] = useState<'recipe' | 'inventory'>('recipe');
   const [editRow, setEditRow] = useState<ComponentRow | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!selectedCompanyId) {
+      setRows([]);
+      setLoading(false);
+      setEditRow(null);
+      setIsNewRow(false);
+      setSaveError(null);
+      return;
+    }
+
+    setLoading(true);
     api.ingredients()
       .then(data => setRows(data.map(ingredientToRow)))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedCompanyId]);
 
   const filtered = useMemo(() => {
     return rows.filter(row => {
       const matchCat = catFilter === 'All' || row.category === catFilter;
       const matchGrp = grpFilter === 'All' || row.group === grpFilter;
       const q = search.toLowerCase();
-      const matchQ = !q || row.name.toLowerCase().includes(q) || row.category.toLowerCase().includes(q) || row.group.toLowerCase().includes(q);
+      const matchQ = !q
+        || row.name.toLowerCase().includes(q)
+        || row.componentId.toLowerCase().includes(q)
+        || row.category.toLowerCase().includes(q)
+        || row.group.toLowerCase().includes(q);
       return matchCat && matchGrp && matchQ;
     });
   }, [rows, catFilter, grpFilter, search]);
@@ -97,39 +137,43 @@ export function SmartIngredientPage() {
   const hasFilters = catFilter !== 'All' || grpFilter !== 'All' || !!search;
 
   function openAdd() {
+    setSaveError(null);
     setIsNewRow(true);
     setEditRow({ ...blankComponentRow });
   }
 
   async function handleSave(updated: Partial<ComponentRow>) {
     if (!editRow) return;
+    setSaveError(null);
     if (isNewRow) {
       const newRow = { ...blankComponentRow, ...updated } as ComponentRow;
       try {
         const created = await api.createIngredient(rowToIngredient(newRow, {}));
-        setRows(prev => [ingredientToRow(created), ...prev]);
-      } catch {
-        setRows(prev => [{ ...newRow, id: Date.now() }, ...prev]);
+        setRows(prev => [mergeSavedRow(created, newRow), ...prev]);
+        setIsNewRow(false);
+        setEditRow(null);
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'Failed to save component.');
       }
     } else if (editRow.id) {
       const merged = { ...editRow, ...updated };
       try {
         const saved = await api.updateIngredient(editRow.id, rowToIngredient(merged, {}));
-        setRows(prev => prev.map(r => r.id === editRow.id ? ingredientToRow(saved) : r));
-      } catch {
-        setRows(prev => prev.map(r => r.id === editRow.id ? merged : r));
+        setRows(prev => prev.map(r => r.id === editRow.id ? mergeSavedRow(saved, merged) : r));
+        setIsNewRow(false);
+        setEditRow(null);
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'Failed to save component.');
       }
     }
-    setIsNewRow(false);
-    setEditRow(null);
   }
 
   async function toggleActive(row: ComponentRow) {
     if (!row.id) return;
     const updated = { ...row, active: !row.active };
     try {
-      const saved = await api.updateIngredient(row.id, rowToIngredient(updated, {}));
-      setRows(prev => prev.map(r => r.id === row.id ? ingredientToRow(saved) : r));
+      const saved = await api.updateIngredient(row.id, rowToIngredient({ ...row, active: !row.active }, {}));
+      setRows(prev => prev.map(r => r.id === row.id ? mergeSavedRow(saved, row) : r));
     } catch {
       setRows(prev => prev.map(r => r.id === row.id ? updated : r));
     }
@@ -143,14 +187,22 @@ export function SmartIngredientPage() {
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Component › Smart Component</p>
-          <h2 className="text-xl font-semibold text-foreground">Smart Ingredient</h2>
-          <p className="text-xs text-muted-foreground font-mono mt-0.5">{filtered.length} of {rows.length} items</p>
+          <h2 className="text-xl font-semibold text-foreground">Smart Component</h2>
+          {selectedCompanyId && (
+            <p className="text-xs text-muted-foreground font-mono mt-0.5">{filtered.length} of {rows.length} items</p>
+          )}
         </div>
-        <button onClick={openAdd} className="text-xs font-mono bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
-          + Add Ingredient
-        </button>
+        {selectedCompanyId && (
+          <button onClick={openAdd} className="text-xs font-mono bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
+            + Add Component
+          </button>
+        )}
       </div>
 
+      {!selectedCompanyId ? (
+        <p className="text-sm text-muted-foreground">Select a company from the menu bar above to view Smart Components.</p>
+      ) : (
+        <>
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex flex-wrap items-end gap-4">
           <FilterSelect label="Category" value={catFilter} options={siCategories} onChange={setCatFilter} />
@@ -204,7 +256,7 @@ export function SmartIngredientPage() {
           <div className="flex items-center rounded-md border border-border overflow-hidden text-[10px] font-mono">
             <button onClick={() => setUomType('recipe')}
               className={`px-3 py-1.5 transition-colors ${uomType === 'recipe' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              Recipe UOM
+              Component UOM
             </button>
             <button onClick={() => setUomType('inventory')}
               className={`px-3 py-1.5 border-l border-border transition-colors ${uomType === 'inventory' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
@@ -222,7 +274,7 @@ export function SmartIngredientPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  {['Component Name', 'UOM', 'Last UOM Price', 'Daily Usage', 'Order Freq (days)', 'Storage', 'Products', 'Vendors', 'Active'].map(h => (
+                  {['Component ID', 'Component Name', 'UOM', 'Last UOM Price', 'Daily Usage', 'Order Freq (days)', 'Storage', 'Products', 'Vendors', 'Active'].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-[10px] font-mono text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -230,15 +282,16 @@ export function SmartIngredientPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-xs text-muted-foreground font-mono">
+                    <td colSpan={10} className="px-4 py-10 text-center text-xs text-muted-foreground font-mono">
                       No items match the selected filters.
                     </td>
                   </tr>
                 ) : filtered.map(row => (
                   <tr key={row.id ?? row.name}
                     className={`border-b border-border last:border-0 transition-colors ${row.active ? 'hover:bg-muted/30' : 'opacity-50 hover:opacity-70'}`}>
+                    <td className="px-4 py-3 font-mono text-muted-foreground">{row.componentId || '—'}</td>
                     <td className="px-4 py-3">
-                      <button onClick={() => { setIsNewRow(false); setEditRow(row); }} className="text-left group">
+                      <button onClick={() => { setSaveError(null); setIsNewRow(false); setEditRow(row); }} className="text-left group">
                         <p className="font-medium text-foreground group-hover:text-primary group-hover:underline transition-colors">{row.name}</p>
                         <p className="text-[10px] text-muted-foreground font-mono">{row.category} · {row.group}</p>
                       </button>
@@ -285,13 +338,18 @@ export function SmartIngredientPage() {
         )}
       </div>
 
-      {editRow && (
+      {editRow && selectedCompanyId && (
         <ComponentEditPanel
           row={editRow}
           isNew={isNewRow}
-          onClose={() => { setEditRow(null); setIsNewRow(false); }}
+          existingComponents={rows}
+          selectedCompanyId={selectedCompanyId}
+          saveError={saveError}
+          onClose={() => { setEditRow(null); setIsNewRow(false); setSaveError(null); }}
           onSave={handleSave}
         />
+      )}
+        </>
       )}
     </div>
   );

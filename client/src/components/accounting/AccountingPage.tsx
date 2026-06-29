@@ -32,7 +32,7 @@ function AccountingOfflinePanel({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-export function AccountingPage() {
+export function AccountingPage({ selectedCompanyId = null }: { selectedCompanyId?: number | null }) {
   const [status, setStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   const check = useCallback(async () => {
@@ -56,5 +56,5 @@ export function AccountingPage() {
     return <AccountingOfflinePanel onRetry={check} />;
   }
 
-  return <PayrollSection />;
+  return <PayrollSection selectedCompanyId={selectedCompanyId} />;
 }

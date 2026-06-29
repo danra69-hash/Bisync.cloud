@@ -288,6 +288,7 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         employee.DateOfBirth = request.DateOfBirth;
         employee.PersonalEmail = request.PersonalEmail;
         employee.PermanentAddress = request.PermanentAddress;
+        employee.MaritalStatus = string.IsNullOrWhiteSpace(request.MaritalStatus) ? null : request.MaritalStatus.Trim();
         employee.BankName = request.BankName?.Trim();
         employee.BankAccountNumber = request.BankAccountNumber?.Trim();
         employee.BankAccountHolderName = request.BankAccountHolderName?.Trim();

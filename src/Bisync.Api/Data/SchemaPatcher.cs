@@ -1,3 +1,4 @@
+using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Data;
@@ -50,17 +51,96 @@ public static class SchemaPatcher
         await TryAddColumnAsync(db, "AppUsers", "CompanyId", "INTEGER");
         await TryAddColumnAsync(db, "AppUsers", "LocationIdsJson", "TEXT NOT NULL DEFAULT '[]'");
         await TryAddColumnAsync(db, "AppUsers", "EmployeeId", "INTEGER");
+        await EnsureColumnAsync(db, "Ingredients", "ComponentId", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "Ingredients", "StorageNote", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "Ingredients", "DetailConfigJson", "TEXT NOT NULL DEFAULT '{}'");
+        await BackfillIngredientComponentIdsAsync(db);
+        await TryCreateUniqueIndexAsync(db, "IX_Ingredients_ComponentId", "Ingredients", "ComponentId");
+        await TryCreateUniqueIndexAsync(db, "IX_Ingredients_Name", "Ingredients", "Name");
+    }
+
+    static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)
+    {
+        var needsId = await db.Ingredients
+            .Where(i => i.ComponentId == null || i.ComponentId == "")
+            .OrderBy(i => i.Id)
+            .ToListAsync();
+
+        foreach (var ingredient in needsId)
+        {
+            ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, ingredient.Name, ingredient.Id);
+        }
+
+        if (needsId.Count > 0)
+            await db.SaveChangesAsync();
+    }
+
+    static async Task TryCreateUniqueIndexAsync(BisyncDbContext db, string indexName, string table, string column)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE UNIQUE INDEX IF NOT EXISTS \"{indexName}\" ON \"{table}\" (\"{column}\");");
+        }
+        catch
+        {
+            // Index may already exist with different definition
+        }
+    }
+
+    static async Task EnsureColumnAsync(BisyncDbContext db, string table, string column, string definition)
+    {
+        if (await ColumnExistsAsync(db, table, column))
+            return;
+
+        await db.Database.ExecuteSqlRawAsync(
+            $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {EscapeBracesForRawSql(definition)};");
+    }
+
+    static async Task<bool> ColumnExistsAsync(BisyncDbContext db, string table, string column)
+    {
+        var connection = db.Database.GetDbConnection();
+        var shouldClose = connection.State != System.Data.ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync();
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"PRAGMA table_info(\"{table}\");";
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var name = reader.GetString(1);
+                if (string.Equals(name, column, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
     }
 
     static async Task TryAddColumnAsync(BisyncDbContext db, string table, string column, string definition)
     {
+        if (await ColumnExistsAsync(db, table, column))
+            return;
+
         try
         {
-            await db.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition};");
+            await db.Database.ExecuteSqlRawAsync(
+                $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {EscapeBracesForRawSql(definition)};");
         }
         catch
         {
-            // Column already exists
+            // Column may have been added concurrently
         }
     }
+
+    static string EscapeBracesForRawSql(string sql) =>
+        sql.Replace("{", "{{").Replace("}", "}}");
 }

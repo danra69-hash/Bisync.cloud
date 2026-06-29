@@ -1,5 +1,6 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -148,7 +149,17 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
     {
         var item = await db.Ingredients.FindAsync(id);
         if (item is null) return NotFound();
-        item.Name = updated.Name;
+
+        var name = updated.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { message = "Component name is required." });
+
+        var nameTaken = await db.Ingredients.AnyAsync(i =>
+            i.Id != id && i.Name.ToLower() == name.ToLower());
+        if (nameTaken)
+            return Conflict(new { message = "A component with this name already exists." });
+
+        item.Name = name;
         item.Category = updated.Category;
         item.Group = updated.Group;
         item.RecipeUom = updated.RecipeUom;
@@ -157,8 +168,17 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
         item.LastPriceRecipe = updated.LastPriceRecipe;
         item.LastPriceInventory = updated.LastPriceInventory;
         item.StorageJson = updated.StorageJson;
+        item.StorageNote = updated.StorageNote ?? string.Empty;
+        item.DetailConfigJson = string.IsNullOrWhiteSpace(updated.DetailConfigJson) ? "{}" : updated.DetailConfigJson;
         item.DailyUsage = updated.DailyUsage;
         item.OrderFreqDays = updated.OrderFreqDays;
+        item.AttachedProducts = updated.AttachedProducts;
+        item.AttachedVendors = updated.AttachedVendors;
+        item.LocationsJson = updated.LocationsJson;
+
+        if (string.IsNullOrWhiteSpace(item.ComponentId))
+            item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, item.Name, item.Id);
+
         await db.SaveChangesAsync();
         return Ok(item);
     }
@@ -166,6 +186,25 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Ingredient>> Create([FromBody] Ingredient ingredient)
     {
+        var name = ingredient.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { message = "Component name is required." });
+
+        var nameTaken = await db.Ingredients.AnyAsync(i => i.Name.ToLower() == name.ToLower());
+        if (nameTaken)
+            return Conflict(new { message = "A component with this name already exists." });
+
+        ingredient.Name = name;
+        ingredient.ComponentId = string.IsNullOrWhiteSpace(ingredient.ComponentId)
+            ? await ComponentIdGenerator.GenerateAsync(db, name)
+            : ingredient.ComponentId.Trim();
+
+        var idTaken = await db.Ingredients.AnyAsync(i => i.ComponentId == ingredient.ComponentId);
+        if (idTaken)
+            ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, name);
+
+        ingredient.DetailConfigJson = string.IsNullOrWhiteSpace(ingredient.DetailConfigJson) ? "{}" : ingredient.DetailConfigJson;
+
         db.Ingredients.Add(ingredient);
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(GetAll), new { id = ingredient.Id }, ingredient);

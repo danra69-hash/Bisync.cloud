@@ -9,6 +9,10 @@ export const SIDE_PANEL_SHELL_WIDE_CLS =
 
 export const SIDE_PANEL_SHELL_OVERFLOW_CLS = `${SIDE_PANEL_SHELL_CLS} overflow-hidden`;
 
+/** Large fixed right panel — 70% viewport width, full height, scrollable body. */
+export const SIDE_PANEL_SHELL_DETAIL_CLS =
+  'fixed top-0 right-0 z-50 h-full w-[70vw] max-w-[70vw] bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden';
+
 export const SIDE_PANEL_ROOT_CLS = 'fixed inset-0 z-50 flex items-stretch justify-end';
 
 export const SIDE_PANEL_DETAIL_SHELL_CLS =

@@ -80,6 +80,10 @@ public static class HrStartup
             "ALTER TABLE PayStructures ADD COLUMN ForeignProvidentFundEmployerPct REAL NOT NULL DEFAULT 2",
             "ALTER TABLE PayStructures ADD COLUMN ForeignProvidentFundEmployeePct REAL NOT NULL DEFAULT 2",
             "ALTER TABLE PayStructures ADD COLUMN ForeignSocsoEmployerPct REAL NOT NULL DEFAULT 1.25",
+            "ALTER TABLE IncomeTaxBrackets ADD COLUMN BaseMinTaxAmount REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE Employees ADD COLUMN MaritalStatus TEXT NULL",
+            "ALTER TABLE IncomeTaxReliefs ADD COLUMN IsMaximum INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE IncomeTaxReliefs ADD COLUMN ApplyCondition TEXT NULL",
         })
         {
             try { await db.Database.ExecuteSqlRawAsync(sql); }
@@ -243,6 +247,51 @@ public static class HrStartup
             )
             """,
             "CREATE UNIQUE INDEX IF NOT EXISTS IX_PayrollRuns_CompanyId_Year_Month ON PayrollRuns(CompanyId, Year, Month)",
+            """
+            CREATE TABLE IF NOT EXISTS IncomeTaxYears (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                CompanyId INTEGER NOT NULL,
+                Year INTEGER NOT NULL,
+                CountryCode TEXT NOT NULL,
+                Active INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (CompanyId) REFERENCES Companies(Id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS IncomeTaxBrackets (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                IncomeTaxYearId INTEGER NOT NULL,
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                MinAnnualChargeableIncome REAL NOT NULL DEFAULT 0,
+                MaxAnnualChargeableIncome REAL NULL,
+                RatePct REAL NOT NULL DEFAULT 0,
+                BaseMinTaxAmount REAL NOT NULL DEFAULT 0,
+                FOREIGN KEY (IncomeTaxYearId) REFERENCES IncomeTaxYears(Id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS IncomeTaxReliefs (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                IncomeTaxYearId INTEGER NOT NULL,
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                Name TEXT NOT NULL,
+                Amount REAL NOT NULL DEFAULT 0,
+                IsMaximum INTEGER NOT NULL DEFAULT 0,
+                ApplyCondition TEXT NULL,
+                FOREIGN KEY (IncomeTaxYearId) REFERENCES IncomeTaxYears(Id) ON DELETE CASCADE
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS IncomeTaxRebates (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                IncomeTaxYearId INTEGER NOT NULL,
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                Name TEXT NOT NULL,
+                Amount REAL NOT NULL DEFAULT 0,
+                FOREIGN KEY (IncomeTaxYearId) REFERENCES IncomeTaxYears(Id) ON DELETE CASCADE
+            )
+            """,
+            "CREATE UNIQUE INDEX IF NOT EXISTS IX_IncomeTaxYears_CompanyId_Year ON IncomeTaxYears(CompanyId, Year)",
         })
         {
             try { await db.Database.ExecuteSqlRawAsync(sql); }

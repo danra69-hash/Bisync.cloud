@@ -1,8 +1,27 @@
-import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { selectCls } from '../../data/componentForm';
+import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
+import { StorageAreaPicker } from './StorageAreaPicker';
+import { UomConfigPanel } from './UomConfigPanel';
 
-type GroupRow = { id: number; name: string; category: string; items: number };
-type StorageRow = { id: number; name: string; type: string; capacity: string; location: string };
+type StorageRow = { id: number; name: string; type: string; capacity: string; location: string; items: number };
+
+type MyStorageEntry = {
+  id: number;
+  location: string;
+  area: string;
+  sourceStorageId: number;
+  name: string;
+  type: string;
+  items: number;
+};
+
+const thCls = 'text-left px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal';
+
+const STORAGE_LOCATIONS = ['Downtown', 'Midtown', 'Westend'] as const;
+
+const DEFAULT_AREAS = ['Dining Room', 'Bar', 'Kitchen', 'Prep Kitchen', 'Hot Kitchen'];
 
 const initialGroups: GroupRow[] = [
   { id: 1, name: 'Proteins', category: 'Food', items: 12 },
@@ -13,36 +32,140 @@ const initialGroups: GroupRow[] = [
 ];
 
 const initialStorage: StorageRow[] = [
-  { id: 1, name: 'Walk-in Freezer', type: 'Freezer', capacity: '120 m³', location: 'Downtown' },
-  { id: 2, name: 'Main Chiller', type: 'Chiller', capacity: '80 m³', location: 'Downtown' },
-  { id: 3, name: 'Wine Cellar', type: 'Wine Cellar', capacity: '45 m³', location: 'Downtown' },
-  { id: 4, name: 'Dry Store', type: 'Dry Store', capacity: '60 m³', location: 'All Locations' },
-  { id: 5, name: 'Bar Cooler', type: 'Chiller', capacity: '12 m³', location: 'Midtown' },
+  { id: 1, name: 'Walk-in Freezer', type: 'Freezer', capacity: '120 m³', location: 'Downtown', items: 18 },
+  { id: 2, name: 'Main Chiller', type: 'Chiller', capacity: '80 m³', location: 'Downtown', items: 32 },
+  { id: 3, name: 'Wine Cellar', type: 'Wine Cellar', capacity: '45 m³', location: 'Downtown', items: 14 },
+  { id: 4, name: 'Dry Store', type: 'Dry Store', capacity: '60 m³', location: 'All Locations', items: 41 },
+  { id: 5, name: 'Bar Cooler', type: 'Chiller', capacity: '12 m³', location: 'Midtown', items: 9 },
+  { id: 6, name: 'Prep Kitchen Store', type: 'Prep Kitchen', capacity: '25 m³', location: 'Midtown', items: 22 },
+  { id: 7, name: 'Westend Freezer', type: 'Freezer', capacity: '90 m³', location: 'Westend', items: 11 },
+  { id: 8, name: 'Westend Chiller', type: 'Chiller', capacity: '55 m³', location: 'Westend', items: 16 },
 ];
 
+function storageMatchesLocation(row: StorageRow, location: string) {
+  return row.location === location || row.location === 'All Locations';
+}
+
 export function ComponentConfigPage() {
-  const [tab, setTab] = useState<'group' | 'storage'>('group');
+  const [tab, setTab] = useState<'group' | 'storage' | 'uom'>('group');
   const [groups, setGroups] = useState(initialGroups);
-  const [storage, setStorage] = useState(initialStorage);
+  const [storage] = useState(initialStorage);
+  const [myGroupIds, setMyGroupIds] = useState<number[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>(STORAGE_LOCATIONS[0]);
+  const [areas, setAreas] = useState<string[]>(DEFAULT_AREAS);
+  const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>([]);
+  const [nextEntryId, setNextEntryId] = useState(1);
+  const [pendingStorage, setPendingStorage] = useState<StorageRow | null>(null);
+  const [editingGroup, setEditingGroup] = useState<GroupRow | null>(null);
+  const [isNewGroup, setIsNewGroup] = useState(false);
+
+  const myGroups = groups.filter(g => myGroupIds.includes(g.id));
+  const locationStorage = useMemo(
+    () => storage.filter(s => storageMatchesLocation(s, selectedLocation)),
+    [storage, selectedLocation],
+  );
+
+  const myStorageByArea = useMemo(() => {
+    const entries = myStorageEntries.filter(e => e.location === selectedLocation);
+    return areas
+      .map(area => ({ area, entries: entries.filter(e => e.area === area) }))
+      .filter(section => section.entries.length > 0);
+  }, [areas, myStorageEntries, selectedLocation]);
+
+  const hasMyStorage = myStorageByArea.length > 0;
+
+  function openNewGroup() {
+    const nextId = groups.reduce((max, g) => Math.max(max, g.id), 0) + 1;
+    setEditingGroup({ id: nextId, name: '', category: 'Food', items: 0 });
+    setIsNewGroup(true);
+  }
+
+  function openEditGroup(group: GroupRow) {
+    setEditingGroup(group);
+    setIsNewGroup(false);
+  }
+
+  function closeGroupEditor() {
+    setEditingGroup(null);
+    setIsNewGroup(false);
+  }
+
+  function saveGroup(updated: GroupRow) {
+    setGroups(prev => {
+      if (isNewGroup) return [...prev, updated];
+      return prev.map(g => (g.id === updated.id ? updated : g));
+    });
+  }
+
+  function addToMyGroup(id: number) {
+    setMyGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+  }
+
+  function removeFromMyGroup(id: number) {
+    setMyGroupIds(prev => prev.filter(x => x !== id));
+  }
+
+  function deleteGroup(id: number) {
+    setGroups(prev => prev.filter(x => x.id !== id));
+    setMyGroupIds(prev => prev.filter(x => x !== id));
+  }
+
+  function openStorageAreaPicker(source: StorageRow) {
+    setPendingStorage(source);
+  }
+
+  function closeStorageAreaPicker() {
+    setPendingStorage(null);
+  }
+
+  function addArea(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed || areas.some(a => a.toLowerCase() === trimmed.toLowerCase())) return;
+    setAreas(prev => [...prev, trimmed]);
+  }
+
+  function confirmAddToMyStorage(area: string) {
+    if (!pendingStorage) return;
+    const entry: MyStorageEntry = {
+      id: nextEntryId,
+      location: selectedLocation,
+      area,
+      sourceStorageId: pendingStorage.id,
+      name: pendingStorage.name,
+      type: pendingStorage.type,
+      items: pendingStorage.items,
+    };
+    setNextEntryId(id => id + 1);
+    setMyStorageEntries(prev => [...prev, entry]);
+    setPendingStorage(null);
+  }
+
+  function removeMyStorageEntry(entryId: number) {
+    setMyStorageEntries(prev => prev.filter(e => e.id !== entryId));
+  }
 
   return (
     <div className="p-6 space-y-4">
       <div>
         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Component</p>
         <h2 className="text-lg font-semibold">Component Config</h2>
-        <p className="text-xs text-muted-foreground mt-1">Configure component groups and storage assignments</p>
+        <p className="text-xs text-muted-foreground mt-1">Configure component groups, storage assignments, and UOM conversions</p>
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        {(['group', 'storage'] as const).map(t => (
+        {([
+          { id: 'group' as const, label: 'Group Assignment' },
+          { id: 'storage' as const, label: 'Storage Assignment' },
+          { id: 'uom' as const, label: 'UOM Config' },
+        ]).map(t => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={t.id}
+            onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors -mb-px ${
-              tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+              tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t === 'group' ? 'Group Assignment' : 'Storage Assignment'}
+            {t.label}
           </button>
         ))}
       </div>
@@ -50,72 +173,259 @@ export function ComponentConfigPage() {
       {tab === 'group' ? (
         <div className="space-y-3">
           <div className="flex justify-end">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground">
+            <button
+              type="button"
+              onClick={openNewGroup}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
+            >
               <Plus size={11} /> Add Group
             </button>
           </div>
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  {['Group Name', 'Category', 'Components', 'Actions'].map(h => (
-                    <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {groups.map(g => (
-                  <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/20">
-                    <td className="px-4 py-3 font-medium">{g.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{g.category}</td>
-                    <td className="px-4 py-3 font-mono">{g.items}</td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => setGroups(prev => prev.filter(x => x.id !== g.id))} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500">
-                        <Trash2 size={12} />
-                      </button>
-                    </td>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
+              <div className="px-3 py-2 border-b border-border bg-muted/30">
+                <p className="text-xs font-semibold">All Groups</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Click a group name to add it to My Group</p>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    {['Category', 'Group Name', 'Actions'].map(h => (
+                      <th key={h} className={thCls}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {groups.map(g => {
+                    const inMyGroup = myGroupIds.includes(g.id);
+                    return (
+                      <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/20">
+                        <td className="px-3 py-2.5 text-muted-foreground">{g.category}</td>
+                        <td className="px-3 py-2.5">
+                          <button
+                            type="button"
+                            onClick={() => addToMyGroup(g.id)}
+                            disabled={inMyGroup}
+                            className={`font-medium text-left hover:underline ${
+                              inMyGroup ? 'text-muted-foreground cursor-default' : 'text-primary'
+                            }`}
+                          >
+                            {g.name}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openEditGroup(g)}
+                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                              title="Edit group"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteGroup(g.id)}
+                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500"
+                              title="Delete group"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
+              <div className="px-3 py-2 border-b border-border bg-muted/30">
+                <p className="text-xs font-semibold">My Group</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Click a group name to remove it from My Group</p>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    {['Category', 'Group Name', 'Components'].map(h => (
+                      <th key={h} className={thCls}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {myGroups.map(g => (
+                    <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/20">
+                      <td className="px-3 py-2.5 text-muted-foreground">{g.category}</td>
+                      <td className="px-3 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => removeFromMyGroup(g.id)}
+                          className="font-medium text-left text-primary hover:underline"
+                        >
+                          {g.name}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2.5 font-mono">{g.items}</td>
+                    </tr>
+                  ))}
+                  {myGroups.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
+                        No groups selected. Click a group name on the left to add it here.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      ) : (
+      ) : tab === 'storage' ? (
         <div className="space-y-3">
-          <div className="flex justify-end">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <label htmlFor="storage-location" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                Location
+              </label>
+              <select
+                id="storage-location"
+                value={selectedLocation}
+                onChange={e => setSelectedLocation(e.target.value)}
+                className={`${selectCls} mt-1 min-w-[180px]`}
+              >
+                {STORAGE_LOCATIONS.map(location => (
+                  <option key={location} value={location}>{location}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
+            >
               <Plus size={11} /> Add Storage
             </button>
           </div>
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  {['Storage Name', 'Type', 'Capacity', 'Location', 'Actions'].map(h => (
-                    <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {storage.map(s => (
-                  <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/20">
-                    <td className="px-4 py-3 font-medium">{s.name}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{s.type}</span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">{s.capacity}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{s.location}</td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => setStorage(prev => prev.filter(x => x.id !== s.id))} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500">
-                        <Trash2 size={12} />
-                      </button>
-                    </td>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
+              <div className="px-3 py-2 border-b border-border bg-muted/30">
+                <p className="text-xs font-semibold">All Storage — {selectedLocation}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Click a storage name, then choose an area to copy it to My Storage</p>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    {['Storage Name', 'Type'].map(h => (
+                      <th key={h} className={thCls}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {locationStorage.map(s => (
+                    <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/20">
+                      <td className="px-3 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => openStorageAreaPicker(s)}
+                          className="font-medium text-left text-primary hover:underline"
+                        >
+                          {s.name}
+                        </button>
+                        {s.location === 'All Locations' && (
+                          <p className="text-[9px] text-muted-foreground mt-0.5">All locations</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{s.type}</span>
+                      </td>
+                    </tr>
+                  ))}
+                  {locationStorage.length === 0 && (
+                    <tr>
+                      <td colSpan={2} className="px-3 py-8 text-center text-muted-foreground">
+                        No storage for this location.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
+              <div className="px-3 py-2 border-b border-border bg-muted/30">
+                <p className="text-xs font-semibold">My Storage — {selectedLocation}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Grouped by area. Click a storage name to remove it.</p>
+              </div>
+
+              {!hasMyStorage ? (
+                <p className="px-3 py-8 text-center text-xs text-muted-foreground">
+                  No storage assigned yet. Click a storage name on the left and select an area.
+                </p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {myStorageByArea.map(section => (
+                    <div key={section.area}>
+                      <div className="px-3 py-2 bg-muted/20 border-b border-border">
+                        <p className="text-[10px] font-mono font-semibold uppercase tracking-wider text-foreground">{section.area}</p>
+                      </div>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/40">
+                            {['Storage Name', 'Type', 'No. of stored Components'].map(h => (
+                              <th key={h} className={thCls}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {section.entries.map(entry => (
+                            <tr key={entry.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
+                              <td className="px-3 py-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => removeMyStorageEntry(entry.id)}
+                                  className="font-medium text-left text-primary hover:underline"
+                                >
+                                  {entry.name}
+                                </button>
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{entry.type}</span>
+                              </td>
+                              <td className="px-3 py-2.5 font-mono">{entry.items}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
+      ) : (
+        <UomConfigPanel />
+      )}
+
+      {editingGroup && (
+        <GroupEditPanel
+          group={editingGroup}
+          isNew={isNewGroup}
+          onClose={closeGroupEditor}
+          onSave={saveGroup}
+        />
+      )}
+
+      {pendingStorage && (
+        <StorageAreaPicker
+          storageName={pendingStorage.name}
+          areas={areas}
+          onClose={closeStorageAreaPicker}
+          onConfirm={confirmAddToMyStorage}
+          onAddArea={addArea}
+        />
       )}
     </div>
   );

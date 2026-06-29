@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { History } from 'lucide-react';
-import type { Company } from '../../api';
 import { selectCls } from '../../data/countries';
 import { hrApi } from '../../modules/hr/api';
 import type { PayrollPreview, PayrollRunLine } from '../../modules/hr/types';
@@ -35,16 +34,12 @@ const TABLE_COLUMNS = [
 ] as const;
 
 type Props = {
-  companies: Company[];
   selectedCompanyId: number | null;
-  onCompanyChange: (companyId: number | null) => void;
   countryCode?: string;
 };
 
 export function ProcessPayrollPanel({
-  companies,
   selectedCompanyId,
-  onCompanyChange,
   countryCode = 'MY',
 }: Props) {
   const now = new Date();
@@ -102,26 +97,6 @@ export function ProcessPayrollPanel({
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label htmlFor="payroll-process-company" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                Company
-              </label>
-              <select
-                id="payroll-process-company"
-                value={selectedCompanyId ?? ''}
-                onChange={e => onCompanyChange(e.target.value ? Number(e.target.value) : null)}
-                disabled={companies.length === 0}
-                className={`${selectCls} mt-1 min-w-[220px]`}
-              >
-                {companies.length === 0 ? (
-                  <option value="">No companies available</option>
-                ) : (
-                  companies.map(company => (
-                    <option key={company.id} value={company.id}>{company.name}</option>
-                  ))
-                )}
-              </select>
-            </div>
-            <div>
               <label htmlFor="payroll-process-month" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
                 Month
               </label>
@@ -165,7 +140,7 @@ export function ProcessPayrollPanel({
         </div>
 
         {!selectedCompanyId && (
-          <p className="text-sm text-muted-foreground">Select a company to preview payroll.</p>
+          <p className="text-sm text-muted-foreground">Select a company from the menu bar above to preview payroll.</p>
         )}
 
         {error && (

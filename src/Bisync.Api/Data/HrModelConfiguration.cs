@@ -247,6 +247,49 @@ public static class HrModelConfiguration
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<IncomeTaxYear>(e =>
+        {
+            e.Property(x => x.CountryCode).HasMaxLength(2);
+            e.HasIndex(x => new { x.CompanyId, x.Year }).IsUnique();
+            e.HasOne(x => x.Company)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IncomeTaxBracket>(e =>
+        {
+            e.Property(x => x.MinAnnualChargeableIncome).HasPrecision(14, 2);
+            e.Property(x => x.MaxAnnualChargeableIncome).HasPrecision(14, 2);
+            e.Property(x => x.RatePct).HasPrecision(5, 2);
+            e.Property(x => x.BaseMinTaxAmount).HasPrecision(14, 2);
+            e.HasOne(x => x.IncomeTaxYear)
+                .WithMany(x => x.Brackets)
+                .HasForeignKey(x => x.IncomeTaxYearId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IncomeTaxRelief>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.Property(x => x.ApplyCondition).HasMaxLength(50);
+            e.HasOne(x => x.IncomeTaxYear)
+                .WithMany(x => x.Reliefs)
+                .HasForeignKey(x => x.IncomeTaxYearId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IncomeTaxRebate>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.HasOne(x => x.IncomeTaxYear)
+                .WithMany(x => x.Rebates)
+                .HasForeignKey(x => x.IncomeTaxYearId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<PayrollRun>(e =>
         {
             e.Property(x => x.PayCycle).HasMaxLength(50);

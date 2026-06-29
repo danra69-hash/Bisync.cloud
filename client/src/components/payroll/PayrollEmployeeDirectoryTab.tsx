@@ -1,5 +1,4 @@
-import type { AppUser, Company } from '../../api';
-import { selectCls } from '../../data/countries';
+import type { AppUser } from '../../api';
 import type { DivisionTreeNode, Employee, PayStructure } from '../../modules/hr/types';
 import {
   employeeDepartmentName,
@@ -33,9 +32,6 @@ const COLUMNS = [
 ] as const;
 
 type Props = {
-  companies: Company[];
-  selectedCompanyId: number | null;
-  onCompanyChange: (companyId: number | null) => void;
   employees: Employee[];
   orgTree: DivisionTreeNode[];
   platformUsers: AppUser[];
@@ -48,9 +44,6 @@ function initials(name: string) {
 }
 
 export function PayrollEmployeeDirectoryTab({
-  companies,
-  selectedCompanyId,
-  onCompanyChange,
   employees,
   orgTree,
   platformUsers,
@@ -58,34 +51,9 @@ export function PayrollEmployeeDirectoryTab({
   onOpenDetail,
 }: Props) {
   const countryCode = payStructure?.countryCode ?? 'MY';
-  const selectedCompany = companies.find(c => c.id === selectedCompanyId);
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <label htmlFor="payroll-directory-company" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-          Company
-        </label>
-        <select
-          id="payroll-directory-company"
-          value={selectedCompanyId ?? ''}
-          onChange={e => onCompanyChange(e.target.value ? Number(e.target.value) : null)}
-          disabled={companies.length === 0}
-          className={`${selectCls} min-w-[220px]`}
-        >
-          {companies.length === 0 ? (
-            <option value="">No companies available</option>
-          ) : (
-            companies.map(company => (
-              <option key={company.id} value={company.id}>{company.name}</option>
-            ))
-          )}
-        </select>
-        {selectedCompany && (
-          <span className="text-xs text-muted-foreground">{selectedCompany.countryCode}</span>
-        )}
-      </div>
-
       <p className="text-xs text-muted-foreground">
         {employees.length} employees in directory
         {payStructure ? ` · Pay cycle: ${payStructure.payCycle}` : ' · Pay structure not configured for this company'}

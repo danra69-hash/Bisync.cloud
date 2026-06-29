@@ -2,6 +2,7 @@ import { HR_API_BASE } from '../../config/hrBackend';
 import type {
   AttendanceRecord, CompanySetting, CompanySettingUpdate, CountryOption, Department, Division, DivisionTreeNode,
   Employee, EmployeeCreateRequest, EmployeeLevel, EmployeeRequest,
+  IncomeTaxYear, IncomeTaxYearPreview, IncomeTaxYearRequest,
   LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, PublicHolidayRequest, ScheduleType, ShiftSchedule,
 } from './types';
 
@@ -45,6 +46,7 @@ export function toEmployeeRequest(e: Employee): EmployeeRequest {
     dateOfBirth: e.dateOfBirth,
     personalEmail: e.personalEmail,
     permanentAddress: e.permanentAddress,
+    maritalStatus: e.maritalStatus,
     bankName: e.bankName,
     bankAccountNumber: e.bankAccountNumber,
     bankAccountHolderName: e.bankAccountHolderName,
@@ -171,6 +173,14 @@ export const hrApi = {
     get: (id: number) => http<PayrollRunDetail>(`/payroll-runs/${id}`),
     process: (body: { companyId: number; year: number; month: number }) =>
       http<PayrollRunDetail>('/payroll-runs/process', { method: 'POST', body: JSON.stringify(body) }),
+  },
+  incomeTax: {
+    get: (companyId: number, year: number) =>
+      http<IncomeTaxYear>(`/income-tax/${companyId}/${year}`),
+    save: (companyId: number, year: number, body: IncomeTaxYearRequest) =>
+      http<IncomeTaxYear>(`/income-tax/${companyId}/${year}`, { method: 'PUT', body: JSON.stringify(body) }),
+    preview: (companyId: number, year: number) =>
+      http<IncomeTaxYearPreview>(`/income-tax/${companyId}/${year}/preview`),
   },
 };
 

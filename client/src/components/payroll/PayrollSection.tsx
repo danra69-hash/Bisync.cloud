@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type Company } from '../../api';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
+import { IncomeTaxPanel } from './IncomeTaxPanel';
 import { PayrollEmployeeDirectoryPanel } from './PayrollEmployeeDirectoryPanel';
 import { ProcessPayrollPanel } from './ProcessPayrollPanel';
 import { PayrollPinGate } from './PayrollPinGate';
@@ -10,12 +11,13 @@ type Props = {
   defaultTab?: PayrollTabId;
   /** When true, omits page chrome for embedding inside HR or future Accounting shell */
   embedded?: boolean;
+  /** Company from the app header — payroll filters use this instead of a local dropdown */
+  selectedCompanyId?: number | null;
 };
 
-export function PayrollSection({ defaultTab = 'directory', embedded = false }: Props) {
+export function PayrollSection({ defaultTab = 'directory', embedded = false, selectedCompanyId = null }: Props) {
   const [activeTab, setActiveTab] = useState<PayrollTabId>(defaultTab);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
   const loadCompanies = useCallback(async () => {
     const companyList = await api.companies().catch(() => [] as Company[]);
@@ -26,14 +28,6 @@ export function PayrollSection({ defaultTab = 'directory', embedded = false }: P
   useEffect(() => {
     void loadCompanies();
   }, [loadCompanies]);
-
-  useEffect(() => {
-    if (companies.length === 0) {
-      setSelectedCompanyId(null);
-      return;
-    }
-    setSelectedCompanyId(prev => (prev && companies.some(c => c.id === prev) ? prev : companies[0].id));
-  }, [companies]);
 
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
 
@@ -51,18 +45,21 @@ export function PayrollSection({ defaultTab = 'directory', embedded = false }: P
 
         {activeTab === 'directory' && (
           <PayrollEmployeeDirectoryPanel
-            companies={companies}
             selectedCompanyId={selectedCompanyId}
-            onCompanyChange={setSelectedCompanyId}
             companyCountryCode={selectedCompany?.countryCode}
           />
         )}
 
         {activeTab === 'process' && (
           <ProcessPayrollPanel
-            companies={companies}
             selectedCompanyId={selectedCompanyId}
-            onCompanyChange={setSelectedCompanyId}
+            countryCode={selectedCompany?.countryCode}
+          />
+        )}
+
+        {activeTab === 'income-tax' && (
+          <IncomeTaxPanel
+            selectedCompanyId={selectedCompanyId}
             countryCode={selectedCompany?.countryCode}
           />
         )}

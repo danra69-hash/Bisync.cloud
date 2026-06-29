@@ -97,8 +97,23 @@ public class PayrollCalculationService(BisyncDbContext db)
             PayCycle = payCycle,
         };
 
+        var taxSchedule = await db.IncomeTaxYears.AsNoTracking()
+            .Include(s => s.Brackets)
+            .Include(s => s.Reliefs)
+            .Include(s => s.Rebates)
+            .FirstOrDefaultAsync(s => s.CompanyId == companyId && s.Year == year && s.Active, ct);
+        var taxBrackets = taxSchedule?.Brackets
+            .OrderBy(b => b.SortOrder)
+            .ThenBy(b => b.MinAnnualChargeableIncome)
+            .ToList() ?? [];
+        var taxReliefs = taxSchedule?.Reliefs
+            .OrderBy(r => r.SortOrder)
+            .ThenBy(r => r.Id)
+            .ToList() ?? [];
+        var taxRebateTotal = taxSchedule?.Rebates.Sum(r => r.Amount) ?? 0m;
+
         var lines = employees.Select(employee =>
-            BuildLine(employee, attendance, structureForCalc, payType, year, month, workingDays))
+            BuildLine(employee, attendance, structureForCalc, payType, year, month, workingDays, taxBrackets, taxReliefs, taxRebateTotal))
             .ToList();
 
         var existing = await db.PayrollRuns.AsNoTracking()
@@ -130,7 +145,10 @@ public class PayrollCalculationService(BisyncDbContext db)
         string payType,
         int year,
         int month,
-        int workingDays)
+        int workingDays,
+        IReadOnlyList<IncomeTaxBracket> taxBrackets,
+        IReadOnlyList<IncomeTaxRelief> taxReliefs,
+        decimal taxRebateTotal)
     {
         var records = attendance.Where(a => a.EmployeeId == employee.Id).ToList();
         var presentDays = records.Count(r => r.Status is AttendanceStatus.Present or AttendanceStatus.Late)
@@ -169,7 +187,8 @@ public class PayrollCalculationService(BisyncDbContext db)
             payStructure, employee, contributableWage, year, month);
         var (socsoEmployer, socsoEmployee) = PayrollContributionCalculator.CalcSocso(
             payStructure, employee, contributableWage, year, month);
-        var incomeTax = 0m;
+
+        var incomeTax = CalcMonthlyIncomeTax(employee, payStructure, year, month, taxBrackets, taxReliefs, taxRebateTotal);
         var totalPayout = Math.Round(gross - epfEmployee - socsoEmployee - incomeTax, 2);
 
         return new PayrollLineResult(
@@ -234,6 +253,41 @@ public class PayrollCalculationService(BisyncDbContext db)
 
         foreach (var id in byEmail) linkedIds.Add(id);
         return linkedIds.ToList();
+    }
+
+    static decimal CalcMonthlyIncomeTax(
+        Employee employee,
+        PayStructure payStructure,
+        int year,
+        int month,
+        IReadOnlyList<IncomeTaxBracket> taxBrackets,
+        IReadOnlyList<IncomeTaxRelief> taxReliefs,
+        decimal taxRebateTotal)
+    {
+        if (taxBrackets.Count == 0) return 0m;
+
+        var monthlyGross = CalcProjectedMonthlyGross(employee);
+        if (monthlyGross <= 0) return 0m;
+
+        var monthlyContributable = Math.Round((employee.BaseSalary ?? 0m) + (employee.ServiceAllowance ?? 0m), 2);
+        var (_, epfEmployee) = PayrollContributionCalculator.CalcEpf(
+            payStructure, employee, monthlyContributable, year, month);
+
+        var annualGross = Math.Round(monthlyGross * 12m, 2);
+        var annualEpf = Math.Round(epfEmployee * 12m, 2);
+        var annualTaxRelief = IncomeTaxCalculator.CalcEmployeeReliefTotal(employee, taxReliefs);
+        return IncomeTaxCalculator.CalcMonthlyPcb(annualGross, annualEpf, annualTaxRelief, taxRebateTotal, taxBrackets);
+    }
+
+    static decimal CalcProjectedMonthlyGross(Employee employee)
+    {
+        var baseSalary = employee.BaseSalary ?? 0m;
+        var service = employee.ServiceAllowance ?? 0m;
+        var accommodation = employee.AccommodationAllowance ?? 0m;
+        var transport = employee.TransportAllowance ?? 0m;
+        var mobile = employee.MobileAllowance ?? 0m;
+        var bonus = CalcMonthlyBonus(employee, baseSalary, service);
+        return Math.Round(baseSalary + service + accommodation + transport + mobile + bonus, 2);
     }
 
     static decimal CalcMonthlyBonus(Employee employee, decimal baseSalary, decimal serviceAllowance)

@@ -74,6 +74,7 @@ export interface Employee {
   dateOfBirth?: string | null;
   personalEmail?: string | null;
   permanentAddress?: string | null;
+  maritalStatus?: string | null;
   bankName?: string | null;
   bankAccountNumber?: string | null;
   bankAccountHolderName?: string | null;
@@ -269,6 +270,7 @@ export interface EmployeeRequest {
   dateOfBirth?: string | null;
   personalEmail?: string | null;
   permanentAddress?: string | null;
+  maritalStatus?: string | null;
   bankName?: string | null;
   bankAccountNumber?: string | null;
   bankAccountHolderName?: string | null;
@@ -422,4 +424,72 @@ export interface PayrollRunSummary {
 
 export interface PayrollRunDetail extends PayrollRunSummary {
   lines: PayrollRunLine[];
+}
+
+export interface IncomeTaxBracketItem {
+  id?: number;
+  minAnnualChargeableIncome: number;
+  maxAnnualChargeableIncome: number | null;
+  ratePct: number;
+  baseMinTaxAmount: number;
+}
+
+export interface IncomeTaxReliefItem {
+  id?: number;
+  name: string;
+  amount: number;
+  isMaximum?: boolean;
+  applyCondition?: string | null;
+}
+
+export interface IncomeTaxRebateItem {
+  id?: number;
+  name: string;
+  amount: number;
+}
+
+export interface IncomeTaxYear {
+  id: number;
+  companyId: number;
+  companyName: string;
+  year: number;
+  countryCode: string;
+  active: boolean;
+  brackets: IncomeTaxBracketItem[];
+  reliefs: IncomeTaxReliefItem[];
+  rebates: IncomeTaxRebateItem[];
+}
+
+export interface IncomeTaxYearRequest {
+  active: boolean;
+  brackets: IncomeTaxBracketItem[];
+  reliefs: IncomeTaxReliefItem[];
+  rebates: IncomeTaxRebateItem[];
+}
+
+export interface IncomeTaxEmployeeLine {
+  employeeId: number;
+  employeeCode: string;
+  employeeName: string;
+  position: string;
+  annualGross: number;
+  annualEpfEmployee: number;
+  annualTaxRelief: number;
+  baseTaxAmount: number;
+  annualRebate: number;
+  annualTax: number;
+  monthlyPcb: number;
+}
+
+export interface IncomeTaxYearPreview {
+  companyId: number;
+  companyName: string;
+  year: number;
+  countryCode: string;
+  configured: boolean;
+  totalAnnualGross: number;
+  totalAnnualTax: number;
+  totalMonthlyPcb: number;
+  employeeCount: number;
+  lines: IncomeTaxEmployeeLine[];
 }

@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react';
-import { inputCls, selectCls } from '../../data/countries';
-import type { DivisionTreeNode, Employee, PayStructure, PayrollOtherAllowance } from '../../modules/hr/types';
+import { useMemo } from 'react';
+import { inputCls, selectCls } from '../../data/countries';import type { DivisionTreeNode, Employee, PayStructure, PayrollOtherAllowance } from '../../modules/hr/types';
 import { SIDE_PANEL_ROOT_CLS, SIDE_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
 import {
   employeeDepartmentName,
@@ -9,8 +9,8 @@ import {
 } from './employeeOrgDisplay';
 import { BankNameField } from './BankNameField';
 import { MALAYSIA_MOBILE_OPERATORS, formatOvertimeConfigLabel } from './payrollAllowanceShared';
-import { formatJoinDate, formatPayrollAmount, parsePayrollAmount } from './payrollDisplay';
-import type { AppUser } from '../../api';
+import { calcEmployeeContributions } from './payrollContributionShared';
+import { formatJoinDate, formatPayrollAmount, parsePayrollAmount } from './payrollDisplay';import type { AppUser } from '../../api';
 
 type Props = {
   employee: Employee;
@@ -84,6 +84,37 @@ function AmountField({
   );
 }
 
+function ContributionCard({
+  title,
+  employeeAmount,
+  employerAmount,
+  basisLabel,
+  countryCode,
+}: {
+  title: string;
+  employeeAmount: number;
+  employerAmount: number;
+  basisLabel: string;
+  countryCode: string;
+}) {
+  return (
+    <div className="border border-border rounded-lg p-4 space-y-3">
+      <h5 className="text-xs font-semibold">{title}</h5>
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee</div>
+          <div className="mt-1 font-mono font-medium">{formatPayrollAmount(employeeAmount, countryCode)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employer</div>
+          <div className="mt-1 font-mono font-medium">{formatPayrollAmount(employerAmount, countryCode)}</div>
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-foreground leading-relaxed">{basisLabel}</p>
+    </div>
+  );
+}
+
 export function PayrollEmployeeDetailPanel({
   employee,
   orgTree,
@@ -102,7 +133,10 @@ export function PayrollEmployeeDetailPanel({
   const countryCode = payStructure?.countryCode ?? 'MY';
   const payCycle = payStructure?.payCycle ?? 'Not configured';
   const otherAllowances = employee.otherAllowances ?? [];
-
+  const contributions = useMemo(
+    () => calcEmployeeContributions(employee, payStructure),
+    [employee, payStructure],
+  );
   function setOtherAllowances(items: PayrollOtherAllowance[]) {
     onUpdate({ otherAllowances: items });
   }
@@ -259,8 +293,39 @@ export function PayrollEmployeeDetailPanel({
               <AmountField label="Service" value={employee.serviceAllowance} countryCode={countryCode} onChange={v => onUpdate({ serviceAllowance: v })} />
             </div>
 
-            <div className="border border-border rounded-lg p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-3">
+              <div>
+                <h5 className="text-xs font-semibold">Statutory Contributions</h5>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Estimated monthly amounts from Pay Structure (HR Config) on base salary + service
+                  {contributions ? ` · Contributable wage ${formatPayrollAmount(contributions.contributableWage, countryCode)}` : ''}
+                </p>
+              </div>
+              {!payStructure ? (
+                <p className="text-xs text-muted-foreground border border-border rounded-lg px-3 py-2">
+                  Configure Pay Structure for this company to preview EPF and SOCSO.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <ContributionCard
+                    title="EPF Contribution"
+                    employeeAmount={contributions?.epf.employee ?? 0}
+                    employerAmount={contributions?.epf.employer ?? 0}
+                    basisLabel={contributions?.epf.basisLabel ?? '—'}
+                    countryCode={countryCode}
+                  />
+                  <ContributionCard
+                    title="SOCSO"
+                    employeeAmount={contributions?.socso.employee ?? 0}
+                    employerAmount={contributions?.socso.employer ?? 0}
+                    basisLabel={contributions?.socso.basisLabel ?? '—'}
+                    countryCode={countryCode}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="border border-border rounded-lg p-4 space-y-3">              <div className="flex flex-wrap items-center justify-between gap-3">
                 <h5 className="text-xs font-semibold">Transport Allowances</h5>
                 <ProvidedCheckbox checked={!!employee.transportProvided} label="Provided" onChange={setTransportProvided} />
               </div>

@@ -900,7 +900,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
           />
         )}
 
-        {activeTab === 'payroll' && <PayrollSection embedded />}
+        {activeTab === 'payroll' && <PayrollSection embedded selectedCompanyId={selectedCompanyId} />}
       </div>
     </div>
 

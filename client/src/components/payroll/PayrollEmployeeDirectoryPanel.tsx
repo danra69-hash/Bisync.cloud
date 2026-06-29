@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api as bisyncApi, type AppUser, type Company } from '../../api';
-import { hrApi, toEmployeeRequest } from '../../modules/hr/api';import type { DivisionTreeNode, Employee, PayStructure } from '../../modules/hr/types';
+import { api as bisyncApi, type AppUser } from '../../api';
+import { hrApi, toEmployeeRequest } from '../../modules/hr/api';
+import type { DivisionTreeNode, Employee, PayStructure } from '../../modules/hr/types';
 import { employeeCompanyId } from './employeeOrgDisplay';
 import { PayrollEmployeeDetailPanel } from './PayrollEmployeeDetailPanel';
 import { PayrollEmployeeDirectoryTab } from './PayrollEmployeeDirectoryTab';
@@ -8,16 +9,12 @@ import { MALAYSIA_BANKS, type MalaysiaBank } from './malaysiaBanks';
 import { validatePayrollAllowanceDetails } from './payrollAllowanceShared';
 
 type Props = {
-  companies: Company[];
   selectedCompanyId: number | null;
-  onCompanyChange: (companyId: number | null) => void;
   companyCountryCode?: string | null;
 };
 
 export function PayrollEmployeeDirectoryPanel({
-  companies,
   selectedCompanyId,
-  onCompanyChange,
   companyCountryCode,
 }: Props) {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -129,16 +126,13 @@ export function PayrollEmployeeDirectoryPanel({
 
   if (!selectedCompanyId) {
     return (
-      <p className="text-xs text-muted-foreground py-4">Select a company to view employees.</p>
+      <p className="text-xs text-muted-foreground py-4">Select a company from the menu bar above to view employees.</p>
     );
   }
 
   return (
     <>
       <PayrollEmployeeDirectoryTab
-        companies={companies}
-        selectedCompanyId={selectedCompanyId}
-        onCompanyChange={onCompanyChange}
         employees={filteredEmployees}
         orgTree={orgTree}
         platformUsers={platformUsers}

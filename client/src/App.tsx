@@ -276,13 +276,13 @@ export default function App() {
               </div>
             </>
           ) : isRevenueSection ? (
-            <RevenueSection section={activeNav} />
+            <RevenueSection section={activeNav} selectedCompanyId={selectedCompanyId} />
           ) : activeNav === 'System Configuration' ? (
             <SystemConfigurationPage onOrgDataChanged={refreshOrgFilters} />
           ) : activeNav === 'Human Resources' ? (
             <HumanResourcesPage selectedCompanyId={selectedCompanyId} />
           ) : activeNav === 'Accounting' ? (
-            <AccountingPage />
+            <AccountingPage selectedCompanyId={selectedCompanyId} />
           ) : (
             <PlaceholderModule title={activeNav} />
           )}

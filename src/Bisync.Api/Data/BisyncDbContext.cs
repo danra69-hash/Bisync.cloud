@@ -28,6 +28,10 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProvidentFundBracket> ProvidentFundBrackets => Set<ProvidentFundBracket>();
     public DbSet<SocsoBracket> SocsoBrackets => Set<SocsoBracket>();
     public DbSet<MandatoryContribution> MandatoryContributions => Set<MandatoryContribution>();
+    public DbSet<IncomeTaxYear> IncomeTaxYears => Set<IncomeTaxYear>();
+    public DbSet<IncomeTaxBracket> IncomeTaxBrackets => Set<IncomeTaxBracket>();
+    public DbSet<IncomeTaxRelief> IncomeTaxReliefs => Set<IncomeTaxRelief>();
+    public DbSet<IncomeTaxRebate> IncomeTaxRebates => Set<IncomeTaxRebate>();
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
     public DbSet<Vendor> Vendors => Set<Vendor>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
@@ -65,6 +69,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         });
         HrModelConfiguration.Configure(modelBuilder);
         modelBuilder.Entity<Vendor>().HasIndex(v => v.ExternalId).IsUnique();
+        modelBuilder.Entity<Ingredient>(e =>
+        {
+            e.Property(x => x.ComponentId).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.HasIndex(x => x.ComponentId).IsUnique();
+            e.HasIndex(x => x.Name).IsUnique();
+        });
         modelBuilder.Entity<PurchaseOrder>().HasIndex(p => p.PoNumber).IsUnique();
         modelBuilder.Entity<PurchaseOrder>()
             .HasMany(p => p.Items)

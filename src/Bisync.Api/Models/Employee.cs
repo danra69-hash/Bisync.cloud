@@ -56,6 +56,7 @@ public class Employee
     public DateOnly? DateOfBirth { get; set; }
     public string? PersonalEmail { get; set; }
     public string? PermanentAddress { get; set; }
+    public string? MaritalStatus { get; set; }
 
     // Payroll bank details
     public string? BankName { get; set; }

@@ -12,6 +12,7 @@ builder.Services.AddDbContext<BisyncDbContext>(options =>
 builder.Services.AddHttpClient<PublicHolidayCatalogService>();
 builder.Services.AddScoped<PublicHolidaySyncService>();
 builder.Services.AddScoped<PayrollCalculationService>();
+builder.Services.AddScoped<IncomeTaxService>();
 builder.Services.AddScoped<ReplacementPublicHolidayService>();
 
 builder.Services.AddCors(options =>

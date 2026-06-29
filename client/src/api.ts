@@ -168,6 +168,7 @@ export interface ProgressData {
 
 export interface Ingredient {
   id: number;
+  componentId: string;
   name: string;
   category: string;
   group: string;
@@ -178,6 +179,8 @@ export interface Ingredient {
   dailyUsage: number;
   orderFreqDays: number;
   storageJson: string;
+  storageNote?: string;
+  detailConfigJson?: string;
   attachedProducts: number;
   attachedVendors: number;
   active: boolean;
@@ -190,7 +193,17 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (!res.ok) {
+    const text = await res.text();
+    let message = `API error ${res.status}: ${path}`;
+    try {
+      const parsed = JSON.parse(text) as { message?: string; title?: string };
+      message = parsed.message ?? parsed.title ?? message;
+    } catch {
+      if (text) message = text;
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 

@@ -100,7 +100,9 @@ public static class EmployeeSeeder
             employee.PosEnabled = seed.PosEnabled;
             employee.BisyncEnabled = true;
             employee.WorkingHoursPerDay = 8;
-            employee.EmployeeLevelId = seed.EmployeeLevelId;
+            var resolvedLevelId = await ResolveEmployeeLevelIdAsync(db, seed.EmployeeLevelId);
+            if (resolvedLevelId is not null)
+                employee.EmployeeLevelId = resolvedLevelId;
             employee.Nationality = seed.CompanyId switch
             {
                 1 => "Malaysian",
@@ -158,6 +160,21 @@ public static class EmployeeSeeder
                 await db.SaveChangesAsync();
             }
         }
+    }
+
+    static async Task<int?> ResolveEmployeeLevelIdAsync(BisyncDbContext db, int? preferredId)
+    {
+        if (preferredId is int id && await db.EmployeeLevels.AnyAsync(l => l.Id == id))
+            return id;
+
+        var name = preferredId switch
+        {
+            >= 3 => "Director",
+            2 => "Management",
+            _ => "Junior",
+        };
+        return (await db.EmployeeLevels.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.LevelName == name))?.Id;
     }
 
     static async Task<Dictionary<string, int>> LoadLocationIdsAsync(BisyncDbContext db)

@@ -46,6 +46,8 @@ public class EmployeeRequest
     public string? PersonalEmail { get; set; }
     [MaxLength(500)]
     public string? PermanentAddress { get; set; }
+    [MaxLength(20)]
+    public string? MaritalStatus { get; set; }
 
     [MaxLength(100)]
     public string? BankName { get; set; }
@@ -383,6 +385,90 @@ public class PayStructureDetail
     public List<ProvidentFundBracketItem> ProvidentFundBrackets { get; set; } = [];
     public List<SocsoBracketItem> SocsoBrackets { get; set; } = [];
     public List<MandatoryContributionItem> MandatoryContributions { get; set; } = [];
+}
+
+public class IncomeTaxBracketItem
+{
+    public int? Id { get; set; }
+    [Range(0, 999999999)]
+    public decimal MinAnnualChargeableIncome { get; set; }
+    [Range(0, 999999999)]
+    public decimal? MaxAnnualChargeableIncome { get; set; }
+    [Range(0, 100)]
+    public decimal RatePct { get; set; }
+    [Range(0, 999999999)]
+    public decimal BaseMinTaxAmount { get; set; }
+}
+
+public class IncomeTaxReliefItem
+{
+    public int? Id { get; set; }
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = "";
+    [Range(0, 999999999)]
+    public decimal Amount { get; set; }
+    public bool IsMaximum { get; set; }
+    [MaxLength(50)]
+    public string? ApplyCondition { get; set; }
+}
+
+public class IncomeTaxRebateItem
+{
+    public int? Id { get; set; }
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = "";
+    [Range(0, 999999999)]
+    public decimal Amount { get; set; }
+}
+
+public class IncomeTaxYearRequest
+{
+    public bool Active { get; set; } = true;
+    public List<IncomeTaxBracketItem> Brackets { get; set; } = [];
+    public List<IncomeTaxReliefItem> Reliefs { get; set; } = [];
+    public List<IncomeTaxRebateItem> Rebates { get; set; } = [];
+}
+
+public class IncomeTaxYearDetail
+{
+    public int Id { get; set; }
+    public int CompanyId { get; set; }
+    public string CompanyName { get; set; } = "";
+    public int Year { get; set; }
+    public string CountryCode { get; set; } = "";
+    public bool Active { get; set; }
+    public List<IncomeTaxBracketItem> Brackets { get; set; } = [];
+    public List<IncomeTaxReliefItem> Reliefs { get; set; } = [];
+    public List<IncomeTaxRebateItem> Rebates { get; set; } = [];
+}
+
+public class IncomeTaxEmployeeLineItem
+{
+    public int EmployeeId { get; set; }
+    public string EmployeeCode { get; set; } = "";
+    public string EmployeeName { get; set; } = "";
+    public string Position { get; set; } = "";
+    public decimal AnnualGross { get; set; }
+    public decimal AnnualEpfEmployee { get; set; }
+    public decimal AnnualTaxRelief { get; set; }
+    public decimal BaseTaxAmount { get; set; }
+    public decimal AnnualRebate { get; set; }
+    public decimal AnnualTax { get; set; }
+    public decimal MonthlyPcb { get; set; }
+}
+
+public class IncomeTaxYearPreviewDetail
+{
+    public int CompanyId { get; set; }
+    public string CompanyName { get; set; } = "";
+    public int Year { get; set; }
+    public string CountryCode { get; set; } = "";
+    public bool Configured { get; set; }
+    public decimal TotalAnnualGross { get; set; }
+    public decimal TotalAnnualTax { get; set; }
+    public decimal TotalMonthlyPcb { get; set; }
+    public int EmployeeCount { get; set; }
+    public List<IncomeTaxEmployeeLineItem> Lines { get; set; } = [];
 }
 
 public class PayrollProcessRequest

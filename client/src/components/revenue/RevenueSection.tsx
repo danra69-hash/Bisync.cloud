@@ -7,9 +7,9 @@ import { ComponentConfigPage } from './ComponentConfigPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
 
-type Props = { section: 'Revenue Management' | 'Point-of-Sales' };
+type Props = { section: 'Revenue Management' | 'Point-of-Sales'; selectedCompanyId: number | null };
 
-function renderRevMgmtContent(selectedItem: string | null) {
+function renderRevMgmtContent(selectedItem: string | null, selectedCompanyId: number | null) {
   if (!selectedItem) {
     return (
       <div className="p-6">
@@ -22,7 +22,7 @@ function renderRevMgmtContent(selectedItem: string | null) {
 
   switch (label) {
     case 'Smart Component':
-      return <SmartIngredientPage />;
+      return <SmartIngredientPage selectedCompanyId={selectedCompanyId} />;
     case 'Component Config':
       return <ComponentConfigPage />;
     case 'Vendor List':
@@ -34,7 +34,7 @@ function renderRevMgmtContent(selectedItem: string | null) {
   }
 }
 
-export function RevenueSection({ section }: Props) {
+export function RevenueSection({ section, selectedCompanyId }: Props) {
   const [revItem, setRevItem] = useState<string | null>(null);
   const [posItem, setPosItem] = useState<string | null>(null);
 
@@ -56,7 +56,7 @@ export function RevenueSection({ section }: Props) {
   return (
     <>
       <RevMgmtBar selectedItem={revItem} onSelectItem={setRevItem} />
-      {renderRevMgmtContent(revItem)}
+      {renderRevMgmtContent(revItem, selectedCompanyId)}
     </>
   );
 }
