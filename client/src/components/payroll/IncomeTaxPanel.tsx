@@ -167,10 +167,6 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
         )}
       </div>
 
-      {!selectedCompanyId && (
-        <p className="text-sm text-muted-foreground">Select a company from the menu bar above to configure income tax.</p>
-      )}
-
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}

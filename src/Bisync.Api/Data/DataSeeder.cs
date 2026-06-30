@@ -25,13 +25,6 @@ public static class DataSeeder
             new MenuItem { Name = "Craft Beer", Category = "beverage", Orders = 174, Revenue = 2088, MarginPercent = 71 }
         );
 
-        db.Vendors.AddRange(
-            new Vendor { ExternalId = "V001", Name = "Premium Meats Co.", Type = "offline", Brn = "202001012345", Products = "Proteins, Poultry", City = "Kuala Lumpur", State = "WP", ContactPerson = "Ahmad Razali", Mobile = "+60 12-345 6789", Email = "sales@premiummeats.my", Address = "12 Jalan Semarak, KL 50450", Engaged = true },
-            new Vendor { ExternalId = "V002", Name = "Fine Truffle Imports", Type = "offline", Brn = "201801056789", Products = "Truffles, Specialty", City = "Petaling Jaya", State = "Selangor", ContactPerson = "Jean-Luc Prive", Mobile = "+60 16-778 9900", Email = "jl@truffleimports.com", Address = "88 Jalan PJ 14, PJ 47810", Engaged = true },
-            new Vendor { ExternalId = "V004", Name = "Wine & Spirits Direct", Type = "online", Brn = "202201034567", Products = "Wine, Spirits, Beer", City = "Kuala Lumpur", State = "WP", ContactPerson = "Melissa Tan", Mobile = "+60 19-887 6543", Email = "melissa@winedirect.my", Address = "Online — Nationwide Delivery", Engaged = true },
-            new Vendor { ExternalId = "V005", Name = "Ocean Fresh Seafood", Type = "offline", Brn = "201701023456", Products = "Seafood, Fresh Fish", City = "Port Klang", State = "Selangor", ContactPerson = "Haji Sulaiman", Mobile = "+60 13-456 7890", Email = "fresh@oceanfish.my", Address = "Lot 22, Jln Pelabuhan, Port Klang", Engaged = false }
-        );
-
         db.Ingredients.AddRange(
             new Ingredient { ComponentId = "CMP-WAGYUB-001", Name = "Wagyu Beef A5", Category = "Food", Group = "Proteins", RecipeUom = "g", InventoryUom = "kg", LastPriceRecipe = 0.38m, LastPriceInventory = 380m, DailyUsage = 2.4m, OrderFreqDays = 3, StorageJson = JsonSerializer.Serialize(new[] { "Freezer" }), AttachedProducts = 3, AttachedVendors = 2, Active = true, LocationsJson = JsonSerializer.Serialize(new[] { "downtown", "midtown" }) },
             new Ingredient { ComponentId = "CMP-BLACKT-001", Name = "Black Truffle", Category = "Food", Group = "Produce", RecipeUom = "g", InventoryUom = "g", LastPriceRecipe = 1.80m, LastPriceInventory = 1.80m, DailyUsage = 45m, OrderFreqDays = 7, StorageJson = JsonSerializer.Serialize(new[] { "Chiller" }), AttachedProducts = 2, AttachedVendors = 1, Active = true, LocationsJson = JsonSerializer.Serialize(new[] { "downtown" }) },

@@ -20,8 +20,9 @@ import {
   toApiUom,
   toForm,
 } from '../../data/componentForm';
-import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_DETAIL_CLS } from '../layout/sidePanelShared';
+import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_DETAIL_CLS, DETAIL_PANEL_OVERLAY_ELEVATED_CLS, DETAIL_PANEL_SHELL_ELEVATED_CLS } from '../layout/sidePanelShared';
 import { VendorProductTable, type CompanyLocationOption } from './VendorProductTable';
+import { isVendorProductTagReady } from '../../data/vendorProductTagging';
 import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 
 function computeTaggedVendorProductPricing(
@@ -371,11 +372,12 @@ type Props = {
   existingComponents: ComponentRow[];
   selectedCompanyId: number | null;
   saveError?: string | null;
+  elevated?: boolean;
   onClose: () => void;
   onSave: (updated: Partial<ComponentRow>) => void;
 };
 
-export function ComponentEditPanel({ row, isNew = false, existingComponents, selectedCompanyId, saveError, onClose, onSave }: Props) {
+export function ComponentEditPanel({ row, isNew = false, existingComponents, selectedCompanyId, saveError, elevated = false, onClose, onSave }: Props) {
   const existingComponentIds = existingComponents.map(c => c.componentId).filter(Boolean);
   const [form, setForm] = useState<ComponentForm>(() => toForm(row, existingComponentIds));
   const [nameError, setNameError] = useState<string | null>(null);
@@ -559,6 +561,19 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   }
 
   function handleToggleVendorProductTag(product: VendorProductCatalogItem, tagged: boolean) {
+    if (tagged) {
+      const componentUom = form.vendorProductComponentUom[product.id] ?? form.recipeUnit;
+      const tagReady = isVendorProductTagReady(product, {
+        recipeUnit: form.recipeUnit,
+        altRecipeUnits: form.altRecipeUnits,
+        componentUom,
+        principalQty: form.vendorProductPrincipalQty[product.id],
+        productLocationIds: form.vendorProductLocations[product.id] ?? [],
+        companyLocationCount: companyLocations.length,
+      });
+      if (!tagReady.ready) return;
+    }
+
     setForm(f => {
       const taggedVendorProductIds = tagged
         ? [...f.taggedVendorProductIds, product.id].filter((id, i, arr) => arr.indexOf(id) === i)
@@ -661,13 +676,13 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   return (
     <>
       <div
-        className={SIDE_PANEL_OVERLAY_CLS}
+        className={elevated ? DETAIL_PANEL_OVERLAY_ELEVATED_CLS : SIDE_PANEL_OVERLAY_CLS}
         onClick={onClose}
         role="presentation"
         aria-hidden
       />
 
-      <div className={SIDE_PANEL_SHELL_DETAIL_CLS} onClick={e => e.stopPropagation()}>
+      <div className={elevated ? DETAIL_PANEL_SHELL_ELEVATED_CLS : SIDE_PANEL_SHELL_DETAIL_CLS} onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Smart Component</p>

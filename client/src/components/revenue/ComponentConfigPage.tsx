@@ -46,7 +46,7 @@ function storageMatchesLocation(row: StorageRow, location: string) {
   return row.location === location || row.location === 'All Locations';
 }
 
-export function ComponentConfigPage() {
+export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
   const [tab, setTab] = useState<'group' | 'storage' | 'uom'>('group');
   const [groups, setGroups] = useState(initialGroups);
   const [storage] = useState(initialStorage);
@@ -152,6 +152,8 @@ export function ComponentConfigPage() {
         <p className="text-xs text-muted-foreground mt-1">Configure component groups, storage assignments, and UOM conversions</p>
       </div>
 
+      {selectedCompanyId && (
+      <>
       <div className="flex gap-1 border-b border-border">
         {([
           { id: 'group' as const, label: 'Group Assignment' },
@@ -426,6 +428,8 @@ export function ComponentConfigPage() {
           onConfirm={confirmAddToMyStorage}
           onAddArea={addArea}
         />
+      )}
+      </>
       )}
     </div>
   );

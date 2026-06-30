@@ -121,6 +121,27 @@ export interface MenuItem {
   marginPercent: number;
 }
 
+export interface VendorContact {
+  id?: string;
+  name: string;
+  position: string;
+  mobile: string;
+  email: string;
+  isDefault: boolean;
+}
+
+export interface EngageVendorContact {
+  name: string;
+  position: string;
+  mobile: string;
+  email: string;
+  isDefault: boolean;
+}
+
+export interface EngageVendorPayload {
+  contacts: EngageVendorContact[];
+}
+
 export interface Vendor {
   id: number;
   externalId: string;
@@ -128,7 +149,29 @@ export interface Vendor {
   type: string;
   products: string;
   city: string;
+  state: string;
+  address: string;
+  contactPerson: string;
+  contactPosition: string;
+  mobile: string;
+  email: string;
+  contactsJson: string;
   engaged: boolean;
+}
+
+export interface VendorCreatePayload {
+  externalId: string;
+  name: string;
+  type: string;
+  brn: string;
+  products: string;
+  city: string;
+  state: string;
+  address: string;
+  contactPerson: string;
+  contactPosition: string;
+  mobile: string;
+  email: string;
 }
 
 export interface PurchaseOrder {
@@ -138,7 +181,24 @@ export interface PurchaseOrder {
   orderDate: string;
   deliveryDate: string;
   status: string;
-  items: { id: number; name: string; quantity: number; unitPrice: number; unit: string }[];
+  items: { id: number; name: string; quantity: number; unitPrice: number; unit: string; deliveryPackage?: string }[];
+}
+
+export interface CreatePurchaseOrderItemPayload {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  unit: string;
+  deliveryPackage: string;
+}
+
+export interface CreatePurchaseOrderPayload {
+  vendorName: string;
+  poNumber?: string;
+  orderDate?: string;
+  deliveryDate?: string;
+  status?: string;
+  items: CreatePurchaseOrderItemPayload[];
 }
 
 export interface InventoryAlert {
@@ -222,11 +282,15 @@ export const api = {
   updateUser: (id: number, data: UserUpsert) => fetchJsonWithMethod<AppUser>(`/api/users/${id}`, 'PUT', data),
   menu: (category?: string) => fetchJson<MenuItem[]>(`/api/menu${category ? `?category=${category}` : ''}`),
   vendors: (engaged?: boolean) => fetchJson<Vendor[]>(`/api/vendors${engaged !== undefined ? `?engaged=${engaged}` : ''}`),
-  engageVendor: (externalId: string) => fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}/engage`, 'POST'),
+  createVendor: (data: VendorCreatePayload) => fetchJsonWithMethod<Vendor>('/api/vendors', 'POST', data),
+  engageVendor: (externalId: string, data: EngageVendorPayload) =>
+    fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}/engage`, 'POST', data),
   ingredients: () => fetchJson<Ingredient[]>('/api/ingredients'),
   createIngredient: (data: Omit<Ingredient, 'id'>) => fetchJsonWithMethod<Ingredient>('/api/ingredients', 'POST', data),
   updateIngredient: (id: number, data: Ingredient) => fetchJsonWithMethod<Ingredient>(`/api/ingredients/${id}`, 'PUT', data),
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),
+  createPurchaseOrders: (orders: CreatePurchaseOrderPayload[]) =>
+    fetchJsonWithMethod<PurchaseOrder[]>('/api/purchaseorders/batch', 'POST', { orders }),
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

@@ -6,10 +6,19 @@ import { SmartIngredientPage } from './SmartIngredientPage';
 import { ComponentConfigPage } from './ComponentConfigPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
+import { CreateOrderPage } from './CreateOrderPage';
 
-type Props = { section: 'Revenue Management' | 'Point-of-Sales'; selectedCompanyId: number | null };
+type Props = {
+  section: 'Revenue Management' | 'Point-of-Sales';
+  selectedCompanyId: number | null;
+  selectedLocationIds: string[];
+};
 
-function renderRevMgmtContent(selectedItem: string | null, selectedCompanyId: number | null) {
+function renderRevMgmtContent(
+  selectedItem: string | null,
+  selectedCompanyId: number | null,
+  selectedLocationIds: string[],
+) {
   if (!selectedItem) {
     return (
       <div className="p-6">
@@ -24,17 +33,24 @@ function renderRevMgmtContent(selectedItem: string | null, selectedCompanyId: nu
     case 'Smart Component':
       return <SmartIngredientPage selectedCompanyId={selectedCompanyId} />;
     case 'Component Config':
-      return <ComponentConfigPage />;
-    case 'Vendor List':
-      return <VendorListPage />;
+      return <ComponentConfigPage selectedCompanyId={selectedCompanyId} />;
+    case 'Vendor List & Products':
+      return <VendorListPage selectedCompanyId={selectedCompanyId} />;
     case 'Compare Price':
-      return <ComparePricePage />;
+      return <ComparePricePage selectedCompanyId={selectedCompanyId} />;
+    case 'Create Order':
+      return (
+        <CreateOrderPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     default:
       return <ModuleContent section={subtitle ? `${section} · ${subtitle}` : section} label={label} />;
   }
 }
 
-export function RevenueSection({ section, selectedCompanyId }: Props) {
+export function RevenueSection({ section, selectedCompanyId, selectedLocationIds }: Props) {
   const [revItem, setRevItem] = useState<string | null>(null);
   const [posItem, setPosItem] = useState<string | null>(null);
 
@@ -56,7 +72,7 @@ export function RevenueSection({ section, selectedCompanyId }: Props) {
   return (
     <>
       <RevMgmtBar selectedItem={revItem} onSelectItem={setRevItem} />
-      {renderRevMgmtContent(revItem, selectedCompanyId)}
+      {renderRevMgmtContent(revItem, selectedCompanyId, selectedLocationIds)}
     </>
   );
 }

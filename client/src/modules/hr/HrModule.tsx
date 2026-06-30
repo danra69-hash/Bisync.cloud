@@ -534,11 +534,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               </div>
             </div>
 
-            {!selectedCompanyId ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-600">
-                Select a company in the header to view attendance.
-              </div>
-            ) : (
+            {selectedCompanyId && (
             <>
             {/* Shift Employees */}
             <div>
@@ -705,11 +701,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               )}
             </div>
 
-            {!selectedCompanyId ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-600">
-                Select a company in the header to view leave requests.
-              </div>
-            ) : (
+            {selectedCompanyId && (
             <>
             <div className="space-y-4">
               {companyLeaveRequests.length === 0 ? (
@@ -861,11 +853,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               <h2 className="text-xl text-gray-900">Monthly Shift Schedule</h2>
             </div>
 
-            {!selectedCompanyId ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-600">
-                Select a company in the header to view the schedule.
-              </div>
-            ) : shiftEmployees.length === 0 ? (
+            {selectedCompanyId && (shiftEmployees.length === 0 ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
                 <p className="text-gray-500">No shift employees for this company. Mark a level as Shift under HR Config → Level & Entitlement.</p>
               </div>
@@ -884,7 +872,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 selectedDepartmentId={scheduleDepartmentId}
                 onDepartmentChange={setScheduleDepartmentId}
               />
-            )}
+            ))}
           </div>
         )}
 

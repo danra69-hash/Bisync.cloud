@@ -28,6 +28,6 @@ export function filterMetricsByOrg(
     );
   }
 
-  if (selectedLocationIds.length === 0) return scoped;
+  if (selectedLocationIds.length === 0) return [];
   return scoped.filter(l => selectedLocationIds.includes(l.externalId));
 }

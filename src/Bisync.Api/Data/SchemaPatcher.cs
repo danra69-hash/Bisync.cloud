@@ -54,9 +54,13 @@ public static class SchemaPatcher
         await EnsureColumnAsync(db, "Ingredients", "ComponentId", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "Ingredients", "StorageNote", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "Ingredients", "DetailConfigJson", "TEXT NOT NULL DEFAULT '{}'");
+        await EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await BackfillIngredientComponentIdsAsync(db);
         await TryCreateUniqueIndexAsync(db, "IX_Ingredients_ComponentId", "Ingredients", "ComponentId");
         await TryCreateUniqueIndexAsync(db, "IX_Ingredients_Name", "Ingredients", "Name");
+        await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
+        await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
     }
 
     static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)

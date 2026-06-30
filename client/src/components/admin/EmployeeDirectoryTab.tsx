@@ -100,12 +100,6 @@ export function EmployeeDirectoryTab({
         </button>
       </div>
 
-      {noCompanySelected && (
-        <p className="text-xs text-muted-foreground py-8 text-center border border-dashed border-border rounded-lg">
-          Select a company in the header to view and manage employees.
-        </p>
-      )}
-
       {!noCompanySelected && showEmployeeForm && (
         <div className="bg-card border border-border rounded-lg p-5 space-y-4">
           <div>

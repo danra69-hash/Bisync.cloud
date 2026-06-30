@@ -125,9 +125,7 @@ export function PayrollEmployeeDirectoryPanel({
   }
 
   if (!selectedCompanyId) {
-    return (
-      <p className="text-xs text-muted-foreground py-4">Select a company from the menu bar above to view employees.</p>
-    );
+    return null;
   }
 
   return (

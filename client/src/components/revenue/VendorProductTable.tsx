@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MapPin, Search, X } from 'lucide-react';
 import { inputCls, selectCls, type AltUnitEntry } from '../../data/componentForm';
+import { isVendorProductTagReady } from '../../data/vendorProductTagging';
 import {
   calcComponentPrincipalUomPrice,
   calcNettUomPrice,
@@ -141,7 +142,7 @@ function VendorProductLocationModal({
   );
 }
 
-function VendorProductTableBody({
+export function VendorProductTableBody({
   products,
   showTagColumn,
   showLocationColumn,
@@ -220,6 +221,14 @@ function VendorProductTableBody({
             const nettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
             const tagged = taggedProductIds.includes(product.id);
             const assignedLocations = locationsByProduct[product.id] ?? [];
+            const tagReady = isVendorProductTagReady(product, {
+              recipeUnit: principalComponentUom,
+              altRecipeUnits,
+              componentUom,
+              principalQty: storedQty,
+              productLocationIds: assignedLocations,
+              companyLocationCount: companyLocations.length,
+            });
 
             return (
               <tr
@@ -310,9 +319,16 @@ function VendorProductTableBody({
                     <input
                       type="checkbox"
                       checked={tagged}
+                      disabled={!tagged && !tagReady.ready}
                       onChange={e => onToggleTag(product, e.target.checked)}
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-                      title={tagged ? 'Untag vendor product' : 'Tag vendor product to this component'}
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={
+                        tagged
+                          ? 'Untag vendor product'
+                          : tagReady.ready
+                            ? 'Tag vendor product to this component'
+                            : tagReady.reason
+                      }
                     />
                   </td>
                 )}
@@ -440,7 +456,7 @@ export function VendorProductTable({
               <VendorProductTableBody
                 products={searchRows}
                 showTagColumn
-                showLocationColumn={false}
+                showLocationColumn={companyLocations.length > 0}
                 companyLocations={companyLocations}
                 handlers={rowHandlers}
               />

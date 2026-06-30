@@ -142,8 +142,15 @@ export default function App() {
     ? configLocations.filter(l => l.companyId === selectedCompanyId)
     : [];
   const headerLocations = companyScopedConfigLocations.map(configLocationToDropdown);
-  const activeLocations = filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds);
+  const activeLocations = selectedCompanyId
+    ? filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds)
+    : [];
   const { totalSales, totalSalesPrev, totalCovers, totalCoversPrev, aov, aovPrev } = aggregateLocationMetrics(activeLocations);
+  const overviewMenuItems = selectedCompanyId ? menuItems : [];
+  const overviewAlerts = selectedCompanyId ? alerts : [];
+  const overviewOrders = selectedCompanyId ? orders : [];
+  const overviewRevenue = selectedCompanyId ? revenue : [];
+  const overviewProgress = selectedCompanyId ? progress : null;
 
   const isRevenueSection = activeNav === 'Revenue Management' || activeNav === 'Point-of-Sales';
   const isHrSection = activeNav === 'Human Resources';
@@ -187,16 +194,16 @@ export default function App() {
                 <MetricCard title="Sales Today" value={fmtUsd(totalSales)} deltaVal={delta(totalSales, totalSalesPrev)} icon={TrendingUp} accent />
                 <MetricCard title="Covers Today" value={totalCovers.toLocaleString()} deltaVal={delta(totalCovers, totalCoversPrev)} icon={Users} />
                 <MetricCard title="Avg Order Value" value={`$${aov.toFixed(2)}`} deltaVal={delta(aov, aovPrev)} icon={ShoppingBag} />
-                <MetricCard title="Open POs" value={String(orders.length)} deltaVal={0} icon={Package} />
+                <MetricCard title="Open POs" value={String(overviewOrders.length)} deltaVal={0} icon={Package} />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="lg:col-span-2 bg-card border border-border rounded-lg p-5">
                   <h2 className="text-sm font-semibold">Revenue Trend</h2>
                   <p className="text-xs text-muted-foreground mb-2">This week vs last week</p>
-                  <RevenueChart data={revenue} />
+                  <RevenueChart data={overviewRevenue} />
                 </div>
-                <ProgressPanel progress={progress} />
+                <ProgressPanel progress={overviewProgress} />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -213,7 +220,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {menuItems.map(m => (
+                      {overviewMenuItems.map(m => (
                         <tr key={m.id} className="border-b border-border last:border-0">
                           <td className="px-4 py-3 font-medium">{m.name}</td>
                           <td className="px-4 py-3 font-mono text-muted-foreground">{m.orders}</td>
@@ -230,7 +237,7 @@ export default function App() {
                     <h2 className="text-sm font-semibold">Inventory Alerts</h2>
                   </div>
                   <div className="divide-y divide-border">
-                    {alerts.map(a => (
+                    {overviewAlerts.map(a => (
                       <div key={a.id} className="px-5 py-4 flex items-start gap-3">
                         <AlertTriangle size={13} className={`mt-0.5 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
                         <div className="flex-1">
@@ -257,7 +264,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map(o => {
+                    {overviewOrders.map(o => {
                       const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
                       return (
                         <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
@@ -276,7 +283,11 @@ export default function App() {
               </div>
             </>
           ) : isRevenueSection ? (
-            <RevenueSection section={activeNav} selectedCompanyId={selectedCompanyId} />
+            <RevenueSection
+              section={activeNav}
+              selectedCompanyId={selectedCompanyId}
+              selectedLocationIds={selectedLocationIds}
+            />
           ) : activeNav === 'System Configuration' ? (
             <SystemConfigurationPage onOrgDataChanged={refreshOrgFilters} />
           ) : activeNav === 'Human Resources' ? (

@@ -1,8 +1,11 @@
+using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Bisync.Api.Controllers;
 
@@ -116,23 +119,129 @@ public class MenuController(BisyncDbContext db) : ControllerBase
 [Route("api/[controller]")]
 public class VendorsController(BisyncDbContext db) : ControllerBase
 {
+    static readonly JsonSerializerOptions ContactJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Vendor>>> GetAll([FromQuery] bool? engaged = null)
     {
         var q = db.Vendors.AsQueryable();
         if (engaged.HasValue)
             q = q.Where(v => v.Engaged == engaged.Value);
-        return Ok(await q.OrderBy(v => v.Name).ToListAsync());
+        return Ok(await q.OrderByDescending(v => v.Engaged).ThenBy(v => v.Name).ToListAsync());
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<Vendor>> Create([FromBody] CreateVendorRequest request)
+    {
+        var externalId = request.ExternalId.Trim().ToUpperInvariant();
+        var name = request.Name.Trim();
+        if (string.IsNullOrWhiteSpace(externalId))
+            return BadRequest(new { message = "Vendor ID is required." });
+        if (string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { message = "Vendor name is required." });
+
+        var idTaken = await db.Vendors.AnyAsync(v => v.ExternalId.ToLower() == externalId.ToLower());
+        if (idTaken)
+            return Conflict(new { message = "Vendor ID already exists." });
+
+        var nameTaken = await db.Vendors.AnyAsync(v => v.Name.ToLower() == name.ToLower());
+        if (nameTaken)
+            return Conflict(new { message = "Vendor name already exists." });
+
+        var vendor = new Vendor
+        {
+            ExternalId = externalId,
+            Name = name,
+            Type = string.IsNullOrWhiteSpace(request.Type) ? "offline" : request.Type.Trim().ToLowerInvariant(),
+            Brn = request.Brn.Trim(),
+            Products = request.Products.Trim(),
+            City = request.City.Trim(),
+            State = request.State.Trim(),
+            Address = request.Address.Trim(),
+            ContactPerson = request.ContactPerson.Trim(),
+            ContactPosition = request.ContactPosition.Trim(),
+            Mobile = request.Mobile.Trim(),
+            Email = request.Email.Trim(),
+            ContactsJson = JsonSerializer.Serialize(new[]
+            {
+                new VendorContactRequest
+                {
+                    Name = request.ContactPerson.Trim(),
+                    Position = request.ContactPosition.Trim(),
+                    Mobile = request.Mobile.Trim(),
+                    Email = request.Email.Trim(),
+                    IsDefault = true,
+                }
+            }, ContactJsonOptions),
+            Engaged = false,
+        };
+
+        db.Vendors.Add(vendor);
+        await db.SaveChangesAsync();
+        return Ok(vendor);
     }
 
     [HttpPost("{externalId}/engage")]
-    public async Task<ActionResult<Vendor>> Engage(string externalId)
+    public async Task<ActionResult<Vendor>> Engage(string externalId, [FromBody] EngageVendorRequest? body = null)
     {
         var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
         if (vendor is null) return NotFound();
+
+        var contacts = NormalizeContacts(body?.Contacts, vendor);
+        if (contacts.Count == 0)
+            return BadRequest("At least one sales contact is required.");
+
+        var defaultContact = contacts.FirstOrDefault(c => c.IsDefault) ?? contacts[0];
+        vendor.ContactsJson = JsonSerializer.Serialize(contacts, ContactJsonOptions);
+        vendor.ContactPerson = defaultContact.Name;
+        vendor.ContactPosition = defaultContact.Position;
+        vendor.Mobile = defaultContact.Mobile;
+        vendor.Email = defaultContact.Email;
         vendor.Engaged = true;
         await db.SaveChangesAsync();
         return Ok(vendor);
+    }
+
+    static List<VendorContactRequest> NormalizeContacts(IReadOnlyList<VendorContactRequest>? submitted, Vendor vendor)
+    {
+        var contacts = (submitted ?? [])
+            .Select(c => new VendorContactRequest
+            {
+                Name = c.Name.Trim(),
+                Position = c.Position.Trim(),
+                Mobile = c.Mobile.Trim(),
+                Email = c.Email.Trim(),
+                IsDefault = c.IsDefault,
+            })
+            .Where(c => !string.IsNullOrWhiteSpace(c.Name)
+                || !string.IsNullOrWhiteSpace(c.Mobile)
+                || !string.IsNullOrWhiteSpace(c.Email))
+            .ToList();
+
+        if (contacts.Count == 0)
+        {
+            contacts.Add(new VendorContactRequest
+            {
+                Name = vendor.ContactPerson.Trim(),
+                Position = vendor.ContactPosition.Trim(),
+                Mobile = vendor.Mobile.Trim(),
+                Email = vendor.Email.Trim(),
+                IsDefault = true,
+            });
+        }
+
+        if (!contacts.Any(c => c.IsDefault))
+            contacts[0].IsDefault = true;
+        else
+        {
+            var firstDefault = contacts.FindIndex(c => c.IsDefault);
+            for (var i = 0; i < contacts.Count; i++)
+                contacts[i].IsDefault = i == firstDefault;
+        }
+
+        return contacts;
     }
 }
 
@@ -240,6 +349,101 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
                 }),
             })
             .ToListAsync());
+
+    [HttpPost("batch")]
+    public async Task<ActionResult<IEnumerable<object>>> CreateBatch([FromBody] CreatePurchaseOrdersBatchRequest request)
+    {
+        if (request.Orders is null || request.Orders.Count == 0)
+            return BadRequest(new { message = "At least one purchase order is required." });
+
+        var created = new List<PurchaseOrder>();
+        foreach (var orderRequest in request.Orders)
+        {
+            var vendorName = orderRequest.VendorName.Trim();
+            if (string.IsNullOrWhiteSpace(vendorName))
+                return BadRequest(new { message = "Vendor name is required for each purchase order." });
+
+            var items = (orderRequest.Items ?? [])
+                .Where(i => !string.IsNullOrWhiteSpace(i.Name) && i.Quantity > 0)
+                .Select(i => new PurchaseOrderItem
+                {
+                    Name = i.Name.Trim(),
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice,
+                    Unit = i.Unit.Trim(),
+                    DeliveryPackage = i.DeliveryPackage.Trim(),
+                })
+                .ToList();
+
+            if (items.Count == 0)
+                return BadRequest(new { message = $"Purchase order for {vendorName} has no valid items." });
+
+            var order = new PurchaseOrder
+            {
+                PoNumber = string.IsNullOrWhiteSpace(orderRequest.PoNumber)
+                    ? await GeneratePoNumberAsync()
+                    : orderRequest.PoNumber.Trim(),
+                VendorName = vendorName,
+                OrderDate = orderRequest.OrderDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
+                DeliveryDate = orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3)),
+                Status = string.IsNullOrWhiteSpace(orderRequest.Status) ? "Pending" : orderRequest.Status.Trim(),
+            };
+
+            foreach (var item in items)
+                order.Items.Add(item);
+
+            db.PurchaseOrders.Add(order);
+            created.Add(order);
+        }
+
+        await db.SaveChangesAsync();
+
+        return Ok(created.Select(p => new
+        {
+            p.Id,
+            poNumber = p.PoNumber,
+            vendorName = p.VendorName,
+            orderDate = p.OrderDate,
+            deliveryDate = p.DeliveryDate,
+            status = p.Status,
+            items = p.Items.Select(i => new
+            {
+                i.Id,
+                i.Name,
+                i.Quantity,
+                i.UnitPrice,
+                i.Unit,
+                deliveryPackage = i.DeliveryPackage,
+            }),
+        }));
+    }
+
+    async Task<string> GeneratePoNumberAsync()
+    {
+        var existing = await db.PurchaseOrders
+            .AsNoTracking()
+            .Select(p => p.PoNumber)
+            .ToListAsync();
+
+        var max = existing
+            .Select(number =>
+            {
+                if (!number.StartsWith("PO-", StringComparison.OrdinalIgnoreCase)) return 0;
+                return int.TryParse(number[3..], out var parsed) ? parsed : 0;
+            })
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var next = Math.Max(max + 1, 2843);
+        var candidate = $"PO-{next}";
+        while (existing.Any(n => n.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            next++;
+            candidate = $"PO-{next}";
+        }
+
+        return candidate;
+    }
 }
 
 [ApiController]

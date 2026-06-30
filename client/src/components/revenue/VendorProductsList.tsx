@@ -1,0 +1,437 @@
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Tag, UserPlus } from 'lucide-react';
+import { api, type EngageVendorContact, type Ingredient, type Vendor } from '../../api';
+import {
+  resolveDetailConfigForRow,
+  resolveDetailConfigJsonForSave,
+  type ComponentRow,
+} from '../../data/componentForm';
+import {
+  formatDeliveryUnitPath,
+  resolveCatalogVendor,
+  saveVendorProductOverride,
+  type VendorProductCatalogItem,
+} from '../../data/vendorProductCatalog';
+import {
+  componentRowTagsVendorProduct,
+  findComponentRowForTaggedProduct,
+} from '../../data/vendorProductTagging';
+import { ComponentEditPanel } from './ComponentEditPanel';
+import { ingredientToRow, mergeSavedRow } from './smartIngredientShared';
+import { VendorEngageModal } from './VendorEngageModal';
+import { VendorProductDetailPanel } from './VendorProductDetailPanel';
+import { VendorProductImageLightbox } from './VendorProductImageLightbox';
+import { VendorProductTagModal } from './VendorProductTagModal';
+import { VendorProductThumbnail } from './VendorProductThumbnail';
+
+function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ingredient {
+  const merged = { ...row, ...partial };
+  const detailConfig = resolveDetailConfigForRow(merged);
+  const detailConfigJson = resolveDetailConfigJsonForSave(row, partial);
+  return {
+    id: merged.id ?? 0,
+    componentId: merged.componentId,
+    name: merged.name,
+    category: merged.category,
+    group: merged.group,
+    recipeUom: merged.recipeUOM,
+    inventoryUom: merged.inventoryUOM,
+    lastPriceRecipe: merged.lastPriceRecipe,
+    lastPriceInventory: merged.lastPriceInventory,
+    dailyUsage: merged.dailyUsage,
+    orderFreqDays: merged.orderFreqDays,
+    storageJson: JSON.stringify(merged.storage),
+    storageNote: merged.storageNote ?? '',
+    detailConfigJson,
+    attachedProducts: merged.attachedProducts,
+    attachedVendors: detailConfig.taggedVendorProductIds.length || merged.attachedVendors,
+    active: merged.active,
+    locationsJson: JSON.stringify(merged.locations),
+  };
+}
+
+const thCls = 'text-left px-3 py-2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap border-r border-border last:border-r-0';
+
+type Props = {
+  products: VendorProductCatalogItem[];
+  vendors: Vendor[];
+  selectedCompanyId: number | null;
+  showVendorColumn?: boolean;
+  tagFilter?: 'all' | 'tagged' | 'untagged';
+  onVendorUpdated?: (vendor: Vendor) => void;
+  onProductUpdated?: () => void;
+  engageVendorRequest?: Vendor | null;
+  onEngageVendorRequestHandled?: () => void;
+};
+
+export function VendorProductsList({
+  products,
+  vendors,
+  selectedCompanyId,
+  showVendorColumn = false,
+  tagFilter = 'all',
+  onVendorUpdated,
+  onProductUpdated,
+  engageVendorRequest,
+  onEngageVendorRequestHandled,
+}: Props) {
+  const [vendorMap, setVendorMap] = useState(() => new Map(vendors.map(v => [v.externalId, v])));
+  const [engageVendor, setEngageVendor] = useState<Vendor | null>(null);
+  const [engaging, setEngaging] = useState(false);
+  const [tagProduct, setTagProduct] = useState<VendorProductCatalogItem | null>(null);
+  const [pendingTagProduct, setPendingTagProduct] = useState<VendorProductCatalogItem | null>(null);
+  const [previewImage, setPreviewImage] = useState<VendorProductCatalogItem | null>(null);
+  const [engageError, setEngageError] = useState<string | null>(null);
+  const [detailProduct, setDetailProduct] = useState<VendorProductCatalogItem | null>(null);
+  const [detailRow, setDetailRow] = useState<ComponentRow | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
+  const [taggedProductIds, setTaggedProductIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setVendorMap(new Map(vendors.map(v => [v.externalId, v])));
+  }, [vendors]);
+
+  useEffect(() => {
+    if (!engageVendorRequest) return;
+    setEngageVendor(engageVendorRequest);
+    onEngageVendorRequestHandled?.();
+  }, [engageVendorRequest]);
+
+  const productIds = useMemo(() => products.map(p => p.id).join(','), [products]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setComponentRows([]);
+      setTaggedProductIds(new Set());
+      return;
+    }
+    const catalogIds = new Set(products.map(p => p.id));
+    api.ingredients()
+      .then(data => {
+        const rows = data.map(ingredientToRow);
+        const ids = new Set<string>();
+        rows.forEach(row => {
+          catalogIds.forEach(id => {
+            if (componentRowTagsVendorProduct(row, id)) {
+              ids.add(id);
+            }
+          });
+        });
+        setComponentRows(rows);
+        setTaggedProductIds(ids);
+      })
+      .catch(() => {
+        setComponentRows([]);
+        setTaggedProductIds(new Set());
+      });
+  }, [selectedCompanyId, productIds, products]);
+
+  function getVendorForProduct(product: VendorProductCatalogItem): Vendor {
+    return resolveCatalogVendor(product, vendorMap);
+  }
+
+  async function handleConfirmEngage(vendor: Vendor, contacts: EngageVendorContact[]) {
+    setEngaging(true);
+    setEngageError(null);
+    try {
+      const updated = await api.engageVendor(vendor.externalId, { contacts });
+      setVendorMap(prev => new Map(prev).set(updated.externalId, updated));
+      onVendorUpdated?.(updated);
+      setEngageVendor(null);
+      if (pendingTagProduct) {
+        setTagProduct(pendingTagProduct);
+        setPendingTagProduct(null);
+      }
+    } catch (err) {
+      setEngageError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to engage vendor. Restart the API if this is a newly added vendor.',
+      );
+    } finally {
+      setEngaging(false);
+    }
+  }
+
+  function refreshTaggedProducts() {
+    const catalogIds = new Set(products.map(p => p.id));
+    api.ingredients()
+      .then(data => {
+        const rows = data.map(ingredientToRow);
+        const ids = new Set<string>();
+        rows.forEach(row => {
+          catalogIds.forEach(id => {
+            if (componentRowTagsVendorProduct(row, id)) {
+              ids.add(id);
+            }
+          });
+        });
+        setComponentRows(rows);
+        setTaggedProductIds(ids);
+      })
+      .catch(() => {
+        setComponentRows([]);
+        setTaggedProductIds(new Set());
+      });
+  }
+
+  async function handleSaveComponent(updated: Partial<ComponentRow>) {
+    if (!detailRow?.id) return;
+    setSaveError(null);
+    const merged = { ...detailRow, ...updated };
+    try {
+      const saved = await api.updateIngredient(detailRow.id, rowToIngredient(merged, {}));
+      const savedRow = mergeSavedRow(saved, merged);
+      setComponentRows(prev => prev.map(r => r.id === detailRow.id ? savedRow : r));
+      setDetailRow(null);
+      refreshTaggedProducts();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save component.');
+    }
+  }
+
+  function handleTaggedClick(e: React.MouseEvent, product: VendorProductCatalogItem) {
+    e.stopPropagation();
+    const row = findComponentRowForTaggedProduct(componentRows, product.id);
+    if (row) {
+      setSaveError(null);
+      setDetailRow(row);
+    }
+  }
+
+  function handleTagClick(e: React.MouseEvent, product: VendorProductCatalogItem) {
+    e.stopPropagation();
+    setEngageError(null);
+    setPreviewImage(null);
+    const vendor = getVendorForProduct(product);
+    if (!vendor.engaged) {
+      setPendingTagProduct(product);
+      setTagProduct(null);
+      setEngageVendor(vendor);
+      return;
+    }
+    setEngageVendor(null);
+    setPendingTagProduct(null);
+    setTagProduct(product);
+  }
+
+  function handleProductNameClick(e: React.MouseEvent, product: VendorProductCatalogItem) {
+    e.stopPropagation();
+    setSaveError(null);
+    setDetailProduct(product);
+  }
+
+  function handleSaveVendorProduct(updated: VendorProductCatalogItem) {
+    saveVendorProductOverride(updated);
+    setDetailProduct(null);
+    onProductUpdated?.();
+  }
+
+  function handleEngageVendorClick(e: React.MouseEvent, vendor: Vendor) {
+    e.stopPropagation();
+    setEngageError(null);
+    setPreviewImage(null);
+    setPendingTagProduct(null);
+    setTagProduct(null);
+    setEngageVendor(vendor);
+  }
+
+  const taggedCount = useMemo(
+    () => products.filter(p => taggedProductIds.has(p.id)).length,
+    [products, taggedProductIds],
+  );
+
+  const visibleProducts = useMemo(() => {
+    if (tagFilter === 'all') return products;
+    if (tagFilter === 'tagged') return products.filter(p => taggedProductIds.has(p.id));
+    return products.filter(p => !taggedProductIds.has(p.id));
+  }, [products, tagFilter, taggedProductIds]);
+
+  const modalRoot = typeof document !== 'undefined' ? document.body : null;
+
+  const modals = (
+    <>
+      {engageVendor && (
+        <VendorEngageModal
+          key={engageVendor.externalId}
+          vendor={engageVendor}
+          saving={engaging}
+          serverError={engageError}
+          onClose={() => {
+            if (!engaging) {
+              setEngageVendor(null);
+              setPendingTagProduct(null);
+              setEngageError(null);
+            }
+          }}
+          onConfirm={handleConfirmEngage}
+        />
+      )}
+
+      {previewImage?.imageUrl && (
+        <VendorProductImageLightbox
+          productName={previewImage.productName}
+          imageUrl={previewImage.imageUrl}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
+
+      {tagProduct && (
+        <VendorProductTagModal
+          product={tagProduct}
+          selectedCompanyId={selectedCompanyId}
+          onClose={() => setTagProduct(null)}
+          onTagged={refreshTaggedProducts}
+        />
+      )}
+
+      {detailProduct && (
+        <VendorProductDetailPanel
+          product={detailProduct}
+          elevated
+          onClose={() => setDetailProduct(null)}
+          onSave={handleSaveVendorProduct}
+        />
+      )}
+
+      {modalRoot && detailRow && createPortal(
+        <ComponentEditPanel
+          row={detailRow}
+          existingComponents={componentRows}
+          selectedCompanyId={selectedCompanyId}
+          saveError={saveError}
+          elevated
+          onClose={() => { setDetailRow(null); setSaveError(null); }}
+          onSave={handleSaveComponent}
+        />,
+        modalRoot,
+      )}
+    </>
+  );
+
+  if (visibleProducts.length === 0) {
+    return (
+      <>
+        <p className="text-xs text-muted-foreground text-center py-12 border border-dashed border-border rounded-lg">
+          No vendor products match your filters.
+        </p>
+        {modals}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="border border-border rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse min-w-[980px]">
+            <thead>
+              <tr className="border-b border-border bg-muted/40">
+                <th className={thCls}>Vendor Product Name</th>
+                <th className={`${thCls} w-12`}>Photo</th>
+                <th className={thCls}>Vendor Product ID</th>
+                <th className={thCls}>Group</th>
+                <th className={thCls}>Product Specification</th>
+                <th className={thCls}>Delivery Unit</th>
+                <th className={thCls}>Delivery Price</th>
+                {showVendorColumn && <th className={thCls}>Vendor</th>}
+                <th className={`${thCls} border-r-0`}>Tag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleProducts.map(product => {
+                const deliveryUnit = formatDeliveryUnitPath(product.delivery);
+                const isTagged = taggedProductIds.has(product.id);
+                const vendor = getVendorForProduct(product);
+                const isEngaged = vendor.engaged;
+                return (
+                  <tr key={product.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${isTagged ? 'bg-primary/[0.03]' : ''}`}>
+                    <td className="px-3 py-2.5 border-r border-border min-w-[140px]">
+                      <button
+                        type="button"
+                        onClick={e => handleProductNameClick(e, product)}
+                        title="View vendor product details"
+                        className="text-left font-medium text-foreground hover:text-primary hover:underline transition-colors"
+                      >
+                        {product.productName}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2.5 border-r border-border">
+                      <VendorProductThumbnail
+                        productName={product.productName}
+                        imageUrl={product.imageUrl}
+                        onImageClick={product.imageUrl ? () => setPreviewImage(product) : undefined}
+                      />
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[10px] text-muted-foreground border-r border-border">{product.id}</td>
+                    <td className="px-3 py-2.5 text-foreground border-r border-border">{product.group}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground border-r border-border min-w-[160px] leading-snug">
+                      {product.specification}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-foreground border-r border-border whitespace-nowrap">
+                      {deliveryUnit}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono font-medium text-foreground border-r border-border">${product.deliveryPrice.toFixed(2)}</td>
+                    {showVendorColumn && (
+                      <td className="px-3 py-2.5 border-r border-border min-w-[140px]">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium text-foreground leading-snug">{product.vendorName}</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[9px] font-mono text-muted-foreground">{product.vendorExternalId}</span>
+                            {isEngaged ? (
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">Engaged</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={e => handleEngageVendorClick(e, vendor)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-primary text-primary-foreground"
+                              >
+                                <UserPlus size={10} />
+                                Engage
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    )}
+                    <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                      {isTagged ? (
+                        <button
+                          type="button"
+                          onClick={e => handleTaggedClick(e, product)}
+                          title="View tagged smart component"
+                          className="text-[10px] font-mono text-[#5A7A2A] hover:underline"
+                        >
+                          Tagged
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={e => handleTagClick(e, product)}
+                          title={isEngaged ? 'Tag to smart component' : 'Engage vendor to enable tagging'}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold border border-primary text-primary hover:bg-primary/10"
+                        >
+                          <Tag size={11} />
+                          Tag
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p className="text-[10px] font-mono text-muted-foreground mt-3">
+        {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
+        {taggedCount > 0 && <> · {taggedCount} tagged to component{taggedCount !== 1 ? 's' : ''}</>}
+      </p>
+
+      {modals}
+    </>
+  );
+}

@@ -27,39 +27,38 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
     if (disabled) setOpen(false);
   }, [disabled]);
 
-  const allSelected = selected.length === 0;
+  const allIds = locations.map(l => l.externalId);
+  const allSelected = allIds.length > 0 && allIds.every(id => selected.includes(id));
 
   function toggleAll() {
     if (disabled) return;
-    onChange([]);
+    onChange(allSelected ? [] : allIds);
   }
 
   function toggleLocation(externalId: string) {
     if (disabled) return;
-    if (allSelected) {
-      onChange(locations.filter(l => l.externalId !== externalId).map(l => l.externalId));
-    } else if (selected.includes(externalId)) {
-      const next = selected.filter(id => id !== externalId);
-      onChange(next.length === 0 ? [] : next);
+    if (selected.includes(externalId)) {
+      onChange(selected.filter(id => id !== externalId));
     } else {
-      const next = [...selected, externalId];
-      onChange(next.length === locations.length ? [] : next);
+      onChange([...selected, externalId]);
     }
   }
 
   function isChecked(externalId: string) {
-    return allSelected || selected.includes(externalId);
+    return selected.includes(externalId);
   }
 
   const label = disabled
     ? 'Select Company First'
     : loading
       ? 'Loading locations…'
-      : allSelected
-      ? 'All Locations'
-      : selected.length === 1
-        ? locations.find(l => l.externalId === selected[0])?.name ?? '1 location'
-        : `${selected.length} locations`;
+      : selected.length === 0
+        ? 'Select locations'
+        : allSelected
+          ? 'All Locations'
+          : selected.length === 1
+            ? locations.find(l => l.externalId === selected[0])?.name ?? '1 location'
+            : `${selected.length} locations`;
 
   const isHeader = variant === 'header';
 
@@ -77,7 +76,7 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
       >
         <MapPin size={12} className="shrink-0 text-primary" />
         <span className={isHeader ? 'hidden lg:inline' : ''}>{label}</span>
-        <span className={isHeader ? 'lg:hidden' : 'hidden'}>{disabled ? '—' : allSelected ? 'All' : selected.length}</span>
+        <span className={isHeader ? 'lg:hidden' : 'hidden'}>{disabled ? '—' : selected.length === 0 ? '0' : selected.length}</span>
         <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''} ${isHeader ? 'text-white/40' : 'text-muted-foreground'}`} />
       </button>
 
@@ -119,10 +118,10 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
             })}
           </div>
 
-          {!allSelected && (
+          {selected.length > 0 && (
             <div className="border-t border-border px-4 py-2.5">
               <button
-                onClick={toggleAll}
+                onClick={() => onChange([])}
                 className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X size={10} /> Clear selection

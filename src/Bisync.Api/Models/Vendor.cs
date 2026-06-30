@@ -11,8 +11,10 @@ public class Vendor
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
     public string ContactPerson { get; set; } = string.Empty;
+    public string ContactPosition { get; set; } = string.Empty;
     public string Mobile { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
+    public string ContactsJson { get; set; } = "[]";
     public bool Engaged { get; set; }
 }

@@ -50,7 +50,7 @@ export const revMgmtNav: RevMgmtSection[] = [
     subs: [
       {
         items: [
-          { label: 'Vendor List' },
+          { label: 'Vendor List & Products' },
           { label: 'Compare Price' },
           { label: 'Account Mapping' },
         ],
@@ -150,7 +150,11 @@ export const siDataInit: IngredientRow[] = [
 
 export const VENDOR_DISTANCES: Record<string, number | 'online'> = {
   V001: 8.2, V002: 12.5, V003: 22.1, V004: 'online',
-  V005: 45.8, V006: 'online', V007: 38.4, V008: 'online',
+  V005: 45.8, V006: 'online', V007: 38.4, V008: 'online', V011: 14.6,
+  V012: 28.4, V013: 46.2, V014: 52.1, V015: 11.8, V016: 95.3,
+  V017: 'online', V018: 35.6, V019: 18.2, V020: 22.7, V021: 9.4,
+  V022: 19.6, V023: 'online', V024: 8.9, V025: 36.8, V026: 10.2,
+  V027: 'online', V028: 41.5, V029: 7.6, V030: 17.3, V031: 32.9,
 };
 
 export const VENDOR_PRICES: Record<string, Record<string, { deliveryUnit: string; deliveryQty: number; pricePerDelivery: number }>> = {
@@ -159,4 +163,8 @@ export const VENDOR_PRICES: Record<string, Record<string, { deliveryUnit: string
   'Burrata': { V003: { deliveryUnit: '6pcs', deliveryQty: 6, pricePerDelivery: 52.5 } },
   'Merlot Reserve 2019': { V004: { deliveryUnit: 'btl', deliveryQty: 1, pricePerDelivery: 95 } },
   'Espresso Beans': { V010: { deliveryUnit: 'kg', deliveryQty: 1, pricePerDelivery: 26 } },
+  'Baked Beans': {
+    V007: { deliveryUnit: 'box/12 tin/400g', deliveryQty: 1, pricePerDelivery: 42 },
+    V011: { deliveryUnit: 'box/12 tin/380g', deliveryQty: 1, pricePerDelivery: 39.5 },
+  },
 };

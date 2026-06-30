@@ -1,143 +1,572 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Minus, Search } from 'lucide-react';
-import { api, type Ingredient, type Vendor } from '../../api';
-import { VENDOR_DISTANCES, VENDOR_PRICES } from '../../data/revenueManagement';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Tag, UserPlus } from 'lucide-react';
+import { api, type EngageVendorContact, type Vendor } from '../../api';
+import {
+  buildComparePriceMatrix,
+  comparePriceCellKey,
+  formatDeliveryPriceLine,
+  formatUomCost,
+  findBestUomCostByComponent,
+  moveComparePriceCellMapping,
+  principalQtyFromUomCost,
+  resolveComparePriceCell,
+  type ComparePriceCell,
+  type ComparePriceSlot,
+} from '../../data/comparePrice';
+import { resolveDetailConfigForRow, serializeDetailConfig, type ComponentRow } from '../../data/componentForm';
+import type { VendorProductCatalogItem } from '../../data/vendorProductCatalog';
+import { componentRowToIngredientPayload } from '../../data/vendorProductTagging';
+import { ingredientToRow } from './smartIngredientShared';
+import { VendorEngageModal } from './VendorEngageModal';
+import { VendorProductTagModal } from './VendorProductTagModal';
 
-type PriceCell = { deliveryUnit: string; deliveryQty: number; pricePerDelivery: number } | null;
+const thCls =
+  'text-left px-3 py-2.5 text-[9px] font-mono uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
+const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0 min-w-[168px] max-w-[220px]';
 
-function unitPrice(cell: NonNullable<PriceCell>) {
-  return cell.pricePerDelivery / cell.deliveryQty;
-}
-
-export function ComparePricePage() {
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [selectedIngredient, setSelectedIngredient] = useState('');
-  const [search, setSearch] = useState('');
+function ComparePriceCellView({
+  slot,
+  vendor,
+  isBest,
+  saving,
+  onEngage,
+  onTag,
+  onSaveUomCost,
+  onDragStart,
+  onDragEnd,
+}: {
+  slot: ComparePriceSlot;
+  vendor: Vendor;
+  isBest: boolean;
+  saving: boolean;
+  onEngage: () => void;
+  onTag: () => void;
+  onSaveUomCost: (cell: ComparePriceCell, uomCost: number) => Promise<void>;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  const [draftCost, setDraftCost] = useState('');
+  const { product } = slot;
+  const cell = slot.pricing;
+  const needsManual = cell ? !cell.autoResolvable && cell.principalQty <= 0 : false;
 
   useEffect(() => {
+    setDraftCost('');
+  }, [product.id, slot.componentRow.id, cell?.principalQty, cell?.uomCost]);
+
+  async function commitManualCost() {
+    if (!cell) return;
+    const value = parseFloat(draftCost);
+    if (!Number.isFinite(value) || value <= 0) return;
+    await onSaveUomCost(cell, value);
+  }
+
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      title="Drag to another component row"
+      className={`space-y-1.5 text-xs leading-snug cursor-grab active:cursor-grabbing ${isBest ? 'text-[#5A7A2A]' : ''}`}
+    >
+      <p className="font-medium text-foreground line-clamp-2">{product.productName}</p>
+      <p className="font-mono text-[10px] text-muted-foreground">{formatDeliveryPriceLine(product)}</p>
+
+      <div className="pt-0.5 border-t border-border/60">
+        {!vendor.engaged ? (
+          <button
+            type="button"
+            onClick={onEngage}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-primary text-primary-foreground"
+          >
+            <UserPlus size={11} />
+            Engage
+          </button>
+        ) : !slot.isTagged ? (
+          <button
+            type="button"
+            onClick={onTag}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold border border-primary text-primary hover:bg-primary/10"
+          >
+            <Tag size={11} />
+            Tag
+          </button>
+        ) : cell && cell.uomCost !== null && cell.uomCost > 0 ? (
+          <p className={`font-mono text-[11px] font-semibold ${isBest ? 'text-[#5A7A2A]' : 'text-foreground'}`}>
+            {formatUomCost(cell.uomCost, cell.componentUom)}
+            {isBest && <span className="ml-1 text-[9px] font-bold uppercase">Best</span>}
+          </p>
+        ) : cell && needsManual ? (
+          <div className="space-y-1">
+            <p className="text-[9px] text-muted-foreground">UOM cost (save once)</p>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-muted-foreground">$</span>
+              <input
+                type="number"
+                min={0}
+                step={0.0001}
+                value={draftCost}
+                onChange={e => setDraftCost(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') void commitManualCost(); }}
+                disabled={saving}
+                placeholder={`/${cell.componentUom.toLowerCase()}`}
+                className="w-full bg-background border border-border rounded px-2 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => void commitManualCost()}
+                disabled={saving || !draftCost}
+                className="shrink-0 px-2 py-1 rounded text-[9px] font-bold bg-primary text-primary-foreground disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[10px] text-muted-foreground font-mono">UOM cost unavailable</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
+  const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [search, setSearch] = useState('');
+  const [groupFilter, setGroupFilter] = useState<'all' | 'Proteins' | 'Dairy' | 'Produce' | 'Dry Goods' | 'Beverages' | 'Seafood' | 'Spirits'>('all');
+  const [vendorFilter, setVendorFilter] = useState<'all' | 'engaged' | 'available'>('all');
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [engageVendor, setEngageVendor] = useState<Vendor | null>(null);
+  const [pendingTag, setPendingTag] = useState<{
+    product: VendorProductCatalogItem;
+    componentId: number;
+  } | null>(null);
+  const [tagRequest, setTagRequest] = useState<{
+    product: VendorProductCatalogItem;
+    componentId: number;
+  } | null>(null);
+  const [engageError, setEngageError] = useState<string | null>(null);
+  const [engaging, setEngaging] = useState(false);
+  const [moveVersion, setMoveVersion] = useState(0);
+  const [dragSource, setDragSource] = useState<{
+    vendorExternalId: string;
+    productId: string;
+    sourceComponentId: number;
+    group: string;
+  } | null>(null);
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const bodyScrollRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const syncingRef = useRef(false);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+
+  const loadData = useCallback(() => {
+    if (!selectedCompanyId) {
+      setComponentRows([]);
+      setVendors([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     Promise.all([api.ingredients(), api.vendors()])
       .then(([ings, vends]) => {
-        setIngredients(ings);
+        setComponentRows(ings.map(ingredientToRow));
         setVendors(vends);
-        if (ings.length > 0) setSelectedIngredient(ings[0].name);
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        setComponentRows([]);
+        setVendors([]);
+      })
+      .finally(() => setLoading(false));
+  }, [selectedCompanyId]);
 
-  const ingredientNames = useMemo(() => {
-    const fromApi = ingredients.map(i => i.name);
-    const fromMock = Object.keys(VENDOR_PRICES);
-    return [...new Set([...fromApi, ...fromMock])];
-  }, [ingredients]);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  const filteredNames = ingredientNames.filter(n =>
-    !search || n.toLowerCase().includes(search.toLowerCase())
+  const { components, vendorColumns, slots } = useMemo(
+    () => buildComparePriceMatrix(componentRows, vendors),
+    [componentRows, vendors, moveVersion],
   );
 
-  const prices = VENDOR_PRICES[selectedIngredient] ?? {};
-  const vendorRows = vendors
-    .filter(v => prices[v.externalId] || VENDOR_DISTANCES[v.externalId] !== undefined)
-    .map(v => ({
-      vendor: v,
-      price: (prices[v.externalId] ?? null) as PriceCell,
-      distance: VENDOR_DISTANCES[v.externalId] ?? '—',
-    }));
+  const filteredVendorColumns = useMemo(() => {
+    if (vendorFilter === 'all') return vendorColumns;
+    const engaged = vendorFilter === 'engaged';
+    return vendorColumns.filter(v => v.engaged === engaged);
+  }, [vendorColumns, vendorFilter]);
 
-  const bestPrice = vendorRows.reduce<number | null>((best, row) => {
-    if (!row.price) return best;
-    const p = unitPrice(row.price);
-    return best === null || p < best ? p : best;
-  }, null);
+  const filteredComponents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return components.filter(c => {
+      const matchText =
+        !q
+        || c.name.toLowerCase().includes(q)
+        || c.componentId.toLowerCase().includes(q)
+        || c.group.toLowerCase().includes(q);
+      const matchGroup =
+        groupFilter === 'all'
+        || c.group === groupFilter;
+      return matchText && matchGroup;
+    });
+  }, [components, search, groupFilter]);
+
+  const bestByComponent = useMemo(
+    () => findBestUomCostByComponent(filteredComponents, slots),
+    [filteredComponents, slots],
+  );
+
+  useEffect(() => {
+    const updateWidth = () => {
+      if (tableRef.current) {
+        setTableScrollWidth(tableRef.current.scrollWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [filteredComponents.length, filteredVendorColumns.length, slots.size, loading]);
+
+  async function handleConfirmEngage(vendor: Vendor, contacts: EngageVendorContact[]) {
+    setEngaging(true);
+    setEngageError(null);
+    try {
+      const updated = await api.engageVendor(vendor.externalId, { contacts });
+      setVendors(prev => prev.map(v => v.externalId === updated.externalId ? updated : v));
+      setEngageVendor(null);
+      if (pendingTag) {
+        setTagRequest(pendingTag);
+        setPendingTag(null);
+      }
+    } catch (err) {
+      setEngageError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to engage vendor. Restart the API if this is a newly added vendor.',
+      );
+    } finally {
+      setEngaging(false);
+    }
+  }
+
+  function handleEngageClick(
+    vendor: Vendor,
+    product: VendorProductCatalogItem,
+    componentId: number,
+  ) {
+    setEngageError(null);
+    setPendingTag({ product, componentId });
+    setTagRequest(null);
+    setEngageVendor(vendor);
+  }
+
+  function handleTagClick(product: VendorProductCatalogItem, componentId: number) {
+    setEngageError(null);
+    setEngageVendor(null);
+    setPendingTag(null);
+    setTagRequest({ product, componentId });
+  }
+
+  async function handleSaveUomCost(cell: ComparePriceCell, uomCost: number) {
+    const row = cell.componentRow;
+    if (!row.id) return;
+
+    const key = comparePriceCellKey(cell.product.vendorExternalId, row.id);
+    setSavingKey(key);
+
+    const detail = resolveDetailConfigForRow(row);
+    const principalQty = principalQtyFromUomCost(
+      cell.product.deliveryPrice,
+      uomCost,
+      cell.lossYield,
+    );
+    if (!principalQty) {
+      setSavingKey(null);
+      return;
+    }
+
+    const nextDetail = {
+      ...detail,
+      vendorProductPrincipalQty: {
+        ...detail.vendorProductPrincipalQty,
+        [cell.product.id]: principalQty,
+      },
+      vendorProductComponentUom: {
+        ...detail.vendorProductComponentUom,
+        [cell.product.id]: cell.componentUom,
+      },
+    };
+
+    const payload = componentRowToIngredientPayload({
+      ...row,
+      detailConfig: nextDetail,
+      detailConfigJson: serializeDetailConfig(nextDetail),
+    });
+
+    try {
+      const saved = await api.updateIngredient(row.id, payload);
+      setComponentRows(prev => prev.map(r => (r.id === row.id ? ingredientToRow(saved) : r)));
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  function moveSlotTo(
+    vendorExternalId: string,
+    productId: string,
+    targetComponentId: number,
+  ) {
+    moveComparePriceCellMapping(vendorExternalId, productId, targetComponentId);
+    setMoveVersion(v => v + 1);
+  }
+
+  function handleDropOnCell(targetComponent: ComponentRow, vendorExternalId: string) {
+    if (!dragSource || !targetComponent.id) return;
+    if (dragSource.vendorExternalId !== vendorExternalId) return;
+    if (dragSource.group !== targetComponent.group) return;
+    if (dragSource.sourceComponentId === targetComponent.id) return;
+    moveSlotTo(dragSource.vendorExternalId, dragSource.productId, targetComponent.id);
+    setDragSource(null);
+  }
+
+  function syncFromTop() {
+    if (!topScrollRef.current || !bodyScrollRef.current || syncingRef.current) return;
+    syncingRef.current = true;
+    bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    requestAnimationFrame(() => { syncingRef.current = false; });
+  }
+
+  function syncFromBody() {
+    if (!topScrollRef.current || !bodyScrollRef.current || syncingRef.current) return;
+    syncingRef.current = true;
+    topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
+    requestAnimationFrame(() => { syncingRef.current = false; });
+  }
 
   return (
     <div className="p-6 space-y-4">
       <div>
         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
         <h2 className="text-lg font-semibold">Compare Price</h2>
-        <p className="text-xs text-muted-foreground mt-1">Compare vendor pricing for the same component across engaged suppliers</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          All food &amp; beverage components with catalog matches — engage or tag directly from each cell
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-1 bg-card border border-border rounded-lg p-3 space-y-2">
-          <div className="relative">
-            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Filter components…"
-              className="w-full pl-7 pr-2 py-1.5 text-xs rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </div>
-          <div className="max-h-64 overflow-y-auto space-y-0.5">
-            {filteredNames.map(name => (
-              <button
-                key={name}
-                onClick={() => setSelectedIngredient(name)}
-                className={`w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors ${
-                  selectedIngredient === name ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'
-                }`}
+      {!selectedCompanyId ? (
+        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
+          Select a company to compare vendor pricing.
+        </p>
+      ) : loading ? (
+        <p className="text-xs text-muted-foreground">Loading compare price data…</p>
+      ) : (
+        <>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Filter smart components…"
+                className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <select
+              value={groupFilter}
+              onChange={e => setGroupFilter(e.target.value as typeof groupFilter)}
+              className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary min-w-[140px]"
+            >
+              <option value="all">All groups</option>
+              <option value="Proteins">Proteins</option>
+              <option value="Dairy">Dairy</option>
+              <option value="Produce">Produce</option>
+              <option value="Dry Goods">Dry Goods</option>
+              <option value="Beverages">Beverages</option>
+              <option value="Seafood">Seafood</option>
+              <option value="Spirits">Spirits</option>
+            </select>
+            <div className="flex items-center gap-1">
+              {(['all', 'engaged', 'available'] as const).map(f => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setVendorFilter(f)}
+                  className={`px-3 py-1.5 rounded-full text-[10px] font-semibold border transition-colors ${
+                    vendorFilter === f
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  {f === 'all' ? 'All vendors' : f === 'engaged' ? 'Engaged' : 'Unengaged'}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] font-mono text-muted-foreground">
+              {filteredComponents.length} component{filteredComponents.length !== 1 ? 's' : ''}
+              {' · '}
+              {filteredVendorColumns.length} vendor{filteredVendorColumns.length !== 1 ? 's' : ''}
+            </p>
+            <div className="ml-auto flex items-center gap-2 min-w-[240px]">
+              <span className="text-[9px] font-mono text-muted-foreground shrink-0">Scroll vendors</span>
+              <div
+                ref={topScrollRef}
+                onScroll={syncFromTop}
+                className="w-56 overflow-x-auto overflow-y-hidden border border-border rounded bg-card h-4"
               >
-                {name}
-              </button>
-            ))}
+                <div style={{ width: Math.max(tableScrollWidth, 1), height: 1 }} />
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="lg:col-span-3 bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-semibold">{selectedIngredient || 'Select a component'}</h3>
-            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{vendorRows.length} vendor quotes</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  {['Vendor', 'Delivery Unit', 'Qty', 'Price / Delivery', 'Unit Price', 'Distance', 'vs Best'].map(h => (
-                    <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {vendorRows.map(({ vendor, price, distance }) => {
-                  const up = price ? unitPrice(price) : null;
-                  const isBest = up !== null && bestPrice !== null && up === bestPrice;
-                  const diff = up !== null && bestPrice !== null && !isBest
-                    ? Math.round(((up - bestPrice) / bestPrice) * 1000) / 10
-                    : null;
-                  return (
-                    <tr key={vendor.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${isBest ? 'bg-[#5A7A2A]/5' : ''}`}>
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{vendor.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{vendor.externalId}</p>
-                      </td>
-                      <td className="px-4 py-3 font-mono">{price?.deliveryUnit ?? '—'}</td>
-                      <td className="px-4 py-3 font-mono">{price?.deliveryQty ?? '—'}</td>
-                      <td className="px-4 py-3 font-mono">{price ? `$${price.pricePerDelivery.toFixed(2)}` : '—'}</td>
-                      <td className="px-4 py-3 font-mono font-semibold">{up !== null ? `$${up.toFixed(4)}` : '—'}</td>
-                      <td className="px-4 py-3 font-mono text-muted-foreground">
-                        {distance === 'online' ? 'Online' : typeof distance === 'number' ? `${distance} km` : distance}
-                      </td>
-                      <td className="px-4 py-3">
-                        {isBest ? (
-                          <span className="flex items-center gap-0.5 text-[#5A7A2A] font-mono text-[10px]"><ArrowDown size={10} /> Best</span>
-                        ) : diff !== null ? (
-                          <span className="flex items-center gap-0.5 text-accent font-mono text-[10px]"><ArrowUp size={10} /> +{diff}%</span>
-                        ) : (
-                          <Minus size={10} className="text-muted-foreground" />
-                        )}
-                      </td>
+          {filteredComponents.length === 0 || filteredVendorColumns.length === 0 ? (
+            <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
+              No food or beverage components found. Add smart components to populate this spreadsheet.
+            </p>
+          ) : (
+            <div className="border border-border rounded-lg overflow-hidden bg-card">
+              <div
+                ref={bodyScrollRef}
+                onScroll={syncFromBody}
+                className="overflow-auto max-h-[calc(100vh-220px)]"
+              >
+                <table ref={tableRef} className="w-full text-xs border-collapse min-w-max">
+                  <thead className="sticky top-0 z-20 bg-muted/90 backdrop-blur-sm">
+                    <tr className="border-b border-border">
+                      <th className={`${thCls} sticky left-0 z-30 bg-muted/95 min-w-[180px]`}>Component</th>
+                      {filteredVendorColumns.map(vendor => (
+                        <th key={vendor.externalId} className={`${thCls} min-w-[168px] max-w-[220px]`}>
+                          <div className="space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1">
+                              <p className="text-[11px] font-semibold text-foreground normal-case tracking-normal">
+                                {vendor.name}
+                              </p>
+                              {vendor.engaged && (
+                                <span className="text-[8px] font-mono px-1 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">
+                                  Engaged
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[9px] font-mono text-muted-foreground normal-case">
+                              {vendor.externalId}
+                            </p>
+                          </div>
+                        </th>
+                      ))}
                     </tr>
-                  );
-                })}
-                {vendorRows.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No price data for this component.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+                  </thead>
+                  <tbody>
+                    {filteredComponents.map(component => {
+                      if (!component.id) return null;
+                      const best = bestByComponent.get(component.id);
+                      return (
+                        <tr key={component.id} className="hover:bg-muted/15">
+                          <td className={`${tdCls} sticky left-0 z-10 bg-card font-medium`}>
+                            <p className="text-foreground leading-snug">{component.name}</p>
+                            <p className="text-[9px] font-mono text-muted-foreground mt-0.5">
+                              {component.componentId || '—'}
+                              {' · '}
+                              {component.group}
+                            </p>
+                          </td>
+                          {filteredVendorColumns.map(vendor => {
+                            const key = comparePriceCellKey(vendor.externalId, component.id!);
+                            const slot = slots.get(key);
+                            if (!slot) {
+                              return (
+                                <td key={vendor.externalId} className={`${tdCls} text-muted-foreground text-center`}>
+                                  —
+                                </td>
+                              );
+                            }
+
+                            const pricing = slot.isTagged
+                              ? resolveComparePriceCell(component, slot.product)
+                              : slot.pricing;
+                            const displaySlot: ComparePriceSlot = {
+                              ...slot,
+                              componentRow: component,
+                              pricing,
+                            };
+                            const isBest = pricing !== null
+                              && pricing.uomCost !== null
+                              && pricing.uomCost > 0
+                              && best !== undefined
+                              && pricing.uomCost === best;
+                            const canDropHere = dragSource
+                              && dragSource.vendorExternalId === vendor.externalId
+                              && dragSource.group === component.group
+                              && dragSource.sourceComponentId !== component.id;
+
+                            return (
+                              <td
+                                key={vendor.externalId}
+                                onDragOver={e => {
+                                  if (!canDropHere) return;
+                                  e.preventDefault();
+                                }}
+                                onDrop={e => {
+                                  e.preventDefault();
+                                  handleDropOnCell(component, vendor.externalId);
+                                }}
+                                className={`${tdCls} ${isBest ? 'bg-[#5A7A2A]/[0.06]' : ''} ${canDropHere ? 'ring-1 ring-primary/40 bg-primary/[0.04]' : ''}`}
+                              >
+                                <ComparePriceCellView
+                                  slot={displaySlot}
+                                  vendor={vendor}
+                                  isBest={isBest}
+                                  saving={savingKey === key}
+                                  onEngage={() => handleEngageClick(vendor, slot.product, component.id!)}
+                                  onTag={() => handleTagClick(slot.product, component.id!)}
+                                  onSaveUomCost={handleSaveUomCost}
+                                  onDragStart={() => setDragSource({
+                                    vendorExternalId: vendor.externalId,
+                                    productId: slot.product.id,
+                                    sourceComponentId: component.id!,
+                                    group: component.group,
+                                  })}
+                                  onDragEnd={() => setDragSource(null)}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {engageVendor && (
+            <VendorEngageModal
+              key={engageVendor.externalId}
+              vendor={engageVendor}
+              saving={engaging}
+              serverError={engageError}
+              onClose={() => {
+                if (!engaging) {
+                  setEngageVendor(null);
+                  setPendingTag(null);
+                  setEngageError(null);
+                }
+              }}
+              onConfirm={handleConfirmEngage}
+            />
+          )}
+
+          {tagRequest && (
+            <VendorProductTagModal
+              product={tagRequest.product}
+              selectedCompanyId={selectedCompanyId}
+              preselectedComponentId={tagRequest.componentId}
+              onClose={() => setTagRequest(null)}
+              onTagged={loadData}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }

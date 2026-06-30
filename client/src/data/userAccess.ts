@@ -66,7 +66,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     id: 'vendor',
     label: 'Vendor',
     tasks: [
-      { id: 'viewVendorList', label: 'View Vendor List' },
+      { id: 'viewVendorList', label: 'View Vendor List & Products' },
       { id: 'viewVendorProducts', label: 'View Vendor Products' },
       { id: 'activateDeactivateVendor', label: 'Activate/deactivate Vendor' },
       { id: 'accountMapping', label: 'Account Mapping' },

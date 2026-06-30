@@ -1,45 +1,244 @@
-import { useEffect, useState } from 'react';
-import { Building2, Globe, MapPin, Search, UserPlus } from 'lucide-react';
-import { api, type Vendor } from '../../api';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, UserPlus } from 'lucide-react';
+import { api, type EngageVendorContact, type Vendor } from '../../api';
+import { applyVendorProductOverrides } from '../../data/vendorProductCatalog';
+import { getDefaultVendorContact } from '../../data/vendorContacts';
+import { VendorEngageModal } from './VendorEngageModal';
+import { VendorCreatePanel } from './VendorCreatePanel';
+import { VendorProductsList } from './VendorProductsList';
+import { VendorProductsPanel } from './VendorProductsPanel';
+const thCls = 'text-left px-4 py-3 text-[10px] font-mono text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap';
 
-export function VendorListPage() {
+function sortVendors(vendors: Vendor[]): Vendor[] {
+  return [...vendors].sort((a, b) => {
+    if (a.engaged !== b.engaged) return a.engaged ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
+  const [tab, setTab] = useState<'vendors' | 'products'>('vendors');
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'engaged' | 'available'>('all');
-  const [engaging, setEngaging] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState('');
+  const [productVendorFilter, setProductVendorFilter] = useState('');
+  const [productGroupFilter, setProductGroupFilter] = useState('');
+  const [productTagFilter, setProductTagFilter] = useState<'all' | 'tagged' | 'untagged'>('all');
+  const [engageTarget, setEngageTarget] = useState<Vendor | null>(null);
+  const [engageError, setEngageError] = useState<string | null>(null);
+  const [productsVendor, setProductsVendor] = useState<Vendor | null>(null);
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [engaging, setEngaging] = useState(false);
+  const [showCreateVendor, setShowCreateVendor] = useState(false);
+
+  const catalogProducts = useMemo(
+    () => applyVendorProductOverrides(),
+    [catalogRefresh],
+  );
 
   useEffect(() => {
+    if (!selectedCompanyId) {
+      setVendors([]);
+      setLoading(false);
+      setEngageTarget(null);
+      setProductsVendor(null);
+      return;
+    }
+    setLoading(true);
     api.vendors()
       .then(setVendors)
       .catch(() => setVendors([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedCompanyId]);
 
-  const filtered = vendors.filter(v => {
-    const matchSearch = !search || v.name.toLowerCase().includes(search.toLowerCase()) || v.city.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === 'all' || (filter === 'engaged' ? v.engaged : !v.engaged);
-    return matchSearch && matchFilter;
-  });
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const rows = vendors.filter(v => {
+      const matchSearch = !query || [
+        v.name,
+        v.products,
+        v.address,
+        v.city,
+        v.mobile,
+        v.email,
+      ].some(value => value.toLowerCase().includes(query));
+      const matchFilter = filter === 'all' || (filter === 'engaged' ? v.engaged : !v.engaged);
+      return matchSearch && matchFilter;
+    });
+    return sortVendors(rows);
+  }, [vendors, search, filter]);
 
-  async function handleEngage(vendor: Vendor) {
-    if (vendor.engaged) return;
-    setEngaging(vendor.externalId);
+  const nextVendorExternalId = useMemo(() => {
+    const max = vendors.reduce((acc, v) => {
+      const n = parseInt(v.externalId.replace(/^V/i, ''), 10);
+      return Number.isFinite(n) ? Math.max(acc, n) : acc;
+    }, 0);
+    return `V${String(max + 1).padStart(3, '0')}`;
+  }, [vendors]);
+
+  const engagedCount = filtered.filter(v => v.engaged).length;
+  const availableCount = filtered.length - engagedCount;
+
+  const vendorOptions = useMemo(
+    () => [...vendors].sort((a, b) => a.name.localeCompare(b.name)),
+    [vendors],
+  );
+
+  const groupOptions = useMemo(
+    () => [...new Set(catalogProducts.map(p => p.group))].sort((a, b) => a.localeCompare(b)),
+    [catalogProducts],
+  );
+
+  const filteredProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    return catalogProducts.filter(product => {
+      const matchVendor = !productVendorFilter || product.vendorExternalId === productVendorFilter;
+      const matchGroup = !productGroupFilter || product.group === productGroupFilter;
+      const matchSearch = !query || [
+        product.id,
+        product.productName,
+        product.vendorName,
+        product.vendorExternalId,
+        product.group,
+        product.specification,
+        product.delivery.orderUnit,
+      ].some(value => value.toLowerCase().includes(query));
+      return matchVendor && matchGroup && matchSearch;
+    }).sort((a, b) => {
+      const vendorCmp = a.vendorName.localeCompare(b.vendorName);
+      if (vendorCmp !== 0) return vendorCmp;
+      return a.productName.localeCompare(b.productName);
+    });
+  }, [catalogProducts, productSearch, productVendorFilter, productGroupFilter]);
+
+  async function handleConfirmEngage(vendor: Vendor, contacts: EngageVendorContact[]) {
+    setEngaging(true);
+    setEngageError(null);
     try {
-      const updated = await api.engageVendor(vendor.externalId);
+      const updated = await api.engageVendor(vendor.externalId, { contacts });
       setVendors(prev => prev.map(v => v.externalId === vendor.externalId ? updated : v));
-    } catch { /* ignore */ }
-    finally { setEngaging(null); }
+      setEngageTarget(null);
+    } catch (err) {
+      setEngageError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to engage vendor. Restart the API if this is a newly added vendor.',
+      );
+    } finally {
+      setEngaging(false);
+    }
+  }
+
+  function handleVendorUpdated(updated: Vendor) {
+    setVendors(prev => prev.map(v => v.externalId === updated.externalId ? updated : v));
+    if (productsVendor?.externalId === updated.externalId) {
+      setProductsVendor(updated);
+    }
+  }
+
+  function renderRow(v: Vendor) {
+    const defaultContact = getDefaultVendorContact(v);
+    const displayMobile = defaultContact?.mobile || v.mobile || '—';
+    const displayEmail = defaultContact?.email || v.email;
+    return (
+      <tr
+        key={v.id}
+        className={`border-b border-border last:border-0 transition-colors hover:bg-muted/30 ${v.engaged ? 'bg-[#5A7A2A]/[0.04]' : ''}`}
+      >
+        <td className="px-4 py-3">
+          <div className="flex items-start gap-2 min-w-[160px]">
+            <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => setProductsVendor(v)}
+                className="text-left group"
+              >
+                <p className="font-medium text-foreground leading-snug group-hover:text-primary group-hover:underline transition-colors">{v.name}</p>
+              </button>
+              <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{v.externalId}</p>
+            </div>
+            {v.engaged && (
+              <span className="shrink-0 text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">
+                Engaged
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="px-4 py-3 text-foreground min-w-[140px]">{v.products || '—'}</td>
+        <td className="px-4 py-3 text-muted-foreground min-w-[180px]">
+          {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
+        </td>
+        <td className="px-4 py-3 font-mono text-foreground whitespace-nowrap">{displayMobile}</td>
+        <td className="px-4 py-3 text-foreground min-w-[160px]">
+          {displayEmail ? (
+            <a href={`mailto:${displayEmail}`} className="hover:text-primary hover:underline break-all">
+              {displayEmail}
+            </a>
+          ) : '—'}
+        </td>
+        <td className="px-4 py-3 text-right whitespace-nowrap">
+          {!v.engaged && (
+            <button
+              onClick={() => {
+                setEngageError(null);
+                setEngageTarget(v);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold bg-primary text-primary-foreground"
+            >
+              <UserPlus size={11} />
+              Engage
+            </button>
+          )}
+        </td>
+      </tr>
+    );
   }
 
   return (
     <div className="p-6 space-y-4">
       <div>
         <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
-        <h2 className="text-lg font-semibold">Vendor List</h2>
-        <p className="text-xs text-muted-foreground mt-1">Browse and engage vendor partners for procurement</p>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Vendor List & Products</h2>
+          <button
+            type="button"
+            onClick={() => setShowCreateVendor(true)}
+            disabled={!selectedCompanyId}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold bg-primary text-primary-foreground disabled:opacity-50"
+          >
+            <UserPlus size={11} />
+            Create Vendor
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {tab === 'vendors'
+            ? 'Browse and engage vendor partners for procurement'
+            : 'Browse all vendor products across partners — engage vendors and tag products to smart components'}
+        </p>
       </div>
 
+      <div className="flex gap-1 border-b border-border">
+        {([
+          { id: 'vendors' as const, label: 'Vendors' },
+          { id: 'products' as const, label: 'Vendor Products' },
+        ]).map(t => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors -mb-px ${
+              tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'vendors' ? (
+      <>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -47,14 +246,16 @@ export function VendorListPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search vendors…"
-            className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary"
+            disabled={!selectedCompanyId}
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
           />
         </div>
         {(['all', 'engaged', 'available'] as const).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+            disabled={!selectedCompanyId}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors disabled:opacity-50 ${
               filter === f ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/50'
             }`}
           >
@@ -62,52 +263,165 @@ export function VendorListPage() {
           </button>
         ))}
       </div>
-
-      {loading ? (
-        <p className="text-xs text-muted-foreground text-center py-8">Loading vendors…</p>
+      </>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map(v => (
-            <div key={v.id} className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center">
-                    {v.type === 'online' ? <Globe size={16} className="text-primary" /> : <Building2 size={16} className="text-primary" />}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">{v.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono">{v.externalId}</p>
-                  </div>
-                </div>
-                <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${v.engaged ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
-                  {v.engaged ? 'Engaged' : 'Available'}
-                </span>
-              </div>
-
-              <div className="space-y-1.5 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  <MapPin size={11} /> {v.city}
-                </div>
-                <p>Products: <span className="text-foreground font-medium">{v.products}</span></p>
-                <p>Type: <span className="text-foreground capitalize">{v.type}</span></p>
-              </div>
-
-              {!v.engaged && (
-                <button
-                  onClick={() => handleEngage(v)}
-                  disabled={engaging === v.externalId}
-                  className="mt-auto flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
-                >
-                  <UserPlus size={12} />
-                  {engaging === v.externalId ? 'Engaging…' : 'Engage Vendor'}
-                </button>
-              )}
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <p className="col-span-full text-center text-xs text-muted-foreground py-8">No vendors match your filters.</p>
-          )}
+      <>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={productSearch}
+            onChange={e => setProductSearch(e.target.value)}
+            placeholder="Search products…"
+            disabled={!selectedCompanyId}
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+          />
         </div>
+        <select
+          value={productVendorFilter}
+          onChange={e => setProductVendorFilter(e.target.value)}
+          disabled={!selectedCompanyId}
+          className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 min-w-[160px]"
+        >
+          <option value="">All vendors</option>
+          {vendorOptions.map(v => (
+            <option key={v.externalId} value={v.externalId}>{v.name}</option>
+          ))}
+        </select>
+        <select
+          value={productGroupFilter}
+          onChange={e => setProductGroupFilter(e.target.value)}
+          disabled={!selectedCompanyId}
+          className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 min-w-[140px]"
+        >
+          <option value="">All groups</option>
+          {groupOptions.map(group => (
+            <option key={group} value={group}>{group}</option>
+          ))}
+        </select>
+        {(['all', 'tagged', 'untagged'] as const).map(f => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setProductTagFilter(f)}
+            disabled={!selectedCompanyId}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors disabled:opacity-50 ${
+              productTagFilter === f ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/50'
+            }`}
+          >
+            {f === 'all' ? 'All' : f === 'tagged' ? 'Tagged' : 'Untagged'}
+          </button>
+        ))}
+      </div>
+
+      {selectedCompanyId && (
+        <VendorProductsList
+          products={filteredProducts}
+          vendors={vendors}
+          selectedCompanyId={selectedCompanyId}
+          showVendorColumn
+          tagFilter={productTagFilter}
+          onVendorUpdated={handleVendorUpdated}
+          onProductUpdated={() => setCatalogRefresh(key => key + 1)}
+        />
+      )}
+      </>
+      )}
+
+      {selectedCompanyId && tab === 'vendors' && (
+      <>
+      <p className="text-[10px] font-mono text-muted-foreground">
+        {filtered.length} vendor{filtered.length !== 1 ? 's' : ''}
+        {filter === 'all' && filtered.length > 0 && (
+          <> · {engagedCount} engaged · {availableCount} available</>
+        )}
+      </p>
+
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        {loading ? (
+          <p className="p-8 text-center text-xs text-muted-foreground">Loading vendors…</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className={thCls}>Vendor Name</th>
+                  <th className={thCls}>Type of Product Supplied</th>
+                  <th className={thCls}>Address</th>
+                  <th className={thCls}>Phone Number</th>
+                  <th className={thCls}>Email</th>
+                  <th className={`${thCls} text-right`}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-xs text-muted-foreground font-mono">
+                      No vendors match your filters.
+                    </td>
+                  </tr>
+                ) : filter === 'all' && engagedCount > 0 && availableCount > 0 ? (
+                  <>
+                    <tr className="bg-muted/20">
+                      <td colSpan={6} className="px-4 py-2 text-[9px] font-mono uppercase tracking-widest text-muted-foreground">
+                        Engaged Vendors
+                      </td>
+                    </tr>
+                    {filtered.filter(v => v.engaged).map(renderRow)}
+                    <tr className="bg-muted/20">
+                      <td colSpan={6} className="px-4 py-2 text-[9px] font-mono uppercase tracking-widest text-muted-foreground">
+                        Available Vendors
+                      </td>
+                    </tr>
+                    {filtered.filter(v => !v.engaged).map(renderRow)}
+                  </>
+                ) : (
+                  filtered.map(renderRow)
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      </>
+      )}
+
+      {engageTarget && (
+        <VendorEngageModal
+          key={engageTarget.externalId}
+          vendor={engageTarget}
+          saving={engaging}
+          serverError={engageError}
+          onClose={() => {
+            if (!engaging) {
+              setEngageTarget(null);
+              setEngageError(null);
+            }
+          }}
+          onConfirm={handleConfirmEngage}
+        />
+      )}
+
+      {productsVendor && selectedCompanyId && (
+        <VendorProductsPanel
+          vendor={productsVendor}
+          selectedCompanyId={selectedCompanyId}
+          onClose={() => setProductsVendor(null)}
+          onVendorUpdated={handleVendorUpdated}
+        />
+      )}
+
+      {showCreateVendor && (
+        <VendorCreatePanel
+          nextExternalId={nextVendorExternalId}
+          existingVendors={vendors}
+          onClose={() => setShowCreateVendor(false)}
+          onProductsImported={() => setCatalogRefresh(key => key + 1)}
+          onCreated={vendor => {
+            setVendors(prev => sortVendors([...prev, vendor]));
+            setShowCreateVendor(false);
+          }}
+        />
       )}
     </div>
   );

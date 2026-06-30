@@ -530,3 +530,81 @@ public class PayrollRunDetail : PayrollRunSummary
 {
     public List<PayrollRunLineItem> Lines { get; set; } = [];
 }
+
+public class VendorContactRequest
+{
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string Position { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Mobile { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+    public bool IsDefault { get; set; }
+}
+
+public class EngageVendorRequest
+{
+    public List<VendorContactRequest> Contacts { get; set; } = [];
+}
+
+public class CreateVendorRequest
+{
+    [Required, MaxLength(50)]
+    public string ExternalId { get; set; } = string.Empty;
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(20)]
+    public string Type { get; set; } = "offline";
+    [MaxLength(50)]
+    public string Brn { get; set; } = string.Empty;
+    [MaxLength(300)]
+    public string Products { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string State { get; set; } = string.Empty;
+    [MaxLength(400)]
+    public string Address { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string ContactPerson { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string ContactPosition { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Mobile { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+}
+
+public class CreatePurchaseOrderItemRequest
+{
+    [Required, MaxLength(300)]
+    public string Name { get; set; } = string.Empty;
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    [Range(0, 999999999)]
+    public decimal UnitPrice { get; set; }
+    [MaxLength(50)]
+    public string Unit { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string DeliveryPackage { get; set; } = string.Empty;
+}
+
+public class CreatePurchaseOrderRequest
+{
+    [Required, MaxLength(200)]
+    public string VendorName { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string? PoNumber { get; set; }
+    public DateOnly? OrderDate { get; set; }
+    public DateOnly? DeliveryDate { get; set; }
+    [MaxLength(50)]
+    public string Status { get; set; } = "Pending";
+    public List<CreatePurchaseOrderItemRequest> Items { get; set; } = [];
+}
+
+public class CreatePurchaseOrdersBatchRequest
+{
+    public List<CreatePurchaseOrderRequest> Orders { get; set; } = [];
+}

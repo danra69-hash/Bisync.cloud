@@ -137,11 +137,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
   }
 
   if (!selectedCompanyId) {
-    return (
-      <p className="text-xs text-muted-foreground py-8 text-center border border-dashed border-border rounded-lg">
-        Select a company in the header to configure public holidays.
-      </p>
-    );
+    return null;
   }
 
   return (

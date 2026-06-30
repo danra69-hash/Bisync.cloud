@@ -2,39 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { api, type Ingredient } from '../../api';
 import { siCategories, siGroups } from '../../data/revenueManagement';
-import { blankComponentRow, fromApiUom, readDetailConfigJsonFromIngredient, resolveDetailConfigForRow, resolveDetailConfigJsonForSave, type ComponentRow } from '../../data/componentForm';
+import { blankComponentRow, fromApiUom, resolveDetailConfigForRow, resolveDetailConfigJsonForSave, type ComponentRow } from '../../data/componentForm';
 import { ComponentEditPanel } from './ComponentEditPanel';
+import { ingredientToRow, mergeSavedRow } from './smartIngredientShared';
 
-function ingredientToRow(i: Ingredient): ComponentRow {
-  let storage: string[] = [];
-  try { storage = JSON.parse(i.storageJson); } catch { storage = []; }
-  let locations: string[] = [];
-  try { locations = JSON.parse(i.locationsJson); } catch { locations = ['all']; }
-  const detailConfigJson = readDetailConfigJsonFromIngredient(i);
-  return {
-    id: i.id,
-    componentId: i.componentId ?? '',
-    name: i.name,
-    category: i.category,
-    group: i.group,
-    recipeUOM: i.recipeUom,
-    inventoryUOM: i.inventoryUom,
-    lastPriceRecipe: i.lastPriceRecipe,
-    lastPriceInventory: i.lastPriceInventory,
-    dailyUsage: i.dailyUsage,
-    orderFreqDays: i.orderFreqDays,
-    storage,
-    storageNote: i.storageNote ?? '',
-    attachedProducts: i.attachedProducts,
-    attachedVendors: i.attachedVendors,
-    active: i.active,
-    locations,
-    detailConfigJson,
-    detailConfig: resolveDetailConfigForRow({ detailConfigJson }),
-  };
-}
-
-function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ingredient {
+function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>) {
   const merged = { ...row, ...partial };
   const detailConfig = resolveDetailConfigForRow(merged);
   const detailConfigJson = resolveDetailConfigJsonForSave(row, partial);
@@ -57,22 +29,7 @@ function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ing
     attachedVendors: detailConfig.taggedVendorProductIds.length || merged.attachedVendors,
     active: merged.active,
     locationsJson: JSON.stringify(merged.locations),
-  };
-}
-
-function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentRow {
-  const savedRow = ingredientToRow(saved);
-  const sentConfig = resolveDetailConfigForRow(sent);
-  if (sentConfig.taggedVendorProductIds.length > 0
-    && savedRow.detailConfig?.taggedVendorProductIds.length === 0) {
-    return {
-      ...savedRow,
-      detailConfig: sentConfig,
-      detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }),
-      attachedVendors: sentConfig.taggedVendorProductIds.length,
-    };
-  }
-  return savedRow;
+  } satisfies Ingredient;
 }
 
 function FilterSelect({ label, value, options, onChange }: {
@@ -199,9 +156,7 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
         )}
       </div>
 
-      {!selectedCompanyId ? (
-        <p className="text-sm text-muted-foreground">Select a company from the menu bar above to view Smart Components.</p>
-      ) : (
+      {selectedCompanyId && (
         <>
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex flex-wrap items-end gap-4">
