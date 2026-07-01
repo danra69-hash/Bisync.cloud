@@ -122,6 +122,54 @@ export function OrderCartModal({
   }, [selectedCompanyId]);
 
   useEffect(() => {
+    if (step !== 'success') return;
+
+    let cancelled = false;
+
+    async function refreshMissingTokens() {
+      setCreatedOrders(prev => {
+        const missing = prev.filter(order => !order.shareToken);
+        if (missing.length === 0) return prev;
+
+        void Promise.all(
+          missing.map(async order => {
+            try {
+              const po = await api.purchaseOrder(order.id);
+              const token = po.vendorShareToken?.trim() ?? '';
+              return token ? { orderId: order.id, token } : null;
+            } catch {
+              return null;
+            }
+          }),
+        ).then(updates => {
+          if (cancelled) return;
+          const tokenById = new Map(
+            updates.filter((u): u is { orderId: number; token: string } => Boolean(u))
+              .map(u => [u.orderId, u.token]),
+          );
+          if (tokenById.size === 0) return;
+          setCreatedOrders(current =>
+            current.map(order => {
+              const token = tokenById.get(order.id);
+              return token ? { ...order, shareToken: token } : order;
+            }),
+          );
+        });
+
+        return prev;
+      });
+    }
+
+    void refreshMissingTokens();
+    const timer = window.setInterval(() => void refreshMissingTokens(), 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [step]);
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !saving) onClose();
     };
@@ -219,23 +267,20 @@ export function OrderCartModal({
 
       const summaries: CreatedVendorOrder[] = await Promise.all(
         created.map(async (po, index) => {
-          let resolved = po;
-          if (!po.vendorShareToken?.trim()) {
+          let token = po.vendorShareToken?.trim() ?? '';
+          if (!token) {
             try {
-              resolved = await api.purchaseOrder(po.id);
+              const refreshed = await api.purchaseOrder(po.id);
+              token = refreshed.vendorShareToken?.trim() ?? '';
             } catch {
-              try {
-                resolved = await api.ensureVendorShareToken(po.id);
-              } catch {
-                resolved = po;
-              }
+              token = '';
             }
           }
           return {
-            id: resolved.id,
-            poNumber: resolved.poNumber,
-            vendorName: resolved.vendorName,
-            shareToken: resolved.vendorShareToken?.trim() ?? '',
+            id: po.id,
+            poNumber: po.poNumber,
+            vendorName: po.vendorName,
+            shareToken: token,
             pdf: pdfPayloads[index],
           };
         }),
