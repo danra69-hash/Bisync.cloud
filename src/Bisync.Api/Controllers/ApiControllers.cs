@@ -495,6 +495,8 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
         order.ApprovedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+        await UserNotificationService.NotifyPurchaseRequestApprovedAsync(db, order, order.ApprovedBy);
+
         return Ok(PurchaseOrderWorkflow.MapOrder(order));
     }
 

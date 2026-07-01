@@ -264,6 +264,19 @@ export interface ReconcilePurchaseOrderResult {
   updatedVendorProductPrices: { id: string; deliveryPrice: number }[];
 }
 
+export interface UserNotification {
+  id: number;
+  userId?: number | null;
+  recipientName: string;
+  purchaseOrderId?: number | null;
+  type: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  readAt?: string | null;
+  isRead: boolean;
+}
+
 export interface VendorOrderPortalItem {
   name: string;
   deliveryPackage: string;
@@ -444,6 +457,16 @@ export const api = {
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/receive`, 'POST', payload),
   reconcilePurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
     fetchJsonWithMethod<ReconcilePurchaseOrderResult>(`/api/purchaseorders/${id}/reconcile`, 'POST', payload),
+  userNotifications: (userId: number, recipientName: string, unreadOnly = false) => {
+    const params = new URLSearchParams({
+      userId: String(userId),
+      recipientName,
+      unreadOnly: String(unreadOnly),
+    });
+    return fetchJson<UserNotification[]>(`/api/notifications?${params}`);
+  },
+  markNotificationRead: (id: number) =>
+    fetchJsonWithMethod<UserNotification>(`/api/notifications/${id}/read`, 'POST'),
   vendorOrderPortal: (token: string) => fetchJson<VendorOrderPortal>(`/api/vendor-orders/${token}`),
   acceptVendorOrder: (token: string, acceptedBy?: string) =>
     fetchJsonWithMethod<VendorOrderPortal>(`/api/vendor-orders/${token}/accept`, 'POST', { acceptedBy }),

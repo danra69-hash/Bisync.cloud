@@ -7,7 +7,8 @@ import {
   Package,
   ShoppingCart,
 } from 'lucide-react';
-import { api, type Company, type PurchaseOrder } from '../../api';
+import { api, type Company, type PurchaseOrder, type UserNotification } from '../../api';
+import { useCurrentUser } from '../../context/CurrentUserContext';
 import { getCompanyMessages } from '../../data/revMgmtCompanyMessages';
 import { filterPurchaseOrdersByOrg } from '../../utils/orgFilters';
 import { ActivePurchasePanel } from './ActivePurchasePanel';
@@ -108,13 +109,29 @@ function toneClasses(tone: ActivityItem['tone']) {
 }
 
 export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const { currentUser } = useCurrentUser();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [openingOrderId, setOpeningOrderId] = useState<number | null>(null);
 
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
+
+  async function loadNotifications() {
+    if (!currentUser) {
+      setNotifications([]);
+      return;
+    }
+
+    try {
+      const rows = await api.userNotifications(currentUser.id, currentUser.fullName);
+      setNotifications(rows);
+    } catch {
+      setNotifications([]);
+    }
+  }
 
   async function loadOrders() {
     setLoading(true);
@@ -131,6 +148,10 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
   useEffect(() => {
     void loadOrders();
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    void loadNotifications();
+  }, [currentUser?.id, currentUser?.fullName]);
 
   const companyName = useMemo(() => {
     if (!selectedCompanyId) return 'your company';
@@ -179,9 +200,30 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
       return prev.map(o => (o.id === updated.id ? updated : o));
     });
     setSelectedOrderId(updated.status === 'Reconciled' ? null : updated.id);
+    void loadNotifications();
   }
 
-  const messages = useMemo(
+  async function openNotification(notification: UserNotification) {
+    if (!notification.isRead) {
+      try {
+        const updated = await api.markNotificationRead(notification.id);
+        setNotifications(prev => prev.map(n => (n.id === updated.id ? updated : n)));
+      } catch {
+        // ignore read errors
+      }
+    }
+
+    if (notification.purchaseOrderId) {
+      await openOrder(notification.purchaseOrderId);
+    }
+  }
+
+  const unreadNotifications = useMemo(
+    () => notifications.filter(n => !n.isRead),
+    [notifications],
+  );
+
+  const companyMessages = useMemo(
     () => getCompanyMessages(selectedCompanyId),
     [selectedCompanyId],
   );
@@ -200,6 +242,23 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
           {!selectedCompanyId
             ? 'Select a company in the header to load activity and pending orders.'
             : 'Select one or more locations in the header to scope activity and pending orders.'}
+        </div>
+      )}
+
+      {unreadNotifications.length > 0 && (
+        <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 space-y-2">
+          <p className="text-sm font-semibold text-foreground">Action required</p>
+          {unreadNotifications.map(notification => (
+            <button
+              key={notification.id}
+              type="button"
+              onClick={() => void openNotification(notification)}
+              className="w-full text-left rounded-md border border-border/60 bg-card px-3 py-2 hover:bg-muted/40 transition-colors"
+            >
+              <p className="text-xs font-medium">{notification.title}</p>
+              <p className="text-xs text-muted-foreground mt-1">{notification.body}</p>
+            </button>
+          ))}
         </div>
       )}
 
@@ -257,17 +316,56 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
         </section>
 
         <section className="bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-[320px]">
-          <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-            <div className="p-2 rounded-md bg-primary/10">
-              <Bell size={14} className="text-primary" />
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-2 rounded-md bg-primary/10 shrink-0">
+                <Bell size={14} className="text-primary" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold">Alerts &amp; Messages</h2>
+                <p className="text-xs text-muted-foreground">Your alerts and company announcements</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-semibold">Messages from Company</h2>
-              <p className="text-xs text-muted-foreground">Announcements and reminders</p>
-            </div>
+            {unreadNotifications.length > 0 && (
+              <span className="text-[10px] font-sans px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">
+                {unreadNotifications.length}
+              </span>
+            )}
           </div>
           <div className="flex-1 divide-y divide-border overflow-y-auto">
-            {messages.map(message => (
+            {notifications.length > 0 && (
+              <div className="px-5 py-3 bg-muted/20">
+                <p className="text-[10px] font-sans uppercase tracking-wide text-muted-foreground mb-2">Your alerts</p>
+                <div className="space-y-2">
+                  {notifications.map(notification => (
+                    <button
+                      key={notification.id}
+                      type="button"
+                      onClick={() => void openNotification(notification)}
+                      className={`w-full text-left rounded-md border px-3 py-2 transition-colors ${
+                        notification.isRead
+                          ? 'border-border bg-card hover:bg-muted/30'
+                          : 'border-primary/30 bg-primary/5 hover:bg-primary/10'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-xs font-medium">{notification.title}</p>
+                        <span className="text-[10px] font-sans text-muted-foreground shrink-0">
+                          {formatPostedDate(notification.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{notification.body}</p>
+                      {!notification.isRead && (
+                        <span className="inline-flex mt-2 text-[10px] font-sans uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary/15 text-primary">
+                          New
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {companyMessages.map(message => (
               <article key={message.id} className="px-5 py-4">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-xs font-medium">{message.title}</p>

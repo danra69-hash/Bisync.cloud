@@ -112,6 +112,20 @@ public static class SchemaPatcher
                 "LastPurchaseOrderId" INTEGER
             );
             """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "UserNotifications" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_UserNotifications" PRIMARY KEY AUTOINCREMENT,
+                "UserId" INTEGER,
+                "RecipientName" TEXT NOT NULL DEFAULT '',
+                "PurchaseOrderId" INTEGER,
+                "Type" TEXT NOT NULL DEFAULT '',
+                "Title" TEXT NOT NULL DEFAULT '',
+                "Body" TEXT NOT NULL DEFAULT '',
+                "CreatedAt" TEXT NOT NULL,
+                "ReadAt" TEXT
+            );
+            """);
     }
 
     static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)
