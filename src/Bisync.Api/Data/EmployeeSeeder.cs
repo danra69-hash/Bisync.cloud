@@ -78,16 +78,19 @@ public static class EmployeeSeeder
                 .Include(e => e.LeaveBalance)
                 .FirstOrDefaultAsync(e => e.Email == seed.Email);
 
-            if (employee is null)
+            if (employee is not null)
             {
-                employee = new Employee
-                {
-                    EmployeeCode = await EmployeeCodeGenerator.NextCodeAsync(db),
-                    Email = seed.Email,
-                    LeaveBalance = new LeaveBalance { AlBalance = 16 },
-                };
-                db.Employees.Add(employee);
+                await EnsureExistingSeedEmployeeLinksAsync(db, employee, seed, locationIdsByExternalId);
+                continue;
             }
+
+            employee = new Employee
+            {
+                EmployeeCode = await EmployeeCodeGenerator.NextCodeAsync(db),
+                Email = seed.Email,
+                LeaveBalance = new LeaveBalance { AlBalance = 16 },
+            };
+            db.Employees.Add(employee);
 
             employee.Name = seed.Name;
             employee.Mobile = seed.Mobile;
@@ -95,7 +98,6 @@ public static class EmployeeSeeder
             employee.Position = seed.Position;
             employee.JoinDate = seed.JoinDate;
             employee.FingerprintEnrolled = false;
-            employee.FaceRecognitionEnrolled = false;
             employee.FaceRecognitionEnrolled = false;
             employee.PosEnabled = seed.PosEnabled;
             employee.BisyncEnabled = true;
@@ -110,17 +112,14 @@ public static class EmployeeSeeder
                 _ => "Australian",
             };
 
-            if (seed.PosEnabled && string.IsNullOrEmpty(employee.PosPin))
+            if (seed.PosEnabled)
             {
                 employee.PosPin = "1234";
                 employee.PosPinMustChange = true;
             }
 
-            if (string.IsNullOrEmpty(employee.PayrollPin))
-            {
-                employee.PayrollPin = EmployeesController.DefaultPayrollPin;
-                employee.PayrollPinMustChange = true;
-            }
+            employee.PayrollPin = EmployeesController.DefaultPayrollPin;
+            employee.PayrollPinMustChange = true;
 
             await db.SaveChangesAsync();
 
@@ -132,34 +131,64 @@ public static class EmployeeSeeder
             }
 
             await db.SaveChangesAsync();
-            await EmployeeAppUserSync.SyncAsync(db, employee);
+            await EmployeeAppUserSync.SyncAsync(db, employee, seed.CompanyId);
+            await AssignOrgAsync(db, employee, seed.Department);
+            await EnsureSeedAppUserCompanyAsync(db, employee, seed, locationIdsByExternalId);
+        }
+    }
 
+    static async Task EnsureExistingSeedEmployeeLinksAsync(
+        BisyncDbContext db,
+        Employee employee,
+        EmployeeSeed seed,
+        Dictionary<string, int> locationIdsByExternalId)
+    {
+        if (employee.LeaveBalance is null)
+        {
+            employee.LeaveBalance = new LeaveBalance { AlBalance = 16 };
+            await db.SaveChangesAsync();
+        }
+
+        if (employee.DepartmentId is null)
             await AssignOrgAsync(db, employee, seed.Department);
 
-            var locationIds = seed.LocationExternalIds
-                .Where(locationIdsByExternalId.ContainsKey)
-                .Select(externalId => locationIdsByExternalId[externalId])
-                .ToList();
+        await EmployeeAppUserSync.SyncAsync(db, employee, seed.CompanyId);
+        await EnsureSeedAppUserCompanyAsync(db, employee, seed, locationIdsByExternalId);
+    }
 
-            var appUser = await db.AppUsers
-                .FirstOrDefaultAsync(u => u.EmployeeId == employee.Id || u.Email == employee.Email);
+    static async Task EnsureSeedAppUserCompanyAsync(
+        BisyncDbContext db,
+        Employee employee,
+        EmployeeSeed seed,
+        Dictionary<string, int> locationIdsByExternalId)
+    {
+        var appUser = await db.AppUsers
+            .FirstOrDefaultAsync(u => u.EmployeeId == employee.Id || u.Email == employee.Email);
 
-            if (appUser is not null)
-            {
-                appUser.EmployeeId = employee.Id;
-                appUser.FullName = employee.Name;
-                appUser.Email = employee.Email;
-                appUser.Role = employee.Position;
-                appUser.Phone = employee.Mobile;
-                appUser.Active = true;
-                appUser.CompanyId = seed.CompanyId;
-                if (!string.IsNullOrWhiteSpace(seed.AccessJson) && seed.AccessJson != """{"modules":[]}""")
-                    appUser.AccessJson = seed.AccessJson;
-                if (locationIds.Count > 0)
-                    appUser.LocationIdsJson = JsonSerializer.Serialize(locationIds);
-                await db.SaveChangesAsync();
-            }
+        if (appUser is null) return;
+
+        if (appUser.CompanyId is null)
+            appUser.CompanyId = seed.CompanyId;
+
+        if (!string.IsNullOrWhiteSpace(seed.AccessJson)
+            && seed.AccessJson != """{"modules":[]}"""
+            && (string.IsNullOrWhiteSpace(appUser.AccessJson) || appUser.AccessJson == """{"modules":[]}"""))
+        {
+            appUser.AccessJson = seed.AccessJson;
         }
+
+        var locationIds = seed.LocationExternalIds
+            .Where(locationIdsByExternalId.ContainsKey)
+            .Select(externalId => locationIdsByExternalId[externalId])
+            .ToList();
+
+        if (locationIds.Count > 0
+            && (string.IsNullOrWhiteSpace(appUser.LocationIdsJson) || appUser.LocationIdsJson == "[]"))
+        {
+            appUser.LocationIdsJson = JsonSerializer.Serialize(locationIds);
+        }
+
+        await db.SaveChangesAsync();
     }
 
     static async Task<int?> ResolveEmployeeLevelIdAsync(BisyncDbContext db, int? preferredId)

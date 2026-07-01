@@ -36,7 +36,7 @@ export function StorageAreaPicker({
       <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card shadow-2xl">
         <div className="flex items-start justify-between border-b border-border px-4 py-3">
           <div>
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Select area</p>
+            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Select area</p>
             <h3 className="text-sm font-semibold mt-0.5">Add “{storageName}” to My Storage</h3>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted">
@@ -89,7 +89,7 @@ export function StorageAreaPicker({
             <button
               type="button"
               onClick={() => setShowNewArea(true)}
-              className="flex items-center gap-1 text-xs font-mono text-primary hover:underline"
+              className="flex items-center gap-1 text-xs font-sans text-primary hover:underline"
             >
               <Plus size={12} /> Add area
             </button>
@@ -100,7 +100,7 @@ export function StorageAreaPicker({
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground"
+            className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground"
           >
             Cancel
           </button>
@@ -108,7 +108,7 @@ export function StorageAreaPicker({
             type="button"
             onClick={() => onConfirm(selectedArea)}
             disabled={!selectedArea}
-            className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 disabled:opacity-50"
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 disabled:opacity-50"
           >
             Add to My Storage
           </button>

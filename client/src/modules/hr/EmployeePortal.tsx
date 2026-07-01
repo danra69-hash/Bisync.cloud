@@ -517,12 +517,12 @@ export default function EmployeePortal({
                     >
                       <div onClick={() => handleDayClick(dateStr)} className={dayBg(info.type, inRange, edge, isToday) + 'h-full p-2'}>
                         <span className={`text-sm font-semibold ${isToday ? 'text-herme-dark' : dayLabel(info.type)}`}>{cell.getDate()}</span>
-                        {info.type === 'public-holiday' && <span className="block text-[9px] leading-tight text-amber-700 mt-0.5 truncate">{info.label}</span>}
+                        {info.type === 'public-holiday' && <span className="block text-xs leading-tight text-amber-700 mt-0.5 truncate">{info.label}</span>}
                         {(info.type === 'leave-approved' || info.type === 'leave-pending') && (
-                          <span className={`inline-block mt-1 text-[9px] px-1 py-0.5 rounded font-semibold ${info.type === 'leave-approved' ? 'bg-emerald-200 text-emerald-800' : 'bg-yellow-200 text-yellow-800'}`}>{info.label}</span>
+                          <span className={`inline-block mt-1 text-xs px-1 py-0.5 rounded font-semibold ${info.type === 'leave-approved' ? 'bg-emerald-200 text-emerald-800' : 'bg-yellow-200 text-yellow-800'}`}>{info.label}</span>
                         )}
                         {info.type === 'work' && portalEmp.isShiftEmployee && info.label !== 'Work Day' && (
-                          <span className="block text-[9px] text-slate-400 mt-0.5 truncate">{info.label}</span>
+                          <span className="block text-xs text-slate-400 mt-0.5 truncate">{info.label}</span>
                         )}
                       </div>
                     </div>
@@ -553,28 +553,28 @@ export default function EmployeePortal({
                         <div className="space-y-1">
                           {info.type === 'public-holiday' && (
                             <div className="bg-amber-100 border border-amber-200 rounded-lg px-2 py-1">
-                              <div className="text-[10px] font-semibold text-amber-800">Public Holiday</div>
-                              <div className="text-[10px] text-amber-700 leading-tight mt-0.5">{info.label}</div>
+                              <div className="text-xs font-semibold text-amber-800">Public Holiday</div>
+                              <div className="text-xs text-amber-700 leading-tight mt-0.5">{info.label}</div>
                             </div>
                           )}
                           {info.type === 'work' && (
                             <div className="bg-herme-light border border-herme-muted rounded-lg px-2 py-1">
-                              <div className="text-[10px] font-semibold text-herme-dark">Work Day</div>
-                              {portalEmp.isShiftEmployee && info.label !== 'Work Day' && <div className="text-[10px] text-herme mt-0.5">{info.label}</div>}
+                              <div className="text-xs font-semibold text-herme-dark">Work Day</div>
+                              {portalEmp.isShiftEmployee && info.label !== 'Work Day' && <div className="text-xs text-herme mt-0.5">{info.label}</div>}
                             </div>
                           )}
-                          {info.type === 'do' && <div className="bg-slate-100 rounded-lg px-2 py-1"><div className="text-[10px] font-semibold text-slate-500">Day Off</div></div>}
-                          {info.type === 'weekend' && <div className="bg-slate-50 rounded-lg px-2 py-1"><div className="text-[10px] font-semibold text-slate-400">Weekend</div></div>}
+                          {info.type === 'do' && <div className="bg-slate-100 rounded-lg px-2 py-1"><div className="text-xs font-semibold text-slate-500">Day Off</div></div>}
+                          {info.type === 'weekend' && <div className="bg-slate-50 rounded-lg px-2 py-1"><div className="text-xs font-semibold text-slate-400">Weekend</div></div>}
                           {info.type === 'leave-approved' && (
                             <div className="bg-emerald-100 border border-emerald-200 rounded-lg px-2 py-1">
-                              <div className="text-[10px] font-semibold text-emerald-800">Approved Leave</div>
-                              <div className="text-[10px] text-emerald-700">{info.label}</div>
+                              <div className="text-xs font-semibold text-emerald-800">Approved Leave</div>
+                              <div className="text-xs text-emerald-700">{info.label}</div>
                             </div>
                           )}
                           {info.type === 'leave-pending' && (
                             <div className="bg-yellow-100 border border-yellow-200 rounded-lg px-2 py-1">
-                              <div className="text-[10px] font-semibold text-yellow-800">Pending Leave</div>
-                              <div className="text-[10px] text-yellow-700">{info.label}</div>
+                              <div className="text-xs font-semibold text-yellow-800">Pending Leave</div>
+                              <div className="text-xs text-yellow-700">{info.label}</div>
                             </div>
                           )}
                         </div>

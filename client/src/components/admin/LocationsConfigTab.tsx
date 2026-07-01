@@ -72,7 +72,7 @@ function LocationPanel({
       <div className={SIDE_PANEL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Location</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Location</p>
             <h3 className="text-sm font-semibold">{form.name}</h3>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted"><X size={14} className="text-muted-foreground" /></button>
@@ -85,7 +85,7 @@ function LocationPanel({
             </div>
           )}
           <div>
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company *</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company *</label>
             <select className={selectCls} value={form.companyId ?? ''} onChange={e => set('companyId', e.target.value ? Number(e.target.value) : null)}>
               <option value="">— Select company —</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -93,12 +93,12 @@ function LocationPanel({
           </div>
 
           <div>
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Location Name</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Location Name</label>
             <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} />
           </div>
 
           <div className="rounded-lg bg-muted/40 border border-border px-3 py-2">
-            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Country (from company)</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Country (from company)</p>
             <p className="text-xs font-medium mt-0.5">{country.name}</p>
           </div>
 
@@ -109,20 +109,20 @@ function LocationPanel({
           />
 
           <div>
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Principal Contact</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Principal Contact</label>
             <select className={selectCls} value={form.principalContactUserId ?? ''} onChange={e => set('principalContactUserId', e.target.value ? Number(e.target.value) : null)}>
               <option value="">— Select user —</option>
               {users.filter(u => u.active).map(u => (
                 <option key={u.id} value={u.id}>{u.fullName} · {u.role}</option>
               ))}
             </select>
-            <p className="text-[10px] text-muted-foreground mt-1">User list is managed in the Users tab.</p>
+            <p className="text-xs text-muted-foreground mt-1">User list is managed in the Users tab.</p>
           </div>
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button onClick={onClose} className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
-          <button onClick={save} disabled={!form.companyId} className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">Save Changes</button>
+          <button onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
+          <button onClick={save} disabled={!form.companyId} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">Save Changes</button>
         </div>
       </div>
     </>
@@ -167,7 +167,7 @@ export function LocationsConfigTab({ onOrgDataChanged }: { onOrgDataChanged?: ()
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Location', 'Company', 'Address', 'Principal Contact', 'Country'].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
+                  <th key={h} className="text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
                 ))}
               </tr>
             </thead>

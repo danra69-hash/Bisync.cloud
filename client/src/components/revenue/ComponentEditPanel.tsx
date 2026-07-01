@@ -62,7 +62,7 @@ function computeTaggedVendorProductPricing(
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-1.5 mb-3">
+    <p className="text-xs font-sans font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-1.5 mb-3">
       {children}
     </p>
   );
@@ -71,18 +71,18 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</label>
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
       {children}
     </div>
   );
 }
 
 const COMPACT_INPUT_CLS =
-  'bg-background border border-border rounded px-1.5 py-0.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary shrink-0';
+  'bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary shrink-0';
 const COMPACT_FROM_QTY_CLS = `${COMPACT_INPUT_CLS} w-10`;
 const COMPACT_TO_QTY_CLS = `${COMPACT_INPUT_CLS} w-14`;
 const COMPACT_SELECT_CLS =
-  'bg-background border border-border rounded px-1 py-0.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer w-[3.25rem] shrink-0';
+  'bg-background border border-border rounded px-1 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer w-[3.25rem] shrink-0';
 
 type UomConversionLineProps = {
   unit: string;
@@ -128,7 +128,7 @@ function UomConversionLine({
         className={COMPACT_FROM_QTY_CLS}
         min="0"
       />
-      <span className="text-[10px] text-muted-foreground font-mono shrink-0">=</span>
+      <span className="text-xs text-muted-foreground font-sans shrink-0">=</span>
       <div className="relative shrink-0">
         <input
           type="number"
@@ -138,10 +138,10 @@ function UomConversionLine({
           className={`${COMPACT_TO_QTY_CLS}${autoFilled ? ' pr-6' : ''}`}
         />
         {autoFilled && (
-          <span className="absolute right-0.5 top-1/2 -translate-y-1/2 text-[6px] font-mono text-primary pointer-events-none">auto</span>
+          <span className="absolute right-0.5 top-1/2 -translate-y-1/2 text-[6px] font-sans text-primary pointer-events-none">auto</span>
         )}
       </div>
-      <span className="text-[10px] font-mono text-foreground shrink-0">{targetUom}</span>
+      <span className="text-xs font-sans text-foreground shrink-0">{targetUom}</span>
       {onRemove && (
         <button type="button" onClick={onRemove} className="p-0.5 text-muted-foreground hover:text-accent shrink-0">
           <X size={11} />
@@ -299,16 +299,16 @@ function PrincipalAlternateUomBlock({
       {referencePrincipalUom && onReferenceFromQtyChange && onReferenceQtyChange && (
         principalUnit === referencePrincipalUom ? (
           <div className="mb-4 rounded-md border border-border bg-muted/20 p-3">
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Inventory UOM matches principal component UOM — no conversion required.
             </p>
           </div>
         ) : (
         <div className="mb-4">
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">
+          <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">
             Principal Conversion Reference
           </p>
-          <p className="text-[10px] text-muted-foreground mb-2">
+          <p className="text-xs text-muted-foreground mb-2">
             Define how inventory UOM converts to principal component UOM (auto-filled when known).
           </p>
           <UomConversionLine
@@ -325,10 +325,10 @@ function PrincipalAlternateUomBlock({
       )}
 
       <div>
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">
+        <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">
           {alternateLabel}{altUnits.length > 0 ? 's' : ''}
         </p>
-        <p className="text-[10px] text-muted-foreground mb-2">
+        <p className="text-xs text-muted-foreground mb-2">
           Select another UOM and enter the conversion (auto-filled when known). Up to {MAX_ALTERNATE_UOMS} allowed.
           {showComponentUomChoices && ' Alternates appear in the Component UOM dropdown above and in vendor pricing.'}
         </p>
@@ -350,13 +350,13 @@ function PrincipalAlternateUomBlock({
             <button
               type="button"
               onClick={addAltUnit}
-              className="text-[10px] font-mono text-primary hover:underline flex items-center gap-1"
+              className="text-xs font-sans text-primary hover:underline flex items-center gap-1"
             >
               {addAlternateLabel}
             </button>
           )}
           {altUnits.length >= MAX_ALTERNATE_UOMS && (
-            <p className="text-[10px] text-muted-foreground font-mono">
+            <p className="text-xs text-muted-foreground font-sans">
               Maximum {MAX_ALTERNATE_UOMS} alternate UOMs reached.
             </p>
           )}
@@ -685,7 +685,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       <div className={elevated ? DETAIL_PANEL_SHELL_ELEVATED_CLS : SIDE_PANEL_SHELL_DETAIL_CLS} onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Smart Component</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Smart Component</p>
             <h3 className="text-sm font-semibold text-foreground">
               {isNew ? 'New Component' : row.name}
             </h3>
@@ -706,12 +706,12 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                   onChange={e => set('name', e.target.value)}
                   placeholder="e.g. Wagyu Beef A5"
                 />
-                {nameError && <p className="text-[10px] text-red-500 mt-0.5">{nameError}</p>}
+                {nameError && <p className="text-xs text-red-500 mt-0.5">{nameError}</p>}
               </FormField>
               <FormField label="Component ID">
                 <input className={`${inputCls} bg-muted text-muted-foreground`} value={form.componentId} readOnly />
                 {isNew && (
-                  <p className="text-[9px] text-muted-foreground mt-0.5">Assigned automatically from component name</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Assigned automatically from component name</p>
                 )}
               </FormField>
               <FormField label="Category">
@@ -756,7 +756,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                   <button
                     type="button"
                     onClick={() => set('storages', [...form.storages, STORAGE_OPTIONS.find(o => !form.storages.includes(o)) ?? STORAGE_OPTIONS[0]])}
-                    className="text-[10px] font-mono text-primary hover:underline flex items-center gap-1"
+                    className="text-xs font-sans text-primary hover:underline flex items-center gap-1"
                   >
                     + Add storage location
                   </button>
@@ -855,15 +855,15 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
           {(saveError || nameError) && (
-            <p className="text-[10px] text-red-500 text-right">{saveError ?? nameError}</p>
+            <p className="text-xs text-red-500 text-right">{saveError ?? nameError}</p>
           )}
           <div className="flex items-center justify-end gap-3">
           <button type="button" onClick={onClose}
-            className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors">
+            className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors">
             Cancel
           </button>
           <button type="button" onClick={save} disabled={!form.name.trim() || !!nameError}
-            className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50">
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50">
             {isNew ? 'Add Component' : 'Save Changes'}
           </button>
           </div>

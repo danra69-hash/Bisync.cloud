@@ -11,7 +11,7 @@ import {
   groupRunsByYear,
 } from './payrollProcess';
 
-const thCls = 'text-left px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal';
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
 
 type Props = {
   companyId: number;
@@ -100,7 +100,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
             const yearRuns = runs.filter(run => run.year === year);
             return (
               <section key={year} className="space-y-3">
-                <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">{year}</h3>
+                <h3 className="text-xs font-sans uppercase tracking-wider text-muted-foreground">{year}</h3>
                 <div className="space-y-2">
                   {yearRuns.map(run => {
                     const expanded = expandedRunId === run.id;
@@ -115,13 +115,13 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
                           {expanded ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium truncate">{run.periodLabel}</div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                            <div className="text-xs text-muted-foreground mt-0.5">
                               {run.payCycle} · {run.payType} · {formatProcessedAt(run.processedAt)}
                             </div>
                           </div>
                           <div className="text-right shrink-0">
                             <div className="text-sm font-medium">{formatPayrollAmount(run.totalPayout ?? run.totalGross, run.countryCode || countryCode)}</div>
-                            <div className="text-[10px] text-muted-foreground">{run.employeeCount} employees · payout</div>
+                            <div className="text-xs text-muted-foreground">{run.employeeCount} employees · payout</div>
                           </div>
                         </button>
 
@@ -146,7 +146,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
                                   <tbody>
                                     {detail.lines.map(line => (
                                       <tr key={line.employeeId} className="border-b border-border/40 last:border-0">
-                                        <td className="px-3 py-2 font-mono">{line.employeeCode}</td>
+                                        <td className="px-3 py-2 font-sans">{line.employeeCode}</td>
                                         <td className="px-3 py-2 font-medium">{line.employeeName}</td>
                                         <td className="px-3 py-2 text-muted-foreground">
                                           {formatPositionDept(line.position, line.department)}

@@ -36,6 +36,7 @@ public class EmployeeRequest
     public decimal WorkingHoursPerDay { get; set; } = 8;
     public int? EmployeeLevelId { get; set; }
     public int? ReportsToId { get; set; }
+    public int? CompanyId { get; set; }
 
     [MaxLength(100)]
     public string? Nationality { get; set; }
@@ -606,5 +607,11 @@ public class CreatePurchaseOrderRequest
 
 public class CreatePurchaseOrdersBatchRequest
 {
+    public int? CompanyId { get; set; }
+    public List<string> LocationExternalIds { get; set; } = [];
+    [MaxLength(200)]
+    public string? InitiatedBy { get; set; }
+    [MaxLength(200)]
+    public string? ApprovedBy { get; set; }
     public List<CreatePurchaseOrderRequest> Orders { get; set; } = [];
 }

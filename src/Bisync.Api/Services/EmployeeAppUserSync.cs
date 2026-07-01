@@ -6,20 +6,26 @@ namespace Bisync.Api.Services;
 
 public static class EmployeeAppUserSync
 {
-    public static async Task SyncAsync(BisyncDbContext db, Employee employee, CancellationToken cancellationToken = default)
+    public static async Task SyncAsync(
+        BisyncDbContext db,
+        Employee employee,
+        int? companyId = null,
+        CancellationToken cancellationToken = default)
     {
-        var appUser = await db.AppUsers
-            .FirstOrDefaultAsync(u => u.EmployeeId == employee.Id, cancellationToken);
-
-        if (!employee.BisyncEnabled || !employee.Active)
+        if (!employee.Active)
         {
-            if (appUser is not null)
+            var inactiveUser = await db.AppUsers
+                .FirstOrDefaultAsync(u => u.EmployeeId == employee.Id, cancellationToken);
+            if (inactiveUser is not null)
             {
-                appUser.Active = false;
+                inactiveUser.Active = false;
                 await db.SaveChangesAsync(cancellationToken);
             }
             return;
         }
+
+        var appUser = await db.AppUsers
+            .FirstOrDefaultAsync(u => u.EmployeeId == employee.Id, cancellationToken);
 
         if (appUser is null)
         {
@@ -41,7 +47,10 @@ public static class EmployeeAppUserSync
         appUser.Email = employee.Email;
         appUser.Role = employee.Position;
         appUser.Phone = employee.Mobile;
-        appUser.Active = true;
+        appUser.Active = employee.BisyncEnabled;
+
+        if (companyId is int resolvedCompanyId)
+            appUser.CompanyId = resolvedCompanyId;
 
         if (string.IsNullOrWhiteSpace(appUser.AccessJson) || appUser.AccessJson == "{}")
             appUser.AccessJson = """{"modules":[]}""";

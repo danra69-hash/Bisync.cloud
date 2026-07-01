@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
 import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
 import { api as bisyncApi, type AppUser } from '../../api';
@@ -556,10 +556,10 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                     <tr>
                       {attendanceDates.map((date) => (
                         <React.Fragment key={date}>
-                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-l border-gray-200">In</th>
-                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-gray-200">Out</th>
-                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-gray-200">Hrs</th>
-                          <th className="px-0.5 py-1 text-center text-[10px] text-gray-600 border-b border-gray-200">OT</th>
+                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-l border-gray-200">In</th>
+                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-gray-200">Out</th>
+                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-gray-200">Hrs</th>
+                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-gray-200">OT</th>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -583,10 +583,10 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                           if (!record) {
                             return (
                               <React.Fragment key={date}>
-                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400 border-l border-gray-200">-</td>
-                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400">-</td>
-                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400">-</td>
-                                <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-400">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-xs text-gray-400 border-l border-gray-200">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-xs text-gray-400">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-xs text-gray-400">-</td>
+                                <td className="px-0.5 py-1.5 text-center text-xs text-gray-400">-</td>
                               </React.Fragment>
                             );
                           }
@@ -597,7 +597,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                           const earlyOut = so && ao ? isEarlyOut(so, ao) : false;
                           return (
                             <React.Fragment key={date}>
-                              <td className="px-0.5 py-1.5 text-center text-[10px] border-l border-gray-200 leading-tight">
+                              <td className="px-0.5 py-1.5 text-center text-xs border-l border-gray-200 leading-tight">
                                 {record.status === 'Absent' ? (
                                   <span className="text-red-600">Absent</span>
                                 ) : (
@@ -607,7 +607,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                                   </>
                                 )}
                               </td>
-                              <td className="px-0.5 py-1.5 text-center text-[10px] leading-tight">
+                              <td className="px-0.5 py-1.5 text-center text-xs leading-tight">
                                 {record.status === 'Absent' ? (
                                   <span className="text-gray-400">-</span>
                                 ) : (
@@ -617,8 +617,8 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                                   </>
                                 )}
                               </td>
-                              <td className="px-0.5 py-1.5 text-center text-[10px] text-gray-900">{hours ? `${hours.actual.toFixed(1)}` : '-'}</td>
-                              <td className="px-0.5 py-1.5 text-center text-[10px]">
+                              <td className="px-0.5 py-1.5 text-center text-xs text-gray-900">{hours ? `${hours.actual.toFixed(1)}` : '-'}</td>
+                              <td className="px-0.5 py-1.5 text-center text-xs">
                                 {hours && hours.overtime > 0 ? <span className="text-herme">{hours.overtime.toFixed(1)}</span> : <span className="text-gray-400">-</span>}
                               </td>
                             </React.Fragment>
@@ -662,7 +662,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                         {attendanceDates.map((date) => {
                           const record = recordFor(employee.id, date);
                           return (
-                            <td key={date} className="px-0.5 py-2 text-center text-[10px] border-l border-gray-200">
+                            <td key={date} className="px-0.5 py-2 text-center text-xs border-l border-gray-200">
                               {record?.status === 'Present' ? <span className="text-green-600">P</span>
                                 : record?.status === 'Absent' ? <span className="text-red-600">A</span>
                                 : record?.status === 'Late' ? <span className="text-orange-600">L</span>

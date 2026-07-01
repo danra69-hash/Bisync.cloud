@@ -12,7 +12,7 @@ import {
   formatWorkPermitLabel,
 } from './payrollDisplay';
 
-const thCls = 'text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal';
+const thCls = 'text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
 
 const COLUMNS = [
   'Location',
@@ -85,7 +85,7 @@ export function PayrollEmployeeDirectoryTab({
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                       {initials(employee.name)}
                     </div>
                     <div className="min-w-0">
@@ -100,17 +100,17 @@ export function PayrollEmployeeDirectoryTab({
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 font-mono text-muted-foreground">{employee.employeeCode}</td>
+                <td className="px-4 py-3 font-sans text-muted-foreground">{employee.employeeCode}</td>
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatJoinDate(employee.joinDate)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{employeeDivisionName(employee, orgTree)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{employeeDepartmentName(employee, orgTree)}</td>
                 <td className="px-4 py-3">{employee.position}</td>
-                <td className="px-4 py-3 font-mono whitespace-nowrap">{formatPayrollAmount(employee.baseSalary, countryCode)}</td>
-                <td className="px-4 py-3 font-mono whitespace-nowrap">{formatPayrollAmount(employee.serviceAllowance, countryCode)}</td>
-                <td className="px-4 py-3 font-mono whitespace-nowrap">{formatPayrollAmount(employee.transportAllowance, countryCode)}</td>
-                <td className="px-4 py-3 font-mono whitespace-nowrap">{formatPayrollAmount(employee.accommodationAllowance, countryCode)}</td>
-                <td className="px-4 py-3 font-mono whitespace-nowrap">{formatPayrollAmount(employee.mobileAllowance, countryCode)}</td>
-                <td className="px-4 py-3 font-mono whitespace-nowrap">{formatOtherAllowancesSummary(employee.otherAllowances, countryCode)}</td>
+                <td className="px-4 py-3 font-sans whitespace-nowrap">{formatPayrollAmount(employee.baseSalary, countryCode)}</td>
+                <td className="px-4 py-3 font-sans whitespace-nowrap">{formatPayrollAmount(employee.serviceAllowance, countryCode)}</td>
+                <td className="px-4 py-3 font-sans whitespace-nowrap">{formatPayrollAmount(employee.transportAllowance, countryCode)}</td>
+                <td className="px-4 py-3 font-sans whitespace-nowrap">{formatPayrollAmount(employee.accommodationAllowance, countryCode)}</td>
+                <td className="px-4 py-3 font-sans whitespace-nowrap">{formatPayrollAmount(employee.mobileAllowance, countryCode)}</td>
+                <td className="px-4 py-3 font-sans whitespace-nowrap">{formatOtherAllowancesSummary(employee.otherAllowances, countryCode)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{formatWorkPermitLabel(employee.workPermitByCompany)}</td>
               </tr>
             ))}

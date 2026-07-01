@@ -30,7 +30,7 @@ export function GroupEditPanel({ group, isNew = false, onClose, onSave }: Props)
       <div className={SIDE_PANEL_SHELL_OVERFLOW_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Component Config</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Component Config</p>
             <h3 className="text-sm font-semibold text-foreground">
               {isNew ? 'New Group' : group.name}
             </h3>
@@ -42,7 +42,7 @@ export function GroupEditPanel({ group, isNew = false, onClose, onSave }: Props)
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Category</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Category</label>
             <select className={selectCls} value={category} onChange={e => setCategory(e.target.value)}>
               {siCategories.filter(c => c !== 'All').map(c => (
                 <option key={c} value={c}>{c}</option>
@@ -51,7 +51,7 @@ export function GroupEditPanel({ group, isNew = false, onClose, onSave }: Props)
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Group name</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Group name</label>
             <input
               className={inputCls}
               value={name}
@@ -62,8 +62,8 @@ export function GroupEditPanel({ group, isNew = false, onClose, onSave }: Props)
 
           {!isNew && (
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Components</label>
-              <p className="text-sm font-mono text-foreground">{group.items}</p>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Components</label>
+              <p className="text-sm font-sans text-foreground">{group.items}</p>
             </div>
           )}
         </div>
@@ -71,14 +71,14 @@ export function GroupEditPanel({ group, isNew = false, onClose, onSave }: Props)
         <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 shrink-0">
           <button
             onClick={onClose}
-            className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors"
+            className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={save}
             disabled={!name.trim() || !category}
-            className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             {isNew ? 'Add Group' : 'Save Changes'}
           </button>

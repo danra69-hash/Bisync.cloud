@@ -267,7 +267,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
       <div className={SIDE_PANEL_SHELL_CREATE_VENDOR_CLS} onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">Vendors</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Vendors</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5">Create Vendor</h3>
           </div>
           <button type="button" onClick={() => !saving && onClose()} className="p-1.5 rounded-md hover:bg-muted transition-colors">
@@ -278,11 +278,11 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4 space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-1">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Vendor ID</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Vendor ID</p>
               <input value={form.externalId} onChange={e => setField('externalId', e.target.value)} className={inputCls} />
             </div>
             <div className="col-span-1">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Type</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Type</p>
               <select value={form.type} onChange={e => setField('type', e.target.value)} className={selectCls}>
                 <option value="offline">offline</option>
                 <option value="online">online</option>
@@ -290,23 +290,23 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
             </div>
             <div className="col-span-1" />
             <div className="col-span-2">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Vendor Name</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Vendor Name</p>
               <input value={form.name} onChange={e => setField('name', e.target.value)} className={inputCls} />
             </div>
             <div className="col-span-1">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">BRN</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">BRN</p>
               <input value={form.brn} onChange={e => setField('brn', e.target.value)} className={inputCls} />
             </div>
             <div className="col-span-3">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Type of Product Supplied</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Type of Product Supplied</p>
               <input value={form.products} onChange={e => setField('products', e.target.value)} className={inputCls} />
             </div>
             <div className="col-span-3">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Address</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Address</p>
               <input value={form.address} onChange={e => setField('address', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">City</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">City</p>
               <input
                 list="vendor-city-options"
                 value={form.city}
@@ -318,11 +318,11 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
               </datalist>
             </div>
             <div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Zip Code</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Zip Code</p>
               <input value={postcode} onChange={e => setPostcode(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">State</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">State</p>
               <input
                 list="vendor-state-options"
                 value={form.state}
@@ -334,19 +334,19 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
               </datalist>
             </div>
             <div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Contact Person</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Contact Person</p>
               <input value={form.contactPerson} onChange={e => setField('contactPerson', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Contact Position</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Contact Position</p>
               <input value={form.contactPosition} onChange={e => setField('contactPosition', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Email</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Email</p>
               <input value={form.email} onChange={e => setField('email', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">Mobile Number of Contact Person</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Mobile Number of Contact Person</p>
               <input value={form.mobile} onChange={e => setField('mobile', e.target.value)} className={inputCls} />
             </div>
             <div />
@@ -354,14 +354,14 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
 
           <div className="border border-border rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Vendor Products</p>
-              <span className="text-[9px] text-muted-foreground">Add Vendor Product</span>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Vendor Products</p>
+              <span className="text-xs text-muted-foreground">Add Vendor Product</span>
             </div>
             <div className="flex gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={downloadTemplateCsv}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] hover:bg-[#2563eb]/15"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] hover:bg-[#2563eb]/15"
               >
                 <FilePlus2 size={11} />
                 Download Vendor Product Template CSV
@@ -369,7 +369,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
               <button
                 type="button"
                 onClick={() => scannedRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[#16a34a]/40 bg-[#16a34a]/10 text-[#15803d] hover:bg-[#16a34a]/15"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#16a34a]/40 bg-[#16a34a]/10 text-[#15803d] hover:bg-[#16a34a]/15"
               >
                 <Upload size={11} />
                 Upload Scanned Vendor Product Document
@@ -377,7 +377,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
               <button
                 type="button"
                 onClick={() => templateRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[#7c3aed]/40 bg-[#7c3aed]/10 text-[#6d28d9] hover:bg-[#7c3aed]/15"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#7c3aed]/40 bg-[#7c3aed]/10 text-[#6d28d9] hover:bg-[#7c3aed]/15"
               >
                 <FilePlus2 size={11} />
                 Upload Vendor Product Template
@@ -399,7 +399,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
               onChange={e => appendFiles('template', e.target.files)}
             />
             {(scannedDocs.length > 0 || templates.length > 0) && (
-              <div className="text-[10px] text-muted-foreground space-y-1">
+              <div className="text-xs text-muted-foreground space-y-1">
                 {scannedDocs.map((f, i) => <p key={`s-${i}`}>Scanned: {f.name}</p>)}
                 {templates.map((f, i) => <p key={`t-${i}`}>Template: {f.name}</p>)}
               </div>
@@ -409,23 +409,23 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                 type="button"
                 onClick={runOcrOnFirstScanned}
                 disabled={ocrRunning || scannedDocs.length === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold bg-[#f59e0b] text-white hover:bg-[#d97706] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-[#f59e0b] text-white hover:bg-[#d97706] disabled:opacity-50"
               >
                 {ocrRunning ? 'Running OCR…' : 'Run OCR on Scanned Document'}
               </button>
-              <p className="text-[9px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Expected format: Product Name | Group | Specification | Delivery Unit | Price
               </p>
               {parsedRows.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+                    <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                       Uploaded Vendor Product List (edit + confirm)
                     </p>
                     <button
                       type="button"
                       onClick={addParsedRow}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-[10px] font-bold hover:border-primary/60"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-xs font-bold hover:border-primary/60"
                     >
                       <Plus size={11} />
                       Add Row
@@ -433,28 +433,28 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                   </div>
                   <div className="border border-border rounded-lg overflow-hidden">
                     <div className="overflow-auto max-h-72">
-                      <table className="w-full text-[10px]">
+                      <table className="w-full text-xs">
                         <thead className="sticky top-0 bg-muted/50">
                           <tr className="border-b border-border">
-                            <th className="text-left px-2 py-1.5 font-mono uppercase tracking-wider text-muted-foreground">Product Name</th>
-                            <th className="text-left px-2 py-1.5 font-mono uppercase tracking-wider text-muted-foreground">Group</th>
-                            <th className="text-left px-2 py-1.5 font-mono uppercase tracking-wider text-muted-foreground">Specification</th>
-                            <th className="text-left px-2 py-1.5 font-mono uppercase tracking-wider text-muted-foreground">Delivery Unit</th>
-                            <th className="text-left px-2 py-1.5 font-mono uppercase tracking-wider text-muted-foreground">Price</th>
-                            <th className="text-left px-2 py-1.5 font-mono uppercase tracking-wider text-muted-foreground">Action</th>
+                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Product Name</th>
+                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Group</th>
+                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Specification</th>
+                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Delivery Unit</th>
+                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Price</th>
+                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {parsedRows.map((row, i) => (
                             <tr key={`row-${i}`} className="border-b border-border last:border-b-0">
                               <td className="p-1.5 min-w-[180px]">
-                                <input className={`${inputCls} text-[10px]`} value={row.productName} onChange={e => updateParsedRow(i, { productName: e.target.value })} />
+                                <input className={`${inputCls} text-xs`} value={row.productName} onChange={e => updateParsedRow(i, { productName: e.target.value })} />
                               </td>
                               <td className="p-1.5 min-w-[110px]">
                                 <>
                                   <input
                                     list="vendor-group-options"
-                                    className={`${inputCls} text-[10px]`}
+                                    className={`${inputCls} text-xs`}
                                     value={row.group}
                                     onChange={e => updateParsedRow(i, { group: e.target.value })}
                                     onBlur={e => updateParsedRow(i, { group: normalizeGroupName(e.target.value) })}
@@ -467,19 +467,19 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                                 </>
                               </td>
                               <td className="p-1.5 min-w-[260px]">
-                                <input className={`${inputCls} text-[10px]`} value={row.specification} onChange={e => updateParsedRow(i, { specification: e.target.value })} />
+                                <input className={`${inputCls} text-xs`} value={row.specification} onChange={e => updateParsedRow(i, { specification: e.target.value })} />
                               </td>
                               <td className="p-1.5 min-w-[150px]">
-                                <input className={`${inputCls} text-[10px]`} value={row.deliveryUnitText} onChange={e => updateParsedRow(i, { deliveryUnitText: e.target.value })} />
+                                <input className={`${inputCls} text-xs`} value={row.deliveryUnitText} onChange={e => updateParsedRow(i, { deliveryUnitText: e.target.value })} />
                               </td>
                               <td className="p-1.5 min-w-[90px]">
-                                <input className={`${inputCls} text-[10px]`} type="number" step={0.01} value={row.deliveryPrice} onChange={e => updateParsedRow(i, { deliveryPrice: parseFloat(e.target.value) || 0 })} />
+                                <input className={`${inputCls} text-xs`} type="number" step={0.01} value={row.deliveryPrice} onChange={e => updateParsedRow(i, { deliveryPrice: parseFloat(e.target.value) || 0 })} />
                               </td>
                               <td className="p-1.5 min-w-[72px]">
                                 <button
                                   type="button"
                                   onClick={() => removeParsedRow(i)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-[10px] hover:border-red-400 hover:text-red-500"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-xs hover:border-red-400 hover:text-red-500"
                                 >
                                   <Trash2 size={11} />
                                   Delete
@@ -491,7 +491,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                       </table>
                     </div>
                   </div>
-                  <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <input
                       type="checkbox"
                       checked={verifiedImport}
@@ -499,10 +499,10 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                     />
                     I verified scanned document vs extracted text and parsed rows.
                   </label>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Parsed products will be added automatically when you click Create Vendor.
                   </p>
-                  {importMessage && <p className="text-[10px] text-[#5A7A2A]">{importMessage}</p>}
+                  {importMessage && <p className="text-xs text-[#5A7A2A]">{importMessage}</p>}
                 </div>
               )}
             </div>
@@ -510,16 +510,16 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
         </div>
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
-          {error && <p className="text-[10px] text-red-500 text-right">{error}</p>}
+          {error && <p className="text-xs text-red-500 text-right">{error}</p>}
           <div className="flex items-center justify-end gap-3">
-            <button type="button" onClick={onClose} disabled={saving} className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2">
+            <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2">
               Cancel
             </button>
             <button
               type="button"
               onClick={handleCreate}
               disabled={saving || !form.externalId.trim() || !form.name.trim()}
-              className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+              className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
             >
               {saving ? 'Creating…' : 'Create Vendor'}
             </button>

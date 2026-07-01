@@ -83,7 +83,7 @@ function CompanyPanel({
       <div className={SIDE_PANEL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Company</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Company</p>
             <h3 className="text-sm font-semibold">{isNew ? 'New Company' : form.name}</h3>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted"><X size={14} className="text-muted-foreground" /></button>
@@ -96,21 +96,21 @@ function CompanyPanel({
             </div>
           )}
           <div className="grid grid-cols-1 gap-3">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company Name *</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company Name *</label>
             <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Bisync Hospitality Sdn Bhd" />
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">BRN</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">BRN</label>
                 <input className={inputCls} value={form.brn} onChange={e => set('brn', e.target.value)} placeholder="e.g. 202301012345" />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">GST / TIN</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">GST / TIN</label>
                 <input className={inputCls} value={form.gstTin} onChange={e => set('gstTin', e.target.value)} placeholder="e.g. SST-2023-00123456" />
               </div>
             </div>
 
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Country *</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Country *</label>
             <select className={selectCls} value={form.countryCode} onChange={e => {
               setForm(f => ({
                 ...f,
@@ -149,14 +149,14 @@ function CompanyPanel({
               />
             </div>
 
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">General Email</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">General Email</label>
             <input type="email" className={inputCls} value={form.email} onChange={e => set('email', e.target.value)} placeholder="hq@company.com" />
           </div>
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button onClick={onClose} className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
-          <button onClick={save} disabled={!form.name.trim()} className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
+          <button onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
+          <button onClick={save} disabled={!form.name.trim()} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
             {isNew ? 'Add Company' : 'Save Changes'}
           </button>
         </div>
@@ -204,7 +204,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Company', 'BRN', 'GST/TIN', 'Country', 'Email', 'Locations', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
+                  <th key={h} className="text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -212,13 +212,13 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
               {companies.map(c => (
                 <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer" onClick={() => { setIsNew(false); setEditCompany(c); }}>
                   <td className="px-4 py-3 font-medium">{c.name}</td>
-                  <td className="px-4 py-3 font-mono text-muted-foreground">{c.brn || '—'}</td>
-                  <td className="px-4 py-3 font-mono text-muted-foreground">{c.gstTin || '—'}</td>
+                  <td className="px-4 py-3 font-sans text-muted-foreground">{c.brn || '—'}</td>
+                  <td className="px-4 py-3 font-sans text-muted-foreground">{c.gstTin || '—'}</td>
                   <td className="px-4 py-3">{getCountry(c.countryCode).name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{c.email || '—'}</td>
-                  <td className="px-4 py-3 font-mono text-center">{c.locationCount}</td>
+                  <td className="px-4 py-3 font-sans text-center">{c.locationCount}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${c.active ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
+                    <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${c.active ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
                       {c.active ? 'Active' : 'Inactive'}
                     </span>
                   </td>

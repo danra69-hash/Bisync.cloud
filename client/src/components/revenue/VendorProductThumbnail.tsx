@@ -42,7 +42,7 @@ export function VendorProductThumbnail({ productName, imageUrl, size = 40, onIma
       title={productName}
     >
       {initials ? (
-        <span className="text-[10px] font-semibold text-foreground/70">{initials}</span>
+        <span className="text-xs font-semibold text-foreground/70">{initials}</span>
       ) : (
         <Package size={size * 0.4} strokeWidth={1.5} />
       )}

@@ -7,7 +7,7 @@ import { VendorEngageModal } from './VendorEngageModal';
 import { VendorCreatePanel } from './VendorCreatePanel';
 import { VendorProductsList } from './VendorProductsList';
 import { VendorProductsPanel } from './VendorProductsPanel';
-const thCls = 'text-left px-4 py-3 text-[10px] font-mono text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap';
+const thCls = 'text-left px-4 py-3 text-xs font-sans text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap';
 
 function sortVendors(vendors: Vendor[]): Vendor[] {
   return [...vendors].sort((a, b) => {
@@ -157,10 +157,10 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
               >
                 <p className="font-medium text-foreground leading-snug group-hover:text-primary group-hover:underline transition-colors">{v.name}</p>
               </button>
-              <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{v.externalId}</p>
+              <p className="text-xs text-muted-foreground font-sans mt-0.5">{v.externalId}</p>
             </div>
             {v.engaged && (
-              <span className="shrink-0 text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">
+              <span className="shrink-0 text-xs font-sans px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">
                 Engaged
               </span>
             )}
@@ -170,7 +170,7 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
         <td className="px-4 py-3 text-muted-foreground min-w-[180px]">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>
-        <td className="px-4 py-3 font-mono text-foreground whitespace-nowrap">{displayMobile}</td>
+        <td className="px-4 py-3 font-sans text-foreground whitespace-nowrap">{displayMobile}</td>
         <td className="px-4 py-3 text-foreground min-w-[160px]">
           {displayEmail ? (
             <a href={`mailto:${displayEmail}`} className="hover:text-primary hover:underline break-all">
@@ -185,7 +185,7 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
                 setEngageError(null);
                 setEngageTarget(v);
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold bg-primary text-primary-foreground"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
             >
               <UserPlus size={11} />
               Engage
@@ -199,14 +199,14 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
   return (
     <div className="p-6 space-y-4">
       <div>
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
+        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Vendor List & Products</h2>
           <button
             type="button"
             onClick={() => setShowCreateVendor(true)}
             disabled={!selectedCompanyId}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold bg-primary text-primary-foreground disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
           >
             <UserPlus size={11} />
             Create Vendor
@@ -330,7 +330,7 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
 
       {selectedCompanyId && tab === 'vendors' && (
       <>
-      <p className="text-[10px] font-mono text-muted-foreground">
+      <p className="text-xs font-sans text-muted-foreground">
         {filtered.length} vendor{filtered.length !== 1 ? 's' : ''}
         {filter === 'all' && filtered.length > 0 && (
           <> · {engagedCount} engaged · {availableCount} available</>
@@ -356,20 +356,20 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-xs text-muted-foreground font-mono">
+                    <td colSpan={6} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No vendors match your filters.
                     </td>
                   </tr>
                 ) : filter === 'all' && engagedCount > 0 && availableCount > 0 ? (
                   <>
                     <tr className="bg-muted/20">
-                      <td colSpan={6} className="px-4 py-2 text-[9px] font-mono uppercase tracking-widest text-muted-foreground">
+                      <td colSpan={6} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
                         Engaged Vendors
                       </td>
                     </tr>
                     {filtered.filter(v => v.engaged).map(renderRow)}
                     <tr className="bg-muted/20">
-                      <td colSpan={6} className="px-4 py-2 text-[9px] font-mono uppercase tracking-widest text-muted-foreground">
+                      <td colSpan={6} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
                         Available Vendors
                       </td>
                     </tr>

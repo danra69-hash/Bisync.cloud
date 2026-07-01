@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { NAV_ITEMS, type NavItem } from '../../data/revenueManagement';
+import { useCurrentUser, userInitials } from '../../context/CurrentUserContext';
 
 type Props = {
   open: boolean;
@@ -9,6 +10,10 @@ type Props = {
 };
 
 export function Sidebar({ open, activeNav, onClose, onNavigate }: Props) {
+  const { currentUser, users, setCurrentUserId } = useCurrentUser();
+  const displayName = currentUser?.fullName ?? 'Unknown User';
+  const displayRole = currentUser?.role ?? '—';
+
   return (
     <>
       {open && <div className="fixed inset-0 z-40" onClick={onClose} />}
@@ -40,16 +45,31 @@ export function Sidebar({ open, activeNav, onClose, onNavigate }: Props) {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-white/10">
+        <div className="p-4 border-t border-white/10 space-y-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: '#E87722', color: '#2C1A0A' }}>
-              JD
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#E87722', color: '#2C1A0A' }}>
+              {userInitials(displayName)}
             </div>
-            <div>
-              <p className="text-xs font-semibold text-white">James Dubois</p>
-              <p className="text-[10px] text-white/45">Head Chef</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-white truncate">{displayName}</p>
+              <p className="text-xs text-white/45 truncate">{displayRole}</p>
             </div>
           </div>
+          {users.length > 1 && (
+            <select
+              value={currentUser?.id ?? ''}
+              onChange={e => setCurrentUserId(Number(e.target.value))}
+              className="w-full rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+              style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
+              title="Switch logged-in user"
+            >
+              {users.map(user => (
+                <option key={user.id} value={user.id} style={{ color: '#1a1a1a', background: '#ffffff' }}>
+                  {user.fullName}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </aside>
     </>

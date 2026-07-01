@@ -164,6 +164,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
       departmentId,
       position: position.trim(),
       joinDate,
+      companyId: selectedCompanyId ?? undefined,
       fingerprintEnrolled: false,
       faceRecognitionEnrolled: false,
       isShiftEmployee: false,
@@ -232,7 +233,10 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
       setError(addressError);
       return;
     }
-    const saved = await api.employees.update(detailDraft.id, toEmployeeRequest(detailDraft));
+    const saved = await api.employees.update(detailDraft.id, {
+      ...toEmployeeRequest(detailDraft),
+      companyId: platformUserFor(detailDraft)?.companyId ?? selectedCompanyId ?? undefined,
+    });
     setDetailDraft(resolveEmployeeOrg(saved, orgTree));
     await notifyChanged();
   });

@@ -72,7 +72,7 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
 
         db.Employees.Add(employee);
         await db.SaveChangesAsync();
-        await EmployeeAppUserSync.SyncAsync(db, employee);
+        await EmployeeAppUserSync.SyncAsync(db, employee, request.CompanyId);
         return CreatedAtAction(nameof(GetById), new { id = employee.Id }, employee);
     }
 
@@ -94,7 +94,7 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
             return BadRequest("A valid department is required.");
         await ApplyShiftFromLevel(employee);
         await db.SaveChangesAsync();
-        await EmployeeAppUserSync.SyncAsync(db, employee);
+        await EmployeeAppUserSync.SyncAsync(db, employee, request.CompanyId);
         return employee;
     }
 

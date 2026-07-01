@@ -37,7 +37,7 @@ function FilterSelect({ label, value, options, onChange }: {
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</label>
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -143,14 +143,14 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
     <div className="p-6 space-y-5">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Component › Smart Component</p>
+          <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Component › Smart Component</p>
           <h2 className="text-xl font-semibold text-foreground">Smart Component</h2>
           {selectedCompanyId && (
-            <p className="text-xs text-muted-foreground font-mono mt-0.5">{filtered.length} of {rows.length} items</p>
+            <p className="text-xs text-muted-foreground font-sans mt-0.5">{filtered.length} of {rows.length} items</p>
           )}
         </div>
         {selectedCompanyId && (
-          <button onClick={openAdd} className="text-xs font-mono bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
+          <button onClick={openAdd} className="text-xs font-sans bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
             + Add Component
           </button>
         )}
@@ -163,7 +163,7 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
           <FilterSelect label="Category" value={catFilter} options={siCategories} onChange={setCatFilter} />
           <FilterSelect label="Group" value={grpFilter} options={siGroups} onChange={setGrpFilter} />
           <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Keyword</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Keyword</label>
             <div className="relative">
               <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -177,7 +177,7 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
           {hasFilters && (
             <button
               onClick={() => { setCatFilter('All'); setGrpFilter('All'); setSearch(''); }}
-              className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors pb-1.5"
+              className="flex items-center gap-1 text-xs font-sans text-muted-foreground hover:text-foreground transition-colors pb-1.5"
             >
               <X size={10} /> Clear
             </button>
@@ -186,17 +186,17 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
         {hasFilters && (
           <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border">
             {catFilter !== 'All' && (
-              <span className="flex items-center gap-1 text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+              <span className="flex items-center gap-1 text-xs font-sans bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                 Category: {catFilter} <button onClick={() => setCatFilter('All')}><X size={8} /></button>
               </span>
             )}
             {grpFilter !== 'All' && (
-              <span className="flex items-center gap-1 text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+              <span className="flex items-center gap-1 text-xs font-sans bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                 Group: {grpFilter} <button onClick={() => setGrpFilter('All')}><X size={8} /></button>
               </span>
             )}
             {search && (
-              <span className="flex items-center gap-1 text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+              <span className="flex items-center gap-1 text-xs font-sans bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                 "{search}" <button onClick={() => setSearch('')}><X size={8} /></button>
               </span>
             )}
@@ -205,10 +205,10 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-mono text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
+        <p className="text-xs font-sans text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-muted-foreground">UOM:</span>
-          <div className="flex items-center rounded-md border border-border overflow-hidden text-[10px] font-mono">
+          <span className="text-xs font-sans text-muted-foreground">UOM:</span>
+          <div className="flex items-center rounded-md border border-border overflow-hidden text-xs font-sans">
             <button onClick={() => setUomType('recipe')}
               className={`px-3 py-1.5 transition-colors ${uomType === 'recipe' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
               Component UOM
@@ -230,51 +230,51 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   {['Component ID', 'Component Name', 'UOM', 'Last UOM Price', 'Daily Usage', 'Order Freq (days)', 'Storage', 'Products', 'Vendors', 'Active'].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-[10px] font-mono text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap">{h}</th>
+                    <th key={h} className="text-left px-4 py-3 text-xs font-sans text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-10 text-center text-xs text-muted-foreground font-mono">
+                    <td colSpan={10} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No items match the selected filters.
                     </td>
                   </tr>
                 ) : filtered.map(row => (
                   <tr key={row.id ?? row.name}
                     className={`border-b border-border last:border-0 transition-colors ${row.active ? 'hover:bg-muted/30' : 'opacity-50 hover:opacity-70'}`}>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">{row.componentId || '—'}</td>
+                    <td className="px-4 py-3 font-sans text-muted-foreground">{row.componentId || '—'}</td>
                     <td className="px-4 py-3">
                       <button onClick={() => { setSaveError(null); setIsNewRow(false); setEditRow(row); }} className="text-left group">
                         <p className="font-medium text-foreground group-hover:text-primary group-hover:underline transition-colors">{row.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{row.category} · {row.group}</p>
+                        <p className="text-xs text-muted-foreground font-sans">{row.category} · {row.group}</p>
                       </button>
                     </td>
-                    <td className="px-4 py-3 font-mono text-foreground">{uom(row)}</td>
-                    <td className="px-4 py-3 font-mono text-foreground">${price(row).toFixed(uomType === 'recipe' && price(row) < 1 ? 4 : 2)}</td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">
+                    <td className="px-4 py-3 font-sans text-foreground">{uom(row)}</td>
+                    <td className="px-4 py-3 font-sans text-foreground">${price(row).toFixed(uomType === 'recipe' && price(row) < 1 ? 4 : 2)}</td>
+                    <td className="px-4 py-3 font-sans text-muted-foreground">
                       {row.dailyUsage > 0 ? `${row.dailyUsage} ${uom(row)}/day` : '—'}
                     </td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">
+                    <td className="px-4 py-3 font-sans text-muted-foreground">
                       {row.orderFreqDays >= 90 ? `${row.orderFreqDays}d` : `Every ${row.orderFreqDays}d`}
                     </td>
                     <td className="px-4 py-3 min-w-[140px]">
                       <div className="flex flex-col gap-1">
                         {row.storage.map((s, si) => (
-                          <span key={si} className="text-[9px] px-1.5 py-0.5 rounded bg-muted font-mono inline-block w-fit">{s}</span>
+                          <span key={si} className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans inline-block w-fit">{s}</span>
                         ))}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {row.attachedProducts > 0 ? (
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#6BA4C9]/15 text-[#6BA4C9] text-[10px] font-mono font-semibold">{row.attachedProducts}</span>
-                      ) : <span className="text-muted-foreground font-mono">—</span>}
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#6BA4C9]/15 text-[#6BA4C9] text-xs font-sans font-semibold">{row.attachedProducts}</span>
+                      ) : <span className="text-muted-foreground font-sans">—</span>}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {row.attachedVendors > 0 ? (
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary text-[10px] font-mono font-semibold">{row.attachedVendors}</span>
-                      ) : <span className="text-muted-foreground font-mono">—</span>}
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-sans font-semibold">{row.attachedVendors}</span>
+                      ) : <span className="text-muted-foreground font-sans">—</span>}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button

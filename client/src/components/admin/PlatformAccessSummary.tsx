@@ -36,7 +36,7 @@ export function PlatformAccessSummary({ user, onManageAccess }: Props) {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
+                  <th key={h} className="text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -56,7 +56,7 @@ export function PlatformAccessSummary({ user, onManageAccess }: Props) {
                   <div className="flex flex-wrap gap-1">
                     {accessBadges(user.accessJson).length > 0 ? (
                       accessBadges(user.accessJson).map(m => (
-                        <span key={m} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">{m}</span>
+                        <span key={m} className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/10 text-primary">{m}</span>
                       ))
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -64,7 +64,7 @@ export function PlatformAccessSummary({ user, onManageAccess }: Props) {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${user.active ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
+                  <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${user.active ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
                     {user.active ? 'Active' : 'Inactive'}
                   </span>
                 </td>

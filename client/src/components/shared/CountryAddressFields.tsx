@@ -21,7 +21,7 @@ export function CountryAddressFields({ countryCode, value, onChange, showErrors 
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Address Line 1</label>
+        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Address Line 1</label>
         <input
           className={`${inputCls} mt-1`}
           value={value.addressLine1}
@@ -31,7 +31,7 @@ export function CountryAddressFields({ countryCode, value, onChange, showErrors 
       </div>
 
       <div>
-        <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Address Line 2</label>
+        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Address Line 2</label>
         <input
           className={`${inputCls} mt-1`}
           value={value.addressLine2}
@@ -42,11 +42,11 @@ export function CountryAddressFields({ countryCode, value, onChange, showErrors 
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.cityLabel}</label>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{country.cityLabel}</label>
           <input className={`${inputCls} mt-1`} value={value.city} onChange={e => set('city', e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.stateLabel}</label>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{country.stateLabel}</label>
           <select className={`${selectCls} mt-1`} value={value.stateProvince} onChange={e => set('stateProvince', e.target.value)}>
             <option value="">— Select —</option>
             {country.states.map(state => (
@@ -57,18 +57,18 @@ export function CountryAddressFields({ countryCode, value, onChange, showErrors 
       </div>
 
       <div>
-        <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{country.postcodeLabel}</label>
+        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{country.postcodeLabel}</label>
         <input
           className={`${inputCls} mt-1`}
           value={value.postcode}
           onChange={e => set('postcode', e.target.value)}
           placeholder={country.postcodePlaceholder}
         />
-        {postcodeError && <p className="text-[10px] text-destructive mt-1">{postcodeError}</p>}
+        {postcodeError && <p className="text-xs text-destructive mt-1">{postcodeError}</p>}
       </div>
 
-      <p className="text-[10px] text-muted-foreground">{country.name} address format</p>
-      {addressError && <p className="text-[10px] text-destructive">{addressError}</p>}
+      <p className="text-xs text-muted-foreground">{country.name} address format</p>
+      {addressError && <p className="text-xs text-destructive">{addressError}</p>}
     </div>
   );
 }

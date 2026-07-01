@@ -13,7 +13,7 @@ import {
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
 
-const thCls = 'text-left px-2 py-2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground font-normal';
+const thCls = 'text-left px-2 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
 
 export type CompanyLocationOption = {
   externalId: string;
@@ -94,9 +94,9 @@ function VendorProductLocationModal({
       >
         <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">Assign Locations</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Assign Locations</p>
             <p className="text-sm font-semibold text-foreground mt-0.5 truncate">{product.productName}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{product.vendorName} · {product.id}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{product.vendorName} · {product.id}</p>
           </div>
           <button type="button" onClick={onClose} className="p-1 rounded-md hover:bg-muted transition-colors shrink-0">
             <X size={14} className="text-muted-foreground" />
@@ -126,13 +126,13 @@ function VendorProductLocationModal({
           )}
         </div>
         <div className="px-4 py-3 border-t border-border flex items-center justify-between gap-3">
-          <p className="text-[10px] text-muted-foreground font-mono">
+          <p className="text-xs text-muted-foreground font-sans">
             {selectedIds.length} of {locations.length} selected
           </p>
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-3 py-1.5 hover:bg-primary/90 transition-colors"
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-1.5 hover:bg-primary/90 transition-colors"
           >
             Done
           </button>
@@ -235,36 +235,36 @@ export function VendorProductTableBody({
                 key={product.id}
                 className={`border-b border-border last:border-0 hover:bg-muted/20 align-top ${tagged ? 'bg-primary/5' : ''}`}
               >
-                <td className="px-2 py-2.5 font-mono text-[10px] text-muted-foreground break-all">{product.id}</td>
+                <td className="px-2 py-2.5 font-sans text-xs text-muted-foreground break-all">{product.id}</td>
                 <td className="px-2 py-2.5">
                   <p className="font-medium text-foreground leading-snug">{product.productName}</p>
-                  <p className="text-[9px] text-muted-foreground mt-1">{product.vendorName}</p>
-                  <p className="text-[9px] font-mono text-primary mt-1.5">
+                  <p className="text-xs text-muted-foreground mt-1">{product.vendorName}</p>
+                  <p className="text-xs font-sans text-primary mt-1.5">
                     Delivery: {formatDeliveryBreakdown(product.delivery)}
                   </p>
                 </td>
-                <td className="px-2 py-2.5 font-mono">${product.deliveryPrice.toFixed(2)}</td>
+                <td className="px-2 py-2.5 font-sans">${product.deliveryPrice.toFixed(2)}</td>
                 <td className="px-2 py-2.5">
                   <div className="relative">
                     <input
                       type="number"
-                      className={`${inputCls} text-[10px] py-1`}
+                      className={`${inputCls} text-xs py-1`}
                       value={storedQty ?? (resolved.qty !== null ? String(resolved.qty) : '')}
                       onChange={e => onPrincipalQtyChange(product.id, e.target.value)}
                       placeholder={`Qty in ${componentUom}`}
                     />
                     {qtyAutoFilled && (
-                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[7px] font-mono text-primary">auto</span>
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[7px] font-sans text-primary">auto</span>
                     )}
                   </div>
                   {!resolved.auto && !storedQty && (
-                    <p className="text-[8px] text-muted-foreground mt-1">Enter conversion manually</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Enter conversion manually</p>
                   )}
                 </td>
-                <td className="px-2 py-2.5 font-mono">{formatPrice(principalPrice)}</td>
+                <td className="px-2 py-2.5 font-sans">{formatPrice(principalPrice)}</td>
                 <td className="px-2 py-2.5">
                   <select
-                    className={`${selectCls} text-[10px] py-1 w-full`}
+                    className={`${selectCls} text-xs py-1 w-full`}
                     value={componentUom}
                     onChange={e => onComponentUomChange(product.id, e.target.value)}
                   >
@@ -276,7 +276,7 @@ export function VendorProductTableBody({
                 <td className="px-2 py-2.5">
                   <input
                     type="number"
-                    className={`${inputCls} text-[10px] py-1 w-full`}
+                    className={`${inputCls} text-xs py-1 w-full`}
                     value={lossYieldByProduct[product.id] ?? ''}
                     onChange={e => onLossYieldChange(product.id, e.target.value)}
                     placeholder="0"
@@ -284,15 +284,15 @@ export function VendorProductTableBody({
                     max="100"
                   />
                 </td>
-                <td className="px-2 py-2.5 font-mono text-muted-foreground">
+                <td className="px-2 py-2.5 font-sans text-muted-foreground">
                   {formatQty(nettQty)}
                   {lossYield > 0 && principalQty > 0 && (
-                    <p className="text-[8px] text-muted-foreground mt-0.5">
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
                       {formatQty(principalQty)} − {lossYield}%
                     </p>
                   )}
                 </td>
-                <td className="px-2 py-2.5 font-mono font-medium">{formatPrice(nettPrice)}</td>
+                <td className="px-2 py-2.5 font-sans font-medium">{formatPrice(nettPrice)}</td>
                 {showLocationColumn && (
                   <td className="px-2 py-2.5 text-center">
                     <button
@@ -307,7 +307,7 @@ export function VendorProductTableBody({
                     >
                       <MapPin size={13} className={assignedLocations.length > 0 ? 'text-primary' : 'text-muted-foreground'} />
                       {assignedLocations.length > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-[8px] font-mono text-primary-foreground leading-[14px]">
+                        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-[11px] font-sans text-primary-foreground leading-[14px]">
                           {assignedLocations.length}
                         </span>
                       )}
@@ -401,7 +401,7 @@ export function VendorProductTable({
     <div className="space-y-4">
       {taggedProducts.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+          <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
             Tagged Vendor Products ({taggedProducts.length})
           </p>
           <div className="border border-primary/25 rounded-lg overflow-hidden bg-primary/[0.03]">
@@ -417,12 +417,12 @@ export function VendorProductTable({
       )}
 
       <div className="space-y-3">
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Search or filter vendor products. Break down delivery units to principal component UOM, then tick to tag.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Product Search</label>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Product Search</label>
           <div className="relative">
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -434,7 +434,7 @@ export function VendorProductTable({
           </div>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Select Vendor</label>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Select Vendor</label>
           <select className={selectCls} value={vendor} onChange={e => onVendorChange(e.target.value)}>
             <option value="">— All vendors —</option>
             {vendorNames.map(name => (
@@ -446,7 +446,7 @@ export function VendorProductTable({
 
       {showSearchTable && (
         <div className="space-y-2">
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Search Results</p>
+          <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Search Results</p>
           {searchRows.length === 0 ? (
             <p className="text-xs text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
               No vendor products match your search.

@@ -95,7 +95,7 @@ export function AttendanceDatePicker({
 
       <div className="grid grid-cols-7 mb-1">
         {DOW.map(d => (
-          <div key={d} className="text-center text-[10px] font-medium text-gray-500 py-1">{d}</div>
+          <div key={d} className="text-center text-xs font-medium text-gray-500 py-1">{d}</div>
         ))}
       </div>
 
@@ -127,7 +127,7 @@ export function AttendanceDatePicker({
         })}
       </div>
 
-      <p className="text-[10px] text-gray-500 mt-3 text-center leading-relaxed">
+      <p className="text-xs text-gray-500 mt-3 text-center leading-relaxed">
         {viewMode === 'week'
           ? 'Pick a day to view that week (Monday–Sunday).'
           : 'Pick a day to view the month through that date.'}

@@ -94,7 +94,7 @@ export function Header({
 
         </h1>
 
-        <p className="text-[10px] mt-0.5 hidden sm:block text-white/45">Friday, 20 June 2025 · Dinner service in 3h 24m</p>
+        <p className="text-xs mt-0.5 hidden sm:block text-white/45">Friday, 20 June 2025 · Dinner service in 3h 24m</p>
 
       </div>
 
@@ -210,7 +210,7 @@ export function Header({
 
             onClick={onToggleEditLayout}
 
-            className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-md transition-colors"
+            className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-md transition-colors"
 
             style={editLayout ? { background: '#E87722', color: '#2C1A0A' } : { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
 

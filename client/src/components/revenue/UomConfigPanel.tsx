@@ -9,7 +9,7 @@ import {
   type ConversionRow,
 } from '../../data/uomConfig';
 
-const thCls = 'text-left px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal';
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
 
 const INITIAL_ALL_UOMS = ['GR', 'KG', 'ML', 'LT', 'Each', 'Slice', 'Can', 'BTL'] as const;
 
@@ -29,7 +29,7 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
     <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
       <div className="px-3 py-2 border-b border-border bg-muted/30">
         <p className="text-xs font-semibold">{title}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -45,12 +45,12 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
               <tr key={`${row.from}-${row.to}-${i}`} className="border-b border-border last:border-0 hover:bg-muted/20">
                 {showCategory && (
                   <td className="px-3 py-2.5">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{row.category}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans">{row.category}</span>
                   </td>
                 )}
                 <td className="px-3 py-2.5 font-medium">{row.fromLabel}</td>
                 <td className="px-3 py-2.5 font-medium">{row.toLabel}</td>
-                <td className="px-3 py-2.5 font-mono text-foreground">{formatFactor(row.factor)}</td>
+                <td className="px-3 py-2.5 font-sans text-foreground">{formatFactor(row.factor)}</td>
                 <td className="px-3 py-2.5 text-muted-foreground">{exampleText(row)}</td>
               </tr>
             ))}
@@ -113,7 +113,7 @@ export function UomConfigPanel() {
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">New UOM</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">New UOM</label>
               <input
                 className={`${inputCls} w-32`}
                 value={newUomCode}
@@ -134,13 +134,13 @@ export function UomConfigPanel() {
             </button>
           </div>
         </div>
-        {addUomError && <p className="text-[10px] text-red-500">{addUomError}</p>}
+        {addUomError && <p className="text-xs text-red-500">{addUomError}</p>}
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
             <div className="px-3 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">All UOM</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Click a UOM to add it to My UOM</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to add it to My UOM</p>
             </div>
             <table className="w-full text-xs">
               <thead>
@@ -158,7 +158,7 @@ export function UomConfigPanel() {
                           type="button"
                           onClick={() => addToMyUom(u.id)}
                           disabled={inMyUom}
-                          className={`font-mono font-medium text-left hover:underline ${
+                          className={`font-sans font-medium text-left hover:underline ${
                             inMyUom ? 'text-muted-foreground cursor-default' : 'text-primary'
                           }`}
                         >
@@ -175,7 +175,7 @@ export function UomConfigPanel() {
           <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
             <div className="px-3 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">My UOM</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Click a UOM to remove it from My UOM</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to remove it from My UOM</p>
             </div>
             <table className="w-full text-xs">
               <thead>
@@ -190,7 +190,7 @@ export function UomConfigPanel() {
                       <button
                         type="button"
                         onClick={() => removeFromMyUom(u.id)}
-                        className="font-mono font-medium text-left text-primary hover:underline"
+                        className="font-sans font-medium text-left text-primary hover:underline"
                       >
                         {u.code}
                       </button>

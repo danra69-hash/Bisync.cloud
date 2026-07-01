@@ -67,7 +67,7 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
       <button
         onClick={() => !disabled && setOpen(v => !v)}
         disabled={disabled}
-        className={`flex items-center gap-2 text-xs font-mono rounded-md px-3 py-1.5 transition-colors whitespace-nowrap ${
+        className={`flex items-center gap-2 text-xs font-sans rounded-md px-3 py-1.5 transition-colors whitespace-nowrap ${
           isHeader
             ? 'text-white hover:bg-white/10'
             : 'border border-border bg-card hover:border-primary/40 text-foreground py-2'
@@ -91,7 +91,7 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
             </div>
             <div>
               <p className="text-xs font-medium text-foreground">All Locations</p>
-              <p className="text-[10px] text-muted-foreground font-mono">{locations.length} outlets</p>
+              <p className="text-xs text-muted-foreground font-sans">{locations.length} outlets</p>
             </div>
           </button>
 
@@ -111,7 +111,7 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground">{loc.name}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono truncate">{loc.address}</p>
+                    <p className="text-xs text-muted-foreground font-sans truncate">{loc.address}</p>
                   </div>
                 </button>
               );
@@ -122,7 +122,7 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
             <div className="border-t border-border px-4 py-2.5">
               <button
                 onClick={() => onChange([])}
-                className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1.5 text-xs font-sans text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X size={10} /> Clear selection
               </button>

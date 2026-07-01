@@ -61,7 +61,7 @@ function PayrollPinPrompt({
             onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
             onKeyDown={e => e.key === 'Enter' && void submit()}
             placeholder="••••••"
-            className="w-full border border-border rounded-xl px-4 py-3 pr-10 text-sm bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent placeholder:text-muted-foreground/50 font-mono tracking-[0.35em] text-center text-lg"
+            className="w-full border border-border rounded-xl px-4 py-3 pr-10 text-sm bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent placeholder:text-muted-foreground/50 font-sans tracking-[0.35em] text-center text-lg"
             autoFocus
           />
           <button

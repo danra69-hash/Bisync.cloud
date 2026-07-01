@@ -252,6 +252,7 @@ export interface EmployeeRequest {
   department?: string | null;
   divisionId?: number | null;
   departmentId?: number | null;
+  companyId?: number | null;
   position: string;
   joinDate: string;
   fingerprintEnrolled: boolean;

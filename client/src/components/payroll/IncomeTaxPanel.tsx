@@ -12,8 +12,8 @@ import type {
 import { formatPayrollAmount } from './payrollDisplay';
 import { payrollYearOptions } from './payrollProcess';
 
-const thCls = 'text-left px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
-const amountCls = 'px-3 py-2.5 text-right font-mono whitespace-nowrap text-xs';
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+const amountCls = 'px-3 py-2.5 text-right font-sans whitespace-nowrap text-xs';
 const textCls = 'px-3 py-2.5 text-xs';
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
 
@@ -140,7 +140,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <label htmlFor="income-tax-year" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+          <label htmlFor="income-tax-year" className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
             Assessment year
           </label>
           <select
@@ -189,14 +189,14 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold">Progressive tax rate — {year}</h3>
-                <p className="text-xs text-muted-foreground mt-2 font-mono">
+                <p className="text-xs text-muted-foreground mt-2 font-sans">
                   Gross income − EPF (employee) − Tax relief = Base tax amount → apply progressive rate → − Rebate = Annual tax
                 </p>
               </div>
               <button
                 type="button"
                 onClick={addBracket}
-                className="flex items-center gap-1 text-xs font-mono text-primary hover:underline shrink-0"
+                className="flex items-center gap-1 text-xs font-sans text-primary hover:underline shrink-0"
               >
                 <Plus size={12} /> Add bracket
               </button>
@@ -286,7 +286,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
               <button
                 type="button"
                 onClick={addRelief}
-                className="flex items-center gap-1 text-xs font-mono text-primary hover:underline shrink-0"
+                className="flex items-center gap-1 text-xs font-sans text-primary hover:underline shrink-0"
               >
                 <Plus size={12} /> Add relief
               </button>
@@ -368,7 +368,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
               <button
                 type="button"
                 onClick={addRebate}
-                className="flex items-center gap-1 text-xs font-mono text-primary hover:underline shrink-0"
+                className="flex items-center gap-1 text-xs font-sans text-primary hover:underline shrink-0"
               >
                 <Plus size={12} /> Add rebate
               </button>
@@ -450,7 +450,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                   <tbody>
                     {preview.lines.map(line => (
                       <tr key={line.employeeId} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-                        <td className={`${textCls} font-mono`}>{line.employeeCode}</td>
+                        <td className={`${textCls} font-sans`}>{line.employeeCode}</td>
                         <td className={`${textCls} font-medium whitespace-nowrap`}>{line.employeeName}</td>
                         <td className={textCls}>{line.position || '—'}</td>
                         <td className={amountCls}>{fmt(line.annualGross)}</td>
@@ -481,7 +481,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-medium">{value}</p>
     </div>
   );

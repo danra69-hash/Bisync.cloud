@@ -26,7 +26,7 @@ export function CountryPhoneInput({
 
   return (
     <div>
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}{required ? ' *' : ''}</label>
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}{required ? ' *' : ''}</label>
       <input
         type="tel"
         required={required}
@@ -35,8 +35,8 @@ export function CountryPhoneInput({
         className={`${inputCls} mt-1`}
         placeholder={country.phonePlaceholder}
       />
-      <p className="text-[10px] text-muted-foreground mt-1">{country.name} format · starts with {country.dialCode}</p>
-      {visibleError && <p className="text-[10px] text-destructive mt-1">{visibleError}</p>}
+      <p className="text-xs text-muted-foreground mt-1">{country.name} format · starts with {country.dialCode}</p>
+      {visibleError && <p className="text-xs text-destructive mt-1">{visibleError}</p>}
     </div>
   );
 }

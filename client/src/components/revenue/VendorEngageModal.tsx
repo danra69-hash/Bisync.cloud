@@ -16,7 +16,7 @@ type Props = {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</label>
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
       {children}
     </div>
   );
@@ -108,9 +108,9 @@ export function VendorEngageModal({ vendor, saving, serverError, onClose, onConf
       >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">Engage Vendor</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Engage Vendor</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5">{vendor.name}</h3>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{vendor.externalId}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{vendor.externalId}</p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} className="p-1 rounded-md hover:bg-muted transition-colors shrink-0 disabled:opacity-50">
             <X size={14} className="text-muted-foreground" />
@@ -126,18 +126,18 @@ export function VendorEngageModal({ vendor, saving, serverError, onClose, onConf
           }}
         >
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Review known sales contact details below. Edit as needed or add another account manager before engaging.
             </p>
 
             {contacts.map((contact, index) => (
               <div key={contact.id} className="rounded-lg border border-border bg-muted/10 p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+                  <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                     {index === 0 ? 'Known Sales Contact' : `Account Manager ${index + 1}`}
                   </p>
                   <div className="flex items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs font-sans text-muted-foreground cursor-pointer">
                       <input
                         type="radio"
                         name={`default-contact-${vendor.externalId}`}
@@ -201,7 +201,7 @@ export function VendorEngageModal({ vendor, saving, serverError, onClose, onConf
             <button
               type="button"
               onClick={addContact}
-              className="flex items-center gap-1.5 text-[10px] font-mono text-primary hover:underline"
+              className="flex items-center gap-1.5 text-xs font-sans text-primary hover:underline"
             >
               <Plus size={12} />
               Add account manager
@@ -209,21 +209,21 @@ export function VendorEngageModal({ vendor, saving, serverError, onClose, onConf
           </div>
 
           <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
-            {error && <p className="text-[10px] text-red-500">{error}</p>}
-            {serverError && <p className="text-[10px] text-red-500">{serverError}</p>}
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            {serverError && <p className="text-xs text-red-500">{serverError}</p>}
             <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={saving}
-                className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors disabled:opacity-50"
+                className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {saving ? 'Engaging…' : 'Confirm Engage'}
               </button>

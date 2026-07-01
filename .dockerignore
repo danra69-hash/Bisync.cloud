@@ -1,0 +1,16 @@
+**/.git
+**/.github
+**/bin
+**/obj
+**/node_modules
+client/dist
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/terminals
+**/.cursor
+**/agent-transcripts
+docs/
+scripts/
+*.md
+!README.md

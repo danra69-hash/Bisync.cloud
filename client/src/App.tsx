@@ -34,13 +34,13 @@ function MetricCard({ title, value, deltaVal, icon: Icon, accent }: {
   return (
     <div className={`rounded-lg p-5 border border-border flex flex-col gap-3 ${accent ? 'bg-primary/10' : 'bg-card'}`}>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-mono tracking-widest text-muted-foreground uppercase">{title}</span>
+        <span className="text-xs font-sans tracking-widest text-muted-foreground uppercase">{title}</span>
         <div className={`p-2 rounded-md ${accent ? 'bg-primary/20' : 'bg-muted'}`}>
           <Icon size={14} className={accent ? 'text-primary' : 'text-muted-foreground'} />
         </div>
       </div>
       <p className="text-3xl font-semibold">{value}</p>
-      <div className={`flex items-center gap-1 text-xs font-mono ${up ? 'text-[#5A7A2A]' : 'text-accent'}`}>
+      <div className={`flex items-center gap-1 text-xs font-sans ${up ? 'text-[#5A7A2A]' : 'text-accent'}`}>
         {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
         {up ? '+' : ''}{deltaVal}% vs prior period
       </div>
@@ -58,7 +58,7 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
             <div className="flex-1 rounded-t bg-[#C9963A]/60" style={{ height: `${(d.priorValue / max) * 100}%` }} title={`Prior: ${fmtUsd(d.priorValue)}`} />
             <div className="flex-1 rounded-t bg-primary" style={{ height: `${(d.currentValue / max) * 100}%` }} title={`Current: ${fmtUsd(d.currentValue)}`} />
           </div>
-          <span className="text-[10px] text-muted-foreground">{d.label}</span>
+          <span className="text-xs text-muted-foreground">{d.label}</span>
         </div>
       ))}
     </div>
@@ -73,7 +73,7 @@ function PlaceholderModule({ title }: { title: string }) {
           <FileText size={18} className="text-muted-foreground" />
         </div>
         <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground font-mono max-w-xs">This module is ready to be configured.</p>
+        <p className="text-xs text-muted-foreground font-sans max-w-xs">This module is ready to be configured.</p>
       </div>
     </div>
   );
@@ -215,7 +215,7 @@ export default function App() {
                     <thead>
                       <tr className="border-b border-border">
                         {['Item', 'Orders', 'Revenue', 'Margin'].map(h => (
-                          <th key={h} className="text-left px-4 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
+                          <th key={h} className="text-left px-4 py-2 text-muted-foreground font-normal uppercase text-xs">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -223,9 +223,9 @@ export default function App() {
                       {overviewMenuItems.map(m => (
                         <tr key={m.id} className="border-b border-border last:border-0">
                           <td className="px-4 py-3 font-medium">{m.name}</td>
-                          <td className="px-4 py-3 font-mono text-muted-foreground">{m.orders}</td>
-                          <td className="px-4 py-3 font-mono">${m.revenue.toLocaleString()}</td>
-                          <td className="px-4 py-3 font-mono">{m.marginPercent}%</td>
+                          <td className="px-4 py-3 font-sans text-muted-foreground">{m.orders}</td>
+                          <td className="px-4 py-3 font-sans">${m.revenue.toLocaleString()}</td>
+                          <td className="px-4 py-3 font-sans">{m.marginPercent}%</td>
                         </tr>
                       ))}
                     </tbody>
@@ -242,9 +242,9 @@ export default function App() {
                         <AlertTriangle size={13} className={`mt-0.5 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
                         <div className="flex-1">
                           <p className="text-xs font-medium">{a.itemName}</p>
-                          <p className="text-[10px] text-muted-foreground">Stock: {a.stock} · Min: {a.threshold}</p>
+                          <p className="text-xs text-muted-foreground">Stock: {a.stock} · Min: {a.threshold}</p>
                         </div>
-                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
+                        <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
                       </div>
                     ))}
                   </div>
@@ -259,7 +259,7 @@ export default function App() {
                   <thead>
                     <tr className="border-b border-border">
                       {['PO', 'Vendor', 'Delivery', 'Value', 'Status'].map(h => (
-                        <th key={h} className="text-left px-4 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
+                        <th key={h} className="text-left px-4 py-2 text-muted-foreground font-normal uppercase text-xs">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -268,12 +268,12 @@ export default function App() {
                       const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
                       return (
                         <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                          <td className="px-4 py-3 font-mono text-primary">{o.poNumber}</td>
+                          <td className="px-4 py-3 font-sans text-primary">{o.poNumber}</td>
                           <td className="px-4 py-3">{o.vendorName}</td>
-                          <td className="px-4 py-3 font-mono text-muted-foreground">{o.deliveryDate}</td>
-                          <td className="px-4 py-3 font-mono">${value.toFixed(2)}</td>
+                          <td className="px-4 py-3 font-sans text-muted-foreground">{o.deliveryDate}</td>
+                          <td className="px-4 py-3 font-sans">${value.toFixed(2)}</td>
                           <td className="px-4 py-3">
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
+                            <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
                           </td>
                         </tr>
                       );

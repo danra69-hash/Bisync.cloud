@@ -175,7 +175,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
             <p className="text-xs font-semibold">Add Public Holiday</p>
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_160px_auto] gap-3 items-end">
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Holiday</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Holiday</label>
                 <input
                   type="text"
                   value={form.name}
@@ -185,7 +185,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Date</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Date</label>
                 <input
                   type="date"
                   value={form.date}
@@ -216,7 +216,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
               <button
                 type="button"
                 onClick={() => { setShowAddForm(false); setForm(emptyForm()); }}
-                className="text-xs font-mono border border-border rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
+                className="text-xs font-sans border border-border rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
               >
                 Cancel
               </button>
@@ -224,7 +224,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
                 type="button"
                 onClick={() => void submitAddHoliday()}
                 disabled={saving}
-                className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-3 py-1.5 disabled:opacity-50"
+                className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-1.5 disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Add Holiday'}
               </button>
@@ -234,15 +234,15 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-stretch">
           <section className="min-w-0 p-5">
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-3">Public Holidays</p>
+            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground mb-3">Public Holidays</p>
             <div className="border border-border rounded-lg overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <tr>
-                    <th className="text-left px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-normal">Holiday</th>
-                    <th className="text-left px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-normal">Date</th>
-                    <th className="text-center px-2 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-normal">Gazetted</th>
-                    <th className="text-center px-2 py-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-normal">Recognized</th>
+                    <th className="text-left px-3 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Holiday</th>
+                    <th className="text-left px-3 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Date</th>
+                    <th className="text-center px-2 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Gazetted</th>
+                    <th className="text-center px-2 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Recognized</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -271,7 +271,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
           </section>
 
           <section className="p-5 border-t lg:border-t-0 lg:border-l border-border bg-muted/10 space-y-4">
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">PH Rule</p>
+            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">PH Rule</p>
 
             <div className="space-y-3 rounded-lg border border-border bg-card p-4">
               <p className="text-xs font-semibold">Gazetted PH</p>

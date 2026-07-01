@@ -14,7 +14,7 @@ export function SystemConfigurationPage({ onOrgDataChanged }: Props) {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">System Configuration</p>
+        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">System Configuration</p>
         <h2 className="text-lg font-semibold">Platform Config</h2>
         <p className="text-xs text-muted-foreground mt-1">
           Manage companies and locations. Employee, pay, org, and holiday settings live under Human Resources.

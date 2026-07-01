@@ -2,7 +2,7 @@ import { Plus } from 'lucide-react';
 import { inputCls } from '../../data/countries';
 import type { ProvidentFundBracketItem } from '../../modules/hr/types';
 
-const thCls = 'text-left px-2 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+const thCls = 'text-left px-2 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
 
 type Props = {
@@ -48,11 +48,11 @@ export function MalaysiaProvidentFundSection({
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <h4 className="text-sm font-semibold">Provident Fund (EPF) — Malaysian employees</h4>
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Applies when the business is in Malaysia and the employee is Malaysian. Revise age, salary thresholds, or percentages when regulations change.
             </p>
           </div>
-          <button type="button" onClick={addBracket} className="flex items-center gap-1 text-xs font-mono text-primary hover:underline shrink-0">
+          <button type="button" onClick={addBracket} className="flex items-center gap-1 text-xs font-sans text-primary hover:underline shrink-0">
             <Plus size={12} /> Add tier
           </button>
         </div>
@@ -150,7 +150,7 @@ export function MalaysiaProvidentFundSection({
       <div>
         <div className="mb-3">
           <h4 className="text-sm font-semibold">Provident Fund (EPF) — Foreign employees</h4>
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Applies when the business is in Malaysia but the employee is not Malaysian. No age or salary conditions.
           </p>
         </div>

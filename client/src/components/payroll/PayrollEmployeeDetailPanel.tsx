@@ -67,7 +67,7 @@ function AmountField({
 }) {
   return (
     <div>
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</label>
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
       <input
         type="number"
         min={0}
@@ -78,7 +78,7 @@ function AmountField({
         placeholder="0.00"
       />
       {value != null && (
-        <p className="text-[10px] text-muted-foreground mt-1">{formatPayrollAmount(value, countryCode)}</p>
+        <p className="text-xs text-muted-foreground mt-1">{formatPayrollAmount(value, countryCode)}</p>
       )}
     </div>
   );
@@ -102,15 +102,15 @@ function ContributionCard({
       <h5 className="text-xs font-semibold">{title}</h5>
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div>
-          <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee</div>
-          <div className="mt-1 font-mono font-medium">{formatPayrollAmount(employeeAmount, countryCode)}</div>
+          <div className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Employee</div>
+          <div className="mt-1 font-sans font-medium">{formatPayrollAmount(employeeAmount, countryCode)}</div>
         </div>
         <div>
-          <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employer</div>
-          <div className="mt-1 font-mono font-medium">{formatPayrollAmount(employerAmount, countryCode)}</div>
+          <div className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Employer</div>
+          <div className="mt-1 font-sans font-medium">{formatPayrollAmount(employerAmount, countryCode)}</div>
         </div>
       </div>
-      <p className="text-[10px] text-muted-foreground leading-relaxed">{basisLabel}</p>
+      <p className="text-xs text-muted-foreground leading-relaxed">{basisLabel}</p>
     </div>
   );
 }
@@ -193,7 +193,7 @@ export function PayrollEmployeeDetailPanel({
               {initials(employee.name)}
             </div>
             <div>
-              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Payroll</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Payroll</p>
               <h3 className="text-sm font-semibold">{employee.name}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {employee.employeeCode} · {employee.position}
@@ -215,19 +215,19 @@ export function PayrollEmployeeDetailPanel({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Employee</h4>
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Location</div>
+                <div className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Location</div>
                 <div className="mt-1">{employeeLocationLabel(employee, platformUsers)}</div>
               </div>
               <div>
-                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Date Joined</div>
+                <div className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Date Joined</div>
                 <div className="mt-1">{formatJoinDate(employee.joinDate)}</div>
               </div>
               <div>
-                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Division</div>
+                <div className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Division</div>
                 <div className="mt-1">{employeeDivisionName(employee, orgTree)}</div>
               </div>
               <div>
-                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Department</div>
+                <div className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Department</div>
                 <div className="mt-1">{employeeDepartmentName(employee, orgTree)}</div>
               </div>
             </div>
@@ -236,14 +236,14 @@ export function PayrollEmployeeDetailPanel({
           <section className="space-y-4">
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bank Details</h4>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Salary crediting account for payroll disbursement
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Bank</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Bank</label>
                 <BankNameField
                   value={employee.bankName}
                   companyCountryCode={companyCountryCode}
@@ -254,18 +254,18 @@ export function PayrollEmployeeDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Bank Account Number</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Bank Account Number</label>
                 <input
                   type="text"
                   inputMode="numeric"
                   value={employee.bankAccountNumber ?? ''}
                   onChange={e => onUpdate({ bankAccountNumber: e.target.value.replace(/\s/g, '') || null })}
-                  className={`${inputCls} mt-1 font-mono`}
+                  className={`${inputCls} mt-1 font-sans`}
                   placeholder="Account number"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Name of Account Holder</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Name of Account Holder</label>
                 <input
                   type="text"
                   value={employee.bankAccountHolderName ?? employee.name}
@@ -273,7 +273,7 @@ export function PayrollEmployeeDetailPanel({
                   className={`${inputCls} mt-1`}
                   placeholder={employee.name}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Defaults to employee name; adjust if the account is registered under a different name.
                 </p>
               </div>
@@ -283,7 +283,7 @@ export function PayrollEmployeeDetailPanel({
           <section className="space-y-4">
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Compensation</h4>
-              <p className="text-[10px] text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Payment cycle follows Pay Structure: <span className="font-medium text-foreground">{payCycle}</span>
               </p>
             </div>
@@ -296,7 +296,7 @@ export function PayrollEmployeeDetailPanel({
             <div className="space-y-3">
               <div>
                 <h5 className="text-xs font-semibold">Statutory Contributions</h5>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Estimated monthly amounts from Pay Structure (HR Config) on base salary + service
                   {contributions ? ` · Contributable wage ${formatPayrollAmount(contributions.contributableWage, countryCode)}` : ''}
                 </p>
@@ -333,7 +333,7 @@ export function PayrollEmployeeDetailPanel({
               {employee.transportProvided && (
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Car Model</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Car Model</label>
                     <input
                       type="text"
                       value={employee.transportCarModel ?? ''}
@@ -343,7 +343,7 @@ export function PayrollEmployeeDetailPanel({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Plate Number</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Plate Number</label>
                     <input
                       type="text"
                       value={employee.transportPlateNumber ?? ''}
@@ -365,7 +365,7 @@ export function PayrollEmployeeDetailPanel({
               {employee.accommodationProvided && (
                 <div className="space-y-3 pt-1">
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Address</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Address</label>
                     <textarea
                       value={employee.accommodationAddress ?? ''}
                       onChange={e => onUpdate({ accommodationAddress: e.target.value })}
@@ -374,10 +374,10 @@ export function PayrollEmployeeDetailPanel({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Leasing Period</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Leasing Period</label>
                     <div className="grid grid-cols-2 gap-3 mt-1">
                       <div>
-                        <label className="text-[10px] text-muted-foreground">Start</label>
+                        <label className="text-xs text-muted-foreground">Start</label>
                         <input
                           type="date"
                           value={employee.accommodationLeaseStart ?? ''}
@@ -386,7 +386,7 @@ export function PayrollEmployeeDetailPanel({
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-muted-foreground">End</label>
+                        <label className="text-xs text-muted-foreground">End</label>
                         <input
                           type="date"
                           value={employee.accommodationLeaseEnd ?? ''}
@@ -410,7 +410,7 @@ export function PayrollEmployeeDetailPanel({
               {employee.mobileProvided && (
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Mobile Number</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Mobile Number</label>
                     <input
                       type="text"
                       value={employee.mobileAllowancePhone ?? ''}
@@ -420,7 +420,7 @@ export function PayrollEmployeeDetailPanel({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Provider</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Provider</label>
                     <select
                       value={employee.mobileProvider ?? ''}
                       onChange={e => onUpdate({ mobileProvider: e.target.value || null })}
@@ -467,7 +467,7 @@ export function PayrollEmployeeDetailPanel({
               {employee.bonusEnabled && (
                 <div className="space-y-4 pt-1">
                   <div>
-                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-2">Frequency</p>
+                    <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-2">Frequency</p>
                     <div className="flex flex-wrap gap-6 text-xs">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -490,7 +490,7 @@ export function PayrollEmployeeDetailPanel({
                     </div>
                   </div>
                   <div>
-                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-2">Basis</p>
+                    <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-2">Basis</p>
                     <div className="space-y-3">
                       <AmountField
                         label="Amount"
@@ -518,7 +518,7 @@ export function PayrollEmployeeDetailPanel({
                           Service
                         </label>
                       </div>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         You may enter a fixed amount and/or select Basic Salary and Service (both can be selected).
                       </p>
                     </div>
@@ -534,7 +534,7 @@ export function PayrollEmployeeDetailPanel({
               <button
                 type="button"
                 onClick={() => setOtherAllowances([...otherAllowances, { name: '', amount: 0 }])}
-                className="flex items-center gap-1 text-[10px] font-mono border border-border rounded-md px-2 py-1 hover:bg-muted"
+                className="flex items-center gap-1 text-xs font-sans border border-border rounded-md px-2 py-1 hover:bg-muted"
               >
                 <Plus size={12} /> Add
               </button>
@@ -546,7 +546,7 @@ export function PayrollEmployeeDetailPanel({
                 {otherAllowances.map((item, index) => (
                   <div key={index} className="grid grid-cols-[1fr_120px_auto] gap-2 items-end">
                     <div>
-                      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Name</label>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Name</label>
                       <input
                         type="text"
                         value={item.name}
@@ -556,7 +556,7 @@ export function PayrollEmployeeDetailPanel({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Amount</label>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Amount</label>
                       <input
                         type="number"
                         min={0}
@@ -606,14 +606,14 @@ export function PayrollEmployeeDetailPanel({
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button type="button" onClick={onClose} className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
             Cancel
           </button>
           <button
             type="button"
             onClick={onSave}
             disabled={saving}
-            className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save Changes'}
           </button>

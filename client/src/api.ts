@@ -201,6 +201,14 @@ export interface CreatePurchaseOrderPayload {
   items: CreatePurchaseOrderItemPayload[];
 }
 
+export interface CreatePurchaseOrdersBatchPayload {
+  companyId?: number;
+  locationExternalIds?: string[];
+  initiatedBy?: string;
+  approvedBy?: string;
+  orders: CreatePurchaseOrderPayload[];
+}
+
 export interface InventoryAlert {
   id: number;
   itemName: string;
@@ -289,8 +297,8 @@ export const api = {
   createIngredient: (data: Omit<Ingredient, 'id'>) => fetchJsonWithMethod<Ingredient>('/api/ingredients', 'POST', data),
   updateIngredient: (id: number, data: Ingredient) => fetchJsonWithMethod<Ingredient>(`/api/ingredients/${id}`, 'PUT', data),
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),
-  createPurchaseOrders: (orders: CreatePurchaseOrderPayload[]) =>
-    fetchJsonWithMethod<PurchaseOrder[]>('/api/purchaseorders/batch', 'POST', { orders }),
+  createPurchaseOrders: (payload: CreatePurchaseOrdersBatchPayload) =>
+    fetchJsonWithMethod<PurchaseOrder[]>('/api/purchaseorders/batch', 'POST', payload),
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

@@ -51,7 +51,7 @@ function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ing
   };
 }
 
-const thCls = 'text-left px-3 py-2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap border-r border-border last:border-r-0';
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap border-r border-border last:border-r-0';
 
 type Props = {
   products: VendorProductCatalogItem[];
@@ -365,28 +365,28 @@ export function VendorProductsList({
                         onImageClick={product.imageUrl ? () => setPreviewImage(product) : undefined}
                       />
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-[10px] text-muted-foreground border-r border-border">{product.id}</td>
+                    <td className="px-3 py-2.5 font-sans text-xs text-muted-foreground border-r border-border">{product.id}</td>
                     <td className="px-3 py-2.5 text-foreground border-r border-border">{product.group}</td>
                     <td className="px-3 py-2.5 text-muted-foreground border-r border-border min-w-[160px] leading-snug">
                       {product.specification}
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-foreground border-r border-border whitespace-nowrap">
+                    <td className="px-3 py-2.5 font-sans text-foreground border-r border-border whitespace-nowrap">
                       {deliveryUnit}
                     </td>
-                    <td className="px-3 py-2.5 font-mono font-medium text-foreground border-r border-border">${product.deliveryPrice.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border">${product.deliveryPrice.toFixed(2)}</td>
                     {showVendorColumn && (
                       <td className="px-3 py-2.5 border-r border-border min-w-[140px]">
                         <div className="flex flex-col gap-1">
                           <span className="font-medium text-foreground leading-snug">{product.vendorName}</span>
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-[9px] font-mono text-muted-foreground">{product.vendorExternalId}</span>
+                            <span className="text-xs font-sans text-muted-foreground">{product.vendorExternalId}</span>
                             {isEngaged ? (
-                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">Engaged</span>
+                              <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">Engaged</span>
                             ) : (
                               <button
                                 type="button"
                                 onClick={e => handleEngageVendorClick(e, vendor)}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-primary text-primary-foreground"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
                               >
                                 <UserPlus size={10} />
                                 Engage
@@ -402,7 +402,7 @@ export function VendorProductsList({
                           type="button"
                           onClick={e => handleTaggedClick(e, product)}
                           title="View tagged smart component"
-                          className="text-[10px] font-mono text-[#5A7A2A] hover:underline"
+                          className="text-xs font-sans text-[#5A7A2A] hover:underline"
                         >
                           Tagged
                         </button>
@@ -411,7 +411,7 @@ export function VendorProductsList({
                           type="button"
                           onClick={e => handleTagClick(e, product)}
                           title={isEngaged ? 'Tag to smart component' : 'Engage vendor to enable tagging'}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold border border-primary text-primary hover:bg-primary/10"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10"
                         >
                           <Tag size={11} />
                           Tag
@@ -426,7 +426,7 @@ export function VendorProductsList({
         </div>
       </div>
 
-      <p className="text-[10px] font-mono text-muted-foreground mt-3">
+      <p className="text-xs font-sans text-muted-foreground mt-3">
         {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
         {taggedCount > 0 && <> · {taggedCount} tagged to component{taggedCount !== 1 ? 's' : ''}</>}
       </p>

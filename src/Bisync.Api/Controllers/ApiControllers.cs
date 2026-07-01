@@ -356,6 +356,35 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
         if (request.Orders is null || request.Orders.Count == 0)
             return BadRequest(new { message = "At least one purchase order is required." });
 
+        var existingPoNumbers = await db.PurchaseOrders
+            .AsNoTracking()
+            .Select(p => p.PoNumber)
+            .ToListAsync();
+        var reservedPoNumbers = new HashSet<string>(existingPoNumbers, StringComparer.OrdinalIgnoreCase);
+
+        var companyAbbr = "CO";
+        if (request.CompanyId is int companyId)
+        {
+            var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId);
+            if (company is not null)
+                companyAbbr = PurchaseOrderNumberService.AbbreviateCompanyName(company.Name);
+        }
+
+        var locationExternalIds = (request.LocationExternalIds ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var matchedLocations = locationExternalIds.Count == 0
+            ? []
+            : await db.Locations
+                .AsNoTracking()
+                .Where(l => locationExternalIds.Contains(l.ExternalId))
+                .ToListAsync();
+
+        var locationAbbr = PurchaseOrderNumberService.ResolveLocationAbbreviation(locationExternalIds, matchedLocations);
+
         var created = new List<PurchaseOrder>();
         foreach (var orderRequest in request.Orders)
         {
@@ -378,13 +407,19 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
             if (items.Count == 0)
                 return BadRequest(new { message = $"Purchase order for {vendorName} has no valid items." });
 
+            var orderDate = orderRequest.OrderDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+            var poNumber = string.IsNullOrWhiteSpace(orderRequest.PoNumber)
+                ? PurchaseOrderNumberService.ReserveNextPoNumber(reservedPoNumbers, companyAbbr, locationAbbr, orderDate)
+                : orderRequest.PoNumber.Trim();
+
+            if (!reservedPoNumbers.Add(poNumber))
+                return Conflict(new { message = $"Purchase order number {poNumber} already exists." });
+
             var order = new PurchaseOrder
             {
-                PoNumber = string.IsNullOrWhiteSpace(orderRequest.PoNumber)
-                    ? await GeneratePoNumberAsync()
-                    : orderRequest.PoNumber.Trim(),
+                PoNumber = poNumber,
                 VendorName = vendorName,
-                OrderDate = orderRequest.OrderDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
+                OrderDate = orderDate,
                 DeliveryDate = orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3)),
                 Status = string.IsNullOrWhiteSpace(orderRequest.Status) ? "Pending" : orderRequest.Status.Trim(),
             };
@@ -416,33 +451,6 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
                 deliveryPackage = i.DeliveryPackage,
             }),
         }));
-    }
-
-    async Task<string> GeneratePoNumberAsync()
-    {
-        var existing = await db.PurchaseOrders
-            .AsNoTracking()
-            .Select(p => p.PoNumber)
-            .ToListAsync();
-
-        var max = existing
-            .Select(number =>
-            {
-                if (!number.StartsWith("PO-", StringComparison.OrdinalIgnoreCase)) return 0;
-                return int.TryParse(number[3..], out var parsed) ? parsed : 0;
-            })
-            .DefaultIfEmpty(0)
-            .Max();
-
-        var next = Math.Max(max + 1, 2843);
-        var candidate = $"PO-{next}";
-        while (existing.Any(n => n.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
-        {
-            next++;
-            candidate = $"PO-{next}";
-        }
-
-        return candidate;
     }
 }
 

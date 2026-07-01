@@ -12,7 +12,7 @@
   --primary: #E87722;
   --primary-foreground: #FFFFFF;
   --muted: #F0E6D6;
-  --muted-foreground: #8C6D4F;
+  --muted-foreground: #5C4634;
   --accent: #C9963A;
   --border: rgba(44, 26, 10, 0.1);
   --radius: 0.375rem;
@@ -24,7 +24,7 @@
   --card: #2C1A0A;
   --card-foreground: #F5EEE6;
   --muted: #3A2210;
-  --muted-foreground: #B89070;
+  --muted-foreground: #D4B896;
   --border: rgba(245, 238, 230, 0.1);
 }
 
@@ -39,7 +39,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-border: var(--border);
-  --font-sans: "Nunito", sans-serif;
+  --font-sans: "Nunito", ui-sans-serif, sans-serif;
+  --font-mono: "Nunito", ui-sans-serif, sans-serif;
   /* HR module (HrBackend) palette */
   --color-herme: #F37021;
   --color-herme-dark: #C4561A;
@@ -52,6 +53,14 @@
 }
 
 @layer base {
+  html {
+    font-size: var(--font-size);
+    font-family: "Nunito", ui-sans-serif, sans-serif;
+  }
   * { @apply border-border; }
-  body { @apply bg-background text-foreground font-sans; }
+  body {
+    @apply bg-background text-foreground font-sans text-base leading-relaxed;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }

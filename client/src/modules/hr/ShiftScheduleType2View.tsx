@@ -398,7 +398,7 @@ export default function ShiftScheduleType2View({
                     }`}
                   >
                     <div>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                    <div className="text-[10px] text-gray-400 font-normal">{d.getDate()}</div>
+                    <div className="text-xs text-gray-400 font-normal">{d.getDate()}</div>
                   </th>
                 );
               })}
@@ -433,9 +433,9 @@ export default function ShiftScheduleType2View({
                       className={`px-1.5 py-1.5 align-top ${cellBackgroundClass(cell, locked)}`}
                     >
                       {locked ? (
-                        <div className="px-1.5 py-1 text-center text-[10px] text-gray-700">
+                        <div className="px-1.5 py-1 text-center text-xs text-gray-700">
                           {approved?.type ?? '—'}
-                          <div className="text-[9px] text-gray-500 mt-0.5">Approved</div>
+                          <div className="text-xs text-gray-500 mt-0.5">Approved</div>
                         </div>
                       ) : (
                         <div className="space-y-1">
@@ -455,7 +455,7 @@ export default function ShiftScheduleType2View({
                                 });
                               }}
                               disabled={cell.kind === 'leave'}
-                              className="flex-1 min-w-0 rounded border border-gray-300 px-0.5 py-0.5 text-[10px] bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-1 focus:ring-herme"
+                              className="flex-1 min-w-0 rounded border border-gray-300 px-0.5 py-0.5 text-xs bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-1 focus:ring-herme"
                               aria-label="Time in hour"
                             >
                               <option value="">Hr</option>
@@ -480,7 +480,7 @@ export default function ShiftScheduleType2View({
                                 });
                               }}
                               disabled={cell.kind === 'leave' || !timeHour}
-                              className="w-10 shrink-0 rounded border border-gray-300 px-0.5 py-0.5 text-[10px] bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-1 focus:ring-herme"
+                              className="w-10 shrink-0 rounded border border-gray-300 px-0.5 py-0.5 text-xs bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-1 focus:ring-herme"
                               aria-label="Time in minute"
                             >
                               <option value="">—</option>
@@ -492,7 +492,7 @@ export default function ShiftScheduleType2View({
                             </select>
                           </div>
                           {timeOut && (
-                            <div className="text-[9px] text-gray-500 text-center">Out {timeOut}</div>
+                            <div className="text-xs text-gray-500 text-center">Out {timeOut}</div>
                           )}
                           <select
                             value={cell.kind === 'leave' ? cell.leaveType : ''}
@@ -502,7 +502,7 @@ export default function ShiftScheduleType2View({
                               else setCell(employee.id, date, { kind: 'empty' });
                             }}
                             disabled={cell.kind === 'work'}
-                            className="w-full rounded border border-gray-300 px-1 py-0.5 text-[10px] bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-1 focus:ring-herme"
+                            className="w-full rounded border border-gray-300 px-1 py-0.5 text-xs bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:ring-1 focus:ring-herme"
                           >
                             <option value="">Leave —</option>
                             {LEAVE_OPTIONS.map((opt) => (

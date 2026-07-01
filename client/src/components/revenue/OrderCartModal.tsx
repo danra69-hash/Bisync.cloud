@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, ShoppingBag, X } from 'lucide-react';
-import { api, type Company, type LocationConfig } from '../../api';
+import { Calendar, Download, ExternalLink, ShoppingBag, X } from 'lucide-react';
+import { api, type Company, type LocationConfig, type Vendor } from '../../api';
 import {
   formatRm,
   groupCartByVendor,
   type OrderCartItem,
   type OrderCartVendorGroup,
 } from '../../data/createOrder';
-import { downloadCombinedPurchaseOrderPdfs, downloadPurchaseOrderPdf, type PurchaseOrderPdfData } from '../../data/generatePurchaseOrderPdf';
+import { buildPurchaseOrderPdfData, findVendorForGroup } from '../../data/buildPurchaseOrderPdfData';
+import { resolvePurchaseDocumentLabels, resolvePurchaseOrderSignatories } from '../../data/purchaseOrderSignatories';
+import { useCurrentUser } from '../../context/CurrentUserContext';
+import {
+  downloadCombinedPurchaseOrderPdfs,
+  downloadPurchaseOrderPdf,
+  openPurchaseOrderPdfInTab,
+  type PurchaseOrderPdfData,
+} from '../../data/generatePurchaseOrderPdf';
 
 type Props = {
   items: OrderCartItem[];
@@ -17,6 +25,8 @@ type Props = {
   onClose: () => void;
   onConfirmed: (clearedLineKeys: string[]) => void;
 };
+
+type Step = 'review' | 'success';
 
 function formatDisplayDate(date: Date): string {
   return date.toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -51,12 +61,16 @@ export function OrderCartModal({
   onClose,
   onConfirmed,
 }: Props) {
+  const { currentUser, loading: userLoading } = useCurrentUser();
   const [company, setCompany] = useState<Company | null>(null);
   const [locations, setLocations] = useState<LocationConfig[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [saving, setSaving] = useState(false);
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deliveryDateValue, setDeliveryDateValue] = useState(defaultDeliveryDateValue);
-  const [confirmedPdfs, setConfirmedPdfs] = useState<PurchaseOrderPdfData[]>([]);
+  const [step, setStep] = useState<Step>('review');
+  const [createdPdfs, setCreatedPdfs] = useState<PurchaseOrderPdfData[]>([]);
 
   const minDeliveryDate = useMemo(() => toDateInputValue(new Date()), []);
 
@@ -66,22 +80,32 @@ export function OrderCartModal({
     [groups],
   );
 
-  const locationNames = useMemo(
-    () => locations
-      .filter(loc => selectedLocationIds.includes(loc.externalId))
-      .map(loc => loc.name),
+  const signatories = useMemo(
+    () => (currentUser ? resolvePurchaseOrderSignatories(currentUser) : null),
+    [currentUser],
+  );
+
+  const documentLabels = useMemo(
+    () => (currentUser ? resolvePurchaseDocumentLabels(currentUser) : null),
+    [currentUser],
+  );
+
+  const deliveryLocations = useMemo(
+    () => locations.filter(loc => selectedLocationIds.includes(loc.externalId)),
     [locations, selectedLocationIds],
   );
 
   useEffect(() => {
-    Promise.all([api.companies(), api.locationsConfig()])
-      .then(([companies, configLocations]) => {
+    Promise.all([api.companies(), api.locationsConfig(), api.vendors(true)])
+      .then(([companies, configLocations, engagedVendors]) => {
         setCompany(companies.find(c => c.id === selectedCompanyId) ?? null);
         setLocations(configLocations.filter(l => l.companyId === selectedCompanyId));
+        setVendors(engagedVendors);
       })
       .catch(() => {
         setCompany(null);
         setLocations([]);
+        setVendors([]);
       });
   }, [selectedCompanyId]);
 
@@ -109,6 +133,18 @@ export function OrderCartModal({
       return;
     }
 
+    if (!signatories) {
+      setError('No logged-in user found. Open the sidebar to select your account.');
+      return;
+    }
+
+    if (!company) {
+      setError(`Company details are required to create ${documentLabels?.title.toLowerCase() ?? 'orders'}.`);
+      return;
+    }
+
+    const orderStatus = signatories.canSelfApprove ? 'Pending' : 'Pending Approval';
+
     setSaving(true);
     setError(null);
 
@@ -117,12 +153,16 @@ export function OrderCartModal({
     const deliveryDateStr = deliveryDateValue;
 
     try {
-      const created = await api.createPurchaseOrders(
-        groups.map(group => ({
+      const created = await api.createPurchaseOrders({
+        companyId: selectedCompanyId,
+        locationExternalIds: selectedLocationIds,
+        initiatedBy: signatories.initiatedBy,
+        approvedBy: signatories.approvedBy,
+        orders: groups.map(group => ({
           vendorName: group.vendorName,
           orderDate: orderDateStr,
           deliveryDate: deliveryDateStr,
-          status: 'Pending',
+          status: orderStatus,
           items: group.items.map(item => ({
             name: item.productName,
             quantity: item.quantity,
@@ -131,56 +171,77 @@ export function OrderCartModal({
             deliveryPackage: item.deliveryUnitLabel,
           })),
         })),
-      );
+      });
 
       if (!Array.isArray(created) || created.length === 0) {
-        throw new Error('Purchase orders were not created.');
+        throw new Error(documentLabels?.errorCreate ?? 'Failed to save documents.');
       }
+
+      const orderDateLabel = formatDisplayDate(orderDate);
+      const deliveryDateLabel = formatDisplayDate(deliveryDate);
 
       const pdfPayloads: PurchaseOrderPdfData[] = created.map(po => {
         const group = groups.find(g => g.vendorName === po.vendorName);
         if (!group) {
           throw new Error(`Could not match created PO to vendor: ${po.vendorName}`);
         }
-        return {
+        return buildPurchaseOrderPdfData({
           poNumber: po.poNumber,
-          vendorName: po.vendorName,
-          companyName: company?.name ?? 'Company',
-          locationNames,
-          orderDate: formatDisplayDate(orderDate),
-          deliveryDate: formatDisplayDate(deliveryDate),
-          items: group.items.map(item => ({
-            name: item.productName,
-            quantity: item.quantity,
-            unit: item.deliveryUnitLabel,
-            deliveryPackage: item.deliveryUnitLabel,
-            unitPrice: item.deliveryPrice,
-            lineTotal: item.lineTotal,
-          })),
-          subtotal: group.subtotal,
-        };
+          group,
+          company,
+          deliveryLocations,
+          vendor: findVendorForGroup(vendors, group),
+          orderDateLabel,
+          deliveryDateLabel,
+          initiatedBy: signatories.initiatedBy,
+          approvedBy: signatories.approvedBy,
+          documentKind: signatories.documentKind,
+        });
       });
 
-      try {
-        if (navigator.userActivation?.isActive) {
-          downloadCombinedPurchaseOrderPdfs(pdfPayloads);
-          onConfirmed(items.map(item => item.lineKey));
-          onClose();
-        } else {
-          setConfirmedPdfs(pdfPayloads);
-          onConfirmed(items.map(item => item.lineKey));
-          setError(null);
-        }
-      } catch (pdfErr) {
-        console.error('PDF download failed:', pdfErr);
-        setConfirmedPdfs(pdfPayloads);
-        onConfirmed(items.map(item => item.lineKey));
-        setError('POs were created. Use the download buttons below for PDFs.');
-      }
+      setCreatedPdfs(pdfPayloads);
+      setStep('success');
+      onConfirmed(items.map(item => item.lineKey));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create purchase orders.');
+      setError(err instanceof Error ? err.message : (documentLabels?.errorCreate ?? 'Failed to save documents.'));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDownloadSingle(pdf: PurchaseOrderPdfData) {
+    setDownloadingKey(pdf.poNumber);
+    setError(null);
+    try {
+      await downloadPurchaseOrderPdf(pdf);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate PDF.');
+    } finally {
+      setDownloadingKey(null);
+    }
+  }
+
+  async function handleDownloadCombined() {
+    setDownloadingKey('combined');
+    setError(null);
+    try {
+      await downloadCombinedPurchaseOrderPdfs(createdPdfs);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate combined PDF.');
+    } finally {
+      setDownloadingKey(null);
+    }
+  }
+
+  async function handleOpenInTab(pdf: PurchaseOrderPdfData) {
+    setDownloadingKey(`open-${pdf.poNumber}`);
+    setError(null);
+    try {
+      await openPurchaseOrderPdfInTab(pdf);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open PDF.');
+    } finally {
+      setDownloadingKey(null);
     }
   }
 
@@ -205,10 +266,16 @@ export function OrderCartModal({
               <ShoppingBag size={18} />
             </div>
             <div>
-              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">My Carte</p>
-              <h3 className="text-sm font-semibold text-foreground mt-0.5">Confirm Purchase Orders</h3>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {groups.length} vendor{groups.length !== 1 ? 's' : ''} · {items.length} item{items.length !== 1 ? 's' : ''}
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">My Carte</p>
+              <h3 className="text-sm font-semibold text-foreground mt-0.5">
+                {step === 'success'
+                  ? (documentLabels?.successTitle ?? 'Documents Created')
+                  : (documentLabels?.confirmTitle ?? 'Confirm Purchase Orders')}
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {step === 'success'
+                  ? (documentLabels?.successSubtitle(createdPdfs.length) ?? `${createdPdfs.length} saved`)
+                  : `${groups.length} vendor${groups.length !== 1 ? 's' : ''} · ${items.length} item${items.length !== 1 ? 's' : ''}`}
               </p>
             </div>
           </div>
@@ -218,102 +285,153 @@ export function OrderCartModal({
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
-          <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
-            <label htmlFor="preferred-delivery-date" className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-              <Calendar size={13} />
-              Preferred Delivery Date
-            </label>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <input
-                id="preferred-delivery-date"
-                type="date"
-                value={deliveryDateValue}
-                min={minDeliveryDate}
-                onChange={e => {
-                  setDeliveryDateValue(e.target.value);
-                  setError(null);
-                }}
-                disabled={saving}
-                className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary font-mono disabled:opacity-50"
-              />
-              {parseDateInputValue(deliveryDateValue) && (
-                <p className="text-[10px] text-muted-foreground">
-                  Deliver on {formatDisplayDate(parseDateInputValue(deliveryDateValue)!)}
+          {step === 'review' ? (
+            <>
+              <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-3">
+                <div>
+                  <label htmlFor="preferred-delivery-date" className="flex items-center gap-2 text-xs font-sans uppercase tracking-wider text-muted-foreground">
+                    <Calendar size={13} />
+                    Preferred Delivery Date
+                  </label>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <input
+                      id="preferred-delivery-date"
+                      type="date"
+                      value={deliveryDateValue}
+                      min={minDeliveryDate}
+                      onChange={e => {
+                        setDeliveryDateValue(e.target.value);
+                        setError(null);
+                      }}
+                      disabled={saving}
+                      className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary font-sans disabled:opacity-50"
+                    />
+                    {parseDateInputValue(deliveryDateValue) && (
+                      <p className="text-xs text-muted-foreground">
+                        Deliver on {formatDisplayDate(parseDateInputValue(deliveryDateValue)!)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-border/60">
+                  <div>
+                    <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
+                      Initiated by
+                    </p>
+                    <p className="mt-1.5 text-xs font-medium text-foreground">
+                      {userLoading ? 'Loading…' : signatories?.initiatedBy ?? '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Current logged-in user</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
+                      Approved by
+                    </p>
+                    <p className="mt-1.5 text-xs font-medium text-foreground">
+                      {userLoading ? 'Loading…' : signatories?.approvedBy ?? '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {signatories?.canSelfApprove
+                        ? 'You have Approve Order permission'
+                        : 'Pending — requires Approve Order permission'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {groups.map(group => (
+                <VendorGroupCard key={group.vendorExternalId} group={group} />
+              ))}
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+                <p className="text-xs font-semibold text-foreground">{documentLabels?.savedMessage ?? 'Documents saved'}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Click download for each vendor PDF. Your browser requires a click to save files.
                 </p>
+              </div>
+
+              {createdPdfs.map(pdf => (
+                <div key={pdf.poNumber} className="border border-border rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground">
+                      {documentLabels?.numberLabel} {pdf.poNumber}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-sans">{pdf.vendor.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Delivery {pdf.deliveryDate} · {formatRm(pdf.totalAmount)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenInTab(pdf)}
+                      disabled={downloadingKey !== null}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-border text-xs font-sans hover:bg-muted disabled:opacity-50"
+                      title="Open PDF in new tab"
+                    >
+                      <ExternalLink size={11} />
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadSingle(pdf)}
+                      disabled={downloadingKey !== null}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-primary text-primary-foreground text-xs font-sans disabled:opacity-50"
+                    >
+                      <Download size={11} />
+                      {downloadingKey === pdf.poNumber ? 'Generating…' : 'Download PDF'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {createdPdfs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadCombined()}
+                  disabled={downloadingKey !== null}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-primary text-primary text-xs font-sans hover:bg-primary/10 disabled:opacity-50"
+                >
+                  <Download size={13} />
+                  {downloadingKey === 'combined'
+                    ? `Generating combined PDF…`
+                    : `Download all ${documentLabels?.title ?? 'documents'} in one PDF`}
+                </button>
               )}
             </div>
-          </div>
-
-          {confirmedPdfs.length > 0 && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-2">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-primary">Purchase orders created</p>
-              <p className="text-[10px] text-muted-foreground">
-                {confirmedPdfs.length === 1
-                  ? 'Click below to download your purchase order PDF.'
-                  : 'Click below to download each PO PDF, or download all in one combined file.'}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {confirmedPdfs.map(pdf => (
-                  <button
-                    key={pdf.poNumber}
-                    type="button"
-                    onClick={() => downloadPurchaseOrderPdf(pdf)}
-                    className="text-[10px] font-mono px-2.5 py-1.5 rounded border border-primary/40 text-primary hover:bg-primary/10"
-                  >
-                    Download {pdf.poNumber}
-                  </button>
-                ))}
-                {confirmedPdfs.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => downloadCombinedPurchaseOrderPdfs(confirmedPdfs)}
-                    className="text-[10px] font-mono px-2.5 py-1.5 rounded bg-primary text-primary-foreground"
-                  >
-                    Download all PDFs
-                  </button>
-                )}
-              </div>
-            </div>
           )}
-
-          {groups.map(group => (
-            <VendorGroupCard key={group.vendorExternalId} group={group} />
-          ))}
         </div>
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-mono text-muted-foreground uppercase text-[10px] tracking-wider">Grand Total</span>
-            <span className="font-mono font-semibold text-foreground">{formatRm(grandTotal)}</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            Confirming will create {groups.length} purchase order{groups.length !== 1 ? 's' : ''} and download a PDF for each vendor.
-          </p>
-          {error && <p className="text-[10px] text-red-500 text-right">{error}</p>}
+          {step === 'review' && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-sans text-muted-foreground uppercase text-xs tracking-wider">Grand Total</span>
+              <span className="font-sans font-semibold text-foreground">{formatRm(grandTotal)}</span>
+            </div>
+          )}
+          {error && <p className="text-xs text-red-500 text-right">{error}</p>}
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 disabled:opacity-50"
+              className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 disabled:opacity-50"
             >
-              Cancel
+              {step === 'success' ? 'Done' : 'Cancel'}
             </button>
-            <button
-              type="button"
-              onClick={() => void handleConfirm()}
-              disabled={saving || groups.length === 0 || !deliveryDateValue || confirmedPdfs.length > 0}
-              className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
-            >
-              {saving ? 'Creating POs…' : confirmedPdfs.length > 0 ? 'POs Created' : 'Confirm & Download PDFs'}
-            </button>
-            {confirmedPdfs.length > 0 && (
+            {step === 'review' && (
               <button
                 type="button"
-                onClick={onClose}
-                className="text-xs font-mono border border-border rounded-md px-4 py-2"
+                onClick={() => void handleConfirm()}
+                disabled={saving || groups.length === 0 || !deliveryDateValue || userLoading || !signatories}
+                className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
               >
-                Done
+                {saving
+                  ? (documentLabels?.submittingButton ?? 'Saving…')
+                  : (documentLabels?.submitButton ?? 'Confirm & Create POs')}
               </button>
             )}
           </div>
@@ -330,24 +448,24 @@ function VendorGroupCard({ group }: { group: OrderCartVendorGroup }) {
       <div className="px-4 py-3 bg-muted/30 border-b border-border flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold text-foreground">{group.vendorName}</p>
-          <p className="text-[10px] text-muted-foreground font-mono">{group.vendorExternalId}</p>
+          <p className="text-xs text-muted-foreground font-sans">{group.vendorExternalId}</p>
         </div>
-        <p className="text-xs font-mono font-semibold text-foreground">{formatRm(group.subtotal)}</p>
+        <p className="text-xs font-sans font-semibold text-foreground">{formatRm(group.subtotal)}</p>
       </div>
       <div className="divide-y divide-border">
         {group.items.map(item => (
           <div key={item.lineKey} className="px-4 py-3 flex items-start justify-between gap-4 text-xs">
             <div className="min-w-0">
               <p className="font-medium text-foreground">{item.productName}</p>
-              <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+              <p className="text-xs text-muted-foreground font-sans mt-0.5">
                 {item.componentName} · {item.componentId}
               </p>
-              <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.deliveryUnitLabel}</p>
+              <p className="text-xs text-muted-foreground font-sans mt-0.5">{item.deliveryUnitLabel}</p>
             </div>
             <div className="text-right shrink-0">
-              <p className="font-mono text-foreground">× {item.quantity}</p>
-              <p className="font-mono text-muted-foreground mt-0.5">{formatRm(item.deliveryPrice)} ea</p>
-              <p className="font-mono font-semibold text-foreground mt-1">{formatRm(item.lineTotal)}</p>
+              <p className="font-sans text-foreground">× {item.quantity}</p>
+              <p className="font-sans text-muted-foreground mt-0.5">{formatRm(item.deliveryPrice)} ea</p>
+              <p className="font-sans font-semibold text-foreground mt-1">{formatRm(item.lineTotal)}</p>
             </div>
           </div>
         ))}

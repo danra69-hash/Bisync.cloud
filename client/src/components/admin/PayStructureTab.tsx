@@ -106,7 +106,7 @@ function PayStructurePanel({
       <div className={SIDE_PANEL_SHELL_WIDE_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Pay Structure</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Pay Structure</p>
             <h3 className="text-sm font-semibold">{isNew ? 'New Pay Structure' : selectedCompany?.name ?? structure?.companyName}</h3>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted">
@@ -121,7 +121,7 @@ function PayStructurePanel({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company *</label>
               <select
                 className={`${selectCls} mt-1`}
                 value={form.companyId ?? ''}
@@ -155,7 +155,7 @@ function PayStructurePanel({
             </div>
 
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Country</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Country</label>
               <input className={`${inputCls} mt-1`} value={country.name} readOnly />
             </div>
 
@@ -167,21 +167,21 @@ function PayStructurePanel({
             </div>
 
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Pay Type *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Pay Type *</label>
               <select className={`${selectCls} mt-1`} value={form.payType} onChange={e => set('payType', e.target.value)}>
                 {PAY_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Pay Cycle *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Pay Cycle *</label>
               <select className={`${selectCls} mt-1`} value={form.payCycle} onChange={e => set('payCycle', e.target.value)}>
                 {PAY_CYCLES.map(cycle => <option key={cycle} value={cycle}>{cycle}</option>)}
               </select>
             </div>
 
             <div className="col-span-2 space-y-3 border border-border rounded-lg p-3 bg-muted/20">
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Overtime Calculation</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Overtime Calculation</label>
               <div className="flex flex-wrap gap-4">
                 {OVERTIME_CALCULATION_MODES.map(mode => (
                   <label key={mode} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -203,7 +203,7 @@ function PayStructurePanel({
 
               {form.overtimeCalculationMode === 'Calculated' ? (
                 <div>
-                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Overtime Multiplier</label>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Overtime Multiplier</label>
                   <input
                     type="number"
                     min={1}
@@ -213,13 +213,13 @@ function PayStructurePanel({
                     value={form.overtimeRateMultiplier}
                     onChange={e => set('overtimeRateMultiplier', parseFloat(e.target.value) || 1.5)}
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Hourly rate = salary ({form.payCycle === 'Weekly' ? 'weekly' : 'monthly'}) ÷ (work days × working hours), then × multiplier (e.g. 1.5 = time-and-a-half).
                   </p>
                 </div>
               ) : (
                 <div>
-                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Fixed Hourly Rate</label>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Fixed Hourly Rate</label>
                   <input
                     type="number"
                     min={0}
@@ -228,7 +228,7 @@ function PayStructurePanel({
                     value={form.overtimeFixedHourlyRate ?? ''}
                     onChange={e => set('overtimeFixedHourlyRate', e.target.value === '' ? null : parseFloat(e.target.value) || 0)}
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">Flat amount paid per overtime hour (multiplier not applied).</p>
+                  <p className="text-xs text-muted-foreground mt-1">Flat amount paid per overtime hour (multiplier not applied).</p>
                 </div>
               )}
             </div>
@@ -252,11 +252,11 @@ function PayStructurePanel({
                 <h4 className="text-sm font-semibold">Provident Fund (%)</h4>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company Contribution</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company Contribution</label>
                     <input type="number" min="0" max="100" step="0.01" className={`${inputCls} mt-1`} value={form.providentFundEmployerPct} onChange={e => set('providentFundEmployerPct', parseFloat(e.target.value) || 0)} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee Contribution</label>
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Employee Contribution</label>
                     <input type="number" min="0" max="100" step="0.01" className={`${inputCls} mt-1`} value={form.providentFundEmployeePct} onChange={e => set('providentFundEmployeePct', parseFloat(e.target.value) || 0)} />
                   </div>
                 </div>
@@ -278,7 +278,7 @@ function PayStructurePanel({
           <div className="space-y-3 pt-2 border-t border-border">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold">Other Mandatory Contributions</h4>
-              <button type="button" onClick={addContribution} className="flex items-center gap-1 text-xs font-mono text-primary hover:underline">
+              <button type="button" onClick={addContribution} className="flex items-center gap-1 text-xs font-sans text-primary hover:underline">
                 <Plus size={12} /> Add
               </button>
             </div>
@@ -289,15 +289,15 @@ function PayStructurePanel({
                 {form.mandatoryContributions.map((contribution, index) => (
                   <div key={index} className="grid grid-cols-[1fr_90px_90px_32px] gap-2 items-end">
                     <div>
-                      {index === 0 && <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Name</label>}
+                      {index === 0 && <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Name</label>}
                       <input className={`${inputCls} mt-1`} value={contribution.name} onChange={e => updateContribution(index, { name: e.target.value })} placeholder="e.g. SOCSO" />
                     </div>
                     <div>
-                      {index === 0 && <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company %</label>}
+                      {index === 0 && <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company %</label>}
                       <input type="number" min="0" max="100" step="0.01" className={`${inputCls} mt-1`} value={contribution.employerPct} onChange={e => updateContribution(index, { employerPct: parseFloat(e.target.value) || 0 })} />
                     </div>
                     <div>
-                      {index === 0 && <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee %</label>}
+                      {index === 0 && <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Employee %</label>}
                       <input type="number" min="0" max="100" step="0.01" className={`${inputCls} mt-1`} value={contribution.employeePct} onChange={e => updateContribution(index, { employeePct: parseFloat(e.target.value) || 0 })} />
                     </div>
                     <button type="button" onClick={() => removeContribution(index)} className="p-2 rounded hover:bg-muted text-destructive">
@@ -311,8 +311,8 @@ function PayStructurePanel({
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button type="button" onClick={onClose} className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
-          <button type="button" onClick={() => void save()} disabled={saving || !form.companyId} className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
+          <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
+          <button type="button" onClick={() => void save()} disabled={saving || !form.companyId} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
             {isNew ? 'Add Pay Structure' : 'Save Changes'}
           </button>
         </div>
@@ -407,7 +407,7 @@ export function PayStructureTab() {
             <thead className="bg-muted/40 border-b border-border">
               <tr>
                 {['Company', 'Country', 'Pay Type', 'Pay Cycle', 'PF (Co/Emp)', 'SOCSO', 'Other Contributions', 'Active'].map(h => (
-                  <th key={h} className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ${h === 'Active' ? 'text-center' : 'text-left'}`}>{h}</th>
+                  <th key={h} className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${h === 'Active' ? 'text-center' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -422,10 +422,10 @@ export function PayStructureTab() {
                     <td className="px-4 py-3 text-muted-foreground">{getCountry(structure.countryCode).name}</td>
                     <td className="px-4 py-3">{structure.payType}</td>
                     <td className="px-4 py-3 text-muted-foreground">{structure.payCycle}</td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">
+                    <td className="px-4 py-3 font-sans text-muted-foreground">
                       {formatProvidentFundSummary(structure)}
                     </td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">
+                    <td className="px-4 py-3 font-sans text-muted-foreground">
                       {formatSocsoSummary(structure)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">

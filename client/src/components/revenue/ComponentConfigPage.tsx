@@ -17,7 +17,7 @@ type MyStorageEntry = {
   items: number;
 };
 
-const thCls = 'text-left px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal';
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
 
 const STORAGE_LOCATIONS = ['Downtown', 'Midtown', 'Westend'] as const;
 
@@ -147,7 +147,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
   return (
     <div className="p-6 space-y-4">
       <div>
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Component</p>
+        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Component</p>
         <h2 className="text-lg font-semibold">Component Config</h2>
         <p className="text-xs text-muted-foreground mt-1">Configure component groups, storage assignments, and UOM conversions</p>
       </div>
@@ -188,7 +188,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
                 <p className="text-xs font-semibold">All Groups</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Click a group name to add it to My Group</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Click a group name to add it to My Group</p>
               </div>
               <table className="w-full text-xs">
                 <thead>
@@ -246,7 +246,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
                 <p className="text-xs font-semibold">My Group</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Click a group name to remove it from My Group</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Click a group name to remove it from My Group</p>
               </div>
               <table className="w-full text-xs">
                 <thead>
@@ -269,7 +269,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                           {g.name}
                         </button>
                       </td>
-                      <td className="px-3 py-2.5 font-mono">{g.items}</td>
+                      <td className="px-3 py-2.5 font-sans">{g.items}</td>
                     </tr>
                   ))}
                   {myGroups.length === 0 && (
@@ -288,7 +288,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
         <div className="space-y-3">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <label htmlFor="storage-location" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              <label htmlFor="storage-location" className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
                 Location
               </label>
               <select
@@ -314,7 +314,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
                 <p className="text-xs font-semibold">All Storage — {selectedLocation}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Click a storage name, then choose an area to copy it to My Storage</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Click a storage name, then choose an area to copy it to My Storage</p>
               </div>
               <table className="w-full text-xs">
                 <thead>
@@ -336,11 +336,11 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                           {s.name}
                         </button>
                         {s.location === 'All Locations' && (
-                          <p className="text-[9px] text-muted-foreground mt-0.5">All locations</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">All locations</p>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{s.type}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans">{s.type}</span>
                       </td>
                     </tr>
                   ))}
@@ -358,7 +358,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
                 <p className="text-xs font-semibold">My Storage — {selectedLocation}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Grouped by area. Click a storage name to remove it.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Grouped by area. Click a storage name to remove it.</p>
               </div>
 
               {!hasMyStorage ? (
@@ -370,7 +370,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                   {myStorageByArea.map(section => (
                     <div key={section.area}>
                       <div className="px-3 py-2 bg-muted/20 border-b border-border">
-                        <p className="text-[10px] font-mono font-semibold uppercase tracking-wider text-foreground">{section.area}</p>
+                        <p className="text-xs font-sans font-semibold uppercase tracking-wider text-foreground">{section.area}</p>
                       </div>
                       <table className="w-full text-xs">
                         <thead>
@@ -393,9 +393,9 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                                 </button>
                               </td>
                               <td className="px-3 py-2.5">
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted font-mono">{entry.type}</span>
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans">{entry.type}</span>
                               </td>
-                              <td className="px-3 py-2.5 font-mono">{entry.items}</td>
+                              <td className="px-3 py-2.5 font-sans">{entry.items}</td>
                             </tr>
                           ))}
                         </tbody>

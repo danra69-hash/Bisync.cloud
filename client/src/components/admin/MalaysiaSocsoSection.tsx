@@ -2,7 +2,7 @@ import { inputCls } from '../../data/countries';
 import type { SocsoBracketItem } from '../../modules/hr/types';
 import { formatSocsoSalaryRange } from './malaysiaSocsoDefaults';
 
-const thCls = 'text-left px-2 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+const thCls = 'text-left px-2 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
 
 type Props = {
@@ -33,7 +33,7 @@ function SocsoCategoryTable({
     <div>
       <div className="mb-2">
         <h5 className="text-xs font-semibold">{title}</h5>
-        <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
       <div className="border border-border rounded-lg overflow-hidden">
         <div className="max-h-56 overflow-y-auto overflow-x-auto">
@@ -89,7 +89,7 @@ export function MalaysiaSocsoSection({ brackets, onChange, foreignEmployerPct, o
     <div className="space-y-4">
       <div>
         <h4 className="text-sm font-semibold">SOCSO — Malaysian employees</h4>
-        <p className="text-[10px] text-muted-foreground mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           PERKESO contribution table (effective June 2026). Applies when the business and employee are Malaysian. Amounts are fixed monthly contributions by salary range.
         </p>
       </div>
@@ -113,7 +113,7 @@ export function MalaysiaSocsoSection({ brackets, onChange, foreignEmployerPct, o
       <div>
         <div className="mb-3">
           <h4 className="text-sm font-semibold">SOCSO — Foreign employees</h4>
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Flat company contribution when the business is in Malaysia but the employee is not Malaysian. No employee contribution.
           </p>
         </div>

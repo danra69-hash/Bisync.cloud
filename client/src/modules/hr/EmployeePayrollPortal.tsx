@@ -75,7 +75,7 @@ export default function EmployeePayrollPortal({ employees, onVerifyPayrollPin }:
               onChange={e => setPayrollPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
               onKeyDown={e => e.key === 'Enter' && void submitPin()}
               placeholder="••••••"
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme focus:border-transparent placeholder:text-slate-300 font-mono tracking-[0.35em] text-center text-lg"
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme focus:border-transparent placeholder:text-slate-300 font-sans tracking-[0.35em] text-center text-lg"
               autoFocus
             />
             <button type="button" onClick={() => setShowPayrollPin(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -102,7 +102,7 @@ export default function EmployeePayrollPortal({ employees, onVerifyPayrollPin }:
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-herme-dark text-white rounded-xl flex items-center justify-center font-bold text-sm">{initials(employee.name)}</div>
           <div>
-            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Payroll</div>
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Payroll</div>
             <div className="font-semibold text-slate-800 text-sm">{employee.name}</div>
             <div className="text-xs text-slate-500">{employee.position} · {employee.department}</div>
           </div>
@@ -120,7 +120,7 @@ export default function EmployeePayrollPortal({ employees, onVerifyPayrollPin }:
             { label: 'Last Payment', value: '—', hint: 'Most recent cycle' },
           ].map(item => (
             <div key={item.label} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">{item.label}</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{item.label}</div>
               <div className="text-2xl font-bold text-slate-800 mt-1">{item.value}</div>
               <div className="text-xs text-slate-400 mt-1">{item.hint}</div>
             </div>

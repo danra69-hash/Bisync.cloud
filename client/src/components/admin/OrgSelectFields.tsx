@@ -21,7 +21,7 @@ export function OrgSelectFields({
   return (
     <>
       <div>
-        <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Division</label>
+        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Division</label>
         <select
           required={required}
           value={divisionId ?? ''}
@@ -37,14 +37,14 @@ export function OrgSelectFields({
           ))}
         </select>
         {orgTree.length === 0 && (
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             No divisions yet. Add them under Divisions &amp; Department.
           </p>
         )}
       </div>
 
       <div>
-        <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Department</label>
+        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Department</label>
         <select
           required={required}
           value={departmentId ?? ''}

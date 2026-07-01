@@ -21,7 +21,7 @@ import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
 
 const thCls =
-  'text-left px-3 py-2.5 text-[9px] font-mono uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
+  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
 const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0 min-w-[168px] max-w-[220px]';
 
 function ComparePriceCellView({
@@ -70,14 +70,14 @@ function ComparePriceCellView({
       className={`space-y-1.5 text-xs leading-snug cursor-grab active:cursor-grabbing ${isBest ? 'text-[#5A7A2A]' : ''}`}
     >
       <p className="font-medium text-foreground line-clamp-2">{product.productName}</p>
-      <p className="font-mono text-[10px] text-muted-foreground">{formatDeliveryPriceLine(product)}</p>
+      <p className="font-sans text-xs text-muted-foreground">{formatDeliveryPriceLine(product)}</p>
 
       <div className="pt-0.5 border-t border-border/60">
         {!vendor.engaged ? (
           <button
             type="button"
             onClick={onEngage}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-primary text-primary-foreground"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-primary text-primary-foreground"
           >
             <UserPlus size={11} />
             Engage
@@ -86,21 +86,21 @@ function ComparePriceCellView({
           <button
             type="button"
             onClick={onTag}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold border border-primary text-primary hover:bg-primary/10"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10"
           >
             <Tag size={11} />
             Tag
           </button>
         ) : cell && cell.uomCost !== null && cell.uomCost > 0 ? (
-          <p className={`font-mono text-[11px] font-semibold ${isBest ? 'text-[#5A7A2A]' : 'text-foreground'}`}>
+          <p className={`font-sans text-[11px] font-semibold ${isBest ? 'text-[#5A7A2A]' : 'text-foreground'}`}>
             {formatUomCost(cell.uomCost, cell.componentUom)}
-            {isBest && <span className="ml-1 text-[9px] font-bold uppercase">Best</span>}
+            {isBest && <span className="ml-1 text-xs font-bold uppercase">Best</span>}
           </p>
         ) : cell && needsManual ? (
           <div className="space-y-1">
-            <p className="text-[9px] text-muted-foreground">UOM cost (save once)</p>
+            <p className="text-xs text-muted-foreground">UOM cost (save once)</p>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground">$</span>
+              <span className="text-xs text-muted-foreground">$</span>
               <input
                 type="number"
                 min={0}
@@ -110,20 +110,20 @@ function ComparePriceCellView({
                 onKeyDown={e => { if (e.key === 'Enter') void commitManualCost(); }}
                 disabled={saving}
                 placeholder={`/${cell.componentUom.toLowerCase()}`}
-                className="w-full bg-background border border-border rounded px-2 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-sans focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={() => void commitManualCost()}
                 disabled={saving || !draftCost}
-                className="shrink-0 px-2 py-1 rounded text-[9px] font-bold bg-primary text-primary-foreground disabled:opacity-50"
+                className="shrink-0 px-2 py-1 rounded text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
               >
                 Save
               </button>
             </div>
           </div>
         ) : (
-          <p className="text-[10px] text-muted-foreground font-mono">UOM cost unavailable</p>
+          <p className="text-xs text-muted-foreground font-sans">UOM cost unavailable</p>
         )}
       </div>
     </div>
@@ -347,7 +347,7 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
   return (
     <div className="p-6 space-y-4">
       <div>
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
+        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
         <h2 className="text-lg font-semibold">Compare Price</h2>
         <p className="text-xs text-muted-foreground mt-1">
           All food &amp; beverage components with catalog matches — engage or tag directly from each cell
@@ -392,7 +392,7 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
                   key={f}
                   type="button"
                   onClick={() => setVendorFilter(f)}
-                  className={`px-3 py-1.5 rounded-full text-[10px] font-semibold border transition-colors ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                     vendorFilter === f
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border text-muted-foreground hover:border-primary/50'
@@ -402,13 +402,13 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
                 </button>
               ))}
             </div>
-            <p className="text-[10px] font-mono text-muted-foreground">
+            <p className="text-xs font-sans text-muted-foreground">
               {filteredComponents.length} component{filteredComponents.length !== 1 ? 's' : ''}
               {' · '}
               {filteredVendorColumns.length} vendor{filteredVendorColumns.length !== 1 ? 's' : ''}
             </p>
             <div className="ml-auto flex items-center gap-2 min-w-[240px]">
-              <span className="text-[9px] font-mono text-muted-foreground shrink-0">Scroll vendors</span>
+              <span className="text-xs font-sans text-muted-foreground shrink-0">Scroll vendors</span>
               <div
                 ref={topScrollRef}
                 onScroll={syncFromTop}
@@ -442,12 +442,12 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
                                 {vendor.name}
                               </p>
                               {vendor.engaged && (
-                                <span className="text-[8px] font-mono px-1 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">
+                                <span className="text-[11px] font-sans px-1 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">
                                   Engaged
                                 </span>
                               )}
                             </div>
-                            <p className="text-[9px] font-mono text-muted-foreground normal-case">
+                            <p className="text-xs font-sans text-muted-foreground normal-case">
                               {vendor.externalId}
                             </p>
                           </div>
@@ -463,7 +463,7 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
                         <tr key={component.id} className="hover:bg-muted/15">
                           <td className={`${tdCls} sticky left-0 z-10 bg-card font-medium`}>
                             <p className="text-foreground leading-snug">{component.name}</p>
-                            <p className="text-[9px] font-mono text-muted-foreground mt-0.5">
+                            <p className="text-xs font-sans text-muted-foreground mt-0.5">
                               {component.componentId || '—'}
                               {' · '}
                               {component.group}

@@ -119,25 +119,25 @@ public static class ConfigurationSeeder
         foreach (var seed in Companies)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => c.Name == seed.Name);
-            if (company is null)
-            {
-                company = new Company();
-                db.Companies.Add(company);
-            }
+            if (company is not null) continue;
 
-            company.Name = seed.Name;
-            company.Brn = seed.Brn;
-            company.GstTin = seed.GstTin;
-            company.CountryCode = seed.CountryCode;
-            company.AddressLine1 = seed.AddressLine1;
-            company.AddressLine2 = seed.AddressLine2;
-            company.City = seed.City;
-            company.StateProvince = seed.StateProvince;
-            company.Postcode = seed.Postcode;
-            company.Phone = seed.Phone;
-            company.Fax = seed.Fax;
-            company.Email = seed.Email;
-            company.Active = true;
+            company = new Company
+            {
+                Name = seed.Name,
+                Brn = seed.Brn,
+                GstTin = seed.GstTin,
+                CountryCode = seed.CountryCode,
+                AddressLine1 = seed.AddressLine1,
+                AddressLine2 = seed.AddressLine2,
+                City = seed.City,
+                StateProvince = seed.StateProvince,
+                Postcode = seed.Postcode,
+                Phone = seed.Phone,
+                Fax = seed.Fax,
+                Email = seed.Email,
+                Active = true,
+            };
+            db.Companies.Add(company);
         }
         await db.SaveChangesAsync();
 
@@ -146,19 +146,19 @@ public static class ConfigurationSeeder
         foreach (var seed in Users)
         {
             var user = await db.AppUsers.FirstOrDefaultAsync(u => u.Email == seed.Email);
-            if (user is null)
-            {
-                user = new AppUser();
-                db.AppUsers.Add(user);
-            }
+            if (user is not null) continue;
 
-            user.FullName = seed.FullName;
-            user.Email = seed.Email;
-            user.Role = seed.Role;
-            user.Phone = seed.Phone;
-            user.Active = true;
-            user.AccessJson = seed.AccessJson;
-            user.CompanyId = companiesByName[seed.CompanyName].Id;
+            user = new AppUser
+            {
+                FullName = seed.FullName,
+                Email = seed.Email,
+                Role = seed.Role,
+                Phone = seed.Phone,
+                Active = true,
+                AccessJson = seed.AccessJson,
+                CompanyId = companiesByName[seed.CompanyName].Id,
+            };
+            db.AppUsers.Add(user);
         }
         await db.SaveChangesAsync();
 
@@ -167,27 +167,25 @@ public static class ConfigurationSeeder
         foreach (var seed in Locations)
         {
             var location = await db.Locations.FirstOrDefaultAsync(l => l.ExternalId == seed.ExternalId);
-            if (location is null)
-            {
-                location = new Location
-                {
-                    ExternalId = seed.ExternalId,
-                };
-                db.Locations.Add(location);
-            }
+            if (location is not null) continue;
 
             var company = companiesByName[seed.CompanyName];
             var contact = usersByEmail[seed.PrincipalContactEmail];
 
-            location.Name = seed.Name;
-            location.CompanyId = company.Id;
-            location.AddressLine1 = seed.AddressLine1;
-            location.AddressLine2 = string.Empty;
-            location.City = seed.City;
-            location.StateProvince = seed.StateProvince;
-            location.Postcode = seed.Postcode;
-            location.PrincipalContactUserId = contact.Id;
-            location.Address = $"{seed.AddressLine1}, {seed.City}, {seed.StateProvince} {seed.Postcode}";
+            location = new Location
+            {
+                ExternalId = seed.ExternalId,
+                Name = seed.Name,
+                CompanyId = company.Id,
+                AddressLine1 = seed.AddressLine1,
+                AddressLine2 = string.Empty,
+                City = seed.City,
+                StateProvince = seed.StateProvince,
+                Postcode = seed.Postcode,
+                PrincipalContactUserId = contact.Id,
+                Address = $"{seed.AddressLine1}, {seed.City}, {seed.StateProvince} {seed.Postcode}",
+            };
+            db.Locations.Add(location);
         }
         await db.SaveChangesAsync();
 
@@ -195,11 +193,14 @@ public static class ConfigurationSeeder
 
         foreach (var seed in Users)
         {
-            var user = usersByEmail[seed.Email];
+            if (!usersByEmail.TryGetValue(seed.Email, out var user)) continue;
+            if (!string.IsNullOrWhiteSpace(user.LocationIdsJson) && user.LocationIdsJson != "[]") continue;
+
             var locationIds = seed.LocationExternalIds
                 .Where(locationIdsByExternalId.ContainsKey)
                 .Select(externalId => locationIdsByExternalId[externalId])
                 .ToList();
+            if (locationIds.Count == 0) continue;
             user.LocationIdsJson = JsonSerializer.Serialize(locationIds);
         }
 

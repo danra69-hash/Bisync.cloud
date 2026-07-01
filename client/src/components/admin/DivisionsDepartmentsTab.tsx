@@ -112,11 +112,11 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Division Name *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Division Name *</label>
               <input className={`${inputCls} mt-1`} value={divisionForm.name} onChange={e => setDivisionForm({ ...divisionForm, name: e.target.value })} placeholder="e.g. Operations" />
             </div>
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Code</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Code</label>
               <input className={`${inputCls} mt-1`} value={divisionForm.code} onChange={e => setDivisionForm({ ...divisionForm, code: e.target.value })} placeholder="e.g. OPS" />
             </div>
           </div>
@@ -141,11 +141,11 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Department Name *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Department Name *</label>
               <input className={`${inputCls} mt-1`} value={departmentForm.name} onChange={e => setDepartmentForm({ ...departmentForm, name: e.target.value })} placeholder="e.g. Kitchen" />
             </div>
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Division *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Division *</label>
               <select
                 className={`${selectCls} mt-1`}
                 value={departmentForm.divisionId || ''}
@@ -175,7 +175,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
                 {['Division', 'Code', 'Department', 'Actions'].map(h => (
                   <th
                     key={h}
-                    className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ${
+                    className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${
                       h === 'Actions' ? 'text-right' : 'text-left'
                     }`}
                   >
@@ -201,7 +201,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
                 {['Division', 'Code', 'Department', 'Actions'].map(h => (
                   <th
                     key={h}
-                    className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ${
+                    className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${
                       h === 'Actions' ? 'text-right' : 'text-left'
                     } ${h === 'Code' ? 'w-28' : ''} ${h === 'Actions' ? 'w-44' : ''}`}
                   >
@@ -216,7 +216,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
                   return [(
                     <tr key={`division-${division.id}`} className="hover:bg-muted/20">
                       <td className="px-4 py-3 font-medium">{division.name}</td>
-                      <td className="px-4 py-3 font-mono text-muted-foreground">{division.code || '—'}</td>
+                      <td className="px-4 py-3 font-sans text-muted-foreground">{division.code || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground italic">No departments</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
@@ -242,7 +242,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
                         <td rowSpan={division.departments.length} className="px-4 py-3 font-medium align-top border-r border-border/50">
                           {division.name}
                         </td>
-                        <td rowSpan={division.departments.length} className="px-4 py-3 font-mono text-muted-foreground align-top border-r border-border/50">
+                        <td rowSpan={division.departments.length} className="px-4 py-3 font-sans text-muted-foreground align-top border-r border-border/50">
                           {division.code || '—'}
                         </td>
                       </>

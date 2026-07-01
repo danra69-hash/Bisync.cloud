@@ -67,7 +67,7 @@ export function EmployeeDetailPanel({
               {initials(employee.name)}
             </div>
             <div>
-              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Employee</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Employee</p>
               <h3 className="text-sm font-semibold">{employee.name}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {employee.employeeCode} · {employee.position} · {departmentName(employee)}
@@ -83,7 +83,7 @@ export function EmployeeDetailPanel({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Full Name</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Full Name</label>
                 <input
                   type="text"
                   value={employee.name}
@@ -92,7 +92,7 @@ export function EmployeeDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Work Email</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Work Email</label>
                 <input
                   type="email"
                   value={employee.email}
@@ -101,7 +101,7 @@ export function EmployeeDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Position</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Position</label>
                 <input
                   type="text"
                   value={employee.position}
@@ -110,7 +110,7 @@ export function EmployeeDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Join Date</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Join Date</label>
                 <input
                   type="date"
                   value={employee.joinDate}
@@ -126,7 +126,7 @@ export function EmployeeDetailPanel({
                 onChange={patch => onUpdate(patch)}
               />
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee Level</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Employee Level</label>
                 <select
                   value={employee.employeeLevelId ?? ''}
                   onChange={(e) => onUpdate({
@@ -141,7 +141,7 @@ export function EmployeeDetailPanel({
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Reports To</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Reports To</label>
                 <select
                   value={employee.reportsToId ?? ''}
                   onChange={(e) => onUpdate({
@@ -156,7 +156,7 @@ export function EmployeeDetailPanel({
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Nationality</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Nationality</label>
                 <input
                   type="text"
                   value={employee.nationality ?? ''}
@@ -165,7 +165,7 @@ export function EmployeeDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">ID / Passport Number</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">ID / Passport Number</label>
                 <input
                   type="text"
                   value={employee.idPassportNumber ?? ''}
@@ -174,7 +174,7 @@ export function EmployeeDetailPanel({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Date of Birth</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Date of Birth</label>
                 <input
                   type="date"
                   value={employee.dateOfBirth ?? ''}
@@ -190,7 +190,7 @@ export function EmployeeDetailPanel({
                 required
               />
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Personal Email</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Personal Email</label>
                 <input
                   type="email"
                   value={employee.personalEmail ?? ''}
@@ -199,7 +199,7 @@ export function EmployeeDetailPanel({
                 />
               </div>
               <div className="col-span-2">
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-2 block">Permanent Address</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-2 block">Permanent Address</label>
                 <CountryAddressFields
                   countryCode={countryCode}
                   value={addressParts}
@@ -221,7 +221,7 @@ export function EmployeeDetailPanel({
             <h4 className="text-sm font-semibold mb-3 pb-2 border-b border-border">Check-in Method</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Method</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Method</label>
                 <select
                   value={employee.checkinMethod ?? 'Biometrics'}
                   onChange={(e) => onUpdate({ checkinMethod: e.target.value as CheckinMethod })}
@@ -265,21 +265,21 @@ export function EmployeeDetailPanel({
             {employee.checkinMethod === 'POS' && (
               <div className="mt-3 flex flex-wrap items-end gap-3 p-4 bg-muted/30 border border-border rounded-lg">
                 <div className="flex-1 min-w-[200px]">
-                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">POS PIN</label>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">POS PIN</label>
                   <input
                     type="text"
                     readOnly
                     value={employee.posPin ?? DEFAULT_POS_PIN}
-                    className={`${inputCls} mt-1 font-mono tracking-widest`}
+                    className={`${inputCls} mt-1 font-sans tracking-widest`}
                   />
                   {employee.posPinMustChange && (
-                    <p className="text-[10px] text-muted-foreground mt-1">PIN change required on next login</p>
+                    <p className="text-xs text-muted-foreground mt-1">PIN change required on next login</p>
                   )}
                 </div>
                 <button
                   type="button"
                   onClick={onResetPosPin}
-                  className="text-xs font-mono border border-border rounded-md px-4 py-2 hover:bg-muted"
+                  className="text-xs font-sans border border-border rounded-md px-4 py-2 hover:bg-muted"
                 >
                   Reset PIN to {DEFAULT_POS_PIN}
                 </button>
@@ -292,14 +292,14 @@ export function EmployeeDetailPanel({
 
             <div className="mt-4 flex flex-wrap items-end gap-3 p-4 bg-muted/30 border border-border rounded-lg">
               <div className="flex-1 min-w-[200px]">
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Payroll PIN (6 digits)</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Payroll PIN (6 digits)</label>
                 <input
                   type="password"
                   readOnly
                   value="••••••"
-                  className={`${inputCls} mt-1 font-mono tracking-widest`}
+                  className={`${inputCls} mt-1 font-sans tracking-widest`}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {employee.payrollPinMustChange !== false
                     ? 'Default PIN active — employee should change after first payroll unlock.'
                     : 'Employee has set a custom payroll PIN.'}
@@ -308,7 +308,7 @@ export function EmployeeDetailPanel({
               <button
                 type="button"
                 onClick={onResetPayrollPin}
-                className="text-xs font-mono border border-border rounded-md px-4 py-2 hover:bg-muted"
+                className="text-xs font-sans border border-border rounded-md px-4 py-2 hover:bg-muted"
               >
                 Reset PIN to {DEFAULT_PAYROLL_PIN}
               </button>
@@ -449,15 +449,15 @@ export function EmployeeDetailPanel({
           <button
             type="button"
             onClick={() => { if (confirm('Delete this employee permanently?')) onDelete(); }}
-            className="text-xs font-mono border border-destructive/30 text-destructive rounded-md px-4 py-2 hover:bg-destructive/10"
+            className="text-xs font-sans border border-destructive/30 text-destructive rounded-md px-4 py-2 hover:bg-destructive/10"
           >
             Delete Employee
           </button>
           <div className="flex gap-3">
-            <button type="button" onClick={onClose} className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
               Cancel
             </button>
-            <button type="button" onClick={onSave} className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2">
+            <button type="button" onClick={onSave} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2">
               Save Changes
             </button>
           </div>

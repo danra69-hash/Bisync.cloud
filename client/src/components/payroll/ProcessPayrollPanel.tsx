@@ -12,8 +12,8 @@ import {
 } from './payrollProcess';
 import { formatPayrollAmount } from './payrollDisplay';
 
-const thCls = 'text-left px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
-const amountCls = 'px-3 py-2.5 text-right font-mono whitespace-nowrap text-xs';
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+const amountCls = 'px-3 py-2.5 text-right font-sans whitespace-nowrap text-xs';
 const textCls = 'px-3 py-2.5 text-xs';
 
 const TABLE_COLUMNS = [
@@ -97,7 +97,7 @@ export function ProcessPayrollPanel({
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <label htmlFor="payroll-process-month" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              <label htmlFor="payroll-process-month" className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
                 Month
               </label>
               <select
@@ -112,7 +112,7 @@ export function ProcessPayrollPanel({
               </select>
             </div>
             <div>
-              <label htmlFor="payroll-process-year" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              <label htmlFor="payroll-process-year" className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
                 Year
               </label>
               <select
@@ -163,7 +163,7 @@ export function ProcessPayrollPanel({
               <div className="text-xs text-muted-foreground">
                 {preview.payType} · {preview.periodStart} to {preview.periodEnd}
                 {preview.alreadyProcessed && (
-                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700">
                     Already processed
                   </span>
                 )}
@@ -236,11 +236,11 @@ function PayrollLineRow({
 
   return (
     <tr className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-      <td className={`${textCls} font-mono`}>{line.employeeCode}</td>
+      <td className={`${textCls} font-sans`}>{line.employeeCode}</td>
       <td className={`${textCls} font-medium whitespace-nowrap`}>{line.employeeName}</td>
       <td className={textCls}>
         <div className="font-medium">{line.position || '—'}</div>
-        <div className="text-[10px] text-muted-foreground mt-0.5">{line.department || '—'}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{line.department || '—'}</div>
       </td>
       <td className={`${textCls} text-muted-foreground whitespace-nowrap`}>
         {formatAttendanceSummary(line.presentDays, line.workingDays, preview.payType, line.totalHours)}
@@ -274,7 +274,7 @@ function StackedContributionCell({
   return (
     <td className={amountCls}>
       <div>{fmt(employeeAmount)}</div>
-      <div className="text-[10px] text-muted-foreground mt-0.5">Co. {fmt(employerAmount)}</div>
+      <div className="text-xs text-muted-foreground mt-0.5">Co. {fmt(employerAmount)}</div>
     </td>
   );
 }
@@ -282,7 +282,7 @@ function StackedContributionCell({
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm font-medium">{value}</p>
     </div>
   );

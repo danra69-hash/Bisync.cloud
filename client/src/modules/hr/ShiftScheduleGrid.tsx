@@ -457,7 +457,7 @@ export default function ShiftScheduleGrid({
           </p>
         ) : (
         <div className="flex items-center gap-2 overflow-x-auto">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide shrink-0">Shift workers</span>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide shrink-0">Shift workers</span>
           {shiftEmployees.map((employee) => {
             const colors = levelColors(employee, employeeLevels);
             const level = resolveEmployeeLevel(employee, employeeLevels);
@@ -481,7 +481,7 @@ export default function ShiftScheduleGrid({
               <span className={`w-2 h-2 rounded-full shrink-0 ${colors.dot}`} aria-hidden />
               <GripVertical className="w-3 h-3 opacity-40 shrink-0" />
               <span className="font-medium whitespace-nowrap">{employee.name}</span>
-              <span className="text-[10px] opacity-70">{shiftHours(employee, employeeLevels)}h</span>
+              <span className="text-xs opacity-70">{shiftHours(employee, employeeLevels)}h</span>
             </div>
             );
           })}
@@ -489,11 +489,11 @@ export default function ShiftScheduleGrid({
         )}
         {levelsInView.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Level</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Level</span>
             {levelsInView.map((level) => {
               const colors = LEVEL_COLORS[level.id] ?? DEFAULT_LEVEL_COLORS;
               return (
-                <span key={level.id} className="inline-flex items-center gap-1 text-[10px] text-gray-600">
+                <span key={level.id} className="inline-flex items-center gap-1 text-xs text-gray-600">
                   <span className={`w-2.5 h-2.5 rounded-sm ${colors.dot}`} aria-hidden />
                   {level.levelName}
                 </span>
@@ -518,7 +518,7 @@ export default function ShiftScheduleGrid({
         <div className="min-w-[640px]">
           {/* Day headers with leave controls */}
           <div className="grid grid-cols-[52px_repeat(7,1fr)] border-b border-gray-200 bg-gray-50">
-            <div className="px-1 py-1.5 text-[10px] text-gray-400 border-r border-gray-200">Time</div>
+            <div className="px-1 py-1.5 text-xs text-gray-400 border-r border-gray-200">Time</div>
             {weekDates.map((date) => {
               const d = new Date(`${date}T12:00:00`);
               const isWeekend = d.getDay() === 0 || d.getDay() === 6;
@@ -537,10 +537,10 @@ export default function ShiftScheduleGrid({
                   <div className="text-xs font-medium text-gray-900 leading-tight">
                     {d.toLocaleDateString('en-US', { weekday: 'short' })}
                   </div>
-                  <div className="text-[10px] text-gray-500">{d.getDate()}</div>
+                  <div className="text-xs text-gray-500">{d.getDate()}</div>
                   <div className="mt-1 border-t border-gray-200/80 pt-1 space-y-0.5 max-h-16 overflow-y-auto text-left">
                     {employeesOnLeave.length === 0 && availableForLeave.length === 0 ? (
-                      <span className="text-[9px] text-gray-400 block text-center">—</span>
+                      <span className="text-xs text-gray-400 block text-center">—</span>
                     ) : (
                       <>
                         {employeesOnLeave.map((employee) => {
@@ -552,12 +552,12 @@ export default function ShiftScheduleGrid({
                                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${levelColors(employee, employeeLevels).dot}`}
                                 aria-hidden
                               />
-                              <span className="text-[9px] text-gray-600 truncate max-w-[40%]" title={employee.name}>
+                              <span className="text-xs text-gray-600 truncate max-w-[40%]" title={employee.name}>
                                 {employee.name.split(' ')[0]}
                               </span>
                               {locked ? (
                                 <span
-                                  className={`flex-1 min-w-0 px-0.5 py-0 rounded text-[9px] text-center ${
+                                  className={`flex-1 min-w-0 px-0.5 py-0 rounded text-xs text-center ${
                                     LEAVE_BADGE[leaveType] ?? 'bg-gray-100 text-gray-700'
                                   }`}
                                   title="Approved leave request"
@@ -572,7 +572,7 @@ export default function ShiftScheduleGrid({
                                     if (type) onUpsert(employee.id, date, type);
                                     else onClear(employee.id, date);
                                   }}
-                                  className={`flex-1 min-w-0 px-0.5 py-0 border border-gray-300 rounded text-[9px] bg-white focus:outline-none focus:ring-1 focus:ring-herme ${
+                                  className={`flex-1 min-w-0 px-0.5 py-0 border border-gray-300 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-herme ${
                                     leaveType ? LEAVE_BADGE[leaveType] ?? '' : ''
                                   }`}
                                 >
@@ -592,7 +592,7 @@ export default function ShiftScheduleGrid({
                               const employeeId = Number(e.target.value);
                               if (employeeId) onUpsert(employeeId, date, 'DO');
                             }}
-                            className="w-full px-0.5 py-0 border border-dashed border-gray-300 rounded text-[9px] bg-white text-gray-500 focus:outline-none focus:ring-1 focus:ring-herme"
+                            className="w-full px-0.5 py-0 border border-dashed border-gray-300 rounded text-xs bg-white text-gray-500 focus:outline-none focus:ring-1 focus:ring-herme"
                           >
                             <option value="">+ Assign leave</option>
                             {availableForLeave.map((employee) => (
@@ -614,7 +614,7 @@ export default function ShiftScheduleGrid({
               {slots.map((slot) => (
                 <div
                   key={slot}
-                  className="px-1 text-[9px] text-gray-500 border-b border-gray-100 flex items-start leading-none"
+                  className="px-1 text-xs text-gray-500 border-b border-gray-100 flex items-start leading-none"
                   style={{ height: rowHeight }}
                 >
                   {slot.endsWith(':00') ? formatSlotLabel(slot) : ''}

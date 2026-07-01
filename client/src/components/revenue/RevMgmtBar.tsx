@@ -49,7 +49,7 @@ export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
                   {section.subs.map((sub, si) => (
                     <div key={si}>
                       {sub.subtitle && (
-                        <p className="px-3 pt-2 pb-1 text-[8px] font-mono font-bold tracking-widest text-muted-foreground uppercase">
+                        <p className="px-3 pt-2 pb-1 text-[11px] font-sans font-bold tracking-widest text-muted-foreground uppercase">
                           {sub.subtitle}
                         </p>
                       )}

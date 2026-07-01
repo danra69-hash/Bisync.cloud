@@ -17,9 +17,9 @@ function AccountingOfflinePanel({ onRetry }: { onRetry: () => void }) {
           </p>
         </div>
         <div className="w-full text-left bg-muted/40 border border-border rounded-md px-4 py-3 space-y-2">
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Local setup</p>
-          <code className="block text-[11px] font-mono text-foreground">dotnet run --project src/Bisync.Api</code>
-          <p className="text-[10px] text-muted-foreground">API at http://localhost:5299</p>
+          <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Local setup</p>
+          <code className="block text-[11px] font-sans text-foreground">dotnet run --project src/Bisync.Api</code>
+          <p className="text-xs text-muted-foreground">API at http://localhost:5299</p>
         </div>
         <button
           onClick={onRetry}
@@ -47,7 +47,7 @@ export function AccountingPage({ selectedCompanyId = null }: { selectedCompanyId
   if (status === 'checking') {
     return (
       <div className="flex-1 flex items-center justify-center p-12">
-        <p className="text-xs text-muted-foreground font-mono">Loading Accounting…</p>
+        <p className="text-xs text-muted-foreground font-sans">Loading Accounting…</p>
       </div>
     );
   }

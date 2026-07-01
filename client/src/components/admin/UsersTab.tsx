@@ -112,7 +112,7 @@ function UserLocationMultiSelect({
       )}
 
       {locations.length === 0 && !disabled && (
-        <p className="text-[10px] text-muted-foreground mt-1">No locations for this company yet.</p>
+        <p className="text-xs text-muted-foreground mt-1">No locations for this company yet.</p>
       )}
     </div>
   );
@@ -133,10 +133,10 @@ function RmsAccessPanel({
       <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b border-border">
         <div>
           <p className="text-xs font-semibold">RMS</p>
-          <p className="text-[10px] text-muted-foreground">Revenue Management permissions</p>
+          <p className="text-xs text-muted-foreground">Revenue Management permissions</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-muted-foreground uppercase">Enable</span>
+          <span className="text-xs font-sans text-muted-foreground uppercase">Enable</span>
           <ToggleSwitch
             checked={rms.enabled}
             disabled={disabled}
@@ -153,12 +153,12 @@ function RmsAccessPanel({
           return (
             <div key={group.id}>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{group.label}</p>
+                <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">{group.label}</p>
                 <button
                   type="button"
                   disabled={tasksDisabled}
                   onClick={() => onChange(setRmsGroup(access, group.id, !allOn))}
-                  className="text-[10px] font-mono text-primary hover:underline disabled:pointer-events-none"
+                  className="text-xs font-sans text-primary hover:underline disabled:pointer-events-none"
                 >
                   {allOn ? 'Clear all' : someOn ? 'Select all' : 'Select all'}
                 </button>
@@ -195,7 +195,7 @@ function ModulePlaceholder({ module }: { module: AccessModule }) {
   return (
     <div className="border border-dashed border-border rounded-lg px-4 py-6 text-center">
       <p className="text-xs font-semibold">{meta.label}</p>
-      <p className="text-[10px] text-muted-foreground mt-1">{meta.description} permissions — coming soon</p>
+      <p className="text-xs text-muted-foreground mt-1">{meta.description} permissions — coming soon</p>
     </div>
   );
 }
@@ -301,7 +301,7 @@ function UserPanel({
       <div className={SIDE_PANEL_SHELL_WIDE_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">User</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">User</p>
             <h3 className="text-sm font-semibold">{isNew ? 'Grant Platform Access' : form.fullName}</h3>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted"><X size={14} className="text-muted-foreground" /></button>
@@ -310,7 +310,7 @@ function UserPanel({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {!lockEmployee && (
             <div className="rounded-md bg-muted/30 border border-border px-3 py-2">
-              <p className="text-[10px] font-mono text-muted-foreground">
+              <p className="text-xs font-sans text-muted-foreground">
                 Employees are created in Human Resources first. Select an employee below, then assign company, locations, and module access.
               </p>
             </div>
@@ -318,7 +318,7 @@ function UserPanel({
 
           {isNew && !lockEmployee && (
             <div className="space-y-2">
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Employee *</label>
               <select
                 className={selectCls}
                 value={form.employeeId ?? ''}
@@ -332,25 +332,25 @@ function UserPanel({
                 ))}
               </select>
               {availableEmployees.length === 0 && (
-                <p className="text-[10px] text-muted-foreground">All employees already have access, or none exist yet. Add employees in Human Resources.</p>
+                <p className="text-xs text-muted-foreground">All employees already have access, or none exist yet. Add employees in Human Resources.</p>
               )}
             </div>
           )}
 
           <div className="space-y-3">
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Full Name</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Full Name</label>
             <input className={inputCls} value={form.fullName} readOnly={profileLocked} onChange={e => set('fullName', e.target.value)} placeholder="From employee record" />
 
-            <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Email</label>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Email</label>
             <input type="email" className={inputCls} value={form.email} readOnly={profileLocked} onChange={e => set('email', e.target.value)} placeholder="From employee record" />
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Role</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Role</label>
                 <input className={inputCls} value={form.role} readOnly={profileLocked} onChange={e => set('role', e.target.value)} placeholder="From employee record" />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Phone</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Phone</label>
                 <input className={inputCls} value={form.phone} readOnly={profileLocked} onChange={e => set('phone', e.target.value)} placeholder="From employee record" />
               </div>
             </div>
@@ -363,8 +363,8 @@ function UserPanel({
 
           <div className="space-y-3">
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Company *</label>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Each user belongs to exactly one company.</p>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company *</label>
+              <p className="text-xs text-muted-foreground mt-0.5">Each user belongs to exactly one company.</p>
             </div>
             <select
               className={selectCls}
@@ -378,8 +378,8 @@ function UserPanel({
             </select>
 
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Locations</label>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Select one or more locations within the company.</p>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Locations</label>
+              <p className="text-xs text-muted-foreground mt-0.5">Select one or more locations within the company.</p>
             </div>
             <UserLocationMultiSelect
               locations={companyLocations}
@@ -393,7 +393,7 @@ function UserPanel({
                   const loc = companyLocations.find(l => l.id === id);
                   if (!loc) return null;
                   return (
-                    <span key={id} className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-muted border border-border">
+                    <span key={id} className="inline-flex items-center gap-1 text-xs font-sans px-2 py-0.5 rounded bg-muted border border-border">
                       {loc.name}
                       <button type="button" onClick={() => setLocationIds(selectedLocationIds.filter(x => x !== id))} className="text-muted-foreground hover:text-foreground">
                         <X size={10} />
@@ -407,8 +407,8 @@ function UserPanel({
 
           <div className="space-y-3">
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Access</label>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Select one or more modules. Permission panels appear below.</p>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Access</label>
+              <p className="text-xs text-muted-foreground mt-0.5">Select one or more modules. Permission panels appear below.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {ACCESS_MODULES.map(m => {
@@ -440,11 +440,11 @@ function UserPanel({
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button onClick={onClose} className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
+          <button onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
           <button
             onClick={save}
             disabled={!canSave}
-            className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
           >
             {isNew ? 'Grant Access' : 'Save Changes'}
           </button>
@@ -512,7 +512,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Employee ID', 'Name', 'Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
+                  <th key={h} className="text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -523,10 +523,10 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
                   className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
                   onClick={() => { setIsNew(false); setEditUser(u); }}
                 >
-                  <td className="px-4 py-3 font-mono text-muted-foreground">{u.employeeCode || '—'}</td>
+                  <td className="px-4 py-3 font-sans text-muted-foreground">{u.employeeCode || '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold">
+                      <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold">
                         {u.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
                       </div>
                       <span className="font-medium">{u.fullName}</span>
@@ -550,7 +550,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
                     <div className="flex flex-wrap gap-1">
                       {accessBadges(u.accessJson).length > 0 ? (
                         accessBadges(u.accessJson).map(m => (
-                          <span key={m} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">{m}</span>
+                          <span key={m} className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/10 text-primary">{m}</span>
                         ))
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -558,7 +558,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${u.active ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
+                    <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${u.active ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
                       {u.active ? 'Active' : 'Inactive'}
                     </span>
                   </td>

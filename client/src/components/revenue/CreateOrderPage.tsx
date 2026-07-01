@@ -13,7 +13,7 @@ import { ingredientToRow } from './smartIngredientShared';
 import { OrderCartModal } from './OrderCartModal';
 
 const thCls =
-  'text-left px-3 py-2.5 text-[9px] font-mono uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
+  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
 type Props = {
@@ -117,7 +117,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
   return (
     <div className="p-6 space-y-4">
       <div>
-        <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
+        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
         <h2 className="text-lg font-semibold">Create Order</h2>
         <p className="text-xs text-muted-foreground mt-1">
           Build purchase orders from smart components, tagged vendor products, and usage-based par levels.
@@ -168,7 +168,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
               />
             </div>
 
-            <p className="text-[10px] font-mono text-muted-foreground">
+            <p className="text-xs font-sans text-muted-foreground">
               {lines.length} line{lines.length !== 1 ? 's' : ''}
             </p>
 
@@ -182,7 +182,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
               <ShoppingCart size={16} className="text-primary" />
               <span>My Carte</span>
               {cartCount > 0 && (
-                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shadow-sm">
+                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shadow-sm">
                   {cartCount}
                 </span>
               )}
@@ -214,34 +214,34 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
                 <tbody>
                   {lines.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-10 text-center text-xs text-muted-foreground font-mono">
+                      <td colSpan={11} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                         No components match the selected filters.
                       </td>
                     </tr>
                   ) : lines.map(line => (
                     <tr key={line.key} className="hover:bg-muted/20">
-                      <td className={`${tdCls} font-mono text-muted-foreground`}>{line.component.componentId || '—'}</td>
+                      <td className={`${tdCls} font-sans text-muted-foreground`}>{line.component.componentId || '—'}</td>
                       <td className={tdCls}>
                         <p className="font-medium text-foreground">{line.component.name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{line.component.category} · {line.component.group}</p>
+                        <p className="text-xs text-muted-foreground font-sans">{line.component.category} · {line.component.group}</p>
                       </td>
-                      <td className={`${tdCls} font-mono text-muted-foreground`}>—</td>
-                      <td className={`${tdCls} font-mono text-muted-foreground`}>
+                      <td className={`${tdCls} font-sans text-muted-foreground`}>—</td>
+                      <td className={`${tdCls} font-sans text-muted-foreground`}>
                         {line.component.dailyUsage > 0
                           ? `${line.component.dailyUsage} ${line.parStockUom}/day`
                           : '—'}
                       </td>
-                      <td className={`${tdCls} font-mono text-foreground`}>
+                      <td className={`${tdCls} font-sans text-foreground`}>
                         {line.parStock > 0 ? `${line.parStock.toFixed(2)} ${line.parStockUom}` : '—'}
                       </td>
                       <td className={tdCls}>
                         {line.suggestedDeliveryUnits === null ? (
-                          <span className="font-mono text-muted-foreground">—</span>
+                          <span className="font-sans text-muted-foreground">—</span>
                         ) : (
                           <button
                             type="button"
                             onClick={() => applySuggested(line)}
-                            className="font-mono text-primary hover:underline"
+                            className="font-sans text-primary hover:underline"
                             title="Click to apply to order quantity"
                           >
                             {line.suggestedDeliveryUnits} {line.deliveryUnitLabel}
@@ -250,10 +250,10 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
                       </td>
                       <td className={tdCls}>
                         <p className="font-medium">{line.vendorProduct.productName}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{line.vendorProduct.vendorName}</p>
+                        <p className="text-xs text-muted-foreground font-sans">{line.vendorProduct.vendorName}</p>
                       </td>
-                      <td className={`${tdCls} font-mono text-muted-foreground`}>{line.deliveryUnitLabel}</td>
-                      <td className={`${tdCls} font-mono text-foreground`}>{formatRm(line.deliveryPrice)}</td>
+                      <td className={`${tdCls} font-sans text-muted-foreground`}>{line.deliveryUnitLabel}</td>
+                      <td className={`${tdCls} font-sans text-foreground`}>{formatRm(line.deliveryPrice)}</td>
                       <td className={tdCls}>
                         <input
                           type="number"
@@ -262,10 +262,10 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
                           value={orderQtyByKey[line.key] ?? ''}
                           onChange={e => setOrderQty(line.key, e.target.value)}
                           placeholder="0"
-                          className="w-20 bg-background border border-border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                          className="w-20 bg-background border border-border rounded px-2 py-1 text-xs font-sans focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </td>
-                      <td className={`${tdCls} font-mono font-semibold text-foreground`}>
+                      <td className={`${tdCls} font-sans font-semibold text-foreground`}>
                         {lineTotal(line) > 0 ? formatRm(lineTotal(line)) : '—'}
                       </td>
                     </tr>
@@ -274,10 +274,10 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
                 {lines.length > 0 && (
                   <tfoot>
                     <tr className="bg-muted/20 border-t border-border">
-                      <td colSpan={10} className="px-3 py-3 text-right text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                      <td colSpan={10} className="px-3 py-3 text-right text-xs font-sans uppercase tracking-wider text-muted-foreground">
                         Grand Total
                       </td>
-                      <td className="px-3 py-3 font-mono font-semibold text-sm text-foreground">
+                      <td className="px-3 py-3 font-sans font-semibold text-sm text-foreground">
                         {grandTotal > 0 ? formatRm(grandTotal) : '—'}
                       </td>
                     </tr>

@@ -47,23 +47,23 @@ export function VendorProductsPanel({ vendor, selectedCompanyId, onClose, onVend
       <div className={SIDE_PANEL_SHELL_VENDOR_PRODUCTS_CLS} onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">Vendor Products</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Vendor Products</p>
             <div className="flex flex-wrap items-center gap-2 mt-0.5">
               <h3 className="text-sm font-semibold text-foreground">{panelVendor.name}</h3>
               {panelVendor.engaged ? (
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">Engaged</span>
+                <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">Engaged</span>
               ) : (
                 <button
                   type="button"
                   onClick={() => setEngageVendorRequest(panelVendor)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-primary text-primary-foreground"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-primary text-primary-foreground"
                 >
                   <UserPlus size={11} />
                   Engage Vendor
                 </button>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {panelVendor.externalId} · {panelVendor.products || '—'}
             </p>
           </div>
@@ -73,7 +73,7 @@ export function VendorProductsPanel({ vendor, selectedCompanyId, onClose, onVend
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4">
-          <p className="text-[10px] text-muted-foreground mb-3">
+          <p className="text-xs text-muted-foreground mb-3">
             Tag vendor products to smart components for purchase and inventory tracking. Engage the vendor first if Tag prompts engagement.
           </p>
 

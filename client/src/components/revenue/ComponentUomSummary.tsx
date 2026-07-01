@@ -35,12 +35,12 @@ export function ComponentUomSummary({
     <div className="space-y-3 rounded-md border border-border bg-muted/20 px-3 py-3">
       {hasAltRecipe && (
         <div>
-          <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">
+          <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground mb-1">
             Alternate Component UOM{altRecipeUnits.length > 1 ? 's' : ''}
           </p>
           <ul className="space-y-1">
             {altRecipeUnits.map((au, i) => (
-              <li key={i} className="text-[10px] font-mono text-foreground">
+              <li key={i} className="text-xs font-sans text-foreground">
                 {formatAltLine(au, recipeUnit)}
               </li>
             ))}
@@ -50,10 +50,10 @@ export function ComponentUomSummary({
 
       {showInventoryConversion && (
         <div>
-          <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">
+          <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground mb-1">
             Principal Conversion Reference
           </p>
-          <p className="text-[10px] font-mono text-foreground">
+          <p className="text-xs font-sans text-foreground">
             {convertFromInventoryQty?.trim() || '1'} {inventoryUnit} = {convertToRecipeQty?.trim() || '—'} {recipeUnit}
           </p>
         </div>
@@ -62,12 +62,12 @@ export function ComponentUomSummary({
 
       {hasAltInventory && (
         <div>
-          <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground mb-1">
+          <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground mb-1">
             Alternate Inventory UOM{altInventoryUnits.length > 1 ? 's' : ''}
           </p>
           <ul className="space-y-1">
             {altInventoryUnits.map((au, i) => (
-              <li key={i} className="text-[10px] font-mono text-foreground">
+              <li key={i} className="text-xs font-sans text-foreground">
                 {formatAltLine(au, inventoryUnit)}
               </li>
             ))}

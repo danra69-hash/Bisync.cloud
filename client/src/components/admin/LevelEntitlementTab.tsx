@@ -71,7 +71,7 @@ function LevelPanel({
       <div className={SIDE_PANEL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-0.5">Employee Level</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Employee Level</p>
             <h3 className="text-sm font-semibold">{isNew ? 'New Level' : form.levelName}</h3>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted">
@@ -88,7 +88,7 @@ function LevelPanel({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Level Name *</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Level Name *</label>
               <input
                 className={`${inputCls} mt-1`}
                 value={form.levelName}
@@ -97,19 +97,19 @@ function LevelPanel({
               />
             </div>
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Annual Leave</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Annual Leave</label>
               <input type="number" min="0" className={`${inputCls} mt-1`} value={form.annualLeaveDays} onChange={e => setForm({ ...form, annualLeaveDays: parseInt(e.target.value) || 0 })} />
             </div>
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Sick Leave</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Sick Leave</label>
               <input type="number" min="0" className={`${inputCls} mt-1`} value={form.sickLeaveDays} onChange={e => setForm({ ...form, sickLeaveDays: parseInt(e.target.value) || 0 })} />
             </div>
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Hours/Day</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Hours/Day</label>
               <input type="number" min="0" step="0.5" className={`${inputCls} mt-1`} value={form.workingHoursPerDay} onChange={e => setForm({ ...form, workingHoursPerDay: parseFloat(e.target.value) || 0 })} />
             </div>
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Break/Shift</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Break/Shift</label>
               <input type="number" min="0" step="0.5" className={`${inputCls} mt-1`} value={form.breakHoursPerShift} onChange={e => setForm({ ...form, breakHoursPerShift: parseFloat(e.target.value) || 0 })} />
             </div>
           </div>
@@ -135,14 +135,14 @@ function LevelPanel({
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button type="button" onClick={onClose} className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
             Cancel
           </button>
           <button
             type="button"
             onClick={() => void save()}
             disabled={saving || !form.levelName.trim()}
-            className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
           >
             {isNew ? 'Add Level' : 'Save Changes'}
           </button>
@@ -222,7 +222,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
               {['Level', 'Annual', 'Sick', 'Hrs/Day', 'Break', 'Shift', 'OT', 'PH', 'Active'].map(h => (
                 <th
                   key={h}
-                  className={`px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground ${
+                  className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${
                     h === 'Active' ? 'text-center' : 'text-left'
                   }`}
                 >

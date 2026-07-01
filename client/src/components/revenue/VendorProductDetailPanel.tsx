@@ -26,7 +26,7 @@ type Props = {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</label>
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
       {children}
     </div>
   );
@@ -40,7 +40,7 @@ function qtyInput(value: number, onChange: (n: number) => void) {
       step={1}
       value={value}
       onChange={e => onChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
-      className={`${inputCls} w-20 font-mono`}
+      className={`${inputCls} w-20 font-sans`}
     />
   );
 }
@@ -52,7 +52,7 @@ function unitInput(value: string, options: string[], onChange: (unit: string) =>
         list={listId}
         value={value}
         onChange={e => onChange(e.target.value)}
-        className={`${inputCls} w-28 font-mono`}
+        className={`${inputCls} w-28 font-sans`}
       />
       <datalist id={listId}>
         {options.map(u => (
@@ -133,9 +133,9 @@ export function VendorProductDetailPanel({ product, elevated = false, onClose, o
       <div className={shellCls} onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">Vendor Product</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Vendor Product</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5 truncate">{product.productName}</h3>
-            <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{product.id} · {product.vendorName}</p>
+            <p className="text-xs text-muted-foreground font-sans mt-0.5">{product.id} · {product.vendorName}</p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted transition-colors shrink-0">
             <X size={14} className="text-muted-foreground" />
@@ -153,23 +153,23 @@ export function VendorProductDetailPanel({ product, elevated = false, onClose, o
 
           <div className="space-y-3">
             <Field label="Delivery Unit">
-              <p className="text-sm font-mono font-medium text-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
+              <p className="text-sm font-sans font-medium text-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
                 {detailPath}
               </p>
             </Field>
 
             <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
-              <p className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground">Breakdown</p>
+              <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">Breakdown</p>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] text-muted-foreground w-16 shrink-0">Order</span>
+                <span className="text-xs text-muted-foreground w-16 shrink-0">Order</span>
                 {qtyInput(delivery.orderQty, orderQty => patchDelivery({ orderQty }))}
                 {unitInput(delivery.orderUnit, DELIVERY_ORDER_UNITS, orderUnit => patchDelivery({ orderUnit }), 'vp-order-units')}
               </div>
 
               {(hasPackLevel || levels.firstBreakdown) && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground w-16 shrink-0">Pack</span>
+                  <span className="text-xs text-muted-foreground w-16 shrink-0">Pack</span>
                   {qtyInput(delivery.packQty, packQty => patchDelivery({ packQty }))}
                   {unitInput(delivery.packUnit, DELIVERY_ORDER_UNITS, packUnit => patchDelivery({ packUnit }), 'vp-pack-units')}
                 </div>
@@ -177,7 +177,7 @@ export function VendorProductDetailPanel({ product, elevated = false, onClose, o
 
               {needsSecondLevel && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground w-16 shrink-0">Unit</span>
+                  <span className="text-xs text-muted-foreground w-16 shrink-0">Unit</span>
                   {qtyInput(delivery.unitQty, unitQty => patchDelivery({ unitQty }))}
                   {unitInput(delivery.unitUnit, DELIVERY_ORDER_UNITS, unitUnit => patchDelivery({ unitUnit }), 'vp-unit-units')}
                 </div>
@@ -195,19 +195,19 @@ export function VendorProductDetailPanel({ product, elevated = false, onClose, o
                 step={0.01}
                 value={deliveryPrice}
                 onChange={e => setDeliveryPrice(e.target.value)}
-                className={`${inputCls} pl-7 font-mono`}
+                className={`${inputCls} pl-7 font-sans`}
               />
             </div>
           </Field>
         </div>
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
-          {saveError && <p className="text-[10px] text-red-500 text-right">{saveError}</p>}
+          {saveError && <p className="text-xs text-red-500 text-right">{saveError}</p>}
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={downloadTemplateCsv}
-              className="inline-flex items-center gap-1.5 text-xs font-mono text-muted-foreground border border-border rounded-md px-3 py-2 hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-sans text-muted-foreground border border-border rounded-md px-3 py-2 hover:text-foreground transition-colors"
             >
               <FilePlus2 size={12} />
               Download Template CSV
@@ -216,7 +216,7 @@ export function VendorProductDetailPanel({ product, elevated = false, onClose, o
             <button
               type="button"
               onClick={onClose}
-              className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors"
+              className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors"
             >
               Cancel
             </button>
@@ -224,7 +224,7 @@ export function VendorProductDetailPanel({ product, elevated = false, onClose, o
               type="button"
               onClick={handleSave}
               disabled={!productName.trim()}
-              className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               Save
             </button>

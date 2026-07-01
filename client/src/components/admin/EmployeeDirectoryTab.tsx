@@ -8,7 +8,7 @@ import { OrgSelectFields } from './OrgSelectFields';
 import { selectableEmployeeLevels } from './employeeTabShared';
 import { ToggleSwitch } from './ToggleSwitch';
 
-const thCls = 'text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground font-normal';
+const thCls = 'text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
 
 type EmployeeFormData = {
   name: string;
@@ -124,7 +124,7 @@ export function EmployeeDirectoryTab({
               ['Join Date', 'joinDate', 'date', ''],
             ] as const).map(([label, key, type, placeholder]) => (
               <div key={key}>
-                <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</label>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
                 <input
                   type={type}
                   required
@@ -153,7 +153,7 @@ export function EmployeeDirectoryTab({
             />
 
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Employee Level</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Employee Level</label>
               <select
                 value={formData.employeeLevelId ?? ''}
                 onChange={e => setField('employeeLevelId', e.target.value ? Number(e.target.value) : null)}
@@ -167,7 +167,7 @@ export function EmployeeDirectoryTab({
             </div>
 
             <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Reports To</label>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Reports To</label>
               <select
                 value={formData.reportsToId ?? ''}
                 onChange={e => setField('reportsToId', e.target.value ? Number(e.target.value) : null)}
@@ -185,21 +185,21 @@ export function EmployeeDirectoryTab({
             <button
               type="button"
               onClick={onCloseForm}
-              className="text-xs font-mono border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground"
+              className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onSubmitWithGrantAccess}
-              className="flex items-center gap-1.5 text-xs font-mono border border-border rounded-md px-4 py-2 hover:bg-muted"
+              className="flex items-center gap-1.5 text-xs font-sans border border-border rounded-md px-4 py-2 hover:bg-muted"
             >
               <Plus size={12} /> Grant Access
             </button>
             <button
               type="button"
               onClick={onSubmit}
-              className="text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2"
+              className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2"
             >
               Add Employee
             </button>
@@ -226,10 +226,10 @@ export function EmployeeDirectoryTab({
                   key={employee.id}
                   className={`border-b border-border last:border-0 hover:bg-muted/20 ${employee.active === false ? 'opacity-60' : ''}`}
                 >
-                  <td className="px-4 py-3 font-mono text-muted-foreground">{employee.employeeCode}</td>
+                  <td className="px-4 py-3 font-sans text-muted-foreground">{employee.employeeCode}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                         {initials(employee.name)}
                       </div>
                       <div className="min-w-0">
@@ -253,7 +253,7 @@ export function EmployeeDirectoryTab({
                   <td className="px-4 py-3">{employee.position}</td>
                   <td className="px-4 py-3">
                     {levelName(employee.employeeLevelId) ? (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                      <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                         {levelName(employee.employeeLevelId)}
                       </span>
                     ) : (
@@ -275,18 +275,18 @@ export function EmployeeDirectoryTab({
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {modules.length > 0 ? modules.map(m => (
-                          <span key={m} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">{m}</span>
+                          <span key={m} className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/10 text-primary">{m}</span>
                         )) : (
                           <span className="text-muted-foreground">No modules</span>
                         )}
                         {!user.active && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Inactive</span>
+                          <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Inactive</span>
                         )}
                       </div>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                       {checkinMethodLabel(employee.checkinMethod ?? 'Biometrics')}
                     </span>
                   </td>

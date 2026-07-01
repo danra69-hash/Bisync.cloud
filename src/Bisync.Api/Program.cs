@@ -48,12 +48,24 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseCors("DevCors");
+}
+else
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
 }
 
-app.UseCors("DevCors");
 app.UseHttpsRedirection();
 app.MapControllers();
 
-app.MapGet("/", () => Results.Redirect("/api/health"));
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/", () => Results.Redirect("/api/health"));
+}
+else
+{
+    app.MapFallbackToFile("index.html");
+}
 
 app.Run();

@@ -65,7 +65,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
     <div className="flex flex-col gap-1">
 
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{label}</label>
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
 
       {children}
 
@@ -454,7 +454,7 @@ export function VendorProductTagModal({
 
           <div className="min-w-0">
 
-            <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">
 
               {selectedRow ? 'Configure & Tag' : 'Select Smart Component'}
 
@@ -462,7 +462,7 @@ export function VendorProductTagModal({
 
             <h3 className="text-sm font-semibold text-foreground mt-0.5">{product.productName}</h3>
 
-            <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{product.id} · ${product.deliveryPrice.toFixed(2)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 font-sans">{product.id} · ${product.deliveryPrice.toFixed(2)}</p>
 
           </div>
 
@@ -482,7 +482,7 @@ export function VendorProductTagModal({
 
             <div className="px-5 py-3 border-b border-border space-y-3 shrink-0">
 
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
 
                 Select a smart component, then fill in principal UOM qty, yield %, and location before confirming the tag.
 
@@ -492,7 +492,7 @@ export function VendorProductTagModal({
 
                 <div className="flex flex-col gap-1 min-w-[100px]">
 
-                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Category</label>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Category</label>
 
                   <select className={selectCls} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
 
@@ -504,7 +504,7 @@ export function VendorProductTagModal({
 
                 <div className="flex flex-col gap-1 min-w-[100px]">
 
-                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Group</label>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Group</label>
 
                   <select className={selectCls} value={grpFilter} onChange={e => setGrpFilter(e.target.value)}>
 
@@ -516,7 +516,7 @@ export function VendorProductTagModal({
 
                 <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
 
-                  <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Search</label>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Search</label>
 
                   <div className="relative">
 
@@ -572,7 +572,7 @@ export function VendorProductTagModal({
 
                         <p className="text-sm font-semibold text-foreground">{row.name}</p>
 
-                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                        <p className="text-xs text-muted-foreground font-sans mt-0.5">
 
                           {row.componentId} · {row.category} · {row.group} · {fromApiUom(row.recipeUOM)} / {fromApiUom(row.inventoryUOM)}
 
@@ -606,7 +606,7 @@ export function VendorProductTagModal({
 
                 disabled={saving}
 
-                className="inline-flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground mb-2"
+                className="inline-flex items-center gap-1 text-xs font-sans text-muted-foreground hover:text-foreground mb-2"
 
               >
 
@@ -616,7 +616,7 @@ export function VendorProductTagModal({
 
               <p className="text-sm font-semibold text-foreground">{selectedRow.name}</p>
 
-              <p className="text-[10px] text-muted-foreground font-mono">{selectedRow.componentId}</p>
+              <p className="text-xs text-muted-foreground font-sans">{selectedRow.componentId}</p>
 
             </div>
 
@@ -747,7 +747,7 @@ export function VendorProductTagModal({
 
                 <div>
 
-                  <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1">
+                  <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">
 
                     Storage Location (required)
 
@@ -801,7 +801,7 @@ export function VendorProductTagModal({
 
                       onClick={() => setStorages([...storages, STORAGE_OPTIONS.find(o => !storages.includes(o)) ?? STORAGE_OPTIONS[0]])}
 
-                      className="text-[10px] font-mono text-primary hover:underline"
+                      className="text-xs font-sans text-primary hover:underline"
 
                     >
 
@@ -817,11 +817,11 @@ export function VendorProductTagModal({
 
 
 
-              {error && <p className="text-[10px] text-red-500">{error}</p>}
+              {error && <p className="text-xs text-red-500">{error}</p>}
 
               {!tagReady.ready && !error && (
 
-                <p className="text-[10px] text-muted-foreground">{tagReady.reason}</p>
+                <p className="text-xs text-muted-foreground">{tagReady.reason}</p>
 
               )}
 
@@ -839,7 +839,7 @@ export function VendorProductTagModal({
 
                 disabled={saving}
 
-                className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors disabled:opacity-50"
+                className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors disabled:opacity-50"
 
               >
 
@@ -855,7 +855,7 @@ export function VendorProductTagModal({
 
                 disabled={saving || !tagReady.ready || (needsStorage && storages.every(s => !s.trim()))}
 
-                className="inline-flex items-center gap-1.5 text-xs font-mono bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
 
               >
 
@@ -883,7 +883,7 @@ export function VendorProductTagModal({
 
               onClick={onClose}
 
-              className="text-xs font-mono text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors"
+              className="text-xs font-sans text-muted-foreground border border-border rounded-md px-4 py-2 hover:text-foreground transition-colors"
 
             >
 

@@ -17,7 +17,7 @@ export function ProgressPanel({ progress }: { progress: ProgressData | null }) {
       <div className="space-y-4">
         {progress.milestones.map(phase => (
           <div key={phase.phase}>
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">{phase.phase}</p>
+            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground mb-2">{phase.phase}</p>
             <div className="space-y-2">
               {phase.items.map(item => (
                 <div key={item.id} className="flex items-center gap-3 text-xs">
@@ -26,7 +26,7 @@ export function ProgressPanel({ progress }: { progress: ProgressData | null }) {
                     item.status === 'in_progress' ? 'bg-primary' : 'bg-muted-foreground/40'
                   }`} />
                   <span className="flex-1">{item.title}</span>
-                  <span className="font-mono text-muted-foreground">{item.progressPercent}%</span>
+                  <span className="font-sans text-muted-foreground">{item.progressPercent}%</span>
                 </div>
               ))}
             </div>

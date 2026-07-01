@@ -191,3 +191,16 @@ export function rmsGroupSomeEnabled(access: UserAccess, groupId: string): boolea
   const tasks = access.rms?.tasks ?? {};
   return group.tasks.some(t => tasks[t.id]);
 }
+
+export const RMS_APPROVE_ORDER_TASK = 'approveOrder';
+
+export function hasRmsTask(access: UserAccess, taskId: string): boolean {
+  if (!hasModule(access, 'RMS')) return false;
+  const rms = access.rms;
+  if (!rms?.enabled) return false;
+  return !!rms.tasks[taskId];
+}
+
+export function canApprovePurchaseOrder(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_APPROVE_ORDER_TASK);
+}
