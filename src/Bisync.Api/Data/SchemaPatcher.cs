@@ -75,6 +75,12 @@ public static class SchemaPatcher
         await EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedAt", "TEXT");
         await EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedBy", "TEXT NOT NULL DEFAULT ''");
 
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE PurchaseOrders
+            SET DocumentType = 'PR'
+            WHERE Status = 'Pending Approval' AND DocumentType = 'PO';
+            """);
+
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentId", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentName", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentUom", "TEXT NOT NULL DEFAULT ''");

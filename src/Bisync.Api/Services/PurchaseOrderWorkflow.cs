@@ -17,8 +17,14 @@ public static class PurchaseOrderWorkflow
     public static bool IsActive(PurchaseOrder order) =>
         !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsPendingApprovalStatus(string? status)
+    {
+        var normalized = status?.Trim() ?? string.Empty;
+        return string.Equals(normalized, StatusPendingApproval, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool CanApprove(PurchaseOrder order) =>
-        string.Equals(order.Status, StatusPendingApproval, StringComparison.OrdinalIgnoreCase);
+        IsPendingApprovalStatus(order.Status);
 
     public static bool CanVendorAccept(PurchaseOrder order) =>
         order.VendorAcceptedAt is null
@@ -76,15 +82,21 @@ public static class PurchaseOrderWorkflow
     public static string SerializeLocationIds(IEnumerable<string> locationIds) =>
         JsonSerializer.Serialize(locationIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.OrdinalIgnoreCase));
 
-    public static object MapOrder(PurchaseOrder order) => new
+    public static object MapOrder(PurchaseOrder order)
+    {
+        var documentType = IsPendingApprovalStatus(order.Status)
+            ? DocumentTypePr
+            : order.DocumentType;
+
+        return new
     {
         order.Id,
         poNumber = order.PoNumber,
         vendorName = order.VendorName,
         orderDate = order.OrderDate,
         deliveryDate = order.DeliveryDate,
-        documentType = order.DocumentType,
-        status = order.Status,
+        documentType,
+        status = order.Status?.Trim() ?? string.Empty,
         companyId = order.CompanyId,
         locationExternalIds = DeserializeLocationIds(order.LocationIdsJson),
         initiatedBy = order.InitiatedBy,
@@ -100,6 +112,7 @@ public static class PurchaseOrderWorkflow
         canReconcile = CanReconcile(order),
         items = order.Items.Select(MapItem).ToList(),
     };
+    }
 
     public static object MapItem(PurchaseOrderItem item) => new
     {

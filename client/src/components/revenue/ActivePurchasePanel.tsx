@@ -76,9 +76,10 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     [currentUser],
   );
 
-  const isPendingApproval = order.status === 'Pending Approval';
+  const isPendingApproval = order.status === 'Pending Approval' || order.canApprove === true;
   const isPurchaseRequest = order.documentType === 'PR' || isPendingApproval;
   const showVendorShareLink = !isPurchaseRequest;
+  const approvalBlockedByServer = isPendingApproval && order.canApprove === false;
 
   const mode: 'approve' | 'receive' | 'reconcile' | 'view' = isPendingApproval
     ? 'approve'
@@ -136,7 +137,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose, saving]);
 
-  const canApprove = Boolean(access && canApprovePurchaseOrder(access) && isPendingApproval);
+  const canApprove = Boolean(access && canApprovePurchaseOrder(access) && isPendingApproval && !approvalBlockedByServer);
   const canReceive = Boolean(access && canReceivePurchaseOrder(access) && order.canReceive);
   const canReconcile = Boolean(access && (canReceivePurchaseOrder(access) || canApprovePurchaseOrder(access)) && order.canReconcile);
   const readOnly = mode === 'view' || (mode === 'approve' && !canApprove) || (mode === 'receive' && !canReceive) || (mode === 'reconcile' && !canReconcile);
@@ -180,7 +181,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       const updated = await api.approvePurchaseOrder(order.id, currentUser.fullName);
       onUpdated(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to approve purchase request.');
+      const message = e instanceof Error ? e.message : 'Failed to approve purchase request.';
+      setError(
+        approvalBlockedByServer || message.includes('Only pending purchase requests')
+          ? 'Approval is blocked by an outdated API. Restart the API (dotnet run in src/Bisync.Api) or use the deployed site.'
+          : message,
+      );
     } finally {
       setSaving(false);
     }
@@ -440,6 +446,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               </table>
             </div>
           </div>
+
+          {approvalBlockedByServer && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+              This purchase request shows Pending Approval, but the API cannot approve it yet. Restart your local API with the latest code.
+            </div>
+          )}
 
           {error && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-400">
