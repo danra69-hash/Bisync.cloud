@@ -1,0 +1,34 @@
+---
+description: After implementing Bisync.cloud changes, commit, push to GitHub, and deploy to Cloud Run.
+alwaysApply: true
+---
+
+# Ship changes: commit, push, deploy
+
+When you finish **implementing** changes in this repo (features, fixes, refactors), complete the full release workflow unless the user opts out or there is nothing to commit.
+
+## Workflow
+
+1. **Verify** — Run a quick build check when practical (`client`: `npm run build`; API: `dotnet build`).
+2. **Commit** — Stage relevant files only; never commit secrets (`.env`, credentials).
+3. **Push** — `git push origin master` (or the branch the user is working on).
+4. **Deploy** — From repo root:
+   ```powershell
+   .\scripts\deploy-gcp.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
+   ```
+5. **Verify cloud** — Confirm `GET /api/health` returns 200 on the live URL.
+
+## Skip when
+
+- User asks a question only (no code changes).
+- User explicitly says not to commit, push, or deploy.
+- Working tree is clean after the task.
+
+## Project details
+
+- **GitHub:** `danra69-hash/Bisync.cloud`
+- **GCP project:** `project-8d670aa9-f439-44d9-8e1`
+- **Cloud Run:** `bisync-cloud` in `asia-southeast1`
+- **Live URL:** https://bisync-cloud-389272498937.asia-southeast1.run.app
+
+Report the commit hash, pushed branch, and live URL when done.
