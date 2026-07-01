@@ -19,7 +19,10 @@ function orderTotal(order: PurchaseOrder): number {
   return order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 }
 
-function statusBadge(status: string, documentType: string) {
+function statusBadge(status: string, documentType: string, vendorAcceptedAt?: string | null) {
+  if (vendorAcceptedAt) {
+    return <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">Vendor Accepted</span>;
+  }
   const label = documentType === 'PR' ? `PR · ${status}` : status;
   const normalized = status.toLowerCase();
   let cls = 'bg-muted text-muted-foreground';
@@ -182,7 +185,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                     <td className={`${tdCls} font-sans text-muted-foreground`}>{order.deliveryDate}</td>
                     <td className={tdCls}>{order.items.length}</td>
                     <td className={`${tdCls} font-sans`}>{formatRm(orderTotal(order))}</td>
-                    <td className={tdCls}>{statusBadge(order.status, order.documentType)}</td>
+                    <td className={tdCls}>{statusBadge(order.status, order.documentType, order.vendorAcceptedAt)}</td>
                     <td className={tdCls}>
                       <span className="text-xs font-medium text-primary">{nextActionLabel(order)}</span>
                     </td>

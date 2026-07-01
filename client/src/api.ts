@@ -207,6 +207,9 @@ export interface PurchaseOrder {
   approvedAt?: string | null;
   receivedAt?: string | null;
   reconciledAt?: string | null;
+  vendorShareToken?: string | null;
+  vendorAcceptedAt?: string | null;
+  vendorAcceptedBy?: string | null;
   canApprove?: boolean;
   canReceive?: boolean;
   canReconcile?: boolean;
@@ -257,6 +260,62 @@ export interface PurchaseOrderWorkflowPayload {
 export interface ReconcilePurchaseOrderResult {
   order: PurchaseOrder;
   updatedVendorProductPrices: { id: string; deliveryPrice: number }[];
+}
+
+export interface VendorOrderPortalItem {
+  name: string;
+  deliveryPackage: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface VendorOrderPortal {
+  id: number;
+  poNumber: string;
+  vendorName: string;
+  documentType: string;
+  documentKind: 'purchase_order' | 'purchase_request';
+  status: string;
+  orderDate: string;
+  deliveryDate: string;
+  initiatedBy: string;
+  approvedBy: string;
+  vendorAcceptedAt?: string | null;
+  vendorAcceptedBy?: string | null;
+  canAccept: boolean;
+  company: {
+    name: string;
+    brn: string;
+    gstTin: string;
+    phone: string;
+    email: string;
+    addressLine1: string;
+    addressLine2: string;
+    city: string;
+    stateProvince: string;
+    postcode: string;
+  } | null;
+  vendor: {
+    name: string;
+    brn: string;
+    address: string;
+    city: string;
+    state: string;
+    contactPerson: string;
+    contactPosition: string;
+    mobile: string;
+    email: string;
+  };
+  deliveryLocations: {
+    name: string;
+    externalId: string;
+    addressLine1: string;
+    addressLine2: string;
+    city: string;
+    stateProvince: string;
+    postcode: string;
+  }[];
+  items: VendorOrderPortalItem[];
 }
 
 export interface VendorProductPriceRow {
@@ -381,6 +440,9 @@ export const api = {
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/receive`, 'POST', payload),
   reconcilePurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
     fetchJsonWithMethod<ReconcilePurchaseOrderResult>(`/api/purchaseorders/${id}/reconcile`, 'POST', payload),
+  vendorOrderPortal: (token: string) => fetchJson<VendorOrderPortal>(`/api/vendor-orders/${token}`),
+  acceptVendorOrder: (token: string, acceptedBy?: string) =>
+    fetchJsonWithMethod<VendorOrderPortal>(`/api/vendor-orders/${token}/accept`, 'POST', { acceptedBy }),
   vendorProductPrices: () => fetchJson<VendorProductPriceRow[]>('/api/vendorproducts/prices'),
   inventoryPurchases: (companyId?: number) =>
     fetchJson<InventoryPurchase[]>(`/api/inventory/purchases${companyId ? `?companyId=${companyId}` : ''}`),

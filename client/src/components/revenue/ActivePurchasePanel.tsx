@@ -235,6 +235,14 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <p className="mt-0.5">{order.status}</p>
             </div>
             <div>
+              <p className="text-muted-foreground">Vendor acceptance</p>
+              <p className="mt-0.5">
+                {order.vendorAcceptedAt
+                  ? `Accepted by ${order.vendorAcceptedBy || order.vendorName}`
+                  : 'Pending'}
+              </p>
+            </div>
+            <div>
               <p className="text-muted-foreground">Total</p>
               <p className="font-sans font-medium mt-0.5">{formatRm(total)}</p>
             </div>

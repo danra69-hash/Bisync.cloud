@@ -18,6 +18,9 @@ public class PurchaseOrder
     public DateTime? ApprovedAt { get; set; }
     public DateTime? ReceivedAt { get; set; }
     public DateTime? ReconciledAt { get; set; }
+    public string VendorShareToken { get; set; } = string.Empty;
+    public DateTime? VendorAcceptedAt { get; set; }
+    public string VendorAcceptedBy { get; set; } = string.Empty;
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 

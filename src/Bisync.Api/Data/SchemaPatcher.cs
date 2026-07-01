@@ -71,6 +71,9 @@ public static class SchemaPatcher
         await EnsureColumnAsync(db, "PurchaseOrders", "ApprovedAt", "TEXT");
         await EnsureColumnAsync(db, "PurchaseOrders", "ReceivedAt", "TEXT");
         await EnsureColumnAsync(db, "PurchaseOrders", "ReconciledAt", "TEXT");
+        await EnsureColumnAsync(db, "PurchaseOrders", "VendorShareToken", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedAt", "TEXT");
+        await EnsureColumnAsync(db, "PurchaseOrders", "VendorAcceptedBy", "TEXT NOT NULL DEFAULT ''");
 
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentId", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentName", "TEXT NOT NULL DEFAULT ''");

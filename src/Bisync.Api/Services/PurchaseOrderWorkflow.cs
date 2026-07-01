@@ -10,6 +10,7 @@ public static class PurchaseOrderWorkflow
 
     public const string StatusPendingApproval = "Pending Approval";
     public const string StatusOpen = "Open";
+    public const string StatusConfirmed = "Confirmed";
     public const string StatusReceived = "Received";
     public const string StatusReconciled = "Reconciled";
 
@@ -19,6 +20,11 @@ public static class PurchaseOrderWorkflow
     public static bool CanApprove(PurchaseOrder order) =>
         string.Equals(order.DocumentType, DocumentTypePr, StringComparison.OrdinalIgnoreCase)
         && string.Equals(order.Status, StatusPendingApproval, StringComparison.OrdinalIgnoreCase);
+
+    public static bool CanVendorAccept(PurchaseOrder order) =>
+        order.VendorAcceptedAt is null
+        && !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase);
 
     public static bool CanReceive(PurchaseOrder order)
     {
@@ -87,6 +93,9 @@ public static class PurchaseOrderWorkflow
         approvedAt = order.ApprovedAt,
         receivedAt = order.ReceivedAt,
         reconciledAt = order.ReconciledAt,
+        vendorShareToken = order.VendorShareToken,
+        vendorAcceptedAt = order.VendorAcceptedAt,
+        vendorAcceptedBy = order.VendorAcceptedBy,
         canApprove = CanApprove(order),
         canReceive = CanReceive(order),
         canReconcile = CanReconcile(order),

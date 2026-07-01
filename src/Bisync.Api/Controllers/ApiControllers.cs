@@ -442,6 +442,7 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
                 ApprovedAt = documentType == PurchaseOrderWorkflow.DocumentTypePo && !string.IsNullOrWhiteSpace(approvedBy) && !string.Equals(approvedBy, "Pending", StringComparison.OrdinalIgnoreCase)
                     ? DateTime.UtcNow
                     : null,
+                VendorShareToken = Guid.NewGuid().ToString("N"),
             };
 
             foreach (var item in items)

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Download, ExternalLink, ShoppingBag, X } from 'lucide-react';
+import { Calendar, Copy, Download, ExternalLink, ShoppingBag, X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type Vendor } from '../../api';
 import {
   formatRm,
@@ -17,6 +17,8 @@ import {
   openPurchaseOrderPdfInTab,
   type PurchaseOrderPdfData,
 } from '../../data/generatePurchaseOrderPdf';
+import { PurchaseOrderPdfPreview } from './PurchaseOrderPdfPreview';
+import { buildVendorOrderShareUrl, copyVendorOrderShareLink } from '../../data/vendorOrderShare';
 
 type Props = {
   items: OrderCartItem[];
@@ -27,6 +29,14 @@ type Props = {
 };
 
 type Step = 'review' | 'success';
+
+type CreatedVendorOrder = {
+  id: number;
+  poNumber: string;
+  vendorName: string;
+  shareToken: string;
+  pdf: PurchaseOrderPdfData;
+};
 
 function formatDisplayDate(date: Date): string {
   return date.toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -70,7 +80,9 @@ export function OrderCartModal({
   const [error, setError] = useState<string | null>(null);
   const [deliveryDateValue, setDeliveryDateValue] = useState(defaultDeliveryDateValue);
   const [step, setStep] = useState<Step>('review');
-  const [createdPdfs, setCreatedPdfs] = useState<PurchaseOrderPdfData[]>([]);
+  const [createdOrders, setCreatedOrders] = useState<CreatedVendorOrder[]>([]);
+  const [activeVendorIndex, setActiveVendorIndex] = useState(0);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const minDeliveryDate = useMemo(() => toDateInputValue(new Date()), []);
 
@@ -205,7 +217,20 @@ export function OrderCartModal({
         });
       });
 
-      setCreatedPdfs(pdfPayloads);
+      const summaries: CreatedVendorOrder[] = created.map((po, index) => {
+        const token = po.vendorShareToken?.trim();
+        if (!token) throw new Error(`Missing vendor share link for ${po.poNumber}.`);
+        return {
+          id: po.id,
+          poNumber: po.poNumber,
+          vendorName: po.vendorName,
+          shareToken: token,
+          pdf: pdfPayloads[index],
+        };
+      });
+
+      setCreatedOrders(summaries);
+      setActiveVendorIndex(0);
       setStep('success');
       onConfirmed(items.map(item => item.lineKey));
     } catch (err) {
@@ -231,7 +256,7 @@ export function OrderCartModal({
     setDownloadingKey('combined');
     setError(null);
     try {
-      await downloadCombinedPurchaseOrderPdfs(createdPdfs);
+      await downloadCombinedPurchaseOrderPdfs(createdOrders.map(order => order.pdf));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate combined PDF.');
     } finally {
@@ -251,6 +276,19 @@ export function OrderCartModal({
     }
   }
 
+  async function handleCopyLink(order: CreatedVendorOrder) {
+    setError(null);
+    try {
+      await copyVendorOrderShareLink(order.shareToken);
+      setCopiedKey(order.poNumber);
+      window.setTimeout(() => setCopiedKey(current => (current === order.poNumber ? null : current)), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to copy link.');
+    }
+  }
+
+  const activeOrder = createdOrders[activeVendorIndex] ?? null;
+
   if (typeof document === 'undefined') return null;
 
   return createPortal(
@@ -260,7 +298,9 @@ export function OrderCartModal({
       role="presentation"
     >
       <div
-        className="w-full max-w-3xl bg-card border border-border rounded-xl shadow-xl max-h-[90vh] flex flex-col overflow-hidden"
+        className={`w-full bg-card border border-border rounded-xl shadow-xl max-h-[92vh] flex flex-col overflow-hidden ${
+          step === 'success' ? 'max-w-5xl' : 'max-w-3xl'
+        }`}
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -280,7 +320,7 @@ export function OrderCartModal({
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {step === 'success'
-                  ? (documentLabels?.successSubtitle(createdPdfs.length) ?? `${createdPdfs.length} saved`)
+                  ? (documentLabels?.successSubtitle(createdOrders.length) ?? `${createdOrders.length} saved`)
                   : `${groups.length} vendor${groups.length !== 1 ? 's' : ''} · ${items.length} item${items.length !== 1 ? 's' : ''}`}
               </p>
             </div>
@@ -351,50 +391,81 @@ export function OrderCartModal({
               ))}
             </>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
                 <p className="text-xs font-semibold text-foreground">{documentLabels?.savedMessage ?? 'Documents saved'}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Click download for each vendor PDF. Your browser requires a click to save files.
+                  Review each vendor PDF below, download a copy, or copy a share link for the vendor to accept online.
                 </p>
               </div>
 
-              {createdPdfs.map(pdf => (
-                <div key={pdf.poNumber} className="border border-border rounded-lg px-4 py-3 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-foreground">
-                      {documentLabels?.numberLabel} {pdf.poNumber}
-                    </p>
-                    <p className="text-xs text-muted-foreground font-sans">{pdf.vendor.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Delivery {pdf.deliveryDate} · {formatRm(pdf.totalAmount)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
+              {createdOrders.length > 1 && (
+                <div className="flex gap-2 flex-wrap">
+                  {createdOrders.map((order, index) => (
                     <button
+                      key={order.poNumber}
                       type="button"
-                      onClick={() => void handleOpenInTab(pdf)}
-                      disabled={downloadingKey !== null}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-border text-xs font-sans hover:bg-muted disabled:opacity-50"
-                      title="Open PDF in new tab"
+                      onClick={() => setActiveVendorIndex(index)}
+                      className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+                        activeVendorIndex === index
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:text-foreground'
+                      }`}
                     >
-                      <ExternalLink size={11} />
-                      View
+                      {order.vendorName}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDownloadSingle(pdf)}
-                      disabled={downloadingKey !== null}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-primary text-primary-foreground text-xs font-sans disabled:opacity-50"
-                    >
-                      <Download size={11} />
-                      {downloadingKey === pdf.poNumber ? 'Generating…' : 'Download PDF'}
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
 
-              {createdPdfs.length > 1 && (
+              {activeOrder && (
+                <>
+                  <div className="border border-border rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground">
+                        {documentLabels?.numberLabel} {activeOrder.poNumber}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-sans">{activeOrder.vendorName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate" title={buildVendorOrderShareUrl(activeOrder.shareToken)}>
+                        {buildVendorOrderShareUrl(activeOrder.shareToken)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyLink(activeOrder)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-border text-xs font-sans hover:bg-muted"
+                      >
+                        <Copy size={11} />
+                        {copiedKey === activeOrder.poNumber ? 'Copied!' : 'Copy link'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenInTab(activeOrder.pdf)}
+                        disabled={downloadingKey !== null}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-border text-xs font-sans hover:bg-muted disabled:opacity-50"
+                        title="Open PDF in new tab"
+                      >
+                        <ExternalLink size={11} />
+                        Open
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadSingle(activeOrder.pdf)}
+                        disabled={downloadingKey !== null}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-primary text-primary-foreground text-xs font-sans disabled:opacity-50"
+                      >
+                        <Download size={11} />
+                        {downloadingKey === activeOrder.poNumber ? 'Generating…' : 'Download PDF'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <PurchaseOrderPdfPreview pdf={activeOrder.pdf} className="h-[52vh] min-h-[360px]" />
+                </>
+              )}
+
+              {createdOrders.length > 1 && (
                 <button
                   type="button"
                   onClick={() => void handleDownloadCombined()}
