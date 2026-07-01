@@ -285,6 +285,8 @@ export const api = {
   createCompany: (data: Omit<Company, 'id' | 'locationCount'>) => fetchJsonWithMethod<Company>('/api/companies', 'POST', data),
   updateCompany: (id: number, data: Company) => fetchJsonWithMethod<Company>(`/api/companies/${id}`, 'PUT', data),
   users: () => fetchJson<AppUser[]>('/api/users'),
+  login: (email: string, password: string) =>
+    fetchJsonWithMethod<AppUser>('/api/auth/login', 'POST', { email, password }),
   availableEmployees: () => fetchJson<AvailableEmployee[]>('/api/users/available-employees'),
   createUser: (data: UserUpsert) => fetchJsonWithMethod<AppUser>('/api/users', 'POST', data),
   updateUser: (id: number, data: UserUpsert) => fetchJsonWithMethod<AppUser>(`/api/users/${id}`, 'PUT', data),

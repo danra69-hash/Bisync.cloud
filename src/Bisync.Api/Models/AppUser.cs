@@ -14,4 +14,5 @@ public class AppUser
     public int? CompanyId { get; set; }
     public Company? Company { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
+    public string? PasswordHash { get; set; }
 }

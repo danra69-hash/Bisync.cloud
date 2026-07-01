@@ -51,6 +51,7 @@ public static class SchemaPatcher
         await TryAddColumnAsync(db, "AppUsers", "CompanyId", "INTEGER");
         await TryAddColumnAsync(db, "AppUsers", "LocationIdsJson", "TEXT NOT NULL DEFAULT '[]'");
         await TryAddColumnAsync(db, "AppUsers", "EmployeeId", "INTEGER");
+        await TryAddColumnAsync(db, "AppUsers", "PasswordHash", "TEXT");
         await EnsureColumnAsync(db, "Ingredients", "ComponentId", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "Ingredients", "StorageNote", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "Ingredients", "DetailConfigJson", "TEXT NOT NULL DEFAULT '{}'");

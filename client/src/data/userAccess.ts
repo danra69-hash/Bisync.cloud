@@ -108,6 +108,7 @@ export type RmsPermissions = {
 export type UserAccess = {
   modules: AccessModule[];
   rms?: RmsPermissions;
+  superAdmin?: boolean;
 };
 
 export function allRmsTaskIds(): string[] {
@@ -140,11 +141,18 @@ function normalizeUserAccess(access: UserAccess): UserAccess {
   return {
     modules: access.modules ?? [],
     rms: { enabled: rms.enabled ?? false, tasks },
+    superAdmin: access.superAdmin ?? false,
   };
 }
 
+export function isSuperAdmin(access: UserAccess): boolean {
+  return !!parseUserAccess(access).superAdmin;
+}
+
 export function hasModule(access: UserAccess, module: AccessModule): boolean {
-  return access.modules.includes(module);
+  const normalized = parseUserAccess(access);
+  if (normalized.superAdmin) return true;
+  return normalized.modules.includes(module);
 }
 
 export function toggleModule(access: UserAccess, module: AccessModule): UserAccess {
@@ -195,8 +203,10 @@ export function rmsGroupSomeEnabled(access: UserAccess, groupId: string): boolea
 export const RMS_APPROVE_ORDER_TASK = 'approveOrder';
 
 export function hasRmsTask(access: UserAccess, taskId: string): boolean {
-  if (!hasModule(access, 'RMS')) return false;
-  const rms = access.rms;
+  const normalized = parseUserAccess(access);
+  if (normalized.superAdmin && hasModule(normalized, 'RMS')) return true;
+  if (!hasModule(normalized, 'RMS')) return false;
+  const rms = normalized.rms;
   if (!rms?.enabled) return false;
   return !!rms.tasks[taskId];
 }

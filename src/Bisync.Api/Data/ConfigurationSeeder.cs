@@ -1,4 +1,5 @@
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
@@ -202,6 +203,48 @@ public static class ConfigurationSeeder
                 .ToList();
             if (locationIds.Count == 0) continue;
             user.LocationIdsJson = JsonSerializer.Serialize(locationIds);
+        }
+
+        await db.SaveChangesAsync();
+
+        await EnsureSuperAdminAsync(db);
+    }
+
+    public static async Task EnsureSuperAdminAsync(BisyncDbContext db)
+    {
+        var email = SuperAdminAccess.SuperAdminEmail.ToLowerInvariant();
+        var company = await db.Companies.OrderBy(c => c.Id).FirstOrDefaultAsync();
+        if (company is null) return;
+
+        var allLocationIds = await db.Locations.Select(l => l.Id).ToListAsync();
+        var accessJson = SuperAdminAccess.BuildJson();
+        var passwordHash = AppPasswordHasher.Hash(SuperAdminAccess.SuperAdminPassword);
+
+        var user = await db.AppUsers.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+        if (user is null)
+        {
+            db.AppUsers.Add(new AppUser
+            {
+                FullName = "DRA Super Admin",
+                Email = SuperAdminAccess.SuperAdminEmail,
+                Role = "Super Admin",
+                Phone = "+60 3-0000 0000",
+                Active = true,
+                AccessJson = accessJson,
+                CompanyId = company.Id,
+                LocationIdsJson = JsonSerializer.Serialize(allLocationIds),
+                PasswordHash = passwordHash,
+            });
+        }
+        else
+        {
+            user.FullName = "DRA Super Admin";
+            user.Role = "Super Admin";
+            user.Active = true;
+            user.AccessJson = accessJson;
+            user.CompanyId = company.Id;
+            user.LocationIdsJson = JsonSerializer.Serialize(allLocationIds);
+            user.PasswordHash = passwordHash;
         }
 
         await db.SaveChangesAsync();
