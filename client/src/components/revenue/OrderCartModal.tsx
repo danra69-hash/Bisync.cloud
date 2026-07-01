@@ -221,17 +221,21 @@ export function OrderCartModal({
         created.map(async (po, index) => {
           let resolved = po;
           if (!po.vendorShareToken?.trim()) {
-            resolved = await api.ensureVendorShareToken(po.id);
-          }
-          const token = resolved.vendorShareToken?.trim();
-          if (!token) {
-            throw new Error(`Could not create vendor share link for ${po.poNumber}.`);
+            try {
+              resolved = await api.purchaseOrder(po.id);
+            } catch {
+              try {
+                resolved = await api.ensureVendorShareToken(po.id);
+              } catch {
+                resolved = po;
+              }
+            }
           }
           return {
             id: resolved.id,
             poNumber: resolved.poNumber,
             vendorName: resolved.vendorName,
-            shareToken: token,
+            shareToken: resolved.vendorShareToken?.trim() ?? '',
             pdf: pdfPayloads[index],
           };
         }),
@@ -285,6 +289,10 @@ export function OrderCartModal({
   }
 
   async function handleCopyLink(order: CreatedVendorOrder) {
+    if (!order.shareToken) {
+      setError('Share link is still being generated. Open this order in Active Purchase and try again.');
+      return;
+    }
     setError(null);
     try {
       await copyVendorOrderShareLink(order.shareToken);
@@ -434,15 +442,22 @@ export function OrderCartModal({
                         {documentLabels?.numberLabel} {activeOrder.poNumber}
                       </p>
                       <p className="text-xs text-muted-foreground font-sans">{activeOrder.vendorName}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate" title={buildVendorOrderShareUrl(activeOrder.shareToken)}>
-                        {buildVendorOrderShareUrl(activeOrder.shareToken)}
-                      </p>
+                      {activeOrder.shareToken ? (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate" title={buildVendorOrderShareUrl(activeOrder.shareToken)}>
+                          {buildVendorOrderShareUrl(activeOrder.shareToken)}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                          Share link generating — also available in Active Purchase.
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                       <button
                         type="button"
                         onClick={() => void handleCopyLink(activeOrder)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-border text-xs font-sans hover:bg-muted"
+                        disabled={!activeOrder.shareToken}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded border border-border text-xs font-sans hover:bg-muted disabled:opacity-50"
                       >
                         <Copy size={11} />
                         {copiedKey === activeOrder.poNumber ? 'Copied!' : 'Copy link'}

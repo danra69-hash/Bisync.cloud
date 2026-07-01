@@ -101,7 +101,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     }
 
     let cancelled = false;
-    void api.ensureVendorShareToken(order.id)
+    void api.purchaseOrder(order.id)
       .then(updated => {
         if (cancelled) return;
         const token = updated.vendorShareToken?.trim() ?? '';
@@ -109,7 +109,17 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         if (token) onUpdated(updated);
       })
       .catch(() => {
-        if (!cancelled) setShareToken('');
+        if (cancelled) return;
+        void api.ensureVendorShareToken(order.id)
+          .then(updated => {
+            if (cancelled) return;
+            const token = updated.vendorShareToken?.trim() ?? '';
+            setShareToken(token);
+            if (token) onUpdated(updated);
+          })
+          .catch(() => {
+            if (!cancelled) setShareToken('');
+          });
       });
 
     return () => { cancelled = true; };
