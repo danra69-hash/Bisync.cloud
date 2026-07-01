@@ -168,7 +168,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
               ) : orders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    No active purchase requests or orders. Create one from Create Order.
+                    No active purchase requests or orders. Create one from My Order.
                   </td>
                 </tr>
               ) : (

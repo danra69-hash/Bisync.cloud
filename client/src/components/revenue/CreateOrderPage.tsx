@@ -125,7 +125,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
       {!embedded && (
         <div>
           <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-          <h2 className="text-lg font-semibold">Create Order</h2>
+          <h2 className="text-lg font-semibold">My Order</h2>
           <p className="text-xs text-muted-foreground mt-1">
             Build purchase orders from smart components, tagged vendor products, and usage-based par levels.
           </p>

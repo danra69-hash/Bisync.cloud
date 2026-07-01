@@ -35,11 +35,9 @@ function renderRevMgmtContent(
       return <VendorListPage selectedCompanyId={selectedCompanyId} />;
     case 'Compare Price':
       return <ComparePricePage selectedCompanyId={selectedCompanyId} />;
-    case 'Create Order':
-    case 'Active Purchase':
+    case 'My Order':
       return (
         <OrderPage
-          initialTab={label === 'Active Purchase' ? 'active' : 'create'}
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

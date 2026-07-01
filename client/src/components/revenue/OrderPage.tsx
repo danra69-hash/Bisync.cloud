@@ -4,7 +4,7 @@ import { ActivePurchasePage } from './ActivePurchasePage';
 import { CreateOrderPage } from './CreateOrderPage';
 
 const ORDER_TABS = [
-  { id: 'create', label: 'Create Order' },
+  { id: 'create', label: 'My Order' },
   { id: 'active', label: 'Active Purchase' },
 ] as const;
 
@@ -27,7 +27,7 @@ export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLo
     <div className="p-6 space-y-4">
       <div>
         <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-        <h2 className="text-lg font-semibold">Order</h2>
+        <h2 className="text-lg font-semibold">My Order</h2>
         <p className="text-xs text-muted-foreground mt-1">
           Create purchase requests and manage approval, receiving, and reconciliation.
         </p>

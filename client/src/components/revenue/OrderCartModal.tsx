@@ -335,7 +335,7 @@ export function OrderCartModal({
 
   async function handleCopyLink(order: CreatedVendorOrder) {
     if (!order.shareToken) {
-      setError('Share link is still being generated. Open this order in Active Purchase and try again.');
+      setError('Share link is still being generated. Open this order in My Order → Active Purchase and try again.');
       return;
     }
     setError(null);
@@ -493,7 +493,7 @@ export function OrderCartModal({
                         </p>
                       ) : (
                         <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                          Share link generating — also available in Active Purchase.
+                          Share link generating — also available in My Order → Active Purchase.
                         </p>
                       )}
                     </div>
