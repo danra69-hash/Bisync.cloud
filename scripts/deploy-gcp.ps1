@@ -100,6 +100,8 @@ $RunServiceAccount = "$ProjectNumber-compute@developer.gserviceaccount.com"
     --cpu 1 `
     --min-instances 1 `
     --max-instances 1 `
+    --timeout 300 `
+    --cpu-boost `
     --add-volume "name=bisync-data,type=cloud-storage,bucket=$BucketName" `
     --add-volume-mount "volume=bisync-data,mount-path=/app/data" `
     --set-env-vars "ASPNETCORE_ENVIRONMENT=Production"
