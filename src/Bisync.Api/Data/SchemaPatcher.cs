@@ -82,6 +82,7 @@ public static class SchemaPatcher
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ReceivedUnitPrice", "REAL");
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ReconciledQuantity", "REAL");
         await EnsureColumnAsync(db, "PurchaseOrderItems", "ReconciledUnitPrice", "REAL");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "TaxAmount", "REAL NOT NULL DEFAULT 0");
 
         await EnsureColumnAsync(db, "PurchaseOrderItems", "VendorProductId", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "PurchaseOrderItems", "IssuedUnitPrice", "REAL NOT NULL DEFAULT 0");

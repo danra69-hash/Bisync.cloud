@@ -190,6 +190,7 @@ export interface PurchaseOrderItem {
   receivedUnitPrice?: number | null;
   reconciledQuantity?: number | null;
   reconciledUnitPrice?: number | null;
+  taxAmount?: number;
 }
 
 export interface PurchaseOrder {
@@ -251,6 +252,7 @@ export interface PurchaseOrderLineWorkflowPayload {
   quantity: number;
   unitPrice: number;
   componentUom?: string;
+  taxAmount?: number;
 }
 
 export interface PurchaseOrderWorkflowPayload {

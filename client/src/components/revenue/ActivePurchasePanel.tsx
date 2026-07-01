@@ -29,6 +29,7 @@ type EditableLine = {
   productName: string;
   quantity: string;
   unitPrice: string;
+  taxAmount: string;
   issuedUnitPrice: number;
   componentUom: string;
 };
@@ -42,6 +43,7 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
     const price = mode === 'reconcile'
       ? (item.receivedUnitPrice ?? item.unitPrice)
       : item.unitPrice;
+    const tax = item.taxAmount ?? 0;
 
     return {
       itemId: item.id,
@@ -50,6 +52,7 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       productName: item.name,
       quantity: String(qty),
       unitPrice: String(price),
+      taxAmount: tax > 0 ? String(tax) : '',
       issuedUnitPrice: issued,
       componentUom: item.componentUom || item.unit,
     };
@@ -62,6 +65,7 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
     quantity: parseFloat(line.quantity) || 0,
     unitPrice: parseFloat(line.unitPrice) || 0,
     componentUom: line.componentUom,
+    taxAmount: parseFloat(line.taxAmount) || 0,
   }));
 }
 
@@ -128,10 +132,20 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const canReconcile = Boolean(access && (canReceivePurchaseOrder(access) || canApprovePurchaseOrder(access)) && order.canReconcile);
   const readOnly = mode === 'view' || (mode === 'approve' && !canApprove) || (mode === 'receive' && !canReceive) || (mode === 'reconcile' && !canReconcile);
 
-  const total = useMemo(
-    () => lines.reduce((sum, line) => sum + (parseFloat(line.quantity) || 0) * (parseFloat(line.unitPrice) || 0), 0),
-    [lines],
-  );
+  const totals = useMemo(() => {
+    let subtotal = 0;
+    let taxTotal = 0;
+    for (const line of lines) {
+      const qty = parseFloat(line.quantity) || 0;
+      const price = parseFloat(line.unitPrice) || 0;
+      const tax = parseFloat(line.taxAmount) || 0;
+      subtotal += qty * price;
+      taxTotal += tax;
+    }
+    return { subtotal, taxTotal, total: subtotal + taxTotal };
+  }, [lines]);
+
+  const showTaxColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
 
   function updateLine(itemId: number, patch: Partial<EditableLine>) {
     setLines(prev => prev.map(line => (line.itemId === itemId ? { ...line, ...patch } : line)));
@@ -283,7 +297,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             </div>
             <div>
               <p className="text-muted-foreground">Total</p>
-              <p className="font-sans font-medium mt-0.5">{formatRm(total)}</p>
+              <p className="font-sans font-medium mt-0.5">{formatRm(totals.total)}</p>
+              {totals.taxTotal > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Subtotal {formatRm(totals.subtotal)} + Tax {formatRm(totals.taxTotal)}
+                </p>
+              )}
             </div>
           </div>
 
@@ -319,10 +338,10 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <p className="text-xs font-semibold">Line items</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs min-w-[720px]">
+              <table className="w-full text-xs min-w-[820px]">
                 <thead>
                   <tr className="border-b border-border">
-                    {['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', 'Line total'].filter(Boolean).map(h => (
+                    {['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, 'Line total'].filter(Boolean).map(h => (
                       <th key={h} className="text-left px-3 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
                     ))}
                   </tr>
@@ -331,6 +350,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                   {lines.map(line => {
                     const qty = parseFloat(line.quantity) || 0;
                     const price = parseFloat(line.unitPrice) || 0;
+                    const tax = parseFloat(line.taxAmount) || 0;
+                    const lineTotal = qty * price + tax;
                     return (
                       <tr key={line.itemId} className="border-b border-border last:border-0">
                         <td className="px-3 py-2">
@@ -381,7 +402,24 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             />
                           )}
                         </td>
-                        <td className="px-3 py-2 font-sans">{formatRm(qty * price)}</td>
+                        {showTaxColumn && (
+                          <td className="px-3 py-2">
+                            {mode === 'receive' && !readOnly ? (
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={line.taxAmount}
+                                onChange={e => updateLine(line.itemId, { taxAmount: e.target.value })}
+                                placeholder="0.00"
+                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                              />
+                            ) : (
+                              <span className="font-sans">{tax > 0 ? formatRm(tax) : '—'}</span>
+                            )}
+                          </td>
+                        )}
+                        <td className="px-3 py-2 font-sans">{formatRm(lineTotal)}</td>
                       </tr>
                     );
                   })}

@@ -44,4 +44,5 @@ public class PurchaseOrderItem
     public decimal? ReceivedUnitPrice { get; set; }
     public decimal? ReconciledQuantity { get; set; }
     public decimal? ReconciledUnitPrice { get; set; }
+    public decimal TaxAmount { get; set; }
 }

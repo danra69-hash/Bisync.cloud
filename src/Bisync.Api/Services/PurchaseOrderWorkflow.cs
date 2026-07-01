@@ -119,6 +119,7 @@ public static class PurchaseOrderWorkflow
         receivedUnitPrice = item.ReceivedUnitPrice,
         reconciledQuantity = item.ReconciledQuantity,
         reconciledUnitPrice = item.ReconciledUnitPrice,
+        taxAmount = item.TaxAmount,
     };
 
     public static List<string> DeserializeLocationIds(string? json)

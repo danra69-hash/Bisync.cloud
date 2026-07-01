@@ -601,6 +601,7 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
                 item.ReceivedUnitPrice = line.UnitPrice;
                 item.Quantity = line.Quantity;
                 item.UnitPrice = line.UnitPrice;
+                item.TaxAmount = line.TaxAmount;
                 if (!string.IsNullOrWhiteSpace(line.ComponentUom))
                     item.ComponentUom = line.ComponentUom.Trim();
             }

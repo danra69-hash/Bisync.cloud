@@ -641,6 +641,8 @@ public class PurchaseOrderLineWorkflowRequest
     public decimal UnitPrice { get; set; }
     [MaxLength(50)]
     public string? ComponentUom { get; set; }
+    [Range(0, 999999999)]
+    public decimal TaxAmount { get; set; }
 }
 
 public class PurchaseOrderWorkflowRequest
