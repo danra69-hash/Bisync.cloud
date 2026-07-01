@@ -7,6 +7,8 @@ import { ActivePurchasePanel } from './ActivePurchasePanel';
 
 type Props = {
   selectedCompanyId: number | null;
+  selectedLocationIds?: string[];
+  embedded?: boolean;
 };
 
 const thCls =
@@ -34,7 +36,7 @@ function nextActionLabel(order: PurchaseOrder): string {
   return 'View';
 }
 
-export function ActivePurchasePage({ selectedCompanyId }: Props) {
+export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Props) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,23 +88,29 @@ export function ActivePurchasePage({ selectedCompanyId }: Props) {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className={embedded ? 'space-y-4' : 'p-6 space-y-4'}>
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <ClipboardList size={18} className="text-primary" />
-            Active Purchase
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+        {!embedded ? (
+          <div>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
+            <h1 className="text-lg font-semibold flex items-center gap-2">
+              <ClipboardList size={18} className="text-primary" />
+              Active Purchase
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Purchase requests and orders awaiting approval, receiving, or reconciliation.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
             Purchase requests and orders awaiting approval, receiving, or reconciliation.
           </p>
-        </div>
+        )}
         <button
           type="button"
           onClick={() => void loadOrders()}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           Refresh

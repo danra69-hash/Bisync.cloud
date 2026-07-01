@@ -20,9 +20,10 @@ const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:bor
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  embedded?: boolean;
 };
 
-export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Props) {
+export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedded = false }: Props) {
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorFilter, setVendorFilter] = useState('');
@@ -120,14 +121,16 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-        <h2 className="text-lg font-semibold">Create Order</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Build purchase orders from smart components, tagged vendor products, and usage-based par levels.
-        </p>
-      </div>
+    <div className={embedded ? 'space-y-4' : 'p-6 space-y-4'}>
+      {!embedded && (
+        <div>
+          <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
+          <h2 className="text-lg font-semibold">Create Order</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Build purchase orders from smart components, tagged vendor products, and usage-based par levels.
+          </p>
+        </div>
+      )}
 
       {!selectedCompanyId ? (
         <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">

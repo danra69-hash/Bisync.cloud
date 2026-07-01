@@ -6,8 +6,7 @@ import { SmartIngredientPage } from './SmartIngredientPage';
 import { ComponentConfigPage } from './ComponentConfigPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
-import { ActivePurchasePage } from './ActivePurchasePage';
-import { CreateOrderPage } from './CreateOrderPage';
+import { OrderPage } from './OrderPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 
 type Props = {
@@ -37,16 +36,12 @@ function renderRevMgmtContent(
     case 'Compare Price':
       return <ComparePricePage selectedCompanyId={selectedCompanyId} />;
     case 'Create Order':
-      return (
-        <CreateOrderPage
-          selectedCompanyId={selectedCompanyId}
-          selectedLocationIds={selectedLocationIds}
-        />
-      );
     case 'Active Purchase':
       return (
-        <ActivePurchasePage
+        <OrderPage
+          initialTab={label === 'Active Purchase' ? 'active' : 'create'}
           selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
         />
       );
     default:
