@@ -76,7 +76,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     [currentUser],
   );
 
-  const mode: 'approve' | 'receive' | 'reconcile' | 'view' = order.canApprove
+  const isPendingApproval = order.status === 'Pending Approval';
+  const isPurchaseRequest = order.documentType === 'PR' || isPendingApproval;
+  const showVendorShareLink = !isPurchaseRequest;
+
+  const mode: 'approve' | 'receive' | 'reconcile' | 'view' = isPendingApproval
     ? 'approve'
     : order.canReceive
       ? 'receive'
@@ -98,6 +102,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   }, [order, mode]);
 
   useEffect(() => {
+    if (!showVendorShareLink) {
+      setShareToken('');
+      return;
+    }
+
     const existing = order.vendorShareToken?.trim() ?? '';
     if (existing) {
       setShareToken(existing);
@@ -117,7 +126,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       });
 
     return () => { cancelled = true; };
-  }, [order.id, order.vendorShareToken, onUpdated]);
+  }, [order.id, order.vendorShareToken, onUpdated, showVendorShareLink]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -127,7 +136,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose, saving]);
 
-  const canApprove = Boolean(access && canApprovePurchaseOrder(access) && order.canApprove);
+  const canApprove = Boolean(access && canApprovePurchaseOrder(access) && isPendingApproval);
   const canReceive = Boolean(access && canReceivePurchaseOrder(access) && order.canReceive);
   const canReconcile = Boolean(access && (canReceivePurchaseOrder(access) || canApprovePurchaseOrder(access)) && order.canReconcile);
   const readOnly = mode === 'view' || (mode === 'approve' && !canApprove) || (mode === 'receive' && !canReceive) || (mode === 'reconcile' && !canReconcile);
@@ -145,7 +154,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     return { subtotal, taxTotal, total: subtotal + taxTotal };
   }, [lines]);
 
-  const showTaxColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  const showTaxColumn = !isPurchaseRequest && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
 
   function updateLine(itemId: number, patch: Partial<EditableLine>) {
     setLines(prev => prev.map(line => (line.itemId === itemId ? { ...line, ...patch } : line)));
@@ -241,7 +250,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">
-              {order.documentType === 'PR' ? 'Purchase Request' : 'Purchase Order'}
+              {isPurchaseRequest ? 'Purchase Request' : 'Purchase Order'}
             </p>
             <h2 className="text-base font-semibold mt-1">{title}</h2>
             <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
@@ -287,14 +296,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <p className="text-muted-foreground">Status</p>
               <p className="mt-0.5">{order.status}</p>
             </div>
-            <div>
-              <p className="text-muted-foreground">Vendor acceptance</p>
-              <p className="mt-0.5">
-                {order.vendorAcceptedAt
-                  ? `Accepted by ${order.vendorAcceptedBy || order.vendorName}`
-                  : 'Pending'}
-              </p>
-            </div>
+            {showVendorShareLink && (
+              <div>
+                <p className="text-muted-foreground">Vendor acceptance</p>
+                <p className="mt-0.5">
+                  {order.vendorAcceptedAt
+                    ? `Accepted by ${order.vendorAcceptedBy || order.vendorName}`
+                    : 'Pending'}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-muted-foreground">Total</p>
               <p className="font-sans font-medium mt-0.5">{formatRm(totals.total)}</p>
@@ -306,32 +317,34 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             </div>
           </div>
 
-          <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-foreground">Vendor share link</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Send this link to the vendor so they can view the PDF and accept the order.
-                </p>
-                {shareToken ? (
-                  <p className="text-xs font-sans text-primary mt-2 break-all">
-                    {buildVendorOrderShareUrl(shareToken)}
+          {showVendorShareLink && (
+            <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">Vendor share link</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Send this link to the vendor so they can view the PDF and accept the order.
                   </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-2">Generating share link…</p>
-                )}
+                  {shareToken ? (
+                    <p className="text-xs font-sans text-primary mt-2 break-all">
+                      {buildVendorOrderShareUrl(shareToken)}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-2">Generating share link…</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyShareLink()}
+                  disabled={!shareToken}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
+                >
+                  <Copy size={12} />
+                  {shareLinkCopied ? 'Copied!' : 'Copy link'}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleCopyShareLink()}
-                disabled={!shareToken}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
-              >
-                <Copy size={12} />
-                {shareLinkCopied ? 'Copied!' : 'Copy link'}
-              </button>
             </div>
-          </div>
+          )}
 
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-2 border-b border-border bg-muted/30">
@@ -444,7 +457,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
           >
             Close
           </button>
-          {mode === 'approve' && (
+          {isPendingApproval && (
             <button
               type="button"
               onClick={() => void handleApprove()}
@@ -452,7 +465,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
             >
               <Check size={14} />
-              {saving ? 'Approving…' : 'Approve & convert to PO'}
+              {saving ? 'Approving…' : 'Approve'}
             </button>
           )}
           {mode === 'receive' && (

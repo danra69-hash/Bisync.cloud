@@ -18,8 +18,7 @@ public static class PurchaseOrderWorkflow
         !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
 
     public static bool CanApprove(PurchaseOrder order) =>
-        string.Equals(order.DocumentType, DocumentTypePr, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(order.Status, StatusPendingApproval, StringComparison.OrdinalIgnoreCase);
+        string.Equals(order.Status, StatusPendingApproval, StringComparison.OrdinalIgnoreCase);
 
     public static bool CanVendorAccept(PurchaseOrder order) =>
         order.VendorAcceptedAt is null
@@ -43,11 +42,11 @@ public static class PurchaseOrderWorkflow
 
     public static string ResolveDocumentType(string? documentType, string? status)
     {
-        if (!string.IsNullOrWhiteSpace(documentType))
-            return documentType.Trim().ToUpperInvariant();
-
         if (string.Equals(status, StatusPendingApproval, StringComparison.OrdinalIgnoreCase))
             return DocumentTypePr;
+
+        if (!string.IsNullOrWhiteSpace(documentType))
+            return documentType.Trim().ToUpperInvariant();
 
         return DocumentTypePo;
     }

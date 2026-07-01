@@ -1,28 +1,28 @@
 ---
-description: After implementing Bisync.cloud changes, commit, push to GitHub, and deploy to Cloud Run.
+description: After pushing to GitHub, always deploy Bisync.cloud to Cloud Run unless the user opts out.
 alwaysApply: true
 ---
 
 # Ship changes: commit, push, deploy
 
-When you finish **implementing** changes in this repo (features, fixes, refactors), complete the full release workflow unless the user opts out or there is nothing to commit.
+When you finish **implementing** changes in this repo, or after **any successful `git push`** to GitHub, complete the full release workflow unless the user explicitly opts out or there is nothing to ship.
 
 ## Workflow
 
 1. **Verify** — Run a quick build check when practical (`client`: `npm run build`; API: `dotnet build`).
-2. **Commit** — Stage relevant files only; never commit secrets (`.env`, credentials).
-3. **Push** — `git push origin master` (or the branch the user is working on).
-4. **Deploy** — From repo root:
+2. **Commit** — Stage relevant files only; never commit secrets (`.env`, credentials). Skip if working tree is clean.
+3. **Push** — `git push origin master` (or the branch the user is working on). Skip if already up to date with remote.
+4. **Deploy (required after every push)** — From repo root, always run after a successful GitHub update:
    ```powershell
    .\scripts\deploy-gcp.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
    ```
 5. **Verify cloud** — Confirm `GET /api/health` returns 200 on the live URL.
 
-## Skip when
+## Skip deploy only when
 
-- User asks a question only (no code changes).
-- User explicitly says not to commit, push, or deploy.
-- Working tree is clean after the task.
+- User explicitly says not to deploy.
+- Push failed or was not performed.
+- Question-only task with no code changes and no push.
 
 ## Project details
 
@@ -31,4 +31,4 @@ When you finish **implementing** changes in this repo (features, fixes, refactor
 - **Cloud Run:** `bisync-cloud` in `asia-southeast1`
 - **Live URL:** https://bisync-cloud-389272498937.asia-southeast1.run.app
 
-Report the commit hash, pushed branch, and live URL when done.
+Report the commit hash, pushed branch, deployment status, and live URL when done.
