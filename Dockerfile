@@ -18,9 +18,12 @@ RUN dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /
 # ── Stage 3: Runtime (Cloud Run) ───────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/seed
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=api-build /app/publish .
+COPY src/Bisync.Api/bisync.db /app/seed/bisync.db
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "Bisync.Api.dll"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

@@ -5,6 +5,7 @@
 **/node_modules
 client/dist
 **/*.db
+!src/Bisync.Api/bisync.db
 **/*.db-shm
 **/*.db-wal
 **/terminals

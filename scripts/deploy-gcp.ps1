@@ -71,6 +71,25 @@ if ($LASTEXITCODE -ne 0) { throw "Cloud Build failed." }
 Write-Host "Image built and pushed." -ForegroundColor Green
 
 Step "5" "Deploying to Cloud Run service '$ServiceName'"
+$BucketName = "$($ProjectId.Replace('_','-').ToLower())-bisync-data"
+$PrevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& $Gcloud storage buckets describe "gs://$BucketName" *> $null
+$BucketExists = $LASTEXITCODE -eq 0
+$ErrorActionPreference = $PrevEap
+if (-not $BucketExists) {
+    Write-Host "Creating persistent data bucket: gs://$BucketName" -ForegroundColor Gray
+    & $Gcloud storage buckets create "gs://$BucketName" --location=$Region --uniform-bucket-level-access
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create storage bucket." }
+}
+
+& $Gcloud services enable storage.googleapis.com *> $null
+$ProjectNumber = & $Gcloud projects describe $ProjectId --format="value(projectNumber)"
+$RunServiceAccount = "$ProjectNumber-compute@developer.gserviceaccount.com"
+& $Gcloud storage buckets add-iam-policy-binding "gs://$BucketName" `
+    --member="serviceAccount:$RunServiceAccount" `
+    --role="roles/storage.objectAdmin" *> $null
+
 & $Gcloud run deploy $ServiceName `
     --image $Image `
     --region $Region `
@@ -79,8 +98,10 @@ Step "5" "Deploying to Cloud Run service '$ServiceName'"
     --port 8080 `
     --memory 1Gi `
     --cpu 1 `
-    --min-instances 0 `
-    --max-instances 3 `
+    --min-instances 1 `
+    --max-instances 1 `
+    --add-volume "name=bisync-data,type=cloud-storage,bucket=$BucketName" `
+    --add-volume-mount "volume=bisync-data,mount-path=/app/data" `
     --set-env-vars "ASPNETCORE_ENVIRONMENT=Production"
 if ($LASTEXITCODE -ne 0) { throw "Cloud Run deploy failed." }
 
@@ -92,6 +113,7 @@ Write-Host "  Health:    $Url/api/health" -ForegroundColor Green
 Write-Host ""
 Write-Host "Notes:" -ForegroundColor Yellow
 Write-Host "  - Local dev is unchanged. Keep using dotnet run + npm run dev on your PC."
-Write-Host "  - Cloud uses a separate SQLite DB (resets on redeploy). Use Cloud SQL for production."
+Write-Host "  - Cloud DB persists in gs://$BucketName (mounted at /app/data)." -ForegroundColor Green
+Write-Host "  - Single Cloud Run instance keeps SQLite writes consistent." -ForegroundColor Green
 Write-Host "  - Redeploy: .\scripts\deploy-gcp.ps1 -ProjectId $ProjectId"
 Write-Host ""
