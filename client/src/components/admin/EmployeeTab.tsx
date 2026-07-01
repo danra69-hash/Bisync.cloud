@@ -355,6 +355,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
           isNew={accessPanel.isNew}
           availableEmployees={[]}
           lockEmployee
+          elevated
           onClose={() => setAccessPanel(null)}
           onSave={() => void handleAccessPanelSaved()}
         />

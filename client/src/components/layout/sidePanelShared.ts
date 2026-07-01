@@ -26,6 +26,11 @@ export const SIDE_PANEL_ROOT_CLS = 'fixed inset-0 z-50 flex items-stretch justif
 export const SIDE_PANEL_DETAIL_SHELL_CLS =
   'relative w-full max-w-[998px] bg-card border-l border-border shadow-2xl flex flex-col max-h-full';
 
+/** Platform access / user panel above employee detail (z-50). */
+export const NESTED_PANEL_OVERLAY_CLS = 'fixed inset-0 z-[60] bg-foreground/20';
+export const NESTED_PANEL_SHELL_WIDE_CLS =
+  'fixed top-0 right-0 h-full w-[728px] max-w-full bg-card border-l border-border z-[61] flex flex-col shadow-2xl';
+
 /** Modal overlays rendered via portal — above side panels and photo lightbox. */
 export const MODAL_OVERLAY_CLS = 'fixed inset-0 bg-black/50 z-[120]';
 export const MODAL_SHELL_CLS = 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[121]';

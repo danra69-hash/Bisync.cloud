@@ -10,7 +10,7 @@ type Props = {
 };
 
 export function Sidebar({ open, activeNav, onClose, onNavigate }: Props) {
-  const { currentUser, users, setCurrentUserId } = useCurrentUser();
+  const { currentUser, users, setCurrentUserId, logout } = useCurrentUser();
   const displayName = currentUser?.fullName ?? 'Unknown User';
   const displayRole = currentUser?.role ?? '—';
 
@@ -70,6 +70,13 @@ export function Sidebar({ open, activeNav, onClose, onNavigate }: Props) {
               ))}
             </select>
           )}
+          <button
+            type="button"
+            onClick={logout}
+            className="w-full rounded-md px-2 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            Log out
+          </button>
         </div>
       </aside>
     </>

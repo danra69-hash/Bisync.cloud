@@ -18,7 +18,7 @@ import {
   type UserAccess,
 } from '../../data/userAccess';
 import { ToggleSwitch } from './ToggleSwitch';
-import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
+import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS, NESTED_PANEL_OVERLAY_CLS, NESTED_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
 
 const blankUser = (): UserUpsert => ({
   employeeId: null,
@@ -218,12 +218,13 @@ export function userUpsertForEmployee(
 export { blankUser };
 
 function UserPanel({
-  user, isNew, availableEmployees, lockEmployee = false, onClose, onSave,
+  user, isNew, availableEmployees, lockEmployee = false, elevated = false, onClose, onSave,
 }: {
   user: AppUser | UserUpsert;
   isNew: boolean;
   availableEmployees: AvailableEmployee[];
   lockEmployee?: boolean;
+  elevated?: boolean;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -233,6 +234,11 @@ function UserPanel({
   );
   const [companies, setCompanies] = useState<Company[]>([]);
   const [allLocations, setAllLocations] = useState<LocationConfig[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const overlayCls = elevated ? NESTED_PANEL_OVERLAY_CLS : SIDE_PANEL_OVERLAY_CLS;
+  const shellCls = elevated ? NESTED_PANEL_SHELL_WIDE_CLS : SIDE_PANEL_SHELL_WIDE_CLS;
 
   useEffect(() => {
     Promise.all([api.companies(), api.locationsConfig()])
@@ -283,22 +289,58 @@ function UserPanel({
     set('locationIdsJson', JSON.stringify(ids));
   }
 
+  function buildPayload(): UserUpsert {
+    return {
+      employeeId: form.employeeId ?? null,
+      fullName: form.fullName,
+      email: form.email,
+      role: form.role,
+      phone: form.phone,
+      active: form.active,
+      accessJson: JSON.stringify(access),
+      companyId: form.companyId,
+      locationIdsJson: form.locationIdsJson,
+    };
+  }
+
   async function save() {
-    if (isNew && !form.employeeId) return;
-    if (!form.companyId) return;
-    const payload: UserUpsert = { ...form, accessJson: JSON.stringify(access) };
-    if (isNew) await api.createUser(payload);
-    else if ('id' in form) await api.updateUser(form.id, payload);
-    onSave();
-    onClose();
+    if (isNew && !form.employeeId) {
+      setError('Select an employee before granting access.');
+      return;
+    }
+    if (!form.companyId) {
+      setError('Company is required.');
+      return;
+    }
+    if (!isNew && !('id' in form)) {
+      setError('Cannot update access — user record is missing an id.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = buildPayload();
+      if (isNew) {
+        await api.createUser(payload);
+      } else if ('id' in form) {
+        await api.updateUser(form.id, payload);
+      }
+      onSave();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save platform access.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const canSave = (isNew ? !!form.employeeId : true) && form.companyId;
 
   return (
     <>
-      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
-      <div className={SIDE_PANEL_SHELL_WIDE_CLS}>
+      <div className={overlayCls} onClick={() => !saving && onClose()} />
+      <div className={shellCls}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">User</p>
@@ -437,16 +479,23 @@ function UserPanel({
           {hasModule(access, 'POS') && <ModulePlaceholder module="POS" />}
           {hasModule(access, 'HRM') && <ModulePlaceholder module="HRM" />}
           {hasModule(access, 'Accounting') && <ModulePlaceholder module="Accounting" />}
+
+          {error && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {error}
+            </p>
+          )}
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
+          <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
           <button
-            onClick={save}
-            disabled={!canSave}
+            type="button"
+            onClick={() => void save()}
+            disabled={!canSave || saving}
             className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
           >
-            {isNew ? 'Grant Access' : 'Save Changes'}
+            {saving ? 'Saving…' : isNew ? 'Grant Access' : 'Save Changes'}
           </button>
         </div>
       </div>

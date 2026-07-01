@@ -1,0 +1,22 @@
+import App from './App';
+import { useCurrentUser } from './context/CurrentUserContext';
+import { LandingPage } from './pages/LandingPage';
+
+function LoadingScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-herme-cream">
+      <div className="text-center">
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-herme-muted border-t-herme" />
+        <p className="mt-4 text-sm font-medium text-herme-ink/60">Loading Bisync.cloud…</p>
+      </div>
+    </div>
+  );
+}
+
+export function AppRoot() {
+  const { isAuthenticated, loading } = useCurrentUser();
+
+  if (loading) return <LoadingScreen />;
+  if (!isAuthenticated) return <LandingPage />;
+  return <App />;
+}

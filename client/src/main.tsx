@@ -1,13 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import { AppRoot } from './AppRoot.tsx'
 import { CurrentUserProvider } from './context/CurrentUserContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <CurrentUserProvider>
-      <App />
+      <AppRoot />
     </CurrentUserProvider>
   </StrictMode>,
 )
