@@ -10,6 +10,7 @@ import {
 import { api, type Company, type PurchaseOrder } from '../../api';
 import { getCompanyMessages } from '../../data/revMgmtCompanyMessages';
 import { filterPurchaseOrdersByOrg } from '../../utils/orgFilters';
+import { ActivePurchasePanel } from './ActivePurchasePanel';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -18,10 +19,12 @@ type Props = {
 
 type ActivityItem = {
   id: string;
+  orderId?: number;
   time: string;
   title: string;
   detail: string;
   tone: 'neutral' | 'warning' | 'success';
+  clickable: boolean;
 };
 
 function isPendingStatus(status: string) {
@@ -59,10 +62,12 @@ function buildActivityToday(
     if (!isToday(order.orderDate)) continue;
     items.push({
       id: `po-${order.id}`,
+      orderId: order.id,
       time: 'Today',
-      title: `Purchase order ${order.poNumber}`,
+      title: `${order.documentType === 'PR' ? 'Purchase request' : 'Purchase order'} ${order.poNumber}`,
       detail: `${order.vendorName} · ${order.status}`,
       tone: isPendingStatus(order.status) ? 'warning' : 'success',
+      clickable: true,
     });
   }
 
@@ -71,8 +76,9 @@ function buildActivityToday(
       id: 'pending-summary',
       time: 'Now',
       title: `${pendingCount} order${pendingCount === 1 ? '' : 's'} awaiting action`,
-      detail: 'Review pending purchase orders below',
+      detail: 'Click a PO below to approve, receive, or reconcile',
       tone: 'warning',
+      clickable: false,
     });
   }
 
@@ -83,6 +89,7 @@ function buildActivityToday(
       title: 'No activity yet',
       detail: 'Orders and approvals for the selected company and locations will appear here.',
       tone: 'neutral',
+      clickable: false,
     });
   }
 
@@ -104,49 +111,75 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [openingOrderId, setOpeningOrderId] = useState<number | null>(null);
 
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
+  async function loadOrders() {
+    setLoading(true);
+    const results = await Promise.allSettled([
+      api.activePurchaseOrders(selectedCompanyId ?? undefined),
+      api.companies(),
+    ]);
+
+    if (results[0].status === 'fulfilled') setOrders(results[0].value);
+    if (results[1].status === 'fulfilled') setCompanies(results[1].value);
+    setLoading(false);
+  }
+
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      const results = await Promise.allSettled([
-        api.purchaseOrders(),
-        api.companies(),
-      ]);
-
-      if (cancelled) return;
-
-      if (results[0].status === 'fulfilled') setOrders(results[0].value);
-      if (results[1].status === 'fulfilled') setCompanies(results[1].value);
-      setLoading(false);
-    }
-
-    void load();
-    return () => { cancelled = true; };
-  }, []);
+    void loadOrders();
+  }, [selectedCompanyId]);
 
   const companyName = useMemo(() => {
     if (!selectedCompanyId) return 'your company';
     return companies.find(c => c.id === selectedCompanyId)?.name ?? 'your company';
   }, [companies, selectedCompanyId]);
 
-  const scopedOrders = useMemo(
+  const actionableOrders = useMemo(
     () => filterPurchaseOrdersByOrg(orders, selectedCompanyId, selectedLocationIds),
     [orders, selectedCompanyId, selectedLocationIds],
   );
 
-  const pendingOrders = useMemo(
-    () => scopedOrders.filter(o => isPendingStatus(o.status)),
-    [scopedOrders],
-  );
+  const pendingOrders = actionableOrders;
 
   const activityItems = useMemo(
-    () => buildActivityToday(scopedOrders, pendingOrders.length),
-    [scopedOrders, pendingOrders.length],
+    () => buildActivityToday(actionableOrders, pendingOrders.length),
+    [actionableOrders, pendingOrders.length],
   );
+
+  const selectedOrder = useMemo(
+    () => orders.find(o => o.id === selectedOrderId) ?? null,
+    [orders, selectedOrderId],
+  );
+
+  async function openOrder(orderId: number) {
+    setOpeningOrderId(orderId);
+    try {
+      const order = await api.purchaseOrder(orderId);
+      setOrders(prev => {
+        const exists = prev.some(o => o.id === order.id);
+        if (!exists) return [order, ...prev];
+        return prev.map(o => (o.id === order.id ? order : o));
+      });
+      setSelectedOrderId(order.id);
+    } finally {
+      setOpeningOrderId(null);
+    }
+  }
+
+  function handleOrderUpdated(updated: PurchaseOrder) {
+    setOrders(prev => {
+      if (updated.status === 'Reconciled') {
+        return prev.filter(o => o.id !== updated.id);
+      }
+      const exists = prev.some(o => o.id === updated.id);
+      if (!exists) return [updated, ...prev];
+      return prev.map(o => (o.id === updated.id ? updated : o));
+    });
+    setSelectedOrderId(updated.status === 'Reconciled' ? null : updated.id);
+  }
 
   const messages = useMemo(
     () => getCompanyMessages(selectedCompanyId),
@@ -190,7 +223,19 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
               </p>
             ) : (
               activityItems.map(item => (
-                <div key={item.id} className="px-5 py-4 flex items-start gap-3">
+                <div
+                  key={item.id}
+                  role={item.clickable ? 'button' : undefined}
+                  tabIndex={item.clickable ? 0 : undefined}
+                  onClick={item.clickable && item.orderId ? () => void openOrder(item.orderId!) : undefined}
+                  onKeyDown={item.clickable && item.orderId ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      void openOrder(item.orderId!);
+                    }
+                  } : undefined}
+                  className={`px-5 py-4 flex items-start gap-3 ${item.clickable ? 'cursor-pointer hover:bg-muted/30 focus:outline-none focus:bg-muted/30' : ''}`}
+                >
                   <span className={`mt-0.5 shrink-0 text-[10px] font-sans uppercase tracking-wide px-1.5 py-0.5 rounded ${toneClasses(item.tone)}`}>
                     {item.time}
                   </span>
@@ -249,7 +294,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
               </div>
               <div>
                 <h2 className="text-sm font-semibold">List of Pending Orders</h2>
-                <p className="text-xs text-muted-foreground">Awaiting approval or dispatch</p>
+                <p className="text-xs text-muted-foreground">Click to approve, receive, or reconcile</p>
               </div>
             </div>
             <span className="text-xs font-sans px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
@@ -286,8 +331,14 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
                 </thead>
                 <tbody>
                   {pendingOrders.map(order => (
-                    <tr key={order.id} className="border-b border-border last:border-0 hover:bg-muted/20">
-                      <td className="px-4 py-3 font-sans text-primary whitespace-nowrap">{order.poNumber}</td>
+                    <tr
+                      key={order.id}
+                      className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
+                      onClick={() => void openOrder(order.id)}
+                    >
+                      <td className="px-4 py-3 font-sans text-primary whitespace-nowrap underline-offset-2 hover:underline">
+                        {openingOrderId === order.id ? '…' : order.poNumber}
+                      </td>
                       <td className="px-4 py-3">{order.vendorName}</td>
                       <td className="px-4 py-3 font-sans text-muted-foreground whitespace-nowrap">{order.deliveryDate}</td>
                       <td className="px-4 py-3 font-sans whitespace-nowrap">${orderValue(order).toFixed(2)}</td>
@@ -304,6 +355,14 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
           </div>
         </section>
       </div>
+
+      {selectedOrder && (
+        <ActivePurchasePanel
+          order={selectedOrder}
+          onClose={() => setSelectedOrderId(null)}
+          onUpdated={handleOrderUpdated}
+        />
+      )}
     </div>
   );
 }
