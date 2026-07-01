@@ -201,6 +201,11 @@ export function rmsGroupSomeEnabled(access: UserAccess, groupId: string): boolea
 }
 
 export const RMS_APPROVE_ORDER_TASK = 'approveOrder';
+export const RMS_RECEIVE_ORDER_TASK = 'receiveOrder';
+
+export function canReceivePurchaseOrder(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_RECEIVE_ORDER_TASK);
+}
 
 export function hasRmsTask(access: UserAccess, taskId: string): boolean {
   const normalized = parseUserAccess(access);

@@ -143,7 +143,8 @@ export function OrderCartModal({
       return;
     }
 
-    const orderStatus = signatories.canSelfApprove ? 'Pending' : 'Pending Approval';
+    const orderStatus = signatories.canSelfApprove ? 'Open' : 'Pending Approval';
+    const documentType = signatories.documentKind === 'purchase_order' ? 'PO' : 'PR';
 
     setSaving(true);
     setError(null);
@@ -160,14 +161,19 @@ export function OrderCartModal({
         approvedBy: signatories.approvedBy,
         orders: groups.map(group => ({
           vendorName: group.vendorName,
+          documentType,
           orderDate: orderDateStr,
           deliveryDate: deliveryDateStr,
           status: orderStatus,
           items: group.items.map(item => ({
+            componentId: item.componentId,
+            componentName: item.componentName,
+            vendorProductId: item.vendorProductId,
             name: item.productName,
             quantity: item.quantity,
             unitPrice: item.deliveryPrice,
             unit: item.deliveryUnitLabel,
+            componentUom: item.componentUom,
             deliveryPackage: item.deliveryUnitLabel,
           })),
         })),

@@ -6,7 +6,9 @@ import { SmartIngredientPage } from './SmartIngredientPage';
 import { ComponentConfigPage } from './ComponentConfigPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
+import { ActivePurchasePage } from './ActivePurchasePage';
 import { CreateOrderPage } from './CreateOrderPage';
+import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
@@ -20,11 +22,7 @@ function renderRevMgmtContent(
   selectedLocationIds: string[],
 ) {
   if (!selectedItem) {
-    return (
-      <div className="p-6">
-        <p className="text-sm text-muted-foreground">Select a module from the navigation bar above.</p>
-      </div>
-    );
+    return <RevMgmtLandingPage selectedCompanyId={selectedCompanyId} />;
   }
 
   const [section, subtitle, label] = selectedItem.split('||');
@@ -43,6 +41,12 @@ function renderRevMgmtContent(
         <CreateOrderPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Active Purchase':
+      return (
+        <ActivePurchasePage
+          selectedCompanyId={selectedCompanyId}
         />
       );
     default:

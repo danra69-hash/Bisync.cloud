@@ -9,6 +9,7 @@ import {
   resolveVendorsForSelectedLocations,
   type CreateOrderLine,
 } from '../../data/createOrder';
+import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { ingredientToRow } from './smartIngredientShared';
 import { OrderCartModal } from './OrderCartModal';
 
@@ -31,6 +32,10 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds }: Prop
   const [showCart, setShowCart] = useState(false);
 
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
+
+  useEffect(() => {
+    void refreshVendorProductPricesFromApi();
+  }, []);
 
   useEffect(() => {
     if (!selectedCompanyId) {

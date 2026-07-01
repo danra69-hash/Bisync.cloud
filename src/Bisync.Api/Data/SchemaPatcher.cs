@@ -62,6 +62,52 @@ public static class SchemaPatcher
         await TryCreateUniqueIndexAsync(db, "IX_Ingredients_Name", "Ingredients", "Name");
         await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
         await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
+
+        await EnsureColumnAsync(db, "PurchaseOrders", "DocumentType", "TEXT NOT NULL DEFAULT 'PO'");
+        await EnsureColumnAsync(db, "PurchaseOrders", "CompanyId", "INTEGER");
+        await EnsureColumnAsync(db, "PurchaseOrders", "LocationIdsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await EnsureColumnAsync(db, "PurchaseOrders", "InitiatedBy", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "PurchaseOrders", "ApprovedBy", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "PurchaseOrders", "ApprovedAt", "TEXT");
+        await EnsureColumnAsync(db, "PurchaseOrders", "ReceivedAt", "TEXT");
+        await EnsureColumnAsync(db, "PurchaseOrders", "ReconciledAt", "TEXT");
+
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentId", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentName", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "ComponentUom", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "ReceivedQuantity", "REAL");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "ReceivedUnitPrice", "REAL");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "ReconciledQuantity", "REAL");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "ReconciledUnitPrice", "REAL");
+
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "VendorProductId", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "PurchaseOrderItems", "IssuedUnitPrice", "REAL NOT NULL DEFAULT 0");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "InventoryPurchases" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryPurchases" PRIMARY KEY AUTOINCREMENT,
+                "ComponentId" TEXT NOT NULL,
+                "ComponentName" TEXT NOT NULL,
+                "Quantity" REAL NOT NULL,
+                "Uom" TEXT NOT NULL,
+                "UnitPrice" REAL NOT NULL,
+                "DateOrdered" TEXT NOT NULL,
+                "DateCreatedInStock" TEXT NOT NULL,
+                "PurchaseOrderId" INTEGER NOT NULL,
+                "PurchaseOrderItemId" INTEGER NOT NULL,
+                "CompanyId" INTEGER,
+                "LocationIdsJson" TEXT NOT NULL DEFAULT '[]'
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "VendorProductPrices" (
+                "ExternalId" TEXT NOT NULL CONSTRAINT "PK_VendorProductPrices" PRIMARY KEY,
+                "DeliveryPrice" REAL NOT NULL,
+                "UpdatedAt" TEXT NOT NULL,
+                "LastPurchaseOrderId" INTEGER
+            );
+            """);
     }
 
     static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)

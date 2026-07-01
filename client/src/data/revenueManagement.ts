@@ -10,6 +10,7 @@ export const revMgmtNav: RevMgmtSection[] = [
         subtitle: 'Order',
         items: [
           { label: 'Create Order' },
+          { label: 'Active Purchase' },
           { label: 'Cash Purchase' },
           { label: 'Order Template' },
           { label: 'Offline Sales' },

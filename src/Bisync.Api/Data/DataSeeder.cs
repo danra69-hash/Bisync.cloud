@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Data;
@@ -39,6 +40,35 @@ public static class DataSeeder
         var po2 = new PurchaseOrder { PoNumber = "PO-2842", VendorName = "Fine Truffle Imports", OrderDate = new DateOnly(2025, 6, 19), DeliveryDate = new DateOnly(2025, 6, 22), Status = "Confirmed" };
         po2.Items.Add(new PurchaseOrderItem { Name = "Black Truffle", Quantity = 500, UnitPrice = 1.80m, Unit = "g", DeliveryPackage = "Individual 50g jars" });
         db.PurchaseOrders.Add(po2);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var po3 = new PurchaseOrder
+        {
+            PoNumber = "PO-2843",
+            VendorName = "Fresh Produce Ltd.",
+            OrderDate = today,
+            DeliveryDate = today.AddDays(3),
+            DocumentType = PurchaseOrderWorkflow.DocumentTypePr,
+            Status = PurchaseOrderWorkflow.StatusPendingApproval,
+            InitiatedBy = "Kitchen Manager",
+        };
+        po3.Items.Add(new PurchaseOrderItem { VendorProductId = "VP-BUR001", ComponentId = "CMP-BURRAT-001", ComponentName = "Burrata", Name = "Burrata", Quantity = 24, UnitPrice = 8.75m, IssuedUnitPrice = 8.75m, Unit = "6pcs tray", ComponentUom = "pcs", DeliveryPackage = "6pcs tray" });
+        db.PurchaseOrders.Add(po3);
+
+        var po4 = new PurchaseOrder
+        {
+            PoNumber = "PO-2844",
+            VendorName = "Dairy Direct",
+            OrderDate = today,
+            DeliveryDate = today.AddDays(2),
+            DocumentType = PurchaseOrderWorkflow.DocumentTypePo,
+            Status = PurchaseOrderWorkflow.StatusOpen,
+            InitiatedBy = "Procurement",
+            ApprovedBy = "Operations Manager",
+            ApprovedAt = DateTime.UtcNow,
+        };
+        po4.Items.Add(new PurchaseOrderItem { VendorProductId = "VP-BUR001", ComponentId = "CMP-BURRAT-001", ComponentName = "Burrata", Name = "Burrata", Quantity = 24, UnitPrice = 8.75m, IssuedUnitPrice = 8.75m, Unit = "6pcs tray", ComponentUom = "pcs", DeliveryPackage = "6pcs tray" });
+        db.PurchaseOrders.Add(po4);
 
         db.InventoryAlerts.AddRange(
             new InventoryAlert { ItemName = "Wagyu Beef (A5)", Stock = "1.2 kg", Status = "critical", Threshold = "2 kg" },

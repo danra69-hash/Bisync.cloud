@@ -174,27 +174,61 @@ export interface VendorCreatePayload {
   email: string;
 }
 
+export interface PurchaseOrderItem {
+  id: number;
+  componentId?: string;
+  componentName?: string;
+  vendorProductId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  issuedUnitPrice?: number;
+  unit: string;
+  componentUom?: string;
+  deliveryPackage?: string;
+  receivedQuantity?: number | null;
+  receivedUnitPrice?: number | null;
+  reconciledQuantity?: number | null;
+  reconciledUnitPrice?: number | null;
+}
+
 export interface PurchaseOrder {
   id: number;
   poNumber: string;
   vendorName: string;
   orderDate: string;
   deliveryDate: string;
+  documentType: 'PR' | 'PO' | string;
   status: string;
-  items: { id: number; name: string; quantity: number; unitPrice: number; unit: string; deliveryPackage?: string }[];
+  companyId?: number | null;
+  locationExternalIds?: string[];
+  initiatedBy?: string;
+  approvedBy?: string;
+  approvedAt?: string | null;
+  receivedAt?: string | null;
+  reconciledAt?: string | null;
+  canApprove?: boolean;
+  canReceive?: boolean;
+  canReconcile?: boolean;
+  items: PurchaseOrderItem[];
 }
 
 export interface CreatePurchaseOrderItemPayload {
+  componentId?: string;
+  componentName?: string;
+  vendorProductId?: string;
   name: string;
   quantity: number;
   unitPrice: number;
   unit: string;
+  componentUom?: string;
   deliveryPackage: string;
 }
 
 export interface CreatePurchaseOrderPayload {
   vendorName: string;
   poNumber?: string;
+  documentType?: 'PR' | 'PO';
   orderDate?: string;
   deliveryDate?: string;
   status?: string;
@@ -207,6 +241,43 @@ export interface CreatePurchaseOrdersBatchPayload {
   initiatedBy?: string;
   approvedBy?: string;
   orders: CreatePurchaseOrderPayload[];
+}
+
+export interface PurchaseOrderLineWorkflowPayload {
+  itemId: number;
+  quantity: number;
+  unitPrice: number;
+  componentUom?: string;
+}
+
+export interface PurchaseOrderWorkflowPayload {
+  items: PurchaseOrderLineWorkflowPayload[];
+}
+
+export interface ReconcilePurchaseOrderResult {
+  order: PurchaseOrder;
+  updatedVendorProductPrices: { id: string; deliveryPrice: number }[];
+}
+
+export interface VendorProductPriceRow {
+  id: string;
+  deliveryPrice: number;
+  updatedAt?: string;
+}
+
+export interface InventoryPurchase {
+  id: number;
+  componentId: string;
+  componentName: string;
+  quantity: number;
+  uom: string;
+  unitPrice: number;
+  dateOrdered: string;
+  dateCreatedInStock: string;
+  purchaseOrderId: number;
+  purchaseOrderItemId: number;
+  companyId?: number | null;
+  locationExternalIds?: string[];
 }
 
 export interface InventoryAlert {
@@ -299,8 +370,20 @@ export const api = {
   createIngredient: (data: Omit<Ingredient, 'id'>) => fetchJsonWithMethod<Ingredient>('/api/ingredients', 'POST', data),
   updateIngredient: (id: number, data: Ingredient) => fetchJsonWithMethod<Ingredient>(`/api/ingredients/${id}`, 'PUT', data),
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),
+  activePurchaseOrders: (companyId?: number) =>
+    fetchJson<PurchaseOrder[]>(`/api/purchaseorders/active${companyId ? `?companyId=${companyId}` : ''}`),
+  purchaseOrder: (id: number) => fetchJson<PurchaseOrder>(`/api/purchaseorders/${id}`),
   createPurchaseOrders: (payload: CreatePurchaseOrdersBatchPayload) =>
     fetchJsonWithMethod<PurchaseOrder[]>('/api/purchaseorders/batch', 'POST', payload),
+  approvePurchaseOrder: (id: number, approvedBy: string) =>
+    fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/approve`, 'POST', { approvedBy }),
+  receivePurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
+    fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/receive`, 'POST', payload),
+  reconcilePurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
+    fetchJsonWithMethod<ReconcilePurchaseOrderResult>(`/api/purchaseorders/${id}/reconcile`, 'POST', payload),
+  vendorProductPrices: () => fetchJson<VendorProductPriceRow[]>('/api/vendorproducts/prices'),
+  inventoryPurchases: (companyId?: number) =>
+    fetchJson<InventoryPurchase[]>(`/api/inventory/purchases${companyId ? `?companyId=${companyId}` : ''}`),
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

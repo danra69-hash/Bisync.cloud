@@ -580,6 +580,12 @@ public class CreateVendorRequest
 
 public class CreatePurchaseOrderItemRequest
 {
+    [MaxLength(32)]
+    public string? ComponentId { get; set; }
+    [MaxLength(200)]
+    public string? ComponentName { get; set; }
+    [MaxLength(32)]
+    public string? VendorProductId { get; set; }
     [Required, MaxLength(300)]
     public string Name { get; set; } = string.Empty;
     [Range(0.0001, 999999999)]
@@ -588,6 +594,8 @@ public class CreatePurchaseOrderItemRequest
     public decimal UnitPrice { get; set; }
     [MaxLength(50)]
     public string Unit { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string? ComponentUom { get; set; }
     [MaxLength(200)]
     public string DeliveryPackage { get; set; } = string.Empty;
 }
@@ -598,10 +606,12 @@ public class CreatePurchaseOrderRequest
     public string VendorName { get; set; } = string.Empty;
     [MaxLength(50)]
     public string? PoNumber { get; set; }
+    [MaxLength(10)]
+    public string? DocumentType { get; set; }
     public DateOnly? OrderDate { get; set; }
     public DateOnly? DeliveryDate { get; set; }
     [MaxLength(50)]
-    public string Status { get; set; } = "Pending";
+    public string Status { get; set; } = "Open";
     public List<CreatePurchaseOrderItemRequest> Items { get; set; } = [];
 }
 
@@ -614,4 +624,26 @@ public class CreatePurchaseOrdersBatchRequest
     [MaxLength(200)]
     public string? ApprovedBy { get; set; }
     public List<CreatePurchaseOrderRequest> Orders { get; set; } = [];
+}
+
+public class ApprovePurchaseOrderRequest
+{
+    [MaxLength(200)]
+    public string? ApprovedBy { get; set; }
+}
+
+public class PurchaseOrderLineWorkflowRequest
+{
+    public int ItemId { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    [Range(0, 999999999)]
+    public decimal UnitPrice { get; set; }
+    [MaxLength(50)]
+    public string? ComponentUom { get; set; }
+}
+
+public class PurchaseOrderWorkflowRequest
+{
+    public List<PurchaseOrderLineWorkflowRequest> Items { get; set; } = [];
 }

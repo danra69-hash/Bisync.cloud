@@ -1,4 +1,5 @@
 import { getConversion, RECIPE_UNITS, type AltUnitEntry } from './componentForm';
+import { mergeServerVendorProductPrices } from './vendorProductPrices';
 import { EXTENDED_VENDOR_CONTACTS, EXTENDED_VENDOR_PRODUCTS } from './vendorProductCatalogExtras';
 import type { Vendor } from '../api';
 
@@ -272,7 +273,7 @@ export function applyVendorProductOverrides(
 ): VendorProductCatalogItem[] {
   const mergedCatalog = [...catalog, ...loadImportedVendorProducts()];
   const overrides = loadVendorProductOverrides();
-  return mergedCatalog.map(item => {
+  const withOverrides = mergedCatalog.map(item => {
     const patch = overrides[item.id];
     if (!patch) return item;
     return {
@@ -281,6 +282,7 @@ export function applyVendorProductOverrides(
       delivery: patch.delivery ? { ...item.delivery, ...patch.delivery } : item.delivery,
     };
   });
+  return mergeServerVendorProductPrices(withOverrides);
 }
 
 function normalizeUnitName(unit: string): string {

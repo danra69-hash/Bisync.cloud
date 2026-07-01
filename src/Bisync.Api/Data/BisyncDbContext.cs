@@ -37,6 +37,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+    public DbSet<InventoryPurchase> InventoryPurchases => Set<InventoryPurchase>();
+    public DbSet<VendorProductPrice> VendorProductPrices => Set<VendorProductPrice>();
     public DbSet<InventoryAlert> InventoryAlerts => Set<InventoryAlert>();
     public DbSet<RevenueDataPoint> RevenueDataPoints => Set<RevenueDataPoint>();
     public DbSet<DevelopmentMilestone> DevelopmentMilestones => Set<DevelopmentMilestone>();
@@ -82,5 +84,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .WithOne(i => i.PurchaseOrder)
             .HasForeignKey(i => i.PurchaseOrderId)
             .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<InventoryPurchase>().HasIndex(i => i.PurchaseOrderItemId);
+        modelBuilder.Entity<VendorProductPrice>().HasKey(p => p.ExternalId);
     }
 }

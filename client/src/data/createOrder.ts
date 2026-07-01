@@ -175,6 +175,8 @@ export type OrderCartItem = {
   lineKey: string;
   componentId: string;
   componentName: string;
+  componentUom: string;
+  vendorProductId: string;
   vendorExternalId: string;
   vendorName: string;
   productName: string;
@@ -202,6 +204,8 @@ export function buildCartItems(
       lineKey: line.key,
       componentId: line.component.componentId,
       componentName: line.component.name,
+      componentUom: line.component.inventoryUOM,
+      vendorProductId: line.vendorProduct.id,
       vendorExternalId: line.vendorProduct.vendorExternalId,
       vendorName: line.vendorProduct.vendorName,
       productName: line.vendorProduct.productName,

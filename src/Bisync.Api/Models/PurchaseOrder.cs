@@ -9,7 +9,15 @@ public class PurchaseOrder
     public string VendorName { get; set; } = string.Empty;
     public DateOnly OrderDate { get; set; }
     public DateOnly DeliveryDate { get; set; }
-    public string Status { get; set; } = "Pending";
+    public string DocumentType { get; set; } = "PO";
+    public string Status { get; set; } = "Open";
+    public int? CompanyId { get; set; }
+    public string LocationIdsJson { get; set; } = "[]";
+    public string InitiatedBy { get; set; } = string.Empty;
+    public string ApprovedBy { get; set; } = string.Empty;
+    public DateTime? ApprovedAt { get; set; }
+    public DateTime? ReceivedAt { get; set; }
+    public DateTime? ReconciledAt { get; set; }
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 
@@ -19,9 +27,18 @@ public class PurchaseOrderItem
     public int PurchaseOrderId { get; set; }
     [JsonIgnore]
     public PurchaseOrder? PurchaseOrder { get; set; }
+    public string ComponentId { get; set; } = string.Empty;
+    public string ComponentName { get; set; } = string.Empty;
+    public string VendorProductId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public decimal IssuedUnitPrice { get; set; }
     public string Unit { get; set; } = string.Empty;
+    public string ComponentUom { get; set; } = string.Empty;
     public string DeliveryPackage { get; set; } = string.Empty;
+    public decimal? ReceivedQuantity { get; set; }
+    public decimal? ReceivedUnitPrice { get; set; }
+    public decimal? ReconciledQuantity { get; set; }
+    public decimal? ReconciledUnitPrice { get; set; }
 }
