@@ -340,13 +340,30 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
         if (companyId is int id)
             query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
 
-        var orders = await query.ToListAsync();
+        var orderIds = await query.Select(p => p.Id).ToListAsync();
+        await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, orderIds);
+
+        var orders = await BaseQuery()
+            .Where(p => orderIds.Contains(p.Id))
+            .ToListAsync();
         return Ok(orders.Select(PurchaseOrderWorkflow.MapOrder));
+    }
+
+    [HttpPost("{id:int}/ensure-share-token")]
+    public async Task<ActionResult<object>> EnsureShareToken(int id)
+    {
+        var order = await LoadOrderAsync(id, tracking: true);
+        if (order is null) return NotFound();
+
+        PurchaseOrderShareService.EnsureShareToken(order);
+        await db.SaveChangesAsync();
+        return Ok(PurchaseOrderWorkflow.MapOrder(order));
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<object>> GetById(int id)
     {
+        await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, [id]);
         var order = await LoadOrderAsync(id);
         return order is null ? NotFound() : PurchaseOrderWorkflow.MapOrder(order);
     }
@@ -454,7 +471,14 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
 
-        return Ok(created.Select(PurchaseOrderWorkflow.MapOrder));
+        var ids = created.Select(c => c.Id).ToList();
+        await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, ids);
+
+        var saved = await BaseQuery()
+            .Where(p => ids.Contains(p.Id))
+            .ToListAsync();
+
+        return Ok(saved.Select(PurchaseOrderWorkflow.MapOrder));
     }
 
     [HttpPost("{id:int}/approve")]

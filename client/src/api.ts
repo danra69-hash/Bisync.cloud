@@ -432,6 +432,8 @@ export const api = {
   activePurchaseOrders: (companyId?: number) =>
     fetchJson<PurchaseOrder[]>(`/api/purchaseorders/active${companyId ? `?companyId=${companyId}` : ''}`),
   purchaseOrder: (id: number) => fetchJson<PurchaseOrder>(`/api/purchaseorders/${id}`),
+  ensureVendorShareToken: (id: number) =>
+    fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/ensure-share-token`, 'POST'),
   createPurchaseOrders: (payload: CreatePurchaseOrdersBatchPayload) =>
     fetchJsonWithMethod<PurchaseOrder[]>('/api/purchaseorders/batch', 'POST', payload),
   approvePurchaseOrder: (id: number, approvedBy: string) =>

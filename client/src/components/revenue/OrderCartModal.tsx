@@ -217,17 +217,25 @@ export function OrderCartModal({
         });
       });
 
-      const summaries: CreatedVendorOrder[] = created.map((po, index) => {
-        const token = po.vendorShareToken?.trim();
-        if (!token) throw new Error(`Missing vendor share link for ${po.poNumber}.`);
-        return {
-          id: po.id,
-          poNumber: po.poNumber,
-          vendorName: po.vendorName,
-          shareToken: token,
-          pdf: pdfPayloads[index],
-        };
-      });
+      const summaries: CreatedVendorOrder[] = await Promise.all(
+        created.map(async (po, index) => {
+          let resolved = po;
+          if (!po.vendorShareToken?.trim()) {
+            resolved = await api.ensureVendorShareToken(po.id);
+          }
+          const token = resolved.vendorShareToken?.trim();
+          if (!token) {
+            throw new Error(`Could not create vendor share link for ${po.poNumber}.`);
+          }
+          return {
+            id: resolved.id,
+            poNumber: resolved.poNumber,
+            vendorName: resolved.vendorName,
+            shareToken: token,
+            pdf: pdfPayloads[index],
+          };
+        }),
+      );
 
       setCreatedOrders(summaries);
       setActiveVendorIndex(0);

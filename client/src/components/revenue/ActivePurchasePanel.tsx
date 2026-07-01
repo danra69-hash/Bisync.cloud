@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, PackageCheck, X } from 'lucide-react';
+import { Check, Copy, PackageCheck, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
 import { useCurrentUser } from '../../context/CurrentUserContext';
 import { formatRm } from '../../data/createOrder';
@@ -14,6 +14,7 @@ import {
   DETAIL_PANEL_OVERLAY_ELEVATED_CLS,
   DETAIL_PANEL_SHELL_ELEVATED_CLS,
 } from '../layout/sidePanelShared';
+import { buildVendorOrderShareUrl, copyVendorOrderShareLink } from '../../data/vendorOrderShare';
 
 type Props = {
   order: PurchaseOrder;
@@ -82,11 +83,37 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const [lines, setLines] = useState(() => buildEditableLines(order, mode));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shareToken, setShareToken] = useState(order.vendorShareToken?.trim() ?? '');
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
 
   useEffect(() => {
     setLines(buildEditableLines(order, mode));
     setError(null);
+    setShareToken(order.vendorShareToken?.trim() ?? '');
+    setShareLinkCopied(false);
   }, [order, mode]);
+
+  useEffect(() => {
+    const existing = order.vendorShareToken?.trim() ?? '';
+    if (existing) {
+      setShareToken(existing);
+      return;
+    }
+
+    let cancelled = false;
+    void api.ensureVendorShareToken(order.id)
+      .then(updated => {
+        if (cancelled) return;
+        const token = updated.vendorShareToken?.trim() ?? '';
+        setShareToken(token);
+        if (token) onUpdated(updated);
+      })
+      .catch(() => {
+        if (!cancelled) setShareToken('');
+      });
+
+    return () => { cancelled = true; };
+  }, [order.id, order.vendorShareToken, onUpdated]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -108,6 +135,18 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
 
   function updateLine(itemId: number, patch: Partial<EditableLine>) {
     setLines(prev => prev.map(line => (line.itemId === itemId ? { ...line, ...patch } : line)));
+  }
+
+  async function handleCopyShareLink() {
+    if (!shareToken) return;
+    setError(null);
+    try {
+      await copyVendorOrderShareLink(shareToken);
+      setShareLinkCopied(true);
+      window.setTimeout(() => setShareLinkCopied(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to copy vendor link.');
+    }
   }
 
   async function handleApprove() {
@@ -245,6 +284,33 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             <div>
               <p className="text-muted-foreground">Total</p>
               <p className="font-sans font-medium mt-0.5">{formatRm(total)}</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground">Vendor share link</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Send this link to the vendor so they can view the PDF and accept the order.
+                </p>
+                {shareToken ? (
+                  <p className="text-xs font-sans text-primary mt-2 break-all">
+                    {buildVendorOrderShareUrl(shareToken)}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-2">Generating share link…</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopyShareLink()}
+                disabled={!shareToken}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
+              >
+                <Copy size={12} />
+                {shareLinkCopied ? 'Copied!' : 'Copy link'}
+              </button>
             </div>
           </div>
 
