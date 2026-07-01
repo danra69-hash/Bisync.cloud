@@ -1,4 +1,4 @@
-import type { Location, LocationConfig } from '../api';
+import type { Location, LocationConfig, PurchaseOrder } from '../api';
 
 export type DropdownLocation = {
   externalId: string;
@@ -30,4 +30,20 @@ export function filterMetricsByOrg(
 
   if (selectedLocationIds.length === 0) return [];
   return scoped.filter(l => selectedLocationIds.includes(l.externalId));
+}
+
+export function filterPurchaseOrdersByOrg(
+  orders: PurchaseOrder[],
+  companyId: number | null,
+  selectedLocationIds: string[],
+): PurchaseOrder[] {
+  if (!companyId || selectedLocationIds.length === 0) return [];
+
+  const selected = new Set(selectedLocationIds);
+  return orders.filter(order => {
+    if (order.companyId != null && order.companyId !== companyId) return false;
+    const orderLocs = order.locationExternalIds ?? [];
+    if (orderLocs.length === 0) return false;
+    return orderLocs.some(loc => selected.has(loc));
+  });
 }

@@ -22,7 +22,7 @@ function renderRevMgmtContent(
   selectedLocationIds: string[],
 ) {
   if (!selectedItem) {
-    return <RevMgmtLandingPage selectedCompanyId={selectedCompanyId} />;
+    return <RevMgmtLandingPage selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />;
   }
 
   const [section, subtitle, label] = selectedItem.split('||');

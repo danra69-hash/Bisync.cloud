@@ -7,11 +7,13 @@ import {
   Package,
   ShoppingCart,
 } from 'lucide-react';
-import { api, type Company, type InventoryAlert, type PurchaseOrder } from '../../api';
+import { api, type Company, type PurchaseOrder } from '../../api';
 import { getCompanyMessages } from '../../data/revMgmtCompanyMessages';
+import { filterPurchaseOrdersByOrg } from '../../utils/orgFilters';
 
 type Props = {
   selectedCompanyId: number | null;
+  selectedLocationIds: string[];
 };
 
 type ActivityItem = {
@@ -49,7 +51,6 @@ function isToday(dateStr: string) {
 
 function buildActivityToday(
   orders: PurchaseOrder[],
-  alerts: InventoryAlert[],
   pendingCount: number,
 ): ActivityItem[] {
   const items: ActivityItem[] = [];
@@ -62,16 +63,6 @@ function buildActivityToday(
       title: `Purchase order ${order.poNumber}`,
       detail: `${order.vendorName} · ${order.status}`,
       tone: isPendingStatus(order.status) ? 'warning' : 'success',
-    });
-  }
-
-  for (const alert of alerts) {
-    items.push({
-      id: `alert-${alert.id}`,
-      time: 'Now',
-      title: alert.itemName,
-      detail: `Stock ${alert.stock} · minimum ${alert.threshold}`,
-      tone: alert.status === 'critical' ? 'warning' : 'neutral',
     });
   }
 
@@ -90,7 +81,7 @@ function buildActivityToday(
       id: 'empty',
       time: 'Today',
       title: 'No activity yet',
-      detail: 'Orders, alerts, and approvals will appear here throughout the day.',
+      detail: 'Orders and approvals for the selected company and locations will appear here.',
       tone: 'neutral',
     });
   }
@@ -109,11 +100,12 @@ function toneClasses(tone: ActivityItem['tone']) {
   }
 }
 
-export function RevMgmtLandingPage({ selectedCompanyId }: Props) {
+export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -122,15 +114,13 @@ export function RevMgmtLandingPage({ selectedCompanyId }: Props) {
       setLoading(true);
       const results = await Promise.allSettled([
         api.purchaseOrders(),
-        api.inventoryAlerts(),
         api.companies(),
       ]);
 
       if (cancelled) return;
 
       if (results[0].status === 'fulfilled') setOrders(results[0].value);
-      if (results[1].status === 'fulfilled') setAlerts(results[1].value);
-      if (results[2].status === 'fulfilled') setCompanies(results[2].value);
+      if (results[1].status === 'fulfilled') setCompanies(results[1].value);
       setLoading(false);
     }
 
@@ -143,8 +133,10 @@ export function RevMgmtLandingPage({ selectedCompanyId }: Props) {
     return companies.find(c => c.id === selectedCompanyId)?.name ?? 'your company';
   }, [companies, selectedCompanyId]);
 
-  const scopedOrders = selectedCompanyId ? orders : [];
-  const scopedAlerts = selectedCompanyId ? alerts : [];
+  const scopedOrders = useMemo(
+    () => filterPurchaseOrdersByOrg(orders, selectedCompanyId, selectedLocationIds),
+    [orders, selectedCompanyId, selectedLocationIds],
+  );
 
   const pendingOrders = useMemo(
     () => scopedOrders.filter(o => isPendingStatus(o.status)),
@@ -152,8 +144,8 @@ export function RevMgmtLandingPage({ selectedCompanyId }: Props) {
   );
 
   const activityItems = useMemo(
-    () => buildActivityToday(scopedOrders, scopedAlerts, pendingOrders.length),
-    [scopedOrders, scopedAlerts, pendingOrders.length],
+    () => buildActivityToday(scopedOrders, pendingOrders.length),
+    [scopedOrders, pendingOrders.length],
   );
 
   const messages = useMemo(
@@ -170,9 +162,11 @@ export function RevMgmtLandingPage({ selectedCompanyId }: Props) {
         </p>
       </div>
 
-      {!selectedCompanyId && (
+      {!orgReady && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-          Select a company in the header to load live orders and inventory activity.
+          {!selectedCompanyId
+            ? 'Select a company in the header to load activity and pending orders.'
+            : 'Select one or more locations in the header to scope activity and pending orders.'}
         </div>
       )}
 
@@ -184,12 +178,16 @@ export function RevMgmtLandingPage({ selectedCompanyId }: Props) {
             </div>
             <div>
               <h2 className="text-sm font-semibold">Activity Today</h2>
-              <p className="text-xs text-muted-foreground">Live operations feed</p>
+              <p className="text-xs text-muted-foreground">Orders for selected company & locations</p>
             </div>
           </div>
           <div className="flex-1 divide-y divide-border overflow-y-auto">
             {loading ? (
               <p className="px-5 py-4 text-xs text-muted-foreground">Loading activity…</p>
+            ) : !orgReady ? (
+              <p className="px-5 py-4 text-xs text-muted-foreground">
+                Select a company and locations to view today&apos;s activity.
+              </p>
             ) : (
               activityItems.map(item => (
                 <div key={item.id} className="px-5 py-4 flex items-start gap-3">
@@ -261,6 +259,13 @@ export function RevMgmtLandingPage({ selectedCompanyId }: Props) {
           <div className="flex-1 overflow-auto">
             {loading ? (
               <p className="px-5 py-4 text-xs text-muted-foreground">Loading orders…</p>
+            ) : !orgReady ? (
+              <div className="px-5 py-8 text-center">
+                <p className="text-xs font-medium">Select company and locations</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Pending orders are scoped to your header selection.
+                </p>
+              </div>
             ) : pendingOrders.length === 0 ? (
               <div className="px-5 py-8 text-center">
                 <p className="text-xs font-medium">No pending orders</p>
