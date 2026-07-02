@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Search, ShoppingCart } from 'lucide-react';
-import { api, type Vendor } from '../../api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FileStack, Search, ShoppingCart } from 'lucide-react';
+import { api, type OrderTemplate, type Vendor } from '../../api';
 import {
   buildCartItems,
   buildCreateOrderLines,
@@ -9,9 +9,11 @@ import {
   resolveVendorsForSelectedLocations,
   type CreateOrderLine,
 } from '../../data/createOrder';
+import { buildOrderQtyFromTemplate } from '../../data/orderTemplates';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { ingredientToRow } from './smartIngredientShared';
 import { OrderCartModal } from './OrderCartModal';
+import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
 
 const thCls =
   'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
@@ -31,6 +33,9 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
   const [search, setSearch] = useState('');
   const [orderQtyByKey, setOrderQtyByKey] = useState<Record<string, string>>({});
   const [showCart, setShowCart] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
+  const pendingTemplateRef = useRef<OrderTemplate | null>(null);
 
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
@@ -93,6 +98,44 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
     ),
     [components, selectedLocationIds, vendorFilter, categoryFilter, search],
   );
+
+  function applyTemplateNow(template: OrderTemplate, currentLines: CreateOrderLine[]) {
+    const updates = buildOrderQtyFromTemplate(template, currentLines);
+    const appliedCount = Object.keys(updates).length;
+
+    if (appliedCount === 0) {
+      setTemplateNotice(`Could not apply "${template.name}" — no matching order lines for the current filters.`);
+      return;
+    }
+
+    setOrderQtyByKey(prev => ({ ...prev, ...updates }));
+    setTemplateNotice(
+      appliedCount === template.items.length
+        ? `Applied "${template.name}" (${appliedCount} item${appliedCount === 1 ? '' : 's'}).`
+        : `Applied "${template.name}" (${appliedCount} of ${template.items.length} items).`,
+    );
+  }
+
+  useEffect(() => {
+    const template = pendingTemplateRef.current;
+    if (!template) return;
+
+    pendingTemplateRef.current = null;
+    applyTemplateNow(template, lines);
+  }, [lines]);
+
+  function handleApplyTemplate(template: OrderTemplate) {
+    setShowTemplatePicker(false);
+    setTemplateNotice(null);
+
+    if (template.vendorExternalId && template.vendorExternalId !== vendorFilter) {
+      pendingTemplateRef.current = template;
+      setVendorFilter(template.vendorExternalId);
+      return;
+    }
+
+    applyTemplateNow(template, lines);
+  }
 
   const cartItems = useMemo(
     () => buildCartItems(lines, orderQtyByKey),
@@ -182,6 +225,15 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
 
             <button
               type="button"
+              onClick={() => setShowTemplatePicker(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors"
+            >
+              <FileStack size={16} />
+              PO Template
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowCart(true)}
               disabled={cartCount === 0}
               className="relative inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -196,6 +248,12 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
               )}
             </button>
           </div>
+
+          {templateNotice && (
+            <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+              {templateNotice}
+            </div>
+          )}
 
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
@@ -295,6 +353,16 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
             </div>
           </div>
         </>
+      )}
+
+      {showTemplatePicker && selectedCompanyId && (
+        <OrderTemplatePickerModal
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          lines={lines}
+          onClose={() => setShowTemplatePicker(false)}
+          onApply={handleApplyTemplate}
+        />
       )}
 
       {showCart && selectedCompanyId && cartCount > 0 && (

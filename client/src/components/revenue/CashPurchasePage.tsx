@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Check, Paperclip, X } from 'lucide-react';
-import { api } from '../../api';
-import { componentMatchesLocations, formatRm } from '../../data/createOrder';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Check, Paperclip, Plus, X } from 'lucide-react';
+import { api, type CashPurchase, type Vendor } from '../../api';
+import {
+  componentMatchesLocations,
+  formatRm,
+  resolveLowestEngagedTaggedVendorPrice,
+  unitPriceInPrincipalUom,
+} from '../../data/createOrder';
+import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
+import { fromApiUom } from '../../data/componentForm';
 import { ingredientToRow } from './smartIngredientShared';
 
 type Props = {
@@ -14,6 +21,85 @@ function toDateInputValue(date: Date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function isCurrentMonth(datePurchased: string) {
+  const [year, month] = datePurchased.split('-').map(Number);
+  const now = new Date();
+  return year === now.getFullYear() && month === now.getMonth() + 1;
+}
+
+function formatPurchaseDate(datePurchased: string) {
+  const [year, month, day] = datePurchased.split('-').map(Number);
+  if (!year || !month || !day) return datePurchased;
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
+function unitPriceForPurchase(purchase: CashPurchase) {
+  if (!purchase.quantity) return 0;
+  return purchase.deliveryPrice / purchase.quantity;
+}
+
+type PurchasePriceReference = {
+  unitPrice: number;
+  uom: string;
+  label: string;
+  source: 'prior' | 'vendor';
+};
+
+function resolvePurchasePriceReference(
+  component: ReturnType<typeof ingredientToRow> | undefined,
+  previousPurchase: CashPurchase | undefined,
+  vendorReference: ReturnType<typeof resolveLowestEngagedTaggedVendorPrice>,
+): PurchasePriceReference | null {
+  if (!component) return null;
+  const principalUom = fromApiUom(component.recipeUOM);
+
+  if (previousPurchase) {
+    const priorUnitPrice = unitPriceInPrincipalUom(
+      previousPurchase.deliveryPrice,
+      previousPurchase.quantity,
+      previousPurchase.componentUom,
+      component,
+    );
+    if (priorUnitPrice !== null) {
+      return {
+        unitPrice: priorUnitPrice,
+        uom: principalUom,
+        label: 'Last purchase',
+        source: 'prior',
+      };
+    }
+  }
+
+  if (vendorReference) {
+    return {
+      unitPrice: vendorReference.unitPrice,
+      uom: vendorReference.principalUom,
+      label: `Vendor (${vendorReference.vendorName})`,
+      source: 'vendor',
+    };
+  }
+
+  return null;
+}
+
+function filterCashPurchasesByOrg(
+  purchases: CashPurchase[],
+  companyId: number | null,
+  selectedLocationIds: string[],
+) {
+  if (!companyId || selectedLocationIds.length === 0) return [];
+  const selected = new Set(selectedLocationIds);
+  return purchases.filter(purchase => {
+    if (purchase.companyId != null && purchase.companyId !== companyId) return false;
+    const purchaseLocs = purchase.locationExternalIds ?? [];
+    if (purchaseLocs.length === 0) return true;
+    return purchaseLocs.some(loc => selected.has(loc));
+  });
 }
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -51,8 +137,91 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
   const [componentUom, setComponentUom] = useState('');
   const [receiptNumber, setReceiptNumber] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const lastComponentIdRef = useRef('');
 
   const [components, setComponents] = useState<ReturnType<typeof ingredientToRow>[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [cashPurchases, setCashPurchases] = useState<CashPurchase[]>([]);
+  const [vendorPricesTick, setVendorPricesTick] = useState(0);
+
+  const loadHistory = useCallback(() => {
+    if (!selectedCompanyId) {
+      setCashPurchases([]);
+      return;
+    }
+    setHistoryLoading(true);
+    Promise.all([
+      api.cashPurchases(selectedCompanyId),
+      refreshVendorProductPricesFromApi(),
+    ])
+      .then(([purchases]) => {
+        setCashPurchases(purchases);
+        setVendorPricesTick(tick => tick + 1);
+      })
+      .catch(() => setCashPurchases([]))
+      .finally(() => setHistoryLoading(false));
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory, selectedLocationIds]);
+
+  const monthHistory = useMemo(() => {
+    const scoped = filterCashPurchasesByOrg(cashPurchases, selectedCompanyId, selectedLocationIds)
+      .filter(purchase => isCurrentMonth(purchase.datePurchased))
+      .sort((a, b) => b.datePurchased.localeCompare(a.datePurchased) || b.id - a.id);
+    const monthTotal = scoped.reduce((sum, purchase) => sum + purchase.deliveryPrice, 0);
+    return { rows: scoped, monthTotal };
+  }, [cashPurchases, selectedCompanyId, selectedLocationIds]);
+
+  const previousPriceByPurchaseId = useMemo(() => {
+    const scoped = filterCashPurchasesByOrg(cashPurchases, selectedCompanyId, selectedLocationIds)
+      .sort((a, b) => a.datePurchased.localeCompare(b.datePurchased) || a.id - b.id);
+    const lastByVendorAndComponent = new Map<string, CashPurchase>();
+    const previousById = new Map<number, CashPurchase>();
+
+    for (const purchase of scoped) {
+      const key = `${purchase.storeName.toLowerCase()}::${purchase.componentId.toLowerCase()}::${purchase.componentUom.toLowerCase()}`;
+      const previous = lastByVendorAndComponent.get(key);
+      if (previous) previousById.set(purchase.id, previous);
+      lastByVendorAndComponent.set(key, purchase);
+    }
+
+    return previousById;
+  }, [cashPurchases, selectedCompanyId, selectedLocationIds]);
+
+  const monthLabel = useMemo(
+    () => new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+    [],
+  );
+
+  const vendorReferenceByComponentId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof resolveLowestEngagedTaggedVendorPrice>>();
+    if (!orgReady) return map;
+
+    for (const component of components) {
+      if (!component.active) continue;
+      const reference = resolveLowestEngagedTaggedVendorPrice(
+        component,
+        selectedLocationIds,
+        vendors,
+      );
+      if (reference) map.set(component.componentId, reference);
+    }
+
+    return map;
+  }, [components, orgReady, selectedLocationIds, vendors, vendorPricesTick]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setVendors([]);
+      return;
+    }
+    api.vendors()
+      .then(setVendors)
+      .catch(() => setVendors([]));
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     if (!orgReady) {
@@ -89,16 +258,21 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
   useEffect(() => {
     if (!selectedComponent) {
       setComponentUom('');
+      setDeliveryUnit('');
+      lastComponentIdRef.current = '';
       return;
     }
+
     setComponentUom(prev => {
       if (prev && uomOptions.includes(prev)) return prev;
       return selectedComponent.inventoryUOM || selectedComponent.recipeUOM || '';
     });
-    if (!deliveryUnit) {
+
+    if (lastComponentIdRef.current !== selectedComponent.componentId) {
       setDeliveryUnit(selectedComponent.inventoryUOM || selectedComponent.recipeUOM || '');
+      lastComponentIdRef.current = selectedComponent.componentId;
     }
-  }, [selectedComponent, uomOptions, deliveryUnit]);
+  }, [selectedComponent, uomOptions]);
 
   const lineTotal = useMemo(() => {
     const price = parseFloat(deliveryPrice) || 0;
@@ -117,6 +291,8 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
     setReceiptNumber('');
     setReceiptFile(null);
     setError(null);
+    setSuccess(null);
+    lastComponentIdRef.current = '';
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -188,6 +364,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
         `Added ${result.inventoryPurchase.quantity} ${result.inventoryPurchase.uom} of ${result.inventoryPurchase.componentName} to inventory (${formatRm(result.inventoryPurchase.unitPrice)} per ${result.inventoryPurchase.uom}).`,
       );
       resetForm();
+      loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save cash purchase.');
     } finally {
@@ -196,7 +373,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-3xl">
+    <div className="p-6 space-y-4 max-w-7xl">
       <div>
         <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
         <h2 className="text-lg font-semibold">Cash Purchase</h2>
@@ -205,14 +382,28 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
         </p>
       </div>
 
-      {!orgReady ? (
-        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
-          Select a company and at least one location in the header to record a cash purchase.
-        </p>
-      ) : loading ? (
-        <p className="text-xs text-muted-foreground">Loading components…</p>
-      ) : (
-        <form onSubmit={e => void handleSubmit(e)} className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_26rem] gap-4 items-stretch">
+        <div className="space-y-4 min-h-0">
+          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
+            <p className="text-xs text-muted-foreground">Create a new cash purchase entry</p>
+            <button
+              type="button"
+              onClick={resetForm}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md border border-border bg-card text-xs font-semibold hover:bg-muted"
+            >
+              <Plus size={14} />
+              New
+            </button>
+          </div>
+
+          {!orgReady ? (
+            <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
+              Select a company and at least one location in the header to record a cash purchase.
+            </p>
+          ) : loading ? (
+            <p className="text-xs text-muted-foreground">Loading components…</p>
+          ) : (
+            <form onSubmit={e => void handleSubmit(e)} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className={labelCls} htmlFor="cash-date">Date purchased</label>
@@ -415,8 +606,115 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
               {error}
             </div>
           )}
-        </form>
-      )}
+            </form>
+          )}
+        </div>
+
+        <aside className="rounded-lg border border-border bg-card overflow-hidden flex flex-col min-h-[28rem] lg:min-h-0 lg:h-full">
+          <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-center justify-between gap-2 shrink-0">
+            <p className="text-sm font-semibold">Purchase history (This month)</p>
+            <span className="text-[10px] font-sans text-muted-foreground">{monthLabel}</span>
+          </div>
+          <div className="px-4 py-2.5 border-b border-border flex items-center justify-between gap-3 text-xs shrink-0">
+            <span className="text-muted-foreground">
+              {monthHistory.rows.length} purchase{monthHistory.rows.length === 1 ? '' : 's'}
+            </span>
+            <span className="font-sans font-medium">{formatRm(monthHistory.monthTotal)}</span>
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border">
+              {!orgReady ? (
+                <div className="h-full min-h-[12rem] flex items-center justify-center px-4 py-6">
+                  <p className="text-xs text-muted-foreground text-center">
+                    Select company and locations to view history.
+                  </p>
+                </div>
+              ) : historyLoading ? (
+                <div className="h-full min-h-[12rem] flex items-center justify-center px-4 py-6">
+                  <p className="text-xs text-muted-foreground text-center">Loading history…</p>
+                </div>
+              ) : monthHistory.rows.length === 0 ? (
+                <div className="h-full min-h-[12rem] flex items-center justify-center px-4 py-6">
+                  <p className="text-xs text-muted-foreground text-center">
+                    No cash purchases recorded this month.
+                  </p>
+                </div>
+              ) : (
+                monthHistory.rows.map(purchase => {
+                  const component = components.find(row => row.componentId === purchase.componentId);
+                  const previous = previousPriceByPurchaseId.get(purchase.id);
+                  const vendorReference = component
+                    ? vendorReferenceByComponentId.get(component.componentId) ?? null
+                    : null;
+                  const reference = resolvePurchasePriceReference(
+                    component,
+                    previous,
+                    vendorReference,
+                  );
+                  const currentUnitPrice = component
+                    ? unitPriceInPrincipalUom(
+                      purchase.deliveryPrice,
+                      purchase.quantity,
+                      purchase.componentUom,
+                      component,
+                    )
+                    : unitPriceForPurchase(purchase);
+                  const principalUom = component
+                    ? fromApiUom(component.recipeUOM)
+                    : purchase.componentUom;
+                  const delta = reference && currentUnitPrice !== null
+                    ? currentUnitPrice - reference.unitPrice
+                    : 0;
+                  const isUp = delta > 0.0001;
+                  const isDown = delta < -0.0001;
+
+                  return (
+                    <div key={purchase.id} className="px-4 py-3 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{purchase.componentName}</p>
+                          <p className="text-muted-foreground truncate">{purchase.storeName}</p>
+                          {purchase.storeProductName && (
+                            <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                              {purchase.storeProductName}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-sans font-medium shrink-0">{formatRm(purchase.deliveryPrice)}</span>
+                      </div>
+                      <p className="text-muted-foreground mt-1">
+                        {formatPurchaseDate(purchase.datePurchased)} · {purchase.quantity} {purchase.componentUom}
+                      </p>
+                      <div className="mt-2 rounded-md border border-border bg-muted/20 px-2.5 py-2 flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-muted-foreground">
+                          {currentUnitPrice !== null
+                            ? `Unit: ${formatRm(currentUnitPrice)} / ${principalUom}`
+                            : `Unit: ${formatRm(unitPriceForPurchase(purchase))} / ${purchase.componentUom}`}
+                        </span>
+                        {reference ? (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-medium ${
+                              isUp ? 'text-red-600 dark:text-red-400' : isDown ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'
+                            }`}
+                          >
+                            {isUp && <ArrowUp size={12} />}
+                            {isDown && <ArrowDown size={12} />}
+                            {!isUp && !isDown && '→'}
+                            {reference.label}: {formatRm(reference.unitPrice)}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">No price benchmark</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

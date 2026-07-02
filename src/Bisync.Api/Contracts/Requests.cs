@@ -673,6 +673,46 @@ public class CreateCashPurchaseRequest
     public List<string> LocationExternalIds { get; set; } = [];
 }
 
+public class UpsertOrderTemplateItemRequest
+{
+    [MaxLength(50)]
+    public string ComponentId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ComponentName { get; set; }
+    [MaxLength(50)]
+    public string? VendorProductId { get; set; }
+    [MaxLength(50)]
+    public string? VendorExternalId { get; set; }
+    [MaxLength(200)]
+    public string? VendorName { get; set; }
+    [MaxLength(200)]
+    public string? ProductName { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    [MaxLength(50)]
+    public string? ComponentUom { get; set; }
+    [MaxLength(200)]
+    public string? DeliveryUnit { get; set; }
+}
+
+public class UpsertOrderTemplateRequest
+{
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string? VendorExternalId { get; set; }
+    [MaxLength(200)]
+    public string? VendorName { get; set; }
+    [MaxLength(20)]
+    public string? ScheduleMode { get; set; }
+    public List<string> Weekdays { get; set; } = [];
+    public List<int> MonthDays { get; set; } = [];
+    public bool RepeatEnabled { get; set; }
+    public int? CompanyId { get; set; }
+    public List<string> LocationExternalIds { get; set; } = [];
+    public List<UpsertOrderTemplateItemRequest> Items { get; set; } = [];
+}
+
 public class PurchaseOrderWorkflowRequest
 {
     public List<PurchaseOrderLineWorkflowRequest> Items { get; set; } = [];

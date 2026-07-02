@@ -154,6 +154,44 @@ public static class SchemaPatcher
                 "CreatedAt" TEXT NOT NULL
             );
             """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "OrderTemplates" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_OrderTemplates" PRIMARY KEY AUTOINCREMENT,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "VendorExternalId" TEXT NOT NULL DEFAULT '',
+                "VendorName" TEXT NOT NULL DEFAULT '',
+                "ScheduleMode" TEXT NOT NULL DEFAULT '',
+                "WeekdaysJson" TEXT NOT NULL DEFAULT '[]',
+                "MonthDaysJson" TEXT NOT NULL DEFAULT '[]',
+                "RepeatEnabled" INTEGER NOT NULL DEFAULT 0,
+                "CompanyId" INTEGER,
+                "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "CreatedAt" TEXT NOT NULL,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "OrderTemplateItems" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_OrderTemplateItems" PRIMARY KEY AUTOINCREMENT,
+                "OrderTemplateId" INTEGER NOT NULL,
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "VendorProductId" TEXT NOT NULL DEFAULT '',
+                "VendorExternalId" TEXT NOT NULL DEFAULT '',
+                "VendorName" TEXT NOT NULL DEFAULT '',
+                "ProductName" TEXT NOT NULL DEFAULT '',
+                "Quantity" REAL NOT NULL,
+                "ComponentUom" TEXT NOT NULL DEFAULT '',
+                "DeliveryUnit" TEXT NOT NULL DEFAULT '',
+                "SortOrder" INTEGER NOT NULL DEFAULT 0,
+                CONSTRAINT "FK_OrderTemplateItems_OrderTemplates_OrderTemplateId"
+                    FOREIGN KEY ("OrderTemplateId") REFERENCES "OrderTemplates" ("Id") ON DELETE CASCADE
+            );
+            """);
+
+        await EnsureColumnAsync(db, "OrderTemplateItems", "DeliveryUnit", "TEXT NOT NULL DEFAULT ''");
     }
 
     static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)

@@ -396,6 +396,49 @@ export interface CreateCashPurchaseResult {
   inventoryPurchase: InventoryPurchase;
 }
 
+export interface OrderTemplateItem {
+  id?: number;
+  componentId: string;
+  componentName: string;
+  vendorProductId?: string;
+  vendorExternalId?: string;
+  vendorName?: string;
+  productName?: string;
+  quantity: number;
+  componentUom: string;
+  deliveryUnit?: string;
+  sortOrder?: number;
+}
+
+export interface OrderTemplate {
+  id: number;
+  name: string;
+  vendorExternalId: string;
+  vendorName: string;
+  scheduleMode: 'weekday' | 'monthday' | '';
+  weekdays: string[];
+  monthDays: number[];
+  repeatEnabled: boolean;
+  companyId?: number | null;
+  locationExternalIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+  items: OrderTemplateItem[];
+}
+
+export interface UpsertOrderTemplatePayload {
+  name: string;
+  vendorExternalId?: string;
+  vendorName?: string;
+  scheduleMode?: 'weekday' | 'monthday' | '';
+  weekdays?: string[];
+  monthDays?: number[];
+  repeatEnabled: boolean;
+  companyId?: number | null;
+  locationExternalIds: string[];
+  items: Omit<OrderTemplateItem, 'id' | 'sortOrder'>[];
+}
+
 export interface InventoryAlert {
   id: number;
   itemName: string;
@@ -519,6 +562,15 @@ export const api = {
     fetchJson<CashPurchase[]>(`/api/cashpurchases${companyId ? `?companyId=${companyId}` : ''}`),
   createCashPurchase: (payload: CreateCashPurchasePayload) =>
     fetchJsonWithMethod<CreateCashPurchaseResult>('/api/cashpurchases', 'POST', payload),
+  orderTemplates: (companyId?: number) =>
+    fetchJson<OrderTemplate[]>(`/api/ordertemplates${companyId ? `?companyId=${companyId}` : ''}`),
+  orderTemplate: (id: number) => fetchJson<OrderTemplate>(`/api/ordertemplates/${id}`),
+  createOrderTemplate: (payload: UpsertOrderTemplatePayload) =>
+    fetchJsonWithMethod<OrderTemplate>('/api/ordertemplates', 'POST', payload),
+  updateOrderTemplate: (id: number, payload: UpsertOrderTemplatePayload) =>
+    fetchJsonWithMethod<OrderTemplate>(`/api/ordertemplates/${id}`, 'PUT', payload),
+  deleteOrderTemplate: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/ordertemplates/${id}`, 'DELETE'),
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

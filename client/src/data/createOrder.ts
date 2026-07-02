@@ -1,5 +1,6 @@
 import type { Vendor } from '../api';
-import { fromApiUom, resolveDetailConfigForRow, type ComponentRow } from './componentForm';
+import { fromApiUom, getConversion, resolveDetailConfigForRow, type ComponentRow } from './componentForm';
+import { resolveComparePriceCell } from './comparePrice';
 import {
   applyVendorProductOverrides,
   formatDeliveryUnitPath,
@@ -64,6 +65,87 @@ export function resolveTaggedProductsForComponent(
   }
 
   return tagged;
+}
+
+export type EngagedVendorReferencePrice = {
+  unitPrice: number;
+  principalUom: string;
+  vendorName: string;
+  productName: string;
+};
+
+function normalizeUnitPriceToPrincipalUom(
+  unitPrice: number,
+  componentUom: string,
+  principalUom: string,
+): number | null {
+  if (componentUom === principalUom) return unitPrice;
+  const conv = getConversion(componentUom, principalUom);
+  if (conv === null || conv <= 0) return null;
+  return unitPrice / conv;
+}
+
+export function unitPriceInPrincipalUom(
+  deliveryPrice: number,
+  quantity: number,
+  uom: string,
+  component: ComponentRow,
+): number | null {
+  if (quantity <= 0) return null;
+  const unitPrice = deliveryPrice / quantity;
+  const principalUom = fromApiUom(component.recipeUOM);
+  const sourceUom = fromApiUom(uom);
+  const direct = normalizeUnitPriceToPrincipalUom(unitPrice, sourceUom, principalUom);
+  if (direct !== null) return direct;
+
+  const detail = resolveDetailConfigForRow(component);
+  const inventoryUom = fromApiUom(component.inventoryUOM);
+  if (sourceUom === inventoryUom) {
+    const fromQty = parseFloat(detail.convertFromInventoryQty) || 1;
+    const toQty = parseFloat(detail.convertToRecipeQty) || 1;
+    if (fromQty > 0 && toQty > 0) {
+      return unitPrice / (toQty / fromQty);
+    }
+  }
+
+  return null;
+}
+
+export function resolveLowestEngagedTaggedVendorPrice(
+  component: ComponentRow,
+  locationIds: string[],
+  vendors: Vendor[],
+  catalog: VendorProductCatalogItem[] = applyVendorProductOverrides(),
+): EngagedVendorReferencePrice | null {
+  const engagedVendorIds = new Set(
+    vendors.filter(vendor => vendor.engaged).map(vendor => vendor.externalId),
+  );
+  if (engagedVendorIds.size === 0) return null;
+
+  const principalUom = fromApiUom(component.recipeUOM);
+  const taggedProducts = resolveTaggedProductsForComponent(component, catalog, { locationIds })
+    .filter(product => engagedVendorIds.has(product.vendorExternalId));
+
+  let best: EngagedVendorReferencePrice | null = null;
+
+  for (const product of taggedProducts) {
+    const cell = resolveComparePriceCell(component, product);
+    if (cell.uomCost === null || cell.uomCost <= 0) continue;
+
+    const unitPrice = normalizeUnitPriceToPrincipalUom(cell.uomCost, cell.componentUom, principalUom);
+    if (unitPrice === null || unitPrice <= 0) continue;
+
+    if (!best || unitPrice < best.unitPrice) {
+      best = {
+        unitPrice,
+        principalUom,
+        vendorName: product.vendorName,
+        productName: product.productName,
+      };
+    }
+  }
+
+  return best;
 }
 
 export function resolveVendorsForSelectedLocations(
