@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { pageShellClass } from '../layout/pageLayout';
+import { filterSelectCls } from '../layout/formControls';
 import { Search, UserPlus } from 'lucide-react';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
 import { applyVendorProductOverrides } from '../../data/vendorProductCatalog';
@@ -7,7 +12,17 @@ import { VendorEngageModal } from './VendorEngageModal';
 import { VendorCreatePanel } from './VendorCreatePanel';
 import { VendorProductsList } from './VendorProductsList';
 import { VendorProductsPanel } from './VendorProductsPanel';
-const thCls = 'text-left px-4 py-3 text-xs font-sans text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap';
+import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+const thCls = 'text-left px-4 py-3 text-xs font-sans text-muted-foreground uppercase tracking-wider font-normal truncate';
+
+const VENDOR_TABS = [
+  { id: 'vendors' as const, label: 'Vendors' },
+  { id: 'products' as const, label: 'Vendor Products' },
+] as const;
+
+type VendorTableRow =
+  | { kind: 'header'; id: string; label: string }
+  | { kind: 'vendor'; vendor: Vendor };
 
 function sortVendors(vendors: Vendor[]): Vendor[] {
   return [...vendors].sort((a, b) => {
@@ -18,6 +33,9 @@ function sortVendors(vendors: Vendor[]): Vendor[] {
 
 export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
   const [tab, setTab] = useState<'vendors' | 'products'>('vendors');
+
+  const activeTabLabel = VENDOR_TABS.find(t => t.id === tab)?.label ?? 'Vendors';
+  useRevMgmtPageLabel(activeTabLabel);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -80,6 +98,30 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
 
   const engagedCount = filtered.filter(v => v.engaged).length;
   const availableCount = filtered.length - engagedCount;
+
+  const vendorTableRows = useMemo((): VendorTableRow[] => {
+    if (filtered.length === 0) return [];
+    if (filter === 'all' && engagedCount > 0 && availableCount > 0) {
+      const engaged = filtered.filter(v => v.engaged);
+      const available = filtered.filter(v => !v.engaged);
+      return [
+        { kind: 'header', id: 'hdr-engaged', label: 'Engaged Vendors' },
+        ...engaged.map(v => ({ kind: 'vendor' as const, vendor: v })),
+        { kind: 'header', id: 'hdr-available', label: 'Available Vendors' },
+        ...available.map(v => ({ kind: 'vendor' as const, vendor: v })),
+      ];
+    }
+    return filtered.map(v => ({ kind: 'vendor' as const, vendor: v }));
+  }, [filtered, filter, engagedCount, availableCount]);
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedVendorTableRows,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(vendorTableRows, { scrollRootRef });
 
   const vendorOptions = useMemo(
     () => [...vendors].sort((a, b) => a.name.localeCompare(b.name)),
@@ -166,12 +208,12 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
             )}
           </div>
         </td>
-        <td className="px-4 py-3 text-foreground min-w-[140px]">{v.products || '—'}</td>
-        <td className="px-4 py-3 text-muted-foreground min-w-[180px]">
+        <td className="px-4 py-3 text-foreground ">{v.products || '—'}</td>
+        <td className="px-4 py-3 text-muted-foreground ">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>
         <td className="px-4 py-3 font-sans text-foreground whitespace-nowrap">{displayMobile}</td>
-        <td className="px-4 py-3 text-foreground min-w-[160px]">
+        <td className="px-4 py-3 text-foreground ">
           {displayEmail ? (
             <a href={`mailto:${displayEmail}`} className="hover:text-primary hover:underline break-all">
               {displayEmail}
@@ -197,38 +239,26 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Vendor List & Products</h2>
-          <button
-            type="button"
-            onClick={() => setShowCreateVendor(true)}
-            disabled={!selectedCompanyId}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
-          >
-            <UserPlus size={11} />
-            Create Vendor
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {tab === 'vendors'
-            ? 'Browse and engage vendor partners for procurement'
-            : 'Browse all vendor products across partners — engage vendors and tag products to smart components'}
-        </p>
+    <div className={pageShellClass()}>
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setShowCreateVendor(true)}
+          disabled={!selectedCompanyId}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
+        >
+          <UserPlus size={11} />
+          Create Vendor
+        </button>
       </div>
 
       <div className="flex gap-1 border-b border-border">
-        {([
-          { id: 'vendors' as const, label: 'Vendors' },
-          { id: 'products' as const, label: 'Vendor Products' },
-        ]).map(t => (
+        {VENDOR_TABS.map(t => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors -mb-px ${
+            className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
               tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -281,7 +311,7 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
           value={productVendorFilter}
           onChange={e => setProductVendorFilter(e.target.value)}
           disabled={!selectedCompanyId}
-          className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 min-w-[160px]"
+          className={`${filterSelectCls} disabled:opacity-50 min-w-[160px]`}
         >
           <option value="">All vendors</option>
           {vendorOptions.map(v => (
@@ -292,7 +322,7 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
           value={productGroupFilter}
           onChange={e => setProductGroupFilter(e.target.value)}
           disabled={!selectedCompanyId}
-          className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 min-w-[140px]"
+          className={`${filterSelectCls} disabled:opacity-50 min-w-[140px]`}
         >
           <option value="">All groups</option>
           {groupOptions.map(group => (
@@ -341,8 +371,8 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
         {loading ? (
           <p className="p-8 text-center text-xs text-muted-foreground">Loading vendors…</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+            <table className="w-full table-fixed text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   <th className={thCls}>Vendor Name</th>
@@ -360,27 +390,24 @@ export function VendorListPage({ selectedCompanyId }: { selectedCompanyId: numbe
                       No vendors match your filters.
                     </td>
                   </tr>
-                ) : filter === 'all' && engagedCount > 0 && availableCount > 0 ? (
-                  <>
-                    <tr className="bg-muted/20">
-                      <td colSpan={6} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
-                        Engaged Vendors
-                      </td>
-                    </tr>
-                    {filtered.filter(v => v.engaged).map(renderRow)}
-                    <tr className="bg-muted/20">
-                      <td colSpan={6} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
-                        Available Vendors
-                      </td>
-                    </tr>
-                    {filtered.filter(v => !v.engaged).map(renderRow)}
-                  </>
                 ) : (
-                  filtered.map(renderRow)
+                  pagedVendorTableRows.map(row => {
+                    if (row.kind === 'header') {
+                      return (
+                        <tr key={row.id} className="bg-muted/20">
+                          <td colSpan={6} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
+                            {row.label}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return renderRow(row.vendor);
+                  })
                 )}
+                <InfiniteScrollTableSentinel colSpan={6} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </div>
       </>

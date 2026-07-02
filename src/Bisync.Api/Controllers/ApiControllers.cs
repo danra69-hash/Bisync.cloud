@@ -289,6 +289,7 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
             item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, item.Name, item.Id);
 
         await db.SaveChangesAsync();
+        await ProductCostRecalculator.RecalculateForComponentAsync(db, item.ComponentId);
         return Ok(item);
     }
 

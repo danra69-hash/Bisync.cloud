@@ -1,4 +1,8 @@
+import { useRef } from 'react';
 import type { AppUser } from '../../api';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import type { DivisionTreeNode, Employee, PayStructure } from '../../modules/hr/types';
 import {
   employeeDepartmentName,
@@ -52,6 +56,15 @@ export function PayrollEmployeeDirectoryTab({
 }: Props) {
   const countryCode = payStructure?.countryCode ?? 'MY';
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedEmployees,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(employees, { scrollRootRef });
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
@@ -59,8 +72,8 @@ export function PayrollEmployeeDirectoryTab({
         {payStructure ? ` · Pay cycle: ${payStructure.payCycle}` : ' · Pay structure not configured for this company'}
       </p>
 
-      <div className="bg-card border border-border rounded-lg overflow-x-auto">
-        <table className="w-full text-xs min-w-[1400px]">
+      <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+        <table className="w-full table-fixed text-xs">
           <thead>
             <tr className="border-b border-border bg-muted/30">
               {COLUMNS.map(h => (
@@ -75,7 +88,7 @@ export function PayrollEmployeeDirectoryTab({
             </tr>
           </thead>
           <tbody>
-            {employees.map(employee => (
+            {pagedEmployees.map(employee => (
               <tr
                 key={employee.id}
                 className={`border-b border-border last:border-0 hover:bg-muted/20 ${employee.active === false ? 'opacity-60' : ''}`}
@@ -121,9 +134,10 @@ export function PayrollEmployeeDirectoryTab({
                 </td>
               </tr>
             )}
+            <InfiniteScrollTableSentinel colSpan={COLUMNS.length} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
-      </div>
+      </TableScrollContainer>
     </div>
   );
 }

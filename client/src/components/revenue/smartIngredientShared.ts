@@ -67,25 +67,45 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
   const sentConfig = resolveDetailConfigForRow(sent);
   const savedConfig = resolveDetailConfigForRow(savedRow);
 
-  if (sentConfig.taggedVendorProductIds.length > savedConfig.taggedVendorProductIds.length) {
+  const sentHasTags = sentConfig.taggedVendorProductIds.length > 0;
+  const savedHasTags = savedConfig.taggedVendorProductIds.length > 0;
+  const tagsAdded = sentConfig.taggedVendorProductIds.length > savedConfig.taggedVendorProductIds.length;
+  const sentHasPrice = sent.lastPriceRecipe > 0 || sent.lastPriceInventory > 0;
+  const savedMissingPrice = savedRow.lastPriceRecipe === 0 && savedRow.lastPriceInventory === 0;
+
+  if (tagsAdded || (sentHasTags && sentHasPrice && (savedMissingPrice || !savedHasTags))) {
+    const detailConfig = sentConfig.taggedVendorProductIds.length >= savedConfig.taggedVendorProductIds.length
+      ? sentConfig
+      : savedConfig;
+
     return {
       ...savedRow,
-      lastPriceRecipe: sent.lastPriceRecipe,
-      lastPriceInventory: sent.lastPriceInventory,
-      detailConfig: sentConfig,
-      detailConfigJson: serializeDetailConfig(sentConfig),
-      attachedVendors: sentConfig.taggedVendorProductIds.length,
+      lastPriceRecipe: sent.lastPriceRecipe > 0 ? sent.lastPriceRecipe : savedRow.lastPriceRecipe,
+      lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
+      detailConfig,
+      detailConfigJson: serializeDetailConfig(detailConfig),
+      attachedVendors: detailConfig.taggedVendorProductIds.length || savedRow.attachedVendors,
     };
   }
 
-  if (sentConfig.taggedVendorProductIds.length > 0
-    && savedConfig.taggedVendorProductIds.length === 0) {
+  if (sentHasTags && !savedHasTags) {
     return {
       ...savedRow,
       detailConfig: sentConfig,
       detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }),
       attachedVendors: sentConfig.taggedVendorProductIds.length,
+      lastPriceRecipe: sent.lastPriceRecipe > 0 ? sent.lastPriceRecipe : savedRow.lastPriceRecipe,
+      lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
     };
   }
+
+  if (sentHasPrice && sent.lastPriceRecipe !== savedRow.lastPriceRecipe) {
+    return {
+      ...savedRow,
+      lastPriceRecipe: sent.lastPriceRecipe,
+      lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
+    };
+  }
+
   return savedRow;
 }

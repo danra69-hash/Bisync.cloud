@@ -1,6 +1,157 @@
 import { fromApiUom } from './componentForm';
 import type { ComponentRow } from './componentForm';
 
+export type ProductAliasLine = {
+  key: string;
+  id?: number;
+  name: string;
+  rrp: string;
+};
+
+export function blankProductAlias(): ProductAliasLine {
+  return {
+    key: `alias-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    rrp: '',
+  };
+}
+
+export function formatCogsPercent(cogs: number, rrp: number): string {
+  const value = calcCogsPercentValue(cogs, rrp);
+  if (value === null) return '—';
+  return `${value.toFixed(1)}%`;
+}
+
+export function calcCogsPercentValue(cogs: number, rrp: number): number | null {
+  if (rrp <= 0 || cogs < 0) return null;
+  return (cogs / rrp) * 100;
+}
+
+export type ProductCogsPercentInput = ProductCogsInput & {
+  totalCost: number;
+  packagingCost: number;
+  rrp: number;
+  isSubProduct: boolean;
+  previousTotalCost?: number | null;
+  previousPackagingCost?: number | null;
+  previousRrp?: number | null;
+};
+
+export type CogsPercentTrend = 'up' | 'down';
+
+export function resolveProductCogsPercent(product: ProductCogsPercentInput): number | null {
+  if (product.isSubProduct) return null;
+  const cogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
+  return calcCogsPercentValue(cogs, product.rrp);
+}
+
+export function resolvePriorProductCogsPercent(product: ProductCogsPercentInput): number | null {
+  if (product.isSubProduct) return null;
+  if (
+    product.previousTotalCost == null
+    || product.previousPackagingCost == null
+    || product.previousRrp == null
+  ) {
+    return null;
+  }
+  const cogs = calcProductCogs(
+    product.previousTotalCost,
+    product.previousPackagingCost,
+    product,
+  );
+  return calcCogsPercentValue(cogs, product.previousRrp);
+}
+
+export function resolveCogsPercentTrend(product: ProductCogsPercentInput): CogsPercentTrend | null {
+  const current = resolveProductCogsPercent(product);
+  const prior = resolvePriorProductCogsPercent(product);
+  if (current === null || prior === null) return null;
+  if (Math.abs(current - prior) < 0.05) return null;
+  return current > prior ? 'up' : 'down';
+}
+
+export type ProductCogsInput = {
+  isSubProduct: boolean;
+  b2bEnabled: boolean;
+  b2cEnabled: boolean;
+};
+
+export type ProductCogsContext = {
+  /** B2C sales include packaging when POS marks the order as takeaway. */
+  isTakeawaySale?: boolean;
+};
+
+/** Packaging is rolled into product COGS for sub-products, B2B, or B2C takeaway sales. */
+export function shouldIncludePackagingInCogs(
+  product: ProductCogsInput,
+  context: ProductCogsContext = {},
+): boolean {
+  if (product.isSubProduct) return true;
+  if (product.b2bEnabled) return true;
+  if (context.isTakeawaySale) return true;
+  return false;
+}
+
+export function calcProductCogs(
+  componentCost: number,
+  packagingCost: number,
+  product: ProductCogsInput,
+  context: ProductCogsContext = {},
+): number {
+  if (shouldIncludePackagingInCogs(product, context)) {
+    return componentCost + packagingCost;
+  }
+  return componentCost;
+}
+
+export function calcSubProductUnitCost(productCogs: number, yieldQuantity: string): number {
+  const qty = parseFloat(yieldQuantity) || 0;
+  if (qty <= 0) return 0;
+  return productCogs / qty;
+}
+
+/** Batch package label from sub-product yield, e.g. "10 pcs". */
+export function formatSubProductBatchPackageUnit(product: {
+  yieldQuantity: number;
+  yieldUom: string;
+}): string {
+  if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
+  const uom = fromApiUom(product.yieldUom);
+  const qty = Number.isInteger(product.yieldQuantity)
+    ? String(product.yieldQuantity)
+    : product.yieldQuantity.toFixed(2).replace(/\.?0+$/, '');
+  return `${qty} ${uom}`;
+}
+
+export function getSubProductBatchSize(product: { yieldQuantity: number }): number {
+  return product.yieldQuantity > 0 ? product.yieldQuantity : 1;
+}
+
+export function resolveManagementBatchUnit(
+  product: {
+    isSubProduct: boolean;
+    yieldQuantity: number;
+    yieldUom: string;
+    b2bPackageUnit?: string;
+  },
+  storedUnit?: string,
+): string {
+  if (product.isSubProduct) {
+    const batchLabel = formatSubProductBatchPackageUnit(product);
+    if (batchLabel !== '—') return batchLabel;
+  }
+  return storedUnit?.trim() || product.b2bPackageUnit?.trim() || 'pcs';
+}
+
+/** @deprecated Use resolveManagementBatchUnit */
+export const resolveManagementPackageUnit = resolveManagementBatchUnit;
+
+export function calcManagementBatchCogs(
+  product: ProductCogsInput & { totalCost: number; packagingCost?: number },
+): number {
+  return calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
+}
+
 export type ProductKind = 'product' | 'subproduct';
 
 export type ProductLine = {

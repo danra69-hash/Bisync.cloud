@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MapPin, Search, X } from 'lucide-react';
 import { inputCls, selectCls, type AltUnitEntry } from '../../data/componentForm';
 import { isVendorProductTagReady } from '../../data/vendorProductTagging';
@@ -177,8 +180,19 @@ export function VendorProductTableBody({
     ? products.find(p => p.id === locationModalProductId) ?? VENDOR_PRODUCT_CATALOG.find(p => p.id === locationModalProductId)
     : null;
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const colSpan = 9 + (showLocationColumn ? 1 : 0) + (showTagColumn ? 1 : 0);
+  const {
+    visibleItems: pagedProducts,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(products, { scrollRootRef });
+
   return (
     <>
+      <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
       <table className="w-full text-xs table-fixed">
         <thead>
           <tr className="border-b border-border bg-muted/40">
@@ -196,7 +210,7 @@ export function VendorProductTableBody({
           </tr>
         </thead>
         <tbody>
-          {products.map(product => {
+          {pagedProducts.map(product => {
             const componentUom = componentUomByProduct[product.id] ?? defaultComponentUom;
             const resolved = resolveComponentUomQty(
               product.delivery,
@@ -335,8 +349,10 @@ export function VendorProductTableBody({
               </tr>
             );
           })}
+          <InfiniteScrollTableSentinel colSpan={colSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
         </tbody>
       </table>
+      </TableScrollContainer>
 
       {locationModalProduct && (
         <VendorProductLocationModal

@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Check, ChevronDown, Plus, X } from 'lucide-react';
 import { api, type AppUser, type AvailableEmployee, type Company, type LocationConfig, type UserUpsert } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
@@ -538,6 +541,15 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
 
   useEffect(() => { load(); }, []);
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedUsers,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(users, { scrollRootRef });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -557,7 +569,8 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
         {loading ? (
           <p className="p-8 text-center text-xs text-muted-foreground">Loading users…</p>
         ) : (
-          <table className="w-full text-xs">
+          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Employee ID', 'Name', 'Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (
@@ -566,7 +579,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {users.map(u => (
+              {pagedUsers.map(u => (
                 <tr
                   key={u.id}
                   className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
@@ -616,8 +629,10 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
               {users.length === 0 && (
                 <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No platform access granted yet. Create employees in Human Resources, then grant access here.</td></tr>
               )}
+              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
+          </TableScrollContainer>
         )}
       </div>
 

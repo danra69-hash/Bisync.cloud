@@ -1,3 +1,7 @@
+import { useRef } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { inputCls } from '../../data/countries';
 import type { SocsoBracketItem } from '../../modules/hr/types';
 import { formatSocsoSalaryRange } from './malaysiaSocsoDefaults';
@@ -29,6 +33,15 @@ function SocsoCategoryTable({
     onChange(allBrackets.map(b => (b === bracket ? { ...b, ...patch } : b)));
   }
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedBrackets,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(brackets, { scrollRootRef });
+
   return (
     <div>
       <div className="mb-2">
@@ -36,8 +49,8 @@ function SocsoCategoryTable({
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
       <div className="border border-border rounded-lg overflow-hidden">
-        <div className="max-h-56 overflow-y-auto overflow-x-auto">
-          <table className="w-full text-xs min-w-[420px]">
+        <TableScrollContainer ref={scrollRootRef} className="max-h-56 overflow-y-auto ">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border sticky top-0 z-10">
               <tr>
                 {['Salary Range', 'Company (RM)', 'Employee (RM)'].map(h => (
@@ -46,7 +59,7 @@ function SocsoCategoryTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {brackets.map((bracket, index) => (
+              {pagedBrackets.map((bracket, index) => (
                 <tr key={index} className="hover:bg-muted/20">
                   <td className="px-2 py-2 text-muted-foreground whitespace-nowrap">
                     {formatSocsoSalaryRange(bracket)}
@@ -73,9 +86,10 @@ function SocsoCategoryTable({
                   </td>
                 </tr>
               ))}
+              <InfiniteScrollTableSentinel colSpan={3} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
-        </div>
+        </TableScrollContainer>
       </div>
     </div>
   );
@@ -118,8 +132,8 @@ export function MalaysiaSocsoSection({ brackets, onChange, foreignEmployerPct, o
           </p>
         </div>
 
-        <div className="border border-border rounded-lg overflow-x-auto">
-          <table className="w-full text-xs">
+        <div className="border border-border rounded-lg ">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <tr>
                 <th className={thCls}>Salary Range</th>

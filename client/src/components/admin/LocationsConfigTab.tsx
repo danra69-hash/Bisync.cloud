@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type AppUser } from '../../api';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
@@ -155,6 +158,15 @@ export function LocationsConfigTab({ onOrgDataChanged }: { onOrgDataChanged?: ()
 
   useEffect(() => { refreshList(); }, []);
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedLocations,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(locations, { scrollRootRef });
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{locations.length} locations · each belongs to a company</p>
@@ -163,7 +175,8 @@ export function LocationsConfigTab({ onOrgDataChanged }: { onOrgDataChanged?: ()
         {loading ? (
           <p className="p-8 text-center text-xs text-muted-foreground">Loading locations…</p>
         ) : (
-          <table className="w-full text-xs">
+          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Location', 'Company', 'Address', 'Principal Contact', 'Country'].map(h => (
@@ -172,7 +185,7 @@ export function LocationsConfigTab({ onOrgDataChanged }: { onOrgDataChanged?: ()
               </tr>
             </thead>
             <tbody>
-              {locations.map(loc => (
+              {pagedLocations.map(loc => (
                 <tr key={loc.id} className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer" onClick={() => setEditLocation(loc)}>
                   <td className="px-4 py-3 font-medium">{loc.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{loc.companyName ?? <span className="text-accent">Unassigned</span>}</td>
@@ -183,8 +196,10 @@ export function LocationsConfigTab({ onOrgDataChanged }: { onOrgDataChanged?: ()
                   <td className="px-4 py-3">{getCountry(loc.countryCode).name}</td>
                 </tr>
               ))}
+              <InfiniteScrollTableSentinel colSpan={5} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
+          </TableScrollContainer>
         )}
       </div>
 

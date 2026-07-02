@@ -77,7 +77,7 @@ export function BankNameField({
             type="text"
             value={draft}
             onChange={e => setDraft(e.target.value)}
-            className={`${inputCls} flex-1 min-w-[180px]`}
+            className={`${inputCls} flex-1 `}
             placeholder="Enter bank name"
             onKeyDown={e => {
               if (e.key === 'Enter') {

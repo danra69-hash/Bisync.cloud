@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileStack, Search, ShoppingCart } from 'lucide-react';
+import { pageShellClass } from '../layout/pageLayout';
+import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { api, type OrderTemplate, type Vendor } from '../../api';
 import {
   buildCartItems,
@@ -12,11 +14,14 @@ import {
 import { buildOrderQtyFromTemplate } from '../../data/orderTemplates';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { ingredientToRow } from './smartIngredientShared';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
 
 const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
+  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
 type Props = {
@@ -99,6 +104,15 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
     [components, selectedLocationIds, vendorFilter, categoryFilter, search],
   );
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedLines,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(lines, { scrollRootRef });
+
   function applyTemplateNow(template: OrderTemplate, currentLines: CreateOrderLine[]) {
     const updates = buildOrderQtyFromTemplate(template, currentLines);
     const appliedCount = Object.keys(updates).length;
@@ -164,23 +178,13 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
   }
 
   return (
-    <div className={embedded ? 'space-y-4' : 'p-6 space-y-4'}>
-      {!embedded && (
-        <div>
-          <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-          <h2 className="text-lg font-semibold">My Order</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Build purchase orders from smart components, tagged vendor products, and usage-based par levels.
-          </p>
-        </div>
-      )}
-
+    <div className={pageShellClass({ embedded })}>
       {!selectedCompanyId ? (
-        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
+        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
           Select a company to create an order.
         </p>
       ) : selectedLocationIds.length === 0 ? (
-        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
+        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
           Select at least one location to create an order.
         </p>
       ) : loading ? (
@@ -191,7 +195,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
             <select
               value={vendorFilter}
               onChange={e => setVendorFilter(e.target.value)}
-              className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary min-w-[180px]"
+              className={`${filterSelectCls} min-w-[180px]`}
             >
               <option value="">All vendors</option>
               {vendorOptions.map(v => (
@@ -202,7 +206,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
             <select
               value={categoryFilter}
               onChange={e => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary min-w-[160px]"
+              className={`${filterSelectCls} min-w-[160px]`}
             >
               {categoryOptions.map(cat => (
                 <option key={cat} value={cat}>{cat === 'All' ? 'All component types' : cat}</option>
@@ -256,8 +260,8 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
           )}
 
           <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1400px]">
+            <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed">
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border">
                     {[
@@ -280,11 +284,11 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                 <tbody>
                   {lines.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
+                      <td colSpan={11} className="px-4 py-5 text-center text-xs text-muted-foreground font-sans">
                         No components match the selected filters.
                       </td>
                     </tr>
-                  ) : lines.map(line => (
+                  ) : pagedLines.map(line => (
                     <tr key={line.key} className="hover:bg-muted/20">
                       <td className={`${tdCls} font-sans text-muted-foreground`}>{line.component.componentId || '—'}</td>
                       <td className={tdCls}>
@@ -328,7 +332,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                           value={orderQtyByKey[line.key] ?? ''}
                           onChange={e => setOrderQty(line.key, e.target.value)}
                           placeholder="0"
-                          className="w-20 bg-background border border-border rounded px-2 py-1 text-xs font-sans focus:outline-none focus:ring-1 focus:ring-primary"
+                          className={inlineNumberCls}
                         />
                       </td>
                       <td className={`${tdCls} font-sans font-semibold text-foreground`}>
@@ -336,6 +340,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                       </td>
                     </tr>
                   ))}
+                  <InfiniteScrollTableSentinel colSpan={11} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
                 {lines.length > 0 && (
                   <tfoot>
@@ -350,7 +355,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                   </tfoot>
                 )}
               </table>
-            </div>
+            </TableScrollContainer>
           </div>
         </>
       )}

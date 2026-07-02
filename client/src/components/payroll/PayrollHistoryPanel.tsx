@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { hrApi } from '../../modules/hr/api';
 import type { PayrollRunDetail, PayrollRunSummary } from '../../modules/hr/types';
@@ -49,6 +51,26 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
 
   const years = useMemo(() => groupRunsByYear(runs), [runs]);
 
+  type RunListRow =
+    | { kind: 'year'; id: string; year: number }
+    | { kind: 'run'; run: PayrollRunSummary };
+
+  const runListRows = useMemo((): RunListRow[] => {
+    return years.flatMap(year => [
+      { kind: 'year' as const, id: `year-${year}`, year },
+      ...runs.filter(r => r.year === year).map(run => ({ kind: 'run' as const, run })),
+    ]);
+  }, [years, runs]);
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedRunRows,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(runListRows, { scrollRootRef });
+
   const toggleRun = async (runId: number) => {
     if (expandedRunId === runId) {
       setExpandedRunId(null);
@@ -83,7 +105,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+        <div ref={scrollRootRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
           {error && (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
               {error}
@@ -96,90 +118,90 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
             <p className="text-sm text-muted-foreground">No processed payrolls yet for this company.</p>
           )}
 
-          {!loading && years.map(year => {
-            const yearRuns = runs.filter(run => run.year === year);
-            return (
-              <section key={year} className="space-y-3">
-                <h3 className="text-xs font-sans uppercase tracking-wider text-muted-foreground">{year}</h3>
-                <div className="space-y-2">
-                  {yearRuns.map(run => {
-                    const expanded = expandedRunId === run.id;
-                    const detail = runDetails[run.id];
-                    return (
-                      <div key={run.id} className="border border-border rounded-lg overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => void toggleRun(run.id)}
-                          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
-                        >
-                          {expanded ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{run.periodLabel}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              {run.payCycle} · {run.payType} · {formatProcessedAt(run.processedAt)}
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <div className="text-sm font-medium">{formatPayrollAmount(run.totalPayout ?? run.totalGross, run.countryCode || countryCode)}</div>
-                            <div className="text-xs text-muted-foreground">{run.employeeCount} employees · payout</div>
-                          </div>
-                        </button>
+          {!loading && pagedRunRows.map(row => {
+            if (row.kind === 'year') {
+              return (
+                <section key={row.id} className="space-y-3">
+                  <h3 className="text-xs font-sans uppercase tracking-wider text-muted-foreground">{row.year}</h3>
+                </section>
+              );
+            }
 
-                        {expanded && (
-                          <div className="border-t border-border bg-muted/20 px-4 py-3">
-                            {detailLoadingId === run.id && (
-                              <p className="text-xs text-muted-foreground">Loading payment details…</p>
-                            )}
-                            {detail && (
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs min-w-[960px]">
-                                  <thead>
-                                    <tr className="border-b border-border/60">
-                                      <th className={thCls}>Employee ID</th>
-                                      <th className={thCls}>Employee</th>
-                                      <th className={thCls}>Position (Dept)</th>
-                                      <th className={thCls}>Attendance</th>
-                                      <th className={`${thCls} text-right`}>Gross</th>
-                                      <th className={`${thCls} text-right`}>Total Payout</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {detail.lines.map(line => (
-                                      <tr key={line.employeeId} className="border-b border-border/40 last:border-0">
-                                        <td className="px-3 py-2 font-sans">{line.employeeCode}</td>
-                                        <td className="px-3 py-2 font-medium">{line.employeeName}</td>
-                                        <td className="px-3 py-2 text-muted-foreground">
-                                          {formatPositionDept(line.position, line.department)}
-                                        </td>
-                                        <td className="px-3 py-2 text-muted-foreground">
-                                          {formatAttendanceSummary(
-                                            line.presentDays,
-                                            line.workingDays,
-                                            detail.payType,
-                                            line.totalHours,
-                                          )}
-                                        </td>
-                                        <td className="px-3 py-2 text-right">
-                                          {formatPayrollAmount(line.grossPay, detail.countryCode || countryCode)}
-                                        </td>
-                                        <td className="px-3 py-2 text-right font-medium">
-                                          {formatPayrollAmount(line.totalPayout ?? line.grossPay, detail.countryCode || countryCode)}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-                        )}
+            const run = row.run;
+            const expanded = expandedRunId === run.id;
+            const detail = runDetails[run.id];
+            return (
+              <div key={run.id} className="border border-border rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => void toggleRun(run.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
+                >
+                  {expanded ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{run.periodLabel}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {run.payCycle} · {run.payType} · {formatProcessedAt(run.processedAt)}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-medium">{formatPayrollAmount(run.totalPayout ?? run.totalGross, run.countryCode || countryCode)}</div>
+                    <div className="text-xs text-muted-foreground">{run.employeeCount} employees · payout</div>
+                  </div>
+                </button>
+
+                {expanded && (
+                  <div className="border-t border-border bg-muted/20 px-4 py-3">
+                    {detailLoadingId === run.id && (
+                      <p className="text-xs text-muted-foreground">Loading payment details…</p>
+                    )}
+                    {detail && (
+                      <div className="overflow-x-hidden" data-table-scroll>
+                        <table className="w-full table-fixed text-xs">
+                          <thead>
+                            <tr className="border-b border-border/60">
+                              <th className={thCls}>Employee ID</th>
+                              <th className={thCls}>Employee</th>
+                              <th className={thCls}>Position (Dept)</th>
+                              <th className={thCls}>Attendance</th>
+                              <th className={`${thCls} text-right`}>Gross</th>
+                              <th className={`${thCls} text-right`}>Total Payout</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detail.lines.map(line => (
+                              <tr key={line.employeeId} className="border-b border-border/40 last:border-0">
+                                <td className="px-3 py-2 font-sans">{line.employeeCode}</td>
+                                <td className="px-3 py-2 font-medium">{line.employeeName}</td>
+                                <td className="px-3 py-2 text-muted-foreground">
+                                  {formatPositionDept(line.position, line.department)}
+                                </td>
+                                <td className="px-3 py-2 text-muted-foreground">
+                                  {formatAttendanceSummary(
+                                    line.presentDays,
+                                    line.workingDays,
+                                    detail.payType,
+                                    line.totalHours,
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  {formatPayrollAmount(line.grossPay, detail.countryCode || countryCode)}
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium">
+                                  {formatPayrollAmount(line.totalPayout ?? line.grossPay, detail.countryCode || countryCode)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    );
-                  })}
-                </div>
-              </section>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
+          <InfiniteScrollDivSentinel hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
         </div>
       </aside>
     </div>

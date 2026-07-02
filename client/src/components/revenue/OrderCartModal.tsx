@@ -411,7 +411,7 @@ export function OrderCartModal({
                         setError(null);
                       }}
                       disabled={saving}
-                      className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary font-sans disabled:opacity-50"
+                      className={`bisync-filter-select font-sans disabled:opacity-50`}
                     />
                     {parseDateInputValue(deliveryDateValue) && (
                       <p className="text-xs text-muted-foreground">

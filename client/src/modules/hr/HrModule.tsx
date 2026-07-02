@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
 import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
 import { api as bisyncApi, type AppUser } from '../../api';
 import { hrApi as api } from './api';
@@ -315,6 +317,13 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
     [leaveBalances, companyEmployeeIds],
   );
 
+  const shiftEmployeesScroll = useInfiniteScrollSlice(shiftEmployees, { scrollRootRef: shiftAttendanceScrollRef });
+  const nonShiftEmployeesScroll = useInfiniteScrollSlice(nonShiftEmployees, { scrollRootRef: nonShiftAttendanceScrollRef });
+  const leaveBalanceScrollRef = useRef<HTMLDivElement>(null);
+  const leaveBalancesScroll = useInfiniteScrollSlice(companyLeaveBalances, { scrollRootRef: leaveBalanceScrollRef });
+  const shiftAttendanceColSpan = 1 + attendanceDates.length * 4;
+  const nonShiftAttendanceColSpan = 1 + attendanceDates.length;
+
   const companyApprovedLeaves = useMemo(
     () => companyLeaveRequests.filter(r => r.status === 'Approved'),
     [companyLeaveRequests],
@@ -428,7 +437,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
       {/* Navigation Tabs */}
       <div className="bg-white border-b border-gray-200">
         <div className={embedded ? 'px-4' : 'px-8'}>
-          <div className="flex gap-4 md:gap-8 overflow-x-auto">
+          <div className="flex gap-4 md:gap-8 ">
             {([
               ['employees', Users, 'Employee Directory'],
               ['attendance', Calendar, 'Attendance'],
@@ -541,14 +550,14 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               <h3 className="text-xl text-gray-900 mb-4">Shift Employees</h3>
               <div
                 ref={shiftAttendanceScrollRef}
-                className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : 'overflow-x-auto'}`}
+                className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
-                <table className={attendanceWeekView ? 'w-full table-fixed' : 'min-w-max'}>
+                <table className="w-full table-fixed">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th rowSpan={2} className={`px-2 py-2 text-left text-xs text-gray-700 border-b-2 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 min-w-[120px]'}`}>Name</th>
+                      <th rowSpan={2} className={`px-2 py-2 text-left text-xs text-gray-700 border-b-2 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 '}`}>Name</th>
                       {attendanceDates.map((date) => (
-                        <th key={date} colSpan={4} className={`px-0.5 py-1.5 text-center text-[11px] text-gray-700 border-b border-l border-gray-200 ${attendanceWeekView ? '' : 'min-w-[128px]'}`}>
+                        <th key={date} colSpan={4} className={`px-0.5 py-1.5 text-center text-[11px] text-gray-700 border-b border-l border-gray-200 ${attendanceWeekView ? '' : ''}`}>
                           {formatDayHeader(date)}
                         </th>
                       ))}
@@ -571,7 +580,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                           No shift employees for this company.
                         </td>
                       </tr>
-                    ) : shiftEmployees.map((employee) => (
+                    ) : shiftEmployeesScroll.visibleItems.map((employee) => (
                       <tr key={employee.id} className="hover:bg-gray-50">
                         <td className={`px-2 py-2 text-xs text-gray-900 border-r border-gray-200 truncate ${attendanceWeekView ? '' : 'sticky left-0 z-10 bg-white'}`}>
                           <button onClick={() => setSelectedAttendanceEmployee(employee)} className="text-herme hover:text-herme-dark hover:underline text-left truncate max-w-full">
@@ -626,6 +635,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                         })}
                       </tr>
                     ))}
+                    <InfiniteScrollTableSentinel colSpan={shiftAttendanceColSpan} hasMore={shiftEmployeesScroll.hasMore} sentinelRef={shiftEmployeesScroll.sentinelRef} totalCount={shiftEmployeesScroll.totalCount} visibleCount={shiftEmployeesScroll.visibleCount} />
                   </tbody>
                 </table>
               </div>
@@ -636,14 +646,14 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               <h3 className="text-xl text-gray-900 mb-4">Non-Shift Employees</h3>
               <div
                 ref={nonShiftAttendanceScrollRef}
-                className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : 'overflow-x-auto'}`}
+                className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
-                <table className={attendanceWeekView ? 'w-full table-fixed' : 'min-w-max'}>
+                <table className="w-full table-fixed">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className={`px-2 py-2 text-left text-xs text-gray-700 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 min-w-[120px]'}`}>Name</th>
+                      <th className={`px-2 py-2 text-left text-xs text-gray-700 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 '}`}>Name</th>
                       {attendanceDates.map((date) => (
-                        <th key={date} className={`px-0.5 py-2 text-center text-[11px] text-gray-700 border-l border-gray-200 ${attendanceWeekView ? '' : 'min-w-[52px]'}`}>
+                        <th key={date} className={`px-0.5 py-2 text-center text-[11px] text-gray-700 border-l border-gray-200 ${attendanceWeekView ? '' : ''}`}>
                           {formatDayHeader(date)}
                         </th>
                       ))}
@@ -656,7 +666,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                           No non-shift employees for this company.
                         </td>
                       </tr>
-                    ) : nonShiftEmployees.map((employee) => (
+                    ) : nonShiftEmployeesScroll.visibleItems.map((employee) => (
                       <tr key={employee.id} className="hover:bg-gray-50">
                         <td className={`px-2 py-2 text-xs text-gray-900 border-r border-gray-200 truncate ${attendanceWeekView ? '' : 'sticky left-0 z-10 bg-white'}`}>{employee.name}</td>
                         {attendanceDates.map((date) => {
@@ -673,6 +683,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                         })}
                       </tr>
                     ))}
+                    <InfiniteScrollTableSentinel colSpan={nonShiftAttendanceColSpan} hasMore={nonShiftEmployeesScroll.hasMore} sentinelRef={nonShiftEmployeesScroll.sentinelRef} totalCount={nonShiftEmployeesScroll.totalCount} visibleCount={nonShiftEmployeesScroll.visibleCount} />
                   </tbody>
                 </table>
               </div>
@@ -773,8 +784,8 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               {/* Leave Balance Summary */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col">
                 <h3 className="text-lg text-gray-900 mb-4">Leave Balance Summary</h3>
-                <div className="overflow-auto flex-1">
-                  <table className="w-full">
+                <div ref={leaveBalanceScrollRef} className="overflow-auto flex-1 max-h-[calc(100vh-12rem)]">
+                  <table className="w-full table-fixed">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         <th className="px-6 py-3 text-left text-sm text-gray-700">Employee</th>
@@ -784,7 +795,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {companyLeaveBalances.map((balance) => (
+                      {leaveBalancesScroll.visibleItems.map((balance) => (
                         <tr key={balance.employeeId} className="hover:bg-gray-50">
                           <td className="px-6 py-4 text-sm text-gray-900">{balance.employeeName}</td>
                           <td className="px-6 py-4 text-center text-sm text-gray-900">{balance.rdoBalance}</td>
@@ -792,6 +803,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                           <td className="px-6 py-4 text-center text-sm text-gray-900">{balance.alBalance}</td>
                         </tr>
                       ))}
+                      <InfiniteScrollTableSentinel colSpan={4} hasMore={leaveBalancesScroll.hasMore} sentinelRef={leaveBalancesScroll.sentinelRef} totalCount={leaveBalancesScroll.totalCount} visibleCount={leaveBalancesScroll.visibleCount} />
                     </tbody>
                   </table>
                 </div>
@@ -962,7 +974,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
             <div>
               <h3 className="text-xl text-gray-900 mb-4">Detailed Attendance Records</h3>
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-auto">
-                <table className="w-full">
+                <table className="w-full table-fixed">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-6 py-3 text-left text-sm text-gray-700">Date</th>

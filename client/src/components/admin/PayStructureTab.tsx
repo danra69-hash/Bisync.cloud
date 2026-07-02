@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Plus, Trash2, X } from 'lucide-react';
 import { api, type Company } from '../../api';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
@@ -381,6 +384,15 @@ export function PayStructureTab() {
     setStructures(prev => prev.map(s => (s.id === structure.id ? updated : s)));
   }
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedStructures,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(structures, { scrollRootRef });
+
   return (
     <div className="space-y-4">
       {error && (
@@ -403,7 +415,8 @@ export function PayStructureTab() {
         {loading ? (
           <p className="p-8 text-center text-xs text-muted-foreground">Loading pay structures…</p>
         ) : (
-          <table className="w-full text-xs">
+          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <tr>
                 {['Company', 'Country', 'Pay Type', 'Pay Cycle', 'PF (Co/Emp)', 'SOCSO', 'Other Contributions', 'Active'].map(h => (
@@ -412,7 +425,7 @@ export function PayStructureTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {structures.map(structure => (
+              {pagedStructures.map(structure => (
                   <tr
                     key={structure.id}
                     className={`hover:bg-muted/20 cursor-pointer ${structure.active === false ? 'opacity-60' : ''}`}
@@ -449,8 +462,10 @@ export function PayStructureTab() {
                   </td>
                 </tr>
               )}
+              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
+          </TableScrollContainer>
         )}
       </div>
 

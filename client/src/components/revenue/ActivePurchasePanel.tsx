@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Check, Copy, PackageCheck, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
@@ -156,6 +159,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   }, [lines]);
 
   const showTaxColumn = !isPurchaseRequest && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+  const lineColSpan = ['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, 'Line total'].filter(Boolean).length;
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedLines,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(lines, { scrollRootRef });
 
   function updateLine(itemId: number, patch: Partial<EditableLine>) {
     setLines(prev => prev.map(line => (line.itemId === itemId ? { ...line, ...patch } : line)));
@@ -356,8 +369,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             <div className="px-4 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">Line items</p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs min-w-[820px]">
+            <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border">
                     {['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, 'Line total'].filter(Boolean).map(h => (
@@ -366,7 +379,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map(line => {
+                  {pagedLines.map(line => {
                     const qty = parseFloat(line.quantity) || 0;
                     const price = parseFloat(line.unitPrice) || 0;
                     const tax = parseFloat(line.taxAmount) || 0;
@@ -442,9 +455,10 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                       </tr>
                     );
                   })}
+                  <InfiniteScrollTableSentinel colSpan={lineColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
           </div>
 
           {approvalBlockedByServer && (

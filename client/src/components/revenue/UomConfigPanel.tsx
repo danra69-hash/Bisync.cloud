@@ -1,4 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Plus } from 'lucide-react';
 import { inputCls } from '../../data/componentForm';
 import {
@@ -25,14 +28,24 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
   rows: ConversionRow[];
   showCategory?: boolean;
 }) {
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const colSpan = showCategory ? 5 : 4;
+  const {
+    visibleItems: pagedRows,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(rows, { scrollRootRef });
+
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
       <div className="px-3 py-2 border-b border-border bg-muted/30">
         <p className="text-xs font-semibold">{title}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+      <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+        <table className="w-full table-fixed text-xs">
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {(showCategory ? ['Scale', 'From', 'To', 'Multiply by', 'Example'] : ['From', 'To', 'Multiply by', 'Example']).map(h => (
@@ -41,7 +54,7 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {pagedRows.map((row, i) => (
               <tr key={`${row.from}-${row.to}-${i}`} className="border-b border-border last:border-0 hover:bg-muted/20">
                 {showCategory && (
                   <td className="px-3 py-2.5">
@@ -54,9 +67,10 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
                 <td className="px-3 py-2.5 text-muted-foreground">{exampleText(row)}</td>
               </tr>
             ))}
+            <InfiniteScrollTableSentinel colSpan={colSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
-      </div>
+      </TableScrollContainer>
     </div>
   );
 }
@@ -79,6 +93,11 @@ export function UomConfigPanel() {
   const metricVolume = METRIC_IMPERIAL_PAIRS.filter(r =>
     ['Ml', 'Ltr', 'FlOz', 'Gal'].includes(r.from),
   );
+
+  const allUomsScrollRef = useRef<HTMLDivElement>(null);
+  const myUomsScrollRef = useRef<HTMLDivElement>(null);
+  const allUomsScroll = useInfiniteScrollSlice(allUoms, { scrollRootRef: allUomsScrollRef });
+  const myUomsScroll = useInfiniteScrollSlice(myUoms, { scrollRootRef: myUomsScrollRef });
 
   function addToMyUom(id: number) {
     setMyUomIds(prev => (prev.includes(id) ? prev : [...prev, id]));
@@ -142,14 +161,15 @@ export function UomConfigPanel() {
               <p className="text-xs font-semibold">All UOM</p>
               <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to add it to My UOM</p>
             </div>
-            <table className="w-full text-xs">
+            <TableScrollContainer ref={allUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+            <table className="w-full table-fixed text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className={thCls}>UOM</th>
                 </tr>
               </thead>
               <tbody>
-                {allUoms.map(u => {
+                {allUomsScroll.visibleItems.map(u => {
                   const inMyUom = myUomIds.includes(u.id);
                   return (
                     <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20">
@@ -168,8 +188,10 @@ export function UomConfigPanel() {
                     </tr>
                   );
                 })}
+                <InfiniteScrollTableSentinel colSpan={1} hasMore={allUomsScroll.hasMore} sentinelRef={allUomsScroll.sentinelRef} totalCount={allUomsScroll.totalCount} visibleCount={allUomsScroll.visibleCount} />
               </tbody>
             </table>
+            </TableScrollContainer>
           </div>
 
           <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
@@ -177,14 +199,15 @@ export function UomConfigPanel() {
               <p className="text-xs font-semibold">My UOM</p>
               <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to remove it from My UOM</p>
             </div>
-            <table className="w-full text-xs">
+            <TableScrollContainer ref={myUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+            <table className="w-full table-fixed text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className={thCls}>UOM</th>
                 </tr>
               </thead>
               <tbody>
-                {myUoms.map(u => (
+                {myUomsScroll.visibleItems.map(u => (
                   <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20">
                     <td className="px-3 py-2.5">
                       <button
@@ -204,8 +227,10 @@ export function UomConfigPanel() {
                     </td>
                   </tr>
                 )}
+                <InfiniteScrollTableSentinel colSpan={1} hasMore={myUomsScroll.hasMore} sentinelRef={myUomsScroll.sentinelRef} totalCount={myUomsScroll.totalCount} visibleCount={myUomsScroll.visibleCount} />
               </tbody>
             </table>
+            </TableScrollContainer>
           </div>
         </div>
       </div>

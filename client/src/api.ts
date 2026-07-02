@@ -450,6 +450,13 @@ export interface ProductComponentItem {
   sortOrder?: number;
 }
 
+export interface ProductAlias {
+  id: number;
+  name: string;
+  rrp: number;
+  sortOrder?: number;
+}
+
 export interface Product {
   id: number;
   productId: string;
@@ -459,12 +466,30 @@ export interface Product {
   isSubProduct: boolean;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
+  b2bPackageUnit?: string;
   totalCost: number;
+  packagingCost: number;
+  rrp: number;
+  previousTotalCost?: number | null;
+  previousPackagingCost?: number | null;
+  previousRrp?: number | null;
+  yieldQuantity: number;
+  yieldUom: string;
+  posEnabled: boolean;
+  active: boolean;
   companyId?: number | null;
   locationExternalIds?: string[];
   createdAt: string;
   updatedAt: string;
   items: ProductComponentItem[];
+  packagingItems?: ProductComponentItem[];
+  aliases?: ProductAlias[];
+}
+
+export interface UpsertProductAliasPayload {
+  id?: number;
+  name: string;
+  rrp: number;
 }
 
 export interface UpsertProductPayload {
@@ -475,9 +500,66 @@ export interface UpsertProductPayload {
   isSubProduct: boolean;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
+  rrp?: number;
+  yieldQuantity?: number;
+  yieldUom?: string;
+  posEnabled?: boolean;
+  active?: boolean;
   companyId?: number | null;
   locationExternalIds: string[];
   items: Omit<ProductComponentItem, 'id' | 'subtotal' | 'sortOrder'>[];
+  packagingItems?: Omit<ProductComponentItem, 'id' | 'subtotal' | 'sortOrder'>[];
+  aliases?: UpsertProductAliasPayload[];
+}
+
+export interface PatchProductPayload {
+  posEnabled?: boolean;
+  active?: boolean;
+  rrp?: number;
+  locationExternalIds?: string[];
+}
+
+export interface ProductManagementSummary {
+  productId: number;
+  batchUnit: string;
+  packageUnit?: string;
+  batchSize?: number;
+  isSubProduct?: boolean;
+  inStock: number;
+  salesPerDay: number;
+  toProduceQty: number;
+}
+
+export interface ProduceBatchPayload {
+  locationExternalIds: string[];
+  batchQty: number;
+}
+
+export interface ProduceBatchShortage {
+  locationExternalId: string;
+  componentId: string;
+  componentName: string;
+  requiredQty: number;
+  onHandQty: number;
+  uom: string;
+}
+
+export interface ProduceBatchResult {
+  productId: number;
+  batchUnit: string;
+  packageUnit?: string;
+  batchSize?: number;
+  isSubProduct?: boolean;
+  inStock: number;
+  salesPerDay: number;
+  toProduceQty: number;
+}
+
+export interface PatchProductManagementPayload {
+  packageUnit?: string;
+  inStock?: number;
+  salesPerDay?: number;
+  locationExternalIds: string[];
 }
 
 export interface InventoryAlert {
@@ -619,8 +701,37 @@ export const api = {
     fetchJsonWithMethod<Product>('/api/products', 'POST', payload),
   updateProduct: (id: number, payload: UpsertProductPayload) =>
     fetchJsonWithMethod<Product>(`/api/products/${id}`, 'PUT', payload),
+  patchProduct: (id: number, payload: PatchProductPayload) =>
+    fetchJsonWithMethod<Product>(`/api/products/${id}`, 'PATCH', payload),
   deleteProduct: (id: number) =>
     fetchJsonWithMethod<void>(`/api/products/${id}`, 'DELETE'),
+  productManagement: (companyId: number | undefined, locationIds: string[]) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    const query = params.toString();
+    return fetchJson<ProductManagementSummary[]>(`/api/product-management${query ? `?${query}` : ''}`);
+  },
+  patchProductManagement: (productId: number, payload: PatchProductManagementPayload) =>
+    fetchJsonWithMethod<ProductManagementSummary>(`/api/product-management/${productId}`, 'PATCH', payload),
+  markProductToProduce: (productId: number, locationExternalIds: string[]) =>
+    fetchJsonWithMethod<ProductManagementSummary>(
+      `/api/product-management/${productId}/to-produce`,
+      'POST',
+      { locationExternalIds },
+    ),
+  produceProductBatches: (productId: number, payload: ProduceBatchPayload) =>
+    fetchJsonWithMethod<ProduceBatchResult>(
+      `/api/product-management/${productId}/produce`,
+      'POST',
+      payload,
+    ),
+  recordProductSale: (productId: number, payload: { locationExternalIds: string[]; quantitySold: number }) =>
+    fetchJsonWithMethod<void>(
+      `/api/product-management/${productId}/record-sale`,
+      'POST',
+      payload,
+    ),
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

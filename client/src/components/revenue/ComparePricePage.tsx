@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Tag, UserPlus } from 'lucide-react';
+import { pageShellClass } from '../layout/pageLayout';
+import { filterSelectCls } from '../layout/formControls';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
 import {
   buildComparePriceMatrix,
@@ -17,12 +19,15 @@ import { resolveDetailConfigForRow, serializeDetailConfig, type ComponentRow } f
 import type { VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { componentRowToIngredientPayload } from '../../data/vendorProductTagging';
 import { ingredientToRow } from './smartIngredientShared';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
 
 const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
-const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0 min-w-[168px] max-w-[220px]';
+  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
+const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0 min-w-0';
 
 function ComparePriceCellView({
   slot,
@@ -156,11 +161,8 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
     sourceComponentId: number;
     group: string;
   } | null>(null);
-  const topScrollRef = useRef<HTMLDivElement | null>(null);
-  const bodyScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
-  const syncingRef = useRef(false);
-  const [tableScrollWidth, setTableScrollWidth] = useState(0);
 
   const loadData = useCallback(() => {
     if (!selectedCompanyId) {
@@ -212,21 +214,19 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
     });
   }, [components, search, groupFilter]);
 
+  const compareColSpan = 1 + filteredVendorColumns.length;
+  const {
+    visibleItems: pagedFilteredComponents,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(filteredComponents, { scrollRootRef });
+
   const bestByComponent = useMemo(
     () => findBestUomCostByComponent(filteredComponents, slots),
     [filteredComponents, slots],
   );
-
-  useEffect(() => {
-    const updateWidth = () => {
-      if (tableRef.current) {
-        setTableScrollWidth(tableRef.current.scrollWidth);
-      }
-    };
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
-  }, [filteredComponents.length, filteredVendorColumns.length, slots.size, loading]);
 
   async function handleConfirmEngage(vendor: Vendor, contacts: EngageVendorContact[]) {
     setEngaging(true);
@@ -286,8 +286,14 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
       return;
     }
 
+    const taggedVendorProductIds = detail.taggedVendorProductIds.includes(cell.product.id)
+      ? detail.taggedVendorProductIds
+      : [...detail.taggedVendorProductIds, cell.product.id];
+    const isPrimary = taggedVendorProductIds[0] === cell.product.id;
+
     const nextDetail = {
       ...detail,
+      taggedVendorProductIds,
       vendorProductPrincipalQty: {
         ...detail.vendorProductPrincipalQty,
         [cell.product.id]: principalQty,
@@ -296,10 +302,15 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
         ...detail.vendorProductComponentUom,
         [cell.product.id]: cell.componentUom,
       },
+      vendor: isPrimary ? cell.product.vendorName : detail.vendor,
+      vendorProduct: isPrimary ? cell.product.productName : detail.vendorProduct,
+      deliveryUnitPrice: isPrimary ? String(cell.product.deliveryPrice) : detail.deliveryUnitPrice,
     };
 
     const payload = componentRowToIngredientPayload({
       ...row,
+      lastPriceRecipe: isPrimary ? uomCost : row.lastPriceRecipe,
+      lastPriceInventory: isPrimary ? cell.product.deliveryPrice : row.lastPriceInventory,
       detailConfig: nextDetail,
       detailConfigJson: serializeDetailConfig(nextDetail),
     });
@@ -330,32 +341,10 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
     setDragSource(null);
   }
 
-  function syncFromTop() {
-    if (!topScrollRef.current || !bodyScrollRef.current || syncingRef.current) return;
-    syncingRef.current = true;
-    bodyScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
-    requestAnimationFrame(() => { syncingRef.current = false; });
-  }
-
-  function syncFromBody() {
-    if (!topScrollRef.current || !bodyScrollRef.current || syncingRef.current) return;
-    syncingRef.current = true;
-    topScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
-    requestAnimationFrame(() => { syncingRef.current = false; });
-  }
-
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Vendors</p>
-        <h2 className="text-lg font-semibold">Compare Price</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          All food &amp; beverage components with catalog matches — engage or tag directly from each cell
-        </p>
-      </div>
-
+    <div className={pageShellClass()}>
       {!selectedCompanyId ? (
-        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
+        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
           Select a company to compare vendor pricing.
         </p>
       ) : loading ? (
@@ -375,7 +364,7 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
             <select
               value={groupFilter}
               onChange={e => setGroupFilter(e.target.value as typeof groupFilter)}
-              className="px-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary min-w-[140px]"
+              className={`${filterSelectCls} min-w-[140px]`}
             >
               <option value="all">All groups</option>
               <option value="Proteins">Proteins</option>
@@ -407,35 +396,20 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
               {' · '}
               {filteredVendorColumns.length} vendor{filteredVendorColumns.length !== 1 ? 's' : ''}
             </p>
-            <div className="ml-auto flex items-center gap-2 min-w-[240px]">
-              <span className="text-xs font-sans text-muted-foreground shrink-0">Scroll vendors</span>
-              <div
-                ref={topScrollRef}
-                onScroll={syncFromTop}
-                className="w-56 overflow-x-auto overflow-y-hidden border border-border rounded bg-card h-4"
-              >
-                <div style={{ width: Math.max(tableScrollWidth, 1), height: 1 }} />
-              </div>
-            </div>
           </div>
 
           {filteredComponents.length === 0 || filteredVendorColumns.length === 0 ? (
-            <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-10 text-center">
+            <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
               No food or beverage components found. Add smart components to populate this spreadsheet.
             </p>
           ) : (
-            <div className="border border-border rounded-lg overflow-hidden bg-card">
-              <div
-                ref={bodyScrollRef}
-                onScroll={syncFromBody}
-                className="overflow-auto max-h-[calc(100vh-220px)]"
-              >
-                <table ref={tableRef} className="w-full text-xs border-collapse min-w-max">
+            <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-220px)]">
+                <table ref={tableRef} className="w-full text-xs border-collapse table-fixed">
                   <thead className="sticky top-0 z-20 bg-muted/90 backdrop-blur-sm">
                     <tr className="border-b border-border">
-                      <th className={`${thCls} sticky left-0 z-30 bg-muted/95 min-w-[180px]`}>Component</th>
+                      <th className={`${thCls} bg-muted/95 w-[14%]`}>Component</th>
                       {filteredVendorColumns.map(vendor => (
-                        <th key={vendor.externalId} className={`${thCls} min-w-[168px] max-w-[220px]`}>
+                        <th key={vendor.externalId} className={thCls}>
                           <div className="space-y-0.5">
                             <div className="flex flex-wrap items-center gap-1">
                               <p className="text-[11px] font-semibold text-foreground normal-case tracking-normal">
@@ -456,12 +430,12 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredComponents.map(component => {
+                    {pagedFilteredComponents.map(component => {
                       if (!component.id) return null;
                       const best = bestByComponent.get(component.id);
                       return (
                         <tr key={component.id} className="hover:bg-muted/15">
-                          <td className={`${tdCls} sticky left-0 z-10 bg-card font-medium`}>
+                          <td className={`${tdCls} font-medium`}>
                             <p className="text-foreground leading-snug">{component.name}</p>
                             <p className="text-xs font-sans text-muted-foreground mt-0.5">
                               {component.componentId || '—'}
@@ -533,10 +507,10 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
                         </tr>
                       );
                     })}
+                    <InfiniteScrollTableSentinel colSpan={compareColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                   </tbody>
                 </table>
-              </div>
-            </div>
+            </TableScrollContainer>
           )}
 
           {engageVendor && (

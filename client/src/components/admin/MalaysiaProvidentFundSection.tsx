@@ -1,4 +1,8 @@
+import { useRef } from 'react';
 import { Plus } from 'lucide-react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { inputCls } from '../../data/countries';
 import type { ProvidentFundBracketItem } from '../../modules/hr/types';
 
@@ -42,6 +46,15 @@ export function MalaysiaProvidentFundSection({
     });
   }
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedBrackets,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(brackets, { scrollRootRef });
+
   return (
     <div className="space-y-4">
       <div>
@@ -57,8 +70,8 @@ export function MalaysiaProvidentFundSection({
           </button>
         </div>
 
-        <div className="border border-border rounded-lg overflow-x-auto">
-          <table className="w-full text-xs min-w-[520px]">
+        <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <tr>
                 {['Min Age', 'Max Age', 'Min Salary (RM)', 'Max Salary (RM)', 'Company %', 'Employee %'].map(h => (
@@ -67,7 +80,7 @@ export function MalaysiaProvidentFundSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {brackets.map((bracket, index) => (
+              {pagedBrackets.map((bracket, index) => (
                 <tr key={index} className="hover:bg-muted/20">
                   <td className="px-2 py-2">
                     <input
@@ -142,9 +155,10 @@ export function MalaysiaProvidentFundSection({
                   </td>
                 </tr>
               )}
+              <InfiniteScrollTableSentinel colSpan={6} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
-        </div>
+        </TableScrollContainer>
       </div>
 
       <div>
@@ -155,8 +169,8 @@ export function MalaysiaProvidentFundSection({
           </p>
         </div>
 
-        <div className="border border-border rounded-lg overflow-x-auto">
-          <table className="w-full text-xs">
+        <div className="border border-border rounded-lg ">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <tr>
                 <th className={thCls}>Min Age</th>

@@ -322,5 +322,4 @@ export const blankComponentRow: ComponentRow = {
   locations: ['all'],
 };
 
-export const inputCls = 'bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary w-full';
-export const selectCls = `${inputCls} cursor-pointer`;
+export { fieldCls, filterInputCls, filterSelectCls, inlineNumberCls, inputCls, numberCls, selectCls } from '../components/layout/formControls';

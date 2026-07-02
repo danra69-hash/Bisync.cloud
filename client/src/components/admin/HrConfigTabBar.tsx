@@ -8,13 +8,13 @@ type Props<T extends string> = {
 
 export function HrConfigTabBar<T extends string>({ tabs, active, onChange }: Props<T>) {
   return (
-    <div className="flex gap-0 border-b border-border overflow-x-auto">
+    <div className="flex flex-wrap gap-0 border-b border-border">
       {tabs.map(t => (
         <button
           key={t.id}
           type="button"
           onClick={() => onChange(t.id as T)}
-          className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px whitespace-nowrap ${
+          className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px whitespace-nowrap ${
             active === t.id
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'

@@ -43,6 +43,10 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<OrderTemplateItem> OrderTemplateItems => Set<OrderTemplateItem>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductComponentItem> ProductComponentItems => Set<ProductComponentItem>();
+    public DbSet<ProductPackagingItem> ProductPackagingItems => Set<ProductPackagingItem>();
+    public DbSet<ProductAlias> ProductAliases => Set<ProductAlias>();
+    public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
+    public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
     public DbSet<VendorProductPrice> VendorProductPrices => Set<VendorProductPrice>();
     public DbSet<InventoryAlert> InventoryAlerts => Set<InventoryAlert>();
     public DbSet<RevenueDataPoint> RevenueDataPoints => Set<RevenueDataPoint>();
@@ -105,6 +109,25 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .WithOne(i => i.Product)
             .HasForeignKey(i => i.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Product>()
+            .HasMany(p => p.Aliases)
+            .WithOne(a => a.Product)
+            .HasForeignKey(a => a.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Product>()
+            .HasMany(p => p.PackagingItems)
+            .WithOne(i => i.Product)
+            .HasForeignKey(i => i.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProductB2bLocationStock>(e =>
+        {
+            e.HasIndex(x => new { x.ProductId, x.LocationExternalId }).IsUnique();
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<InventoryMovement>().HasIndex(m => new { m.ComponentId, m.LocationExternalId });
         modelBuilder.Entity<InventoryPurchase>().HasIndex(i => i.PurchaseOrderItemId);
         modelBuilder.Entity<VendorProductPrice>().HasKey(p => p.ExternalId);
     }

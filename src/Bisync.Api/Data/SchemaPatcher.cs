@@ -193,6 +193,83 @@ public static class SchemaPatcher
 
         await EnsureColumnAsync(db, "OrderTemplateItems", "DeliveryUnit", "TEXT NOT NULL DEFAULT ''");
 
+        await EnsureColumnAsync(db, "Products", "Rrp", "REAL NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(db, "Products", "PosEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
+        await EnsureColumnAsync(db, "Products", "YieldQuantity", "REAL NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(db, "Products", "YieldUom", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "Products", "PackagingCost", "REAL NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(db, "Products", "PreviousTotalCost", "REAL NULL");
+        await EnsureColumnAsync(db, "Products", "PreviousPackagingCost", "REAL NULL");
+        await EnsureColumnAsync(db, "Products", "PreviousRrp", "REAL NULL");
+        await EnsureColumnAsync(db, "Products", "B2bPackageUnit", "TEXT NOT NULL DEFAULT 'pcs'");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ProductB2bLocationStocks" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_ProductB2bLocationStocks" PRIMARY KEY AUTOINCREMENT,
+                "ProductId" INTEGER NOT NULL,
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "InStock" REAL NOT NULL DEFAULT 0,
+                "SalesPerDay" REAL NOT NULL DEFAULT 0,
+                "ToProduceQty" REAL NOT NULL DEFAULT 0,
+                "UpdatedAt" TEXT NOT NULL,
+                CONSTRAINT "FK_ProductB2bLocationStocks_Products_ProductId"
+                    FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ProductB2bLocationStocks_ProductId_LocationExternalId"
+            ON "ProductB2bLocationStocks" ("ProductId", "LocationExternalId");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "InventoryMovements" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryMovements" PRIMARY KEY AUTOINCREMENT,
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "LocationExternalId" TEXT NOT NULL DEFAULT '',
+                "QtyDelta" REAL NOT NULL DEFAULT 0,
+                "Uom" TEXT NOT NULL DEFAULT '',
+                "Reason" TEXT NOT NULL DEFAULT '',
+                "ReferenceType" TEXT NOT NULL DEFAULT '',
+                "ReferenceId" INTEGER NOT NULL DEFAULT 0,
+                "CompanyId" INTEGER,
+                "CreatedAt" TEXT NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_InventoryMovements_ComponentId_LocationExternalId"
+            ON "InventoryMovements" ("ComponentId", "LocationExternalId");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ProductPackagingItems" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_ProductPackagingItems" PRIMARY KEY AUTOINCREMENT,
+                "ProductId" INTEGER NOT NULL,
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "ComponentUom" TEXT NOT NULL DEFAULT '',
+                "ComponentUomPrice" REAL NOT NULL DEFAULT 0,
+                "Quantity" REAL NOT NULL,
+                "Subtotal" REAL NOT NULL DEFAULT 0,
+                "SortOrder" INTEGER NOT NULL DEFAULT 0,
+                CONSTRAINT "FK_ProductPackagingItems_Products_ProductId"
+                    FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ProductAliases" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_ProductAliases" PRIMARY KEY AUTOINCREMENT,
+                "ProductId" INTEGER NOT NULL,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "Rrp" REAL NOT NULL DEFAULT 0,
+                "SortOrder" INTEGER NOT NULL DEFAULT 0,
+                CONSTRAINT "FK_ProductAliases_Products_ProductId"
+                    FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
+            );
+            """);
+
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "Products" (
                 "Id" INTEGER NOT NULL CONSTRAINT "PK_Products" PRIMARY KEY AUTOINCREMENT,

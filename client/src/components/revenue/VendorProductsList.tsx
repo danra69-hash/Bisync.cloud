@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Tag, UserPlus } from 'lucide-react';
 import { api, type EngageVendorContact, type Ingredient, type Vendor } from '../../api';
@@ -24,6 +27,7 @@ import { VendorProductDetailPanel } from './VendorProductDetailPanel';
 import { VendorProductImageLightbox } from './VendorProductImageLightbox';
 import { VendorProductTagModal } from './VendorProductTagModal';
 import { VendorProductThumbnail } from './VendorProductThumbnail';
+import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
 
 function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ingredient {
   const merged = { ...row, ...partial };
@@ -51,7 +55,7 @@ function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ing
   };
 }
 
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap border-r border-border last:border-r-0';
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal truncate border-r border-border last:border-r-0';
 
 type Props = {
   products: VendorProductCatalogItem[];
@@ -101,14 +105,9 @@ export function VendorProductsList({
 
   const productIds = useMemo(() => products.map(p => p.id).join(','), [products]);
 
-  useEffect(() => {
-    if (!selectedCompanyId) {
-      setComponentRows([]);
-      setTaggedProductIds(new Set());
-      return;
-    }
+  function loadTaggedState() {
     const catalogIds = new Set(products.map(p => p.id));
-    api.ingredients()
+    return api.ingredients()
       .then(data => {
         const rows = data.map(ingredientToRow);
         const ids = new Set<string>();
@@ -126,6 +125,17 @@ export function VendorProductsList({
         setComponentRows([]);
         setTaggedProductIds(new Set());
       });
+  }
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setComponentRows([]);
+      setTaggedProductIds(new Set());
+      return;
+    }
+    void resyncStaleTaggedComponentPrices().finally(() => {
+      void loadTaggedState();
+    });
   }, [selectedCompanyId, productIds, products]);
 
   function getVendorForProduct(product: VendorProductCatalogItem): Vendor {
@@ -156,25 +166,7 @@ export function VendorProductsList({
   }
 
   function refreshTaggedProducts() {
-    const catalogIds = new Set(products.map(p => p.id));
-    api.ingredients()
-      .then(data => {
-        const rows = data.map(ingredientToRow);
-        const ids = new Set<string>();
-        rows.forEach(row => {
-          catalogIds.forEach(id => {
-            if (componentRowTagsVendorProduct(row, id)) {
-              ids.add(id);
-            }
-          });
-        });
-        setComponentRows(rows);
-        setTaggedProductIds(ids);
-      })
-      .catch(() => {
-        setComponentRows([]);
-        setTaggedProductIds(new Set());
-      });
+    void loadTaggedState();
   }
 
   async function handleSaveComponent(updated: Partial<ComponentRow>) {
@@ -248,6 +240,16 @@ export function VendorProductsList({
     if (tagFilter === 'tagged') return products.filter(p => taggedProductIds.has(p.id));
     return products.filter(p => !taggedProductIds.has(p.id));
   }, [products, tagFilter, taggedProductIds]);
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const productColSpan = showVendorColumn ? 9 : 8;
+  const {
+    visibleItems: pagedVisibleProducts,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(visibleProducts, { scrollRootRef });
 
   const modalRoot = typeof document !== 'undefined' ? document.body : null;
 
@@ -325,8 +327,8 @@ export function VendorProductsList({
   return (
     <>
       <div className="border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse min-w-[980px]">
+        <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed text-xs border-collapse">
             <thead>
               <tr className="border-b border-border bg-muted/40">
                 <th className={thCls}>Vendor Product Name</th>
@@ -341,14 +343,14 @@ export function VendorProductsList({
               </tr>
             </thead>
             <tbody>
-              {visibleProducts.map(product => {
+              {pagedVisibleProducts.map(product => {
                 const deliveryUnit = formatDeliveryUnitPath(product.delivery);
                 const isTagged = taggedProductIds.has(product.id);
                 const vendor = getVendorForProduct(product);
                 const isEngaged = vendor.engaged;
                 return (
                   <tr key={product.id} className={`border-b border-border last:border-0 hover:bg-muted/20 ${isTagged ? 'bg-primary/[0.03]' : ''}`}>
-                    <td className="px-3 py-2.5 border-r border-border min-w-[140px]">
+                    <td className="px-3 py-2.5 border-r border-border ">
                       <button
                         type="button"
                         onClick={e => handleProductNameClick(e, product)}
@@ -367,7 +369,7 @@ export function VendorProductsList({
                     </td>
                     <td className="px-3 py-2.5 font-sans text-xs text-muted-foreground border-r border-border">{product.id}</td>
                     <td className="px-3 py-2.5 text-foreground border-r border-border">{product.group}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground border-r border-border min-w-[160px] leading-snug">
+                    <td className="px-3 py-2.5 text-muted-foreground border-r border-border  leading-snug">
                       {product.specification}
                     </td>
                     <td className="px-3 py-2.5 font-sans text-foreground border-r border-border whitespace-nowrap">
@@ -375,7 +377,7 @@ export function VendorProductsList({
                     </td>
                     <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border">${product.deliveryPrice.toFixed(2)}</td>
                     {showVendorColumn && (
-                      <td className="px-3 py-2.5 border-r border-border min-w-[140px]">
+                      <td className="px-3 py-2.5 border-r border-border ">
                         <div className="flex flex-col gap-1">
                           <span className="font-medium text-foreground leading-snug">{product.vendorName}</span>
                           <div className="flex flex-wrap items-center gap-1.5">
@@ -421,9 +423,10 @@ export function VendorProductsList({
                   </tr>
                 );
               })}
+              <InfiniteScrollTableSentinel colSpan={productColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
-        </div>
+        </TableScrollContainer>
       </div>
 
       <p className="text-xs font-sans text-muted-foreground mt-3">

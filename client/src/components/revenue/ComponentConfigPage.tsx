@@ -1,9 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { pageShellClass } from '../layout/pageLayout';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { selectCls } from '../../data/componentForm';
 import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
 import { StorageAreaPicker } from './StorageAreaPicker';
 import { UomConfigPanel } from './UomConfigPanel';
+import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
 type StorageRow = { id: number; name: string; type: string; capacity: string; location: string; items: number };
 
@@ -17,7 +22,17 @@ type MyStorageEntry = {
   items: number;
 };
 
+type MyStorageTableRow =
+  | { kind: 'header'; id: string; label: string }
+  | { kind: 'entry'; entry: MyStorageEntry };
+
 const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
+
+const CONFIG_TABS = [
+  { id: 'group' as const, label: 'Group Assignment' },
+  { id: 'storage' as const, label: 'Storage Assignment' },
+  { id: 'uom' as const, label: 'UOM Config' },
+] as const;
 
 const STORAGE_LOCATIONS = ['Downtown', 'Midtown', 'Westend'] as const;
 
@@ -48,6 +63,9 @@ function storageMatchesLocation(row: StorageRow, location: string) {
 
 export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
   const [tab, setTab] = useState<'group' | 'storage' | 'uom'>('group');
+
+  const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Group Assignment';
+  useRevMgmtPageLabel(activeTabLabel);
   const [groups, setGroups] = useState(initialGroups);
   const [storage] = useState(initialStorage);
   const [myGroupIds, setMyGroupIds] = useState<number[]>([]);
@@ -73,6 +91,23 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
   }, [areas, myStorageEntries, selectedLocation]);
 
   const hasMyStorage = myStorageByArea.length > 0;
+
+  const myStorageTableRows = useMemo((): MyStorageTableRow[] => {
+    return myStorageByArea.flatMap(section => [
+      { kind: 'header' as const, id: `hdr-${section.area}`, label: section.area },
+      ...section.entries.map(entry => ({ kind: 'entry' as const, entry })),
+    ]);
+  }, [myStorageByArea]);
+
+  const groupsScrollRef = useRef<HTMLDivElement>(null);
+  const myGroupsScrollRef = useRef<HTMLDivElement>(null);
+  const locationStorageScrollRef = useRef<HTMLDivElement>(null);
+  const myStorageScrollRef = useRef<HTMLDivElement>(null);
+
+  const groupsScroll = useInfiniteScrollSlice(groups, { scrollRootRef: groupsScrollRef });
+  const myGroupsScroll = useInfiniteScrollSlice(myGroups, { scrollRootRef: myGroupsScrollRef });
+  const locationStorageScroll = useInfiniteScrollSlice(locationStorage, { scrollRootRef: locationStorageScrollRef });
+  const myStorageScroll = useInfiniteScrollSlice(myStorageTableRows, { scrollRootRef: myStorageScrollRef });
 
   function openNewGroup() {
     const nextId = groups.reduce((max, g) => Math.max(max, g.id), 0) + 1;
@@ -145,25 +180,15 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div>
-        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Component</p>
-        <h2 className="text-lg font-semibold">Component Config</h2>
-        <p className="text-xs text-muted-foreground mt-1">Configure component groups, storage assignments, and UOM conversions</p>
-      </div>
-
+    <div className={pageShellClass()}>
       {selectedCompanyId && (
       <>
       <div className="flex gap-1 border-b border-border">
-        {([
-          { id: 'group' as const, label: 'Group Assignment' },
-          { id: 'storage' as const, label: 'Storage Assignment' },
-          { id: 'uom' as const, label: 'UOM Config' },
-        ]).map(t => (
+        {CONFIG_TABS.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors -mb-px ${
+            className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
               tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -190,7 +215,8 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                 <p className="text-xs font-semibold">All Groups</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Click a group name to add it to My Group</p>
               </div>
-              <table className="w-full text-xs">
+              <TableScrollContainer ref={groupsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     {['Category', 'Group Name', 'Actions'].map(h => (
@@ -199,7 +225,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map(g => {
+                  {groupsScroll.visibleItems.map(g => {
                     const inMyGroup = myGroupIds.includes(g.id);
                     return (
                       <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/20">
@@ -239,8 +265,10 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                       </tr>
                     );
                   })}
+                  <InfiniteScrollTableSentinel colSpan={3} hasMore={groupsScroll.hasMore} sentinelRef={groupsScroll.sentinelRef} totalCount={groupsScroll.totalCount} visibleCount={groupsScroll.visibleCount} />
                 </tbody>
               </table>
+              </TableScrollContainer>
             </div>
 
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
@@ -248,7 +276,8 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                 <p className="text-xs font-semibold">My Group</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Click a group name to remove it from My Group</p>
               </div>
-              <table className="w-full text-xs">
+              <TableScrollContainer ref={myGroupsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     {['Category', 'Group Name', 'Components'].map(h => (
@@ -257,7 +286,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                   </tr>
                 </thead>
                 <tbody>
-                  {myGroups.map(g => (
+                  {myGroupsScroll.visibleItems.map(g => (
                     <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/20">
                       <td className="px-3 py-2.5 text-muted-foreground">{g.category}</td>
                       <td className="px-3 py-2.5">
@@ -279,8 +308,10 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                       </td>
                     </tr>
                   )}
+                  <InfiniteScrollTableSentinel colSpan={3} hasMore={myGroupsScroll.hasMore} sentinelRef={myGroupsScroll.sentinelRef} totalCount={myGroupsScroll.totalCount} visibleCount={myGroupsScroll.visibleCount} />
                 </tbody>
               </table>
+              </TableScrollContainer>
             </div>
           </div>
         </div>
@@ -295,7 +326,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                 id="storage-location"
                 value={selectedLocation}
                 onChange={e => setSelectedLocation(e.target.value)}
-                className={`${selectCls} mt-1 min-w-[180px]`}
+                className={`${selectCls} mt-1 `}
               >
                 {STORAGE_LOCATIONS.map(location => (
                   <option key={location} value={location}>{location}</option>
@@ -316,7 +347,8 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                 <p className="text-xs font-semibold">All Storage — {selectedLocation}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Click a storage name, then choose an area to copy it to My Storage</p>
               </div>
-              <table className="w-full text-xs">
+              <TableScrollContainer ref={locationStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     {['Storage Name', 'Type'].map(h => (
@@ -325,7 +357,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                   </tr>
                 </thead>
                 <tbody>
-                  {locationStorage.map(s => (
+                  {locationStorageScroll.visibleItems.map(s => (
                     <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/20">
                       <td className="px-3 py-2.5">
                         <button
@@ -351,8 +383,10 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                       </td>
                     </tr>
                   )}
+                  <InfiniteScrollTableSentinel colSpan={2} hasMore={locationStorageScroll.hasMore} sentinelRef={locationStorageScroll.sentinelRef} totalCount={locationStorageScroll.totalCount} visibleCount={locationStorageScroll.visibleCount} />
                 </tbody>
               </table>
+              </TableScrollContainer>
             </div>
 
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
@@ -366,43 +400,49 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                   No storage assigned yet. Click a storage name on the left and select an area.
                 </p>
               ) : (
-                <div className="divide-y divide-border">
-                  {myStorageByArea.map(section => (
-                    <div key={section.area}>
-                      <div className="px-3 py-2 bg-muted/20 border-b border-border">
-                        <p className="text-xs font-sans font-semibold uppercase tracking-wider text-foreground">{section.area}</p>
-                      </div>
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-border bg-muted/40">
-                            {['Storage Name', 'Type', 'No. of stored Components'].map(h => (
-                              <th key={h} className={thCls}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {section.entries.map(entry => (
-                            <tr key={entry.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-                              <td className="px-3 py-2.5">
-                                <button
-                                  type="button"
-                                  onClick={() => removeMyStorageEntry(entry.id)}
-                                  className="font-medium text-left text-primary hover:underline"
-                                >
-                                  {entry.name}
-                                </button>
+                <TableScrollContainer ref={myStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                  <table className="w-full table-fixed text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        {['Storage Name', 'Type', 'No. of stored Components'].map(h => (
+                          <th key={h} className={thCls}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {myStorageScroll.visibleItems.map(row => {
+                        if (row.kind === 'header') {
+                          return (
+                            <tr key={row.id} className="bg-muted/20 border-b border-border">
+                              <td colSpan={3} className="px-3 py-2 text-xs font-sans font-semibold uppercase tracking-wider text-foreground">
+                                {row.label}
                               </td>
-                              <td className="px-3 py-2.5">
-                                <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans">{entry.type}</span>
-                              </td>
-                              <td className="px-3 py-2.5 font-sans">{entry.items}</td>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
-                </div>
+                          );
+                        }
+                        const entry = row.entry;
+                        return (
+                          <tr key={entry.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
+                            <td className="px-3 py-2.5">
+                              <button
+                                type="button"
+                                onClick={() => removeMyStorageEntry(entry.id)}
+                                className="font-medium text-left text-primary hover:underline"
+                              >
+                                {entry.name}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans">{entry.type}</span>
+                            </td>
+                            <td className="px-3 py-2.5 font-sans">{entry.items}</td>
+                          </tr>
+                        );
+                      })}
+                      <InfiniteScrollTableSentinel colSpan={3} hasMore={myStorageScroll.hasMore} sentinelRef={myStorageScroll.sentinelRef} totalCount={myStorageScroll.totalCount} visibleCount={myStorageScroll.visibleCount} />
+                    </tbody>
+                  </table>
+                </TableScrollContainer>
               )}
             </div>
           </div>

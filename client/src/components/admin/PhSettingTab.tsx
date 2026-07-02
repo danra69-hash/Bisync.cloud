@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Plus } from 'lucide-react';
 import { api, type Company } from '../../api';
 import { getCountry, inputCls } from '../../data/countries';
@@ -136,6 +139,15 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
     }
   }
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedHolidays,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(holidays, { scrollRootRef });
+
   if (!selectedCompanyId) {
     return null;
   }
@@ -235,8 +247,8 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-stretch">
           <section className="min-w-0 p-5">
             <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground mb-3">Public Holidays</p>
-            <div className="border border-border rounded-lg overflow-x-auto">
-              <table className="w-full text-xs">
+            <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <tr>
                     <th className="text-left px-3 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Holiday</th>
@@ -246,7 +258,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {holidays.map(h => (
+                  {pagedHolidays.map(h => (
                     <tr key={h.id} className="hover:bg-muted/20">
                       <td className="px-3 py-2.5 font-medium">{h.name}</td>
                       <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">{formatHolidayDate(h)}</td>
@@ -265,9 +277,10 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
                       </td>
                     </tr>
                   )}
+                  <InfiniteScrollTableSentinel colSpan={4} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
           </section>
 
           <section className="p-5 border-t lg:border-t-0 lg:border-l border-border bg-muted/10 space-y-4">

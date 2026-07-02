@@ -6,6 +6,7 @@ import { PayrollEmployeeDirectoryPanel } from './PayrollEmployeeDirectoryPanel';
 import { ProcessPayrollPanel } from './ProcessPayrollPanel';
 import { PayrollPinGate } from './PayrollPinGate';
 import { PAYROLL_TABS, type PayrollTabId } from './payrollTabs';
+import { pageShellClass } from '../layout/pageLayout';
 
 type Props = {
   defaultTab?: PayrollTabId;
@@ -33,7 +34,7 @@ export function PayrollSection({ defaultTab = 'directory', embedded = false, sel
 
   return (
     <PayrollPinGate embedded={embedded}>
-      <div className={embedded ? 'space-y-6' : 'p-6 space-y-6'}>
+      <div className={pageShellClass({ embedded, spacing: 'wide' })}>
         {!embedded && (
           <div>
             <h1 className="text-lg font-semibold">Payroll</h1>

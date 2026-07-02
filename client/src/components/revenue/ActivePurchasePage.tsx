@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardList, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { pageShellClass } from '../layout/pageLayout';
+import { RefreshCw } from 'lucide-react';
 import { api, type PurchaseOrder } from '../../api';
 import { formatRm } from '../../data/createOrder';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
@@ -12,7 +16,7 @@ type Props = {
 };
 
 const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 whitespace-nowrap';
+  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
 function orderTotal(order: PurchaseOrder): number {
@@ -78,6 +82,15 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     [orders],
   );
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedOrders,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(orders, { scrollRootRef });
+
   function handleOrderUpdated(updated: PurchaseOrder) {
     setOrders(prev => {
       if (updated.status === 'Reconciled') {
@@ -91,24 +104,8 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
   }
 
   return (
-    <div className={embedded ? 'space-y-4' : 'p-6 space-y-4'}>
-      <div className="flex items-start justify-between gap-4">
-        {!embedded ? (
-          <div>
-            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-            <h1 className="text-lg font-semibold flex items-center gap-2">
-              <ClipboardList size={18} className="text-primary" />
-              Active Purchase
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Purchase requests and orders awaiting approval, receiving, or reconciliation.
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Purchase requests and orders awaiting approval, receiving, or reconciliation.
-          </p>
-        )}
+    <div className={pageShellClass({ embedded })}>
+      <div className="flex items-start justify-end gap-4">
         <button
           type="button"
           onClick={() => void loadOrders()}
@@ -151,8 +148,8 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         <div className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">Unreconciled purchases</h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px]">
+        <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Type', 'Number', 'Vendor', 'Ordered', 'Delivery', 'Items', 'Total', 'Status', 'Action'].map(h => (
@@ -172,7 +169,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                   </td>
                 </tr>
               ) : (
-                orders.map(order => (
+                pagedOrders.map(order => (
                   <tr
                     key={order.id}
                     className="hover:bg-muted/20 cursor-pointer"
@@ -192,9 +189,10 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                   </tr>
                 ))
               )}
+              <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
-        </div>
+        </TableScrollContainer>
       </div>
 
       {selectedOrder && (

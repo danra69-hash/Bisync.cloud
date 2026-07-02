@@ -693,7 +693,7 @@ export function VendorProductTagModal({
 
 
 
-              <div className="border border-border rounded-lg overflow-x-auto">
+              <div className="border border-border rounded-lg ">
 
                 <VendorProductTableBody
 

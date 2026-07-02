@@ -56,14 +56,14 @@ export function HumanResourcesPage({ selectedCompanyId }: { selectedCompanyId: n
 
   if (status === 'offline') {
     return (
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <HrOfflinePanel onRetry={check} />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col w-full min-w-0">
       <Suspense
         fallback={
           <div className="flex-1 flex items-center justify-center p-12">

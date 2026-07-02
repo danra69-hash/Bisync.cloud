@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { pageShellClass } from '../layout/pageLayout';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { ActivePurchasePage } from './ActivePurchasePage';
 import { CreateOrderPage } from './CreateOrderPage';
+import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
 const ORDER_TABS = [
   { id: 'create', label: 'My Order' },
@@ -23,16 +25,11 @@ export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLo
     setTab(initialTab);
   }, [initialTab]);
 
-  return (
-    <div className="p-6 space-y-4">
-      <div>
-        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-        <h2 className="text-lg font-semibold">My Order</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Create purchase requests and manage approval, receiving, and reconciliation.
-        </p>
-      </div>
+  const activeTabLabel = ORDER_TABS.find(t => t.id === tab)?.label ?? 'My Order';
+  useRevMgmtPageLabel(activeTabLabel);
 
+  return (
+    <div className={pageShellClass()}>
       <HrConfigTabBar tabs={ORDER_TABS} active={tab} onChange={setTab} />
 
       {tab === 'create' ? (

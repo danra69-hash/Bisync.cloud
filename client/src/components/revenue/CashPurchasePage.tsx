@@ -10,6 +10,9 @@ import {
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { fromApiUom } from '../../data/componentForm';
 import { ingredientToRow } from './smartIngredientShared';
+import { pageShellClass } from '../layout/pageLayout';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -174,6 +177,15 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
     const monthTotal = scoped.reduce((sum, purchase) => sum + purchase.deliveryPrice, 0);
     return { rows: scoped, monthTotal };
   }, [cashPurchases, selectedCompanyId, selectedLocationIds]);
+
+  const historyScrollRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedHistoryRows,
+    hasMore: historyHasMore,
+    sentinelRef: historySentinelRef,
+    totalCount: historyTotalCount,
+    visibleCount: historyVisibleCount,
+  } = useInfiniteScrollSlice(monthHistory.rows, { scrollRootRef: historyScrollRef });
 
   const previousPriceByPurchaseId = useMemo(() => {
     const scoped = filterCashPurchasesByOrg(cashPurchases, selectedCompanyId, selectedLocationIds)
@@ -373,15 +385,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl">
-      <div>
-        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-        <h2 className="text-lg font-semibold">Cash Purchase</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Record a direct store purchase and add quantity and cost to inventory.
-        </p>
-      </div>
-
+    <div className={pageShellClass()}>
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_26rem] gap-4 items-stretch">
         <div className="space-y-4 min-h-0">
           <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
@@ -622,7 +626,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
             <span className="font-sans font-medium">{formatRm(monthHistory.monthTotal)}</span>
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border">
+            <div ref={historyScrollRef} className="flex-1 min-h-0 overflow-y-auto divide-y divide-border">
               {!orgReady ? (
                 <div className="h-full min-h-[12rem] flex items-center justify-center px-4 py-6">
                   <p className="text-xs text-muted-foreground text-center">
@@ -640,7 +644,8 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                   </p>
                 </div>
               ) : (
-                monthHistory.rows.map(purchase => {
+                <>
+                {pagedHistoryRows.map(purchase => {
                   const component = components.find(row => row.componentId === purchase.componentId);
                   const previous = previousPriceByPurchaseId.get(purchase.id);
                   const vendorReference = component
@@ -708,7 +713,14 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                       </div>
                     </div>
                   );
-                })
+                })}
+                <InfiniteScrollDivSentinel
+                  hasMore={historyHasMore}
+                  sentinelRef={historySentinelRef}
+                  totalCount={historyTotalCount}
+                  visibleCount={historyVisibleCount}
+                />
+                </>
               )}
             </div>
 

@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Edit2, Plus, Trash2, X } from 'lucide-react';
 import { hrApi } from '../../modules/hr/api';
 import type { DivisionTreeNode } from '../../modules/hr/types';
@@ -6,6 +9,10 @@ import { inputCls, selectCls } from '../../data/countries';
 
 const emptyDivision = { name: '', code: '' };
 const emptyDepartment = { name: '', divisionId: 0 };
+
+type DivisionDeptTableRow =
+  | { kind: 'empty'; division: DivisionTreeNode }
+  | { kind: 'department'; division: DivisionTreeNode; department: DivisionTreeNode['departments'][number] };
 
 export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () => void }) {
   const [tree, setTree] = useState<DivisionTreeNode[]>([]);
@@ -84,6 +91,29 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
     await load();
     onDataChanged?.();
   }
+
+  const divisionTableRows = useMemo((): DivisionDeptTableRow[] => {
+    const rows: DivisionDeptTableRow[] = [];
+    for (const division of tree) {
+      if (division.departments.length === 0) {
+        rows.push({ kind: 'empty', division });
+      } else {
+        for (const department of division.departments) {
+          rows.push({ kind: 'department', division, department });
+        }
+      }
+    }
+    return rows;
+  }, [tree]);
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedDivisionRows,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(divisionTableRows, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -169,7 +199,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
 
       {tree.length === 0 ? (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <tr>
                 {['Division', 'Code', 'Department', 'Actions'].map(h => (
@@ -194,8 +224,8 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
           </table>
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-xs">
+        <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <tr>
                 {['Division', 'Code', 'Department', 'Actions'].map(h => (
@@ -211,9 +241,10 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {tree.flatMap(division => {
-                if (division.departments.length === 0) {
-                  return [(
+              {pagedDivisionRows.map(row => {
+                if (row.kind === 'empty') {
+                  const division = row.division;
+                  return (
                     <tr key={`division-${division.id}`} className="hover:bg-muted/20">
                       <td className="px-4 py-3 font-medium">{division.name}</td>
                       <td className="px-4 py-3 font-sans text-muted-foreground">{division.code || '—'}</td>
@@ -232,37 +263,26 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
                         </div>
                       </td>
                     </tr>
-                  )];
+                  );
                 }
 
-                return division.departments.map((department, index) => (
+                const { division, department } = row;
+                return (
                   <tr key={department.id} className="hover:bg-muted/20">
-                    {index === 0 && (
-                      <>
-                        <td rowSpan={division.departments.length} className="px-4 py-3 font-medium align-top border-r border-border/50">
-                          {division.name}
-                        </td>
-                        <td rowSpan={division.departments.length} className="px-4 py-3 font-sans text-muted-foreground align-top border-r border-border/50">
-                          {division.code || '—'}
-                        </td>
-                      </>
-                    )}
+                    <td className="px-4 py-3 font-medium">{division.name}</td>
+                    <td className="px-4 py-3 font-sans text-muted-foreground">{division.code || '—'}</td>
                     <td className="px-4 py-3">{department.name}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {index === 0 && (
-                          <>
-                            <button type="button" onClick={() => openAddDepartment(division.id)} className="flex items-center gap-1 px-2 py-1 text-primary hover:bg-muted rounded-md">
-                              <Plus size={12} /> Department
-                            </button>
-                            <button type="button" onClick={() => openEditDivision(division)} className="p-1.5 rounded hover:bg-muted text-primary" title="Edit division">
-                              <Edit2 size={13} />
-                            </button>
-                            <button type="button" onClick={() => void removeDivision(division.id)} className="p-1.5 rounded hover:bg-muted text-destructive" title="Delete division">
-                              <Trash2 size={13} />
-                            </button>
-                          </>
-                        )}
+                        <button type="button" onClick={() => openAddDepartment(division.id)} className="flex items-center gap-1 px-2 py-1 text-primary hover:bg-muted rounded-md">
+                          <Plus size={12} /> Department
+                        </button>
+                        <button type="button" onClick={() => openEditDivision(division)} className="p-1.5 rounded hover:bg-muted text-primary" title="Edit division">
+                          <Edit2 size={13} />
+                        </button>
+                        <button type="button" onClick={() => void removeDivision(division.id)} className="p-1.5 rounded hover:bg-muted text-destructive" title="Delete division">
+                          <Trash2 size={13} />
+                        </button>
                         <button type="button" onClick={() => openEditDepartment(department)} className="p-1.5 rounded hover:bg-muted text-primary" title="Edit department">
                           <Edit2 size={13} />
                         </button>
@@ -272,11 +292,12 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
                       </div>
                     </td>
                   </tr>
-                ));
+                );
               })}
+              <InfiniteScrollTableSentinel colSpan={4} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
-        </div>
+        </TableScrollContainer>
       )}
     </div>
   );

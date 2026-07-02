@@ -1,5 +1,6 @@
 import type { Ingredient } from '../api';
 import {
+  fromApiUom,
   resolveDetailConfigForRow,
   serializeDetailConfig,
   toApiUom,
@@ -8,6 +9,7 @@ import {
   type ComponentRow,
 } from './componentForm';
 import {
+  applyVendorProductOverrides,
   calcNettUomPrice,
   calcNettUomQty,
   resolveComponentUomQty,
@@ -76,6 +78,48 @@ export function findComponentRowForTaggedProduct(
   productId: string,
 ): ComponentRow | null {
   return rows.find(r => componentRowTagsVendorProduct(r, productId)) ?? null;
+}
+
+function findCatalogProduct(productId: string): VendorProductCatalogItem | undefined {
+  return applyVendorProductOverrides().find(p => p.id === productId);
+}
+
+/** Derive recipe/inventory prices from the primary tagged vendor product when missing. */
+export function syncComponentPricesFromPrimaryTag(row: ComponentRow): ComponentRow {
+  const detail = resolveDetailConfigForRow(row);
+  const primaryId = detail.taggedVendorProductIds[0];
+  if (!primaryId) return row;
+
+  const product = findCatalogProduct(primaryId);
+  if (!product) return row;
+
+  const recipeUnit = fromApiUom(row.recipeUOM);
+  const componentUom = detail.vendorProductComponentUom[primaryId] ?? recipeUnit;
+  const resolved = resolveComponentUomQty(
+    product.delivery,
+    recipeUnit,
+    detail.altRecipeUnits,
+    componentUom,
+  );
+  const storedQty = detail.vendorProductPrincipalQty[primaryId];
+  const principalQty = parseFloat(
+    storedQty !== undefined && storedQty !== ''
+      ? storedQty
+      : resolved.qty !== null
+        ? String(resolved.qty)
+        : '',
+  ) || 0;
+  const lossYield = parseFloat(detail.vendorProductLossYield[primaryId] ?? '0') || 0;
+  const nettQty = calcNettUomQty(principalQty, lossYield);
+  const nettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
+
+  if (nettPrice <= 0) return row;
+
+  return {
+    ...row,
+    lastPriceRecipe: nettPrice,
+    lastPriceInventory: product.deliveryPrice,
+  };
 }
 
 export function buildComponentRowWithVendorProductTag(
@@ -151,25 +195,26 @@ export function buildComponentRowWithVendorProductTag(
 }
 
 export function componentRowToIngredientPayload(row: ComponentRow): Ingredient {
-  const detailConfig = row.detailConfig ?? resolveDetailConfigForRow(row);
+  const pricedRow = syncComponentPricesFromPrimaryTag(row);
+  const detailConfig = pricedRow.detailConfig ?? resolveDetailConfigForRow(pricedRow);
   return {
-    id: row.id ?? 0,
-    componentId: row.componentId,
-    name: row.name,
-    category: row.category,
-    group: row.group,
-    recipeUom: row.recipeUOM,
-    inventoryUom: row.inventoryUOM,
-    lastPriceRecipe: row.lastPriceRecipe,
-    lastPriceInventory: row.lastPriceInventory,
-    dailyUsage: row.dailyUsage,
-    orderFreqDays: row.orderFreqDays,
-    storageJson: JSON.stringify(row.storage),
-    storageNote: row.storageNote ?? '',
+    id: pricedRow.id ?? 0,
+    componentId: pricedRow.componentId,
+    name: pricedRow.name,
+    category: pricedRow.category,
+    group: pricedRow.group,
+    recipeUom: pricedRow.recipeUOM,
+    inventoryUom: pricedRow.inventoryUOM,
+    lastPriceRecipe: pricedRow.lastPriceRecipe,
+    lastPriceInventory: pricedRow.lastPriceInventory,
+    dailyUsage: pricedRow.dailyUsage,
+    orderFreqDays: pricedRow.orderFreqDays,
+    storageJson: JSON.stringify(pricedRow.storage),
+    storageNote: pricedRow.storageNote ?? '',
     detailConfigJson: serializeDetailConfig(detailConfig),
-    attachedProducts: row.attachedProducts,
-    attachedVendors: detailConfig.taggedVendorProductIds.length,
-    active: row.active,
-    locationsJson: JSON.stringify(row.locations),
+    attachedProducts: pricedRow.attachedProducts,
+    attachedVendors: detailConfig.taggedVendorProductIds.length || pricedRow.attachedVendors,
+    active: pricedRow.active,
+    locationsJson: JSON.stringify(pricedRow.locations),
   };
 }

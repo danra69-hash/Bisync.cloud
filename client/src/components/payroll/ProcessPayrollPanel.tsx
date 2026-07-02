@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { History } from 'lucide-react';
 import { selectCls } from '../../data/countries';
 import { hrApi } from '../../modules/hr/api';
@@ -74,6 +77,16 @@ export function ProcessPayrollPanel({
     void loadPreview();
   }, [loadPreview]);
 
+  const previewLines = preview?.lines ?? [];
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedPreviewLines,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(previewLines, { scrollRootRef });
+
   const handleProcess = async () => {
     if (!selectedCompanyId || !preview || preview.alreadyProcessed) return;
     setProcessing(true);
@@ -93,7 +106,7 @@ export function ProcessPayrollPanel({
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-wrap items-end gap-4">
             <div>
@@ -104,7 +117,7 @@ export function ProcessPayrollPanel({
                 id="payroll-process-month"
                 value={month}
                 onChange={e => setMonth(Number(e.target.value))}
-                className={`${selectCls} mt-1 min-w-[160px]`}
+                className={`${selectCls} mt-1 `}
               >
                 {PAYROLL_MONTHS.map(item => (
                   <option key={item.value} value={item.value}>{item.label}</option>
@@ -119,7 +132,7 @@ export function ProcessPayrollPanel({
                 id="payroll-process-year"
                 value={year}
                 onChange={e => setYear(Number(e.target.value))}
-                className={`${selectCls} mt-1 min-w-[120px]`}
+                className={`${selectCls} mt-1 `}
               >
                 {payrollYearOptions().map(item => (
                   <option key={item} value={item}>{item}</option>
@@ -178,8 +191,8 @@ export function ProcessPayrollPanel({
               </button>
             </div>
 
-            <div className="border border-border rounded-lg overflow-x-auto">
-              <table className="w-full text-sm min-w-[1280px]">
+            <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-sm">
                 <thead className="bg-muted/40 border-b border-border">
                   <tr>
                     {TABLE_COLUMNS.map(column => (
@@ -200,13 +213,14 @@ export function ProcessPayrollPanel({
                       </td>
                     </tr>
                   ) : (
-                    preview.lines.map(line => (
+                    pagedPreviewLines.map(line => (
                       <PayrollLineRow key={line.employeeId} line={line} preview={preview} countryCode={displayCountry} />
                     ))
                   )}
+                  <InfiniteScrollTableSentinel colSpan={TABLE_COLUMNS.length} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
           </>
         )}
       </div>

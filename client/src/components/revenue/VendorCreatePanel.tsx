@@ -8,6 +8,9 @@ import {
   saveImportedVendorProducts,
   type VendorProductImportDraft,
 } from '../../data/vendorProductCatalog';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
@@ -59,6 +62,15 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
     () => [...new Set(existingVendors.map(v => v.state.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [existingVendors],
   );
+
+  const parsedRowsScrollRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedParsedRows,
+    hasMore: parsedRowsHasMore,
+    sentinelRef: parsedRowsSentinelRef,
+    totalCount: parsedRowsTotalCount,
+    visibleCount: parsedRowsVisibleCount,
+  } = useInfiniteScrollSlice(parsedRows, { scrollRootRef: parsedRowsScrollRef });
 
   function parseCsvLine(line: string): string[] {
     const values: string[] = [];
@@ -432,8 +444,8 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                     </button>
                   </div>
                   <div className="border border-border rounded-lg overflow-hidden">
-                    <div className="overflow-auto max-h-72">
-                      <table className="w-full text-xs">
+                    <TableScrollContainer ref={parsedRowsScrollRef} className="overflow-auto max-h-72">
+                      <table className="w-full table-fixed text-xs">
                         <thead className="sticky top-0 bg-muted/50">
                           <tr className="border-b border-border">
                             <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Product Name</th>
@@ -445,12 +457,12 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                           </tr>
                         </thead>
                         <tbody>
-                          {parsedRows.map((row, i) => (
+                          {pagedParsedRows.map((row, i) => (
                             <tr key={`row-${i}`} className="border-b border-border last:border-b-0">
-                              <td className="p-1.5 min-w-[180px]">
+                              <td className="p-1.5 ">
                                 <input className={`${inputCls} text-xs`} value={row.productName} onChange={e => updateParsedRow(i, { productName: e.target.value })} />
                               </td>
-                              <td className="p-1.5 min-w-[110px]">
+                              <td className="p-1.5 ">
                                 <>
                                   <input
                                     list="vendor-group-options"
@@ -466,16 +478,16 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                                   </datalist>
                                 </>
                               </td>
-                              <td className="p-1.5 min-w-[260px]">
+                              <td className="p-1.5 ">
                                 <input className={`${inputCls} text-xs`} value={row.specification} onChange={e => updateParsedRow(i, { specification: e.target.value })} />
                               </td>
-                              <td className="p-1.5 min-w-[150px]">
+                              <td className="p-1.5 ">
                                 <input className={`${inputCls} text-xs`} value={row.deliveryUnitText} onChange={e => updateParsedRow(i, { deliveryUnitText: e.target.value })} />
                               </td>
-                              <td className="p-1.5 min-w-[90px]">
+                              <td className="p-1.5 ">
                                 <input className={`${inputCls} text-xs`} type="number" step={0.01} value={row.deliveryPrice} onChange={e => updateParsedRow(i, { deliveryPrice: parseFloat(e.target.value) || 0 })} />
                               </td>
-                              <td className="p-1.5 min-w-[72px]">
+                              <td className="p-1.5 ">
                                 <button
                                   type="button"
                                   onClick={() => removeParsedRow(i)}
@@ -487,9 +499,10 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                               </td>
                             </tr>
                           ))}
+                          <InfiniteScrollTableSentinel colSpan={6} hasMore={parsedRowsHasMore} sentinelRef={parsedRowsSentinelRef} totalCount={parsedRowsTotalCount} visibleCount={parsedRowsVisibleCount} />
                         </tbody>
                       </table>
-                    </div>
+                    </TableScrollContainer>
                   </div>
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <input

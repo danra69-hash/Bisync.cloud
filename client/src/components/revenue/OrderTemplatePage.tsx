@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Plus, Search, Trash2, X } from 'lucide-react';
+import { pageShellClass } from '../layout/pageLayout';
+import { filterSelectCls } from '../layout/formControls';
 import { api, type OrderTemplate, type Vendor } from '../../api';
 import {
   applyVendorProductOverrides,
@@ -420,17 +422,8 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
   const monthDayDisabled = scheduleMode === 'weekday' && weekdays.length > 0;
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Operation · Order</p>
-          <h2 className="text-lg font-semibold">Order Template</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Build reusable order templates by vendor and schedule them by day of week or day of month.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+    <div className={pageShellClass()}>
+      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <select
             value={selectedTemplateId}
             onChange={e => {
@@ -442,7 +435,7 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
               const template = savedTemplates.find(row => String(row.id) === id);
               if (template) loadTemplate(template);
             }}
-            className="px-3 py-2 text-xs rounded-md border border-border bg-card min-w-[220px]"
+            className={`${filterSelectCls} min-w-[220px]`}
           >
             <option value="">New template</option>
             {savedTemplates.map(template => (
@@ -457,7 +450,6 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
             <Plus size={14} />
             New
           </button>
-        </div>
       </div>
 
       {!orgReady ? (
@@ -613,7 +605,7 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
             <select
               value={vendorFilter}
               onChange={e => setVendorFilter(e.target.value)}
-              className="px-3 py-2 text-xs rounded-md border border-border bg-card min-w-[220px]"
+              className={`${filterSelectCls} min-w-[220px]`}
             >
               <option value="">All vendors</option>
               {vendorOptions.map(vendor => (

@@ -392,7 +392,7 @@ export default function EmployeePortal({
           </div>
         </div>
 
-        <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <div className="p-4 sm:p-5 lg:p-6 space-y-6 w-full min-w-0 max-w-none">
           {toast && (
             <div className="fixed top-6 right-6 z-50 bg-emerald-700 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
               <Check className="w-4 h-4" /> {toast}

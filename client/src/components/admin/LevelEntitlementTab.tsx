@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Plus, X } from 'lucide-react';
 import { hrApi } from '../../modules/hr/api';
 import type { EmployeeLevel } from '../../modules/hr/types';
@@ -198,6 +201,15 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
     onDataChanged?.();
   }
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedLevels,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(levels, { scrollRootRef });
+
   return (
     <div className="space-y-4">
       {error && (
@@ -215,8 +227,8 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
         </button>
       </div>
 
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <table className="w-full text-xs">
+      <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
+        <table className="w-full table-fixed text-xs">
           <thead className="bg-muted/40 border-b border-border">
             <tr>
               {['Level', 'Annual', 'Sick', 'Hrs/Day', 'Break', 'Shift', 'OT', 'PH', 'Active'].map(h => (
@@ -232,7 +244,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {levels.map(level => (
+            {pagedLevels.map(level => (
               <tr
                 key={level.id}
                 className={`hover:bg-muted/20 cursor-pointer ${level.active === false ? 'opacity-60' : ''}`}
@@ -268,9 +280,10 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
                 </td>
               </tr>
             )}
+            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
-      </div>
+      </TableScrollContainer>
 
       {(isNew || panelLevel) && (
         <LevelPanel

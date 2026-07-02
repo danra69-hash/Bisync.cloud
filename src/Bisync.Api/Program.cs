@@ -14,6 +14,8 @@ builder.Services.AddScoped<PublicHolidaySyncService>();
 builder.Services.AddScoped<PayrollCalculationService>();
 builder.Services.AddScoped<IncomeTaxService>();
 builder.Services.AddScoped<ReplacementPublicHolidayService>();
+builder.Services.AddScoped<ComponentStockService>();
+builder.Services.AddScoped<ProductionInventoryService>();
 
 builder.Services.AddCors(options =>
 {

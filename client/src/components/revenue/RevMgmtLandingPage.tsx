@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { pageShellClass } from '../layout/pageLayout';
 import {
   Activity,
   AlertTriangle,
@@ -165,6 +169,15 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
 
   const pendingOrders = actionableOrders;
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedPendingOrders,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(pendingOrders, { scrollRootRef });
+
   const activityItems = useMemo(
     () => buildActivityToday(actionableOrders, pendingOrders.length),
     [actionableOrders, pendingOrders.length],
@@ -229,7 +242,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className={pageShellClass({ spacing: 'wide' })}>
       <div>
         <h1 className="text-lg font-semibold">Revenue Management</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -399,7 +412,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
               {pendingOrders.length}
             </span>
           </div>
-          <div className="flex-1 overflow-auto">
+          <TableScrollContainer ref={scrollRootRef} className="flex-1 overflow-auto max-h-[calc(100vh-12rem)]">
             {loading ? (
               <p className="px-5 py-4 text-xs text-muted-foreground">Loading orders…</p>
             ) : !orgReady ? (
@@ -417,7 +430,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
                 </p>
               </div>
             ) : (
-              <table className="w-full text-xs">
+              <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     {['PO', 'Vendor', 'Delivery', 'Value', 'Status'].map(h => (
@@ -428,7 +441,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingOrders.map(order => (
+                  {pagedPendingOrders.map(order => (
                     <tr
                       key={order.id}
                       className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
@@ -447,10 +460,11 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
                       </td>
                     </tr>
                   ))}
+                  <InfiniteScrollTableSentinel colSpan={5} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
             )}
-          </div>
+          </TableScrollContainer>
         </section>
       </div>
 

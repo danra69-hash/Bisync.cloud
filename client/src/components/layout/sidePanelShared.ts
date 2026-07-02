@@ -17,6 +17,10 @@ export const SIDE_PANEL_SHELL_CREATE_VENDOR_CLS =
 
 export const SIDE_PANEL_SHELL_OVERFLOW_CLS = `${SIDE_PANEL_SHELL_CLS} overflow-hidden`;
 
+/** Product detail from list — 70% wider than SIDE_PANEL_SHELL_DETAIL_CLS (70vw → 119vw, capped). */
+export const SIDE_PANEL_SHELL_PRODUCT_DETAIL_CLS =
+  'fixed top-0 right-0 z-50 h-full w-[min(119vw,96vw)] max-w-[min(119vw,96vw)] bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden';
+
 /** Large fixed right panel — 70% viewport width, full height, scrollable body. */
 export const SIDE_PANEL_SHELL_DETAIL_CLS =
   'fixed top-0 right-0 z-50 h-full w-[70vw] max-w-[70vw] bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden';

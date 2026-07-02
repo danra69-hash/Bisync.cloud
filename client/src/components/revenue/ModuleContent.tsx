@@ -1,12 +1,11 @@
 import { FileText } from 'lucide-react';
+import { pageShellClass } from '../layout/pageLayout';
 
-export function ModuleContent({ section, label }: { section: string; label: string }) {
+export function ModuleContent({ label }: { section: string; label: string }) {
   return (
-    <div className="p-6">
-      <p className="text-xs font-sans text-muted-foreground mb-1 uppercase tracking-widest">{section}</p>
-      <h2 className="text-lg font-semibold text-foreground mb-5">{label}</h2>
-      <div className="bg-card border border-border rounded-lg flex flex-col items-center justify-center text-center gap-3 p-12">
-        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+    <div className={pageShellClass()}>
+      <div className="bg-card border border-border rounded-lg flex flex-col items-center justify-center text-center gap-2 p-6">
+        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
           <FileText size={18} className="text-muted-foreground" />
         </div>
         <p className="text-sm font-medium text-foreground">{label}</p>

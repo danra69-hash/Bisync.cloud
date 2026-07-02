@@ -9,8 +9,11 @@ import { ComparePricePage } from './ComparePricePage';
 import { OrderPage } from './OrderPage';
 import { CashPurchasePage } from './CashPurchasePage';
 import { OrderTemplatePage } from './OrderTemplatePage';
-import { ProductsPage } from './ProductsPage';
+import { ProductsSection } from './ProductsSection';
+import { ProductManagementPage } from './ProductManagementPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
+import { RevMgmtPageHeader } from './RevMgmtPageHeader';
+import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
@@ -61,7 +64,14 @@ function renderRevMgmtContent(
       );
     case 'Products':
       return (
-        <ProductsPage
+        <ProductsSection
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Product Management':
+      return (
+        <ProductManagementPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />
@@ -82,7 +92,7 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
         {posItem ? (
           <ModuleContent section="Point-of-Sales" label={posItem} />
         ) : (
-          <div className="p-6">
+          <div className="p-2 sm:p-3 w-full min-w-0">
             <p className="text-sm text-muted-foreground">Select a POS module from the navigation bar above.</p>
           </div>
         )}
@@ -91,9 +101,17 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
   }
 
   return (
-    <>
+    <RevMgmtTitleProvider revItem={revItem}>
       <RevMgmtBar selectedItem={revItem} onSelectItem={setRevItem} />
+      {revItem && <RevMgmtPageTitle revItem={revItem} />}
       {renderRevMgmtContent(revItem, selectedCompanyId, selectedLocationIds)}
-    </>
+    </RevMgmtTitleProvider>
   );
+}
+
+function RevMgmtPageTitle({ revItem }: { revItem: string }) {
+  const ctx = useRevMgmtTitleContext();
+  const [section, , label] = revItem.split('||');
+  const displayLabel = ctx?.pageLabelOverride ?? label;
+  return <RevMgmtPageHeader section={section} label={displayLabel} />;
 }

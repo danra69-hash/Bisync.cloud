@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
+import { TableScrollContainer } from '../../components/shared/TableScrollContainer';
 import { Copy, Save } from 'lucide-react';
 import type {
   Employee,
@@ -261,6 +264,16 @@ export default function ShiftScheduleType2View({
   const [saving, setSaving] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const scheduleColSpan = 3 + weekDates.length;
+  const {
+    visibleItems: pagedSortedEmployees,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
+
   useEffect(() => {
     setDraft(serverDraft);
   }, [serverDraft]);
@@ -339,7 +352,7 @@ export default function ShiftScheduleType2View({
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+    <TableScrollContainer ref={scrollRootRef} className="bg-white rounded-lg border border-gray-200 max-h-[calc(100vh-12rem)] overflow-y-auto">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50">
         <div>
           <p className="text-sm font-medium text-gray-900">Type 2 schedule</p>
@@ -375,16 +388,16 @@ export default function ShiftScheduleType2View({
       {sortedEmployees.length === 0 ? (
         <p className="text-xs text-gray-500 py-8 text-center">No shift workers in this department.</p>
       ) : (
-        <table className="min-w-full text-xs">
+        <table className="w-full table-fixed text-xs">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="text-left font-medium text-gray-600 px-3 py-2 sticky left-0 bg-gray-50 z-10 min-w-[120px]">
+              <th className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[12%]">
                 Employee
               </th>
-              <th className="text-left font-medium text-gray-600 px-3 py-2 sticky left-[120px] bg-gray-50 z-10 min-w-[100px]">
+              <th className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[10%]">
                 Position
               </th>
-              <th className="text-left font-medium text-gray-600 px-3 py-2 sticky left-[220px] bg-gray-50 z-10 min-w-[80px] border-r border-gray-200">
+              <th className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[8%] border-r border-gray-200">
                 Level
               </th>
               {weekDates.map((date) => {
@@ -393,7 +406,7 @@ export default function ShiftScheduleType2View({
                 return (
                   <th
                     key={date}
-                    className={`text-center font-medium text-gray-600 px-2 py-2 min-w-[108px] ${
+                    className={`text-center font-medium text-gray-600 px-2 py-2  ${
                       dayUnfixed ? 'bg-amber-100 text-amber-950' : ''
                     }`}
                   >
@@ -405,7 +418,7 @@ export default function ShiftScheduleType2View({
             </tr>
           </thead>
           <tbody>
-            {sortedEmployees.map((employee) => (
+            {pagedSortedEmployees.map((employee) => (
               <tr key={employee.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                 <td className="px-3 py-2 font-medium text-gray-900 sticky left-0 bg-white z-10">
                   {employee.name}
@@ -516,9 +529,10 @@ export default function ShiftScheduleType2View({
                 })}
               </tr>
             ))}
+            <InfiniteScrollTableSentinel colSpan={scheduleColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       )}
-    </div>
+    </TableScrollContainer>
   );
 }

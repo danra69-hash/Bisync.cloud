@@ -32,7 +32,7 @@ export function PlatformAccessSummary({ user, onManageAccess }: Props) {
 
       {user && (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (

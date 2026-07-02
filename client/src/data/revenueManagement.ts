@@ -62,7 +62,6 @@ export const revMgmtNav: RevMgmtSection[] = [
       {
         items: [
           { label: 'Products' },
-          { label: 'Sub-Products' },
           { label: 'Account Mapping' },
           { label: 'External POS Mapping' },
         ],

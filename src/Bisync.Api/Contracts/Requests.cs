@@ -727,6 +727,15 @@ public class UpsertProductComponentItemRequest
     public decimal Quantity { get; set; }
 }
 
+public class UpsertProductAliasRequest
+{
+    public int? Id { get; set; }
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [Range(0, 999999999)]
+    public decimal Rrp { get; set; }
+}
+
 public class UpsertProductRequest
 {
     [MaxLength(50)]
@@ -740,9 +749,57 @@ public class UpsertProductRequest
     public bool IsSubProduct { get; set; }
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
+    public decimal? Rrp { get; set; }
+    [Range(0, 999999999)]
+    public decimal? YieldQuantity { get; set; }
+    [MaxLength(20)]
+    public string? YieldUom { get; set; }
+    public bool? PosEnabled { get; set; }
+    public bool? Active { get; set; }
     public int? CompanyId { get; set; }
     public List<string> LocationExternalIds { get; set; } = [];
     public List<UpsertProductComponentItemRequest> Items { get; set; } = [];
+    public List<UpsertProductComponentItemRequest> PackagingItems { get; set; } = [];
+    public List<UpsertProductAliasRequest> Aliases { get; set; } = [];
+}
+
+public class PatchProductRequest
+{
+    public bool? PosEnabled { get; set; }
+    public bool? Active { get; set; }
+    [Range(0, 999999999)]
+    public decimal? Rrp { get; set; }
+    public List<string>? LocationExternalIds { get; set; }
+}
+
+public class PatchProductManagementRequest
+{
+    [MaxLength(20)]
+    public string? PackageUnit { get; set; }
+    [Range(0, 999999999)]
+    public decimal? InStock { get; set; }
+    [Range(0, 999999999)]
+    public decimal? SalesPerDay { get; set; }
+    public List<string> LocationExternalIds { get; set; } = [];
+}
+
+public class ProductManagementActionRequest
+{
+    public List<string> LocationExternalIds { get; set; } = [];
+}
+
+public class ProduceBatchRequest
+{
+    public List<string> LocationExternalIds { get; set; } = [];
+    [Range(0.0001, 999999999)]
+    public decimal BatchQty { get; set; }
+}
+
+public class RecordProductSaleRequest
+{
+    public List<string> LocationExternalIds { get; set; } = [];
+    [Range(0.0001, 999999999)]
+    public decimal QuantitySold { get; set; }
 }
 
 public class PurchaseOrderWorkflowRequest

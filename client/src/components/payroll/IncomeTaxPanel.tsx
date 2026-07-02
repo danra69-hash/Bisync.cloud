@@ -1,5 +1,8 @@
 import { Plus, Save } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { inputCls, selectCls } from '../../data/countries';
 import { hrApi } from '../../modules/hr/api';
 import type {
@@ -136,8 +139,18 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
     setRebates(prev => [...prev, { name: '', amount: 0 }]);
   }
 
+  const bracketsScrollRef = useRef<HTMLDivElement>(null);
+  const reliefsScrollRef = useRef<HTMLDivElement>(null);
+  const rebatesScrollRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const bracketsScroll = useInfiniteScrollSlice(brackets, { scrollRootRef: bracketsScrollRef });
+  const reliefsScroll = useInfiniteScrollSlice(reliefs, { scrollRootRef: reliefsScrollRef });
+  const rebatesScroll = useInfiniteScrollSlice(rebates, { scrollRootRef: rebatesScrollRef });
+  const previewLines = preview?.lines ?? [];
+  const previewScroll = useInfiniteScrollSlice(previewLines, { scrollRootRef: previewScrollRef });
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <label htmlFor="income-tax-year" className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
@@ -147,7 +160,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             id="income-tax-year"
             value={year}
             onChange={e => setYear(Number(e.target.value))}
-            className={`${selectCls} mt-1 min-w-[120px]`}
+            className={`${selectCls} mt-1 `}
           >
             {payrollYearOptions(2026).map(item => (
               <option key={item} value={item}>{item}</option>
@@ -202,8 +215,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
               </button>
             </div>
 
-            <div className="border border-border rounded-lg overflow-x-auto">
-              <table className="w-full text-xs min-w-[760px]">
+            <TableScrollContainer ref={bracketsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <tr>
                     {['Chargeable income', 'From (RM)', 'To (RM)', 'Rate %', 'Base tax amount (min)'].map(h => (
@@ -212,7 +225,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {brackets.map((bracket, index) => (
+                  {bracketsScroll.visibleItems.map((bracket, index) => (
                     <tr key={index} className="hover:bg-muted/20">
                       <td className={`${textCls} text-muted-foreground whitespace-nowrap`}>
                         {formatBracketRange(bracket.minAnnualChargeableIncome, bracket.maxAnnualChargeableIncome)}
@@ -270,9 +283,10 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                       </td>
                     </tr>
                   )}
+                  <InfiniteScrollTableSentinel colSpan={5} hasMore={bracketsScroll.hasMore} sentinelRef={bracketsScroll.sentinelRef} totalCount={bracketsScroll.totalCount} visibleCount={bracketsScroll.visibleCount} />
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
           </div>
 
           <div className="rounded-lg border border-border bg-card p-4 space-y-4">
@@ -292,8 +306,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
               </button>
             </div>
 
-            <div className="border border-border rounded-lg overflow-x-auto">
-              <table className="w-full text-xs min-w-[720px]">
+            <TableScrollContainer ref={reliefsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <tr>
                     {['Relief name', 'Amount (RM)', 'Limit', 'Applies when'].map(h => (
@@ -302,7 +316,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {reliefs.map((relief, index) => (
+                  {reliefsScroll.visibleItems.map((relief, index) => (
                     <tr key={index} className="hover:bg-muted/20">
                       <td className="px-2 py-2">
                         <input
@@ -352,9 +366,10 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                       </td>
                     </tr>
                   )}
+                  <InfiniteScrollTableSentinel colSpan={4} hasMore={reliefsScroll.hasMore} sentinelRef={reliefsScroll.sentinelRef} totalCount={reliefsScroll.totalCount} visibleCount={reliefsScroll.visibleCount} />
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
           </div>
 
           <div className="rounded-lg border border-border bg-card p-4 space-y-4">
@@ -374,8 +389,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
               </button>
             </div>
 
-            <div className="border border-border rounded-lg overflow-x-auto">
-              <table className="w-full text-xs min-w-[480px]">
+            <TableScrollContainer ref={rebatesScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <tr>
                     {['Rebate name', 'Amount (RM)'].map(h => (
@@ -384,7 +399,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {rebates.map((rebate, index) => (
+                  {rebatesScroll.visibleItems.map((rebate, index) => (
                     <tr key={index} className="hover:bg-muted/20">
                       <td className="px-2 py-2">
                         <input
@@ -414,9 +429,10 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                       </td>
                     </tr>
                   )}
+                  <InfiniteScrollTableSentinel colSpan={2} hasMore={rebatesScroll.hasMore} sentinelRef={rebatesScroll.sentinelRef} totalCount={rebatesScroll.totalCount} visibleCount={rebatesScroll.visibleCount} />
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
           </div>
 
           {preview && (
@@ -433,8 +449,8 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                 Estimated total monthly PCB: {preview.totalMonthlyPcb > 0 ? fmt(preview.totalMonthlyPcb) : '—'}.
               </div>
 
-              <div className="bg-card border border-border rounded-lg overflow-x-auto">
-                <table className="w-full min-w-[1100px]">
+              <TableScrollContainer ref={previewScrollRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+                <table className="w-full table-fixed">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
                       <th className={thCls}>Employee ID</th>
@@ -448,7 +464,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.lines.map(line => (
+                    {previewScroll.visibleItems.map(line => (
                       <tr key={line.employeeId} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
                         <td className={`${textCls} font-sans`}>{line.employeeCode}</td>
                         <td className={`${textCls} font-medium whitespace-nowrap`}>{line.employeeName}</td>
@@ -467,9 +483,10 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                         </td>
                       </tr>
                     )}
+                    <InfiniteScrollTableSentinel colSpan={8} hasMore={previewScroll.hasMore} sentinelRef={previewScroll.sentinelRef} totalCount={previewScroll.totalCount} visibleCount={previewScroll.visibleCount} />
                   </tbody>
                 </table>
-              </div>
+              </TableScrollContainer>
             </>
           )}
         </>

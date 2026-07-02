@@ -66,7 +66,7 @@ export function Header({
 
   return (
 
-    <header className="sticky top-0 z-30 px-4 py-3 flex items-center gap-3" style={{ background: '#2C1A0A', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+    <header className="sticky top-0 z-30 px-2 sm:px-3 py-2 flex items-center gap-2" style={{ background: '#2C1A0A', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
 
       <div className="flex items-center gap-2 shrink-0">
 
@@ -114,9 +114,7 @@ export function Header({
 
             disabled={orgLoading && selectableCompanies.length === 0}
 
-            className="rounded-md px-3 py-1.5 text-xs w-36 sm:w-44 focus:outline-none focus:ring-1 focus:ring-primary text-white disabled:opacity-60"
-
-            style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
+            className="rounded-md px-2 py-1 text-xs font-semibold w-36 sm:w-44 focus:outline-none focus:ring-2 focus:ring-primary text-foreground disabled:opacity-60 bg-card border-2 border-white/35 shadow-sm"
 
             title={orgError ?? 'Companies from HR Config'}
 

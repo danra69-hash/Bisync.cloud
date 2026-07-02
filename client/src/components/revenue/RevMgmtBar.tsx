@@ -23,7 +23,7 @@ export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
   }, []);
 
   return (
-    <div ref={barRef} className="bg-card border-b border-border px-4 py-2">
+    <div ref={barRef} className="bg-card border-b border-border px-2 sm:px-3 py-1.5">
       <div className="flex items-center gap-2 flex-wrap">
         {revMgmtNav.map(section => {
           const isOpen = openSection === section.title;

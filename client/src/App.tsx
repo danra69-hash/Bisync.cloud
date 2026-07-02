@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from './hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from './components/shared/infiniteScroll';
+import { TableScrollContainer } from './components/shared/TableScrollContainer';
 import {
   TrendingUp, Users, ShoppingBag, AlertTriangle,
   ArrowUpRight, ArrowDownRight, Package, FileText
@@ -32,14 +35,14 @@ function MetricCard({ title, value, deltaVal, icon: Icon, accent }: {
 }) {
   const up = deltaVal >= 0;
   return (
-    <div className={`rounded-lg p-5 border border-border flex flex-col gap-3 ${accent ? 'bg-primary/10' : 'bg-card'}`}>
+    <div className={`rounded-lg p-3 border border-border flex flex-col gap-2 ${accent ? 'bg-primary/10' : 'bg-card'}`}>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-sans tracking-widest text-muted-foreground uppercase">{title}</span>
-        <div className={`p-2 rounded-md ${accent ? 'bg-primary/20' : 'bg-muted'}`}>
-          <Icon size={14} className={accent ? 'text-primary' : 'text-muted-foreground'} />
+        <span className="text-[11px] font-sans tracking-wide text-muted-foreground uppercase">{title}</span>
+        <div className={`p-1.5 rounded-md ${accent ? 'bg-primary/20' : 'bg-muted'}`}>
+          <Icon size={13} className={accent ? 'text-primary' : 'text-muted-foreground'} />
         </div>
       </div>
-      <p className="text-3xl font-semibold">{value}</p>
+      <p className="text-2xl font-semibold leading-none">{value}</p>
       <div className={`flex items-center gap-1 text-xs font-sans ${up ? 'text-[#5A7A2A]' : 'text-accent'}`}>
         {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
         {up ? '+' : ''}{deltaVal}% vs prior period
@@ -67,7 +70,7 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
 
 function PlaceholderModule({ title }: { title: string }) {
   return (
-    <div className="p-6">
+    <div className="p-2 sm:p-3 w-full min-w-0">
       <div className="bg-card border border-border rounded-lg flex flex-col items-center justify-center text-center gap-3 p-12">
         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
           <FileText size={18} className="text-muted-foreground" />
@@ -152,6 +155,11 @@ export default function App() {
   const overviewRevenue = selectedCompanyId ? revenue : [];
   const overviewProgress = selectedCompanyId ? progress : null;
 
+  const menuScrollRef = useRef<HTMLDivElement>(null);
+  const ordersScrollRef = useRef<HTMLDivElement>(null);
+  const menuScroll = useInfiniteScrollSlice(overviewMenuItems, { scrollRootRef: menuScrollRef });
+  const ordersScroll = useInfiniteScrollSlice(overviewOrders, { scrollRootRef: ordersScrollRef });
+
   const isRevenueSection = activeNav === 'Revenue Management' || activeNav === 'Point-of-Sales';
   const isHrSection = activeNav === 'Human Resources';
   const isFullBleed = isRevenueSection || isHrSection;
@@ -165,7 +173,7 @@ export default function App() {
         onNavigate={setActiveNav}
       />
 
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-screen w-full min-w-0 overflow-x-hidden">
         <Header
           activeNav={activeNav}
           darkMode={darkMode}
@@ -187,31 +195,32 @@ export default function App() {
           onToggleEditLayout={() => setEditLayout(v => !v)}
         />
 
-        <main className={`flex-1 flex flex-col min-h-0 ${isFullBleed ? '' : 'p-6 space-y-6'}`}>
+        <main className={`flex-1 flex flex-col min-h-0 w-full min-w-0 overflow-x-hidden ${isFullBleed ? '' : 'p-2 sm:p-3 space-y-3'}`}>
           {activeNav === 'Overview' ? (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
                 <MetricCard title="Sales Today" value={fmtUsd(totalSales)} deltaVal={delta(totalSales, totalSalesPrev)} icon={TrendingUp} accent />
                 <MetricCard title="Covers Today" value={totalCovers.toLocaleString()} deltaVal={delta(totalCovers, totalCoversPrev)} icon={Users} />
                 <MetricCard title="Avg Order Value" value={`$${aov.toFixed(2)}`} deltaVal={delta(aov, aovPrev)} icon={ShoppingBag} />
                 <MetricCard title="Open POs" value={String(overviewOrders.length)} deltaVal={0} icon={Package} />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2 bg-card border border-border rounded-lg p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+                <div className="lg:col-span-2 bg-card border border-border rounded-lg p-3">
                   <h2 className="text-sm font-semibold">Revenue Trend</h2>
-                  <p className="text-xs text-muted-foreground mb-2">This week vs last week</p>
+                  <p className="text-xs text-muted-foreground mb-1">This week vs last week</p>
                   <RevenueChart data={overviewRevenue} />
                 </div>
                 <ProgressPanel progress={overviewProgress} />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
                 <div className="bg-card border border-border rounded-lg overflow-hidden">
-                  <div className="p-5 border-b border-border">
+                  <div className="p-2 border-b border-border">
                     <h2 className="text-sm font-semibold">Menu Performance</h2>
                   </div>
-                  <table className="w-full text-xs">
+                  <TableScrollContainer ref={menuScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                  <table className="w-full table-fixed text-xs">
                     <thead>
                       <tr className="border-b border-border">
                         {['Item', 'Orders', 'Revenue', 'Margin'].map(h => (
@@ -220,7 +229,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {overviewMenuItems.map(m => (
+                      {menuScroll.visibleItems.map(m => (
                         <tr key={m.id} className="border-b border-border last:border-0">
                           <td className="px-4 py-3 font-medium">{m.name}</td>
                           <td className="px-4 py-3 font-sans text-muted-foreground">{m.orders}</td>
@@ -228,12 +237,14 @@ export default function App() {
                           <td className="px-4 py-3 font-sans">{m.marginPercent}%</td>
                         </tr>
                       ))}
+                      <InfiniteScrollTableSentinel colSpan={4} hasMore={menuScroll.hasMore} sentinelRef={menuScroll.sentinelRef} totalCount={menuScroll.totalCount} visibleCount={menuScroll.visibleCount} />
                     </tbody>
                   </table>
+                  </TableScrollContainer>
                 </div>
 
                 <div className="bg-card border border-border rounded-lg overflow-hidden">
-                  <div className="p-5 border-b border-border">
+                  <div className="p-2 border-b border-border">
                     <h2 className="text-sm font-semibold">Inventory Alerts</h2>
                   </div>
                   <div className="divide-y divide-border">
@@ -252,10 +263,11 @@ export default function App() {
               </div>
 
               <div className="bg-card border border-border rounded-lg overflow-hidden">
-                <div className="p-5 border-b border-border">
+                <div className="p-2 border-b border-border">
                   <h2 className="text-sm font-semibold">Active Purchase Orders</h2>
                 </div>
-                <table className="w-full text-xs">
+                <TableScrollContainer ref={ordersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                <table className="w-full table-fixed text-xs">
                   <thead>
                     <tr className="border-b border-border">
                       {['PO', 'Vendor', 'Delivery', 'Value', 'Status'].map(h => (
@@ -264,7 +276,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {overviewOrders.map(o => {
+                    {ordersScroll.visibleItems.map(o => {
                       const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
                       return (
                         <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
@@ -278,8 +290,10 @@ export default function App() {
                         </tr>
                       );
                     })}
+                    <InfiniteScrollTableSentinel colSpan={5} hasMore={ordersScroll.hasMore} sentinelRef={ordersScroll.sentinelRef} totalCount={ordersScroll.totalCount} visibleCount={ordersScroll.visibleCount} />
                   </tbody>
                 </table>
+                </TableScrollContainer>
               </div>
             </>
           ) : isRevenueSection ? (

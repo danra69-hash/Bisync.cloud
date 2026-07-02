@@ -1,4 +1,8 @@
+import { useRef } from 'react';
 import { Plus } from 'lucide-react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import type { AppUser } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
 import { parseUserAccess } from '../../data/userAccess';
@@ -83,6 +87,15 @@ export function EmployeeDirectoryTab({
   onToggleActive,
   onClearError,
 }: Props) {
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedEmployees,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(employees, { scrollRootRef });
+
   const setField = <K extends keyof EmployeeFormData>(key: K, value: EmployeeFormData[K]) => {
     onFormChange({ ...formData, [key]: value });
   };
@@ -208,8 +221,8 @@ export function EmployeeDirectoryTab({
       )}
 
       {!noCompanySelected && (
-      <div className="bg-card border border-border rounded-lg overflow-x-auto">
-        <table className="w-full text-xs min-w-[1100px]">
+      <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+        <table className="w-full table-fixed text-xs">
           <thead>
             <tr className="border-b border-border bg-muted/30">
               {['Employee ID', 'Employee', 'Company', 'Location', 'Division', 'Department', 'Position', 'Employee Level', 'Shift', 'Platform Access', 'Check-in Method', 'Active'].map(h => (
@@ -218,7 +231,7 @@ export function EmployeeDirectoryTab({
             </tr>
           </thead>
           <tbody>
-            {employees.map(employee => {
+            {pagedEmployees.map(employee => {
               const user = platformUserFor(employee);
               const modules = user ? accessBadges(user.accessJson) : [];
               return (
@@ -307,9 +320,10 @@ export function EmployeeDirectoryTab({
                 </td>
               </tr>
             )}
+            <InfiniteScrollTableSentinel colSpan={12} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
-      </div>
+      </TableScrollContainer>
       )}
     </div>
   );

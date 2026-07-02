@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { pageShellClass } from '../layout/pageLayout';
+import { filterSelectCls } from '../layout/formControls';
 import { Search, X } from 'lucide-react';
 import { api, type Ingredient } from '../../api';
 import { siCategories, siGroups } from '../../data/revenueManagement';
@@ -41,7 +46,7 @@ function FilterSelect({ label, value, options, onChange }: {
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer min-w-[130px]"
+        className={`${filterSelectCls} min-w-[130px]`}
       >
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -90,6 +95,15 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
       return matchCat && matchGrp && matchQ;
     });
   }, [rows, catFilter, grpFilter, search]);
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedFiltered,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(filtered, { scrollRootRef });
 
   const hasFilters = catFilter !== 'All' || grpFilter !== 'All' || !!search;
 
@@ -140,25 +154,19 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
   const price = (r: ComponentRow) => uomType === 'recipe' ? r.lastPriceRecipe : r.lastPriceInventory;
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">Component › Smart Component</p>
-          <h2 className="text-xl font-semibold text-foreground">Smart Component</h2>
-          {selectedCompanyId && (
-            <p className="text-xs text-muted-foreground font-sans mt-0.5">{filtered.length} of {rows.length} items</p>
-          )}
-        </div>
-        {selectedCompanyId && (
+    <div className={pageShellClass({ spacing: 'loose' })}>
+      {selectedCompanyId && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground font-sans">{filtered.length} of {rows.length} items</p>
           <button onClick={openAdd} className="text-xs font-sans bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
             + Add Component
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {selectedCompanyId && (
         <>
-      <div className="bg-card border border-border rounded-lg p-4">
+      <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
           <FilterSelect label="Category" value={catFilter} options={siCategories} onChange={setCatFilter} />
           <FilterSelect label="Group" value={grpFilter} options={siGroups} onChange={setGrpFilter} />
@@ -225,12 +233,12 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
         {loading ? (
           <p className="p-8 text-center text-xs text-muted-foreground">Loading ingredients…</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+            <table className="w-full table-fixed text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   {['Component ID', 'Component Name', 'UOM', 'Last UOM Price', 'Daily Usage', 'Order Freq (days)', 'Storage', 'Products', 'Vendors', 'Active'].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-sans text-muted-foreground uppercase tracking-wider font-normal whitespace-nowrap">{h}</th>
+                    <th key={h} className="text-left px-4 py-3 text-xs font-sans text-muted-foreground uppercase tracking-wider font-normal truncate">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -241,7 +249,7 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
                       No items match the selected filters.
                     </td>
                   </tr>
-                ) : filtered.map(row => (
+                ) : pagedFiltered.map(row => (
                   <tr key={row.id ?? row.name}
                     className={`border-b border-border last:border-0 transition-colors ${row.active ? 'hover:bg-muted/30' : 'opacity-50 hover:opacity-70'}`}>
                     <td className="px-4 py-3 font-sans text-muted-foreground">{row.componentId || '—'}</td>
@@ -259,7 +267,7 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
                     <td className="px-4 py-3 font-sans text-muted-foreground">
                       {row.orderFreqDays >= 90 ? `${row.orderFreqDays}d` : `Every ${row.orderFreqDays}d`}
                     </td>
-                    <td className="px-4 py-3 min-w-[140px]">
+                    <td className="px-4 py-3 ">
                       <div className="flex flex-col gap-1">
                         {row.storage.map((s, si) => (
                           <span key={si} className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans inline-block w-fit">{s}</span>
@@ -287,9 +295,10 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
                     </td>
                   </tr>
                 ))}
+                <InfiniteScrollTableSentinel colSpan={10} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </div>
 

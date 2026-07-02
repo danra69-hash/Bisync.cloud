@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Plus, X } from 'lucide-react';
 import { api, type Company } from '../../api';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
@@ -186,6 +189,15 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
 
   useEffect(() => { refreshList(); }, []);
 
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const {
+    visibleItems: pagedCompanies,
+    hasMore,
+    sentinelRef,
+    totalCount,
+    visibleCount,
+  } = useInfiniteScrollSlice(companies, { scrollRootRef });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -200,7 +212,8 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
         {loading ? (
           <p className="p-8 text-center text-xs text-muted-foreground">Loading companies…</p>
         ) : (
-          <table className="w-full text-xs">
+          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <table className="w-full table-fixed text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Company', 'BRN', 'GST/TIN', 'Country', 'Email', 'Locations', 'Status'].map(h => (
@@ -209,7 +222,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
               </tr>
             </thead>
             <tbody>
-              {companies.map(c => (
+              {pagedCompanies.map(c => (
                 <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer" onClick={() => { setIsNew(false); setEditCompany(c); }}>
                   <td className="px-4 py-3 font-medium">{c.name}</td>
                   <td className="px-4 py-3 font-sans text-muted-foreground">{c.brn || '—'}</td>
@@ -227,8 +240,10 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
               {companies.length === 0 && (
                 <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No companies yet. Add your first company.</td></tr>
               )}
+              <InfiniteScrollTableSentinel colSpan={7} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
+          </TableScrollContainer>
         )}
       </div>
 
