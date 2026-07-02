@@ -41,6 +41,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<CashPurchase> CashPurchases => Set<CashPurchase>();
     public DbSet<OrderTemplate> OrderTemplates => Set<OrderTemplate>();
     public DbSet<OrderTemplateItem> OrderTemplateItems => Set<OrderTemplateItem>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductComponentItem> ProductComponentItems => Set<ProductComponentItem>();
     public DbSet<VendorProductPrice> VendorProductPrices => Set<VendorProductPrice>();
     public DbSet<InventoryAlert> InventoryAlerts => Set<InventoryAlert>();
     public DbSet<RevenueDataPoint> RevenueDataPoints => Set<RevenueDataPoint>();
@@ -92,6 +94,16 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .HasMany(t => t.Items)
             .WithOne(i => i.OrderTemplate)
             .HasForeignKey(i => i.OrderTemplateId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Product>(e =>
+        {
+            e.Property(x => x.ProductId).HasMaxLength(32);
+            e.HasIndex(x => x.ProductId).IsUnique();
+        });
+        modelBuilder.Entity<Product>()
+            .HasMany(p => p.Items)
+            .WithOne(i => i.Product)
+            .HasForeignKey(i => i.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<InventoryPurchase>().HasIndex(i => i.PurchaseOrderItemId);
         modelBuilder.Entity<VendorProductPrice>().HasKey(p => p.ExternalId);

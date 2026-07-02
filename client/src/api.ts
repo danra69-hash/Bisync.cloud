@@ -439,6 +439,47 @@ export interface UpsertOrderTemplatePayload {
   items: Omit<OrderTemplateItem, 'id' | 'sortOrder'>[];
 }
 
+export interface ProductComponentItem {
+  id?: number;
+  componentId: string;
+  componentName: string;
+  componentUom: string;
+  componentUomPrice: number;
+  quantity: number;
+  subtotal: number;
+  sortOrder?: number;
+}
+
+export interface Product {
+  id: number;
+  productId: string;
+  name: string;
+  category: string;
+  group: string;
+  isSubProduct: boolean;
+  b2cEnabled: boolean;
+  b2bEnabled: boolean;
+  totalCost: number;
+  companyId?: number | null;
+  locationExternalIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+  items: ProductComponentItem[];
+}
+
+export interface UpsertProductPayload {
+  productId?: string;
+  name: string;
+  category: string;
+  group: string;
+  isSubProduct: boolean;
+  b2cEnabled: boolean;
+  b2bEnabled: boolean;
+  companyId?: number | null;
+  locationExternalIds: string[];
+  items: Omit<ProductComponentItem, 'id' | 'subtotal' | 'sortOrder'>[];
+}
+
 export interface InventoryAlert {
   id: number;
   itemName: string;
@@ -571,6 +612,15 @@ export const api = {
     fetchJsonWithMethod<OrderTemplate>(`/api/ordertemplates/${id}`, 'PUT', payload),
   deleteOrderTemplate: (id: number) =>
     fetchJsonWithMethod<void>(`/api/ordertemplates/${id}`, 'DELETE'),
+  products: (companyId?: number) =>
+    fetchJson<Product[]>(`/api/products${companyId ? `?companyId=${companyId}` : ''}`),
+  product: (id: number) => fetchJson<Product>(`/api/products/${id}`),
+  createProduct: (payload: UpsertProductPayload) =>
+    fetchJsonWithMethod<Product>('/api/products', 'POST', payload),
+  updateProduct: (id: number, payload: UpsertProductPayload) =>
+    fetchJsonWithMethod<Product>(`/api/products/${id}`, 'PUT', payload),
+  deleteProduct: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/products/${id}`, 'DELETE'),
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

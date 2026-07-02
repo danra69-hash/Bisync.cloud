@@ -36,6 +36,32 @@ export function ingredientToRow(i: Ingredient): ComponentRow {
   };
 }
 
+export function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow> = {}): Ingredient {
+  const merged = { ...row, ...partial };
+  const detailConfig = resolveDetailConfigForRow(merged);
+  const detailConfigJson = resolveDetailConfigJsonForSave(row, partial);
+  return {
+    id: merged.id ?? 0,
+    componentId: merged.componentId,
+    name: merged.name,
+    category: merged.category,
+    group: merged.group,
+    recipeUom: merged.recipeUOM,
+    inventoryUom: merged.inventoryUOM,
+    lastPriceRecipe: merged.lastPriceRecipe,
+    lastPriceInventory: merged.lastPriceInventory,
+    dailyUsage: merged.dailyUsage,
+    orderFreqDays: merged.orderFreqDays,
+    storageJson: JSON.stringify(merged.storage),
+    storageNote: merged.storageNote ?? '',
+    detailConfigJson,
+    attachedProducts: merged.attachedProducts,
+    attachedVendors: detailConfig.taggedVendorProductIds.length || merged.attachedVendors,
+    active: merged.active,
+    locationsJson: JSON.stringify(merged.locations),
+  };
+}
+
 export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentRow {
   const savedRow = ingredientToRow(saved);
   const sentConfig = resolveDetailConfigForRow(sent);

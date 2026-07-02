@@ -713,6 +713,38 @@ public class UpsertOrderTemplateRequest
     public List<UpsertOrderTemplateItemRequest> Items { get; set; } = [];
 }
 
+public class UpsertProductComponentItemRequest
+{
+    [MaxLength(50)]
+    public string ComponentId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ComponentName { get; set; }
+    [MaxLength(50)]
+    public string? ComponentUom { get; set; }
+    [Range(0, 999999999)]
+    public decimal ComponentUomPrice { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+}
+
+public class UpsertProductRequest
+{
+    [MaxLength(50)]
+    public string? ProductId { get; set; }
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string? Category { get; set; }
+    [MaxLength(100)]
+    public string? Group { get; set; }
+    public bool IsSubProduct { get; set; }
+    public bool B2cEnabled { get; set; }
+    public bool B2bEnabled { get; set; }
+    public int? CompanyId { get; set; }
+    public List<string> LocationExternalIds { get; set; } = [];
+    public List<UpsertProductComponentItemRequest> Items { get; set; } = [];
+}
+
 public class PurchaseOrderWorkflowRequest
 {
     public List<PurchaseOrderLineWorkflowRequest> Items { get; set; } = [];

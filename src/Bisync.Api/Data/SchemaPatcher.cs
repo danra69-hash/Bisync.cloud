@@ -192,6 +192,40 @@ public static class SchemaPatcher
             """);
 
         await EnsureColumnAsync(db, "OrderTemplateItems", "DeliveryUnit", "TEXT NOT NULL DEFAULT ''");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "Products" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_Products" PRIMARY KEY AUTOINCREMENT,
+                "ProductId" TEXT NOT NULL DEFAULT '',
+                "Name" TEXT NOT NULL DEFAULT '',
+                "Category" TEXT NOT NULL DEFAULT '',
+                "Group" TEXT NOT NULL DEFAULT '',
+                "IsSubProduct" INTEGER NOT NULL DEFAULT 0,
+                "B2cEnabled" INTEGER NOT NULL DEFAULT 0,
+                "B2bEnabled" INTEGER NOT NULL DEFAULT 0,
+                "TotalCost" REAL NOT NULL DEFAULT 0,
+                "CompanyId" INTEGER,
+                "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "CreatedAt" TEXT NOT NULL,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ProductComponentItems" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_ProductComponentItems" PRIMARY KEY AUTOINCREMENT,
+                "ProductId" INTEGER NOT NULL,
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "ComponentUom" TEXT NOT NULL DEFAULT '',
+                "ComponentUomPrice" REAL NOT NULL DEFAULT 0,
+                "Quantity" REAL NOT NULL,
+                "Subtotal" REAL NOT NULL DEFAULT 0,
+                "SortOrder" INTEGER NOT NULL DEFAULT 0,
+                CONSTRAINT "FK_ProductComponentItems_Products_ProductId"
+                    FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
+            );
+            """);
     }
 
     static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)
