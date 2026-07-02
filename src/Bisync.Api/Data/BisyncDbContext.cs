@@ -38,6 +38,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
     public DbSet<InventoryPurchase> InventoryPurchases => Set<InventoryPurchase>();
+    public DbSet<CashPurchase> CashPurchases => Set<CashPurchase>();
     public DbSet<VendorProductPrice> VendorProductPrices => Set<VendorProductPrice>();
     public DbSet<InventoryAlert> InventoryAlerts => Set<InventoryAlert>();
     public DbSet<RevenueDataPoint> RevenueDataPoints => Set<RevenueDataPoint>();

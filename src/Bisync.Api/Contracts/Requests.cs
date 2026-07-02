@@ -645,6 +645,34 @@ public class PurchaseOrderLineWorkflowRequest
     public decimal TaxAmount { get; set; }
 }
 
+public class CreateCashPurchaseRequest
+{
+    public DateOnly DatePurchased { get; set; }
+    [MaxLength(200)]
+    public string StoreName { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string ComponentId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ComponentName { get; set; }
+    [MaxLength(200)]
+    public string StoreProductName { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string DeliveryUnit { get; set; } = string.Empty;
+    [Range(0, 999999999)]
+    public decimal DeliveryPrice { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    [MaxLength(50)]
+    public string ComponentUom { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string? ReceiptNumber { get; set; }
+    [MaxLength(500)]
+    public string? ReceiptFileName { get; set; }
+    public string? ReceiptFileBase64 { get; set; }
+    public int? CompanyId { get; set; }
+    public List<string> LocationExternalIds { get; set; } = [];
+}
+
 public class PurchaseOrderWorkflowRequest
 {
     public List<PurchaseOrderLineWorkflowRequest> Items { get; set; } = [];

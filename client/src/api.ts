@@ -354,6 +354,48 @@ export interface InventoryPurchase {
   locationExternalIds?: string[];
 }
 
+export interface CashPurchase {
+  id: number;
+  datePurchased: string;
+  storeName: string;
+  componentId: string;
+  componentName: string;
+  storeProductName: string;
+  deliveryUnit: string;
+  deliveryPrice: number;
+  quantity: number;
+  componentUom: string;
+  receiptNumber: string;
+  receiptFileName: string;
+  hasReceiptAttachment: boolean;
+  inventoryPurchaseId: number;
+  companyId?: number | null;
+  locationExternalIds?: string[];
+  createdAt: string;
+}
+
+export interface CreateCashPurchasePayload {
+  datePurchased: string;
+  storeName: string;
+  componentId: string;
+  componentName?: string;
+  storeProductName: string;
+  deliveryUnit: string;
+  deliveryPrice: number;
+  quantity: number;
+  componentUom: string;
+  receiptNumber?: string;
+  receiptFileName?: string;
+  receiptFileBase64?: string;
+  companyId?: number | null;
+  locationExternalIds: string[];
+}
+
+export interface CreateCashPurchaseResult {
+  cashPurchase: CashPurchase;
+  inventoryPurchase: InventoryPurchase;
+}
+
 export interface InventoryAlert {
   id: number;
   itemName: string;
@@ -473,6 +515,10 @@ export const api = {
   vendorProductPrices: () => fetchJson<VendorProductPriceRow[]>('/api/vendorproducts/prices'),
   inventoryPurchases: (companyId?: number) =>
     fetchJson<InventoryPurchase[]>(`/api/inventory/purchases${companyId ? `?companyId=${companyId}` : ''}`),
+  cashPurchases: (companyId?: number) =>
+    fetchJson<CashPurchase[]>(`/api/cashpurchases${companyId ? `?companyId=${companyId}` : ''}`),
+  createCashPurchase: (payload: CreateCashPurchasePayload) =>
+    fetchJsonWithMethod<CreateCashPurchaseResult>('/api/cashpurchases', 'POST', payload),
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

@@ -7,6 +7,7 @@ import { ComponentConfigPage } from './ComponentConfigPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
 import { OrderPage } from './OrderPage';
+import { CashPurchasePage } from './CashPurchasePage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 
 type Props = {
@@ -38,6 +39,13 @@ function renderRevMgmtContent(
     case 'My Order':
       return (
         <OrderPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Cash Purchase':
+      return (
+        <CashPurchasePage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

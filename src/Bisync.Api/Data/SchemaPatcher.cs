@@ -132,6 +132,28 @@ public static class SchemaPatcher
                 "ReadAt" TEXT
             );
             """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "CashPurchases" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_CashPurchases" PRIMARY KEY AUTOINCREMENT,
+                "DatePurchased" TEXT NOT NULL,
+                "StoreName" TEXT NOT NULL DEFAULT '',
+                "ComponentId" TEXT NOT NULL DEFAULT '',
+                "ComponentName" TEXT NOT NULL DEFAULT '',
+                "StoreProductName" TEXT NOT NULL DEFAULT '',
+                "DeliveryUnit" TEXT NOT NULL DEFAULT '',
+                "DeliveryPrice" REAL NOT NULL,
+                "Quantity" REAL NOT NULL,
+                "ComponentUom" TEXT NOT NULL DEFAULT '',
+                "ReceiptNumber" TEXT NOT NULL DEFAULT '',
+                "ReceiptFileName" TEXT NOT NULL DEFAULT '',
+                "ReceiptFileBase64" TEXT NOT NULL DEFAULT '',
+                "InventoryPurchaseId" INTEGER NOT NULL DEFAULT 0,
+                "CompanyId" INTEGER,
+                "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "CreatedAt" TEXT NOT NULL
+            );
+            """);
     }
 
     static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)
