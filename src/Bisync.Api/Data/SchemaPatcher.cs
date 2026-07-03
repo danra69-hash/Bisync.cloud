@@ -220,8 +220,6 @@ public static class SchemaPatcher
             """);
         await EnsureColumnAsync(db, "ProductB2bLocationStocks", "ProducedQty", "REAL NOT NULL DEFAULT 0");
         await EnsureColumnAsync(db, "ProductB2bLocationStocks", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
-        await EnsureColumnAsync(db, "ProductProductionLogs", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
-        await EnsureColumnAsync(db, "ProductProductionLogs", "BatchNumber", "TEXT NOT NULL DEFAULT ''");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "ProductProductionLogs" (
@@ -230,6 +228,8 @@ public static class SchemaPatcher
                 "EntryType" TEXT NOT NULL DEFAULT '',
                 "Quantity" REAL NOT NULL DEFAULT 0,
                 "ProductionDate" TEXT NOT NULL DEFAULT '',
+                "ExpiryDate" TEXT NOT NULL DEFAULT '',
+                "BatchNumber" TEXT NOT NULL DEFAULT '',
                 "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
                 "CompanyId" INTEGER,
                 "CreatedAt" TEXT NOT NULL,
@@ -237,6 +237,8 @@ public static class SchemaPatcher
                     FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
             );
             """);
+        await EnsureColumnAsync(db, "ProductProductionLogs", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "ProductProductionLogs", "BatchNumber", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ProductB2bLocationStocks_ProductId_LocationExternalId"
             ON "ProductB2bLocationStocks" ("ProductId", "LocationExternalId");
