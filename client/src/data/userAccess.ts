@@ -42,6 +42,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     id: 'inventory',
     label: 'Inventory',
     tasks: [
+      { id: 'stockCard', label: 'Stock Card' },
       { id: 'inventoryPost', label: 'Inventory Post' },
       { id: 'inventoryConfirmation', label: 'Inventory Confirmation' },
       { id: 'inventoryAdjustment', label: 'Inventory Adjustment' },

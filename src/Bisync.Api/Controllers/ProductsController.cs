@@ -72,6 +72,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             Rrp = request.IsSubProduct ? 0 : (request.Rrp ?? 0),
             YieldQuantity = request.IsSubProduct ? (request.YieldQuantity ?? 0) : 0,
             YieldUom = request.IsSubProduct ? (request.YieldUom?.Trim() ?? string.Empty) : string.Empty,
+            ExpiryPeriodDays = ResolveExpiryPeriodDays(request),
             PosEnabled = request.PosEnabled ?? false,
             Active = request.Active ?? true,
             TotalCost = items.Sum(i => i.Subtotal),
@@ -144,6 +145,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             product.YieldQuantity = 0;
             product.YieldUom = string.Empty;
         }
+        product.ExpiryPeriodDays = ResolveExpiryPeriodDays(request);
         if (request.PosEnabled.HasValue) product.PosEnabled = request.PosEnabled.Value;
         if (request.Active.HasValue) product.Active = request.Active.Value;
         product.CompanyId = request.CompanyId;
@@ -239,10 +241,16 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
                 return "Sub-product yield quantity must be greater than zero.";
             if (string.IsNullOrWhiteSpace(request.YieldUom))
                 return "Sub-product UOM is required.";
+            if (request.ExpiryPeriodDays is null or <= 0)
+                return "Sub-product expiry period (days) must be greater than zero.";
         }
         else if (!request.B2cEnabled && !request.B2bEnabled)
         {
             return "Select at least one channel: B2C or B2B.";
+        }
+        else if (request.B2bEnabled && (request.ExpiryPeriodDays is null or <= 0))
+        {
+            return "B2B product expiry period (days) must be greater than zero.";
         }
         if (request.Items is null || request.Items.Count == 0)
             return "Add at least one smart component to the product.";
@@ -268,6 +276,13 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         }
 
         return null;
+    }
+
+    static int ResolveExpiryPeriodDays(UpsertProductRequest request)
+    {
+        if (!request.IsSubProduct && !request.B2bEnabled)
+            return 0;
+        return Math.Max(0, request.ExpiryPeriodDays ?? 0);
     }
 
     static List<ProductComponentItem> MapItems(List<UpsertProductComponentItemRequest> items)
@@ -336,6 +351,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         previousRrp = product.PreviousRrp,
         yieldQuantity = product.YieldQuantity,
         yieldUom = product.YieldUom,
+        expiryPeriodDays = product.ExpiryPeriodDays,
         posEnabled = product.PosEnabled,
         active = product.Active,
         companyId = product.CompanyId,

@@ -1,23 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, type AppUser } from '../api';
+import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
+import {
+  CurrentUserContext,
+  DEMO_PASSWORD,
+} from './currentUserContext';
 
 const STORAGE_KEY = 'bisync.currentUserId';
 const AUTH_KEY = 'bisync.authenticated';
 
-/** Legacy demo password for seeded users without a stored password hash. */
-export const DEMO_PASSWORD = 'Pass@123';
-
-type CurrentUserContextValue = {
-  currentUser: AppUser | null;
-  users: AppUser[];
-  loading: boolean;
-  isAuthenticated: boolean;
-  setCurrentUserId: (id: number) => void;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-};
-
-const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);
+export { DEMO_PASSWORD };
 
 function resolveDefaultUserId(users: AppUser[]): number | null {
   const active = users.filter(user => user.active);
@@ -89,15 +81,19 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setUsers(prev => upsertUser(prev, user));
     localStorage.setItem(AUTH_KEY, 'true');
     localStorage.setItem(STORAGE_KEY, String(user.id));
+    markUserActivity();
     setCurrentUserIdState(user.id);
     setIsAuthenticated(true);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_KEY);
+    clearUserActivity();
     setIsAuthenticated(false);
     setCurrentUserIdState(null);
   }, []);
+
+  useIdleLogout(isAuthenticated, logout);
 
   const currentUser = users.find(user => user.id === currentUserId) ?? null;
 
@@ -108,21 +104,4 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       {children}
     </CurrentUserContext.Provider>
   );
-}
-
-export function useCurrentUser(): CurrentUserContextValue {
-  const context = useContext(CurrentUserContext);
-  if (!context) {
-    throw new Error('useCurrentUser must be used within CurrentUserProvider');
-  }
-  return context;
-}
-
-export function userInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part[0]?.toUpperCase() ?? '')
-    .join('');
 }

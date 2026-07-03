@@ -255,6 +255,7 @@ export function ProductsPage({
   const [rrp, setRrp] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('');
   const [yieldUom, setYieldUom] = useState('');
+  const [expiryPeriodDays, setExpiryPeriodDays] = useState('');
   const [productLocationIds, setProductLocationIds] = useState<string[]>([]);
   const [aliases, setAliases] = useState<ProductAliasLine[]>([]);
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
@@ -412,6 +413,7 @@ export function ProductsPage({
     setRrp('');
     setYieldQuantity('');
     setYieldUom('');
+    setExpiryPeriodDays('');
     setProductLocationIds(selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
     setAliases([]);
     setLines([blankProductLine()]);
@@ -432,6 +434,7 @@ export function ProductsPage({
     setRrp(product.rrp > 0 ? String(product.rrp) : '');
     setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : '');
     setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : '');
+    setExpiryPeriodDays(product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '');
     setProductLocationIds(product.locationExternalIds?.length
       ? [...product.locationExternalIds]
       : selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
@@ -628,6 +631,17 @@ export function ProductsPage({
         setError('Select a UOM for this sub-product.');
         return;
       }
+      const expiryDays = parseInt(expiryPeriodDays, 10);
+      if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
+        setError('Enter an expiry period (days) greater than zero.');
+        return;
+      }
+    } else if (b2bEnabled) {
+      const expiryDays = parseInt(expiryPeriodDays, 10);
+      if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
+        setError('Enter an expiry period (days) greater than zero for B2B products.');
+        return;
+      }
     }
 
     const payloadItems = lines
@@ -683,6 +697,7 @@ export function ProductsPage({
       rrp: isSubProduct ? 0 : rrpValue,
       yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
       yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
+      expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
       active: true,
       companyId: selectedCompanyId,
       locationExternalIds: productLocationIds,
@@ -1102,6 +1117,25 @@ export function ProductsPage({
                 </div>
               </>
             )}
+
+            {(isSubProduct || b2bEnabled) ? (
+              <div className="space-y-1.5 max-w-xs">
+                <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
+                <input
+                  id="expiry-period-days"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={expiryPeriodDays}
+                  onChange={e => setExpiryPeriodDays(e.target.value)}
+                  placeholder="e.g. 7"
+                  className={fieldCls}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Each production batch expires this many days after its production date.
+                </p>
+              </div>
+            ) : null}
 
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">

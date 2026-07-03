@@ -288,6 +288,18 @@ export function ProductReadOnlyView({
           </>
         )}
 
+        {(product.isSubProduct || product.b2bEnabled) ? (
+          <div className="space-y-1.5 max-w-xs">
+            <p className={labelCls}>Expiry period (days)</p>
+            <p className={fieldCls}>
+              {product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '—'}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              Production batches expire this many days after their production date.
+            </p>
+          </div>
+        ) : null}
+
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Location</p>
           {locations.length === 0 ? (

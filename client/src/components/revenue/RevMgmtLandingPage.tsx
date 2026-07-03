@@ -12,7 +12,7 @@ import {
   ShoppingCart,
 } from 'lucide-react';
 import { api, type Company, type PurchaseOrder, type UserNotification } from '../../api';
-import { useCurrentUser } from '../../context/CurrentUserContext';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { getCompanyMessages } from '../../data/revMgmtCompanyMessages';
 import { filterPurchaseOrdersByOrg } from '../../utils/orgFilters';
 import { ActivePurchasePanel } from './ActivePurchasePanel';

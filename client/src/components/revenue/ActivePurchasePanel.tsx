@@ -5,7 +5,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Check, Copy, PackageCheck, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
-import { useCurrentUser } from '../../context/CurrentUserContext';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { formatRm } from '../../data/createOrder';
 import { applyVendorProductPriceUpdates } from '../../data/vendorProductPrices';
 import {

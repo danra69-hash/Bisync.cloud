@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
@@ -51,12 +52,42 @@ public class ProductManagementController(
             .GroupBy(s => s.ProductId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        return Ok(visibleProducts.Select(product =>
+        var producedLogs = await db.ProductProductionLogs
+            .AsNoTracking()
+            .Where(l => productIds.Contains(l.ProductId) && l.EntryType == "produced")
+            .OrderByDescending(l => l.CreatedAt)
+            .ThenByDescending(l => l.Id)
+            .ToListAsync();
+
+        await EnsureBatchNumbersAsync(producedLogs, visibleProducts);
+
+        producedLogs = await db.ProductProductionLogs
+            .AsNoTracking()
+            .Where(l => productIds.Contains(l.ProductId) && l.EntryType == "produced")
+            .OrderByDescending(l => l.CreatedAt)
+            .ThenByDescending(l => l.Id)
+            .ToListAsync();
+
+        var result = new List<object>();
+        foreach (var product in visibleProducts)
         {
             stockByProduct.TryGetValue(product.Id, out var rows);
             rows ??= [];
-            return MapSummary(product, rows);
-        }));
+            var summary = BuildSummaryData(product, rows);
+
+            var productLogs = producedLogs
+                .Where(l => l.ProductId == product.Id && LogMatchesLocations(l, locationIdList))
+                .ToList();
+
+            result.Add(MapBatchRow(summary, log: null));
+
+            foreach (var log in productLogs)
+            {
+                result.Add(MapBatchRow(summary, log));
+            }
+        }
+
+        return Ok(result);
     }
 
     [HttpPatch("{productId:int}")]
@@ -96,7 +127,7 @@ public class ProductManagementController(
             .Where(s => s.ProductId == productId && locationIds.Contains(s.LocationExternalId))
             .ToListAsync();
 
-        return Ok(MapSummary(product, updatedRows));
+        return Ok(await MapSummaryAsync(product, updatedRows));
     }
 
     [HttpPost("{productId:int}/to-produce")]
@@ -110,14 +141,26 @@ public class ProductManagementController(
         if (locationIds.Count == 0)
             return BadRequest(new { message = "Select at least one location." });
 
+        if (request.BatchQty <= 0)
+            return BadRequest(new { message = "Enter a quantity greater than zero." });
+
+        var productionDate = ResolveProductionDate(request.ProductionDate);
         var stockRows = await EnsureStockRowsAsync(productId, locationIds);
         foreach (var row in stockRows)
         {
-            var targetBatches = row.SalesPerDay > 0 ? row.SalesPerDay : 1;
-            row.ToProduceQty = Math.Max(0, targetBatches - row.InStock);
+            row.ToProduceQty += request.BatchQty;
             row.UpdatedAt = DateTime.UtcNow;
         }
 
+        await AddProductionLogAsync(
+            productId,
+            "to_produce",
+            request.BatchQty,
+            productionDate,
+            locationIds,
+            product.CompanyId);
+
+        product.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
         var updatedRows = await db.ProductB2bLocationStocks
@@ -125,7 +168,7 @@ public class ProductManagementController(
             .Where(s => s.ProductId == productId && locationIds.Contains(s.LocationExternalId))
             .ToListAsync();
 
-        return Ok(MapSummary(product, updatedRows));
+        return Ok(await MapSummaryAsync(product, updatedRows));
     }
 
     [HttpPost("{productId:int}/produce")]
@@ -139,6 +182,17 @@ public class ProductManagementController(
         if (locationIds.Count == 0)
             return BadRequest(new { message = "Select at least one location." });
 
+        if (request.BatchQty <= 0)
+            return BadRequest(new { message = "Enter a quantity greater than zero." });
+
+        var productionDate = ResolveProductionDate(request.ProductionDate);
+        var expiryDate = ResolveOptionalDate(request.ExpiryDate);
+        if (string.IsNullOrEmpty(expiryDate) && product.ExpiryPeriodDays > 0
+            && DateOnly.TryParse(productionDate, out var parsedProductionDate))
+        {
+            expiryDate = parsedProductionDate.AddDays(product.ExpiryPeriodDays).ToString("yyyy-MM-dd");
+        }
+
         if (product.IsSubProduct)
         {
             try
@@ -146,7 +200,8 @@ public class ProductManagementController(
                 var result = await productionInventory.ProduceSubProductBatchesAsync(
                     productId,
                     locationIds,
-                    request.BatchQty);
+                    request.BatchQty,
+                    request.OverrideStock);
 
                 if (!result.Success)
                 {
@@ -161,6 +216,17 @@ public class ProductManagementController(
                             requiredQty = s.RequiredQty,
                             onHandQty = s.OnHandQty,
                             s.Uom,
+                            isSufficient = false,
+                        }),
+                        components = result.Components.Select(c => new
+                        {
+                            c.LocationExternalId,
+                            c.ComponentId,
+                            c.ComponentName,
+                            requiredQty = c.RequiredQty,
+                            onHandQty = c.OnHandQty,
+                            c.Uom,
+                            isSufficient = c.IsSufficient,
                         }),
                     });
                 }
@@ -176,7 +242,10 @@ public class ProductManagementController(
             foreach (var row in stockRows)
             {
                 row.InStock += request.BatchQty;
+                row.ProducedQty += request.BatchQty;
                 row.ToProduceQty = Math.Max(0, row.ToProduceQty - request.BatchQty);
+                if (!string.IsNullOrEmpty(expiryDate))
+                    row.ExpiryDate = MergeEarliestExpiry(row.ExpiryDate, expiryDate);
                 row.UpdatedAt = DateTime.UtcNow;
             }
 
@@ -184,13 +253,118 @@ public class ProductManagementController(
             await db.SaveChangesAsync();
         }
 
+        if (product.IsSubProduct && !string.IsNullOrEmpty(expiryDate))
+        {
+            var stockRows = await EnsureStockRowsAsync(productId, locationIds);
+            foreach (var row in stockRows)
+            {
+                row.ExpiryDate = MergeEarliestExpiry(row.ExpiryDate, expiryDate);
+                row.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        await AddProductionLogAsync(
+            productId,
+            "produced",
+            request.BatchQty,
+            productionDate,
+            locationIds,
+            product.CompanyId,
+            expiryDate);
+        await db.SaveChangesAsync();
+
         var updatedRows = await db.ProductB2bLocationStocks
             .AsNoTracking()
             .Where(s => s.ProductId == productId && locationIds.Contains(s.LocationExternalId))
             .ToListAsync();
 
         product = await db.Products.AsNoTracking().FirstAsync(p => p.Id == productId);
-        return Ok(MapSummary(product, updatedRows));
+        return Ok(await MapSummaryAsync(product, updatedRows));
+    }
+
+    [HttpPatch("batches/{batchLogId:int}")]
+    public async Task<ActionResult<object>> PatchBatch(int batchLogId, [FromBody] PatchProductionBatchRequest request)
+    {
+        if (request.BatchQty <= 0)
+            return BadRequest(new { message = "Enter a quantity greater than zero." });
+
+        var log = await db.ProductProductionLogs.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == batchLogId);
+        if (log is null || !string.Equals(log.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
+            return NotFound();
+
+        var productionDate = ResolveProductionDate(request.ProductionDate ?? log.ProductionDate);
+        var expiryDate = ResolveOptionalDate(request.ExpiryDate);
+        if (string.IsNullOrEmpty(expiryDate))
+            return BadRequest(new { message = "Select an expiry date." });
+
+        if (DateOnly.TryParse(productionDate, out var parsedProduction)
+            && DateOnly.TryParse(expiryDate, out var parsedExpiry)
+            && parsedExpiry < parsedProduction)
+        {
+            return BadRequest(new { message = "Expiry date must be on or after the production date." });
+        }
+
+        var product = await db.Products.AsNoTracking().FirstAsync(p => p.Id == log.ProductId);
+        if (string.IsNullOrEmpty(expiryDate) && product.ExpiryPeriodDays > 0
+            && DateOnly.TryParse(productionDate, out var prodDate))
+        {
+            expiryDate = prodDate.AddDays(product.ExpiryPeriodDays).ToString("yyyy-MM-dd");
+        }
+
+        try
+        {
+            var result = await productionInventory.AdjustProducedBatchAsync(
+                batchLogId,
+                request.BatchQty,
+                productionDate,
+                expiryDate,
+                request.OverrideStock);
+
+            if (!result.Success)
+            {
+                return Conflict(new
+                {
+                    message = "Insufficient component stock to increase this batch.",
+                    shortages = result.Shortages.Select(s => new
+                    {
+                        s.LocationExternalId,
+                        s.ComponentId,
+                        s.ComponentName,
+                        requiredQty = s.RequiredQty,
+                        onHandQty = s.OnHandQty,
+                        s.Uom,
+                        isSufficient = false,
+                    }),
+                    components = result.Components.Select(c => new
+                    {
+                        c.LocationExternalId,
+                        c.ComponentId,
+                        c.ComponentName,
+                        requiredQty = c.RequiredQty,
+                        onHandQty = c.OnHandQty,
+                        c.Uom,
+                        isSufficient = c.IsSufficient,
+                    }),
+                });
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        var locationIds = NormalizeLocationIds(
+            PurchaseOrderWorkflow.DeserializeLocationIds(log.LocationIdsJson));
+        var updatedRows = await db.ProductB2bLocationStocks
+            .AsNoTracking()
+            .Where(s => s.ProductId == log.ProductId && locationIds.Contains(s.LocationExternalId))
+            .ToListAsync();
+
+        product = await db.Products.AsNoTracking().FirstAsync(p => p.Id == log.ProductId);
+        return Ok(await MapSummaryAsync(product, updatedRows));
     }
 
     [HttpPost("{productId:int}/record-sale")]
@@ -215,26 +389,95 @@ public class ProductManagementController(
     }
 
     [HttpPost("{productId:int}/produced")]
-    public async Task<ActionResult<object>> Produced(int productId, [FromBody] ProductManagementActionRequest request)
-    {
-        var product = await db.Products.FirstOrDefaultAsync(p => p.Id == productId);
-        if (product is null)
-            return NotFound();
-
-        var locationIds = NormalizeLocationIds(request.LocationExternalIds);
-        if (locationIds.Count == 0)
-            return BadRequest(new { message = "Select at least one location." });
-
-        var stockRows = await EnsureStockRowsAsync(productId, locationIds);
-        var batchQty = stockRows.Sum(r => r.ToProduceQty);
-        if (batchQty <= 0)
-            batchQty = 1;
-
-        return await Produce(productId, new ProduceBatchRequest
+    public Task<ActionResult<object>> Produced(int productId, [FromBody] ProductManagementActionRequest request) =>
+        Produce(productId, new ProduceBatchRequest
         {
-            LocationExternalIds = locationIds,
-            BatchQty = batchQty,
+            LocationExternalIds = request.LocationExternalIds,
+            BatchQty = request.BatchQty,
+            ProductionDate = request.ProductionDate,
+            ExpiryDate = request.ExpiryDate,
+            OverrideStock = request.OverrideStock,
         });
+
+    static string ResolveProductionDate(string? productionDate)
+    {
+        if (!string.IsNullOrWhiteSpace(productionDate)
+            && DateOnly.TryParse(productionDate.Trim(), out _))
+        {
+            return productionDate.Trim();
+        }
+
+        return DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+    }
+
+    static string? ResolveOptionalDate(string? dateValue)
+    {
+        if (string.IsNullOrWhiteSpace(dateValue))
+            return null;
+
+        return DateOnly.TryParse(dateValue.Trim(), out _)
+            ? dateValue.Trim()
+            : null;
+    }
+
+    async Task AddProductionLogAsync(
+        int productId,
+        string entryType,
+        decimal quantity,
+        string productionDate,
+        IReadOnlyList<string> locationIds,
+        int? companyId,
+        string? expiryDate = null)
+    {
+        var batchNumber = string.Empty;
+        if (string.Equals(entryType, "produced", StringComparison.OrdinalIgnoreCase))
+        {
+            var product = await db.Products.AsNoTracking().FirstAsync(p => p.Id == productId);
+            batchNumber = await BatchNumberGenerator.GenerateAsync(db, productId, product.ProductId);
+        }
+
+        db.ProductProductionLogs.Add(new ProductProductionLog
+        {
+            ProductId = productId,
+            EntryType = entryType,
+            Quantity = quantity,
+            ProductionDate = productionDate,
+            ExpiryDate = expiryDate ?? string.Empty,
+            BatchNumber = batchNumber,
+            LocationIdsJson = JsonSerializer.Serialize(locationIds),
+            CompanyId = companyId,
+            CreatedAt = DateTime.UtcNow,
+        });
+    }
+
+    async Task<object> MapSummaryAsync(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
+    {
+        return MapSummary(product, rows);
+    }
+
+    static string? ResolveEarliestExpiry(IReadOnlyList<ProductB2bLocationStock> rows)
+    {
+        DateOnly? earliest = null;
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.ExpiryDate))
+                continue;
+            if (!DateOnly.TryParse(row.ExpiryDate.Trim(), out var parsed))
+                continue;
+            earliest = earliest is null || parsed < earliest ? parsed : earliest;
+        }
+
+        return earliest?.ToString("yyyy-MM-dd");
+    }
+
+    static string MergeEarliestExpiry(string? current, string newest)
+    {
+        var candidates = new List<ProductB2bLocationStock>();
+        if (!string.IsNullOrWhiteSpace(current))
+            candidates.Add(new ProductB2bLocationStock { ExpiryDate = current.Trim() });
+        if (!string.IsNullOrWhiteSpace(newest))
+            candidates.Add(new ProductB2bLocationStock { ExpiryDate = newest.Trim() });
+        return ResolveEarliestExpiry(candidates) ?? newest.Trim();
     }
 
     static decimal GetBatchSize(Product product) =>
@@ -306,19 +549,119 @@ public class ProductManagementController(
         return existing;
     }
 
-    static object MapSummary(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
+    async Task EnsureBatchNumbersAsync(
+        IReadOnlyList<ProductProductionLog> logs,
+        IReadOnlyList<Product> products)
+    {
+        var productsById = products.ToDictionary(p => p.Id);
+        var missing = logs
+            .Where(l => string.IsNullOrWhiteSpace(l.BatchNumber))
+            .Select(l => l.Id)
+            .ToList();
+        if (missing.Count == 0)
+            return;
+
+        var tracked = await db.ProductProductionLogs
+            .Where(l => missing.Contains(l.Id))
+            .ToListAsync();
+
+        var changed = false;
+        foreach (var log in tracked)
+        {
+            if (!productsById.TryGetValue(log.ProductId, out var product))
+                continue;
+            log.BatchNumber = await BatchNumberGenerator.GenerateAsync(db, log.ProductId, product.ProductId);
+            changed = true;
+        }
+
+        if (changed)
+            await db.SaveChangesAsync();
+    }
+
+    static bool LogMatchesLocations(ProductProductionLog log, IReadOnlyList<string> locationIds)
+    {
+        if (locationIds.Count == 0)
+            return false;
+
+        List<string> logLocs;
+        try
+        {
+            logLocs = JsonSerializer.Deserialize<List<string>>(log.LocationIdsJson) ?? [];
+        }
+        catch
+        {
+            logLocs = [];
+        }
+
+        if (logLocs.Count == 0)
+            return true;
+
+        return logLocs.Any(locationIds.Contains);
+    }
+
+    sealed record ProductManagementSummaryData(
+        int ProductId,
+        string BatchUnit,
+        string PackageUnit,
+        decimal BatchSize,
+        bool IsSubProduct,
+        decimal InStock,
+        decimal SalesPerDay,
+        decimal ToProduceQty,
+        decimal ProducedQty,
+        string? ExpiryDate);
+
+    static ProductManagementSummaryData BuildSummaryData(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
     {
         var batchUnit = ResolveBatchUnit(product);
+        return new ProductManagementSummaryData(
+            product.Id,
+            batchUnit,
+            batchUnit,
+            GetBatchSize(product),
+            product.IsSubProduct,
+            rows.Sum(r => r.InStock),
+            rows.Sum(r => r.SalesPerDay),
+            rows.Sum(r => r.ToProduceQty),
+            rows.Sum(r => r.ProducedQty),
+            ResolveEarliestExpiry(rows));
+    }
+
+    static object MapBatchRow(ProductManagementSummaryData summary, ProductProductionLog? log) =>
+        new
+        {
+            productId = summary.ProductId,
+            batchUnit = summary.BatchUnit,
+            packageUnit = summary.PackageUnit,
+            batchSize = summary.BatchSize,
+            isSubProduct = summary.IsSubProduct,
+            inStock = summary.InStock,
+            salesPerDay = summary.SalesPerDay,
+            toProduceQty = summary.ToProduceQty,
+            producedQty = summary.ProducedQty,
+            isSummaryRow = log is null,
+            batchLogId = log?.Id,
+            batchNumber = string.IsNullOrWhiteSpace(log?.BatchNumber) ? null : log!.BatchNumber.Trim(),
+            productionDate = string.IsNullOrWhiteSpace(log?.ProductionDate) ? null : log!.ProductionDate.Trim(),
+            expiryDate = string.IsNullOrWhiteSpace(log?.ExpiryDate) ? null : log!.ExpiryDate.Trim(),
+            batchQty = log is null ? (decimal?)null : log.Quantity,
+        };
+
+    static object MapSummary(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
+    {
+        var summary = BuildSummaryData(product, rows);
         return new
         {
-            productId = product.Id,
-            batchUnit,
-            packageUnit = batchUnit,
-            batchSize = GetBatchSize(product),
-            isSubProduct = product.IsSubProduct,
-            inStock = rows.Sum(r => r.InStock),
-            salesPerDay = rows.Sum(r => r.SalesPerDay),
-            toProduceQty = rows.Sum(r => r.ToProduceQty),
+            productId = summary.ProductId,
+            batchUnit = summary.BatchUnit,
+            packageUnit = summary.PackageUnit,
+            batchSize = summary.BatchSize,
+            isSubProduct = summary.IsSubProduct,
+            inStock = summary.InStock,
+            salesPerDay = summary.SalesPerDay,
+            toProduceQty = summary.ToProduceQty,
+            producedQty = summary.ProducedQty,
+            expiryDate = summary.ExpiryDate,
         };
     }
 }

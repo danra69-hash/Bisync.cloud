@@ -24,6 +24,7 @@ export const revMgmtNav: RevMgmtSection[] = [
       {
         subtitle: 'Inventory',
         items: [
+          { label: 'Stock Card' },
           { label: 'Inventory' },
           { label: 'Wastage' },
           { label: 'Transfer' },

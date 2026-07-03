@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { NAV_ITEMS, type NavItem } from '../../data/revenueManagement';
-import { useCurrentUser, userInitials } from '../../context/CurrentUserContext';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
+import { userInitials } from '../../context/currentUserContext';
 
 type Props = {
   open: boolean;

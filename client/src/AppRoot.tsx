@@ -1,5 +1,5 @@
 import App from './App';
-import { useCurrentUser } from './context/CurrentUserContext';
+import { useCurrentUser } from './hooks/useCurrentUser';
 import { LandingPage } from './pages/LandingPage';
 import { VendorOrderPortalPage } from './pages/VendorOrderPortalPage';
 import { parseVendorOrderToken } from './data/vendorOrderShare';
@@ -17,10 +17,9 @@ function LoadingScreen() {
 
 export function AppRoot() {
   const vendorToken = parseVendorOrderToken(window.location.pathname);
-  if (vendorToken) return <VendorOrderPortalPage token={vendorToken} />;
-
   const { isAuthenticated, loading } = useCurrentUser();
 
+  if (vendorToken) return <VendorOrderPortalPage token={vendorToken} />;
   if (loading) return <LoadingScreen />;
   if (!isAuthenticated) return <LandingPage />;
   return <App />;

@@ -24,13 +24,16 @@ public class ComponentStockService(BisyncDbContext db)
             .Where(p => NormalizeUom(p.Uom) == normalizedUom)
             .Sum(p => p.Quantity);
 
-        var movementQty = await db.InventoryMovements
+        var movementRows = await db.InventoryMovements
             .AsNoTracking()
             .Where(m =>
                 m.ComponentId == componentId
-                && m.LocationExternalId == locationExternalId
-                && NormalizeUom(m.Uom) == normalizedUom)
-            .SumAsync(m => m.QtyDelta, cancellationToken);
+                && m.LocationExternalId == locationExternalId)
+            .ToListAsync(cancellationToken);
+
+        var movementQty = movementRows
+            .Where(m => NormalizeUom(m.Uom) == normalizedUom)
+            .Sum(m => m.QtyDelta);
 
         return purchaseQty + movementQty;
     }
@@ -54,6 +57,34 @@ public class ComponentStockService(BisyncDbContext db)
             ComponentName = componentName,
             LocationExternalId = locationExternalId,
             QtyDelta = -quantity,
+            Uom = uom.Trim(),
+            Reason = reason,
+            ReferenceType = referenceType,
+            ReferenceId = referenceId,
+            CompanyId = companyId,
+            CreatedAt = DateTime.UtcNow,
+        });
+    }
+
+    public void RecordAddition(
+        string componentId,
+        string componentName,
+        string locationExternalId,
+        decimal quantity,
+        string uom,
+        string reason,
+        string referenceType,
+        int referenceId,
+        int? companyId)
+    {
+        if (quantity <= 0) return;
+
+        db.InventoryMovements.Add(new InventoryMovement
+        {
+            ComponentId = componentId,
+            ComponentName = componentName,
+            LocationExternalId = locationExternalId,
+            QtyDelta = quantity,
             Uom = uom.Trim(),
             Reason = reason,
             ReferenceType = referenceType,

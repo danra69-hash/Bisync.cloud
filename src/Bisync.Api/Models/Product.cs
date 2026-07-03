@@ -19,6 +19,7 @@ public class Product
     public decimal? PreviousRrp { get; set; }
     public decimal YieldQuantity { get; set; }
     public string YieldUom { get; set; } = string.Empty;
+    public int ExpiryPeriodDays { get; set; }
     public bool PosEnabled { get; set; }
     public bool Active { get; set; } = true;
     public int? CompanyId { get; set; }

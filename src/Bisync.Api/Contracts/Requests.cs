@@ -754,6 +754,8 @@ public class UpsertProductRequest
     public decimal? YieldQuantity { get; set; }
     [MaxLength(20)]
     public string? YieldUom { get; set; }
+    [Range(0, 9999)]
+    public int? ExpiryPeriodDays { get; set; }
     public bool? PosEnabled { get; set; }
     public bool? Active { get; set; }
     public int? CompanyId { get; set; }
@@ -786,6 +788,11 @@ public class PatchProductManagementRequest
 public class ProductManagementActionRequest
 {
     public List<string> LocationExternalIds { get; set; } = [];
+    [Range(0.0001, 999999999)]
+    public decimal BatchQty { get; set; }
+    public string? ProductionDate { get; set; }
+    public string? ExpiryDate { get; set; }
+    public bool OverrideStock { get; set; }
 }
 
 public class ProduceBatchRequest
@@ -793,6 +800,9 @@ public class ProduceBatchRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    public string? ProductionDate { get; set; }
+    public string? ExpiryDate { get; set; }
+    public bool OverrideStock { get; set; }
 }
 
 public class RecordProductSaleRequest
@@ -800,6 +810,15 @@ public class RecordProductSaleRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal QuantitySold { get; set; }
+}
+
+public class PatchProductionBatchRequest
+{
+    [Range(0.0001, 999999999)]
+    public decimal BatchQty { get; set; }
+    public string? ProductionDate { get; set; }
+    public string? ExpiryDate { get; set; }
+    public bool OverrideStock { get; set; }
 }
 
 public class PurchaseOrderWorkflowRequest

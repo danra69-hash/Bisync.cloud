@@ -10,7 +10,7 @@ import {
 } from '../../data/createOrder';
 import { buildPurchaseOrderPdfData, findVendorForGroup } from '../../data/buildPurchaseOrderPdfData';
 import { resolvePurchaseDocumentLabels, resolvePurchaseOrderSignatories } from '../../data/purchaseOrderSignatories';
-import { useCurrentUser } from '../../context/CurrentUserContext';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import {
   downloadCombinedPurchaseOrderPdfs,
   downloadPurchaseOrderPdf,

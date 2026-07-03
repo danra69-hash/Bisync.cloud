@@ -475,6 +475,7 @@ export interface Product {
   previousRrp?: number | null;
   yieldQuantity: number;
   yieldUom: string;
+  expiryPeriodDays: number;
   posEnabled: boolean;
   active: boolean;
   companyId?: number | null;
@@ -503,6 +504,7 @@ export interface UpsertProductPayload {
   rrp?: number;
   yieldQuantity?: number;
   yieldUom?: string;
+  expiryPeriodDays?: number;
   posEnabled?: boolean;
   active?: boolean;
   companyId?: number | null;
@@ -528,11 +530,29 @@ export interface ProductManagementSummary {
   inStock: number;
   salesPerDay: number;
   toProduceQty: number;
+  producedQty: number;
+  expiryDate?: string | null;
+  batchLogId?: number | null;
+  isSummaryRow?: boolean;
+  isPrimaryRow?: boolean;
+  batchNumber?: string | null;
+  productionDate?: string | null;
+  batchQty?: number | null;
 }
 
 export interface ProduceBatchPayload {
   locationExternalIds: string[];
   batchQty: number;
+  productionDate?: string;
+  expiryDate?: string;
+  overrideStock?: boolean;
+}
+
+export interface PatchProductionBatchPayload {
+  batchQty: number;
+  productionDate?: string;
+  expiryDate?: string;
+  overrideStock?: boolean;
 }
 
 export interface ProduceBatchShortage {
@@ -542,6 +562,19 @@ export interface ProduceBatchShortage {
   requiredQty: number;
   onHandQty: number;
   uom: string;
+  isSufficient?: boolean;
+}
+
+export class ApiError extends Error {
+  shortages?: ProduceBatchShortage[];
+  components?: ProduceBatchShortage[];
+
+  constructor(message: string, shortages?: ProduceBatchShortage[], components?: ProduceBatchShortage[]) {
+    super(message);
+    this.name = 'ApiError';
+    this.shortages = shortages;
+    this.components = components;
+  }
 }
 
 export interface ProduceBatchResult {
@@ -617,11 +650,27 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
   if (!res.ok) {
     const text = await res.text();
     let message = `API error ${res.status}: ${path}`;
+    let shortages: ProduceBatchShortage[] | undefined;
+    let components: ProduceBatchShortage[] | undefined;
     try {
-      const parsed = JSON.parse(text) as { message?: string; title?: string };
+      const parsed = JSON.parse(text) as {
+        message?: string;
+        title?: string;
+        shortages?: ProduceBatchShortage[];
+        components?: ProduceBatchShortage[];
+      };
       message = parsed.message ?? parsed.title ?? message;
+      if (Array.isArray(parsed.components) && parsed.components.length > 0) {
+        components = parsed.components;
+      }
+      if (Array.isArray(parsed.shortages) && parsed.shortages.length > 0) {
+        shortages = parsed.shortages;
+      }
     } catch {
       if (text) message = text;
+    }
+    if (components?.length || shortages?.length) {
+      throw new ApiError(message, shortages, components);
     }
     throw new Error(message);
   }
@@ -714,16 +763,22 @@ export const api = {
   },
   patchProductManagement: (productId: number, payload: PatchProductManagementPayload) =>
     fetchJsonWithMethod<ProductManagementSummary>(`/api/product-management/${productId}`, 'PATCH', payload),
-  markProductToProduce: (productId: number, locationExternalIds: string[]) =>
+  markProductToProduce: (productId: number, payload: { locationExternalIds: string[]; batchQty: number; productionDate?: string }) =>
     fetchJsonWithMethod<ProductManagementSummary>(
       `/api/product-management/${productId}/to-produce`,
       'POST',
-      { locationExternalIds },
+      payload,
     ),
   produceProductBatches: (productId: number, payload: ProduceBatchPayload) =>
-    fetchJsonWithMethod<ProduceBatchResult>(
+    fetchJsonWithMethod<ProductManagementSummary>(
       `/api/product-management/${productId}/produce`,
       'POST',
+      payload,
+    ),
+  patchProductionBatch: (batchLogId: number, payload: PatchProductionBatchPayload) =>
+    fetchJsonWithMethod<ProductManagementSummary>(
+      `/api/product-management/batches/${batchLogId}`,
+      'PATCH',
       payload,
     ),
   recordProductSale: (productId: number, payload: { locationExternalIds: string[]; quantitySold: number }) =>

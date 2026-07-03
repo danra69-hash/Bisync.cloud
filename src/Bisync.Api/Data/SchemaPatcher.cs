@@ -203,6 +203,7 @@ public static class SchemaPatcher
         await EnsureColumnAsync(db, "Products", "PreviousPackagingCost", "REAL NULL");
         await EnsureColumnAsync(db, "Products", "PreviousRrp", "REAL NULL");
         await EnsureColumnAsync(db, "Products", "B2bPackageUnit", "TEXT NOT NULL DEFAULT 'pcs'");
+        await EnsureColumnAsync(db, "Products", "ExpiryPeriodDays", "INTEGER NOT NULL DEFAULT 0");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "ProductB2bLocationStocks" (
@@ -214,6 +215,25 @@ public static class SchemaPatcher
                 "ToProduceQty" REAL NOT NULL DEFAULT 0,
                 "UpdatedAt" TEXT NOT NULL,
                 CONSTRAINT "FK_ProductB2bLocationStocks_Products_ProductId"
+                    FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
+            );
+            """);
+        await EnsureColumnAsync(db, "ProductB2bLocationStocks", "ProducedQty", "REAL NOT NULL DEFAULT 0");
+        await EnsureColumnAsync(db, "ProductB2bLocationStocks", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "ProductProductionLogs", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "ProductProductionLogs", "BatchNumber", "TEXT NOT NULL DEFAULT ''");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ProductProductionLogs" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_ProductProductionLogs" PRIMARY KEY AUTOINCREMENT,
+                "ProductId" INTEGER NOT NULL,
+                "EntryType" TEXT NOT NULL DEFAULT '',
+                "Quantity" REAL NOT NULL DEFAULT 0,
+                "ProductionDate" TEXT NOT NULL DEFAULT '',
+                "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "CompanyId" INTEGER,
+                "CreatedAt" TEXT NOT NULL,
+                CONSTRAINT "FK_ProductProductionLogs_Products_ProductId"
                     FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
             );
             """);
