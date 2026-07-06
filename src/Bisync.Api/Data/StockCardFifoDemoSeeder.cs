@@ -33,6 +33,8 @@ public static class StockCardFifoDemoSeeder
             var movementCount = await db.InventoryMovements.CountAsync(m => m.ComponentId == existing.ComponentId);
             if (purchaseCount >= 3 && movementCount >= 6)
             {
+                await EnsureJulyFifoTestCasesAsync(db, existing, companyId);
+                await db.SaveChangesAsync();
                 return new
                 {
                     skipped = true,
@@ -245,6 +247,8 @@ public static class StockCardFifoDemoSeeder
             CreatedAt = now.AddDays(-1).AddHours(19),
         });
 
+        await EnsureJulyFifoTestCasesAsync(db, ingredient, companyId);
+
         await db.SaveChangesAsync();
 
         return new
@@ -254,5 +258,93 @@ public static class StockCardFifoDemoSeeder
             componentId = ingredient.ComponentId,
             purchaseOrders = poNumbers,
         };
+    }
+
+    /// <summary>
+    /// July 2026 FIFO/COGS test cases: large POS sale, purchase at RM 50, then mixed-tranche outbound.
+    /// </summary>
+    static async Task EnsureJulyFifoTestCasesAsync(BisyncDbContext db, Ingredient ingredient, int companyId)
+    {
+        const string poNumber = "PO-2026-FIFO-042";
+        var po = await db.PurchaseOrders.FirstOrDefaultAsync(p => p.PoNumber == poNumber);
+        if (po is null)
+        {
+            po = new PurchaseOrder
+            {
+                PoNumber = poNumber,
+                VendorName = "Premium Meats Co.",
+                OrderDate = new DateOnly(2026, 7, 1),
+                DeliveryDate = new DateOnly(2026, 7, 3),
+                DocumentType = "PO",
+                Status = "Reconciled",
+                CompanyId = companyId,
+                LocationIdsJson = JsonSerializer.Serialize(new[] { "downtown" }),
+                InitiatedBy = "Demo Seeder",
+                ApprovedBy = "Demo Seeder",
+                ApprovedAt = new DateTime(2026, 7, 2, 9, 0, 0, DateTimeKind.Utc),
+                ReceivedAt = new DateTime(2026, 7, 3, 8, 0, 0, DateTimeKind.Utc),
+                ReconciledAt = new DateTime(2026, 7, 3, 8, 0, 0, DateTimeKind.Utc),
+            };
+            db.PurchaseOrders.Add(po);
+            await db.SaveChangesAsync();
+        }
+
+        var hasJulyPurchase = await db.InventoryPurchases.AnyAsync(p =>
+            p.ComponentId == ingredient.ComponentId && p.PurchaseOrderId == po.Id);
+        if (!hasJulyPurchase)
+        {
+            db.InventoryPurchases.Add(new InventoryPurchase
+            {
+                ComponentId = ingredient.ComponentId,
+                ComponentName = ingredient.Name,
+                Quantity = 40m,
+                Uom = "kg",
+                UnitPrice = 50m,
+                DateOrdered = po.OrderDate,
+                DateCreatedInStock = new DateTime(2026, 7, 3, 10, 0, 0, DateTimeKind.Utc),
+                PurchaseOrderId = po.Id,
+                CompanyId = companyId,
+                LocationIdsJson = JsonSerializer.Serialize(new[] { "downtown" }),
+            });
+        }
+
+        async Task AddMovementIfMissing(int referenceId, InventoryMovement movement)
+        {
+            var exists = await db.InventoryMovements.AnyAsync(m =>
+                m.ComponentId == movement.ComponentId
+                && m.ReferenceType == movement.ReferenceType
+                && m.ReferenceId == referenceId);
+            if (!exists)
+            {
+                movement.ReferenceId = referenceId;
+                db.InventoryMovements.Add(movement);
+            }
+        }
+
+        await AddMovementIfMissing(9010, new InventoryMovement
+        {
+            ComponentId = ingredient.ComponentId,
+            ComponentName = ingredient.Name,
+            LocationExternalId = "downtown",
+            QtyDelta = -30,
+            Uom = "kg",
+            Reason = "POS sales depletion — FIFO test (30 kg)",
+            ReferenceType = "pos_sale",
+            CompanyId = companyId,
+            CreatedAt = new DateTime(2026, 7, 2, 8, 0, 0, DateTimeKind.Utc),
+        });
+
+        await AddMovementIfMissing(9012, new InventoryMovement
+        {
+            ComponentId = ingredient.ComponentId,
+            ComponentName = ingredient.Name,
+            LocationExternalId = "downtown",
+            QtyDelta = -25,
+            Uom = "kg",
+            Reason = "POS sales depletion — FIFO test (25 kg)",
+            ReferenceType = "pos_sale",
+            CompanyId = companyId,
+            CreatedAt = new DateTime(2026, 7, 4, 9, 0, 0, DateTimeKind.Utc),
+        });
     }
 }
