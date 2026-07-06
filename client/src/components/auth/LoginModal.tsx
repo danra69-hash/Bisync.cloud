@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
@@ -9,6 +9,7 @@ type Props = {
 
 export function LoginModal({ onClose }: Props) {
   const { login } = useCurrentUser();
+  const emailInputRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,6 +23,13 @@ export function LoginModal({ onClose }: Props) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose, submitting]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      emailInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -76,6 +84,7 @@ export function LoginModal({ onClose }: Props) {
                 Username (email)
               </label>
               <input
+                ref={emailInputRef}
                 id="login-email"
                 type="email"
                 autoComplete="username"

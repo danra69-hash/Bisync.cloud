@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { X } from 'lucide-react';
 
-import { api, type StockCardDetail, type StockCardLedgerEntry } from '../../api';
+import { api, type StockCardDetail, type StockCardLedgerEntry, type StockCardOnHandLayer } from '../../api';
 
 import { formatRm } from '../../data/createOrder';
 import { currentStockCardMonth, formatStockCardMonthLabel } from './stockCardPeriod';
@@ -344,18 +344,6 @@ export function StockCardDetailPanel({
 
           ) : null}
 
-          {detail && detail.averageCogs > 0 ? (
-
-            <div className="flex flex-col gap-1">
-
-              <span className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Current avg COGS</span>
-
-              <span className="text-sm font-semibold tabular-nums">{formatRm(detail.averageCogs)} / {detail.uom}</span>
-
-            </div>
-
-          ) : null}
-
         </div>
 
 
@@ -383,12 +371,16 @@ export function StockCardDetailPanel({
               <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty)} uom={detail.uom} />
 
               <SummaryCell
-                label="Avg price"
+                label="Avg outbound price"
                 value={detail.averageCogs > 0 ? formatRm(detail.averageCogs) : '—'}
                 uom={`per ${detail.uom}`}
               />
 
-              <SummaryCell label="On Hand" value={fmtQty(detail.onHandQty)} uom={detail.uom} highlight />
+              <OnHandSummaryCell
+                quantity={detail.onHandQty}
+                uom={detail.uom}
+                layers={detail.onHandLayers ?? []}
+              />
 
             </div>
 
@@ -414,13 +406,13 @@ export function StockCardDetailPanel({
 
                     <th className="px-3 py-2 font-medium text-right">UOM price</th>
 
+                    <th className="px-3 py-2 font-medium text-right">Subtotal</th>
+
                     <th className="px-3 py-2 font-medium">Reference / reason</th>
 
                     <th className="px-3 py-2 font-medium">FIFO detail</th>
 
                     <th className="px-3 py-2 font-medium text-right">Balance</th>
-
-                    <th className="px-3 py-2 font-medium text-right">Avg COGS</th>
 
                   </tr>
 
@@ -431,7 +423,7 @@ export function StockCardDetailPanel({
                   {detail.entries.map((entry, index) => {
                     const { inbound, outbound } = entryInboundOutbound(entry);
                     return (
-                    <tr key={`${entry.id}-${index}`} className="border-t border-border/60 hover:bg-muted/30 align-top">
+                    <tr key={`${entry.id}-${entry.splitIndex ?? 0}-${index}`} className="border-t border-border/60 hover:bg-muted/30 align-top">
 
                       <td className="px-5 py-2.5 whitespace-nowrap">{fmtDateTime(entry.occurredAt)}</td>
 
@@ -446,6 +438,12 @@ export function StockCardDetailPanel({
                       <td className="px-3 py-2.5 text-right tabular-nums">
 
                         {entry.unitPrice > 0 ? formatRm(entry.unitPrice) : '—'}
+
+                      </td>
+
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+
+                        {entry.subtotal > 0 ? formatRm(entry.subtotal) : '—'}
 
                       </td>
 
@@ -473,12 +471,6 @@ export function StockCardDetailPanel({
 
                       </td>
 
-                      <td className="px-3 py-2.5 text-right tabular-nums text-xs">
-
-                        {entry.averageCogsAfter > 0 ? formatRm(entry.averageCogsAfter) : '—'}
-
-                      </td>
-
                     </tr>
                     );
                   })}
@@ -503,6 +495,40 @@ export function StockCardDetailPanel({
 }
 
 
+
+function OnHandSummaryCell({
+  quantity,
+  uom,
+  layers,
+}: {
+  quantity: number;
+  uom: string;
+  layers: StockCardOnHandLayer[];
+}) {
+  const activeLayers = layers.filter(l => l.quantity > 0);
+
+  return (
+    <div className="rounded-lg border border-border px-3 py-2 bg-background">
+      <p className="text-xs uppercase tracking-wider text-muted-foreground">On Hand</p>
+      <p className="text-base font-semibold tabular-nums text-primary">
+        {fmtQty(quantity)}
+      </p>
+      <p className="text-xs text-muted-foreground truncate">{uom}</p>
+      {activeLayers.length > 0 ? (
+        <ul className="mt-2 space-y-0.5 border-t border-border/60 pt-2">
+          {activeLayers.map(layer => (
+            <li
+              key={`${layer.unitPrice}-${layer.quantity}`}
+              className="text-[11px] tabular-nums text-muted-foreground leading-snug"
+            >
+              {fmtQty(layer.quantity)} @ {formatRm(layer.unitPrice)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 function SummaryCell({
 

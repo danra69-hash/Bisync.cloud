@@ -173,7 +173,8 @@ public class StockCardService(BisyncDbContext db)
                 ingredient.InventoryUom,
                 entries,
                 stockPeriod,
-                fifoResult.AverageCogs);
+                fifoResult.AverageCogs,
+                fifoResult.RemainingLayers);
         }
 
         if (!int.TryParse(itemKey, out var productId))
@@ -228,12 +229,14 @@ public class StockCardService(BisyncDbContext db)
         string inventoryUom,
         List<StockCardLedgerEntry> entries,
         StockCardPeriod period,
-        decimal currentAverageCogs)
+        decimal currentAverageCogs,
+        IReadOnlyList<FifoLayer>? remainingLayers = null)
     {
         var eligibleOrdered = entries
             .Where(e => e.OccurredAt >= period.ArchiveCutoff && e.OccurredAt <= period.PeriodEnd)
             .OrderBy(e => e.OccurredAt)
             .ThenBy(e => e.Id)
+            .ThenBy(e => e.SplitIndex)
             .ToList();
 
         decimal cumulative = 0;
@@ -249,6 +252,7 @@ public class StockCardService(BisyncDbContext db)
             .Where(e => e.OccurredAt >= period.MonthStart && e.OccurredAt <= period.PeriodEnd)
             .OrderBy(e => e.OccurredAt)
             .ThenBy(e => e.Id)
+            .ThenBy(e => e.SplitIndex)
             .ToList();
 
         var balanceForward = beforePeriod.Count > 0
@@ -268,7 +272,10 @@ public class StockCardService(BisyncDbContext db)
             Quantity = Math.Abs(balanceForward),
             SignedQty = balanceForward,
             Uom = uom,
-            UnitPrice = balanceForwardAvgCogs,
+            UnitPrice = StockCardFifoEngine.RoundUnitPrice(balanceForwardAvgCogs),
+            Subtotal = balanceForward > 0
+                ? RoundLineSubtotal(balanceForward, balanceForwardAvgCogs)
+                : 0,
             Reason = beforePeriod.Count > 0
                 ? "B/F from previous period end inventory (FIFO)"
                 : "B/F — no eligible history in the last 2 years",
@@ -289,11 +296,9 @@ public class StockCardService(BisyncDbContext db)
             .Where(e => e.EntryType is "adjustment_in" or "adjustment_out" or "adjustment")
             .Sum(e => e.SignedQty);
 
-        var averageCogs = inPeriod.Count > 0
-            ? inPeriod[^1].AverageCogsAfter
-            : beforePeriod.Count > 0
-                ? beforePeriod[^1].AverageCogsAfter
-                : currentAverageCogs;
+        var averageCogs = ComputeOutboundAveragePrice(ledger, period.MonthStart, period.PeriodEnd);
+        if (averageCogs <= 0 && outbound <= 0)
+            averageCogs = balanceForwardAvgCogs > 0 ? balanceForwardAvgCogs : currentAverageCogs;
 
         return new StockCardDetail
         {
@@ -310,6 +315,7 @@ public class StockCardService(BisyncDbContext db)
             AdjustmentQty = adjustment,
             OnHandQty = running,
             AverageCogs = averageCogs,
+            OnHandLayers = MapOnHandLayers(remainingLayers),
             FifoPolicy = "FIFO",
             PeriodMonth = period.MonthKey,
             PeriodStart = period.MonthStart,
@@ -327,23 +333,74 @@ public class StockCardService(BisyncDbContext db)
     static bool IsOutboundSummaryType(string entryType) =>
         entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "adjustment_out" or "outbound";
 
-    static StockCardLedgerEntry MapFifoToLedgerEntry(FifoEnrichedEvent enriched) =>
-        new()
+    static decimal ComputeOutboundAveragePrice(
+        IEnumerable<StockCardLedgerEntry> entries,
+        DateTime periodStart,
+        DateTime periodEnd)
+    {
+        var outbound = entries
+            .Where(e => e.OccurredAt >= periodStart
+                && e.OccurredAt <= periodEnd
+                && IsOutboundSummaryType(e.EntryType))
+            .ToList();
+
+        if (outbound.Count == 0)
+            return 0;
+
+        // Spreadsheet logic: sum of line subtotals (qty × UOM price) ÷ total outbound qty
+        var totalQty = outbound.Sum(e => e.Quantity);
+        if (totalQty <= 0)
+            return 0;
+
+        var totalSubtotal = outbound.Sum(e => RoundLineSubtotal(e.Quantity, e.UnitPrice));
+        return StockCardFifoEngine.RoundUnitPrice(totalSubtotal / totalQty);
+    }
+
+    static decimal RoundLineSubtotal(decimal quantity, decimal unitPrice) =>
+        StockCardFifoEngine.RoundUnitPrice(quantity * StockCardFifoEngine.RoundUnitPrice(unitPrice));
+
+    static IReadOnlyList<StockCardOnHandLayer> MapOnHandLayers(IReadOnlyList<FifoLayer>? layers)
+    {
+        if (layers is null || layers.Count == 0)
+            return [];
+
+        return layers
+            .Where(l => l.Quantity > 0)
+            .GroupBy(l => StockCardFifoEngine.RoundUnitPrice(l.UnitPrice))
+            .Select(g => new StockCardOnHandLayer
+            {
+                Quantity = g.Sum(l => l.Quantity),
+                UnitPrice = g.Key,
+                SortOrder = g.Min(l => l.ReceivedAt),
+            })
+            .OrderBy(l => l.SortOrder)
+            .ThenBy(l => l.UnitPrice)
+            .ToList();
+    }
+
+    static StockCardLedgerEntry MapFifoToLedgerEntry(FifoEnrichedEvent enriched)
+    {
+        var unitPrice = StockCardFifoEngine.RoundUnitPrice(enriched.UnitPrice);
+        var quantity = enriched.Event.Quantity;
+        return new StockCardLedgerEntry
         {
             Id = enriched.Event.Id,
             OccurredAt = enriched.Event.OccurredAt,
             EntryType = enriched.Event.EntryType,
-            Quantity = enriched.Event.Quantity,
+            Quantity = quantity,
             SignedQty = enriched.Event.SignedQty,
             Uom = enriched.Event.Uom,
-            UnitPrice = enriched.UnitPrice,
+            UnitPrice = unitPrice,
+            Subtotal = quantity > 0 && unitPrice > 0 ? RoundLineSubtotal(quantity, unitPrice) : 0,
             Reason = enriched.Event.Reason,
             ReferenceNumber = enriched.Event.ReferenceNumber,
             FifoDetail = enriched.FifoDetail,
             RunningBalance = enriched.RunningBalance,
             AverageCogsAfter = enriched.AverageCogsAfter,
             FifoPolicy = "FIFO",
+            SplitIndex = enriched.SplitIndex,
         };
+    }
 
     async Task<StockMovementSummary> SummarizeComponentAsync(
         Ingredient ingredient,
@@ -398,6 +455,13 @@ public class StockCardService(BisyncDbContext db)
         var outbound = monthMovements.Where(m => m.QtyDelta < 0 && !IsAdjustmentMovement(m)).Sum(m => -m.QtyDelta);
         var adjustment = monthMovements.Where(m => IsAdjustmentMovement(m)).Sum(m => m.QtyDelta);
         var onHand = fifoResult.OnHandQty;
+        var monthEntries = fifoResult.Events
+            .Select(MapFifoToLedgerEntry)
+            .Where(e => e.OccurredAt >= period.MonthStart && e.OccurredAt <= period.PeriodEnd)
+            .ToList();
+        var averageCogs = ComputeOutboundAveragePrice(monthEntries, period.MonthStart, period.PeriodEnd);
+        if (averageCogs <= 0)
+            averageCogs = fifoResult.AverageCogs;
 
         return new StockMovementSummary
         {
@@ -1012,6 +1076,7 @@ public sealed class StockCardDetail
     public decimal AdjustmentQty { get; init; }
     public decimal OnHandQty { get; init; }
     public decimal AverageCogs { get; init; }
+    public IReadOnlyList<StockCardOnHandLayer> OnHandLayers { get; init; } = [];
     public string FifoPolicy { get; init; } = "FIFO";
     public string PeriodMonth { get; init; } = string.Empty;
     public DateTime PeriodStart { get; init; }
@@ -1038,10 +1103,19 @@ public sealed record StockCardLedgerEntry
     public decimal SignedQty { get; init; }
     public string Uom { get; init; } = string.Empty;
     public decimal UnitPrice { get; init; }
+    public decimal Subtotal { get; init; }
     public string Reason { get; init; } = string.Empty;
     public string ReferenceNumber { get; init; } = string.Empty;
     public string FifoDetail { get; init; } = string.Empty;
     public decimal RunningBalance { get; init; }
     public decimal AverageCogsAfter { get; init; }
     public string FifoPolicy { get; init; } = "FIFO";
+    public int SplitIndex { get; init; }
+}
+
+public sealed record StockCardOnHandLayer
+{
+    public decimal Quantity { get; init; }
+    public decimal UnitPrice { get; init; }
+    public DateTime SortOrder { get; init; }
 }

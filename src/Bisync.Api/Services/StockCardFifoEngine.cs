@@ -5,6 +5,9 @@ namespace Bisync.Api.Services;
 /// </summary>
 public static class StockCardFifoEngine
 {
+    public static decimal RoundUnitPrice(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
     public static decimal ComputeAverageCogs(IReadOnlyList<FifoLayer> layers)
     {
         if (layers.Count == 0)
@@ -15,7 +18,7 @@ public static class StockCardFifoEngine
             return 0;
 
         var totalValue = layers.Sum(l => l.Quantity * l.UnitPrice);
-        return Math.Round(totalValue / totalQty, 4);
+        return RoundUnitPrice(totalValue / totalQty);
     }
 
     public static FifoConsumeResult Consume(ref List<FifoLayer> layers, decimal quantity)
@@ -57,6 +60,9 @@ public static class StockCardFifoEngine
             TotalCost = totalCost,
             UnitPrice = unitPrice,
             Detail = detailParts.Count > 0 ? $"FIFO: {string.Join(" + ", detailParts)}" : string.Empty,
+            Parts = parts
+                .Select(p => new FifoConsumePart { Quantity = p.Qty, UnitPrice = p.UnitPrice })
+                .ToList(),
         };
     }
 
@@ -73,13 +79,13 @@ public static class StockCardFifoEngine
             return 0;
 
         if (parts.Count == 1)
-            return Math.Round(parts[0].UnitPrice, 4);
+            return RoundUnitPrice(parts[0].UnitPrice);
 
         var distinctPrices = parts.Select(p => p.UnitPrice).Distinct().ToList();
         if (distinctPrices.Count == 1)
-            return Math.Round(distinctPrices[0], 4);
+            return RoundUnitPrice(distinctPrices[0]);
 
-        return Math.Round(totalCost / consumedQty, 4);
+        return RoundUnitPrice(totalCost / consumedQty);
     }
 
     public static void AddLayer(
@@ -98,7 +104,7 @@ public static class StockCardFifoEngine
             ReceivedAt = receivedAt,
             SourceId = sourceId,
             Quantity = quantity,
-            UnitPrice = unitPrice,
+            UnitPrice = RoundUnitPrice(unitPrice),
             SourceLabel = sourceLabel,
         });
     }
@@ -114,6 +120,7 @@ public static class StockCardFifoEngine
         var enriched = new List<FifoEnrichedEvent>(events.Count);
         decimal runningQty = 0;
         DateTime? currentMonth = null;
+        decimal? lastAdjustmentOutUnitPrice = null;
 
         foreach (var evt in events.OrderBy(e => e.OccurredAt).ThenBy(e => e.Id))
         {
@@ -134,35 +141,50 @@ public static class StockCardFifoEngine
             if (IsInboundLayer(entryType))
             {
                 var layerPrice = entryType is "adjustment_in"
-                    ? ComputeAverageCogs(layers)
+                    ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice)
                     : unitPrice;
                 AddLayer(layers, evt.OccurredAt, evt.Id, evt.Quantity, layerPrice, evt.SourceLabel);
                 unitPrice = layerPrice;
                 if (entryType == "adjustment_in")
-                    fifoDetail = $"Adjustment in at avg COGS RM {layerPrice:F2}";
+                {
+                    fifoDetail = lastAdjustmentOutUnitPrice is decimal matchedPrice && matchedPrice > 0
+                        ? $"Adjustment in at RM {layerPrice:F2} (matches count short)"
+                        : $"Adjustment in at FIFO layer RM {layerPrice:F2}";
+                    lastAdjustmentOutUnitPrice = null;
+                }
+
+                runningQty += evt.SignedQty;
+                enriched.Add(new FifoEnrichedEvent
+                {
+                    Event = evt,
+                    UnitPrice = unitPrice,
+                    FifoDetail = fifoDetail,
+                    RunningBalance = runningQty,
+                    AverageCogsAfter = ComputeAverageCogs(layers),
+                });
             }
             else if (IsOutboundConsume(entryType))
             {
-                var consumed = Consume(ref layers, evt.Quantity);
-                unitPrice = consumed.UnitPrice;
-                fifoDetail = consumed.Detail;
+                AppendOutboundLedgerRows(
+                    enriched,
+                    ref runningQty,
+                    layers,
+                    evt,
+                    evt.Quantity,
+                    fifoDetailPrefix: string.Empty);
             }
             else if (entryType == "adjustment_out")
             {
-                var consumed = Consume(ref layers, evt.Quantity);
-                unitPrice = consumed.UnitPrice;
-                fifoDetail = $"Adjustment out — {consumed.Detail}";
+                var adjOutPrice = AppendOutboundLedgerRows(
+                    enriched,
+                    ref runningQty,
+                    layers,
+                    evt,
+                    evt.Quantity,
+                    fifoDetailPrefix: "Adjustment out — ");
+                if (adjOutPrice > 0)
+                    lastAdjustmentOutUnitPrice = adjOutPrice;
             }
-
-            runningQty += evt.SignedQty;
-            enriched.Add(new FifoEnrichedEvent
-            {
-                Event = evt,
-                UnitPrice = unitPrice,
-                FifoDetail = fifoDetail,
-                RunningBalance = runningQty,
-                AverageCogsAfter = ComputeAverageCogs(layers),
-            });
         }
 
         return new FifoSimulationResult
@@ -173,6 +195,122 @@ public static class StockCardFifoEngine
             OnHandQty = runningQty,
         };
     }
+
+    static decimal ResolveAdjustmentInUnitPrice(List<FifoLayer> layers, decimal? lastAdjustmentOutUnitPrice)
+    {
+        if (lastAdjustmentOutUnitPrice is decimal matched && matched > 0)
+            return matched;
+
+        return GetOldestLayerUnitPrice(layers);
+    }
+
+    static decimal GetOldestLayerUnitPrice(List<FifoLayer> layers)
+    {
+        var oldest = layers
+            .Where(l => l.Quantity > 0)
+            .OrderBy(l => l.ReceivedAt)
+            .ThenBy(l => l.SourceId)
+            .FirstOrDefault();
+
+        if (oldest is null)
+            return 0;
+
+        return oldest.UnitPrice;
+    }
+
+    static decimal AppendOutboundLedgerRows(
+        List<FifoEnrichedEvent> enriched,
+        ref decimal runningQty,
+        List<FifoLayer> layers,
+        FifoEvent evt,
+        decimal quantity,
+        string fifoDetailPrefix)
+    {
+        var consumed = Consume(ref layers, quantity);
+        var displayParts = MergeConsecutiveConsumeParts(consumed.Parts);
+        var distinctPrices = displayParts.Select(p => p.UnitPrice).Distinct().Count();
+        var primaryUnitPrice = displayParts.Count > 0
+            ? displayParts[0].UnitPrice
+            : consumed.UnitPrice;
+
+        if (displayParts.Count <= 1 || distinctPrices <= 1)
+        {
+            runningQty += evt.SignedQty;
+            enriched.Add(new FifoEnrichedEvent
+            {
+                Event = evt,
+                UnitPrice = consumed.UnitPrice,
+                FifoDetail = string.IsNullOrEmpty(fifoDetailPrefix)
+                    ? consumed.Detail
+                    : $"{fifoDetailPrefix}{consumed.Detail}",
+                RunningBalance = runningQty,
+                AverageCogsAfter = ComputeAverageCogs(layers),
+            });
+            return primaryUnitPrice;
+        }
+
+        for (var i = 0; i < displayParts.Count; i++)
+        {
+            var part = displayParts[i];
+            runningQty -= part.Quantity;
+            enriched.Add(new FifoEnrichedEvent
+            {
+                Event = CloneEvent(evt, part.Quantity, -part.Quantity),
+                UnitPrice = part.UnitPrice,
+                FifoDetail = $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM {part.UnitPrice:F2}",
+                RunningBalance = runningQty,
+                AverageCogsAfter = ComputeAverageCogs(layers),
+                SplitIndex = i,
+            });
+        }
+
+        return primaryUnitPrice;
+    }
+
+    static List<FifoConsumePart> MergeConsecutiveConsumeParts(IReadOnlyList<FifoConsumePart> parts)
+    {
+        var merged = new List<FifoConsumePart>();
+        foreach (var part in parts)
+        {
+            if (part.Quantity <= 0)
+                continue;
+
+            if (merged.Count > 0 && merged[^1].UnitPrice == part.UnitPrice)
+            {
+                var last = merged[^1];
+                merged[^1] = new FifoConsumePart
+                {
+                    Quantity = last.Quantity + part.Quantity,
+                    UnitPrice = last.UnitPrice,
+                };
+            }
+            else
+            {
+                merged.Add(new FifoConsumePart
+                {
+                    Quantity = part.Quantity,
+                    UnitPrice = part.UnitPrice,
+                });
+            }
+        }
+
+        return merged;
+    }
+
+    static FifoEvent CloneEvent(FifoEvent source, decimal quantity, decimal signedQty) =>
+        new()
+        {
+            Id = source.Id,
+            OccurredAt = source.OccurredAt,
+            EntryType = source.EntryType,
+            Quantity = quantity,
+            SignedQty = signedQty,
+            Uom = source.Uom,
+            UnitPrice = source.UnitPrice,
+            Reason = source.Reason,
+            ReferenceNumber = source.ReferenceNumber,
+            SourceLabel = source.SourceLabel,
+        };
 
     static void CollapseLayersAtMonthStart(List<FifoLayer> layers, DateTime monthStart)
     {
@@ -219,6 +357,13 @@ public sealed class FifoConsumeResult
     public decimal TotalCost { get; init; }
     public decimal UnitPrice { get; init; }
     public string Detail { get; init; } = string.Empty;
+    public IReadOnlyList<FifoConsumePart> Parts { get; init; } = [];
+}
+
+public sealed class FifoConsumePart
+{
+    public decimal Quantity { get; init; }
+    public decimal UnitPrice { get; init; }
 }
 
 public sealed class FifoEvent
@@ -242,6 +387,7 @@ public sealed class FifoEnrichedEvent
     public string FifoDetail { get; init; } = string.Empty;
     public decimal RunningBalance { get; init; }
     public decimal AverageCogsAfter { get; init; }
+    public int SplitIndex { get; init; }
 }
 
 public sealed class FifoSimulationResult

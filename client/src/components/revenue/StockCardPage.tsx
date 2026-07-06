@@ -201,7 +201,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
               <th className="px-3 py-2 font-medium text-right">Inbound QTY</th>
               <th className="px-3 py-2 font-medium text-right">Outbound QTY</th>
               <th className="px-3 py-2 font-medium text-right">Qty on hand</th>
-              <th className="px-3 py-2 font-medium text-right">Avg COGS</th>
+              <th className="px-3 py-2 font-medium text-right">Avg outbound</th>
               <th className="px-3 py-2 font-medium">UOM</th>
             </tr>
           </thead>

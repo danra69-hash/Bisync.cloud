@@ -675,12 +675,19 @@ export interface StockCardLedgerEntry {
   signedQty: number;
   uom: string;
   unitPrice: number;
+  subtotal: number;
   reason: string;
   referenceNumber: string;
   fifoDetail: string;
   runningBalance: number;
   averageCogsAfter: number;
   fifoPolicy: string;
+  splitIndex?: number;
+}
+
+export interface StockCardOnHandLayer {
+  quantity: number;
+  unitPrice: number;
 }
 
 export interface StockCardDetail {
@@ -697,6 +704,7 @@ export interface StockCardDetail {
   adjustmentQty: number;
   onHandQty: number;
   averageCogs: number;
+  onHandLayers?: StockCardOnHandLayer[];
   fifoPolicy: string;
   periodMonth: string;
   periodStart: string;

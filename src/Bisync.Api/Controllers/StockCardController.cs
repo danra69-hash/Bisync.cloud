@@ -76,6 +76,11 @@ public class StockCardController(StockCardService stockCardService) : Controller
             adjustmentQty = detail.AdjustmentQty,
             onHandQty = detail.OnHandQty,
             averageCogs = detail.AverageCogs,
+            onHandLayers = detail.OnHandLayers.Select(l => new
+            {
+                quantity = l.Quantity,
+                unitPrice = l.UnitPrice,
+            }),
             fifoPolicy = detail.FifoPolicy,
             periodMonth = detail.PeriodMonth,
             periodStart = detail.PeriodStart,
@@ -92,6 +97,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
                 signedQty = e.SignedQty,
                 uom = e.Uom,
                 unitPrice = e.UnitPrice,
+                subtotal = e.Subtotal,
                 reason = e.Reason,
                 referenceNumber = e.ReferenceNumber,
                 fifoDetail = e.FifoDetail,
