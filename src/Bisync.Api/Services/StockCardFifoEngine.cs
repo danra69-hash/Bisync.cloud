@@ -25,7 +25,7 @@ public static class StockCardFifoEngine
 
         var remaining = quantity;
         var totalCost = 0m;
-        var parts = new List<string>();
+        var parts = new List<(decimal Qty, decimal UnitPrice)>();
 
         foreach (var layer in layers.OrderBy(l => l.ReceivedAt).ThenBy(l => l.SourceId))
         {
@@ -38,14 +38,16 @@ public static class StockCardFifoEngine
             totalCost += take * layer.UnitPrice;
             layer.Quantity -= take;
             remaining -= take;
-            parts.Add($"{FormatQty(take)} @ RM {layer.UnitPrice:F2}");
+            parts.Add((take, layer.UnitPrice));
         }
 
-        if (remaining > 0)
-            parts.Add($"{FormatQty(remaining)} @ RM 0.00 (short)");
-
         var consumed = quantity - remaining;
-        var unitPrice = consumed > 0 ? Math.Round(totalCost / consumed, 4) : 0;
+        var unitPrice = ResolveTrancheUnitPrice(parts, consumed, totalCost);
+        var detailParts = parts
+            .Select(p => $"{FormatQty(p.Qty)} @ RM {p.UnitPrice:F2}")
+            .ToList();
+        if (remaining > 0)
+            detailParts.Add($"{FormatQty(remaining)} @ RM 0.00 (short)");
 
         layers.RemoveAll(l => l.Quantity <= 0);
 
@@ -54,8 +56,30 @@ public static class StockCardFifoEngine
             ConsumedQty = consumed,
             TotalCost = totalCost,
             UnitPrice = unitPrice,
-            Detail = parts.Count > 0 ? $"FIFO: {string.Join(" + ", parts)}" : string.Empty,
+            Detail = detailParts.Count > 0 ? $"FIFO: {string.Join(" + ", detailParts)}" : string.Empty,
         };
+    }
+
+    /// <summary>
+    /// When stock is drawn from a single cost tranche, use that tranche's unit price.
+    /// When an outbound spans multiple tranches, use the weighted average cost.
+    /// </summary>
+    static decimal ResolveTrancheUnitPrice(
+        IReadOnlyList<(decimal Qty, decimal UnitPrice)> parts,
+        decimal consumedQty,
+        decimal totalCost)
+    {
+        if (consumedQty <= 0 || parts.Count == 0)
+            return 0;
+
+        if (parts.Count == 1)
+            return Math.Round(parts[0].UnitPrice, 4);
+
+        var distinctPrices = parts.Select(p => p.UnitPrice).Distinct().ToList();
+        if (distinctPrices.Count == 1)
+            return Math.Round(distinctPrices[0], 4);
+
+        return Math.Round(totalCost / consumedQty, 4);
     }
 
     public static void AddLayer(
@@ -79,14 +103,30 @@ public static class StockCardFifoEngine
         });
     }
 
-    public static FifoSimulationResult Simulate(IReadOnlyList<FifoEvent> events)
+    public static FifoSimulationResult Simulate(IReadOnlyList<FifoEvent> events) =>
+        Simulate(events, collapseAtMonthBoundaries: true);
+
+    public static FifoSimulationResult Simulate(
+        IReadOnlyList<FifoEvent> events,
+        bool collapseAtMonthBoundaries)
     {
         var layers = new List<FifoLayer>();
         var enriched = new List<FifoEnrichedEvent>(events.Count);
         decimal runningQty = 0;
+        DateTime? currentMonth = null;
 
         foreach (var evt in events.OrderBy(e => e.OccurredAt).ThenBy(e => e.Id))
         {
+            var eventMonth = MonthStartUtc(evt.OccurredAt);
+            if (collapseAtMonthBoundaries
+                && currentMonth is not null
+                && eventMonth > currentMonth)
+            {
+                CollapseLayersAtMonthStart(layers, eventMonth);
+            }
+
+            currentMonth = eventMonth;
+
             decimal unitPrice = evt.UnitPrice;
             string fifoDetail = string.Empty;
             var entryType = evt.EntryType;
@@ -134,8 +174,25 @@ public static class StockCardFifoEngine
         };
     }
 
+    static void CollapseLayersAtMonthStart(List<FifoLayer> layers, DateTime monthStart)
+    {
+        var totalQty = layers.Sum(l => l.Quantity);
+        if (totalQty <= 0)
+        {
+            layers.Clear();
+            return;
+        }
+
+        var avg = ComputeAverageCogs(layers);
+        layers.Clear();
+        AddLayer(layers, monthStart, 0, totalQty, avg, "B/F");
+    }
+
+    static DateTime MonthStartUtc(DateTime value) =>
+        new(value.Year, value.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
     static bool IsInboundLayer(string entryType) =>
-        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound";
+        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "balance_forward";
 
     static bool IsOutboundConsume(string entryType) =>
         entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "outbound";
