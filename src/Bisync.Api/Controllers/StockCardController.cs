@@ -12,13 +12,14 @@ public class StockCardController(StockCardService stockCardService) : Controller
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? itemType = "all",
-        [FromQuery] string? uomMode = "inventory")
+        [FromQuery] string? uomMode = "inventory",
+        [FromQuery] string? period = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
             return Ok(Array.Empty<object>());
 
-        var rows = await stockCardService.ListAsync(companyId, locationIdList, itemType, uomMode ?? "inventory");
+        var rows = await stockCardService.ListAsync(companyId, locationIdList, itemType, uomMode ?? "inventory", period);
         return Ok(rows.Select(r => new
         {
             r.ItemType,
@@ -43,7 +44,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? uomMode = "inventory",
-        [FromQuery] string? period = "month")
+        [FromQuery] string? period = null)
     {
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
@@ -55,7 +56,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
             companyId,
             locationIdList,
             uomMode ?? "inventory",
-            period ?? "month");
+            period);
 
         if (detail is null)
             return NotFound();
@@ -76,7 +77,12 @@ public class StockCardController(StockCardService stockCardService) : Controller
             onHandQty = detail.OnHandQty,
             averageCogs = detail.AverageCogs,
             fifoPolicy = detail.FifoPolicy,
+            periodMonth = detail.PeriodMonth,
             periodStart = detail.PeriodStart,
+            periodEnd = detail.PeriodEnd,
+            archiveCutoff = detail.ArchiveCutoff,
+            isCurrentMonth = detail.IsCurrentMonth,
+            historyRetentionYears = detail.HistoryRetentionYears,
             entries = detail.Entries.Select(e => new
             {
                 e.Id,

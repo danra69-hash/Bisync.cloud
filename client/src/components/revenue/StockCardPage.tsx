@@ -8,6 +8,12 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { StockCardDetailPanel } from './StockCardDetailPanel';
+import {
+  currentStockCardMonth,
+  earliestStockCardMonth,
+  formatStockCardMonthLabel,
+  STOCK_CARD_HISTORY_YEARS,
+} from './stockCardPeriod';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -79,7 +85,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [groupFilter, setGroupFilter] = useState('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
   const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
-  const [period, setPeriod] = useState<'month' | 'week' | 'all'>('all');
+  const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
   const scrollRootRef = useRef<HTMLDivElement>(null);
 
@@ -97,11 +103,12 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
       .stockCards(selectedCompanyId, selectedLocationIds, {
         itemType: itemTypeFilterParam(itemTypeFilter),
         uomMode,
+        period: selectedMonth,
       })
       .then(setRows)
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load stock cards.'))
       .finally(() => setLoading(false));
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode]);
+  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth]);
 
   const groups = useMemo(() => {
     const unique = new Set(rows.map(row => row.group).filter(Boolean));
@@ -147,6 +154,19 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
             <option value="recipe">Component UOM</option>
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
+          <input
+            type="month"
+            value={selectedMonth}
+            min={earliestStockCardMonth()}
+            max={currentStockCardMonth()}
+            onChange={e => {
+              if (e.target.value) setSelectedMonth(e.target.value);
+            }}
+            className={`${filterSelectCls} min-w-[160px]`}
+          />
+        </div>
         <div className="flex flex-col gap-1 flex-1 min-w-[200px] max-w-sm">
           <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Search</label>
           <div className="relative">
@@ -160,6 +180,14 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           </div>
         </div>
       </div>
+
+      <p className="text-xs text-muted-foreground mb-4">
+        {formatStockCardMonthLabel(selectedMonth, selectedMonth === currentStockCardMonth())}
+        {' · '}
+        History older than {STOCK_CARD_HISTORY_YEARS} years is moved to the Stock Card archive (
+        <code className="text-xs">data-archives/stock-card/archive.db</code>
+        ).
+      </p>
 
       {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 
@@ -222,10 +250,9 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           companyId={selectedCompanyId}
           locationIds={selectedLocationIds}
           uomMode={uomMode}
-          period={period}
+          selectedMonth={selectedMonth}
           onClose={() => setSelectedRow(null)}
           onUomModeChange={setUomMode}
-          onPeriodChange={setPeriod}
         />
       ) : null}
     </div>

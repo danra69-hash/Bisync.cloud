@@ -52,7 +52,7 @@ public class ComponentFifoCostingService(BisyncDbContext db)
 
         foreach (var purchase in purchases)
         {
-            if (!LocationMatches(purchase.LocationIdsJson, locationExternalId))
+            if (!StockLocationRules.PurchaseMatchesLocation(purchase.LocationIdsJson, locationExternalId))
                 continue;
             if (NormalizeUom(purchase.Uom) != normalizedUom)
                 continue;
@@ -70,7 +70,7 @@ public class ComponentFifoCostingService(BisyncDbContext db)
         }
 
         var movements = await db.InventoryMovements.AsNoTracking()
-            .Where(m => m.ComponentId == componentId && m.LocationExternalId == locationExternalId)
+            .Where(m => m.ComponentId == componentId)
             .OrderBy(m => m.CreatedAt)
             .ThenBy(m => m.Id)
             .ToListAsync(cancellationToken);
@@ -78,7 +78,9 @@ public class ComponentFifoCostingService(BisyncDbContext db)
         if (companyId is int companyFilter)
             movements = movements.Where(m => m.CompanyId is null || m.CompanyId == companyFilter).ToList();
 
-        foreach (var movement in movements.Where(m => NormalizeUom(m.Uom) == normalizedUom))
+        foreach (var movement in movements
+                     .Where(m => StockLocationRules.MovementMatchesLocation(m.LocationExternalId, locationExternalId))
+                     .Where(m => NormalizeUom(m.Uom) == normalizedUom))
         {
             var entryType = ClassifyMovement(movement);
             events.Add(new FifoEvent
@@ -109,12 +111,6 @@ public class ComponentFifoCostingService(BisyncDbContext db)
                 ? refType
                 : "outbound";
         return "inbound";
-    }
-
-    static bool LocationMatches(string locationIdsJson, string locationExternalId)
-    {
-        var ids = PurchaseOrderWorkflow.DeserializeLocationIds(locationIdsJson);
-        return ids.Count == 0 || ids.Contains(locationExternalId);
     }
 
     static string NormalizeUom(string uom) => uom.Trim().ToUpperInvariant();

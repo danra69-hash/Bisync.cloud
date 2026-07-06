@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import { api, type StockCardDetail, type StockCardLedgerEntry } from '../../api';
 
 import { formatRm } from '../../data/createOrder';
+import { currentStockCardMonth, formatStockCardMonthLabel } from './stockCardPeriod';
 
 import {
 
@@ -30,13 +31,11 @@ type Props = {
 
   uomMode: 'inventory' | 'recipe';
 
-  period: 'month' | 'week' | 'all';
+  selectedMonth: string;
 
   onClose: () => void;
 
   onUomModeChange: (mode: 'inventory' | 'recipe') => void;
-
-  onPeriodChange: (period: 'month' | 'week' | 'all') => void;
 
 };
 
@@ -152,38 +151,11 @@ function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
 
 
 
-function isOutboundType(entryType: StockCardLedgerEntry['entryType']) {
-
-  return entryType === 'outbound'
-
-    || entryType === 'production'
-
-    || entryType === 'pos_sale'
-    || entryType === 'online_order'
-    || entryType === 'offline_order'
-
-    || entryType === 'wastage'
-
-    || entryType === 'transfer_out'
-
-    || entryType === 'adjustment_out';
-
-}
-
-
-
-function entryQtyDisplay(entry: StockCardLedgerEntry) {
-
-  if (entry.entryType === 'balance_forward') {
-
-    return fmtQty(entry.signedQty);
-
-  }
-
-  const sign = isOutboundType(entry.entryType) ? '-' : entry.signedQty < 0 ? '' : '+';
-
-  return `${sign}${fmtQty(entry.quantity)}`;
-
+function entryInboundOutbound(entry: StockCardLedgerEntry): { inbound: string; outbound: string } {
+  const qty = fmtQty(Math.abs(entry.signedQty));
+  if (entry.signedQty > 0) return { inbound: qty, outbound: '—' };
+  if (entry.signedQty < 0) return { inbound: '—', outbound: qty };
+  return { inbound: '—', outbound: '—' };
 }
 
 
@@ -200,13 +172,11 @@ export function StockCardDetailPanel({
 
   uomMode,
 
-  period,
+  selectedMonth,
 
   onClose,
 
   onUomModeChange,
-
-  onPeriodChange,
 
 }: Props) {
 
@@ -236,7 +206,7 @@ export function StockCardDetailPanel({
 
     setError(null);
 
-    api.stockCardDetail(itemType, itemKey, companyId, locationIds, { uomMode, period })
+    api.stockCardDetail(itemType, itemKey, companyId, locationIds, { uomMode, period: selectedMonth })
 
       .then(setDetail)
 
@@ -244,7 +214,7 @@ export function StockCardDetailPanel({
 
       .finally(() => setLoading(false));
 
-  }, [itemType, itemKey, companyId, locationIds, uomMode, period]);
+  }, [itemType, itemKey, companyId, locationIds, uomMode, selectedMonth]);
 
 
 
@@ -322,27 +292,19 @@ export function StockCardDetailPanel({
 
         <div className="px-5 py-4 border-b border-border shrink-0 flex flex-wrap items-end gap-4">
 
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-[180px]">
 
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Period</label>
+            <span className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</span>
 
-            <select
+            <span className="text-sm font-medium">
 
-              value={period}
+              {detail
 
-              onChange={e => onPeriodChange(e.target.value as 'month' | 'week' | 'all')}
+                ? formatStockCardMonthLabel(detail.periodMonth, detail.isCurrentMonth)
 
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm font-sans min-w-[140px]"
+                : formatStockCardMonthLabel(selectedMonth, selectedMonth === currentStockCardMonth())}
 
-            >
-
-              <option value="month">This month</option>
-
-              <option value="week">This week</option>
-
-              <option value="all">All history</option>
-
-            </select>
+            </span>
 
           </div>
 
@@ -410,7 +372,7 @@ export function StockCardDetailPanel({
 
           <>
 
-            <div className="px-5 py-4 border-b border-border shrink-0 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="px-5 py-4 border-b border-border shrink-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
 
               <SummaryCell label="B/F" value={fmtQty(detail.balanceForward)} uom={detail.uom} />
 
@@ -419,6 +381,12 @@ export function StockCardDetailPanel({
               <SummaryCell label="Outbound" value={fmtQty(detail.outboundQty)} uom={detail.uom} />
 
               <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty)} uom={detail.uom} />
+
+              <SummaryCell
+                label="Avg price"
+                value={detail.averageCogs > 0 ? formatRm(detail.averageCogs) : '—'}
+                uom={`per ${detail.uom}`}
+              />
 
               <SummaryCell label="On Hand" value={fmtQty(detail.onHandQty)} uom={detail.uom} highlight />
 
@@ -438,7 +406,9 @@ export function StockCardDetailPanel({
 
                     <th className="px-3 py-2 font-medium">Type</th>
 
-                    <th className="px-3 py-2 font-medium text-right">Qty</th>
+                    <th className="px-3 py-2 font-medium text-right">Inbound</th>
+
+                    <th className="px-3 py-2 font-medium text-right">Outbound</th>
 
                     <th className="px-3 py-2 font-medium">UOM</th>
 
@@ -458,15 +428,18 @@ export function StockCardDetailPanel({
 
                 <tbody>
 
-                  {detail.entries.map((entry, index) => (
-
+                  {detail.entries.map((entry, index) => {
+                    const { inbound, outbound } = entryInboundOutbound(entry);
+                    return (
                     <tr key={`${entry.id}-${index}`} className="border-t border-border/60 hover:bg-muted/30 align-top">
 
                       <td className="px-5 py-2.5 whitespace-nowrap">{fmtDateTime(entry.occurredAt)}</td>
 
                       <td className="px-3 py-2.5 whitespace-nowrap">{entryTypeLabel(entry.entryType)}</td>
 
-                      <td className="px-3 py-2.5 text-right tabular-nums">{entryQtyDisplay(entry)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{inbound}</td>
+
+                      <td className="px-3 py-2.5 text-right tabular-nums">{outbound}</td>
 
                       <td className="px-3 py-2.5">{entry.uom}</td>
 
@@ -507,9 +480,8 @@ export function StockCardDetailPanel({
                       </td>
 
                     </tr>
-
-                  ))}
-
+                    );
+                  })}
                 </tbody>
 
               </table>

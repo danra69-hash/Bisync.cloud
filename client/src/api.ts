@@ -698,7 +698,12 @@ export interface StockCardDetail {
   onHandQty: number;
   averageCogs: number;
   fifoPolicy: string;
+  periodMonth: string;
   periodStart: string;
+  periodEnd: string;
+  archiveCutoff: string;
+  isCurrentMonth: boolean;
+  historyRetentionYears: number;
   entries: StockCardLedgerEntry[];
 }
 
@@ -859,13 +864,14 @@ export const api = {
   stockCards: (
     companyId: number | undefined,
     locationIds: string[],
-    options?: { itemType?: string; uomMode?: 'inventory' | 'recipe' },
+    options?: { itemType?: string; uomMode?: 'inventory' | 'recipe'; period?: string },
   ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     if (options?.itemType) params.set('itemType', options.itemType);
     if (options?.uomMode) params.set('uomMode', options.uomMode);
+    if (options?.period) params.set('period', options.period);
     const query = params.toString();
     return fetchJson<StockCardListRow[]>(`/api/stock-cards${query ? `?${query}` : ''}`);
   },
@@ -874,7 +880,7 @@ export const api = {
     itemKey: string,
     companyId: number | undefined,
     locationIds: string[],
-    options?: { uomMode?: 'inventory' | 'recipe'; period?: 'month' | 'week' | 'all' },
+    options?: { uomMode?: 'inventory' | 'recipe'; period?: string },
   ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));

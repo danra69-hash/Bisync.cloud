@@ -11,11 +11,13 @@ public class StockCardService(BisyncDbContext db)
         IReadOnlyList<string> locationIds,
         string? itemTypeFilter,
         string uomMode,
+        string? period = null,
         CancellationToken cancellationToken = default)
     {
         if (locationIds.Count == 0)
             return [];
 
+        var stockPeriod = ResolvePeriod(period);
         var rows = new List<StockCardListRow>();
         var mode = NormalizeUomMode(uomMode);
 
@@ -38,6 +40,7 @@ public class StockCardService(BisyncDbContext db)
                     displayUom,
                     locationIds,
                     companyId,
+                    stockPeriod,
                     cancellationToken);
 
                 rows.Add(new StockCardListRow
@@ -78,7 +81,7 @@ public class StockCardService(BisyncDbContext db)
                     continue;
 
                 var displayUom = ResolveProductUom(product);
-                var summary = await SummarizeProductAsync(product.Id, locationIds, cancellationToken);
+                var summary = await SummarizeProductAsync(product, locationIds, stockPeriod, cancellationToken);
                 rows.Add(new StockCardListRow
                 {
                     ItemType = "sub-product",
@@ -106,7 +109,7 @@ public class StockCardService(BisyncDbContext db)
                 continue;
 
             var productUom = ResolveProductUom(product);
-            var productSummary = await SummarizeProductAsync(product.Id, locationIds, cancellationToken);
+            var productSummary = await SummarizeProductAsync(product, locationIds, stockPeriod, cancellationToken);
             rows.Add(new StockCardListRow
             {
                 ItemType = "product",
@@ -133,13 +136,13 @@ public class StockCardService(BisyncDbContext db)
         int? companyId,
         IReadOnlyList<string> locationIds,
         string uomMode,
-        string period,
+        string? period = null,
         CancellationToken cancellationToken = default)
     {
         if (locationIds.Count == 0)
             return null;
 
-        var periodStart = ResolvePeriodStart(period);
+        var stockPeriod = ResolvePeriod(period);
         var mode = NormalizeUomMode(uomMode);
         var normalizedType = itemType.Trim().ToLowerInvariant();
 
@@ -156,6 +159,7 @@ public class StockCardService(BisyncDbContext db)
                 displayUom,
                 locationIds,
                 companyId,
+                stockPeriod,
                 cancellationToken);
             var entries = fifoResult.Events.Select(MapFifoToLedgerEntry).ToList();
 
@@ -168,7 +172,7 @@ public class StockCardService(BisyncDbContext db)
                 ingredient.RecipeUom,
                 ingredient.InventoryUom,
                 entries,
-                periodStart,
+                stockPeriod,
                 fifoResult.AverageCogs);
         }
 
@@ -196,7 +200,7 @@ public class StockCardService(BisyncDbContext db)
         var productEntries = await BuildProductLedgerAsync(
             product,
             locationIds,
-            periodStart,
+            stockPeriod,
             cancellationToken);
 
         return BuildDetail(
@@ -208,7 +212,7 @@ public class StockCardService(BisyncDbContext db)
             product.IsSubProduct ? product.YieldUom : product.B2bPackageUnit,
             product.IsSubProduct ? product.YieldUom : product.B2bPackageUnit,
             productEntries,
-            periodStart,
+            stockPeriod,
             product.IsSubProduct && product.YieldQuantity > 0
                 ? Math.Round(product.TotalCost / product.YieldQuantity, 4)
                 : product.TotalCost);
@@ -223,39 +227,55 @@ public class StockCardService(BisyncDbContext db)
         string recipeUom,
         string inventoryUom,
         List<StockCardLedgerEntry> entries,
-        DateTime periodStart,
+        StockCardPeriod period,
         decimal currentAverageCogs)
     {
-        var beforePeriod = periodStart == DateTime.MinValue
-            ? []
-            : entries.Where(e => e.OccurredAt < periodStart).ToList();
-        var inPeriod = periodStart == DateTime.MinValue
-            ? entries.OrderBy(e => e.OccurredAt).ThenBy(e => e.Id).ToList()
-            : entries.Where(e => e.OccurredAt >= periodStart).OrderBy(e => e.OccurredAt).ThenBy(e => e.Id).ToList();
+        var eligibleOrdered = entries
+            .Where(e => e.OccurredAt >= period.ArchiveCutoff && e.OccurredAt <= period.PeriodEnd)
+            .OrderBy(e => e.OccurredAt)
+            .ThenBy(e => e.Id)
+            .ToList();
+
+        decimal cumulative = 0;
+        var eligible = new List<StockCardLedgerEntry>(eligibleOrdered.Count);
+        foreach (var entry in eligibleOrdered)
+        {
+            cumulative += entry.SignedQty;
+            eligible.Add(entry with { RunningBalance = cumulative });
+        }
+
+        var beforePeriod = eligible.Where(e => e.OccurredAt < period.MonthStart).ToList();
+        var inPeriod = eligible
+            .Where(e => e.OccurredAt >= period.MonthStart && e.OccurredAt <= period.PeriodEnd)
+            .OrderBy(e => e.OccurredAt)
+            .ThenBy(e => e.Id)
+            .ToList();
 
         var balanceForward = beforePeriod.Count > 0
             ? beforePeriod[^1].RunningBalance
             : 0m;
+        var balanceForwardAvgCogs = beforePeriod.Count > 0
+            ? beforePeriod[^1].AverageCogsAfter
+            : currentAverageCogs;
         var running = balanceForward;
         var ledger = new List<StockCardLedgerEntry>();
 
-        if (periodStart != DateTime.MinValue)
+        ledger.Add(new StockCardLedgerEntry
         {
-            ledger.Add(new StockCardLedgerEntry
-            {
-                Id = 0,
-                OccurredAt = periodStart,
-                EntryType = "balance_forward",
-                Quantity = Math.Abs(balanceForward),
-                SignedQty = balanceForward,
-                Uom = uom,
-                UnitPrice = currentAverageCogs,
-                Reason = "B/F from previous period end inventory (FIFO)",
-                RunningBalance = balanceForward,
-                AverageCogsAfter = beforePeriod.Count > 0 ? beforePeriod[^1].AverageCogsAfter : currentAverageCogs,
-                FifoPolicy = "FIFO",
-            });
-        }
+            Id = 0,
+            OccurredAt = period.MonthStart,
+            EntryType = "balance_forward",
+            Quantity = Math.Abs(balanceForward),
+            SignedQty = balanceForward,
+            Uom = uom,
+            UnitPrice = balanceForwardAvgCogs,
+            Reason = beforePeriod.Count > 0
+                ? "B/F from previous period end inventory (FIFO)"
+                : "B/F — no eligible history in the last 2 years",
+            RunningBalance = balanceForward,
+            AverageCogsAfter = balanceForwardAvgCogs,
+            FifoPolicy = "FIFO",
+        });
 
         foreach (var entry in inPeriod)
         {
@@ -268,6 +288,12 @@ public class StockCardService(BisyncDbContext db)
         var adjustment = inPeriod
             .Where(e => e.EntryType is "adjustment_in" or "adjustment_out" or "adjustment")
             .Sum(e => e.SignedQty);
+
+        var averageCogs = inPeriod.Count > 0
+            ? inPeriod[^1].AverageCogsAfter
+            : beforePeriod.Count > 0
+                ? beforePeriod[^1].AverageCogsAfter
+                : currentAverageCogs;
 
         return new StockCardDetail
         {
@@ -283,9 +309,14 @@ public class StockCardService(BisyncDbContext db)
             OutboundQty = outbound,
             AdjustmentQty = adjustment,
             OnHandQty = running,
-            AverageCogs = currentAverageCogs,
+            AverageCogs = averageCogs,
             FifoPolicy = "FIFO",
-            PeriodStart = periodStart,
+            PeriodMonth = period.MonthKey,
+            PeriodStart = period.MonthStart,
+            PeriodEnd = period.PeriodEnd,
+            ArchiveCutoff = period.ArchiveCutoff,
+            IsCurrentMonth = period.IsCurrentMonth,
+            HistoryRetentionYears = HistoryRetentionYears,
             Entries = ledger,
         };
     }
@@ -319,6 +350,7 @@ public class StockCardService(BisyncDbContext db)
         string displayUom,
         IReadOnlyList<string> locationIds,
         int? companyId,
+        StockCardPeriod period,
         CancellationToken cancellationToken)
     {
         var normalizedUom = NormalizeUom(displayUom);
@@ -329,37 +361,47 @@ public class StockCardService(BisyncDbContext db)
         if (companyId is int cid)
             purchases = purchases.Where(p => p.CompanyId is null || p.CompanyId == cid).ToList();
 
-        var inboundPurchase = purchases
+        purchases = purchases
             .Where(p => LocationMatchesAny(p.LocationIdsJson, locationIds))
             .Where(p => NormalizeUom(p.Uom) == normalizedUom)
-            .Sum(p => p.Quantity);
+            .Where(p => p.DateCreatedInStock >= period.ArchiveCutoff && p.DateCreatedInStock <= period.PeriodEnd)
+            .ToList();
 
         var movements = await db.InventoryMovements.AsNoTracking()
-            .Where(m => m.ComponentId == ingredient.ComponentId && locationIds.Contains(m.LocationExternalId))
+            .Where(m => m.ComponentId == ingredient.ComponentId)
             .ToListAsync(cancellationToken);
 
         if (companyId is int companyFilter)
             movements = movements.Where(m => m.CompanyId is null || m.CompanyId == companyFilter).ToList();
 
-        movements = movements.Where(m => NormalizeUom(m.Uom) == normalizedUom).ToList();
+        movements = movements
+            .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
+            .Where(m => NormalizeUom(m.Uom) == normalizedUom)
+            .Where(m => m.CreatedAt >= period.ArchiveCutoff && m.CreatedAt <= period.PeriodEnd)
+            .ToList();
 
-        var onHand = inboundPurchase + movements.Sum(m => m.QtyDelta);
         var fifoResult = await BuildComponentFifoResultAsync(
             ingredient,
             displayUom,
             locationIds,
             companyId,
+            period,
             cancellationToken,
             purchases,
             movements);
 
-        var inboundMove = movements.Where(m => m.QtyDelta > 0 && !IsAdjustmentMovement(m)).Sum(m => m.QtyDelta);
-        var outbound = movements.Where(m => m.QtyDelta < 0 && !IsAdjustmentMovement(m)).Sum(m => -m.QtyDelta);
-        var adjustment = movements.Where(m => IsAdjustmentMovement(m)).Sum(m => m.QtyDelta);
+        var monthPurchases = purchases
+            .Where(p => p.DateCreatedInStock >= period.MonthStart)
+            .Sum(p => p.Quantity);
+        var monthMovements = movements.Where(m => m.CreatedAt >= period.MonthStart).ToList();
+        var inboundMove = monthMovements.Where(m => m.QtyDelta > 0 && !IsAdjustmentMovement(m)).Sum(m => m.QtyDelta);
+        var outbound = monthMovements.Where(m => m.QtyDelta < 0 && !IsAdjustmentMovement(m)).Sum(m => -m.QtyDelta);
+        var adjustment = monthMovements.Where(m => IsAdjustmentMovement(m)).Sum(m => m.QtyDelta);
+        var onHand = fifoResult.OnHandQty;
 
         return new StockMovementSummary
         {
-            InboundQty = inboundPurchase + inboundMove,
+            InboundQty = monthPurchases + inboundMove,
             OutboundQty = outbound,
             AdjustmentQty = adjustment,
             OnHandQty = onHand,
@@ -368,31 +410,49 @@ public class StockCardService(BisyncDbContext db)
     }
 
     async Task<StockMovementSummary> SummarizeProductAsync(
-        int productId,
+        Product product,
         IReadOnlyList<string> locationIds,
+        StockCardPeriod period,
         CancellationToken cancellationToken)
     {
         var stockRows = await db.ProductB2bLocationStocks.AsNoTracking()
-            .Where(s => s.ProductId == productId && locationIds.Contains(s.LocationExternalId))
+            .Where(s => s.ProductId == product.Id && locationIds.Contains(s.LocationExternalId))
             .ToListAsync(cancellationToken);
 
         var logs = await db.ProductProductionLogs.AsNoTracking()
-            .Where(l => l.ProductId == productId)
+            .Where(l => l.ProductId == product.Id)
             .ToListAsync(cancellationToken);
 
-        logs = logs.Where(l => LogMatchesAnyLocation(l.LocationIdsJson, locationIds)).ToList();
+        logs = logs
+            .Where(l => LogMatchesAnyLocation(l.LocationIdsJson, locationIds))
+            .Where(l =>
+            {
+                var occurredAt = ParseProductionDate(l.ProductionDate) ?? l.CreatedAt;
+                return occurredAt >= period.ArchiveCutoff && occurredAt <= period.PeriodEnd;
+            })
+            .ToList();
 
-        var inbound = logs.Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
+        var monthLogs = logs.Where(l =>
+        {
+            var occurredAt = ParseProductionDate(l.ProductionDate) ?? l.CreatedAt;
+            return occurredAt >= period.MonthStart;
+        }).ToList();
+
+        var inbound = monthLogs
+            .Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             .Sum(l => l.Quantity);
-        var outbound = 0m;
-        var adjustment = 0m;
-        var onHand = stockRows.Sum(s => s.InStock);
+        var outbound = monthLogs
+            .Where(l => IsProductSaleEntryType(l.EntryType))
+            .Sum(l => l.Quantity);
+        var onHand = period.IsCurrentMonth
+            ? stockRows.Sum(s => s.InStock)
+            : inbound - outbound;
 
         return new StockMovementSummary
         {
             InboundQty = inbound,
             OutboundQty = outbound,
-            AdjustmentQty = adjustment,
+            AdjustmentQty = 0,
             OnHandQty = onHand,
         };
     }
@@ -402,6 +462,7 @@ public class StockCardService(BisyncDbContext db)
         string displayUom,
         IReadOnlyList<string> locationIds,
         int? companyId,
+        StockCardPeriod period,
         CancellationToken cancellationToken,
         List<InventoryPurchase>? purchasesOverride = null,
         List<InventoryMovement>? movementsOverride = null)
@@ -413,6 +474,13 @@ public class StockCardService(BisyncDbContext db)
 
         if (companyId is int cid)
             purchases = purchases.Where(p => p.CompanyId is null || p.CompanyId == cid).ToList();
+
+        if (purchasesOverride is null)
+        {
+            purchases = purchases
+                .Where(p => p.DateCreatedInStock >= period.ArchiveCutoff && p.DateCreatedInStock <= period.PeriodEnd)
+                .ToList();
+        }
 
         var poIds = purchases.Where(p => p.PurchaseOrderId > 0).Select(p => p.PurchaseOrderId).Distinct().ToList();
         var poNumbers = poIds.Count == 0
@@ -453,11 +521,25 @@ public class StockCardService(BisyncDbContext db)
         }
 
         var movements = movementsOverride ?? await db.InventoryMovements.AsNoTracking()
-            .Where(m => m.ComponentId == ingredient.ComponentId && locationIds.Contains(m.LocationExternalId))
+            .Where(m => m.ComponentId == ingredient.ComponentId)
             .ToListAsync(cancellationToken);
 
         if (companyId is int companyFilter)
             movements = movements.Where(m => m.CompanyId is null || m.CompanyId == companyFilter).ToList();
+
+        if (movementsOverride is null)
+        {
+            movements = movements
+                .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
+                .ToList();
+        }
+
+        if (movementsOverride is null)
+        {
+            movements = movements
+                .Where(m => m.CreatedAt >= period.ArchiveCutoff && m.CreatedAt <= period.PeriodEnd)
+                .ToList();
+        }
 
         var productionProducts = await LoadProductionProductsForMovementsAsync(movements, cancellationToken);
 
@@ -489,7 +571,7 @@ public class StockCardService(BisyncDbContext db)
     async Task<List<StockCardLedgerEntry>> BuildProductLedgerAsync(
         Product product,
         IReadOnlyList<string> locationIds,
-        DateTime periodStart,
+        StockCardPeriod period,
         CancellationToken cancellationToken)
     {
         var entries = new List<StockCardLedgerEntry>();
@@ -500,9 +582,12 @@ public class StockCardService(BisyncDbContext db)
 
         foreach (var log in logs.Where(l => LogMatchesAnyLocation(l.LocationIdsJson, locationIds)))
         {
+            var occurredAt = ParseProductionDate(log.ProductionDate) ?? log.CreatedAt;
+            if (occurredAt < period.ArchiveCutoff || occurredAt > period.PeriodEnd)
+                continue;
+
             if (string.Equals(log.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             {
-                var occurredAt = ParseProductionDate(log.ProductionDate) ?? log.CreatedAt;
                 entries.Add(new StockCardLedgerEntry
                 {
                     Id = log.Id,
@@ -526,7 +611,7 @@ public class StockCardService(BisyncDbContext db)
                 entries.Add(new StockCardLedgerEntry
                 {
                     Id = log.Id,
-                    OccurredAt = log.CreatedAt,
+                    OccurredAt = occurredAt,
                     EntryType = log.EntryType.Trim().ToLowerInvariant(),
                     Quantity = log.Quantity,
                     SignedQty = -log.Quantity,
@@ -824,20 +909,57 @@ public class StockCardService(BisyncDbContext db)
         }
     }
 
-    static DateTime ResolvePeriodStart(string period)
-    {
-        if (string.Equals(period, "all", StringComparison.OrdinalIgnoreCase))
-            return DateTime.MinValue;
+    const int HistoryRetentionYears = 2;
 
+    static StockCardPeriod ResolvePeriod(string? period)
+    {
         var now = DateTime.UtcNow;
-        if (string.Equals(period, "week", StringComparison.OrdinalIgnoreCase))
+        var archiveCutoff = now.Date.AddYears(-HistoryRetentionYears);
+        var earliestMonth = new DateTime(archiveCutoff.Year, archiveCutoff.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        int year;
+        int month;
+        if (string.IsNullOrWhiteSpace(period)
+            || string.Equals(period, "month", StringComparison.OrdinalIgnoreCase))
         {
-            var diff = (7 + (now.DayOfWeek - DayOfWeek.Monday)) % 7;
-            var monday = now.Date.AddDays(-diff);
-            return monday;
+            year = now.Year;
+            month = now.Month;
+        }
+        else if (!TryParseMonthKey(period.Trim(), out year, out month))
+        {
+            year = now.Year;
+            month = now.Month;
         }
 
-        return new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        if (monthStart < earliestMonth)
+            monthStart = earliestMonth;
+
+        var isCurrentMonth = monthStart.Year == now.Year && monthStart.Month == now.Month;
+        var periodEnd = isCurrentMonth
+            ? now
+            : monthStart.AddMonths(1).AddSeconds(-1);
+
+        return new StockCardPeriod(
+            $"{monthStart:yyyy-MM}",
+            monthStart,
+            periodEnd,
+            archiveCutoff,
+            isCurrentMonth);
+    }
+
+    static bool TryParseMonthKey(string value, out int year, out int month)
+    {
+        year = 0;
+        month = 0;
+        if (DateOnly.TryParse($"{value}-01", out var parsed))
+        {
+            year = parsed.Year;
+            month = parsed.Month;
+            return true;
+        }
+
+        return false;
     }
 
     static DateTime? ParseProductionDate(string productionDate)
@@ -891,9 +1013,21 @@ public sealed class StockCardDetail
     public decimal OnHandQty { get; init; }
     public decimal AverageCogs { get; init; }
     public string FifoPolicy { get; init; } = "FIFO";
+    public string PeriodMonth { get; init; } = string.Empty;
     public DateTime PeriodStart { get; init; }
+    public DateTime PeriodEnd { get; init; }
+    public DateTime ArchiveCutoff { get; init; }
+    public bool IsCurrentMonth { get; init; }
+    public int HistoryRetentionYears { get; init; } = 2;
     public IReadOnlyList<StockCardLedgerEntry> Entries { get; init; } = [];
 }
+
+public sealed record StockCardPeriod(
+    string MonthKey,
+    DateTime MonthStart,
+    DateTime PeriodEnd,
+    DateTime ArchiveCutoff,
+    bool IsCurrentMonth);
 
 public sealed record StockCardLedgerEntry
 {

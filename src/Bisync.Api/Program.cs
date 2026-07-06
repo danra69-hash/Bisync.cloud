@@ -19,6 +19,18 @@ builder.Services.AddScoped<ComponentStockService>();
 builder.Services.AddScoped<ProductSaleInventoryService>();
 builder.Services.AddScoped<ProductionInventoryService>();
 builder.Services.AddScoped<StockCardService>();
+builder.Services.Configure<StockCardArchiveOptions>(
+    builder.Configuration.GetSection(StockCardArchiveOptions.SectionName));
+builder.Services.AddDbContext<StockCardArchiveDbContext>((sp, options) =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var environment = sp.GetRequiredService<IHostEnvironment>();
+    var databasePath = StockCardArchivePaths.ResolveArchiveDatabasePath(configuration, environment);
+    Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+    options.UseSqlite($"Data Source={databasePath};Cache=Shared");
+});
+builder.Services.AddScoped<StockCardArchiveService>();
+builder.Services.AddHostedService<StockCardArchiveHostedService>();
 
 builder.Services.AddCors(options =>
 {
@@ -48,6 +60,7 @@ using (var scope = app.Services.CreateScope())
     await ConfigurationSeeder.SeedAsync(db);
     await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
     await HrStartup.InitializeAsync(db);
+    await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
 }
 
 if (app.Environment.IsDevelopment())
