@@ -92,9 +92,7 @@ public class StockCardService(BisyncDbContext db)
                     OutboundQty = summary.OutboundQty,
                     AdjustmentQty = summary.AdjustmentQty,
                     OnHandQty = summary.OnHandQty,
-                    AverageCogs = product.IsSubProduct && product.YieldQuantity > 0
-                        ? Math.Round(product.TotalCost / product.YieldQuantity, 4)
-                        : product.TotalCost,
+                    AverageCogs = summary.AverageCogs,
                     Uom = displayUom,
                     RecipeUom = product.YieldUom,
                     InventoryUom = product.YieldUom,
@@ -120,7 +118,7 @@ public class StockCardService(BisyncDbContext db)
                 OutboundQty = productSummary.OutboundQty,
                 AdjustmentQty = productSummary.AdjustmentQty,
                 OnHandQty = productSummary.OnHandQty,
-                AverageCogs = product.Rrp > 0 ? product.Rrp : product.TotalCost,
+                AverageCogs = productSummary.AverageCogs,
                 Uom = productUom,
                 RecipeUom = product.B2bPackageUnit,
                 InventoryUom = product.B2bPackageUnit,
@@ -198,11 +196,12 @@ public class StockCardService(BisyncDbContext db)
             return null;
 
         var productUom = ResolveProductUom(product);
-        var productEntries = await BuildProductLedgerAsync(
+        var productFifoResult = await BuildProductFifoResultAsync(
             product,
             locationIds,
             stockPeriod,
             cancellationToken);
+        var productEntries = productFifoResult.Events.Select(MapFifoToLedgerEntry).ToList();
 
         return BuildDetail(
             typeLabel,
@@ -214,9 +213,8 @@ public class StockCardService(BisyncDbContext db)
             product.IsSubProduct ? product.YieldUom : product.B2bPackageUnit,
             productEntries,
             stockPeriod,
-            product.IsSubProduct && product.YieldQuantity > 0
-                ? Math.Round(product.TotalCost / product.YieldQuantity, 4)
-                : product.TotalCost);
+            productFifoResult.AverageCogs,
+            productFifoResult.RemainingLayers);
     }
 
     static StockCardDetail BuildDetail(
@@ -469,7 +467,7 @@ public class StockCardService(BisyncDbContext db)
             OutboundQty = outbound,
             AdjustmentQty = adjustment,
             OnHandQty = onHand,
-            AverageCogs = fifoResult.AverageCogs,
+            AverageCogs = averageCogs,
         };
     }
 
@@ -479,9 +477,11 @@ public class StockCardService(BisyncDbContext db)
         StockCardPeriod period,
         CancellationToken cancellationToken)
     {
-        var stockRows = await db.ProductB2bLocationStocks.AsNoTracking()
-            .Where(s => s.ProductId == product.Id && locationIds.Contains(s.LocationExternalId))
-            .ToListAsync(cancellationToken);
+        var fifoResult = await BuildProductFifoResultAsync(
+            product,
+            locationIds,
+            period,
+            cancellationToken);
 
         var logs = await db.ProductProductionLogs.AsNoTracking()
             .Where(l => l.ProductId == product.Id)
@@ -508,9 +508,14 @@ public class StockCardService(BisyncDbContext db)
         var outbound = monthLogs
             .Where(l => IsProductSaleEntryType(l.EntryType))
             .Sum(l => l.Quantity);
-        var onHand = period.IsCurrentMonth
-            ? stockRows.Sum(s => s.InStock)
-            : inbound - outbound;
+        var onHand = fifoResult.OnHandQty;
+        var monthEntries = fifoResult.Events
+            .Select(MapFifoToLedgerEntry)
+            .Where(e => e.OccurredAt >= period.MonthStart && e.OccurredAt <= period.PeriodEnd)
+            .ToList();
+        var averageCogs = ComputeOutboundAveragePrice(monthEntries, period.MonthStart, period.PeriodEnd);
+        if (averageCogs <= 0)
+            averageCogs = fifoResult.AverageCogs;
 
         return new StockMovementSummary
         {
@@ -518,7 +523,82 @@ public class StockCardService(BisyncDbContext db)
             OutboundQty = outbound,
             AdjustmentQty = 0,
             OnHandQty = onHand,
+            AverageCogs = averageCogs,
         };
+    }
+
+    async Task<FifoSimulationResult> BuildProductFifoResultAsync(
+        Product product,
+        IReadOnlyList<string> locationIds,
+        StockCardPeriod period,
+        CancellationToken cancellationToken)
+    {
+        var events = new List<FifoEvent>();
+        var uom = ResolveProductUom(product);
+        var productionUnitPrice = ResolveProductUnitPrice(product);
+        var logs = await db.ProductProductionLogs.AsNoTracking()
+            .Where(l => l.ProductId == product.Id)
+            .OrderBy(l => l.CreatedAt)
+            .ThenBy(l => l.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var log in logs.Where(l => LogMatchesAnyLocation(l.LocationIdsJson, locationIds)))
+        {
+            var occurredAt = ParseProductionDate(log.ProductionDate) ?? log.CreatedAt;
+            if (occurredAt < period.ArchiveCutoff || occurredAt > period.PeriodEnd)
+                continue;
+
+            if (string.Equals(log.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
+            {
+                events.Add(new FifoEvent
+                {
+                    Id = log.Id,
+                    OccurredAt = occurredAt,
+                    EntryType = "inbound",
+                    Quantity = log.Quantity,
+                    SignedQty = log.Quantity,
+                    Uom = uom,
+                    UnitPrice = productionUnitPrice,
+                    Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
+                        ? "Production recorded"
+                        : $"Production batch {log.BatchNumber}",
+                    ReferenceNumber = log.BatchNumber ?? string.Empty,
+                    SourceLabel = "Production",
+                });
+                continue;
+            }
+
+            if (IsProductSaleEntryType(log.EntryType))
+            {
+                var entryType = log.EntryType.Trim().ToLowerInvariant();
+                events.Add(new FifoEvent
+                {
+                    Id = log.Id,
+                    OccurredAt = occurredAt,
+                    EntryType = entryType,
+                    Quantity = log.Quantity,
+                    SignedQty = -log.Quantity,
+                    Uom = uom,
+                    UnitPrice = 0,
+                    Reason = FormatProductSaleReason(entryType, product.Name),
+                    ReferenceNumber = log.BatchNumber ?? string.Empty,
+                    SourceLabel = entryType,
+                });
+            }
+        }
+
+        return StockCardFifoEngine.Simulate(events);
+    }
+
+    static decimal ResolveProductUnitPrice(Product product)
+    {
+        if (product.IsSubProduct && product.YieldQuantity > 0)
+            return StockCardFifoEngine.RoundUnitPrice(product.TotalCost / product.YieldQuantity);
+
+        if (product.Rrp > 0)
+            return StockCardFifoEngine.RoundUnitPrice(product.Rrp);
+
+        return StockCardFifoEngine.RoundUnitPrice(product.TotalCost);
     }
 
     async Task<FifoSimulationResult> BuildComponentFifoResultAsync(
@@ -630,65 +710,6 @@ public class StockCardService(BisyncDbContext db)
         }
 
         return StockCardFifoEngine.Simulate(events);
-    }
-
-    async Task<List<StockCardLedgerEntry>> BuildProductLedgerAsync(
-        Product product,
-        IReadOnlyList<string> locationIds,
-        StockCardPeriod period,
-        CancellationToken cancellationToken)
-    {
-        var entries = new List<StockCardLedgerEntry>();
-        var logs = await db.ProductProductionLogs.AsNoTracking()
-            .Where(l => l.ProductId == product.Id)
-            .OrderBy(l => l.CreatedAt)
-            .ToListAsync(cancellationToken);
-
-        foreach (var log in logs.Where(l => LogMatchesAnyLocation(l.LocationIdsJson, locationIds)))
-        {
-            var occurredAt = ParseProductionDate(log.ProductionDate) ?? log.CreatedAt;
-            if (occurredAt < period.ArchiveCutoff || occurredAt > period.PeriodEnd)
-                continue;
-
-            if (string.Equals(log.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
-            {
-                entries.Add(new StockCardLedgerEntry
-                {
-                    Id = log.Id,
-                    OccurredAt = occurredAt,
-                    EntryType = "inbound",
-                    Quantity = log.Quantity,
-                    SignedQty = log.Quantity,
-                    Uom = ResolveProductUom(product),
-                    UnitPrice = product.IsSubProduct
-                        ? (product.YieldQuantity > 0 ? product.TotalCost / product.YieldQuantity : product.TotalCost)
-                        : product.Rrp,
-                    Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
-                        ? "Production recorded"
-                        : $"Production batch {log.BatchNumber}",
-                });
-                continue;
-            }
-
-            if (IsProductSaleEntryType(log.EntryType))
-            {
-                entries.Add(new StockCardLedgerEntry
-                {
-                    Id = log.Id,
-                    OccurredAt = occurredAt,
-                    EntryType = log.EntryType.Trim().ToLowerInvariant(),
-                    Quantity = log.Quantity,
-                    SignedQty = -log.Quantity,
-                    Uom = ResolveProductUom(product),
-                    UnitPrice = product.IsSubProduct && product.YieldQuantity > 0
-                        ? product.TotalCost / product.YieldQuantity
-                        : product.TotalCost,
-                    Reason = FormatProductSaleReason(log.EntryType, product.Name),
-                });
-            }
-        }
-
-        return entries;
     }
 
     static bool IsProductSaleEntryType(string entryType)
