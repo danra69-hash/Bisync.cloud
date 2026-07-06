@@ -47,6 +47,24 @@ The Vite dev server proxies `/api` to the backend.
 .\scripts\dev.ps1
 ```
 
+### Publish local database (GitHub + cloud)
+
+Local `src/Bisync.Api/bisync.db` is the source of truth. Publish it after data changes:
+
+```powershell
+.\scripts\publish-local-db.ps1
+```
+
+This copies `bisync.db` to `bisync-latest.db` (and `bisync-latest.sql` when `sqlite3` is available), commits/pushes to GitHub, and uploads to Cloud Run GCS.
+
+Deploy also runs this automatically:
+
+```powershell
+.\scripts\deploy-gcp.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
+```
+
+Stop the API first if `bisync.db-wal` exists, so the copy is consistent.
+
 ## API endpoints
 
 | Method | Path | Description |

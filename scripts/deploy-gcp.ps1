@@ -7,7 +7,8 @@ param(
 
     [string]$Region = "asia-southeast1",
     [string]$ServiceName = "bisync-cloud",
-    [string]$RepoName = "bisync"
+    [string]$RepoName = "bisync",
+    [switch]$SkipDbPublish
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,7 +28,17 @@ function Step([string]$Number, [string]$Message) {
 $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 
-Step "0" "Checking Google Cloud login"
+if (-not $SkipDbPublish) {
+    Step "0" "Publishing local database to GitHub"
+    & (Join-Path $PSScriptRoot "publish-local-db.ps1") `
+        -ProjectId $ProjectId `
+        -Region $Region `
+        -ServiceName $ServiceName `
+        -SkipCloud
+    if ($LASTEXITCODE -ne 0) { throw "Local database publish to GitHub failed." }
+}
+
+Step "1" "Checking Google Cloud login"
 $Auth = & $Gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>$null
 if (-not $Auth) {
     Write-Host "No active login. Opening browser for gcloud auth login..." -ForegroundColor Yellow
@@ -36,16 +47,16 @@ if (-not $Auth) {
 }
 Write-Host "Logged in as: $(& $Gcloud auth list --filter=status:ACTIVE --format='value(account)')" -ForegroundColor Green
 
-Step "1" "Setting GCP project to '$ProjectId'"
+Step "2" "Setting GCP project to '$ProjectId'"
 & $Gcloud config set project $ProjectId
 if ($LASTEXITCODE -ne 0) { throw "Failed to set project. Check your Project ID." }
 
-Step "2" "Enabling required APIs (Cloud Run, Artifact Registry, Cloud Build)"
+Step "3" "Enabling required APIs (Cloud Run, Artifact Registry, Cloud Build)"
 & $Gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
 if ($LASTEXITCODE -ne 0) { throw "Failed to enable APIs." }
 Write-Host "APIs enabled." -ForegroundColor Green
 
-Step "3" "Creating Artifact Registry repository '$RepoName' in $Region (if missing)"
+Step "4" "Creating Artifact Registry repository '$RepoName' in $Region (if missing)"
 $PrevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 & $Gcloud artifacts repositories describe $RepoName --location=$Region --format="value(name)" *> $null
@@ -64,13 +75,13 @@ if (-not $RepoExists) {
 
 $Image = "${Region}-docker.pkg.dev/${ProjectId}/${RepoName}/${ServiceName}:latest"
 
-Step "4" "Building container image with Cloud Build (5-10 min first time)"
+Step "5" "Building container image with Cloud Build (5-10 min first time)"
 Write-Host "Image: $Image" -ForegroundColor Gray
 & $Gcloud builds submit --tag $Image .
 if ($LASTEXITCODE -ne 0) { throw "Cloud Build failed." }
 Write-Host "Image built and pushed." -ForegroundColor Green
 
-Step "5" "Deploying to Cloud Run service '$ServiceName'"
+Step "6" "Deploying to Cloud Run service '$ServiceName'"
 $BucketName = "$($ProjectId.Replace('_','-').ToLower())-bisync-data"
 $PrevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
@@ -107,7 +118,16 @@ $RunServiceAccount = "$ProjectNumber-compute@developer.gserviceaccount.com"
     --set-env-vars "ASPNETCORE_ENVIRONMENT=Production"
 if ($LASTEXITCODE -ne 0) { throw "Cloud Run deploy failed." }
 
-Step "6" "Deployment complete"
+if (-not $SkipDbPublish) {
+    Step "7" "Publishing local database to Cloud Run"
+    & (Join-Path $PSScriptRoot "sync-cloud-db.ps1") `
+        -ProjectId $ProjectId `
+        -Region $Region `
+        -ServiceName $ServiceName
+    if ($LASTEXITCODE -ne 0) { throw "Local database publish to cloud failed." }
+}
+
+Step "8" "Deployment complete"
 $Url = & $Gcloud run services describe $ServiceName --region $Region --format="value(status.url)"
 Write-Host ""
 Write-Host "  Live URL:  $Url" -ForegroundColor Green
@@ -115,7 +135,7 @@ Write-Host "  Health:    $Url/api/health" -ForegroundColor Green
 Write-Host ""
 Write-Host "Notes:" -ForegroundColor Yellow
 Write-Host "  - Local dev is unchanged. Keep using dotnet run + npm run dev on your PC."
-Write-Host "  - Cloud DB persists in gs://$BucketName (mounted at /app/data)." -ForegroundColor Green
-Write-Host "  - Single Cloud Run instance keeps SQLite writes consistent." -ForegroundColor Green
+Write-Host "  - Local bisync.db is published to GitHub and gs://$BucketName on every deploy." -ForegroundColor Green
+Write-Host "  - DB-only publish: .\scripts\publish-local-db.ps1"
 Write-Host "  - Redeploy: .\scripts\deploy-gcp.ps1 -ProjectId $ProjectId"
 Write-Host ""
