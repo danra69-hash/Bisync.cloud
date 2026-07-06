@@ -12,5 +12,6 @@ public class InventoryMovement
     public string ReferenceType { get; set; } = string.Empty;
     public int ReferenceId { get; set; }
     public int? CompanyId { get; set; }
+    public decimal UnitPrice { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -6,7 +6,8 @@ namespace Bisync.Api.Services;
 
 public class ProductionInventoryService(
     BisyncDbContext db,
-    ComponentStockService componentStock)
+    ComponentStockService componentStock,
+    ProductSaleInventoryService productSaleInventory)
 {
     public async Task<ProduceBatchResult> ProduceSubProductBatchesAsync(
         int productId,
@@ -97,7 +98,7 @@ public class ProductionInventoryService(
             }
         }
 
-        var deductionReason = overrideStock ? "production_override" : "production";
+        var deductionReason = FormatProductionDeductionReason(product, overrideStock);
         foreach (var locationId in locationExternalIds)
         {
             foreach (var line in recipeLines)
@@ -105,16 +106,17 @@ public class ProductionInventoryService(
                 var requiredQty = line.Quantity * batchQty;
                 if (requiredQty <= 0) continue;
 
-                componentStock.RecordDeduction(
+                await componentStock.RecordDeductionAsync(
                     line.ComponentId,
                     line.ComponentName,
                     locationId,
                     requiredQty,
                     line.ComponentUom,
                     reason: deductionReason,
-                    referenceType: "sub_product_batch",
+                    referenceType: "production",
                     referenceId: product.Id,
-                    companyId: product.CompanyId);
+                    companyId: product.CompanyId,
+                    cancellationToken);
             }
 
             var stockRow = await EnsureStockRowAsync(product.Id, locationId, cancellationToken);
@@ -227,7 +229,7 @@ public class ProductionInventoryService(
                 }
             }
 
-            var adjustmentReason = overrideStock ? "batch_edit_override" : "batch_edit";
+            var adjustmentReason = FormatProductionDeductionReason(product, overrideStock, "batch_edit");
             foreach (var locationId in locationExternalIds)
             {
                 foreach (var line in recipeLines)
@@ -237,16 +239,17 @@ public class ProductionInventoryService(
 
                     if (componentDelta > 0)
                     {
-                        componentStock.RecordDeduction(
+                        await componentStock.RecordDeductionAsync(
                             line.ComponentId,
                             line.ComponentName,
                             locationId,
                             componentDelta,
                             line.ComponentUom,
                             reason: adjustmentReason,
-                            referenceType: "production_batch",
-                            referenceId: batchLogId,
-                            companyId: product.CompanyId);
+                            referenceType: "production",
+                            referenceId: product.Id,
+                            companyId: product.CompanyId,
+                            cancellationToken);
                     }
                     else
                     {
@@ -321,52 +324,18 @@ public class ProductionInventoryService(
         }
     }
 
-    public async Task RecordParentProductSaleAsync(
+    public Task RecordParentProductSaleAsync(
         int productId,
         IReadOnlyList<string> locationExternalIds,
         decimal quantitySold,
-        CancellationToken cancellationToken = default)
-    {
-        if (quantitySold <= 0) return;
-
-        var product = await db.Products
-            .Include(p => p.Items)
-            .FirstOrDefaultAsync(p => p.Id == productId, cancellationToken);
-
-        if (product is null || product.IsSubProduct) return;
-
-        var subProductsByCode = await db.Products
-            .AsNoTracking()
-            .Where(p => p.IsSubProduct && p.Active)
-            .ToDictionaryAsync(p => p.ProductId, StringComparer.OrdinalIgnoreCase, cancellationToken);
-
-        foreach (var line in product.Items.Where(l => !string.IsNullOrWhiteSpace(l.ComponentId)))
-        {
-            if (!subProductsByCode.TryGetValue(line.ComponentId, out var subProduct))
-                continue;
-
-            var piecesNeeded = line.Quantity * quantitySold;
-            var batchesToDeduct = subProduct.YieldQuantity > 0
-                ? piecesNeeded / subProduct.YieldQuantity
-                : piecesNeeded;
-
-            if (batchesToDeduct <= 0) continue;
-
-            foreach (var locationId in locationExternalIds)
-            {
-                var stockRow = await db.ProductB2bLocationStocks
-                    .FirstOrDefaultAsync(
-                        s => s.ProductId == subProduct.Id && s.LocationExternalId == locationId,
-                        cancellationToken);
-
-                if (stockRow is null) continue;
-                stockRow.InStock = Math.Max(0, stockRow.InStock - batchesToDeduct);
-                stockRow.UpdatedAt = DateTime.UtcNow;
-            }
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
-    }
+        string salesChannel,
+        CancellationToken cancellationToken = default) =>
+        productSaleInventory.RecordProductSaleAsync(
+            productId,
+            locationExternalIds,
+            quantitySold,
+            salesChannel,
+            cancellationToken);
 
     async Task<ProductB2bLocationStock> EnsureStockRowAsync(
         int productId,
@@ -389,6 +358,26 @@ public class ProductionInventoryService(
         db.ProductB2bLocationStocks.Add(row);
         await db.SaveChangesAsync(cancellationToken);
         return row;
+    }
+
+    static string FormatProductionDeductionReason(Product product, bool overrideStock, string? scenario = null)
+    {
+        var kind = product.IsSubProduct ? "Sub-product" : "Product";
+        var codeSuffix = string.IsNullOrWhiteSpace(product.ProductId)
+            ? string.Empty
+            : $" ({product.ProductId.Trim()})";
+
+        return scenario switch
+        {
+            "batch_edit" when overrideStock =>
+                $"Production batch adjustment (override) — {product.Name.Trim()}{codeSuffix} ({kind})",
+            "batch_edit" =>
+                $"Production batch adjustment — {product.Name.Trim()}{codeSuffix} ({kind})",
+            _ when overrideStock =>
+                $"Production override — {product.Name.Trim()}{codeSuffix} ({kind})",
+            _ =>
+                $"Production — {product.Name.Trim()}{codeSuffix} ({kind})",
+        };
     }
 }
 

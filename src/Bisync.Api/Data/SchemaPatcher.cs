@@ -263,6 +263,7 @@ public static class SchemaPatcher
             CREATE INDEX IF NOT EXISTS "IX_InventoryMovements_ComponentId_LocationExternalId"
             ON "InventoryMovements" ("ComponentId", "LocationExternalId");
             """);
+        await EnsureColumnAsync(db, "InventoryMovements", "UnitPrice", "REAL NOT NULL DEFAULT 0");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "ProductPackagingItems" (

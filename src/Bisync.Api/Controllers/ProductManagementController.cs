@@ -383,7 +383,8 @@ public class ProductManagementController(
         await productionInventory.RecordParentProductSaleAsync(
             productId,
             locationIds,
-            request.QuantitySold);
+            request.QuantitySold,
+            request.SalesChannel ?? "pos");
 
         return NoContent();
     }

@@ -810,6 +810,8 @@ public class RecordProductSaleRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal QuantitySold { get; set; }
+  /// <summary>pos, online, or offline</summary>
+    public string SalesChannel { get; set; } = "pos";
 }
 
 public class PatchProductionBatchRequest

@@ -612,14 +612,6 @@ export interface RevenuePoint {
   covers?: number;
 }
 
-export interface ProgressData {
-  overallPercent: number;
-  completedCount: number;
-  totalCount: number;
-  lastUpdated: string;
-  milestones: { phase: string; items: { id: number; title: string; status: string; progressPercent: number; notes?: string }[] }[];
-}
-
 export interface Ingredient {
   id: number;
   componentId: string;
@@ -639,6 +631,83 @@ export interface Ingredient {
   attachedVendors: number;
   active: boolean;
   locationsJson: string;
+}
+
+export type StockCardItemType = 'component' | 'product' | 'sub-product';
+
+export interface StockCardListRow {
+  itemType: StockCardItemType;
+  itemKey: string;
+  group: string;
+  name: string;
+  inboundQty: number;
+  outboundQty: number;
+  adjustmentQty: number;
+  onHandQty: number;
+  averageCogs: number;
+  uom: string;
+  recipeUom: string;
+  inventoryUom: string;
+}
+
+export type StockCardEntryType =
+  | 'balance_forward'
+  | 'purchase'
+  | 'cash_purchase'
+  | 'transfer_in'
+  | 'transfer_out'
+  | 'online_order'
+  | 'offline_order'
+  | 'pos_sale'
+  | 'wastage'
+  | 'production'
+  | 'adjustment_in'
+  | 'adjustment_out'
+  | 'adjustment'
+  | 'inbound'
+  | 'outbound';
+
+export interface StockCardLedgerEntry {
+  id: number;
+  occurredAt: string;
+  entryType: StockCardEntryType;
+  quantity: number;
+  signedQty: number;
+  uom: string;
+  unitPrice: number;
+  reason: string;
+  referenceNumber: string;
+  fifoDetail: string;
+  runningBalance: number;
+  averageCogsAfter: number;
+  fifoPolicy: string;
+}
+
+export interface StockCardDetail {
+  itemType: StockCardItemType;
+  itemKey: string;
+  group: string;
+  name: string;
+  uom: string;
+  recipeUom: string;
+  inventoryUom: string;
+  balanceForward: number;
+  inboundQty: number;
+  outboundQty: number;
+  adjustmentQty: number;
+  onHandQty: number;
+  averageCogs: number;
+  fifoPolicy: string;
+  periodStart: string;
+  entries: StockCardLedgerEntry[];
+}
+
+export interface ProgressData {
+  overallPercent: number;
+  completedCount: number;
+  totalCount: number;
+  lastUpdated: string;
+  milestones: { phase: string; items: { id: number; title: string; status: string; progressPercent: number; notes?: string }[] }[];
 }
 
 async function fetchJsonWithMethod<T>(path: string, method: string, body?: unknown): Promise<T> {
@@ -781,12 +850,40 @@ export const api = {
       'PATCH',
       payload,
     ),
-  recordProductSale: (productId: number, payload: { locationExternalIds: string[]; quantitySold: number }) =>
+  recordProductSale: (productId: number, payload: { locationExternalIds: string[]; quantitySold: number; salesChannel?: 'pos' | 'online' | 'offline' }) =>
     fetchJsonWithMethod<void>(
       `/api/product-management/${productId}/record-sale`,
       'POST',
       payload,
     ),
+  stockCards: (
+    companyId: number | undefined,
+    locationIds: string[],
+    options?: { itemType?: string; uomMode?: 'inventory' | 'recipe' },
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (options?.itemType) params.set('itemType', options.itemType);
+    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    const query = params.toString();
+    return fetchJson<StockCardListRow[]>(`/api/stock-cards${query ? `?${query}` : ''}`);
+  },
+  stockCardDetail: (
+    itemType: string,
+    itemKey: string,
+    companyId: number | undefined,
+    locationIds: string[],
+    options?: { uomMode?: 'inventory' | 'recipe'; period?: 'month' | 'week' | 'all' },
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    if (options?.period) params.set('period', options.period);
+    const query = params.toString();
+    return fetchJson<StockCardDetail>(`/api/stock-cards/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}${query ? `?${query}` : ''}`);
+  },
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),

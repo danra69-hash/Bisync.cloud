@@ -1,0 +1,121 @@
+using Bisync.Api.Data;
+using Bisync.Api.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bisync.Api.Services;
+
+/// <summary>
+/// Resolves FIFO unit cost for component deductions at a single location.
+/// </summary>
+public class ComponentFifoCostingService(BisyncDbContext db)
+{
+    public async Task<decimal> ResolveOutboundUnitPriceAsync(
+        string componentId,
+        string locationExternalId,
+        string uom,
+        decimal quantity,
+        int? companyId,
+        CancellationToken cancellationToken = default)
+    {
+        if (quantity <= 0)
+            return 0;
+
+        var events = await LoadInboundEventsAsync(
+            componentId,
+            locationExternalId,
+            uom,
+            companyId,
+            cancellationToken);
+
+        var simulation = StockCardFifoEngine.Simulate(events);
+        var layers = simulation.RemainingLayers.ToList();
+        var consumed = StockCardFifoEngine.Consume(ref layers, quantity);
+        return consumed.UnitPrice;
+    }
+
+    async Task<List<FifoEvent>> LoadInboundEventsAsync(
+        string componentId,
+        string locationExternalId,
+        string uom,
+        int? companyId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedUom = NormalizeUom(uom);
+        var events = new List<FifoEvent>();
+
+        var purchases = await db.InventoryPurchases.AsNoTracking()
+            .Where(p => p.ComponentId == componentId)
+            .ToListAsync(cancellationToken);
+
+        if (companyId is int cid)
+            purchases = purchases.Where(p => p.CompanyId is null || p.CompanyId == cid).ToList();
+
+        foreach (var purchase in purchases)
+        {
+            if (!LocationMatches(purchase.LocationIdsJson, locationExternalId))
+                continue;
+            if (NormalizeUom(purchase.Uom) != normalizedUom)
+                continue;
+
+            events.Add(new FifoEvent
+            {
+                Id = purchase.Id,
+                OccurredAt = purchase.DateCreatedInStock,
+                EntryType = purchase.PurchaseOrderId > 0 ? "purchase" : "cash_purchase",
+                Quantity = purchase.Quantity,
+                SignedQty = purchase.Quantity,
+                Uom = purchase.Uom,
+                UnitPrice = purchase.UnitPrice,
+            });
+        }
+
+        var movements = await db.InventoryMovements.AsNoTracking()
+            .Where(m => m.ComponentId == componentId && m.LocationExternalId == locationExternalId)
+            .OrderBy(m => m.CreatedAt)
+            .ThenBy(m => m.Id)
+            .ToListAsync(cancellationToken);
+
+        if (companyId is int companyFilter)
+            movements = movements.Where(m => m.CompanyId is null || m.CompanyId == companyFilter).ToList();
+
+        foreach (var movement in movements.Where(m => NormalizeUom(m.Uom) == normalizedUom))
+        {
+            var entryType = ClassifyMovement(movement);
+            events.Add(new FifoEvent
+            {
+                Id = movement.Id,
+                OccurredAt = movement.CreatedAt,
+                EntryType = entryType,
+                Quantity = Math.Abs(movement.QtyDelta),
+                SignedQty = movement.QtyDelta,
+                Uom = movement.Uom,
+                UnitPrice = movement.UnitPrice,
+            });
+        }
+
+        return events;
+    }
+
+    static string ClassifyMovement(InventoryMovement movement)
+    {
+        var refType = movement.ReferenceType.Trim().ToLowerInvariant();
+        if (refType == "inventory_adjustment" || movement.Reason.Contains("adjust", StringComparison.OrdinalIgnoreCase))
+            return movement.QtyDelta >= 0 ? "adjustment_in" : "adjustment_out";
+        if (movement.QtyDelta >= 0 && refType is "transfer_in")
+            return "transfer_in";
+        if (movement.QtyDelta < 0)
+            return refType is "pos_sale" or "online_order" or "offline_order" or "production"
+                or "wastage" or "transfer_out"
+                ? refType
+                : "outbound";
+        return "inbound";
+    }
+
+    static bool LocationMatches(string locationIdsJson, string locationExternalId)
+    {
+        var ids = PurchaseOrderWorkflow.DeserializeLocationIds(locationIdsJson);
+        return ids.Count == 0 || ids.Contains(locationExternalId);
+    }
+
+    static string NormalizeUom(string uom) => uom.Trim().ToUpperInvariant();
+}
