@@ -412,6 +412,7 @@ INSERT INTO PurchaseOrders VALUES(24,'BH-AT-012-20260701','Green Valley Produce'
 INSERT INTO PurchaseOrders VALUES(25,'PO-2026-FIFO-001','Premium Meats Co.','2026-05-20','2026-05-22','Reconciled','PO',1,'["downtown"]','Demo Seeder','Demo Seeder','2026-05-21 03:13:07.9739239','2026-05-22 03:13:07.9739239','2026-05-22 03:13:07.9739239','',NULL,'');
 INSERT INTO PurchaseOrders VALUES(26,'PO-2026-FIFO-014','Premium Meats Co.','2026-06-06','2026-06-08','Reconciled','PO',1,'["downtown"]','Demo Seeder','Demo Seeder','2026-06-07 03:13:07.9739239','2026-06-08 03:13:07.9739239','2026-06-08 03:13:07.9739239','',NULL,'');
 INSERT INTO PurchaseOrders VALUES(27,'PO-2026-FIFO-028','Premium Meats Co.','2026-06-22','2026-06-24','Reconciled','PO',1,'["downtown"]','Demo Seeder','Demo Seeder','2026-06-23 03:13:07.9739239','2026-06-24 03:13:07.9739239','2026-06-24 03:13:07.9739239','',NULL,'');
+INSERT INTO PurchaseOrders VALUES(28,'PO-2026-FIFO-042','Premium Meats Co.','2026-07-01','2026-07-03','Reconciled','PO',1,'["downtown"]','Demo Seeder','Demo Seeder','2026-07-02 09:00:00','2026-07-03 08:00:00','2026-07-03 08:00:00','',NULL,'');
 CREATE TABLE IF NOT EXISTS "RevenueDataPoints" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_RevenueDataPoints" PRIMARY KEY AUTOINCREMENT,
@@ -1757,6 +1758,7 @@ INSERT INTO InventoryPurchases VALUES(229,'CMP-SCDEMO-170','SC Demo Component 17
 INSERT INTO InventoryPurchases VALUES(233,'CMP-SCFIFO-001','SC FIFO Demo Wagyu',50.0,'kg',38.5,'2026-05-20','2026-06-11 12:16:19.5023319',25,0,1,'["downtown"]');
 INSERT INTO InventoryPurchases VALUES(234,'CMP-SCFIFO-001','SC FIFO Demo Wagyu',40.0,'kg',42.0,'2026-06-06','2026-06-18 13:16:19.5023319',26,0,1,'["downtown"]');
 INSERT INTO InventoryPurchases VALUES(235,'CMP-SCFIFO-001','SC FIFO Demo Wagyu',30.0,'kg',45.75,'2026-06-22','2026-06-28 14:16:19.5023319',27,0,1,'["downtown"]');
+INSERT INTO InventoryPurchases VALUES(236,'CMP-SCFIFO-001','SC FIFO Demo Wagyu',40.0,'kg',50.0,'2026-07-01','2026-07-03 10:00:00',28,0,1,'["downtown"]');
 CREATE TABLE IF NOT EXISTS "VendorProductPrices" (
 
     "ExternalId" TEXT NOT NULL CONSTRAINT "PK_VendorProductPrices" PRIMARY KEY,
@@ -2329,6 +2331,8 @@ INSERT INTO InventoryMovements VALUES(219,'CMP-SCFIFO-001','SC FIFO Demo Wagyu',
 INSERT INTO InventoryMovements VALUES(220,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-3.0,'kg','Inventory adjustment ΓÇö count short','inventory_adjustment',9006,1,'2026-07-03 19:16:19.5023319',0.0);
 INSERT INTO InventoryMovements VALUES(221,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',2.0,'kg','Inventory adjustment ΓÇö count found','inventory_adjustment',9007,1,'2026-07-04 14:16:19.5023319',0.0);
 INSERT INTO InventoryMovements VALUES(222,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-12.0,'kg','POS sales depletion','pos_sale',9008,1,'2026-07-05 22:16:19.5023319',0.0);
+INSERT INTO InventoryMovements VALUES(223,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-30.0,'kg','POS sales depletion ΓÇö FIFO test (30 kg)','pos_sale',9010,1,'2026-07-02 08:00:00',0.0);
+INSERT INTO InventoryMovements VALUES(224,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-25.0,'kg','POS sales depletion ΓÇö FIFO test (25 kg)','pos_sale',9012,1,'2026-07-04 09:00:00',0.0);
 CREATE TABLE IF NOT EXISTS "ProductProductionLogs" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_ProductProductionLogs" PRIMARY KEY AUTOINCREMENT,
@@ -2402,7 +2406,7 @@ INSERT INTO sqlite_sequence VALUES('Ingredients',209);
 INSERT INTO sqlite_sequence VALUES('InventoryAlerts',3);
 INSERT INTO sqlite_sequence VALUES('Locations',8);
 INSERT INTO sqlite_sequence VALUES('MenuItems',5);
-INSERT INTO sqlite_sequence VALUES('PurchaseOrders',27);
+INSERT INTO sqlite_sequence VALUES('PurchaseOrders',28);
 INSERT INTO sqlite_sequence VALUES('RevenueDataPoints',7);
 INSERT INTO sqlite_sequence VALUES('Vendors',31);
 INSERT INTO sqlite_sequence VALUES('PurchaseOrderItems',27);
@@ -2422,7 +2426,7 @@ INSERT INTO sqlite_sequence VALUES('ShiftSchedules',50);
 INSERT INTO sqlite_sequence VALUES('IncomeTaxYears',1);
 INSERT INTO sqlite_sequence VALUES('IncomeTaxBrackets',11);
 INSERT INTO sqlite_sequence VALUES('IncomeTaxReliefs',6);
-INSERT INTO sqlite_sequence VALUES('InventoryPurchases',235);
+INSERT INTO sqlite_sequence VALUES('InventoryPurchases',236);
 INSERT INTO sqlite_sequence VALUES('CashPurchases',2);
 INSERT INTO sqlite_sequence VALUES('OrderTemplates',2);
 INSERT INTO sqlite_sequence VALUES('OrderTemplateItems',4);
@@ -2430,7 +2434,7 @@ INSERT INTO sqlite_sequence VALUES('Products',32);
 INSERT INTO sqlite_sequence VALUES('ProductComponentItems',28);
 INSERT INTO sqlite_sequence VALUES('ProductB2bLocationStocks',40);
 INSERT INTO sqlite_sequence VALUES('ProductProductionLogs',42);
-INSERT INTO sqlite_sequence VALUES('InventoryMovements',222);
+INSERT INTO sqlite_sequence VALUES('InventoryMovements',224);
 CREATE UNIQUE INDEX "IX_Locations_ExternalId" ON "Locations" ("ExternalId");
 CREATE INDEX "IX_PurchaseOrderItems_PurchaseOrderId" ON "PurchaseOrderItems" ("PurchaseOrderId");
 CREATE UNIQUE INDEX "IX_PurchaseOrders_PoNumber" ON "PurchaseOrders" ("PoNumber");
