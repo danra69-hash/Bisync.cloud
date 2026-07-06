@@ -19,6 +19,25 @@ public class ComponentFifoCostingService(BisyncDbContext db)
         int? companyId,
         CancellationToken cancellationToken = default)
     {
+        return await ResolveOutboundUnitPriceAsOfAsync(
+            componentId,
+            locationExternalId,
+            uom,
+            quantity,
+            companyId,
+            asOfEnd: null,
+            cancellationToken);
+    }
+
+    public async Task<decimal> ResolveOutboundUnitPriceAsOfAsync(
+        string componentId,
+        string locationExternalId,
+        string uom,
+        decimal quantity,
+        int? companyId,
+        DateTime? asOfEnd,
+        CancellationToken cancellationToken = default)
+    {
         if (quantity <= 0)
             return 0;
 
@@ -28,6 +47,9 @@ public class ComponentFifoCostingService(BisyncDbContext db)
             uom,
             companyId,
             cancellationToken);
+
+        if (asOfEnd is DateTime cutoff)
+            events = events.Where(e => e.OccurredAt <= cutoff).ToList();
 
         var simulation = StockCardFifoEngine.Simulate(events);
         var layers = simulation.RemainingLayers.ToList();
@@ -93,7 +115,9 @@ public class ComponentFifoCostingService(BisyncDbContext db)
                 Quantity = Math.Abs(movement.QtyDelta),
                 SignedQty = movement.QtyDelta,
                 Uom = movement.Uom,
-                UnitPrice = movement.UnitPrice,
+                UnitPrice = entryType is "adjustment_in" or "adjustment_out"
+                    ? 0
+                    : movement.UnitPrice,
             });
         }
 

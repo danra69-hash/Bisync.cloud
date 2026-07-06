@@ -4,7 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Services;
 
-public class StockCardService(BisyncDbContext db)
+public class StockCardService(
+    BisyncDbContext db,
+    ComponentStockService componentStock,
+    ComponentFifoCostingService fifoCosting)
 {
     public async Task<IReadOnlyList<StockCardListRow>> ListAsync(
         int? companyId,
@@ -54,6 +57,7 @@ public class StockCardService(BisyncDbContext db)
                     AdjustmentQty = summary.AdjustmentQty,
                     OnHandQty = summary.OnHandQty,
                     AverageCogs = summary.AverageCogs,
+                    OnHandAverageCogs = summary.OnHandAverageCogs,
                     Uom = displayUom,
                     RecipeUom = ingredient.RecipeUom,
                     InventoryUom = ingredient.InventoryUom,
@@ -93,6 +97,7 @@ public class StockCardService(BisyncDbContext db)
                     AdjustmentQty = summary.AdjustmentQty,
                     OnHandQty = summary.OnHandQty,
                     AverageCogs = summary.AverageCogs,
+                    OnHandAverageCogs = summary.OnHandAverageCogs,
                     Uom = displayUom,
                     RecipeUom = product.YieldUom,
                     InventoryUom = product.YieldUom,
@@ -119,6 +124,7 @@ public class StockCardService(BisyncDbContext db)
                 AdjustmentQty = productSummary.AdjustmentQty,
                 OnHandQty = productSummary.OnHandQty,
                 AverageCogs = productSummary.AverageCogs,
+                OnHandAverageCogs = productSummary.OnHandAverageCogs,
                 Uom = productUom,
                 RecipeUom = product.B2bPackageUnit,
                 InventoryUom = product.B2bPackageUnit,
@@ -217,6 +223,322 @@ public class StockCardService(BisyncDbContext db)
             productFifoResult.RemainingLayers);
     }
 
+    public async Task<StockCardAsOfSnapshot?> GetAsOfSnapshotAsync(
+        string itemType,
+        string itemKey,
+        int? companyId,
+        string locationExternalId,
+        IReadOnlyList<string> locationIds,
+        string uomMode,
+        DateTime asOfDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (locationIds.Count == 0 || string.IsNullOrWhiteSpace(locationExternalId))
+            return null;
+
+        var asOfEnd = EndOfUtcDay(asOfDate);
+        var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
+        if (asOfEnd < archiveCutoff)
+            return null;
+
+        var normalizedType = itemType.Trim().ToLowerInvariant();
+        var mode = NormalizeUomMode(uomMode);
+
+        if (normalizedType is "component" or "smart-component" or "smart component")
+        {
+            var ingredient = await db.Ingredients.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
+            if (ingredient is null)
+                return null;
+
+            var displayUom = ResolveComponentUom(ingredient, mode);
+            var period = BuildOpenEndedPeriod(asOfEnd);
+            var events = await BuildComponentFifoEventsAsync(
+                ingredient,
+                displayUom,
+                [locationExternalId],
+                companyId,
+                period,
+                cancellationToken);
+            var filtered = events.Where(e => e.OccurredAt <= asOfEnd).ToList();
+            var snapshot = StockCardFifoEngine.Simulate(filtered);
+            var suggestedAdjustmentInUnitPrice = StockCardFifoEngine.ResolveAdjustmentInUnitPriceAsOf(
+                events,
+                asOfEnd);
+
+            return new StockCardAsOfSnapshot
+            {
+                AsOfDate = DateOnly.FromDateTime(asOfEnd),
+                LocationExternalId = locationExternalId,
+                Uom = displayUom,
+                OnHandQty = snapshot.OnHandQty,
+                Layers = MapOnHandLayers(snapshot.RemainingLayers),
+                SuggestedAdjustmentInUnitPrice = suggestedAdjustmentInUnitPrice,
+            };
+        }
+
+        if (!int.TryParse(itemKey, out var productId))
+            return null;
+
+        var product = await db.Products.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId, cancellationToken);
+        if (product is null)
+            return null;
+
+        if (companyId is int cid && product.CompanyId is not null && product.CompanyId != cid)
+            return null;
+
+        if (!MatchesProductLocations(product, locationIds))
+            return null;
+
+        var productUom = ResolveProductUom(product);
+        var productPeriod = BuildOpenEndedPeriod(asOfEnd);
+        var productEvents = await BuildProductFifoEventsAsync(
+            product,
+            [locationExternalId],
+            productPeriod,
+            cancellationToken);
+        var productFiltered = productEvents.Where(e => e.OccurredAt <= asOfEnd).ToList();
+        var productSnapshot = StockCardFifoEngine.Simulate(productFiltered);
+        var suggestedProductAdjustmentInUnitPrice = StockCardFifoEngine.ResolveAdjustmentInUnitPriceAsOf(
+            productEvents,
+            asOfEnd);
+
+        return new StockCardAsOfSnapshot
+        {
+            AsOfDate = DateOnly.FromDateTime(asOfEnd),
+            LocationExternalId = locationExternalId,
+            Uom = productUom,
+            OnHandQty = productSnapshot.OnHandQty,
+            Layers = MapOnHandLayers(productSnapshot.RemainingLayers),
+            SuggestedAdjustmentInUnitPrice = suggestedProductAdjustmentInUnitPrice,
+        };
+    }
+
+    public async Task<StockCardAdjustmentResult> CreateAdjustmentAsync(
+        string itemType,
+        string itemKey,
+        int? companyId,
+        string locationExternalId,
+        IReadOnlyList<string> locationIds,
+        string uomMode,
+        DateOnly adjustmentDate,
+        decimal quantity,
+        string direction,
+        string reason,
+        string? inboundUom = null,
+        decimal? inboundUnitPrice = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (locationIds.Count == 0 || string.IsNullOrWhiteSpace(locationExternalId))
+            return StockCardAdjustmentResult.Fail("Select a location.");
+
+        if (!locationIds.Contains(locationExternalId, StringComparer.OrdinalIgnoreCase))
+            return StockCardAdjustmentResult.Fail("Selected location is not in the current filter.");
+
+        if (quantity <= 0)
+            return StockCardAdjustmentResult.Fail("Quantity must be greater than zero.");
+
+        var trimmedReason = reason.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedReason))
+            return StockCardAdjustmentResult.Fail("Reason is required.");
+
+        var isInbound = direction.Trim().Equals("in", StringComparison.OrdinalIgnoreCase)
+            || direction.Trim().Equals("+", StringComparison.OrdinalIgnoreCase);
+        var isOutbound = direction.Trim().Equals("out", StringComparison.OrdinalIgnoreCase)
+            || direction.Trim().Equals("-", StringComparison.OrdinalIgnoreCase);
+        if (!isInbound && !isOutbound)
+            return StockCardAdjustmentResult.Fail("Direction must be in or out.");
+
+        var signedQty = isInbound ? quantity : -quantity;
+        var asOfEnd = EndOfUtcDay(adjustmentDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
+        if (asOfEnd < archiveCutoff)
+            return StockCardAdjustmentResult.Fail("Adjustment date is outside the retained history window.");
+        if (asOfEnd > DateTime.UtcNow)
+            return StockCardAdjustmentResult.Fail("Adjustment date cannot be in the future.");
+
+        var normalizedType = itemType.Trim().ToLowerInvariant();
+        var occurredAt = asOfEnd;
+        var productionDate = adjustmentDate.ToString("yyyy-MM-dd");
+
+        if (normalizedType is "component" or "smart-component" or "smart component")
+        {
+            var ingredient = await db.Ingredients.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
+            if (ingredient is null)
+                return StockCardAdjustmentResult.Fail("Component not found.");
+
+            var displayUom = ResolveComponentUom(ingredient, NormalizeUomMode(uomMode));
+            var snapshot = await GetAsOfSnapshotAsync(
+                itemType,
+                itemKey,
+                companyId,
+                locationExternalId,
+                locationIds,
+                uomMode,
+                adjustmentDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                cancellationToken);
+            if (snapshot is null)
+                return StockCardAdjustmentResult.Fail("Unable to resolve stock for the selected date.");
+
+            if (!isInbound && quantity > snapshot.OnHandQty)
+                return StockCardAdjustmentResult.Fail($"Cannot deplete {quantity} {displayUom}. Only {snapshot.OnHandQty} on hand on that date.");
+
+            var reasonText = $"Inventory adjustment — {trimmedReason}";
+            if (isInbound)
+            {
+                var inboundUomResolved = ResolveInboundAdjustmentUom(
+                    ingredient.RecipeUom,
+                    ingredient.InventoryUom,
+                    displayUom,
+                    inboundUom);
+                if (inboundUomResolved is null)
+                    return StockCardAdjustmentResult.Fail("Select a valid UOM for this component.");
+
+                componentStock.RecordAddition(
+                    ingredient.ComponentId,
+                    ingredient.Name,
+                    locationExternalId,
+                    quantity,
+                    inboundUomResolved,
+                    reasonText,
+                    "inventory_adjustment",
+                    referenceId: 0,
+                    companyId,
+                    occurredAt);
+            }
+            else
+            {
+                var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
+                    ingredient.ComponentId,
+                    locationExternalId,
+                    displayUom,
+                    quantity,
+                    companyId,
+                    asOfEnd,
+                    cancellationToken);
+
+                await componentStock.RecordDeductionAsync(
+                    ingredient.ComponentId,
+                    ingredient.Name,
+                    locationExternalId,
+                    quantity,
+                    displayUom,
+                    reasonText,
+                    "inventory_adjustment",
+                    referenceId: 0,
+                    companyId,
+                    cancellationToken,
+                    occurredAt,
+                    unitPrice);
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            return StockCardAdjustmentResult.Ok();
+        }
+
+        if (!int.TryParse(itemKey, out var productId))
+            return StockCardAdjustmentResult.Fail("Invalid product key.");
+
+        var product = await db.Products.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId, cancellationToken);
+        if (product is null)
+            return StockCardAdjustmentResult.Fail("Product not found.");
+
+        if (companyId is int productCompanyId && product.CompanyId is not null && product.CompanyId != productCompanyId)
+            return StockCardAdjustmentResult.Fail("Product not found for this company.");
+
+        if (!MatchesProductLocations(product, locationIds))
+            return StockCardAdjustmentResult.Fail("Product is not available at the selected locations.");
+
+        var productSnapshot = await GetAsOfSnapshotAsync(
+            itemType,
+            itemKey,
+            companyId,
+            locationExternalId,
+            locationIds,
+            uomMode,
+            adjustmentDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            cancellationToken);
+        if (productSnapshot is null)
+            return StockCardAdjustmentResult.Fail("Unable to resolve stock for the selected date.");
+
+        if (!isInbound && quantity > productSnapshot.OnHandQty)
+            return StockCardAdjustmentResult.Fail($"Cannot deplete {quantity} {productSnapshot.Uom}. Only {productSnapshot.OnHandQty} on hand on that date.");
+
+        var entryType = isInbound ? "adjustment_in" : "adjustment_out";
+        var productUom = ResolveProductUom(product);
+        if (isInbound && !string.IsNullOrWhiteSpace(inboundUom)
+            && !string.Equals(NormalizeUom(inboundUom), NormalizeUom(productUom), StringComparison.OrdinalIgnoreCase))
+            return StockCardAdjustmentResult.Fail("UOM does not match this product.");
+
+        db.ProductProductionLogs.Add(new ProductProductionLog
+        {
+            ProductId = product.Id,
+            EntryType = entryType,
+            Quantity = quantity,
+            ProductionDate = productionDate,
+            BatchNumber = trimmedReason,
+            UnitPrice = 0,
+            LocationIdsJson = System.Text.Json.JsonSerializer.Serialize(new[] { locationExternalId }),
+            CompanyId = product.CompanyId,
+            CreatedAt = occurredAt,
+        });
+
+        await ApplyProductLocationStockDeltaAsync(product.Id, locationExternalId, signedQty, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return StockCardAdjustmentResult.Ok();
+    }
+
+    async Task ApplyProductLocationStockDeltaAsync(
+        int productId,
+        string locationExternalId,
+        decimal signedQty,
+        CancellationToken cancellationToken)
+    {
+        var stockRow = await db.ProductB2bLocationStocks
+            .FirstOrDefaultAsync(
+                s => s.ProductId == productId && s.LocationExternalId == locationExternalId,
+                cancellationToken);
+
+        if (stockRow is null)
+        {
+            if (signedQty <= 0)
+                return;
+
+            db.ProductB2bLocationStocks.Add(new ProductB2bLocationStock
+            {
+                ProductId = productId,
+                LocationExternalId = locationExternalId,
+                InStock = signedQty,
+                UpdatedAt = DateTime.UtcNow,
+            });
+            return;
+        }
+
+        stockRow.InStock = Math.Max(0, stockRow.InStock + signedQty);
+        stockRow.UpdatedAt = DateTime.UtcNow;
+    }
+
+    static StockCardPeriod BuildOpenEndedPeriod(DateTime asOfEnd)
+    {
+        var monthStart = new DateTime(asOfEnd.Year, asOfEnd.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
+        return new StockCardPeriod(
+            $"{monthStart:yyyy-MM}",
+            monthStart,
+            asOfEnd,
+            archiveCutoff,
+            monthStart.Year == DateTime.UtcNow.Year && monthStart.Month == DateTime.UtcNow.Month);
+    }
+
+    static DateTime EndOfUtcDay(DateTime date)
+    {
+        var day = date.Kind == DateTimeKind.Utc ? date.Date : date.ToUniversalTime().Date;
+        return day.AddDays(1).AddTicks(-1);
+    }
+
     static StockCardDetail BuildDetail(
         string itemType,
         string itemKey,
@@ -313,6 +635,9 @@ public class StockCardService(BisyncDbContext db)
             AdjustmentQty = adjustment,
             OnHandQty = running,
             AverageCogs = averageCogs,
+            OnHandAverageCogs = remainingLayers is { Count: > 0 }
+                ? StockCardFifoEngine.ComputeAverageCogs(remainingLayers)
+                : 0,
             OnHandLayers = MapOnHandLayers(remainingLayers),
             FifoPolicy = "FIFO",
             PeriodMonth = period.MonthKey,
@@ -468,6 +793,7 @@ public class StockCardService(BisyncDbContext db)
             AdjustmentQty = adjustment,
             OnHandQty = onHand,
             AverageCogs = averageCogs,
+            OnHandAverageCogs = StockCardFifoEngine.ComputeAverageCogs(fifoResult.RemainingLayers),
         };
     }
 
@@ -508,6 +834,9 @@ public class StockCardService(BisyncDbContext db)
         var outbound = monthLogs
             .Where(l => IsProductSaleEntryType(l.EntryType))
             .Sum(l => l.Quantity);
+        var adjustment = monthLogs
+            .Where(l => IsProductAdjustmentEntryType(l.EntryType))
+            .Sum(l => string.Equals(l.EntryType, "adjustment_in", StringComparison.OrdinalIgnoreCase) ? l.Quantity : -l.Quantity);
         var onHand = fifoResult.OnHandQty;
         var monthEntries = fifoResult.Events
             .Select(MapFifoToLedgerEntry)
@@ -521,13 +850,24 @@ public class StockCardService(BisyncDbContext db)
         {
             InboundQty = inbound,
             OutboundQty = outbound,
-            AdjustmentQty = 0,
+            AdjustmentQty = adjustment,
             OnHandQty = onHand,
             AverageCogs = averageCogs,
+            OnHandAverageCogs = StockCardFifoEngine.ComputeAverageCogs(fifoResult.RemainingLayers),
         };
     }
 
     async Task<FifoSimulationResult> BuildProductFifoResultAsync(
+        Product product,
+        IReadOnlyList<string> locationIds,
+        StockCardPeriod period,
+        CancellationToken cancellationToken)
+    {
+        var events = await BuildProductFifoEventsAsync(product, locationIds, period, cancellationToken);
+        return StockCardFifoEngine.Simulate(events);
+    }
+
+    async Task<List<FifoEvent>> BuildProductFifoEventsAsync(
         Product product,
         IReadOnlyList<string> locationIds,
         StockCardPeriod period,
@@ -584,10 +924,31 @@ public class StockCardService(BisyncDbContext db)
                     ReferenceNumber = log.BatchNumber ?? string.Empty,
                     SourceLabel = entryType,
                 });
+                continue;
+            }
+
+            if (IsProductAdjustmentEntryType(log.EntryType))
+            {
+                var entryType = log.EntryType.Trim().ToLowerInvariant();
+                events.Add(new FifoEvent
+                {
+                    Id = log.Id,
+                    OccurredAt = occurredAt,
+                    EntryType = entryType,
+                    Quantity = log.Quantity,
+                    SignedQty = entryType == "adjustment_in" ? log.Quantity : -log.Quantity,
+                    Uom = uom,
+                    UnitPrice = 0,
+                    Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
+                        ? $"Inventory adjustment — {product.Name}"
+                        : $"Inventory adjustment — {log.BatchNumber}",
+                    ReferenceNumber = log.BatchNumber ?? string.Empty,
+                    SourceLabel = entryType,
+                });
             }
         }
 
-        return StockCardFifoEngine.Simulate(events);
+        return events;
     }
 
     static decimal ResolveProductUnitPrice(Product product)
@@ -602,6 +963,28 @@ public class StockCardService(BisyncDbContext db)
     }
 
     async Task<FifoSimulationResult> BuildComponentFifoResultAsync(
+        Ingredient ingredient,
+        string displayUom,
+        IReadOnlyList<string> locationIds,
+        int? companyId,
+        StockCardPeriod period,
+        CancellationToken cancellationToken,
+        List<InventoryPurchase>? purchasesOverride = null,
+        List<InventoryMovement>? movementsOverride = null)
+    {
+        var events = await BuildComponentFifoEventsAsync(
+            ingredient,
+            displayUom,
+            locationIds,
+            companyId,
+            period,
+            cancellationToken,
+            purchasesOverride,
+            movementsOverride);
+        return StockCardFifoEngine.Simulate(events);
+    }
+
+    async Task<List<FifoEvent>> BuildComponentFifoEventsAsync(
         Ingredient ingredient,
         string displayUom,
         IReadOnlyList<string> locationIds,
@@ -700,22 +1083,30 @@ public class StockCardService(BisyncDbContext db)
                 Quantity = qty,
                 SignedQty = movement.QtyDelta,
                 Uom = movement.Uom,
-                UnitPrice = movement.UnitPrice > 0
-                    ? movement.UnitPrice
-                    : ResolveComponentFallbackPrice(ingredient, displayUom),
+                UnitPrice = entryType is "adjustment_in" or "adjustment_out"
+                    ? 0
+                    : movement.UnitPrice > 0
+                        ? movement.UnitPrice
+                        : ResolveComponentFallbackPrice(ingredient, displayUom),
                 Reason = FormatMovementReason(movement, productionProduct),
                 ReferenceNumber = ResolveMovementReferenceNumber(movement, productionProduct),
                 SourceLabel = entryType,
             });
         }
 
-        return StockCardFifoEngine.Simulate(events);
+        return events;
     }
 
     static bool IsProductSaleEntryType(string entryType)
     {
         var normalized = entryType.Trim().ToLowerInvariant();
         return normalized is "pos_sale" or "online_order" or "offline_order";
+    }
+
+    static bool IsProductAdjustmentEntryType(string entryType)
+    {
+        var normalized = entryType.Trim().ToLowerInvariant();
+        return normalized is "adjustment_in" or "adjustment_out";
     }
 
     static string FormatProductSaleReason(string entryType, string productName)
@@ -945,6 +1336,25 @@ public class StockCardService(BisyncDbContext db)
 
     static string NormalizeUom(string uom) => uom.Trim().ToUpperInvariant();
 
+    static string? ResolveInboundAdjustmentUom(
+        string recipeUom,
+        string inventoryUom,
+        string defaultUom,
+        string? requestedUom)
+    {
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            recipeUom.Trim(),
+            inventoryUom.Trim(),
+        };
+
+        if (string.IsNullOrWhiteSpace(requestedUom))
+            return allowed.Contains(defaultUom.Trim()) ? defaultUom.Trim() : null;
+
+        var trimmed = requestedUom.Trim();
+        return allowed.Contains(trimmed) ? trimmed : null;
+    }
+
     static bool ShouldInclude(string? itemTypeFilter, string itemType)
     {
         if (string.IsNullOrWhiteSpace(itemTypeFilter) || itemTypeFilter.Equals("all", StringComparison.OrdinalIgnoreCase))
@@ -1064,6 +1474,7 @@ public sealed class StockMovementSummary
     public decimal AdjustmentQty { get; init; }
     public decimal OnHandQty { get; init; }
     public decimal AverageCogs { get; init; }
+    public decimal OnHandAverageCogs { get; init; }
 }
 
 public sealed class StockCardListRow
@@ -1077,6 +1488,7 @@ public sealed class StockCardListRow
     public decimal AdjustmentQty { get; init; }
     public decimal OnHandQty { get; init; }
     public decimal AverageCogs { get; init; }
+    public decimal OnHandAverageCogs { get; init; }
     public string Uom { get; init; } = string.Empty;
     public string RecipeUom { get; init; } = string.Empty;
     public string InventoryUom { get; init; } = string.Empty;
@@ -1097,6 +1509,7 @@ public sealed class StockCardDetail
     public decimal AdjustmentQty { get; init; }
     public decimal OnHandQty { get; init; }
     public decimal AverageCogs { get; init; }
+    public decimal OnHandAverageCogs { get; init; }
     public IReadOnlyList<StockCardOnHandLayer> OnHandLayers { get; init; } = [];
     public string FifoPolicy { get; init; } = "FIFO";
     public string PeriodMonth { get; init; } = string.Empty;
@@ -1139,4 +1552,23 @@ public sealed record StockCardOnHandLayer
     public decimal Quantity { get; init; }
     public decimal UnitPrice { get; init; }
     public DateTime SortOrder { get; init; }
+}
+
+public sealed class StockCardAsOfSnapshot
+{
+    public DateOnly AsOfDate { get; init; }
+    public string LocationExternalId { get; init; } = string.Empty;
+    public string Uom { get; init; } = string.Empty;
+    public decimal OnHandQty { get; init; }
+    public IReadOnlyList<StockCardOnHandLayer> Layers { get; init; } = [];
+    public decimal SuggestedAdjustmentInUnitPrice { get; init; }
+}
+
+public sealed class StockCardAdjustmentResult
+{
+    public bool Success { get; init; }
+    public string? Message { get; init; }
+
+    public static StockCardAdjustmentResult Ok() => new() { Success = true };
+    public static StockCardAdjustmentResult Fail(string message) => new() { Success = false, Message = message };
 }

@@ -138,7 +138,11 @@ public class ComponentStockService(
 
         int? companyId,
 
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+
+        DateTime? createdAt = null,
+
+        decimal? unitPriceOverride = null)
 
     {
 
@@ -148,7 +152,7 @@ public class ComponentStockService(
 
 
 
-        var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsync(
+        var unitPrice = unitPriceOverride ?? await fifoCosting.ResolveOutboundUnitPriceAsync(
 
             componentId,
 
@@ -188,7 +192,7 @@ public class ComponentStockService(
 
             CompanyId = companyId,
 
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = createdAt ?? DateTime.UtcNow,
 
         });
 
@@ -214,7 +218,11 @@ public class ComponentStockService(
 
         int referenceId,
 
-        int? companyId)
+        int? companyId,
+
+        DateTime? createdAt = null,
+
+        decimal unitPrice = 0)
 
     {
 
@@ -236,6 +244,8 @@ public class ComponentStockService(
 
             Uom = uom.Trim(),
 
+            UnitPrice = unitPrice > 0 ? StockCardFifoEngine.RoundUnitPrice(unitPrice) : 0,
+
             Reason = reason,
 
             ReferenceType = referenceType,
@@ -244,7 +254,7 @@ public class ComponentStockService(
 
             CompanyId = companyId,
 
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = createdAt ?? DateTime.UtcNow,
 
         });
 

@@ -239,6 +239,7 @@ public static class SchemaPatcher
             """);
         await EnsureColumnAsync(db, "ProductProductionLogs", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
         await EnsureColumnAsync(db, "ProductProductionLogs", "BatchNumber", "TEXT NOT NULL DEFAULT ''");
+        await EnsureColumnAsync(db, "ProductProductionLogs", "UnitPrice", "REAL NOT NULL DEFAULT 0");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ProductB2bLocationStocks_ProductId_LocationExternalId"
             ON "ProductB2bLocationStocks" ("ProductId", "LocationExternalId");
@@ -326,6 +327,65 @@ public static class SchemaPatcher
                     FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
             );
             """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "InventoryCountSessions" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryCountSessions" PRIMARY KEY AUTOINCREMENT,
+                "SessionType" TEXT NOT NULL DEFAULT '',
+                "Status" TEXT NOT NULL DEFAULT '',
+                "CompanyId" INTEGER NULL,
+                "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "PeriodMonth" TEXT NOT NULL DEFAULT '',
+                "UomMode" TEXT NOT NULL DEFAULT 'inventory',
+                "ItemTypeFilter" TEXT NOT NULL DEFAULT 'all',
+                "GroupFilter" TEXT NOT NULL DEFAULT 'All',
+                "CountDate" TEXT NOT NULL DEFAULT '',
+                "SavedAt" TEXT NOT NULL,
+                "SavedBy" TEXT NOT NULL DEFAULT '',
+                "ConfirmDeadlineAt" TEXT NULL,
+                "ConfirmedAt" TEXT NULL,
+                "ConfirmedBy" TEXT NOT NULL DEFAULT '',
+                "IsAutoConfirmed" INTEGER NOT NULL DEFAULT 0,
+                "CreatedAt" TEXT NOT NULL,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "InventoryCountSessionLines" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryCountSessionLines" PRIMARY KEY AUTOINCREMENT,
+                "SessionId" INTEGER NOT NULL,
+                "ItemType" TEXT NOT NULL DEFAULT '',
+                "ItemKey" TEXT NOT NULL DEFAULT '',
+                "ItemName" TEXT NOT NULL DEFAULT '',
+                "GroupName" TEXT NOT NULL DEFAULT '',
+                "Uom" TEXT NOT NULL DEFAULT '',
+                "SystemQty" REAL NOT NULL DEFAULT 0,
+                "CountedQty" REAL NULL,
+                "VarianceQty" REAL NULL,
+                CONSTRAINT "FK_InventoryCountSessionLines_InventoryCountSessions_SessionId"
+                    FOREIGN KEY ("SessionId") REFERENCES "InventoryCountSessions" ("Id") ON DELETE CASCADE
+            );
+            """);
+
+        await TryCreateIndexAsync(db, "IX_InventoryCountSessions_Company_Type_Period", "InventoryCountSessions", "CompanyId, SessionType, PeriodMonth");
+        await TryCreateIndexAsync(db, "IX_InventoryCountSessionLines_SessionId", "InventoryCountSessionLines", "SessionId");
+
+        await TryAddColumnAsync(db, "InventoryCountSessions", "EffectiveDate", "TEXT NOT NULL DEFAULT ''");
+        await TryAddColumnAsync(db, "InventoryCountSessions", "AdjustmentsAppliedAt", "TEXT NULL");
+    }
+
+    static async Task TryCreateIndexAsync(BisyncDbContext db, string indexName, string table, string columns)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON \"{table}\" ({columns});");
+        }
+        catch
+        {
+            // Index may already exist.
+        }
     }
 
     static async Task BackfillIngredientComponentIdsAsync(BisyncDbContext db)

@@ -196,6 +196,57 @@ public static class StockCardFifoEngine
         };
     }
 
+    /// <summary>
+    /// Resolves the unit price for a new adjustment-in at <paramref name="asOfEnd"/>,
+    /// using FIFO layers and any unmatched adjustment-out price before that moment.
+    /// </summary>
+    public static decimal ResolveAdjustmentInUnitPriceAsOf(
+        IReadOnlyList<FifoEvent> events,
+        DateTime asOfEnd,
+        bool collapseAtMonthBoundaries = true)
+    {
+        var layers = new List<FifoLayer>();
+        decimal? lastAdjustmentOutUnitPrice = null;
+        DateTime? currentMonth = null;
+
+        foreach (var evt in events
+                     .Where(e => e.OccurredAt <= asOfEnd)
+                     .OrderBy(e => e.OccurredAt)
+                     .ThenBy(e => e.Id))
+        {
+            var eventMonth = MonthStartUtc(evt.OccurredAt);
+            if (collapseAtMonthBoundaries
+                && currentMonth is not null
+                && eventMonth > currentMonth)
+            {
+                CollapseLayersAtMonthStart(layers, eventMonth);
+            }
+
+            currentMonth = eventMonth;
+            var entryType = evt.EntryType;
+
+            if (IsInboundLayer(entryType))
+            {
+                var layerPrice = entryType is "adjustment_in"
+                    ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice)
+                    : evt.UnitPrice;
+                AddLayer(layers, evt.OccurredAt, evt.Id, evt.Quantity, layerPrice, evt.SourceLabel);
+                if (entryType == "adjustment_in")
+                    lastAdjustmentOutUnitPrice = null;
+                continue;
+            }
+
+            if (IsOutboundConsume(entryType) || entryType == "adjustment_out")
+            {
+                var consumed = Consume(ref layers, evt.Quantity);
+                if (entryType == "adjustment_out" && consumed.UnitPrice > 0)
+                    lastAdjustmentOutUnitPrice = consumed.UnitPrice;
+            }
+        }
+
+        return ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice);
+    }
+
     static decimal ResolveAdjustmentInUnitPrice(List<FifoLayer> layers, decimal? lastAdjustmentOutUnitPrice)
     {
         if (lastAdjustmentOutUnitPrice is decimal matched && matched > 0)

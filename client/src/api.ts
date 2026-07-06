@@ -645,6 +645,7 @@ export interface StockCardListRow {
   adjustmentQty: number;
   onHandQty: number;
   averageCogs: number;
+  onHandAverageCogs: number;
   uom: string;
   recipeUom: string;
   inventoryUom: string;
@@ -690,6 +691,108 @@ export interface StockCardOnHandLayer {
   unitPrice: number;
 }
 
+export interface StockCardAsOfSnapshot {
+  asOfDate: string;
+  locationExternalId: string;
+  uom: string;
+  onHandQty: number;
+  layers: StockCardOnHandLayer[];
+  suggestedAdjustmentInUnitPrice: number;
+}
+
+export interface CreateStockAdjustmentPayload {
+  companyId?: number;
+  locationIds: string;
+  locationExternalId: string;
+  uomMode?: 'inventory' | 'recipe';
+  adjustmentDate: string;
+  quantity: number;
+  direction: 'in' | 'out';
+  reason: string;
+  inboundUom?: string;
+  inboundUnitPrice?: number;
+}
+
+export type InventoryCountSessionType = 'spot' | 'full';
+
+export interface InventoryCountSessionLine {
+  itemType: StockCardItemType;
+  itemKey: string;
+  itemName: string;
+  groupName: string;
+  uom: string;
+  systemQty: number;
+  countedQty: number | null;
+  varianceQty: number | null;
+  variancePct: number | null;
+}
+
+export interface InventoryCountSession {
+  id: number;
+  sessionType: InventoryCountSessionType;
+  status: string;
+  periodMonth: string;
+  uomMode: 'inventory' | 'recipe';
+  itemTypeFilter: string;
+  groupFilter: string;
+  countDate: string;
+  effectiveDate: string;
+  adjustmentsAppliedAt: string | null;
+  savedAt: string;
+  savedBy: string;
+  confirmDeadlineAt: string | null;
+  confirmedAt: string | null;
+  confirmedBy: string;
+  isAutoConfirmed: boolean;
+  canSave: boolean;
+  canConfirm: boolean;
+  isReadOnly: boolean;
+  lines: InventoryCountSessionLine[];
+}
+
+export interface SaveInventoryCountPayload {
+  sessionType: InventoryCountSessionType;
+  companyId?: number;
+  locationIds: string;
+  periodMonth: string;
+  uomMode: 'inventory' | 'recipe';
+  itemTypeFilter: string;
+  groupFilter: string;
+  countDate: string;
+  savedBy: string;
+  lines: {
+    itemType: string;
+    itemKey: string;
+    itemName: string;
+    groupName: string;
+    uom: string;
+    systemQty: number;
+    countedQty: number | null;
+  }[];
+}
+
+export interface InventoryCountSessionSummary {
+  id: number;
+  sessionType: InventoryCountSessionType;
+  status: string;
+  periodMonth: string;
+  uomMode: 'inventory' | 'recipe';
+  itemTypeFilter: string;
+  groupFilter: string;
+  countDate: string;
+  effectiveDate: string;
+  savedAt: string;
+  savedBy: string;
+  confirmDeadlineAt: string | null;
+  confirmedAt: string | null;
+  confirmedBy: string;
+  isAutoConfirmed: boolean;
+  canConfirm: boolean;
+  lineCount: number;
+  totalVarianceQty: number;
+  variancePct: number | null;
+}
+
 export interface StockCardDetail {
   itemType: StockCardItemType;
   itemKey: string;
@@ -704,6 +807,7 @@ export interface StockCardDetail {
   adjustmentQty: number;
   onHandQty: number;
   averageCogs: number;
+  onHandAverageCogs: number;
   onHandLayers?: StockCardOnHandLayer[];
   fifoPolicy: string;
   periodMonth: string;
@@ -897,6 +1001,88 @@ export const api = {
     if (options?.period) params.set('period', options.period);
     const query = params.toString();
     return fetchJson<StockCardDetail>(`/api/stock-cards/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}${query ? `?${query}` : ''}`);
+  },
+  stockCardAsOf: (
+    itemType: string,
+    itemKey: string,
+    companyId: number | undefined,
+    locationIds: string[],
+    locationExternalId: string,
+    asOfDate: string,
+    options?: { uomMode?: 'inventory' | 'recipe' },
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    params.set('locationExternalId', locationExternalId);
+    params.set('asOfDate', asOfDate);
+    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    const query = params.toString();
+    return fetchJson<StockCardAsOfSnapshot>(
+      `/api/stock-cards/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}/as-of?${query}`,
+    );
+  },
+  createStockAdjustment: (
+    itemType: string,
+    itemKey: string,
+    payload: CreateStockAdjustmentPayload,
+  ) =>
+    fetchJsonWithMethod<{ success: boolean }>(
+      `/api/stock-cards/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}/adjustments`,
+      'POST',
+      payload,
+    ),
+  activeInventoryCount: async (
+    sessionType: InventoryCountSessionType,
+    companyId: number | undefined,
+    locationIds: string[],
+    period: string,
+    uomMode: 'inventory' | 'recipe',
+  ) => {
+    const params = new URLSearchParams();
+    params.set('sessionType', sessionType);
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    params.set('period', period);
+    params.set('uomMode', uomMode);
+    const res = await fetch(`${API_BASE}/api/inventory-counts/active?${params.toString()}`);
+    if (!res.ok) throw new Error(`API error ${res.status}: /api/inventory-counts/active`);
+    const text = await res.text();
+    if (!text.trim()) return null;
+    return JSON.parse(text) as InventoryCountSession | null;
+  },
+  saveInventoryCount: (payload: SaveInventoryCountPayload) =>
+    fetchJsonWithMethod<{ success: boolean; session: InventoryCountSession }>(
+      '/api/inventory-counts/save',
+      'POST',
+      payload,
+    ),
+  confirmInventoryCount: (sessionId: number, confirmedBy: string, effectiveDate: string) =>
+    fetchJsonWithMethod<{ success: boolean; session: InventoryCountSession }>(
+      `/api/inventory-counts/${sessionId}/confirm`,
+      'POST',
+      { confirmedBy, effectiveDate },
+    ),
+  inventoryCountHistory: (
+    sessionType: InventoryCountSessionType | undefined,
+    companyId: number | undefined,
+    locationIds: string[],
+  ) => {
+    const params = new URLSearchParams();
+    if (sessionType) params.set('sessionType', sessionType);
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    return fetchJson<InventoryCountSessionSummary[]>(`/api/inventory-counts/history?${params.toString()}`);
+  },
+  getInventoryCountSession: (
+    sessionId: number,
+    companyId: number | undefined,
+    locationIds: string[],
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    return fetchJson<InventoryCountSession>(`/api/inventory-counts/${sessionId}?${params.toString()}`);
   },
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),

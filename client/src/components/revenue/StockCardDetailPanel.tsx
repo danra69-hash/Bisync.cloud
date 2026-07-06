@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createPortal } from 'react-dom';
 
@@ -8,6 +8,8 @@ import { api, type StockCardDetail, type StockCardLedgerEntry, type StockCardOnH
 
 import { formatRm } from '../../data/createOrder';
 import { currentStockCardMonth, formatStockCardMonthLabel } from './stockCardPeriod';
+import { AvgCogsWithTrend, computeOnHandAverageCogs } from './stockCardCogsTrend';
+import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 import {
 
@@ -36,6 +38,8 @@ type Props = {
   onClose: () => void;
 
   onUomModeChange: (mode: 'inventory' | 'recipe') => void;
+
+  onAdjusted?: () => void;
 
 };
 
@@ -178,6 +182,8 @@ export function StockCardDetailPanel({
 
   onUomModeChange,
 
+  onAdjusted,
+
 }: Props) {
 
   const [detail, setDetail] = useState<StockCardDetail | null>(null);
@@ -186,9 +192,11 @@ export function StockCardDetailPanel({
 
   const [error, setError] = useState<string | null>(null);
 
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false);
 
 
-  useEffect(() => {
+
+  const loadDetail = useCallback(() => {
 
     if (!companyId || locationIds.length === 0) {
 
@@ -196,7 +204,7 @@ export function StockCardDetailPanel({
 
       setLoading(false);
 
-      return;
+      return Promise.resolve();
 
     }
 
@@ -206,7 +214,7 @@ export function StockCardDetailPanel({
 
     setError(null);
 
-    api.stockCardDetail(itemType, itemKey, companyId, locationIds, { uomMode, period: selectedMonth })
+    return api.stockCardDetail(itemType, itemKey, companyId, locationIds, { uomMode, period: selectedMonth })
 
       .then(setDetail)
 
@@ -215,6 +223,14 @@ export function StockCardDetailPanel({
       .finally(() => setLoading(false));
 
   }, [itemType, itemKey, companyId, locationIds, uomMode, selectedMonth]);
+
+
+
+  useEffect(() => {
+
+    void loadDetail();
+
+  }, [loadDetail]);
 
 
 
@@ -380,6 +396,9 @@ export function StockCardDetailPanel({
                 quantity={detail.onHandQty}
                 uom={detail.uom}
                 layers={detail.onHandLayers ?? []}
+                onHandAverageCogs={detail.onHandAverageCogs}
+                outboundAverageCogs={detail.averageCogs}
+                onAdjust={() => setAdjustmentOpen(true)}
               />
 
             </div>
@@ -484,6 +503,28 @@ export function StockCardDetailPanel({
 
         ) : null}
 
+        {adjustmentOpen && detail && companyId ? (
+          <StockAdjustmentModal
+            itemType={itemType}
+            itemKey={itemKey}
+            itemName={detail.name}
+            companyId={companyId}
+            locationIds={locationIds}
+            uomMode={uomMode}
+            periodStart={detail.periodStart}
+            periodEnd={detail.periodEnd}
+            isCurrentMonth={detail.isCurrentMonth}
+            defaultUom={detail.uom}
+            recipeUom={detail.recipeUom}
+            inventoryUom={detail.inventoryUom}
+            onClose={() => setAdjustmentOpen(false)}
+            onSaved={() => {
+              void loadDetail();
+              onAdjusted?.();
+            }}
+          />
+        ) : null}
+
       </aside>
 
     </>,
@@ -500,20 +541,43 @@ function OnHandSummaryCell({
   quantity,
   uom,
   layers,
+  onHandAverageCogs,
+  outboundAverageCogs,
+  onAdjust,
 }: {
   quantity: number;
   uom: string;
   layers: StockCardOnHandLayer[];
+  onHandAverageCogs: number;
+  outboundAverageCogs: number;
+  onAdjust?: () => void;
 }) {
   const activeLayers = layers.filter(l => l.quantity > 0);
+  const resolvedOnHandAverageCogs =
+    onHandAverageCogs > 0 ? onHandAverageCogs : computeOnHandAverageCogs(layers);
 
   return (
     <div className="rounded-lg border border-border px-3 py-2 bg-background">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground">On Hand</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">On Hand</p>
+        {onAdjust ? (
+          <button
+            type="button"
+            onClick={onAdjust}
+            className="text-[11px] font-medium text-primary hover:underline shrink-0"
+          >
+            Adjust
+          </button>
+        ) : null}
+      </div>
       <p className="text-base font-semibold tabular-nums text-primary">
         {fmtQty(quantity)}
       </p>
       <p className="text-xs text-muted-foreground truncate">{uom}</p>
+      <p className="mt-1 text-xs tabular-nums text-foreground">
+        Avg COGS{' '}
+        <AvgCogsWithTrend onHand={resolvedOnHandAverageCogs} outbound={outboundAverageCogs} />
+      </p>
       {activeLayers.length > 0 ? (
         <ul className="mt-2 space-y-0.5 border-t border-border/60 pt-2">
           {activeLayers.map(layer => (

@@ -48,6 +48,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
+    public DbSet<InventoryCountSession> InventoryCountSessions => Set<InventoryCountSession>();
+    public DbSet<InventoryCountSessionLine> InventoryCountSessionLines => Set<InventoryCountSessionLine>();
     public DbSet<VendorProductPrice> VendorProductPrices => Set<VendorProductPrice>();
     public DbSet<InventoryAlert> InventoryAlerts => Set<InventoryAlert>();
     public DbSet<RevenueDataPoint> RevenueDataPoints => Set<RevenueDataPoint>();
@@ -130,6 +132,15 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         });
         modelBuilder.Entity<InventoryMovement>().HasIndex(m => new { m.ComponentId, m.LocationExternalId });
         modelBuilder.Entity<InventoryPurchase>().HasIndex(i => i.PurchaseOrderItemId);
+        modelBuilder.Entity<InventoryCountSession>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.SessionType, x.PeriodMonth, x.Status });
+            e.HasMany(x => x.Lines)
+                .WithOne(x => x.Session)
+                .HasForeignKey(x => x.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<InventoryCountSessionLine>().HasIndex(x => x.SessionId);
         modelBuilder.Entity<VendorProductPrice>().HasKey(p => p.ExternalId);
     }
 }

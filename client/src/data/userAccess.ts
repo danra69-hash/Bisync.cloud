@@ -203,9 +203,19 @@ export function rmsGroupSomeEnabled(access: UserAccess, groupId: string): boolea
 
 export const RMS_APPROVE_ORDER_TASK = 'approveOrder';
 export const RMS_RECEIVE_ORDER_TASK = 'receiveOrder';
+export const RMS_INVENTORY_POST_TASK = 'inventoryPost';
+export const RMS_INVENTORY_CONFIRM_TASK = 'inventoryConfirmation';
 
 export function canReceivePurchaseOrder(access: UserAccess): boolean {
   return hasRmsTask(access, RMS_RECEIVE_ORDER_TASK);
+}
+
+export function canSaveInventoryCount(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_INVENTORY_POST_TASK);
+}
+
+export function canConfirmInventoryCount(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_INVENTORY_CONFIRM_TASK);
 }
 
 export function hasRmsTask(access: UserAccess, taskId: string): boolean {

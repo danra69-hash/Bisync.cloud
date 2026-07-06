@@ -10,6 +10,7 @@ public class ProductProductionLog
     public string ProductionDate { get; set; } = string.Empty;
     public string ExpiryDate { get; set; } = string.Empty;
     public string BatchNumber { get; set; } = string.Empty;
+    public decimal UnitPrice { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
     public int? CompanyId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

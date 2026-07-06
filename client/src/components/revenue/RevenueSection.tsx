@@ -12,6 +12,7 @@ import { OrderTemplatePage } from './OrderTemplatePage';
 import { ProductsSection } from './ProductsSection';
 import { ProductManagementPage } from './ProductManagementPage';
 import { StockCardPage } from './StockCardPage';
+import { InventoryPage } from './InventoryPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
@@ -80,6 +81,13 @@ function renderRevMgmtContent(
     case 'Stock Card':
       return (
         <StockCardPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Inventory':
+      return (
+        <InventoryPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

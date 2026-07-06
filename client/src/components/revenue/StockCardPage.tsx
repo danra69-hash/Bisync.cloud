@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { api, type StockCardListRow } from '../../api';
 import { formatRm } from '../../data/createOrder';
+import { AvgCogsWithTrend } from './stockCardCogsTrend';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -87,6 +88,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
+  const [listVersion, setListVersion] = useState(0);
   const scrollRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -108,7 +110,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
       .then(setRows)
       .catch(e => setError(e instanceof Error ? e.message : 'Failed to load stock cards.'))
       .finally(() => setLoading(false));
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth]);
+  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, listVersion]);
 
   const groups = useMemo(() => {
     const unique = new Set(rows.map(row => row.group).filter(Boolean));
@@ -198,23 +200,24 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
               <th className="px-3 py-2 font-medium">Type</th>
               <th className="px-3 py-2 font-medium">Group</th>
               <th className="px-3 py-2 font-medium">Name</th>
+              <th className="px-3 py-2 font-medium">UOM</th>
               <th className="px-3 py-2 font-medium text-right">Inbound QTY</th>
               <th className="px-3 py-2 font-medium text-right">Outbound QTY</th>
+              <th className="px-3 py-2 font-medium text-right">Avg outbound COGS</th>
               <th className="px-3 py-2 font-medium text-right">Qty on hand</th>
-              <th className="px-3 py-2 font-medium text-right">Avg outbound</th>
-              <th className="px-3 py-2 font-medium">UOM</th>
+              <th className="px-3 py-2 font-medium text-right">Avg COGS</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
                   Loading stock cards…
                 </td>
               </tr>
             ) : visibleItems.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
                   No stock card items found.
                 </td>
               </tr>
@@ -228,17 +231,20 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
                   <td className="px-3 py-2.5 text-muted-foreground">{itemTypeLabel(row.itemType)}</td>
                   <td className="px-3 py-2.5">{row.group || '—'}</td>
                   <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
+                  <td className="px-3 py-2.5">{row.uom}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.inboundQty)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.outboundQty)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {row.averageCogs > 0 ? formatRm(row.averageCogs) : '—'}
                   </td>
-                  <td className="px-3 py-2.5">{row.uom}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    <AvgCogsWithTrend onHand={row.onHandAverageCogs} outbound={row.averageCogs} />
+                  </td>
                 </tr>
               ))
             )}
-            <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} />
+            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} />
           </tbody>
         </table>
       </TableScrollContainer>
@@ -253,6 +259,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           selectedMonth={selectedMonth}
           onClose={() => setSelectedRow(null)}
           onUomModeChange={setUomMode}
+          onAdjusted={() => setListVersion(v => v + 1)}
         />
       ) : null}
     </div>

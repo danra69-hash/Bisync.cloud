@@ -624,7 +624,7 @@ INSERT INTO AppUsers VALUES(31,'Nur Izzati Kamal','nur.izzati@bisync.cloud','Kit
 INSERT INTO AppUsers VALUES(32,'Tan Boon Kiat','boon.kiat@bisync.cloud','Grill Cook','+60 12-602 2007',1,1,'[2,3]','{"modules":[]}',33,NULL);
 INSERT INTO AppUsers VALUES(33,'Ravi Chandran','ravi.chandran@bisync.cloud','Kitchen Steward','+60 12-602 2008',1,1,'[1]','{"modules":[]}',34,NULL);
 INSERT INTO AppUsers VALUES(34,'Test Persist User','test.persist@bisync.cloud','Operations Coordinator','+60 12-999 8877',0,1,'[]','{"modules":[]}',36,NULL);
-INSERT INTO AppUsers VALUES(35,'DRA Super Admin','dra@cubevalue.com','Super Admin','+60 3-0000 0000',1,1,'[3,7,8,1,2,5,6,4]','{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}',NULL,'v1:4SBrImVCU1UVsMxN1/gleA==:QsNroR/V4rk/4IP3L2whYhnd88yzMmu3iTusVBonlCg=');
+INSERT INTO AppUsers VALUES(35,'DRA Super Admin','dra@cubevalue.com','Super Admin','+60 3-0000 0000',1,1,'[3,7,8,1,2,5,6,4]','{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}',NULL,'v1:g32EwuAjrXqiLLr+kYDs8A==:p+4/mH2hsRJ1dIdOY4fJu5YP8b0RkWLwNIYLa8sj4aw=');
 CREATE TABLE IF NOT EXISTS "EmployeeLevels" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_EmployeeLevels" PRIMARY KEY AUTOINCREMENT,
@@ -2329,10 +2329,11 @@ INSERT INTO InventoryMovements VALUES(217,'CMP-SCFIFO-001','SC FIFO Demo Wagyu',
 INSERT INTO InventoryMovements VALUES(218,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-5.0,'kg','Wastage ΓÇö spoilage','wastage',9004,1,'2026-07-01 13:16:19.5023319',0.0);
 INSERT INTO InventoryMovements VALUES(219,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-8.0,'kg','Transfer out to Airport','transfer_out',9005,1,'2026-07-02 12:16:19.5023319',0.0);
 INSERT INTO InventoryMovements VALUES(220,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-3.0,'kg','Inventory adjustment ΓÇö count short','inventory_adjustment',9006,1,'2026-07-03 19:16:19.5023319',0.0);
-INSERT INTO InventoryMovements VALUES(221,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',2.0,'kg','Inventory adjustment ΓÇö count found','inventory_adjustment',9007,1,'2026-07-04 14:16:19.5023319',0.0);
 INSERT INTO InventoryMovements VALUES(222,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-12.0,'kg','POS sales depletion','pos_sale',9008,1,'2026-07-05 22:16:19.5023319',0.0);
 INSERT INTO InventoryMovements VALUES(223,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-30.0,'kg','POS sales depletion ΓÇö FIFO test (30 kg)','pos_sale',9010,1,'2026-07-02 08:00:00',0.0);
 INSERT INTO InventoryMovements VALUES(224,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-25.0,'kg','POS sales depletion ΓÇö FIFO test (25 kg)','pos_sale',9012,1,'2026-07-04 09:00:00',0.0);
+INSERT INTO InventoryMovements VALUES(225,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-10.0,'kg','Inventory adjustment ΓÇö Inventory Adjustment','inventory_adjustment',0,1,'2026-07-01 23:59:59.9999999',43.37);
+INSERT INTO InventoryMovements VALUES(226,'CMP-SCFIFO-001','SC FIFO Demo Wagyu','downtown',-10.0,'kg','Inventory adjustment ΓÇö Inventory adjustment','inventory_adjustment',0,1,'2026-07-01 23:59:59.9999999',43.37);
 CREATE TABLE IF NOT EXISTS "ProductProductionLogs" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_ProductProductionLogs" PRIMARY KEY AUTOINCREMENT,
@@ -2349,55 +2350,121 @@ CREATE TABLE IF NOT EXISTS "ProductProductionLogs" (
 
     "CompanyId" INTEGER,
 
-    "CreatedAt" TEXT NOT NULL, "ExpiryDate" TEXT NOT NULL DEFAULT '', "BatchNumber" TEXT NOT NULL DEFAULT '',
+    "CreatedAt" TEXT NOT NULL, "ExpiryDate" TEXT NOT NULL DEFAULT '', "BatchNumber" TEXT NOT NULL DEFAULT '', "UnitPrice" REAL NOT NULL DEFAULT 0,
 
     CONSTRAINT "FK_ProductProductionLogs_Products_ProductId"
 
         FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
 
 );
-INSERT INTO ProductProductionLogs VALUES(1,1,'produced',1.0,'2026-07-03','["loc-1"]',1,'2026-07-03 03:37:06.6460268','2026-07-10','');
-INSERT INTO ProductProductionLogs VALUES(2,2,'produced',1.0,'2026-07-03','["airport"]',1,'2026-07-03 04:12:33.8037132','2026-07-10','SUB-BURGER-001-B0004');
-INSERT INTO ProductProductionLogs VALUES(3,2,'produced',1.0,'2026-07-03','["airport"]',1,'2026-07-03 04:17:04.4071352','2026-07-10','SUB-BURGER-001-B0004');
-INSERT INTO ProductProductionLogs VALUES(4,2,'produced',2.0,'2026-07-03','["airport"]',1,'2026-07-03 08:46:42.9858738','2026-07-24','SUB-BURGER-001-B0003');
-INSERT INTO ProductProductionLogs VALUES(5,3,'produced',31.0,'2026-06-03','["westend"]',1,'2026-06-14 02:58:42.7187848','2026-07-03','PRD-SCDEMO-001-B0001');
-INSERT INTO ProductProductionLogs VALUES(6,4,'produced',32.0,'2026-06-02','["downtown"]',1,'2026-06-13 02:58:42.7187848','2026-07-02','PRD-SCDEMO-002-B0001');
-INSERT INTO ProductProductionLogs VALUES(7,4,'produced',32.0,'2026-06-05','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-06-19','PRD-SCDEMO-002-B0001-2');
-INSERT INTO ProductProductionLogs VALUES(8,5,'produced',33.0,'2026-06-01','["midtown"]',1,'2026-06-12 02:58:42.7187848','2026-07-01','PRD-SCDEMO-003-B0001');
-INSERT INTO ProductProductionLogs VALUES(9,6,'produced',34.0,'2026-05-31','["airport"]',1,'2026-06-11 02:58:42.7187848','2026-06-30','PRD-SCDEMO-004-B0001');
-INSERT INTO ProductProductionLogs VALUES(10,7,'produced',35.0,'2026-06-24','["westend"]',1,'2026-06-10 02:58:42.7187848','2026-07-24','PRD-SCDEMO-005-B0001');
-INSERT INTO ProductProductionLogs VALUES(11,8,'produced',36.0,'2026-06-23','["downtown"]',1,'2026-06-09 02:58:42.7187848','2026-07-23','PRD-SCDEMO-006-B0001');
-INSERT INTO ProductProductionLogs VALUES(12,8,'produced',36.0,'2026-06-26','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-07-10','PRD-SCDEMO-006-B0001-2');
-INSERT INTO ProductProductionLogs VALUES(13,9,'produced',37.0,'2026-06-22','["midtown"]',1,'2026-06-08 02:58:42.7187848','2026-07-22','PRD-SCDEMO-007-B0001');
-INSERT INTO ProductProductionLogs VALUES(14,10,'produced',38.0,'2026-06-21','["airport"]',1,'2026-06-07 02:58:42.7187848','2026-07-21','PRD-SCDEMO-008-B0001');
-INSERT INTO ProductProductionLogs VALUES(15,11,'produced',39.0,'2026-06-20','["westend"]',1,'2026-06-06 02:58:42.7187848','2026-07-20','PRD-SCDEMO-009-B0001');
-INSERT INTO ProductProductionLogs VALUES(16,12,'produced',40.0,'2026-06-19','["downtown"]',1,'2026-06-25 02:58:42.7187848','2026-07-19','PRD-SCDEMO-010-B0001');
-INSERT INTO ProductProductionLogs VALUES(17,12,'produced',10.0,'2026-06-22','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-07-06','PRD-SCDEMO-010-B0001-2');
-INSERT INTO ProductProductionLogs VALUES(18,13,'produced',41.0,'2026-06-18','["midtown"]',1,'2026-06-24 02:58:42.7187848','2026-07-18','PRD-SCDEMO-011-B0001');
-INSERT INTO ProductProductionLogs VALUES(19,14,'produced',42.0,'2026-06-17','["airport"]',1,'2026-06-23 02:58:42.7187848','2026-07-17','PRD-SCDEMO-012-B0001');
-INSERT INTO ProductProductionLogs VALUES(20,15,'produced',43.0,'2026-06-16','["westend"]',1,'2026-06-22 02:58:42.7187848','2026-07-16','PRD-SCDEMO-013-B0001');
-INSERT INTO ProductProductionLogs VALUES(21,16,'produced',44.0,'2026-06-15','["downtown"]',1,'2026-06-21 02:58:42.7187848','2026-07-15','PRD-SCDEMO-014-B0001');
-INSERT INTO ProductProductionLogs VALUES(22,16,'produced',14.0,'2026-06-18','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-07-02','PRD-SCDEMO-014-B0001-2');
-INSERT INTO ProductProductionLogs VALUES(23,17,'produced',45.0,'2026-06-14','["midtown"]',1,'2026-06-20 02:58:42.7187848','2026-07-14','PRD-SCDEMO-015-B0001');
-INSERT INTO ProductProductionLogs VALUES(24,18,'produced',46.0,'2026-06-13','["airport"]',1,'2026-06-19 02:58:42.7187848','2026-06-24','SUB-SCDEMO-001-B0001');
-INSERT INTO ProductProductionLogs VALUES(25,19,'produced',47.0,'2026-06-12','["westend"]',1,'2026-06-18 02:58:42.7187848','2026-06-24','SUB-SCDEMO-002-B0001');
-INSERT INTO ProductProductionLogs VALUES(26,20,'produced',48.0,'2026-06-11','["downtown"]',1,'2026-06-17 02:58:42.7187848','2026-06-24','SUB-SCDEMO-003-B0001');
-INSERT INTO ProductProductionLogs VALUES(27,20,'produced',18.0,'2026-06-14','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-06-28','SUB-SCDEMO-003-B0001-2');
-INSERT INTO ProductProductionLogs VALUES(28,21,'produced',49.0,'2026-06-10','["midtown"]',1,'2026-06-16 02:58:42.7187848','2026-06-24','SUB-SCDEMO-004-B0001');
-INSERT INTO ProductProductionLogs VALUES(29,22,'produced',50.0,'2026-06-09','["airport"]',1,'2026-06-15 02:58:42.7187848','2026-06-14','SUB-SCDEMO-005-B0001');
-INSERT INTO ProductProductionLogs VALUES(30,23,'produced',51.0,'2026-06-08','["westend"]',1,'2026-06-14 02:58:42.7187848','2026-06-14','SUB-SCDEMO-006-B0001');
-INSERT INTO ProductProductionLogs VALUES(31,24,'produced',52.0,'2026-06-07','["downtown"]',1,'2026-06-13 02:58:42.7187848','2026-06-14','SUB-SCDEMO-007-B0001');
-INSERT INTO ProductProductionLogs VALUES(32,24,'produced',22.0,'2026-06-10','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-06-24','SUB-SCDEMO-007-B0001-2');
-INSERT INTO ProductProductionLogs VALUES(33,25,'produced',53.0,'2026-06-06','["midtown"]',1,'2026-06-12 02:58:42.7187848','2026-06-14','SUB-SCDEMO-008-B0001');
-INSERT INTO ProductProductionLogs VALUES(34,26,'produced',54.0,'2026-06-05','["airport"]',1,'2026-06-11 02:58:42.7187848','2026-06-14','SUB-SCDEMO-009-B0001');
-INSERT INTO ProductProductionLogs VALUES(35,27,'produced',55.0,'2026-06-04','["westend"]',1,'2026-06-10 02:58:42.7187848','2026-06-14','SUB-SCDEMO-010-B0001');
-INSERT INTO ProductProductionLogs VALUES(36,28,'produced',56.0,'2026-06-03','["downtown"]',1,'2026-06-09 02:58:42.7187848','2026-06-14','SUB-SCDEMO-011-B0001');
-INSERT INTO ProductProductionLogs VALUES(37,28,'produced',26.0,'2026-06-06','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-06-20','SUB-SCDEMO-011-B0001-2');
-INSERT INTO ProductProductionLogs VALUES(38,29,'produced',57.0,'2026-06-02','["midtown"]',1,'2026-06-08 02:58:42.7187848','2026-06-14','SUB-SCDEMO-012-B0001');
-INSERT INTO ProductProductionLogs VALUES(39,30,'produced',58.0,'2026-06-01','["airport"]',1,'2026-06-07 02:58:42.7187848','2026-06-14','SUB-SCDEMO-013-B0001');
-INSERT INTO ProductProductionLogs VALUES(40,31,'produced',59.0,'2026-05-31','["westend"]',1,'2026-06-06 02:58:42.7187848','2026-06-14','SUB-SCDEMO-014-B0001');
-INSERT INTO ProductProductionLogs VALUES(41,32,'produced',60.0,'2026-06-24','["downtown"]',1,'2026-06-25 02:58:42.7187848','2026-06-29','SUB-SCDEMO-015-B0001');
-INSERT INTO ProductProductionLogs VALUES(42,32,'produced',30.0,'2026-06-27','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-07-11','SUB-SCDEMO-015-B0001-2');
+INSERT INTO ProductProductionLogs VALUES(1,1,'produced',1.0,'2026-07-03','["loc-1"]',1,'2026-07-03 03:37:06.6460268','2026-07-10','',0.0);
+INSERT INTO ProductProductionLogs VALUES(2,2,'produced',1.0,'2026-07-03','["airport"]',1,'2026-07-03 04:12:33.8037132','2026-07-10','SUB-BURGER-001-B0004',0.0);
+INSERT INTO ProductProductionLogs VALUES(3,2,'produced',1.0,'2026-07-03','["airport"]',1,'2026-07-03 04:17:04.4071352','2026-07-10','SUB-BURGER-001-B0004',0.0);
+INSERT INTO ProductProductionLogs VALUES(4,2,'produced',2.0,'2026-07-03','["airport"]',1,'2026-07-03 08:46:42.9858738','2026-07-24','SUB-BURGER-001-B0003',0.0);
+INSERT INTO ProductProductionLogs VALUES(5,3,'produced',31.0,'2026-06-03','["westend"]',1,'2026-06-14 02:58:42.7187848','2026-07-03','PRD-SCDEMO-001-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(6,4,'produced',32.0,'2026-06-02','["downtown"]',1,'2026-06-13 02:58:42.7187848','2026-07-02','PRD-SCDEMO-002-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(7,4,'produced',32.0,'2026-06-05','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-06-19','PRD-SCDEMO-002-B0001-2',0.0);
+INSERT INTO ProductProductionLogs VALUES(8,5,'produced',33.0,'2026-06-01','["midtown"]',1,'2026-06-12 02:58:42.7187848','2026-07-01','PRD-SCDEMO-003-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(9,6,'produced',34.0,'2026-05-31','["airport"]',1,'2026-06-11 02:58:42.7187848','2026-06-30','PRD-SCDEMO-004-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(10,7,'produced',35.0,'2026-06-24','["westend"]',1,'2026-06-10 02:58:42.7187848','2026-07-24','PRD-SCDEMO-005-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(11,8,'produced',36.0,'2026-06-23','["downtown"]',1,'2026-06-09 02:58:42.7187848','2026-07-23','PRD-SCDEMO-006-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(12,8,'produced',36.0,'2026-06-26','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-07-10','PRD-SCDEMO-006-B0001-2',0.0);
+INSERT INTO ProductProductionLogs VALUES(13,9,'produced',37.0,'2026-06-22','["midtown"]',1,'2026-06-08 02:58:42.7187848','2026-07-22','PRD-SCDEMO-007-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(14,10,'produced',38.0,'2026-06-21','["airport"]',1,'2026-06-07 02:58:42.7187848','2026-07-21','PRD-SCDEMO-008-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(15,11,'produced',39.0,'2026-06-20','["westend"]',1,'2026-06-06 02:58:42.7187848','2026-07-20','PRD-SCDEMO-009-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(16,12,'produced',40.0,'2026-06-19','["downtown"]',1,'2026-06-25 02:58:42.7187848','2026-07-19','PRD-SCDEMO-010-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(17,12,'produced',10.0,'2026-06-22','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-07-06','PRD-SCDEMO-010-B0001-2',0.0);
+INSERT INTO ProductProductionLogs VALUES(18,13,'produced',41.0,'2026-06-18','["midtown"]',1,'2026-06-24 02:58:42.7187848','2026-07-18','PRD-SCDEMO-011-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(19,14,'produced',42.0,'2026-06-17','["airport"]',1,'2026-06-23 02:58:42.7187848','2026-07-17','PRD-SCDEMO-012-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(20,15,'produced',43.0,'2026-06-16','["westend"]',1,'2026-06-22 02:58:42.7187848','2026-07-16','PRD-SCDEMO-013-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(21,16,'produced',44.0,'2026-06-15','["downtown"]',1,'2026-06-21 02:58:42.7187848','2026-07-15','PRD-SCDEMO-014-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(22,16,'produced',14.0,'2026-06-18','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-07-02','PRD-SCDEMO-014-B0001-2',0.0);
+INSERT INTO ProductProductionLogs VALUES(23,17,'produced',45.0,'2026-06-14','["midtown"]',1,'2026-06-20 02:58:42.7187848','2026-07-14','PRD-SCDEMO-015-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(24,18,'produced',46.0,'2026-06-13','["airport"]',1,'2026-06-19 02:58:42.7187848','2026-06-24','SUB-SCDEMO-001-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(25,19,'produced',47.0,'2026-06-12','["westend"]',1,'2026-06-18 02:58:42.7187848','2026-06-24','SUB-SCDEMO-002-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(26,20,'produced',48.0,'2026-06-11','["downtown"]',1,'2026-06-17 02:58:42.7187848','2026-06-24','SUB-SCDEMO-003-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(27,20,'produced',18.0,'2026-06-14','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-06-28','SUB-SCDEMO-003-B0001-2',0.0);
+INSERT INTO ProductProductionLogs VALUES(28,21,'produced',49.0,'2026-06-10','["midtown"]',1,'2026-06-16 02:58:42.7187848','2026-06-24','SUB-SCDEMO-004-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(29,22,'produced',50.0,'2026-06-09','["airport"]',1,'2026-06-15 02:58:42.7187848','2026-06-14','SUB-SCDEMO-005-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(30,23,'produced',51.0,'2026-06-08','["westend"]',1,'2026-06-14 02:58:42.7187848','2026-06-14','SUB-SCDEMO-006-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(31,24,'produced',52.0,'2026-06-07','["downtown"]',1,'2026-06-13 02:58:42.7187848','2026-06-14','SUB-SCDEMO-007-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(32,24,'produced',22.0,'2026-06-10','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-06-24','SUB-SCDEMO-007-B0001-2',0.0);
+INSERT INTO ProductProductionLogs VALUES(33,25,'produced',53.0,'2026-06-06','["midtown"]',1,'2026-06-12 02:58:42.7187848','2026-06-14','SUB-SCDEMO-008-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(34,26,'produced',54.0,'2026-06-05','["airport"]',1,'2026-06-11 02:58:42.7187848','2026-06-14','SUB-SCDEMO-009-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(35,27,'produced',55.0,'2026-06-04','["westend"]',1,'2026-06-10 02:58:42.7187848','2026-06-14','SUB-SCDEMO-010-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(36,28,'produced',56.0,'2026-06-03','["downtown"]',1,'2026-06-09 02:58:42.7187848','2026-06-14','SUB-SCDEMO-011-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(37,28,'produced',26.0,'2026-06-06','["airport"]',1,'2026-06-27 02:58:42.7187848','2026-06-20','SUB-SCDEMO-011-B0001-2',0.0);
+INSERT INTO ProductProductionLogs VALUES(38,29,'produced',57.0,'2026-06-02','["midtown"]',1,'2026-06-08 02:58:42.7187848','2026-06-14','SUB-SCDEMO-012-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(39,30,'produced',58.0,'2026-06-01','["airport"]',1,'2026-06-07 02:58:42.7187848','2026-06-14','SUB-SCDEMO-013-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(40,31,'produced',59.0,'2026-05-31','["westend"]',1,'2026-06-06 02:58:42.7187848','2026-06-14','SUB-SCDEMO-014-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(41,32,'produced',60.0,'2026-06-24','["downtown"]',1,'2026-06-25 02:58:42.7187848','2026-06-29','SUB-SCDEMO-015-B0001',0.0);
+INSERT INTO ProductProductionLogs VALUES(42,32,'produced',30.0,'2026-06-27','["airport"]',1,'2026-07-01 02:58:42.7187848','2026-07-11','SUB-SCDEMO-015-B0001-2',0.0);
+CREATE TABLE IF NOT EXISTS "InventoryCountSessions" (
+
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryCountSessions" PRIMARY KEY AUTOINCREMENT,
+
+    "SessionType" TEXT NOT NULL DEFAULT '',
+
+    "Status" TEXT NOT NULL DEFAULT '',
+
+    "CompanyId" INTEGER NULL,
+
+    "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
+
+    "PeriodMonth" TEXT NOT NULL DEFAULT '',
+
+    "UomMode" TEXT NOT NULL DEFAULT 'inventory',
+
+    "ItemTypeFilter" TEXT NOT NULL DEFAULT 'all',
+
+    "GroupFilter" TEXT NOT NULL DEFAULT 'All',
+
+    "CountDate" TEXT NOT NULL DEFAULT '',
+
+    "SavedAt" TEXT NOT NULL,
+
+    "SavedBy" TEXT NOT NULL DEFAULT '',
+
+    "ConfirmDeadlineAt" TEXT NULL,
+
+    "ConfirmedAt" TEXT NULL,
+
+    "ConfirmedBy" TEXT NOT NULL DEFAULT '',
+
+    "IsAutoConfirmed" INTEGER NOT NULL DEFAULT 0,
+
+    "CreatedAt" TEXT NOT NULL,
+
+    "UpdatedAt" TEXT NOT NULL
+
+);
+CREATE TABLE IF NOT EXISTS "InventoryCountSessionLines" (
+
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryCountSessionLines" PRIMARY KEY AUTOINCREMENT,
+
+    "SessionId" INTEGER NOT NULL,
+
+    "ItemType" TEXT NOT NULL DEFAULT '',
+
+    "ItemKey" TEXT NOT NULL DEFAULT '',
+
+    "ItemName" TEXT NOT NULL DEFAULT '',
+
+    "GroupName" TEXT NOT NULL DEFAULT '',
+
+    "Uom" TEXT NOT NULL DEFAULT '',
+
+    "SystemQty" REAL NOT NULL DEFAULT 0,
+
+    "CountedQty" REAL NULL,
+
+    "VarianceQty" REAL NULL,
+
+    CONSTRAINT "FK_InventoryCountSessionLines_InventoryCountSessions_SessionId"
+
+        FOREIGN KEY ("SessionId") REFERENCES "InventoryCountSessions" ("Id") ON DELETE CASCADE
+
+);
 PRAGMA writable_schema=ON;
 CREATE TABLE IF NOT EXISTS sqlite_sequence(name,seq);
 DELETE FROM sqlite_sequence;
@@ -2434,7 +2501,7 @@ INSERT INTO sqlite_sequence VALUES('Products',32);
 INSERT INTO sqlite_sequence VALUES('ProductComponentItems',28);
 INSERT INTO sqlite_sequence VALUES('ProductB2bLocationStocks',40);
 INSERT INTO sqlite_sequence VALUES('ProductProductionLogs',42);
-INSERT INTO sqlite_sequence VALUES('InventoryMovements',224);
+INSERT INTO sqlite_sequence VALUES('InventoryMovements',226);
 CREATE UNIQUE INDEX "IX_Locations_ExternalId" ON "Locations" ("ExternalId");
 CREATE INDEX "IX_PurchaseOrderItems_PurchaseOrderId" ON "PurchaseOrderItems" ("PurchaseOrderId");
 CREATE UNIQUE INDEX "IX_PurchaseOrders_PoNumber" ON "PurchaseOrders" ("PoNumber");
@@ -2457,5 +2524,7 @@ ON "ProductB2bLocationStocks" ("ProductId", "LocationExternalId");
 CREATE INDEX "IX_InventoryMovements_ComponentId_LocationExternalId"
 
 ON "InventoryMovements" ("ComponentId", "LocationExternalId");
+CREATE INDEX "IX_InventoryCountSessions_Company_Type_Period" ON "InventoryCountSessions" (CompanyId, SessionType, PeriodMonth);
+CREATE INDEX "IX_InventoryCountSessionLines_SessionId" ON "InventoryCountSessionLines" (SessionId);
 PRAGMA writable_schema=OFF;
 COMMIT;
