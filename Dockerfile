@@ -18,10 +18,8 @@ RUN dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /
 # ── Stage 3: Runtime (Cloud Run) ───────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
-RUN mkdir -p /app/data /app/seed /app/data/archives/stock-card
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=api-build /app/publish .
-COPY src/Bisync.Api/bisync.db /app/seed/bisync.db
 EXPOSE 8080
-ENTRYPOINT ["sh", "-c", "mkdir -p /app/data /app/data/archives/stock-card && if [ ! -f /app/data/bisync.db ] && [ -f /app/seed/bisync.db ]; then echo 'Initializing database from seed...'; cp /app/seed/bisync.db /app/data/bisync.db; fi && exec dotnet Bisync.Api.dll"]
+ENTRYPOINT ["dotnet", "Bisync.Api.dll"]

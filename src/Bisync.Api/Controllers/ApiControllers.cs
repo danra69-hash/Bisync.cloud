@@ -13,6 +13,33 @@ namespace Bisync.Api.Controllers;
 [Route("api/[controller]")]
 public class LocationsController(BisyncDbContext db) : ControllerBase
 {
+    static object MapLocationConfig(Location l) => new
+    {
+        l.Id,
+        l.ExternalId,
+        l.Name,
+        l.CompanyId,
+        companyName = l.Company?.Name,
+        countryCode = l.Company?.CountryCode ?? "MY",
+        l.AddressLine1,
+        l.AddressLine2,
+        l.City,
+        l.StateProvince,
+        l.Postcode,
+        l.PrincipalContactUserId,
+        principalContactName = l.PrincipalContact?.FullName,
+        businessTypesJson = CompanyProfileRules.ResolveProfileJson(l.BusinessTypesJson, l.Company?.BusinessTypesJson),
+        vendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(l.VendorPolicyTagsJson, l.Company?.VendorPolicyTagsJson),
+        profileOverridden = CompanyProfileRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson),
+    };
+
+    async Task<Location?> LoadLocationConfigAsync(int id) =>
+        await db.Locations
+            .AsNoTracking()
+            .Include(l => l.Company)
+            .Include(l => l.PrincipalContact)
+            .FirstOrDefaultAsync(l => l.Id == id);
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll() =>
         Ok(await db.Locations
@@ -51,33 +78,79 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
             .ToListAsync());
 
     [HttpGet("config")]
-    public async Task<ActionResult<IEnumerable<object>>> GetConfig() =>
-        Ok(await db.Locations
+    public async Task<ActionResult<IEnumerable<object>>> GetConfig()
+    {
+        var locations = await db.Locations
             .AsNoTracking()
             .Include(l => l.Company)
             .Include(l => l.PrincipalContact)
             .OrderBy(l => l.Name)
-            .Select(l => new
-            {
-                l.Id,
-                l.ExternalId,
-                l.Name,
-                l.CompanyId,
-                companyName = l.Company != null ? l.Company.Name : null,
-                countryCode = l.Company != null ? l.Company.CountryCode : "MY",
-                l.AddressLine1,
-                l.AddressLine2,
-                l.City,
-                l.StateProvince,
-                l.Postcode,
-                l.PrincipalContactUserId,
-                principalContactName = l.PrincipalContact != null ? l.PrincipalContact.FullName : null,
-            })
-            .ToListAsync());
+            .ToListAsync();
+
+        return Ok(locations.Select(MapLocationConfig));
+    }
+
+    [HttpPost("config")]
+    public async Task<ActionResult<object>> CreateConfig([FromBody] LocationConfigCreate body)
+    {
+        if (body.CompanyId is null)
+            return BadRequest(new { error = "Company is required." });
+
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == body.CompanyId);
+        if (company is null)
+            return BadRequest(new { error = "Company not found." });
+
+        var businessTypesJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.BusinessTypesJson, company.BusinessTypesJson);
+        var vendorPolicyTagsJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.VendorPolicyTagsJson, company.VendorPolicyTagsJson, ignoreCase: true);
+        var effectiveBusinessTypesJson = CompanyProfileRules.ResolveProfileJson(businessTypesJson, company.BusinessTypesJson);
+        var effectiveVendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(vendorPolicyTagsJson, company.VendorPolicyTagsJson);
+
+        var validationError = CompanyProfileRules.Validate(effectiveBusinessTypesJson, effectiveVendorPolicyTagsJson);
+        if (validationError is not null)
+            return BadRequest(new { error = validationError });
+
+        var externalId = await GenerateUniqueExternalIdAsync(body.Name);
+        var loc = new Location
+        {
+            ExternalId = externalId,
+            Name = body.Name.Trim(),
+            CompanyId = body.CompanyId,
+            AddressLine1 = body.AddressLine1 ?? string.Empty,
+            AddressLine2 = body.AddressLine2 ?? string.Empty,
+            City = body.City ?? string.Empty,
+            StateProvince = body.StateProvince ?? string.Empty,
+            Postcode = body.Postcode ?? string.Empty,
+            PrincipalContactUserId = body.PrincipalContactUserId,
+            BusinessTypesJson = businessTypesJson,
+            VendorPolicyTagsJson = vendorPolicyTagsJson,
+            Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
+        };
+
+        db.Locations.Add(loc);
+        await db.SaveChangesAsync();
+        var saved = await LoadLocationConfigAsync(loc.Id);
+        return saved is null ? Ok(new { loc.Id, loc.ExternalId, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
+    }
 
     [HttpPut("{id:int}/config")]
     public async Task<ActionResult<object>> UpdateConfig(int id, [FromBody] LocationConfigUpdate body)
     {
+        if (body.CompanyId is null)
+            return BadRequest(new { error = "Company is required." });
+
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == body.CompanyId);
+        if (company is null)
+            return BadRequest(new { error = "Company not found." });
+
+        var businessTypesJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.BusinessTypesJson, company.BusinessTypesJson);
+        var vendorPolicyTagsJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.VendorPolicyTagsJson, company.VendorPolicyTagsJson, ignoreCase: true);
+        var effectiveBusinessTypesJson = CompanyProfileRules.ResolveProfileJson(businessTypesJson, company.BusinessTypesJson);
+        var effectiveVendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(vendorPolicyTagsJson, company.VendorPolicyTagsJson);
+
+        var validationError = CompanyProfileRules.Validate(effectiveBusinessTypesJson, effectiveVendorPolicyTagsJson);
+        if (validationError is not null)
+            return BadRequest(new { error = validationError });
+
         var loc = await db.Locations.FindAsync(id);
         if (loc is null) return NotFound();
         loc.CompanyId = body.CompanyId;
@@ -88,9 +161,36 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
         loc.StateProvince = body.StateProvince;
         loc.Postcode = body.Postcode;
         loc.PrincipalContactUserId = body.PrincipalContactUserId;
+        loc.BusinessTypesJson = businessTypesJson;
+        loc.VendorPolicyTagsJson = vendorPolicyTagsJson;
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         await db.SaveChangesAsync();
-        return Ok(new { loc.Id, loc.Name, loc.CompanyId });
+        var saved = await LoadLocationConfigAsync(loc.Id);
+        return saved is null ? Ok(new { loc.Id, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
+    }
+
+    static string SlugifyLocationName(string name)
+    {
+        var chars = name.ToLowerInvariant()
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-')
+            .ToArray();
+        var slug = new string(chars).Trim().Replace(' ', '-');
+        while (slug.Contains("--", StringComparison.Ordinal))
+            slug = slug.Replace("--", "-", StringComparison.Ordinal);
+        return string.IsNullOrWhiteSpace(slug) ? "location" : slug;
+    }
+
+    async Task<string> GenerateUniqueExternalIdAsync(string name)
+    {
+        var baseSlug = SlugifyLocationName(name);
+        var candidate = baseSlug;
+        var suffix = 2;
+        while (await db.Locations.AnyAsync(l => l.ExternalId == candidate))
+        {
+            candidate = $"{baseSlug}-{suffix}";
+            suffix++;
+        }
+        return candidate;
     }
 
     [HttpGet("{externalId}")]
@@ -150,6 +250,10 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         if (nameTaken)
             return Conflict(new { message = "Vendor name already exists." });
 
+        var policyError = VendorPolicyRules.ValidateProductPolicyTag(request.ProductPolicyTag);
+        if (policyError is not null)
+            return BadRequest(new { message = policyError });
+
         var vendor = new Vendor
         {
             ExternalId = externalId,
@@ -164,6 +268,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             ContactPosition = request.ContactPosition.Trim(),
             Mobile = request.Mobile.Trim(),
             Email = request.Email.Trim(),
+            ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant(),
             ContactsJson = JsonSerializer.Serialize(new[]
             {
                 new VendorContactRequest
@@ -179,6 +284,44 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         };
 
         db.Vendors.Add(vendor);
+        await db.SaveChangesAsync();
+        return Ok(vendor);
+    }
+
+    [HttpPut("{externalId}")]
+    public async Task<ActionResult<Vendor>> Update(string externalId, [FromBody] UpdateVendorRequest request)
+    {
+        var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
+        if (vendor is null) return NotFound();
+
+        var name = request.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return BadRequest(new { message = "Vendor name is required." });
+
+        var nameTaken = await db.Vendors.AnyAsync(v => v.Id != vendor.Id && v.Name.ToLower() == name.ToLower());
+        if (nameTaken)
+            return Conflict(new { message = "Vendor name already exists." });
+
+        var policyError = VendorPolicyRules.ValidateProductPolicyTag(request.ProductPolicyTag);
+        if (policyError is not null)
+            return BadRequest(new { message = policyError });
+
+        vendor.Name = name;
+        vendor.Type = string.IsNullOrWhiteSpace(request.Type) ? "offline" : request.Type.Trim().ToLowerInvariant();
+        vendor.Brn = request.Brn.Trim();
+        vendor.Products = request.Products.Trim();
+        vendor.City = request.City.Trim();
+        vendor.State = request.State.Trim();
+        vendor.Address = request.Address.Trim();
+        vendor.ContactPerson = request.ContactPerson.Trim();
+        vendor.ContactPosition = request.ContactPosition.Trim();
+        vendor.Mobile = request.Mobile.Trim();
+        vendor.Email = request.Email.Trim();
+        vendor.ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant();
+        vendor.ContactsJson = JsonSerializer.Serialize(
+            SyncDefaultContact(vendor),
+            ContactJsonOptions);
+
         await db.SaveChangesAsync();
         return Ok(vendor);
     }
@@ -202,6 +345,44 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         vendor.Engaged = true;
         await db.SaveChangesAsync();
         return Ok(vendor);
+    }
+
+    static List<VendorContactRequest> SyncDefaultContact(Vendor vendor)
+    {
+        var contacts = ParseStoredContacts(vendor.ContactsJson);
+        var defaultContact = new VendorContactRequest
+        {
+            Name = vendor.ContactPerson,
+            Position = vendor.ContactPosition,
+            Mobile = vendor.Mobile,
+            Email = vendor.Email,
+            IsDefault = true,
+        };
+
+        if (contacts.Count == 0)
+            return [defaultContact];
+
+        var defaultIndex = contacts.FindIndex(c => c.IsDefault);
+        if (defaultIndex < 0) defaultIndex = 0;
+
+        contacts[defaultIndex] = defaultContact;
+        for (var i = 0; i < contacts.Count; i++)
+            contacts[i].IsDefault = i == defaultIndex;
+
+        return contacts;
+    }
+
+    static List<VendorContactRequest> ParseStoredContacts(string? contactsJson)
+    {
+        if (string.IsNullOrWhiteSpace(contactsJson)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<VendorContactRequest>>(contactsJson, ContactJsonOptions) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     static List<VendorContactRequest> NormalizeContacts(IReadOnlyList<VendorContactRequest>? submitted, Vendor vendor)
@@ -375,6 +556,9 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
         if (request.Orders is null || request.Orders.Count == 0)
             return BadRequest(new { message = "At least one purchase order is required." });
 
+        await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "PurchaseOrders");
+        await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "PurchaseOrderItems");
+
         var existingPoNumbers = await db.PurchaseOrders
             .AsNoTracking()
             .Select(p => p.PoNumber)
@@ -512,6 +696,29 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
         if (request.Items is null || request.Items.Count == 0)
             return BadRequest(new { message = "At least one line item is required to receive." });
 
+        var company = order.CompanyId.HasValue
+            ? await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == order.CompanyId.Value)
+            : null;
+        var locationExternalIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
+        var locations = locationExternalIds.Count == 0
+            ? []
+            : await db.Locations.AsNoTracking()
+                .Where(l => locationExternalIds.Contains(l.ExternalId))
+                .ToListAsync();
+        var orgTags = VendorPolicyRules.ResolveStrictestOrgVendorPolicyTags(company, locations);
+        if (VendorPolicyRules.OrgRequiresHalalCertOnReceive(orgTags))
+        {
+            var certError = VendorPolicyRules.ValidateHalalCertNumbers(
+                true,
+                request.Items.Select(line =>
+                {
+                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                    return (item?.Name ?? $"Item {line.ItemId}", line.HalalCertNo);
+                }));
+            if (certError is not null)
+                return BadRequest(new { error = certError });
+        }
+
         ApplyWorkflowLines(order, request.Items, workflow: "receive");
         order.Status = PurchaseOrderWorkflow.StatusReceived;
         order.ReceivedAt = DateTime.UtcNow;
@@ -605,6 +812,7 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
                 item.Quantity = line.Quantity;
                 item.UnitPrice = line.UnitPrice;
                 item.TaxAmount = line.TaxAmount;
+                item.HalalCertNo = line.HalalCertNo?.Trim() ?? string.Empty;
                 if (!string.IsNullOrWhiteSpace(line.ComponentUom))
                     item.ComponentUom = line.ComponentUom.Trim();
             }

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
@@ -22,10 +25,29 @@ type Props = {
   onEditProduct?: (productId: number) => void;
 };
 
-const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 const filterCls = filterSelectCls;
+
+type ProductListSortColumn =
+  | 'name'
+  | 'type'
+  | 'cogs'
+  | 'cogsPercent'
+  | 'rrp'
+  | 'channel'
+  | 'pos'
+  | 'activate';
+
+const PRODUCT_LIST_TABLE_COLUMNS: SortableColumnDef<ProductListSortColumn>[] = [
+  { key: 'name', label: 'Product Name' },
+  { key: 'type', label: 'Type' },
+  { key: 'cogs', label: 'Cogs' },
+  { key: 'cogsPercent', label: 'COGS %' },
+  { key: 'rrp', label: 'RRP' },
+  { key: 'channel', label: 'Channel' },
+  { key: 'pos', label: 'POS', align: 'center', sortable: false },
+  { key: 'activate', label: 'Activate', align: 'center', sortable: false },
+];
 
 function productMatchesLocations(product: Product, locationIds: string[]): boolean {
   const productLocs = product.locationExternalIds ?? [];
@@ -97,6 +119,7 @@ export function ProductListPage({
   const [filterB2b, setFilterB2b] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ProductListSortColumn>();
 
   const loadProducts = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -120,6 +143,20 @@ export function ProductListPage({
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    resetSort();
+  }, [
+    search,
+    categoryFilter,
+    groupFilter,
+    filterProduct,
+    filterSubProduct,
+    filterB2c,
+    filterB2b,
+    selectedLocationIds,
+    resetSort,
+  ]);
 
   const categoryOptions = useMemo(() => {
     const fromProducts = products.map(p => p.category).filter(Boolean);
@@ -170,6 +207,36 @@ export function ProductListPage({
     ].join(' ').toLowerCase().includes(query));
   }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterB2c, filterB2b]);
 
+  const sortedVisibleProducts = useMemo(
+    () =>
+      sortTableRows(
+        visibleProducts,
+        sortColumn,
+        sortDirection,
+        {
+          name: p => p.name,
+          type: p => (p.isSubProduct ? 'Sub-Product' : 'Product'),
+          cogs: p => calcProductCogs(p.totalCost, p.packagingCost ?? 0, p),
+          cogsPercent: p => {
+            if (p.isSubProduct) return -1;
+            const cogs = calcProductCogs(p.totalCost, p.packagingCost ?? 0, p);
+            return p.rrp > 0 ? (cogs / p.rrp) * 100 : -1;
+          },
+          rrp: p => {
+            if (p.isSubProduct) {
+              const productCogs = calcProductCogs(p.totalCost, p.packagingCost ?? 0, p);
+              if (p.yieldQuantity <= 0 || !p.yieldUom) return -1;
+              return calcSubProductUnitCost(productCogs, String(p.yieldQuantity));
+            }
+            return p.rrp;
+          },
+          channel: p => channelLabel(p),
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [visibleProducts, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedVisibleProducts,
@@ -177,7 +244,7 @@ export function ProductListPage({
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(visibleProducts, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
 
   function replaceProduct(updated: Product) {
     setProducts(prev => prev.map(p => (p.id === updated.id ? updated : p)));
@@ -336,16 +403,13 @@ export function ProductListPage({
           <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
             <table className="w-full table-fixed border-collapse">
               <thead>
-                <tr className="bg-muted/20 border-b border-border">
-                  <th className={thCls}>Product Name</th>
-                  <th className={thCls}>Type</th>
-                  <th className={thCls}>Cogs</th>
-                  <th className={thCls}>COGS %</th>
-                  <th className={thCls}>RRP</th>
-                  <th className={thCls}>Channel</th>
-                  <th className={`${thCls} text-center`}>POS</th>
-                  <th className={`${thCls} text-center`}>Activate</th>
-                </tr>
+                <SortableTableHeaderRow
+                  columns={PRODUCT_LIST_TABLE_COLUMNS}
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleSort}
+                  className="bg-muted/20 border-b border-border"
+                />
               </thead>
               <tbody>
                 {loading ? (

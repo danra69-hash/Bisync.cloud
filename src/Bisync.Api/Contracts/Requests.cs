@@ -576,6 +576,36 @@ public class CreateVendorRequest
     public string Mobile { get; set; } = string.Empty;
     [MaxLength(256)]
     public string Email { get; set; } = string.Empty;
+    [Required, MaxLength(30)]
+    public string ProductPolicyTag { get; set; } = string.Empty;
+}
+
+public class UpdateVendorRequest
+{
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(20)]
+    public string Type { get; set; } = "offline";
+    [MaxLength(50)]
+    public string Brn { get; set; } = string.Empty;
+    [MaxLength(300)]
+    public string Products { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string State { get; set; } = string.Empty;
+    [MaxLength(400)]
+    public string Address { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string ContactPerson { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string ContactPosition { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Mobile { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+    [Required, MaxLength(30)]
+    public string ProductPolicyTag { get; set; } = string.Empty;
 }
 
 public class CreatePurchaseOrderItemRequest
@@ -643,6 +673,8 @@ public class PurchaseOrderLineWorkflowRequest
     public string? ComponentUom { get; set; }
     [Range(0, 999999999)]
     public decimal TaxAmount { get; set; }
+    [MaxLength(100)]
+    public string? HalalCertNo { get; set; }
 }
 
 public class CreateCashPurchaseRequest

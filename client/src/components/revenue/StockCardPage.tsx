@@ -7,6 +7,9 @@ import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { StockCardDetailPanel } from './StockCardDetailPanel';
 import {
@@ -22,6 +25,29 @@ type Props = {
 };
 
 const ITEM_TYPES = ['All', 'Product', 'Sub-Product', 'Smart Component'] as const;
+
+type StockCardSortColumn =
+  | 'type'
+  | 'group'
+  | 'name'
+  | 'uom'
+  | 'inboundQty'
+  | 'outboundQty'
+  | 'avgOutboundCogs'
+  | 'onHandQty'
+  | 'avgCogs';
+
+const STOCK_CARD_TABLE_COLUMNS: SortableColumnDef<StockCardSortColumn>[] = [
+  { key: 'type', label: 'Type' },
+  { key: 'group', label: 'Group' },
+  { key: 'name', label: 'Name' },
+  { key: 'uom', label: 'UOM' },
+  { key: 'inboundQty', label: 'Inbound QTY', align: 'right' },
+  { key: 'outboundQty', label: 'Outbound QTY', align: 'right' },
+  { key: 'avgOutboundCogs', label: 'Avg outbound COGS', align: 'right' },
+  { key: 'onHandQty', label: 'Qty on hand', align: 'right' },
+  { key: 'avgCogs', label: 'Avg COGS', align: 'right' },
+];
 
 function fmtQty(value: number) {
   if (!Number.isFinite(value)) return '0';
@@ -90,6 +116,11 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
   const [listVersion, setListVersion] = useState(0);
   const scrollRootRef = useRef<HTMLDivElement>(null);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<StockCardSortColumn>();
+
+  useEffect(() => {
+    resetSort();
+  }, [search, groupFilter, itemTypeFilter, uomMode, selectedMonth, selectedCompanyId, selectedLocationIds, resetSort]);
 
   useEffect(() => {
     if (!selectedCompanyId || selectedLocationIds.length === 0) {
@@ -130,7 +161,29 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
     });
   }, [rows, search, groupFilter]);
 
-  const { visibleItems, hasMore, sentinelRef } = useInfiniteScrollSlice(filteredRows, { scrollRootRef });
+  const sortedRows = useMemo(
+    () =>
+      sortTableRows(
+        filteredRows,
+        sortColumn,
+        sortDirection,
+        {
+          type: row => itemTypeLabel(row.itemType),
+          group: row => row.group || '',
+          name: row => row.name,
+          uom: row => row.uom,
+          inboundQty: row => row.inboundQty,
+          outboundQty: row => row.outboundQty,
+          avgOutboundCogs: row => row.averageCogs,
+          onHandQty: row => row.onHandQty,
+          avgCogs: row => row.onHandAverageCogs,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [filteredRows, sortColumn, sortDirection],
+  );
+
+  const { visibleItems, hasMore, sentinelRef } = useInfiniteScrollSlice(sortedRows, { scrollRootRef });
 
   if (!selectedCompanyId || selectedLocationIds.length === 0) {
     return (
@@ -196,17 +249,12 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
       <TableScrollContainer ref={scrollRootRef}>
         <table className="w-full text-sm font-sans">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
-              <th className="px-3 py-2 font-medium">Type</th>
-              <th className="px-3 py-2 font-medium">Group</th>
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="px-3 py-2 font-medium">UOM</th>
-              <th className="px-3 py-2 font-medium text-right">Inbound QTY</th>
-              <th className="px-3 py-2 font-medium text-right">Outbound QTY</th>
-              <th className="px-3 py-2 font-medium text-right">Avg outbound COGS</th>
-              <th className="px-3 py-2 font-medium text-right">Qty on hand</th>
-              <th className="px-3 py-2 font-medium text-right">Avg COGS</th>
-            </tr>
+            <SortableTableHeaderRow
+              columns={STOCK_CARD_TABLE_COLUMNS}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSort={toggleSort}
+            />
           </thead>
           <tbody>
             {loading ? (

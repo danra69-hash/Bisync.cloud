@@ -16,5 +16,9 @@ public class Company
     public string Fax { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
+    /// <summary>JSON array of business type labels.</summary>
+    public string BusinessTypesJson { get; set; } = "[]";
+    /// <summary>JSON array of vendor policy tag ids: halal, muslim-friendly, non-halal.</summary>
+    public string VendorPolicyTagsJson { get; set; } = "[]";
     public ICollection<Location> Locations { get; set; } = new List<Location>();
 }

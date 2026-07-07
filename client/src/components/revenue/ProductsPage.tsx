@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
@@ -42,10 +45,20 @@ type Props = {
 const fieldCls =
   'w-full rounded-md border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary';
 const labelCls = 'text-xs font-medium text-foreground';
-const thCls = 'px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/20';
 const tdCls = 'px-3 py-2 text-xs border-b border-border align-middle';
 const addBtnCls =
   'shrink-0 inline-flex items-center justify-center h-[34px] w-[34px] rounded-md border border-border bg-background hover:bg-muted/40 text-muted-foreground';
+
+type BomLineSortColumn = 'component' | 'uom' | 'price' | 'qty' | 'subtotal' | 'action';
+
+const BOM_LINE_TABLE_COLUMNS: SortableColumnDef<BomLineSortColumn>[] = [
+  { key: 'component', label: 'Smart component' },
+  { key: 'uom', label: 'Smart component UOM' },
+  { key: 'price', label: 'Smart component UOM price', sortable: false },
+  { key: 'qty', label: 'Qty', sortable: false },
+  { key: 'subtotal', label: 'Subtotal', align: 'right' },
+  { key: 'action', label: '', sortable: false, className: 'w-10' },
+];
 
 const EXTRA_GROUPS_KEY = 'bisync.productExtraGroups';
 const categoryOptions = siCategories.filter(c => c !== 'All');
@@ -96,13 +109,31 @@ function ComponentLinesSection({
 }: ComponentLinesSectionProps) {
   const showAddRow = lines.length > 0 && isProductLineFilled(lines[lines.length - 1]);
   const scrollRootRef = useRef<HTMLDivElement>(null);
+  const { sortColumn, sortDirection, toggleSort } = useTableSort<BomLineSortColumn>();
+
+  const sortedLines = useMemo(
+    () =>
+      sortTableRows(
+        lines,
+        sortColumn,
+        sortDirection,
+        {
+          component: line => line.componentName || line.componentId || '',
+          uom: line => line.componentUom || '',
+          subtotal: line => calcLineSubtotal(line.quantity, line.componentUomPrice),
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.componentName, b.componentName) },
+      ),
+    [lines, sortColumn, sortDirection],
+  );
+
   const {
     visibleItems: pagedLines,
     hasMore,
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(lines, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedLines, { scrollRootRef });
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
@@ -114,14 +145,13 @@ function ComponentLinesSection({
       <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
         <table className="w-full table-fixed border-collapse">
           <thead>
-            <tr>
-              <th className={thCls}>Smart component</th>
-              <th className={thCls}>Smart component UOM</th>
-              <th className={thCls}>Smart component UOM price</th>
-              <th className={thCls}>Qty</th>
-              <th className={thCls}>Subtotal</th>
-              <th className={`${thCls} w-10`} />
-            </tr>
+            <SortableTableHeaderRow
+              columns={BOM_LINE_TABLE_COLUMNS}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSort={toggleSort}
+              className="border-b border-border bg-muted/20"
+            />
           </thead>
           <tbody>
             {pagedLines.map(line => {

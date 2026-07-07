@@ -32,11 +32,44 @@ public class StockCardService(
 
         if (ShouldInclude(itemTypeFilter, "component"))
         {
-            foreach (var ingredient in ingredients)
-            {
-                if (!MatchesIngredientLocations(ingredient, locationIds))
-                    continue;
+            var visibleIngredients = ingredients
+                .Where(i => MatchesIngredientLocations(i, locationIds))
+                .ToList();
+            var componentIds = visibleIngredients.Select(i => i.ComponentId).ToList();
 
+            // Batch-load purchases/movements for all components at once to avoid N+1 round-trips.
+            var allPurchases = componentIds.Count == 0
+                ? new List<InventoryPurchase>()
+                : await db.InventoryPurchases.AsNoTracking()
+                    .Where(p => componentIds.Contains(p.ComponentId)
+                        && p.DateCreatedInStock >= stockPeriod.ArchiveCutoff
+                        && p.DateCreatedInStock <= stockPeriod.PeriodEnd)
+                    .ToListAsync(cancellationToken);
+            var allMovements = componentIds.Count == 0
+                ? new List<InventoryMovement>()
+                : await db.InventoryMovements.AsNoTracking()
+                    .Where(m => componentIds.Contains(m.ComponentId)
+                        && m.CreatedAt >= stockPeriod.ArchiveCutoff
+                        && m.CreatedAt <= stockPeriod.PeriodEnd)
+                    .ToListAsync(cancellationToken);
+
+            var purchasesByComponent = allPurchases.ToLookup(p => p.ComponentId);
+            var movementsByComponent = allMovements.ToLookup(m => m.ComponentId);
+
+            var poIds = allPurchases
+                .Where(p => p.PurchaseOrderId > 0)
+                .Select(p => p.PurchaseOrderId)
+                .Distinct()
+                .ToList();
+            var poNumbers = poIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await db.PurchaseOrders.AsNoTracking()
+                    .Where(p => poIds.Contains(p.Id))
+                    .ToDictionaryAsync(p => p.Id, p => p.PoNumber, cancellationToken);
+            var productionProducts = await LoadProductionProductsForMovementsAsync(allMovements, cancellationToken);
+
+            foreach (var ingredient in visibleIngredients)
+            {
                 var displayUom = ResolveComponentUom(ingredient, mode);
                 var summary = await SummarizeComponentAsync(
                     ingredient,
@@ -44,6 +77,10 @@ public class StockCardService(
                     locationIds,
                     companyId,
                     stockPeriod,
+                    purchasesByComponent[ingredient.ComponentId].ToList(),
+                    movementsByComponent[ingredient.ComponentId].ToList(),
+                    poNumbers,
+                    productionProducts,
                     cancellationToken);
 
                 rows.Add(new StockCardListRow
@@ -74,18 +111,30 @@ public class StockCardService(
             .ThenBy(p => p.Name)
             .ToListAsync(cancellationToken);
 
-        foreach (var product in products)
-        {
-            if (!MatchesProductLocations(product, locationIds))
-                continue;
+        var visibleProducts = products
+            .Where(p => MatchesProductLocations(p, locationIds))
+            .ToList();
+        var productIds = visibleProducts.Select(p => p.Id).ToList();
 
+        // Batch-load production logs for all products at once to avoid N+1 round-trips.
+        var allLogs = productIds.Count == 0
+            ? new List<ProductProductionLog>()
+            : await db.ProductProductionLogs.AsNoTracking()
+                .Where(l => productIds.Contains(l.ProductId))
+                .OrderBy(l => l.CreatedAt)
+                .ThenBy(l => l.Id)
+                .ToListAsync(cancellationToken);
+        var logsByProduct = allLogs.ToLookup(l => l.ProductId);
+
+        foreach (var product in visibleProducts)
+        {
             if (product.IsSubProduct)
             {
                 if (!ShouldInclude(itemTypeFilter, "sub-product"))
                     continue;
 
                 var displayUom = ResolveProductUom(product);
-                var summary = await SummarizeProductAsync(product, locationIds, stockPeriod, cancellationToken);
+                var summary = SummarizeProduct(product, locationIds, stockPeriod, logsByProduct[product.Id].ToList());
                 rows.Add(new StockCardListRow
                 {
                     ItemType = "sub-product",
@@ -112,7 +161,7 @@ public class StockCardService(
                 continue;
 
             var productUom = ResolveProductUom(product);
-            var productSummary = await SummarizeProductAsync(product, locationIds, stockPeriod, cancellationToken);
+            var productSummary = SummarizeProduct(product, locationIds, stockPeriod, logsByProduct[product.Id].ToList());
             rows.Add(new StockCardListRow
             {
                 ItemType = "product",
@@ -731,12 +780,14 @@ public class StockCardService(
         IReadOnlyList<string> locationIds,
         int? companyId,
         StockCardPeriod period,
+        List<InventoryPurchase> preloadedPurchases,
+        List<InventoryMovement> preloadedMovements,
+        IReadOnlyDictionary<int, string> poNumbers,
+        IReadOnlyDictionary<int, Product> productionProducts,
         CancellationToken cancellationToken)
     {
         var normalizedUom = NormalizeUom(displayUom);
-        var purchases = await db.InventoryPurchases.AsNoTracking()
-            .Where(p => p.ComponentId == ingredient.ComponentId)
-            .ToListAsync(cancellationToken);
+        var purchases = preloadedPurchases;
 
         if (companyId is int cid)
             purchases = purchases.Where(p => p.CompanyId is null || p.CompanyId == cid).ToList();
@@ -744,12 +795,9 @@ public class StockCardService(
         purchases = purchases
             .Where(p => LocationMatchesAny(p.LocationIdsJson, locationIds))
             .Where(p => NormalizeUom(p.Uom) == normalizedUom)
-            .Where(p => p.DateCreatedInStock >= period.ArchiveCutoff && p.DateCreatedInStock <= period.PeriodEnd)
             .ToList();
 
-        var movements = await db.InventoryMovements.AsNoTracking()
-            .Where(m => m.ComponentId == ingredient.ComponentId)
-            .ToListAsync(cancellationToken);
+        var movements = preloadedMovements;
 
         if (companyId is int companyFilter)
             movements = movements.Where(m => m.CompanyId is null || m.CompanyId == companyFilter).ToList();
@@ -757,7 +805,6 @@ public class StockCardService(
         movements = movements
             .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
             .Where(m => NormalizeUom(m.Uom) == normalizedUom)
-            .Where(m => m.CreatedAt >= period.ArchiveCutoff && m.CreatedAt <= period.PeriodEnd)
             .ToList();
 
         var fifoResult = await BuildComponentFifoResultAsync(
@@ -768,7 +815,9 @@ public class StockCardService(
             period,
             cancellationToken,
             purchases,
-            movements);
+            movements,
+            poNumbers,
+            productionProducts);
 
         var monthPurchases = purchases
             .Where(p => p.DateCreatedInStock >= period.MonthStart)
@@ -797,23 +846,16 @@ public class StockCardService(
         };
     }
 
-    async Task<StockMovementSummary> SummarizeProductAsync(
+    StockMovementSummary SummarizeProduct(
         Product product,
         IReadOnlyList<string> locationIds,
         StockCardPeriod period,
-        CancellationToken cancellationToken)
+        List<ProductProductionLog> preloadedLogs)
     {
-        var fifoResult = await BuildProductFifoResultAsync(
-            product,
-            locationIds,
-            period,
-            cancellationToken);
+        var events = BuildProductFifoEvents(product, locationIds, period, preloadedLogs);
+        var fifoResult = StockCardFifoEngine.Simulate(events);
 
-        var logs = await db.ProductProductionLogs.AsNoTracking()
-            .Where(l => l.ProductId == product.Id)
-            .ToListAsync(cancellationToken);
-
-        logs = logs
+        var logs = preloadedLogs
             .Where(l => LogMatchesAnyLocation(l.LocationIdsJson, locationIds))
             .Where(l =>
             {
@@ -873,14 +915,24 @@ public class StockCardService(
         StockCardPeriod period,
         CancellationToken cancellationToken)
     {
-        var events = new List<FifoEvent>();
-        var uom = ResolveProductUom(product);
-        var productionUnitPrice = ResolveProductUnitPrice(product);
         var logs = await db.ProductProductionLogs.AsNoTracking()
             .Where(l => l.ProductId == product.Id)
             .OrderBy(l => l.CreatedAt)
             .ThenBy(l => l.Id)
             .ToListAsync(cancellationToken);
+
+        return BuildProductFifoEvents(product, locationIds, period, logs);
+    }
+
+    static List<FifoEvent> BuildProductFifoEvents(
+        Product product,
+        IReadOnlyList<string> locationIds,
+        StockCardPeriod period,
+        List<ProductProductionLog> logs)
+    {
+        var events = new List<FifoEvent>();
+        var uom = ResolveProductUom(product);
+        var productionUnitPrice = ResolveProductUnitPrice(product);
 
         foreach (var log in logs.Where(l => LogMatchesAnyLocation(l.LocationIdsJson, locationIds)))
         {
@@ -970,7 +1022,9 @@ public class StockCardService(
         StockCardPeriod period,
         CancellationToken cancellationToken,
         List<InventoryPurchase>? purchasesOverride = null,
-        List<InventoryMovement>? movementsOverride = null)
+        List<InventoryMovement>? movementsOverride = null,
+        IReadOnlyDictionary<int, string>? poNumbersOverride = null,
+        IReadOnlyDictionary<int, Product>? productionProductsOverride = null)
     {
         var events = await BuildComponentFifoEventsAsync(
             ingredient,
@@ -980,7 +1034,9 @@ public class StockCardService(
             period,
             cancellationToken,
             purchasesOverride,
-            movementsOverride);
+            movementsOverride,
+            poNumbersOverride,
+            productionProductsOverride);
         return StockCardFifoEngine.Simulate(events);
     }
 
@@ -992,7 +1048,9 @@ public class StockCardService(
         StockCardPeriod period,
         CancellationToken cancellationToken,
         List<InventoryPurchase>? purchasesOverride = null,
-        List<InventoryMovement>? movementsOverride = null)
+        List<InventoryMovement>? movementsOverride = null,
+        IReadOnlyDictionary<int, string>? poNumbersOverride = null,
+        IReadOnlyDictionary<int, Product>? productionProductsOverride = null)
     {
         var normalizedUom = NormalizeUom(displayUom);
         var purchases = purchasesOverride ?? await db.InventoryPurchases.AsNoTracking()
@@ -1009,12 +1067,20 @@ public class StockCardService(
                 .ToList();
         }
 
-        var poIds = purchases.Where(p => p.PurchaseOrderId > 0).Select(p => p.PurchaseOrderId).Distinct().ToList();
-        var poNumbers = poIds.Count == 0
-            ? new Dictionary<int, string>()
-            : await db.PurchaseOrders.AsNoTracking()
-                .Where(p => poIds.Contains(p.Id))
-                .ToDictionaryAsync(p => p.Id, p => p.PoNumber, cancellationToken);
+        IReadOnlyDictionary<int, string> poNumbers;
+        if (poNumbersOverride is not null)
+        {
+            poNumbers = poNumbersOverride;
+        }
+        else
+        {
+            var poIds = purchases.Where(p => p.PurchaseOrderId > 0).Select(p => p.PurchaseOrderId).Distinct().ToList();
+            poNumbers = poIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await db.PurchaseOrders.AsNoTracking()
+                    .Where(p => poIds.Contains(p.Id))
+                    .ToDictionaryAsync(p => p.Id, p => p.PoNumber, cancellationToken);
+        }
 
         var events = new List<FifoEvent>();
 
@@ -1068,7 +1134,8 @@ public class StockCardService(
                 .ToList();
         }
 
-        var productionProducts = await LoadProductionProductsForMovementsAsync(movements, cancellationToken);
+        var productionProducts = productionProductsOverride
+            ?? await LoadProductionProductsForMovementsAsync(movements, cancellationToken);
 
         foreach (var movement in movements.Where(m => NormalizeUom(m.Uom) == normalizedUom))
         {

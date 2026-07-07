@@ -40,9 +40,9 @@ function renderRevMgmtContent(
     case 'Component Config':
       return <ComponentConfigPage selectedCompanyId={selectedCompanyId} />;
     case 'Vendor List & Products':
-      return <VendorListPage selectedCompanyId={selectedCompanyId} />;
+      return <VendorListPage selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />;
     case 'Compare Price':
-      return <ComparePricePage selectedCompanyId={selectedCompanyId} />;
+      return <ComparePricePage selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />;
     case 'My Order':
       return (
         <OrderPage

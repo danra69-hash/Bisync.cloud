@@ -210,6 +210,27 @@ public static class ConfigurationSeeder
         await EnsureSuperAdminAsync(db);
     }
 
+    /// <summary>
+    /// Aligns super-admin credentials after PostgreSQL migration: empty hashes and the old
+    /// default password (12345678) are upgraded to the platform demo password.
+    /// </summary>
+    public static async Task PatchSuperAdminPasswordAsync(BisyncDbContext db)
+    {
+        const string legacyPassword = "12345678";
+        var email = SuperAdminAccess.SuperAdminEmail.ToLowerInvariant();
+        var user = await db.AppUsers.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+        if (user is null) return;
+
+        var hashMissing = string.IsNullOrWhiteSpace(user.PasswordHash);
+        var usesLegacyPassword = !hashMissing && AppPasswordHasher.Verify(legacyPassword, user.PasswordHash);
+        var alreadyDefault = !hashMissing && AppPasswordHasher.Verify(SuperAdminAccess.SuperAdminPassword, user.PasswordHash);
+        if (alreadyDefault || (!hashMissing && !usesLegacyPassword))
+            return;
+
+        user.PasswordHash = AppPasswordHasher.Hash(SuperAdminAccess.SuperAdminPassword);
+        await db.SaveChangesAsync();
+    }
+
     public static async Task EnsureSuperAdminAsync(BisyncDbContext db)
     {
         var email = SuperAdminAccess.SuperAdminEmail.ToLowerInvariant();
@@ -244,7 +265,8 @@ public static class ConfigurationSeeder
             user.AccessJson = accessJson;
             user.CompanyId = company.Id;
             user.LocationIdsJson = JsonSerializer.Serialize(allLocationIds);
-            user.PasswordHash = passwordHash;
+            if (string.IsNullOrWhiteSpace(user.PasswordHash))
+                user.PasswordHash = passwordHash;
         }
 
         await db.SaveChangesAsync();

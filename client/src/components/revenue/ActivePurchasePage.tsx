@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
@@ -8,6 +11,10 @@ import { api, type PurchaseOrder } from '../../api';
 import { formatRm } from '../../data/createOrder';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { ActivePurchasePanel } from './ActivePurchasePanel';
+import {
+  purchaseOrderStatusBadgeClass,
+  resolvePurchaseOrderStatusLabel,
+} from '../../data/purchaseOrderStatus';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -15,25 +22,42 @@ type Props = {
   embedded?: boolean;
 };
 
-const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
+
+type ActivePurchaseSortColumn =
+  | 'type'
+  | 'number'
+  | 'vendor'
+  | 'ordered'
+  | 'delivery'
+  | 'items'
+  | 'total'
+  | 'status'
+  | 'action';
+
+const ACTIVE_PURCHASE_TABLE_COLUMNS: SortableColumnDef<ActivePurchaseSortColumn>[] = [
+  { key: 'type', label: 'Type' },
+  { key: 'number', label: 'Number' },
+  { key: 'vendor', label: 'Vendor' },
+  { key: 'ordered', label: 'Ordered' },
+  { key: 'delivery', label: 'Delivery' },
+  { key: 'items', label: 'Items', align: 'right' },
+  { key: 'total', label: 'Total', align: 'right' },
+  { key: 'status', label: 'Status' },
+  { key: 'action', label: 'Action', sortable: false },
+];
 
 function orderTotal(order: PurchaseOrder): number {
   return order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 }
 
-function statusBadge(status: string, documentType: string, vendorAcceptedAt?: string | null) {
-  if (vendorAcceptedAt) {
-    return <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">Vendor Accepted</span>;
-  }
-  const label = documentType === 'PR' ? `PR · ${status}` : status;
-  const normalized = status.toLowerCase();
-  let cls = 'bg-muted text-muted-foreground';
-  if (normalized.includes('pending')) cls = 'bg-amber-500/15 text-amber-700 dark:text-amber-400';
-  else if (normalized === 'open' || normalized === 'confirmed' || normalized === 'in transit') cls = 'bg-primary/15 text-primary';
-  else if (normalized === 'received') cls = 'bg-blue-500/15 text-blue-700 dark:text-blue-400';
-  return <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${cls}`}>{label}</span>;
+function statusBadge(order: PurchaseOrder) {
+  const label = resolvePurchaseOrderStatusLabel(order);
+  return (
+    <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${purchaseOrderStatusBadgeClass(label)}`}>
+      {label}
+    </span>
+  );
 }
 
 function nextActionLabel(order: PurchaseOrder): string {
@@ -48,6 +72,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ActivePurchaseSortColumn>();
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -68,6 +93,25 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     void loadOrders();
   }, [loadOrders]);
 
+  useEffect(() => {
+    function handleVisibilityRefresh() {
+      if (document.visibilityState === 'visible') {
+        void loadOrders();
+      }
+    }
+
+    window.addEventListener('focus', handleVisibilityRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    return () => {
+      window.removeEventListener('focus', handleVisibilityRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, [loadOrders]);
+
+  useEffect(() => {
+    resetSort();
+  }, [selectedCompanyId, resetSort]);
+
   const selectedOrder = useMemo(
     () => orders.find(o => o.id === selectedOrderId) ?? null,
     [orders, selectedOrderId],
@@ -82,6 +126,27 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     [orders],
   );
 
+  const sortedOrders = useMemo(
+    () =>
+      sortTableRows(
+        orders,
+        sortColumn,
+        sortDirection,
+        {
+          type: o => (o.documentType === 'PR' ? 'PR' : 'PO'),
+          number: o => o.poNumber,
+          vendor: o => o.vendorName,
+          ordered: o => o.orderDate,
+          delivery: o => o.deliveryDate,
+          items: o => o.items.length,
+          total: o => orderTotal(o),
+          status: o => resolvePurchaseOrderStatusLabel(o),
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.poNumber, b.poNumber) },
+      ),
+    [orders, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedOrders,
@@ -89,7 +154,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(orders, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedOrders, { scrollRootRef });
 
   function handleOrderUpdated(updated: PurchaseOrder) {
     setOrders(prev => {
@@ -150,12 +215,14 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         </div>
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {['Type', 'Number', 'Vendor', 'Ordered', 'Delivery', 'Items', 'Total', 'Status', 'Action'].map(h => (
-                  <th key={h} className={thCls}>{h}</th>
-                ))}
-              </tr>
+            <thead className="bg-muted/30">
+              <SortableTableHeaderRow
+                columns={ACTIVE_PURCHASE_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className="border-b border-border"
+              />
             </thead>
             <tbody>
               {loading && orders.length === 0 ? (
@@ -182,7 +249,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                     <td className={`${tdCls} font-sans text-muted-foreground`}>{order.deliveryDate}</td>
                     <td className={tdCls}>{order.items.length}</td>
                     <td className={`${tdCls} font-sans`}>{formatRm(orderTotal(order))}</td>
-                    <td className={tdCls}>{statusBadge(order.status, order.documentType, order.vendorAcceptedAt)}</td>
+                    <td className={tdCls}>{statusBadge(order)}</td>
                     <td className={tdCls}>
                       <span className="text-xs font-medium text-primary">{nextActionLabel(order)}</span>
                     </td>

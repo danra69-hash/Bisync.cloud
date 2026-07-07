@@ -13,7 +13,10 @@ import {
   componentMatchesLocations,
   resolveTaggedProductsForComponent,
   resolveVendorsForSelectedLocations,
+  catalogProductAllowedByOrgPolicy,
 } from '../../data/createOrder';
+import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
+import type { CompanyVendorPolicyTag } from '../../data/vendorPolicyRules';
 import { ingredientToRow } from './smartIngredientShared';
 import { OrderTemplateVendorProductPickerModal } from './OrderTemplateVendorProductPickerModal';
 
@@ -104,6 +107,8 @@ function buildComponentListItems(
   vendorExternalId: string,
   catalog: VendorProductCatalogItem[],
   templateLines: TemplateLine[],
+  vendors: Vendor[],
+  orgPolicyTags: CompanyVendorPolicyTag[],
 ): ComponentListItem[] {
   const items: ComponentListItem[] = [];
 
@@ -113,7 +118,7 @@ function buildComponentListItems(
     const tagged = resolveTaggedProductsForComponent(component, catalog, {
       locationIds,
       vendorExternalId: vendorExternalId || undefined,
-    });
+    }).filter(product => catalogProductAllowedByOrgPolicy(product, vendors, orgPolicyTags));
 
     if (vendorExternalId && tagged.length === 0) continue;
 
@@ -153,6 +158,7 @@ function toTemplateLine(option: ComponentOption): TemplateLine {
 
 export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Props) {
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
+  const orgPolicyTags = useOrgVendorPolicy(selectedCompanyId, selectedLocationIds);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -211,8 +217,8 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
   }, [orgReady, selectedCompanyId, selectedLocationIds]);
 
   const vendorOptions = useMemo(
-    () => resolveVendorsForSelectedLocations(components, selectedLocationIds, vendors),
-    [components, selectedLocationIds, vendors],
+    () => resolveVendorsForSelectedLocations(components, selectedLocationIds, vendors, orgPolicyTags),
+    [components, selectedLocationIds, vendors, orgPolicyTags],
   );
 
   const vendorProductCatalog = useMemo(
@@ -227,8 +233,10 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
       vendorFilter,
       vendorProductCatalog,
       templateLines,
+      vendors,
+      orgPolicyTags,
     ),
-    [components, selectedLocationIds, vendorFilter, vendorProductCatalog, templateLines],
+    [components, selectedLocationIds, vendorFilter, vendorProductCatalog, templateLines, vendors, orgPolicyTags],
   );
 
   const filteredComponentListItems = useMemo(() => {

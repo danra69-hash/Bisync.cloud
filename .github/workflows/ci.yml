@@ -9,11 +9,30 @@ on:
 jobs:
   build-api:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bisync
+          POSTGRES_PASSWORD: bisync
+          POSTGRES_DB: bisync
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ConnectionStrings__DefaultConnection: Host=localhost;Port=5432;Database=bisync;Username=bisync;Password=bisync
+      ConnectionStrings__ArchiveConnection: Host=localhost;Port=5432;Database=bisync_archive;Username=bisync;Password=bisync
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Create archive database
+        run: PGPASSWORD=bisync psql -h localhost -U bisync -d bisync -c "CREATE DATABASE bisync_archive;"
       - name: Restore & build API
         run: |
           dotnet restore src/Bisync.Api/Bisync.Api.csproj
@@ -22,7 +41,7 @@ jobs:
         run: |
           cd src/Bisync.Api
           dotnet run --no-build -c Release &
-          sleep 5
+          sleep 10
           curl -f http://localhost:5299/api/health || curl -f http://127.0.0.1:5299/api/health
 
   build-client:
@@ -46,6 +65,23 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bisync
+          POSTGRES_PASSWORD: bisync
+          POSTGRES_DB: bisync
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ConnectionStrings__DefaultConnection: Host=localhost;Port=5432;Database=bisync;Username=bisync;Password=bisync
+      ConnectionStrings__ArchiveConnection: Host=localhost;Port=5432;Database=bisync_archive;Username=bisync;Password=bisync
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,11 +91,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Create archive database
+        run: PGPASSWORD=bisync psql -h localhost -U bisync -d bisync -c "CREATE DATABASE bisync_archive;"
+
       - name: Generate progress from API seed data
         run: |
           cd src/Bisync.Api
           dotnet run --no-launch-profile &
-          sleep 6
+          sleep 10
           PROGRESS_JSON=$(curl -s http://localhost:5299/api/progress)
           echo "$PROGRESS_JSON" > /tmp/progress.json
           OVERALL=$(echo "$PROGRESS_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['overallPercent'])")

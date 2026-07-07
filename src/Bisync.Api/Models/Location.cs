@@ -41,4 +41,8 @@ public class Location
     public int ChecksPrevWtd { get; set; }
     public int ChecksPrevMtd { get; set; }
     public int ChecksPrevYtd { get; set; }
+    /// <summary>JSON array of business type labels (inherits from company on create; overridable per location).</summary>
+    public string BusinessTypesJson { get; set; } = "[]";
+    /// <summary>JSON array of vendor policy tag ids (inherits from company on create; overridable per location).</summary>
+    public string VendorPolicyTagsJson { get; set; } = "[]";
 }

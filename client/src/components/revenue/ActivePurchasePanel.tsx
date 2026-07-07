@@ -7,6 +7,8 @@ import { Check, Copy, PackageCheck, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { formatRm } from '../../data/createOrder';
+import { orgRequiresHalalCertOnReceive } from '../../data/vendorPolicyRules';
+import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { applyVendorProductPriceUpdates } from '../../data/vendorProductPrices';
 import {
   canApprovePurchaseOrder,
@@ -18,6 +20,7 @@ import {
   DETAIL_PANEL_SHELL_ELEVATED_CLS,
 } from '../layout/sidePanelShared';
 import { buildVendorOrderShareUrl, copyVendorOrderShareLink } from '../../data/vendorOrderShare';
+import { isPurchaseOrderVendorAccepted, resolvePurchaseOrderStatusLabel } from '../../data/purchaseOrderStatus';
 
 type Props = {
   order: PurchaseOrder;
@@ -35,6 +38,7 @@ type EditableLine = {
   taxAmount: string;
   issuedUnitPrice: number;
   componentUom: string;
+  halalCertNo: string;
 };
 
 function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 'reconcile' | 'view'): EditableLine[] {
@@ -58,6 +62,7 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       taxAmount: tax > 0 ? String(tax) : '',
       issuedUnitPrice: issued,
       componentUom: item.componentUom || item.unit,
+      halalCertNo: item.halalCertNo ?? '',
     };
   });
 }
@@ -69,11 +74,14 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
     unitPrice: parseFloat(line.unitPrice) || 0,
     componentUom: line.componentUom,
     taxAmount: parseFloat(line.taxAmount) || 0,
+    halalCertNo: line.halalCertNo.trim() || undefined,
   }));
 }
 
 export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const { currentUser } = useCurrentUser();
+  const orgPolicyTags = useOrgVendorPolicy(order.companyId, order.locationExternalIds ?? []);
+  const requiresHalalCert = orgRequiresHalalCertOnReceive(orgPolicyTags);
   const access = useMemo(
     () => (currentUser ? parseUserAccess(currentUser.accessJson) : null),
     [currentUser],
@@ -159,7 +167,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   }, [lines]);
 
   const showTaxColumn = !isPurchaseRequest && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const lineColSpan = ['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, 'Line total'].filter(Boolean).length;
+  const showHalalCertColumn = requiresHalalCert && mode === 'receive';
+  const lineColSpan = ['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, showHalalCertColumn ? 'Halal cert no.' : null, 'Line total'].filter(Boolean).length;
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
@@ -210,6 +219,10 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     const payload = linePayload(lines);
     if (payload.some(line => line.quantity <= 0)) {
       setError('Each line must have a quantity greater than zero.');
+      return;
+    }
+    if (requiresHalalCert && payload.some(line => !line.halalCertNo?.trim())) {
+      setError('Halal certificate number is required for each line when receiving under a halal product policy.');
       return;
     }
     setSaving(true);
@@ -313,13 +326,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             </div>
             <div>
               <p className="text-muted-foreground">Status</p>
-              <p className="mt-0.5">{order.status}</p>
+              <p className="mt-0.5">{resolvePurchaseOrderStatusLabel(order)}</p>
             </div>
             {showVendorShareLink && (
               <div>
                 <p className="text-muted-foreground">Vendor acceptance</p>
                 <p className="mt-0.5">
-                  {order.vendorAcceptedAt
+                  {isPurchaseOrderVendorAccepted(order)
                     ? `Accepted by ${order.vendorAcceptedBy || order.vendorName}`
                     : 'Pending'}
                 </p>
@@ -373,7 +386,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, 'Line total'].filter(Boolean).map(h => (
+                    {['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, showHalalCertColumn ? 'Halal cert no.' : null, 'Line total'].filter(Boolean).map(h => (
                       <th key={h} className="text-left px-3 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
                     ))}
                   </tr>
@@ -451,6 +464,21 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             )}
                           </td>
                         )}
+                        {showHalalCertColumn && (
+                          <td className="px-3 py-2">
+                            {readOnly ? (
+                              <span>{line.halalCertNo || '—'}</span>
+                            ) : (
+                              <input
+                                type="text"
+                                value={line.halalCertNo}
+                                onChange={e => updateLine(line.itemId, { halalCertNo: e.target.value })}
+                                placeholder="Certificate no."
+                                className="w-32 rounded border border-border bg-background px-2 py-1"
+                              />
+                            )}
+                          </td>
+                        )}
                         <td className="px-3 py-2 font-sans">{formatRm(lineTotal)}</td>
                       </tr>
                     );
@@ -460,6 +488,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               </table>
             </TableScrollContainer>
           </div>
+
+          {requiresHalalCert && mode === 'receive' && (
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Halal policy is active for this order&apos;s company/location. Enter the halal certificate number for each product received.
+            </div>
+          )}
 
           {approvalBlockedByServer && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">

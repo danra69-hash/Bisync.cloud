@@ -1,13 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
 import { hrApi } from '../../modules/hr/api';
 import type { EmployeeLevel } from '../../modules/hr/types';
 import { inputCls } from '../../data/countries';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 import { ToggleSwitch } from './ToggleSwitch';
+
+type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'break' | 'shift' | 'ot' | 'ph' | 'active';
+
+const thCls = 'px-4 py-2.5 font-sans';
+
+const LEVEL_TABLE_COLUMNS: SortableColumnDef<LevelSortColumn>[] = [
+  { key: 'level', label: 'Level', className: thCls },
+  { key: 'annual', label: 'Annual', className: thCls },
+  { key: 'sick', label: 'Sick', className: thCls },
+  { key: 'hrsPerDay', label: 'Hrs/Day', className: thCls },
+  { key: 'break', label: 'Break', className: thCls },
+  { key: 'shift', label: 'Shift', className: thCls },
+  { key: 'ot', label: 'OT', className: thCls },
+  { key: 'ph', label: 'PH', className: thCls },
+  { key: 'active', label: 'Active', align: 'center', className: thCls },
+];
 
 const emptyForm = {
   levelName: '',
@@ -201,6 +220,32 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
     onDataChanged?.();
   }
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<LevelSortColumn>();
+
+  useEffect(() => { resetSort(); }, [levels, resetSort]);
+
+  const sortedLevels = useMemo(
+    () =>
+      sortTableRows(
+        levels,
+        sortColumn,
+        sortDirection,
+        {
+          level: l => l.levelName,
+          annual: l => l.annualLeaveDays,
+          sick: l => l.sickLeaveDays,
+          hrsPerDay: l => l.workingHoursPerDay,
+          break: l => l.breakHoursPerShift,
+          shift: l => l.isShift,
+          ot: l => l.overtimeEligible,
+          ph: l => l.publicHolidayEligible,
+          active: l => l.active !== false,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.levelName, b.levelName) },
+      ),
+    [levels, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedLevels,
@@ -208,7 +253,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(levels, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedLevels, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -230,18 +275,13 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
       <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full table-fixed text-xs">
           <thead className="bg-muted/40 border-b border-border">
-            <tr>
-              {['Level', 'Annual', 'Sick', 'Hrs/Day', 'Break', 'Shift', 'OT', 'PH', 'Active'].map(h => (
-                <th
-                  key={h}
-                  className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${
-                    h === 'Active' ? 'text-center' : 'text-left'
-                  }`}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
+            <SortableTableHeaderRow
+              columns={LEVEL_TABLE_COLUMNS}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSort={toggleSort}
+              className=""
+            />
           </thead>
           <tbody className="divide-y divide-border">
             {pagedLevels.map(level => (

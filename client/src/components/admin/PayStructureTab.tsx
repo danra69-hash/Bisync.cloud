@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, Trash2, X } from 'lucide-react';
 import { api, type Company } from '../../api';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
@@ -28,6 +31,21 @@ import {
 } from './payStructureShared';
 import { ToggleSwitch } from './ToggleSwitch';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
+
+type PayStructureSortColumn = 'company' | 'country' | 'payType' | 'payCycle' | 'pf' | 'socso' | 'otherContributions' | 'active';
+
+const thCls = 'px-4 py-2.5 font-sans';
+
+const PAY_STRUCTURE_TABLE_COLUMNS: SortableColumnDef<PayStructureSortColumn>[] = [
+  { key: 'company', label: 'Company', className: thCls },
+  { key: 'country', label: 'Country', className: thCls },
+  { key: 'payType', label: 'Pay Type', className: thCls },
+  { key: 'payCycle', label: 'Pay Cycle', className: thCls },
+  { key: 'pf', label: 'PF (Co/Emp)', className: thCls },
+  { key: 'socso', label: 'SOCSO', className: thCls },
+  { key: 'otherContributions', label: 'Other Contributions', className: thCls },
+  { key: 'active', label: 'Active', align: 'center', className: thCls },
+];
 
 function PayStructurePanel({
   structure,
@@ -384,6 +402,31 @@ export function PayStructureTab() {
     setStructures(prev => prev.map(s => (s.id === structure.id ? updated : s)));
   }
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<PayStructureSortColumn>();
+
+  useEffect(() => { resetSort(); }, [structures, resetSort]);
+
+  const sortedStructures = useMemo(
+    () =>
+      sortTableRows(
+        structures,
+        sortColumn,
+        sortDirection,
+        {
+          company: s => s.companyName,
+          country: s => getCountry(s.countryCode).name,
+          payType: s => s.payType,
+          payCycle: s => s.payCycle,
+          pf: s => formatProvidentFundSummary(s),
+          socso: s => formatSocsoSummary(s),
+          otherContributions: s => s.mandatoryContributions.length,
+          active: s => s.active !== false,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.companyName, b.companyName) },
+      ),
+    [structures, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedStructures,
@@ -391,7 +434,7 @@ export function PayStructureTab() {
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(structures, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedStructures, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -418,11 +461,13 @@ export function PayStructureTab() {
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                {['Company', 'Country', 'Pay Type', 'Pay Cycle', 'PF (Co/Emp)', 'SOCSO', 'Other Contributions', 'Active'].map(h => (
-                  <th key={h} className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${h === 'Active' ? 'text-center' : 'text-left'}`}>{h}</th>
-                ))}
-              </tr>
+              <SortableTableHeaderRow
+                columns={PAY_STRUCTURE_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className=""
+              />
             </thead>
             <tbody className="divide-y divide-border">
               {pagedStructures.map(structure => (

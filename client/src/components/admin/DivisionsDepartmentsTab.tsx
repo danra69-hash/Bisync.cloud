@@ -1,11 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Edit2, Plus, Trash2, X } from 'lucide-react';
 import { hrApi } from '../../modules/hr/api';
 import type { DivisionTreeNode } from '../../modules/hr/types';
 import { inputCls, selectCls } from '../../data/countries';
+
+type DivisionDeptSortColumn = 'division' | 'code' | 'department' | 'actions';
+
+const thCls = 'px-4 py-2.5 font-sans';
+
+const DIVISION_DEPT_TABLE_COLUMNS: SortableColumnDef<DivisionDeptSortColumn>[] = [
+  { key: 'division', label: 'Division', className: thCls },
+  { key: 'code', label: 'Code', className: `${thCls} w-28` },
+  { key: 'department', label: 'Department', className: thCls },
+  { key: 'actions', label: 'Actions', align: 'right', sortable: false, className: `${thCls} w-44` },
+];
 
 const emptyDivision = { name: '', code: '' };
 const emptyDepartment = { name: '', divisionId: 0 };
@@ -106,6 +120,33 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
     return rows;
   }, [tree]);
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<DivisionDeptSortColumn>();
+
+  useEffect(() => { resetSort(); }, [tree, resetSort]);
+
+  const sortedDivisionRows = useMemo(
+    () =>
+      sortTableRows(
+        divisionTableRows,
+        sortColumn,
+        sortDirection,
+        {
+          division: row => row.division.name,
+          code: row => row.division.code || '',
+          department: row => (row.kind === 'department' ? row.department.name : ''),
+        },
+        {
+          tieBreaker: (a, b) =>
+            compareSortValues(a.division.name, b.division.name) ||
+            compareSortValues(
+              a.kind === 'department' ? a.department.name : '',
+              b.kind === 'department' ? b.department.name : '',
+            ),
+        },
+      ),
+    [divisionTableRows, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedDivisionRows,
@@ -113,7 +154,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(divisionTableRows, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedDivisionRows, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -201,18 +242,13 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                {['Division', 'Code', 'Department', 'Actions'].map(h => (
-                  <th
-                    key={h}
-                    className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${
-                      h === 'Actions' ? 'text-right' : 'text-left'
-                    }`}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
+              <SortableTableHeaderRow
+                columns={DIVISION_DEPT_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className=""
+              />
             </thead>
             <tbody>
               <tr>
@@ -227,18 +263,13 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
         <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                {['Division', 'Code', 'Department', 'Actions'].map(h => (
-                  <th
-                    key={h}
-                    className={`px-4 py-2.5 font-sans text-xs uppercase tracking-wider text-muted-foreground ${
-                      h === 'Actions' ? 'text-right' : 'text-left'
-                    } ${h === 'Code' ? 'w-28' : ''} ${h === 'Actions' ? 'w-44' : ''}`}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
+              <SortableTableHeaderRow
+                columns={DIVISION_DEPT_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className=""
+              />
             </thead>
             <tbody className="divide-y divide-border">
               {pagedDivisionRows.map(row => {

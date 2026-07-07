@@ -13,4 +13,5 @@ public class InventoryCountSessionLine
     public decimal SystemQty { get; set; }
     public decimal? CountedQty { get; set; }
     public decimal? VarianceQty { get; set; }
+    public decimal? SystemUnitPrice { get; set; }
 }

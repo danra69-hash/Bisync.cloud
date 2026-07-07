@@ -1,5 +1,6 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -31,6 +32,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 c.Fax,
                 c.Email,
                 c.Active,
+                c.BusinessTypesJson,
+                c.VendorPolicyTagsJson,
                 locationCount = c.Locations.Count,
             })
             .ToListAsync());
@@ -45,6 +48,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Company>> Create([FromBody] Company company)
     {
+        var validationError = CompanyProfileRules.Validate(company.BusinessTypesJson, company.VendorPolicyTagsJson);
+        if (validationError is not null) return BadRequest(validationError);
+
         db.Companies.Add(company);
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(GetById), new { id = company.Id }, company);
@@ -53,6 +59,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<ActionResult<Company>> Update(int id, [FromBody] Company updated)
     {
+        var validationError = CompanyProfileRules.Validate(updated.BusinessTypesJson, updated.VendorPolicyTagsJson);
+        if (validationError is not null) return BadRequest(validationError);
+
         var company = await db.Companies.FindAsync(id);
         if (company is null) return NotFound();
         company.Name = updated.Name;
@@ -68,6 +77,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.Fax = updated.Fax;
         company.Email = updated.Email;
         company.Active = updated.Active;
+        company.BusinessTypesJson = updated.BusinessTypesJson;
+        company.VendorPolicyTagsJson = updated.VendorPolicyTagsJson;
         await db.SaveChangesAsync();
         return Ok(company);
     }
@@ -263,5 +274,20 @@ public record LocationConfigUpdate(
     string City,
     string StateProvince,
     string Postcode,
-    int? PrincipalContactUserId
+    int? PrincipalContactUserId,
+    string BusinessTypesJson,
+    string VendorPolicyTagsJson
+);
+
+public record LocationConfigCreate(
+    int? CompanyId,
+    string Name,
+    string AddressLine1,
+    string AddressLine2,
+    string City,
+    string StateProvince,
+    string Postcode,
+    int? PrincipalContactUserId,
+    string? BusinessTypesJson,
+    string? VendorPolicyTagsJson
 );

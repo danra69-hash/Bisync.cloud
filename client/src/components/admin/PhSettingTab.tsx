@@ -1,13 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus } from 'lucide-react';
 import { api, type Company } from '../../api';
 import { getCountry, inputCls } from '../../data/countries';
 import { hrApi } from '../../modules/hr/api';
 import type { CompanySetting, CompanySettingUpdate, PublicHoliday } from '../../modules/hr/types';
 import { ToggleSwitch } from './ToggleSwitch';
+
+type HolidaySortColumn = 'holiday' | 'date' | 'gazetted' | 'recognized';
+
+const thCls = 'px-3 py-2 font-sans font-normal';
+
+const HOLIDAY_TABLE_COLUMNS: SortableColumnDef<HolidaySortColumn>[] = [
+  { key: 'holiday', label: 'Holiday', className: thCls },
+  { key: 'date', label: 'Date', className: thCls },
+  { key: 'gazetted', label: 'Gazetted', align: 'center', className: 'px-2 py-2 font-sans font-normal' },
+  { key: 'recognized', label: 'Recognized', align: 'center', className: 'px-2 py-2 font-sans font-normal' },
+];
 
 type Props = {
   selectedCompanyId: number | null;
@@ -139,6 +153,27 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
     }
   }
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<HolidaySortColumn>();
+
+  useEffect(() => { resetSort(); }, [holidays, companyCountryCode, resetSort]);
+
+  const sortedHolidays = useMemo(
+    () =>
+      sortTableRows(
+        holidays,
+        sortColumn,
+        sortDirection,
+        {
+          holiday: h => h.name,
+          date: h => h.date,
+          gazetted: h => !!h.isGazetted,
+          recognized: h => h.isRecognized,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [holidays, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedHolidays,
@@ -146,7 +181,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(holidays, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedHolidays, { scrollRootRef });
 
   if (!selectedCompanyId) {
     return null;
@@ -250,12 +285,13 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
             <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Holiday</th>
-                    <th className="text-left px-3 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Date</th>
-                    <th className="text-center px-2 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Gazetted</th>
-                    <th className="text-center px-2 py-2 font-sans text-xs uppercase tracking-wider text-muted-foreground font-normal">Recognized</th>
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={HOLIDAY_TABLE_COLUMNS}
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleSort}
+                    className=""
+                  />
                 </thead>
                 <tbody className="divide-y divide-border">
                   {pagedHolidays.map(h => (

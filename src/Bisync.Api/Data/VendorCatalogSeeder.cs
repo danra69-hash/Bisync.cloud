@@ -1,4 +1,5 @@
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Data;
@@ -98,6 +99,38 @@ public static class VendorCatalogSeeder
         new("V031", "Bottled Water Works", "offline", "203401201234", "Still Water, Sparkling",
             "Rawang", "Selangor", "Azman Hakim", "Sales Executive", "+60 18-121 2122", "azman@waterworks.my",
             "Lot 8, Jalan Industri, Rawang 48000", false),
+
+        // Halal-certified vendor partners (V042–V051)
+        new("V042", "Barakah Halal Meats", "offline", "203501212345", "Halal Beef, Lamb, Poultry",
+            "Shah Alam", "Selangor", "Farid Zulkifli", "Sales Manager", "+60 12-301 4455", "orders@barakahhalal.my",
+            "Lot 14, Jalan Utama, Shah Alam 40150", true, "halal"),
+        new("V043", "Seri Mutiara Halal Seafood", "offline", "203601223456", "Halal Fish, Prawns, Squid",
+            "Kuala Terengganu", "Terengganu", "Wan Aisyah", "Account Manager", "+60 13-402 5566", "sales@serimutiara.my",
+            "Pasar Besar Tok Bali, KT 20400", true, "halal"),
+        new("V044", "Kurnia Poultry Halal", "offline", "203701234567", "Halal Chicken, Marinated Poultry",
+            "Kajang", "Selangor", "Hafiz Rahman", "Sales Executive", "+60 14-503 6677", "wholesale@kurniapoultry.my",
+            "Lot 9, Jalan Reko, Kajang 43000", false, "halal"),
+        new("V045", "Hijrah Fresh Produce Halal", "online", "203801245678", "Halal Fresh Vegetables, Salad",
+            "Cameron Highlands", "Pahang", "Nur Hidayah", "Sales Manager", "+60 15-604 7788", "orders@hijrahproduce.my",
+            "Online — Nationwide Delivery", true, "halal"),
+        new("V046", "Al-Noor Halal Dairy", "offline", "203901256789", "Halal Milk, Cheese, Yogurt",
+            "Seremban", "Negeri Sembilan", "Zainab Osman", "Account Manager", "+60 16-705 8899", "sales@alnoordairy.my",
+            "22 Jalan Dairy, Seremban 70400", false, "halal"),
+        new("V047", "Zam-Zam Beverages Halal", "offline", "204001267890", "Halal Juices, Syrups, Soft Drinks",
+            "Kuala Lumpur", "WP", "Amir Hamzah", "Sales Manager", "+60 17-806 9900", "orders@zamzambeverages.my",
+            "88 Jalan Tun Razak, KL 50400", true, "halal"),
+        new("V048", "Hikmah Spice House", "offline", "204101278901", "Halal Spices, Pastes, Seasonings",
+            "Melaka", "Melaka", "Salmah Idris", "Sales Executive", "+60 18-907 1011", "sales@hikmahspice.my",
+            "12 Jalan Hang Jebat, Melaka 75200", false, "halal"),
+        new("V049", "Raudhah Bakery Supplies Halal", "offline", "204201289012", "Halal Flour, Yeast, Baking",
+            "Petaling Jaya", "Selangor", "Aminah Lee", "Account Manager", "+60 19-108 2122", "orders@raudhahbakery.my",
+            "33 Jalan SS2, PJ 47300", true, "halal"),
+        new("V050", "Nusantara Halal Frozen Foods", "offline", "204301290123", "Halal Frozen Paratha, Pastry, Fish",
+            "Subang Jaya", "Selangor", "Rizal Hakimi", "Sales Manager", "+60 12-209 3233", "frozen@nusantarahalal.my",
+            "5 Jalan SS16, Subang 47500", false, "halal"),
+        new("V051", "Darul Ehsan Halal Pantry", "offline", "204401301234", "Halal Coconut Milk, Sauces, Noodles",
+            "Shah Alam", "Selangor", "Kamaluddin Ali", "Sales Executive", "+60 13-310 4344", "pantry@darulehsan.my",
+            "Lot 6, Jalan Plumbum, Shah Alam 40300", true, "halal"),
     ];
 
     public static async Task EnsureCatalogVendorsAsync(BisyncDbContext db)
@@ -135,7 +168,8 @@ public static class VendorCatalogSeeder
         string Mobile,
         string Email,
         string Address,
-        bool Engaged)
+        bool Engaged,
+        string? ProductPolicyTag = null)
     {
         public Vendor ToVendor() => new()
         {
@@ -152,6 +186,7 @@ public static class VendorCatalogSeeder
             Email = Email,
             Address = Address,
             Engaged = Engaged,
+            ProductPolicyTag = ProductPolicyTag ?? VendorPolicyRules.InferProductPolicyTag(Name, Products),
         };
     }
 }

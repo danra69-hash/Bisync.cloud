@@ -192,6 +192,68 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<InventoryCountHistoryLineDto>> ListHistoryLinesAsync(
+        string? sessionType,
+        int? companyId,
+        IReadOnlyList<string> locationIds,
+        string? periodMonth,
+        string? category,
+        CancellationToken cancellationToken = default)
+    {
+        if (locationIds.Count == 0)
+            return [];
+
+        await ProcessAutoConfirmationsAsync(cancellationToken);
+
+        var sessions = await db.InventoryCountSessions
+            .Include(s => s.Lines)
+            .OrderByDescending(s => s.SavedAt)
+            .ToListAsync(cancellationToken);
+
+        if (companyId is int cid)
+            sessions = sessions.Where(s => s.CompanyId == cid).ToList();
+
+        sessions = sessions
+            .Where(s => LocationSetsOverlap(s.LocationIdsJson, locationIds))
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(sessionType))
+        {
+            var normalizedType = NormalizeSessionType(sessionType);
+            sessions = sessions.Where(s => s.SessionType == normalizedType).ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(periodMonth))
+            sessions = sessions.Where(s => s.PeriodMonth == periodMonth.Trim()).ToList();
+
+        var locationLabels = await BuildLocationLabelMapAsync(cancellationToken);
+        var categoryByKey = await BuildItemCategoryMapAsync(cancellationToken);
+        var utcNow = DateTime.UtcNow;
+        var rows = new List<InventoryCountHistoryLineDto>();
+
+        foreach (var session in sessions)
+        {
+            var sessionLocationIds = PurchaseOrderWorkflow.DeserializeLocationIds(session.LocationIdsJson);
+            var locationLabel = FormatLocationLabel(sessionLocationIds, locationLabels);
+            var canConfirm = InventoryCountWorkflow.CanManualConfirm(
+                session.SessionType, session.Status, session.ConfirmDeadlineAt, utcNow);
+
+            foreach (var line in session.Lines)
+            {
+                var itemCategory = ResolveCategory(line, categoryByKey);
+                if (!CategoryMatches(category, itemCategory))
+                    continue;
+
+                rows.Add(MapHistoryLine(session, line, locationLabel, sessionLocationIds, itemCategory, canConfirm));
+            }
+        }
+
+        return rows
+            .OrderByDescending(r => r.SavedAt)
+            .ThenBy(r => r.ItemName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<InventoryCountSessionSummaryDto>> ListHistoryAsync(
         string? sessionType,
         int? companyId,
@@ -212,7 +274,7 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
             sessions = sessions.Where(s => s.CompanyId == cid).ToList();
 
         sessions = sessions
-            .Where(s => LocationSetsMatch(s.LocationIdsJson, locationIds))
+            .Where(s => LocationSetsOverlap(s.LocationIdsJson, locationIds))
             .ToList();
 
         if (!string.IsNullOrWhiteSpace(sessionType))
@@ -250,7 +312,7 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
         if (companyId is int cid && session.CompanyId is not null && session.CompanyId != cid)
             return null;
 
-        if (!LocationSetsMatch(session.LocationIdsJson, locationIds))
+        if (!LocationSetsOverlap(session.LocationIdsJson, locationIds))
             return null;
 
         return MapSession(session, DateTime.UtcNow);
@@ -568,17 +630,25 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
             IsReadOnly = isTerminal,
             Lines = session.Lines
                 .OrderBy(l => l.ItemName, StringComparer.OrdinalIgnoreCase)
-                .Select(l => new InventoryCountSessionLineDto
+                .Select(l =>
                 {
-                    ItemType = l.ItemType,
-                    ItemKey = l.ItemKey,
-                    ItemName = l.ItemName,
-                    GroupName = l.GroupName,
-                    Uom = l.Uom,
-                    SystemQty = l.SystemQty,
-                    CountedQty = l.CountedQty,
-                    VarianceQty = l.VarianceQty,
-                    VariancePct = ComputeVariancePct(l.SystemQty, l.VarianceQty),
+                    var values = ComputeLineValues(l);
+                    return new InventoryCountSessionLineDto
+                    {
+                        ItemType = l.ItemType,
+                        ItemKey = l.ItemKey,
+                        ItemName = l.ItemName,
+                        GroupName = l.GroupName,
+                        Uom = l.Uom,
+                        SystemQty = l.SystemQty,
+                        CountedQty = l.CountedQty,
+                        VarianceQty = l.VarianceQty,
+                        VariancePct = ComputeVariancePct(l.SystemQty, l.VarianceQty),
+                        SystemUnitPrice = l.SystemUnitPrice,
+                        SystemValue = values.SystemValue,
+                        ActualValue = values.ActualValue,
+                        VarianceValue = values.VarianceValue,
+                    };
                 })
                 .ToList(),
         };
@@ -658,6 +728,16 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
     static string SerializeLocationIds(IReadOnlyList<string> locationIds) =>
         JsonSerializer.Serialize(locationIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToArray());
 
+    static bool LocationSetsOverlap(string locationIdsJson, IReadOnlyList<string> locationIds)
+    {
+        var stored = PurchaseOrderWorkflow.DeserializeLocationIds(locationIdsJson);
+        if (stored.Count == 0 || locationIds.Count == 0)
+            return false;
+
+        var incoming = new HashSet<string>(locationIds, StringComparer.OrdinalIgnoreCase);
+        return stored.Any(id => incoming.Contains(id));
+    }
+
     static bool LocationSetsMatch(string locationIdsJson, IReadOnlyList<string> locationIds)
     {
         var stored = PurchaseOrderWorkflow.DeserializeLocationIds(locationIdsJson)
@@ -665,5 +745,113 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
             .ToList();
         var incoming = locationIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
         return stored.SequenceEqual(incoming, StringComparer.OrdinalIgnoreCase);
+    }
+
+    async Task<Dictionary<string, string>> BuildLocationLabelMapAsync(CancellationToken cancellationToken)
+    {
+        var locations = await db.Locations.AsNoTracking().ToListAsync(cancellationToken);
+        return locations.ToDictionary(
+            l => l.ExternalId,
+            l => l.Name,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    async Task<Dictionary<string, string>> BuildItemCategoryMapAsync(CancellationToken cancellationToken)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var ingredients = await db.Ingredients.AsNoTracking()
+            .Select(i => new { i.ComponentId, i.Category })
+            .ToListAsync(cancellationToken);
+        foreach (var ingredient in ingredients)
+        {
+            if (!string.IsNullOrWhiteSpace(ingredient.ComponentId))
+                map[$"component:{ingredient.ComponentId}"] = ingredient.Category;
+        }
+
+        var products = await db.Products.AsNoTracking()
+            .Select(p => new { p.Id, p.Category, p.IsSubProduct })
+            .ToListAsync(cancellationToken);
+        foreach (var product in products)
+        {
+            var type = product.IsSubProduct ? "sub-product" : "product";
+            map[$"{type}:{product.Id}"] = product.Category;
+        }
+
+        return map;
+    }
+
+    static string ResolveCategory(InventoryCountSessionLine line, IReadOnlyDictionary<string, string> categoryByKey)
+    {
+        var key = $"{line.ItemType}:{line.ItemKey}";
+        return categoryByKey.TryGetValue(key, out var category) ? category : string.Empty;
+    }
+
+    static bool CategoryMatches(string? categoryFilter, string itemCategory)
+    {
+        if (string.IsNullOrWhiteSpace(categoryFilter) || string.Equals(categoryFilter, "all", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return string.Equals(categoryFilter.Trim(), itemCategory, StringComparison.OrdinalIgnoreCase);
+    }
+
+    static string FormatLocationLabel(IReadOnlyList<string> locationIds, IReadOnlyDictionary<string, string> locationLabels)
+    {
+        if (locationIds.Count == 0)
+            return string.Empty;
+
+        var labels = locationIds
+            .Select(id => locationLabels.TryGetValue(id, out var label) ? label : id)
+            .ToList();
+
+        return string.Join(", ", labels);
+    }
+
+    static (decimal SystemValue, decimal? ActualValue, decimal? VarianceValue) ComputeLineValues(InventoryCountSessionLine line)
+    {
+        var unitPrice = line.SystemUnitPrice ?? 0m;
+        var systemValue = Math.Round(line.SystemQty * unitPrice, 2, MidpointRounding.AwayFromZero);
+        decimal? actualValue = line.CountedQty is decimal counted
+            ? Math.Round(counted * unitPrice, 2, MidpointRounding.AwayFromZero)
+            : null;
+        decimal? varianceValue = line.VarianceQty is decimal variance
+            ? Math.Round(variance * unitPrice, 2, MidpointRounding.AwayFromZero)
+            : null;
+
+        return (systemValue, actualValue, varianceValue);
+    }
+
+    static InventoryCountHistoryLineDto MapHistoryLine(
+        InventoryCountSession session,
+        InventoryCountSessionLine line,
+        string locationLabel,
+        IReadOnlyList<string> locationIds,
+        string category,
+        bool canConfirm)
+    {
+        var values = ComputeLineValues(line);
+        return new InventoryCountHistoryLineDto
+        {
+            SessionId = session.Id,
+            LineId = line.Id,
+            SessionType = session.SessionType,
+            Status = session.Status,
+            LocationLabel = locationLabel,
+            LocationIds = locationIds,
+            SavedAt = session.SavedAt,
+            ConfirmedAt = session.ConfirmedAt,
+            EffectiveDate = session.EffectiveDate,
+            PeriodMonth = session.PeriodMonth,
+            ItemName = line.ItemName,
+            Category = category,
+            Uom = line.Uom,
+            SystemQty = line.SystemQty,
+            CountedQty = line.CountedQty,
+            VarianceQty = line.VarianceQty,
+            SystemValue = values.SystemValue,
+            ActualValue = values.ActualValue,
+            VarianceValue = values.VarianceValue,
+            CanConfirm = canConfirm,
+        };
     }
 }

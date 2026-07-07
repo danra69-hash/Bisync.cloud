@@ -45,4 +45,5 @@ public class PurchaseOrderItem
     public decimal? ReconciledQuantity { get; set; }
     public decimal? ReconciledUnitPrice { get; set; }
     public decimal TaxAmount { get; set; }
+    public string HalalCertNo { get; set; } = string.Empty;
 }

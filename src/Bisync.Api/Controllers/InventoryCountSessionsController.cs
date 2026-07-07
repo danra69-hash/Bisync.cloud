@@ -32,6 +32,28 @@ public class InventoryCountSessionsController(InventoryCountService inventoryCou
         return Ok(MapSession(session));
     }
 
+    [HttpGet("history/lines")]
+    public async Task<ActionResult<IEnumerable<object>>> ListHistoryLines(
+        [FromQuery] string? sessionType,
+        [FromQuery] int? companyId,
+        [FromQuery] string? locationIds,
+        [FromQuery] string? periodMonth,
+        [FromQuery] string? category)
+    {
+        var locationIdList = ParseLocationIds(locationIds);
+        if (locationIdList.Count == 0)
+            return Ok(Array.Empty<object>());
+
+        var lines = await inventoryCountService.ListHistoryLinesAsync(
+            sessionType,
+            companyId,
+            locationIdList,
+            periodMonth,
+            category);
+
+        return Ok(lines.Select(MapHistoryLine));
+    }
+
     [HttpGet("history")]
     public async Task<ActionResult<IEnumerable<object>>> ListHistory(
         [FromQuery] string? sessionType,
@@ -130,7 +152,35 @@ public class InventoryCountSessionsController(InventoryCountService inventoryCou
             countedQty = l.CountedQty,
             varianceQty = l.VarianceQty,
             variancePct = l.VariancePct,
+            systemUnitPrice = l.SystemUnitPrice,
+            systemValue = l.SystemValue,
+            actualValue = l.ActualValue,
+            varianceValue = l.VarianceValue,
         }),
+    };
+
+    static object MapHistoryLine(InventoryCountHistoryLineDto line) => new
+    {
+        sessionId = line.SessionId,
+        lineId = line.LineId,
+        sessionType = line.SessionType,
+        status = line.Status,
+        locationLabel = line.LocationLabel,
+        locationIds = line.LocationIds,
+        savedAt = line.SavedAt,
+        confirmedAt = line.ConfirmedAt,
+        effectiveDate = line.EffectiveDate,
+        periodMonth = line.PeriodMonth,
+        itemName = line.ItemName,
+        category = line.Category,
+        uom = line.Uom,
+        systemQty = line.SystemQty,
+        countedQty = line.CountedQty,
+        varianceQty = line.VarianceQty,
+        systemValue = line.SystemValue,
+        actualValue = line.ActualValue,
+        varianceValue = line.VarianceValue,
+        canConfirm = line.CanConfirm,
     };
 
     static object MapSummary(InventoryCountSessionSummaryDto session) => new

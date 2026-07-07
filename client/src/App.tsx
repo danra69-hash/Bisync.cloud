@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from './hooks/useInfiniteScrollSlice';
+import { useTableSort } from './hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from './components/shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from './components/shared/SortableTableHead';
 import { TableScrollContainer } from './components/shared/TableScrollContainer';
+import { sortTableRows } from './utils/tableSort';
 import {
   TrendingUp, Users, ShoppingBag, AlertTriangle,
   ArrowUpRight, ArrowDownRight, Package, FileText
@@ -29,6 +32,24 @@ function delta(current: number, prev: number) {
   if (prev === 0) return 0;
   return Math.round(((current - prev) / prev) * 1000) / 10;
 }
+
+type MenuSortColumn = 'item' | 'orders' | 'revenue' | 'margin';
+type OrderSortColumn = 'po' | 'vendor' | 'delivery' | 'value' | 'status';
+
+const MENU_TABLE_COLUMNS: SortableColumnDef<MenuSortColumn>[] = [
+  { key: 'item', label: 'Item' },
+  { key: 'orders', label: 'Orders', align: 'right' },
+  { key: 'revenue', label: 'Revenue', align: 'right' },
+  { key: 'margin', label: 'Margin', align: 'right' },
+];
+
+const ORDERS_TABLE_COLUMNS: SortableColumnDef<OrderSortColumn>[] = [
+  { key: 'po', label: 'PO' },
+  { key: 'vendor', label: 'Vendor' },
+  { key: 'delivery', label: 'Delivery' },
+  { key: 'value', label: 'Value', align: 'right' },
+  { key: 'status', label: 'Status' },
+];
 
 function MetricCard({ title, value, deltaVal, icon: Icon, accent }: {
   title: string; value: string; deltaVal: number; icon: React.ElementType; accent?: boolean;
@@ -155,10 +176,50 @@ export default function App() {
   const overviewRevenue = selectedCompanyId ? revenue : [];
   const overviewProgress = selectedCompanyId ? progress : null;
 
+  const {
+    sortColumn: menuSortColumn,
+    sortDirection: menuSortDirection,
+    toggleSort: toggleMenuSort,
+    resetSort: resetMenuSort,
+  } = useTableSort<MenuSortColumn>();
+  const {
+    sortColumn: ordersSortColumn,
+    sortDirection: ordersSortDirection,
+    toggleSort: toggleOrdersSort,
+    resetSort: resetOrdersSort,
+  } = useTableSort<OrderSortColumn>();
+
+  useEffect(() => {
+    resetMenuSort();
+    resetOrdersSort();
+  }, [selectedCompanyId, resetMenuSort, resetOrdersSort]);
+
+  const sortedOverviewMenuItems = useMemo(
+    () =>
+      sortTableRows(overviewMenuItems, menuSortColumn, menuSortDirection, {
+        item: row => row.name,
+        orders: row => row.orders,
+        revenue: row => row.revenue,
+        margin: row => row.marginPercent,
+      }),
+    [overviewMenuItems, menuSortColumn, menuSortDirection],
+  );
+  const sortedOverviewOrders = useMemo(
+    () =>
+      sortTableRows(overviewOrders, ordersSortColumn, ordersSortDirection, {
+        po: row => row.poNumber,
+        vendor: row => row.vendorName,
+        delivery: row => row.deliveryDate,
+        value: row => row.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
+        status: row => row.status,
+      }),
+    [overviewOrders, ordersSortColumn, ordersSortDirection],
+  );
+
   const menuScrollRef = useRef<HTMLDivElement>(null);
   const ordersScrollRef = useRef<HTMLDivElement>(null);
-  const menuScroll = useInfiniteScrollSlice(overviewMenuItems, { scrollRootRef: menuScrollRef });
-  const ordersScroll = useInfiniteScrollSlice(overviewOrders, { scrollRootRef: ordersScrollRef });
+  const menuScroll = useInfiniteScrollSlice(sortedOverviewMenuItems, { scrollRootRef: menuScrollRef });
+  const ordersScroll = useInfiniteScrollSlice(sortedOverviewOrders, { scrollRootRef: ordersScrollRef });
 
   const isRevenueSection = activeNav === 'Revenue Management' || activeNav === 'Point-of-Sales';
   const isHrSection = activeNav === 'Human Resources';
@@ -222,11 +283,13 @@ export default function App() {
                   <TableScrollContainer ref={menuScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                   <table className="w-full table-fixed text-xs">
                     <thead>
-                      <tr className="border-b border-border">
-                        {['Item', 'Orders', 'Revenue', 'Margin'].map(h => (
-                          <th key={h} className="text-left px-4 py-2 text-muted-foreground font-normal uppercase text-xs">{h}</th>
-                        ))}
-                      </tr>
+                      <SortableTableHeaderRow
+                        columns={MENU_TABLE_COLUMNS}
+                        sortColumn={menuSortColumn}
+                        sortDirection={menuSortDirection}
+                        onSort={toggleMenuSort}
+                        className="border-b border-border"
+                      />
                     </thead>
                     <tbody>
                       {menuScroll.visibleItems.map(m => (
@@ -269,11 +332,13 @@ export default function App() {
                 <TableScrollContainer ref={ordersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                 <table className="w-full table-fixed text-xs">
                   <thead>
-                    <tr className="border-b border-border">
-                      {['PO', 'Vendor', 'Delivery', 'Value', 'Status'].map(h => (
-                        <th key={h} className="text-left px-4 py-2 text-muted-foreground font-normal uppercase text-xs">{h}</th>
-                      ))}
-                    </tr>
+                    <SortableTableHeaderRow
+                      columns={ORDERS_TABLE_COLUMNS}
+                      sortColumn={ordersSortColumn}
+                      sortDirection={ordersSortDirection}
+                      onSort={toggleOrdersSort}
+                      className="border-b border-border"
+                    />
                   </thead>
                   <tbody>
                     {ordersScroll.visibleItems.map(o => {
@@ -303,7 +368,10 @@ export default function App() {
               selectedLocationIds={selectedLocationIds}
             />
           ) : activeNav === 'System Configuration' ? (
-            <SystemConfigurationPage onOrgDataChanged={refreshOrgFilters} />
+            <SystemConfigurationPage
+              selectedCompanyId={selectedCompanyId}
+              onOrgDataChanged={refreshOrgFilters}
+            />
           ) : activeNav === 'Human Resources' ? (
             <HumanResourcesPage selectedCompanyId={selectedCompanyId} />
           ) : activeNav === 'Accounting' ? (

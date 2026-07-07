@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues, type SortDirection } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
@@ -58,12 +61,111 @@ const tableColGroup = (
   </colgroup>
 );
 
-const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 const filterCls = filterSelectCls;
 const actionBtnCls =
   'inline-flex items-center justify-center px-2 py-1 rounded border text-[10px] font-semibold whitespace-nowrap disabled:opacity-50';
+
+type BatchSortColumn =
+  | 'name'
+  | 'categoryGroup'
+  | 'batchUnit'
+  | 'batchNo'
+  | 'produced'
+  | 'inStock'
+  | 'salesPerDay'
+  | 'cogs'
+  | 'cogsPercent'
+  | 'rrp'
+  | 'qtyToProduce'
+  | 'onHand'
+  | 'expiryDate';
+
+const BATCH_TABLE_COLUMNS: SortableColumnDef<BatchSortColumn>[] = [
+  { key: 'name', label: 'Product Name' },
+  { key: 'categoryGroup', label: 'Category / Group' },
+  { key: 'batchUnit', label: 'Batch Unit', sortable: false },
+  { key: 'batchNo', label: 'Batch No.' },
+  { key: 'produced', label: 'Produced', align: 'center' },
+  { key: 'inStock', label: 'In Stock', sortable: false },
+  { key: 'salesPerDay', label: 'Sales/day', sortable: false },
+  { key: 'cogs', label: 'Cogs' },
+  { key: 'cogsPercent', label: 'COGS %' },
+  { key: 'rrp', label: 'RRP' },
+  { key: 'qtyToProduce', label: 'Qty To Produce', align: 'center' },
+  { key: 'onHand', label: 'On Hand', align: 'center' },
+  { key: 'expiryDate', label: 'Expiry Date', align: 'center' },
+];
+
+function defaultBatchRowOrder(rows: ManagementBatchRow[]): ManagementBatchRow[] {
+  return [...rows].sort((a, b) => {
+    if (a.id !== b.id) return a.name.localeCompare(b.name);
+    if (a.isSummaryRow !== b.isSummaryRow) return a.isSummaryRow ? -1 : 1;
+    return (b.batchLogId ?? 0) - (a.batchLogId ?? 0);
+  });
+}
+
+function batchSortAccessors() {
+  return {
+    name: (row: ManagementBatchRow) => row.name,
+    categoryGroup: (row: ManagementBatchRow) => `${row.category} ${row.group}`,
+    batchNo: (row: ManagementBatchRow) => row.batchNumber ?? '',
+    produced: (row: ManagementBatchRow) => row.producedQty,
+    cogs: (row: ManagementBatchRow) => calcManagementBatchCogs(row),
+    cogsPercent: (row: ManagementBatchRow) => {
+      if (row.isSubProduct) return -1;
+      const cogs = calcProductCogs(row.totalCost, row.packagingCost ?? 0, row);
+      return row.rrp > 0 ? (cogs / row.rrp) * 100 : -1;
+    },
+    rrp: (row: ManagementBatchRow) => {
+      if (row.isSubProduct) {
+        const batchCogs = calcManagementBatchCogs(row);
+        if (row.yieldQuantity <= 0 || !row.yieldUom) return -1;
+        return calcSubProductUnitCost(batchCogs, String(row.yieldQuantity));
+      }
+      return row.rrp;
+    },
+    qtyToProduce: (row: ManagementBatchRow) => row.toProduceQty,
+    onHand: (row: ManagementBatchRow) => row.inStock,
+    expiryDate: (row: ManagementBatchRow) => row.expiryDate ?? '',
+  };
+}
+
+function sortGroupedBatchRows(
+  rows: ManagementBatchRow[],
+  sortColumn: BatchSortColumn | null,
+  sortDirection: SortDirection,
+): ManagementBatchRow[] {
+  if (!sortColumn) return defaultBatchRowOrder(rows);
+
+  const groups = new Map<number, ManagementBatchRow[]>();
+  for (const row of rows) {
+    const list = groups.get(row.id) ?? [];
+    list.push(row);
+    groups.set(row.id, list);
+  }
+
+  const summaryRows = [...groups.values()]
+    .map(group => group.find(r => r.isSummaryRow) ?? group[0])
+    .filter((row): row is ManagementBatchRow => row != null);
+
+  const sortedSummaries = sortTableRows(summaryRows, sortColumn, sortDirection, batchSortAccessors(), {
+    tieBreaker: (a, b) => compareSortValues(a.name, b.name),
+  });
+
+  const result: ManagementBatchRow[] = [];
+  for (const summary of sortedSummaries) {
+    const group = groups.get(summary.id) ?? [];
+    const summaryRow = group.find(r => r.isSummaryRow);
+    if (summaryRow) result.push(summaryRow);
+    result.push(
+      ...group
+        .filter(r => !r.isSummaryRow)
+        .sort((a, b) => (b.batchLogId ?? 0) - (a.batchLogId ?? 0)),
+    );
+  }
+  return result;
+}
 
 function productMatchesLocations(product: Product, locationIds: string[]): boolean {
   const productLocs = product.locationExternalIds ?? [];
@@ -190,6 +292,11 @@ export function ProductManagementPage({ selectedCompanyId, selectedLocationIds }
   const [produceTarget, setProduceTarget] = useState<ProduceModalTarget | null>(null);
   const [produceError, setProduceError] = useState<string | null>(null);
   const [produceComponents, setProduceComponents] = useState<ProduceBatchShortage[]>([]);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<BatchSortColumn>();
+
+  useEffect(() => {
+    resetSort();
+  }, [search, categoryFilter, groupFilter, productTypeFilter, selectedLocationIds, resetSort]);
 
   const loadData = useCallback(async () => {
     if (!selectedCompanyId || selectedLocationIds.length === 0) {
@@ -382,14 +489,8 @@ export function ProductManagementPage({ selectedCompanyId, selectedLocationIds }
       ].join(' ').toLowerCase().includes(query));
     }
 
-    rows.sort((a, b) => {
-      if (a.id !== b.id) return a.name.localeCompare(b.name);
-      if (a.isSummaryRow !== b.isSummaryRow) return a.isSummaryRow ? -1 : 1;
-      return (b.batchLogId ?? 0) - (a.batchLogId ?? 0);
-    });
-
-    return rows;
-  }, [products, managementRows, selectedLocationIds, search, categoryFilter, groupFilter, productTypeFilter]);
+    return sortGroupedBatchRows(rows, sortColumn, sortDirection);
+  }, [products, managementRows, selectedLocationIds, search, categoryFilter, groupFilter, productTypeFilter, sortColumn, sortDirection]);
 
   const visibleProductCount = useMemo(
     () => new Set(visibleBatchRows.filter(row => row.isSummaryRow).map(row => row.id)).size,
@@ -505,21 +606,13 @@ export function ProductManagementPage({ selectedCompanyId, selectedLocationIds }
                 <table className="flex-1 table-fixed border-collapse">
                   {tableColGroup}
                   <thead>
-                    <tr>
-                      <th className={thCls}>Product Name</th>
-                      <th className={thCls}>Category / Group</th>
-                      <th className={thCls}>Batch Unit</th>
-                      <th className={thCls}>Batch No.</th>
-                      <th className={`${thCls} text-center`}>Produced</th>
-                      <th className={thCls}>In Stock</th>
-                      <th className={thCls}>Sales/day</th>
-                      <th className={thCls}>Cogs</th>
-                      <th className={thCls}>COGS %</th>
-                      <th className={thCls}>RRP</th>
-                      <th className={`${thCls} text-center`}>Qty To Produce</th>
-                      <th className={`${thCls} text-center`}>On Hand</th>
-                      <th className={`${thCls} text-center`}>Expiry Date</th>
-                    </tr>
+                    <SortableTableHeaderRow
+                      columns={BATCH_TABLE_COLUMNS}
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={toggleSort}
+                      className="bg-muted/20"
+                    />
                   </thead>
                 </table>
                 <div className="w-[5.5rem] shrink-0 border-l border-border px-2 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal text-center">

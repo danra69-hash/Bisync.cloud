@@ -6,8 +6,26 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// The DB password is injected separately (Secret Manager -> DB_PASSWORD) so it never
+// appears in plain configuration. Append it to the connection strings when present.
+static string ApplyDbPassword(string? connectionString, string? password)
+{
+    if (string.IsNullOrWhiteSpace(connectionString))
+        return connectionString ?? string.Empty;
+    if (string.IsNullOrEmpty(password) || connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
+        return connectionString;
+    var separator = connectionString.TrimEnd().EndsWith(';') ? string.Empty : ";";
+    return $"{connectionString}{separator}Password={password}";
+}
+
+var dbPassword = builder.Configuration["DB_PASSWORD"];
+var defaultConnection = ApplyDbPassword(
+    builder.Configuration.GetConnectionString("DefaultConnection"), dbPassword);
+var archiveConnection = ApplyDbPassword(
+    builder.Configuration.GetConnectionString("ArchiveConnection"), dbPassword);
+
 builder.Services.AddDbContext<BisyncDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(defaultConnection));
 
 builder.Services.AddHttpClient<PublicHolidayCatalogService>();
 builder.Services.AddScoped<PublicHolidaySyncService>();
@@ -22,14 +40,8 @@ builder.Services.AddScoped<StockCardService>();
 builder.Services.AddScoped<InventoryCountService>();
 builder.Services.Configure<StockCardArchiveOptions>(
     builder.Configuration.GetSection(StockCardArchiveOptions.SectionName));
-builder.Services.AddDbContext<StockCardArchiveDbContext>((sp, options) =>
-{
-    var configuration = sp.GetRequiredService<IConfiguration>();
-    var environment = sp.GetRequiredService<IHostEnvironment>();
-    var databasePath = StockCardArchivePaths.ResolveArchiveDatabasePath(configuration, environment);
-    Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
-    options.UseSqlite($"Data Source={databasePath};Cache=Shared");
-});
+builder.Services.AddDbContext<StockCardArchiveDbContext>(options =>
+    options.UseNpgsql(archiveConnection));
 builder.Services.AddScoped<StockCardArchiveService>();
 builder.Services.AddHostedService<StockCardArchiveHostedService>();
 builder.Services.AddHostedService<InventoryCountAutoConfirmHostedService>();
@@ -61,6 +73,7 @@ using (var scope = app.Services.CreateScope())
     await DataSeeder.SeedAsync(db);
     await ConfigurationSeeder.SeedAsync(db);
     await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
+    await ConfigurationSeeder.PatchSuperAdminPasswordAsync(db);
     await HrStartup.InitializeAsync(db);
     await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
 }
@@ -77,6 +90,41 @@ else
 }
 
 app.UseHttpsRedirection();
+
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pg)
+    {
+        context.Response.StatusCode = pg.SqlState switch
+        {
+            "23505" => StatusCodes.Status409Conflict,
+            "23503" => StatusCodes.Status400BadRequest,
+            _ => StatusCodes.Status500InternalServerError,
+        };
+        context.Response.ContentType = "application/json";
+        var message = pg.SqlState switch
+        {
+            "23505" => "A record with the same identifier already exists. Please refresh and try again.",
+            "23503" => "This action references missing data. Please refresh and try again.",
+            _ => "Could not save changes. Please try again.",
+        };
+        await context.Response.WriteAsJsonAsync(new { message });
+    }
+    catch (Exception ex)
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        var message = app.Environment.IsDevelopment()
+            ? ex.Message
+            : "An unexpected error occurred. Please try again.";
+        await context.Response.WriteAsJsonAsync(new { message });
+    }
+});
+
 app.MapControllers();
 
 if (app.Environment.IsDevelopment())

@@ -1,14 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
 import { api, type Company } from '../../api';
+import {
+  parseStringArrayJson,
+  serializeStringArray,
+  validateCompanyProfile,
+  type CompanyBusinessType,
+  type CompanyVendorPolicyTag,
+} from '../../data/companyProfile';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { CountryPhoneInput, getPhoneValidationError } from '../shared/CountryPhoneInput';
 import { COUNTRIES, getCountry, inputCls, selectCls } from '../../data/countries';
 import type { AddressParts } from '../../utils/countryFormat';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
+import { CompanyProfileFields } from './CompanyProfileFields';
+
+type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'locations' | 'status';
+
+const thCls = 'px-4 py-2.5 font-sans font-normal';
+
+const COMPANY_TABLE_COLUMNS: SortableColumnDef<CompanySortColumn>[] = [
+  { key: 'name', label: 'Company', className: thCls },
+  { key: 'brn', label: 'BRN', className: thCls },
+  { key: 'gstTin', label: 'GST/TIN', className: thCls },
+  { key: 'country', label: 'Country', className: thCls },
+  { key: 'email', label: 'Email', className: thCls },
+  { key: 'locations', label: 'Locations', align: 'center', className: thCls },
+  { key: 'status', label: 'Status', className: thCls },
+];
 
 const blankCompany = (): Omit<Company, 'id' | 'locationCount'> => ({
   name: '',
@@ -24,6 +49,8 @@ const blankCompany = (): Omit<Company, 'id' | 'locationCount'> => ({
   fax: '',
   email: '',
   active: true,
+  businessTypesJson: '[]',
+  vendorPolicyTagsJson: '[]',
 });
 
 function CompanyPanel({
@@ -35,7 +62,20 @@ function CompanyPanel({
   onSave: () => void;
 }) {
   const [form, setForm] = useState(company);
+  const [businessTypes, setBusinessTypes] = useState<CompanyBusinessType[]>(
+    () => parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[],
+  );
+  const [vendorPolicyTags, setVendorPolicyTags] = useState<CompanyVendorPolicyTag[]>(
+    () => parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[],
+  );
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setForm(company);
+    setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
+    setVendorPolicyTags(parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
+    setError(null);
+  }, [company]);
 
   function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: val }));
@@ -65,6 +105,12 @@ function CompanyPanel({
   async function save() {
     if (!form.name.trim()) return;
 
+    const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
+    if (profileError) {
+      setError(profileError);
+      return;
+    }
+
     const phoneError = getPhoneValidationError(form.countryCode, form.phone, 'Phone', false);
     const faxError = getPhoneValidationError(form.countryCode, form.fax, 'Fax', false);
     const addressError = getAddressValidationError(form.countryCode, addressParts);
@@ -74,10 +120,20 @@ function CompanyPanel({
       return;
     }
 
-    if (isNew) await api.createCompany(form);
-    else if ('id' in form) await api.updateCompany(form.id, form as Company);
-    onSave();
-    onClose();
+    const payload = {
+      ...form,
+      businessTypesJson: serializeStringArray(businessTypes),
+      vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
+    };
+
+    try {
+      if (isNew) await api.createCompany(payload);
+      else if ('id' in form) await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
+      onSave();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save company.');
+    }
   }
 
   return (
@@ -154,12 +210,25 @@ function CompanyPanel({
 
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">General Email</label>
             <input type="email" className={inputCls} value={form.email} onChange={e => set('email', e.target.value)} placeholder="hq@company.com" />
+
+            <CompanyProfileFields
+              businessTypes={businessTypes}
+              vendorPolicyTags={vendorPolicyTags}
+              onBusinessTypesChange={values => {
+                setBusinessTypes(values);
+                setError(null);
+              }}
+              onVendorPolicyTagsChange={values => {
+                setVendorPolicyTags(values);
+                setError(null);
+              }}
+            />
           </div>
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
           <button onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
-          <button onClick={save} disabled={!form.name.trim()} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
+          <button onClick={save} disabled={!form.name.trim() || businessTypes.length === 0 || vendorPolicyTags.length === 0} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
             {isNew ? 'Add Company' : 'Save Changes'}
           </button>
         </div>
@@ -189,6 +258,30 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
 
   useEffect(() => { refreshList(); }, []);
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CompanySortColumn>();
+
+  useEffect(() => { resetSort(); }, [companies, resetSort]);
+
+  const sortedCompanies = useMemo(
+    () =>
+      sortTableRows(
+        companies,
+        sortColumn,
+        sortDirection,
+        {
+          name: c => c.name,
+          brn: c => c.brn || '',
+          gstTin: c => c.gstTin || '',
+          country: c => getCountry(c.countryCode).name,
+          email: c => c.email || '',
+          locations: c => c.locationCount,
+          status: c => c.active,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [companies, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedCompanies,
@@ -196,7 +289,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(companies, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedCompanies, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -215,11 +308,13 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">
             <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {['Company', 'BRN', 'GST/TIN', 'Country', 'Email', 'Locations', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
-                ))}
-              </tr>
+              <SortableTableHeaderRow
+                columns={COMPANY_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className="border-b border-border bg-muted/30"
+              />
             </thead>
             <tbody>
               {pagedCompanies.map(c => (

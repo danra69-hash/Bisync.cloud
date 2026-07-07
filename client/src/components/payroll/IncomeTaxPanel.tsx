@@ -1,8 +1,11 @@
 import { Plus, Save } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { sortTableRows } from '../../utils/tableSort';
 import { inputCls, selectCls } from '../../data/countries';
 import { hrApi } from '../../modules/hr/api';
 import type {
@@ -15,10 +18,34 @@ import type {
 import { formatPayrollAmount } from './payrollDisplay';
 import { payrollYearOptions } from './payrollProcess';
 
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
-const amountCls = 'px-3 py-2.5 text-right font-sans whitespace-nowrap text-xs';
 const textCls = 'px-3 py-2.5 text-xs';
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
+const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+const amountCls = 'px-3 py-2.5 text-right font-sans whitespace-nowrap text-xs';
+
+type BracketSortColumn = 'range' | 'from' | 'to' | 'rate' | 'baseTax';
+type ReliefSortColumn = 'name' | 'amount' | 'limit' | 'appliesWhen';
+type RebateSortColumn = 'name' | 'amount';
+
+const BRACKET_TABLE_COLUMNS: SortableColumnDef<BracketSortColumn>[] = [
+  { key: 'range', label: 'Chargeable income' },
+  { key: 'from', label: 'From (RM)' },
+  { key: 'to', label: 'To (RM)' },
+  { key: 'rate', label: 'Rate %', align: 'right' },
+  { key: 'baseTax', label: 'Base tax amount (min)', align: 'right' },
+];
+
+const RELIEF_TABLE_COLUMNS: SortableColumnDef<ReliefSortColumn>[] = [
+  { key: 'name', label: 'Relief name' },
+  { key: 'amount', label: 'Amount (RM)', align: 'right' },
+  { key: 'limit', label: 'Limit' },
+  { key: 'appliesWhen', label: 'Applies when' },
+];
+
+const REBATE_TABLE_COLUMNS: SortableColumnDef<RebateSortColumn>[] = [
+  { key: 'name', label: 'Rebate name' },
+  { key: 'amount', label: 'Amount (RM)', align: 'right' },
+];
 
 type Props = {
   selectedCompanyId: number | null;
@@ -42,6 +69,30 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const {
+    sortColumn: bracketSortColumn,
+    sortDirection: bracketSortDirection,
+    toggleSort: toggleBracketSort,
+    resetSort: resetBracketSort,
+  } = useTableSort<BracketSortColumn>();
+  const {
+    sortColumn: reliefSortColumn,
+    sortDirection: reliefSortDirection,
+    toggleSort: toggleReliefSort,
+    resetSort: resetReliefSort,
+  } = useTableSort<ReliefSortColumn>();
+  const {
+    sortColumn: rebateSortColumn,
+    sortDirection: rebateSortDirection,
+    toggleSort: toggleRebateSort,
+    resetSort: resetRebateSort,
+  } = useTableSort<RebateSortColumn>();
+
+  useEffect(() => {
+    resetBracketSort();
+    resetReliefSort();
+    resetRebateSort();
+  }, [selectedCompanyId, year, resetBracketSort, resetReliefSort, resetRebateSort]);
 
   const loadData = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -143,9 +194,68 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
   const reliefsScrollRef = useRef<HTMLDivElement>(null);
   const rebatesScrollRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
-  const bracketsScroll = useInfiniteScrollSlice(brackets, { scrollRootRef: bracketsScrollRef });
-  const reliefsScroll = useInfiniteScrollSlice(reliefs, { scrollRootRef: reliefsScrollRef });
-  const rebatesScroll = useInfiniteScrollSlice(rebates, { scrollRootRef: rebatesScrollRef });
+
+  const indexedBrackets = useMemo(
+    () => brackets.map((item, index) => ({ item, index })),
+    [brackets],
+  );
+  const indexedReliefs = useMemo(
+    () => reliefs.map((item, index) => ({ item, index })),
+    [reliefs],
+  );
+  const indexedRebates = useMemo(
+    () => rebates.map((item, index) => ({ item, index })),
+    [rebates],
+  );
+
+  const sortedIndexedBrackets = useMemo(
+    () =>
+      sortTableRows(
+        indexedBrackets,
+        bracketSortColumn,
+        bracketSortDirection,
+        {
+          range: row => row.item.minAnnualChargeableIncome,
+          from: row => row.item.minAnnualChargeableIncome,
+          to: row => row.item.maxAnnualChargeableIncome ?? Number.MAX_SAFE_INTEGER,
+          rate: row => row.item.ratePct,
+          baseTax: row => row.item.baseMinTaxAmount,
+        },
+      ),
+    [indexedBrackets, bracketSortColumn, bracketSortDirection],
+  );
+  const sortedIndexedReliefs = useMemo(
+    () =>
+      sortTableRows(
+        indexedReliefs,
+        reliefSortColumn,
+        reliefSortDirection,
+        {
+          name: row => row.item.name,
+          amount: row => row.item.amount,
+          limit: row => (row.item.isMaximum ? 'maximum' : 'fixed'),
+          appliesWhen: row => row.item.applyCondition ?? '',
+        },
+      ),
+    [indexedReliefs, reliefSortColumn, reliefSortDirection],
+  );
+  const sortedIndexedRebates = useMemo(
+    () =>
+      sortTableRows(
+        indexedRebates,
+        rebateSortColumn,
+        rebateSortDirection,
+        {
+          name: row => row.item.name,
+          amount: row => row.item.amount,
+        },
+      ),
+    [indexedRebates, rebateSortColumn, rebateSortDirection],
+  );
+
+  const bracketsScroll = useInfiniteScrollSlice(sortedIndexedBrackets, { scrollRootRef: bracketsScrollRef });
+  const reliefsScroll = useInfiniteScrollSlice(sortedIndexedReliefs, { scrollRootRef: reliefsScrollRef });
+  const rebatesScroll = useInfiniteScrollSlice(sortedIndexedRebates, { scrollRootRef: rebatesScrollRef });
   const previewLines = preview?.lines ?? [];
   const previewScroll = useInfiniteScrollSlice(previewLines, { scrollRootRef: previewScrollRef });
 
@@ -218,14 +328,15 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             <TableScrollContainer ref={bracketsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
-                  <tr>
-                    {['Chargeable income', 'From (RM)', 'To (RM)', 'Rate %', 'Base tax amount (min)'].map(h => (
-                      <th key={h} className={thCls}>{h}</th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={BRACKET_TABLE_COLUMNS}
+                    sortColumn={bracketSortColumn}
+                    sortDirection={bracketSortDirection}
+                    onSort={toggleBracketSort}
+                  />
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {bracketsScroll.visibleItems.map((bracket, index) => (
+                  {bracketsScroll.visibleItems.map(({ item: bracket, index }) => (
                     <tr key={index} className="hover:bg-muted/20">
                       <td className={`${textCls} text-muted-foreground whitespace-nowrap`}>
                         {formatBracketRange(bracket.minAnnualChargeableIncome, bracket.maxAnnualChargeableIncome)}
@@ -309,14 +420,15 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             <TableScrollContainer ref={reliefsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
-                  <tr>
-                    {['Relief name', 'Amount (RM)', 'Limit', 'Applies when'].map(h => (
-                      <th key={h} className={thCls}>{h}</th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={RELIEF_TABLE_COLUMNS}
+                    sortColumn={reliefSortColumn}
+                    sortDirection={reliefSortDirection}
+                    onSort={toggleReliefSort}
+                  />
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {reliefsScroll.visibleItems.map((relief, index) => (
+                  {reliefsScroll.visibleItems.map(({ item: relief, index }) => (
                     <tr key={index} className="hover:bg-muted/20">
                       <td className="px-2 py-2">
                         <input
@@ -392,14 +504,15 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             <TableScrollContainer ref={rebatesScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead className="bg-muted/40 border-b border-border">
-                  <tr>
-                    {['Rebate name', 'Amount (RM)'].map(h => (
-                      <th key={h} className={thCls}>{h}</th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={REBATE_TABLE_COLUMNS}
+                    sortColumn={rebateSortColumn}
+                    sortDirection={rebateSortDirection}
+                    onSort={toggleRebateSort}
+                  />
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {rebatesScroll.visibleItems.map((rebate, index) => (
+                  {rebatesScroll.visibleItems.map(({ item: rebate, index }) => (
                     <tr key={index} className="hover:bg-muted/20">
                       <td className="px-2 py-2">
                         <input

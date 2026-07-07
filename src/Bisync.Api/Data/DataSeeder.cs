@@ -88,7 +88,7 @@ public static class DataSeeder
 
         db.DevelopmentMilestones.AddRange(
             new DevelopmentMilestone { Phase = "Foundation", Title = "Figma design import", Status = "completed", ProgressPercent = 100, Notes = "Imported from Figma Make Bisync.cloud design" },
-            new DevelopmentMilestone { Phase = "Foundation", Title = "C# API + SQLite database", Status = "completed", ProgressPercent = 100, Notes = "ASP.NET Core Web API with EF Core" },
+            new DevelopmentMilestone { Phase = "Foundation", Title = "C# API + PostgreSQL database", Status = "completed", ProgressPercent = 100, Notes = "ASP.NET Core Web API with EF Core + Npgsql" },
             new DevelopmentMilestone { Phase = "Foundation", Title = "Local development environment", Status = "in_progress", ProgressPercent = 80, Notes = "localhost API + React client" },
             new DevelopmentMilestone { Phase = "Core", Title = "Dashboard API integration", Status = "in_progress", ProgressPercent = 40, Notes = "Locations, revenue, menu endpoints" },
             new DevelopmentMilestone { Phase = "Core", Title = "Revenue Management module", Status = "pending", ProgressPercent = 10, Notes = "Ingredients, vendors, purchase orders" },

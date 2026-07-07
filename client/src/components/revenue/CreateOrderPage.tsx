@@ -13,16 +13,45 @@ import {
 } from '../../data/createOrder';
 import { buildOrderQtyFromTemplate } from '../../data/orderTemplates';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
+import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { ingredientToRow } from './smartIngredientShared';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
 
-const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
+
+type CreateOrderSortColumn =
+  | 'componentId'
+  | 'name'
+  | 'stockOnHand'
+  | 'usagePerDay'
+  | 'parstock'
+  | 'suggestedOrder'
+  | 'vendorProduct'
+  | 'deliveryUnit'
+  | 'deliveryPrice'
+  | 'orderQty'
+  | 'totalOrderValue';
+
+const CREATE_ORDER_TABLE_COLUMNS: SortableColumnDef<CreateOrderSortColumn>[] = [
+  { key: 'componentId', label: 'Component ID' },
+  { key: 'name', label: 'Component Name' },
+  { key: 'stockOnHand', label: 'Stock On Hand', align: 'right' },
+  { key: 'usagePerDay', label: 'Usage Per Day', align: 'right' },
+  { key: 'parstock', label: 'Parstock', align: 'right' },
+  { key: 'suggestedOrder', label: 'Suggested Order (Delivery Unit)', align: 'right' },
+  { key: 'vendorProduct', label: 'Vendor Product' },
+  { key: 'deliveryUnit', label: 'Delivery Unit' },
+  { key: 'deliveryPrice', label: 'Delivery Price', align: 'right' },
+  { key: 'orderQty', label: 'Order Qty', sortable: false },
+  { key: 'totalOrderValue', label: 'Total Order Value', align: 'right' },
+];
 
 type Props = {
   selectedCompanyId: number | null;
@@ -41,8 +70,14 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const pendingTemplateRef = useRef<OrderTemplate | null>(null);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CreateOrderSortColumn>();
 
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
+  const orgPolicyTags = useOrgVendorPolicy(selectedCompanyId, selectedLocationIds);
+
+  useEffect(() => {
+    resetSort();
+  }, [vendorFilter, categoryFilter, search, resetSort]);
 
   useEffect(() => {
     void refreshVendorProductPricesFromApi();
@@ -82,8 +117,8 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
   );
 
   const vendorOptions = useMemo(
-    () => resolveVendorsForSelectedLocations(components, selectedLocationIds, vendors),
-    [components, selectedLocationIds, vendors],
+    () => resolveVendorsForSelectedLocations(components, selectedLocationIds, vendors, orgPolicyTags),
+    [components, selectedLocationIds, vendors, orgPolicyTags],
   );
 
   useEffect(() => {
@@ -100,8 +135,36 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
       vendorFilter,
       categoryFilter,
       search,
+      vendors,
+      orgPolicyTags,
     ),
-    [components, selectedLocationIds, vendorFilter, categoryFilter, search],
+    [components, selectedLocationIds, vendorFilter, categoryFilter, search, vendors, orgPolicyTags],
+  );
+
+  const sortedLines = useMemo(
+    () =>
+      sortTableRows(
+        lines,
+        sortColumn,
+        sortDirection,
+        {
+          componentId: line => line.component.componentId || '',
+          name: line => line.component.name,
+          stockOnHand: line => line.stockOnHand ?? -1,
+          usagePerDay: line => line.component.dailyUsage,
+          parstock: line => line.parStock,
+          suggestedOrder: line => line.suggestedDeliveryUnits ?? -1,
+          vendorProduct: line => line.vendorProduct.productName,
+          deliveryUnit: line => line.deliveryUnitLabel,
+          deliveryPrice: line => line.deliveryPrice,
+          totalOrderValue: line => {
+            const qty = parseFloat(orderQtyByKey[line.key] ?? '') || 0;
+            return qty * line.deliveryPrice;
+          },
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.component.name, b.component.name) },
+      ),
+    [lines, sortColumn, sortDirection, orderQtyByKey],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -111,7 +174,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(lines, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedLines, { scrollRootRef });
 
   function applyTemplateNow(template: OrderTemplate, currentLines: CreateOrderLine[]) {
     const updates = buildOrderQtyFromTemplate(template, currentLines);
@@ -263,23 +326,13 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
             <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed">
                 <thead className="bg-muted/30">
-                  <tr className="border-b border-border">
-                    {[
-                      'Component ID',
-                      'Component Name',
-                      'Stock On Hand',
-                      'Usage Per Day',
-                      'Parstock',
-                      'Suggested Order (Delivery Unit)',
-                      'Vendor Product',
-                      'Delivery Unit',
-                      'Delivery Price',
-                      'Order Qty',
-                      'Total Order Value',
-                    ].map(h => (
-                      <th key={h} className={thCls}>{h}</th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={CREATE_ORDER_TABLE_COLUMNS}
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleSort}
+                    className="border-b border-border"
+                  />
                 </thead>
                 <tbody>
                   {lines.length === 0 ? (

@@ -1,8 +1,11 @@
-import { useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import type { AppUser } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
 import { parseUserAccess } from '../../data/userAccess';
@@ -12,7 +15,36 @@ import { OrgSelectFields } from './OrgSelectFields';
 import { selectableEmployeeLevels } from './employeeTabShared';
 import { ToggleSwitch } from './ToggleSwitch';
 
-const thCls = 'text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
+const thCls = 'px-4 py-2.5 font-sans font-normal';
+
+type EmployeeSortColumn =
+  | 'employeeId'
+  | 'employee'
+  | 'company'
+  | 'location'
+  | 'division'
+  | 'department'
+  | 'position'
+  | 'level'
+  | 'shift'
+  | 'platformAccess'
+  | 'checkinMethod'
+  | 'active';
+
+const EMPLOYEE_TABLE_COLUMNS: SortableColumnDef<EmployeeSortColumn>[] = [
+  { key: 'employeeId', label: 'Employee ID', className: thCls },
+  { key: 'employee', label: 'Employee', className: thCls },
+  { key: 'company', label: 'Company', className: thCls },
+  { key: 'location', label: 'Location', className: thCls },
+  { key: 'division', label: 'Division', className: thCls },
+  { key: 'department', label: 'Department', className: thCls },
+  { key: 'position', label: 'Position', className: thCls },
+  { key: 'level', label: 'Employee Level', className: thCls },
+  { key: 'shift', label: 'Shift', align: 'center', className: thCls },
+  { key: 'platformAccess', label: 'Platform Access', className: thCls },
+  { key: 'checkinMethod', label: 'Check-in Method', className: thCls },
+  { key: 'active', label: 'Active', align: 'center', className: thCls },
+];
 
 type EmployeeFormData = {
   name: string;
@@ -87,6 +119,51 @@ export function EmployeeDirectoryTab({
   onToggleActive,
   onClearError,
 }: Props) {
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<EmployeeSortColumn>();
+
+  useEffect(() => { resetSort(); }, [employees, resetSort]);
+
+  const sortedEmployees = useMemo(
+    () =>
+      sortTableRows(
+        employees,
+        sortColumn,
+        sortDirection,
+        {
+          employeeId: e => e.employeeCode,
+          employee: e => e.name,
+          company: e => employeeCompanyName(e),
+          location: e => employeeLocationLabel(e),
+          division: e => employeeDivisionName(e),
+          department: e => departmentName(e),
+          position: e => e.position,
+          level: e => levelName(e.employeeLevelId) || '',
+          shift: e => employeeIsShift(e),
+          platformAccess: e => {
+            const user = platformUserFor(e);
+            if (!user) return '';
+            return accessBadges(user.accessJson).join(', ');
+          },
+          checkinMethod: e => checkinMethodLabel(e.checkinMethod ?? 'Biometrics'),
+          active: e => e.active !== false,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [
+      employees,
+      sortColumn,
+      sortDirection,
+      employeeCompanyName,
+      employeeLocationLabel,
+      employeeDivisionName,
+      departmentName,
+      levelName,
+      employeeIsShift,
+      platformUserFor,
+      checkinMethodLabel,
+    ],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedEmployees,
@@ -94,7 +171,7 @@ export function EmployeeDirectoryTab({
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(employees, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
 
   const setField = <K extends keyof EmployeeFormData>(key: K, value: EmployeeFormData[K]) => {
     onFormChange({ ...formData, [key]: value });
@@ -224,11 +301,13 @@ export function EmployeeDirectoryTab({
       <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full table-fixed text-xs">
           <thead>
-            <tr className="border-b border-border bg-muted/30">
-              {['Employee ID', 'Employee', 'Company', 'Location', 'Division', 'Department', 'Position', 'Employee Level', 'Shift', 'Platform Access', 'Check-in Method', 'Active'].map(h => (
-                <th key={h} className={`${thCls} ${h === 'Shift' || h === 'Active' ? 'text-center' : ''}`}>{h}</th>
-              ))}
-            </tr>
+            <SortableTableHeaderRow
+              columns={EMPLOYEE_TABLE_COLUMNS}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSort={toggleSort}
+              className="border-b border-border bg-muted/30"
+            />
           </thead>
           <tbody>
             {pagedEmployees.map(employee => {

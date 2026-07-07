@@ -10,7 +10,7 @@ Hospitality operations platform — restaurant dashboard, revenue management, in
 |-------|------------|
 | Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 |
 | Backend | ASP.NET Core 10 Web API |
-| Database | SQLite (Entity Framework Core) |
+| Database | PostgreSQL 16 (Entity Framework Core + Npgsql) |
 | Dev | localhost API `:5299` + client `:5173` |
 
 ## Quick start (localhost)
@@ -19,6 +19,15 @@ Hospitality operations platform — restaurant dashboard, revenue management, in
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Node.js 20+](https://nodejs.org/)
+- [Docker](https://www.docker.com/) (for PostgreSQL)
+
+### 0. Start PostgreSQL
+
+```powershell
+docker compose up -d
+```
+
+This starts PostgreSQL on `localhost:5432` with databases `bisync` and `bisync_archive` (user/password: `bisync`/`bisync`).
 
 ### 1. Start the API
 
@@ -47,23 +56,15 @@ The Vite dev server proxies `/api` to the backend.
 .\scripts\dev.ps1
 ```
 
-### Publish local database (GitHub + cloud)
+### Publish database backups
 
-Local `src/Bisync.Api/bisync.db` is the source of truth. Publish it after data changes:
-
-```powershell
-.\scripts\publish-local-db.ps1
-```
-
-This copies `bisync.db` to `bisync-latest.db` (and `bisync-latest.sql` when `sqlite3` is available), commits/pushes to GitHub, and uploads to Cloud Run GCS.
-
-Deploy also runs this automatically:
+PostgreSQL data lives in the Docker volume `bisync_pg_data`. Back up with `pg_dump`:
 
 ```powershell
-.\scripts\deploy-gcp.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
+docker exec bisync-postgres pg_dump -U bisync bisync > backup-bisync.sql
 ```
 
-Stop the API first if `bisync.db-wal` exists, so the copy is consistent.
+For production, configure `ConnectionStrings__DefaultConnection` and `ConnectionStrings__ArchiveConnection` via environment variables (e.g. Cloud SQL).
 
 ## API endpoints
 

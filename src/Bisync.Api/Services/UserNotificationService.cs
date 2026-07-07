@@ -7,6 +7,7 @@ namespace Bisync.Api.Services;
 public static class UserNotificationService
 {
     public const string TypePurchaseRequestApproved = "purchase_request_approved";
+    public const string TypePurchaseOrderAccepted = "purchase_order_accepted";
 
     public static async Task NotifyPurchaseRequestApprovedAsync(
         BisyncDbContext db,
@@ -34,6 +35,37 @@ public static class UserNotificationService
             Type = TypePurchaseRequestApproved,
             Title = $"Purchase request {order.PoNumber} approved",
             Body = $"Approved by {approverName}. Send the purchase order to {order.VendorName} using the vendor share link.",
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    public static async Task NotifyPurchaseOrderAcceptedAsync(
+        BisyncDbContext db,
+        PurchaseOrder order)
+    {
+        var recipientName = order.InitiatedBy?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(recipientName))
+            return;
+
+        var user = await db.AppUsers
+            .AsNoTracking()
+            .Where(u => u.Active)
+            .FirstOrDefaultAsync(u => u.FullName.ToLower() == recipientName.ToLower());
+
+        var acceptedBy = string.IsNullOrWhiteSpace(order.VendorAcceptedBy)
+            ? order.VendorName
+            : order.VendorAcceptedBy.Trim();
+
+        db.UserNotifications.Add(new UserNotification
+        {
+            UserId = user?.Id,
+            RecipientName = recipientName,
+            PurchaseOrderId = order.Id,
+            Type = TypePurchaseOrderAccepted,
+            Title = $"Purchase order {order.PoNumber} accepted",
+            Body = $"Accepted by {acceptedBy} from {order.VendorName}.",
             CreatedAt = DateTime.UtcNow,
         });
 

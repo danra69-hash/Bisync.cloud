@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
+import { SortableTableHead } from '../../components/shared/SortableTableHead';
 import { TableScrollContainer } from '../../components/shared/TableScrollContainer';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { Copy, Save } from 'lucide-react';
 import type {
   Employee,
@@ -68,6 +71,8 @@ function addHours(time: string, hours: number) {
 }
 
 const MINUTE_OPTIONS = ['00', '30'] as const;
+
+type ScheduleSortColumn = 'employee' | 'position' | 'level' | `day:${string}`;
 
 const SCHEDULE_HOURS = Array.from({ length: 15 }, (_, i) =>
   String(9 + i).padStart(2, '0'),
@@ -245,7 +250,7 @@ export default function ShiftScheduleType2View({
   weekDates,
   onSave,
 }: Props) {
-  const sortedEmployees = useMemo(
+  const baseEmployees = useMemo(
     () =>
       [...shiftEmployees].sort((a, b) => {
         const rankDiff = levelRank(b, employeeLevels) - levelRank(a, employeeLevels);
@@ -253,6 +258,48 @@ export default function ShiftScheduleType2View({
         return a.name.localeCompare(b.name);
       }),
     [shiftEmployees, employeeLevels],
+  );
+
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ScheduleSortColumn>();
+
+  useEffect(() => {
+    resetSort();
+  }, [weekDates, resetSort]);
+
+  const scheduleDaySort = sortColumn?.startsWith('day:') ? sortColumn.slice(4) : null;
+
+  const scheduleSortAccessors = useMemo(() => {
+    const accessors: Partial<Record<ScheduleSortColumn, (employee: Employee) => string | number>> = {
+      employee: employee => employee.name,
+      position: employee => employee.position || '',
+      level: employee => levelName(employee, employeeLevels),
+    };
+    if (scheduleDaySort) {
+      accessors[`day:${scheduleDaySort}`] = employee => {
+        const cell = serverCellDraft(employee.id, scheduleDaySort, shiftSchedules, approvedLeaveRequests);
+        return serializeCell(cell);
+      };
+    }
+    return accessors;
+  }, [scheduleDaySort, employeeLevels, shiftSchedules, approvedLeaveRequests]);
+
+  const sortedEmployees = useMemo(
+    () =>
+      sortTableRows(
+        baseEmployees,
+        sortColumn,
+        sortDirection,
+        scheduleSortAccessors,
+        {
+          compare: {
+            level: (a, b) =>
+              compareSortValues(levelRank(a, employeeLevels), levelRank(b, employeeLevels))
+              || compareSortValues(a.name, b.name),
+          },
+          tieBreaker: (a, b) => compareSortValues(a.name, b.name),
+        },
+      ),
+    [baseEmployees, sortColumn, sortDirection, scheduleSortAccessors, employeeLevels],
   );
 
   const serverDraft = useMemo(
@@ -391,28 +438,46 @@ export default function ShiftScheduleType2View({
         <table className="w-full table-fixed text-xs">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[12%]">
-                Employee
-              </th>
-              <th className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[10%]">
-                Position
-              </th>
-              <th className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[8%] border-r border-gray-200">
-                Level
-              </th>
+              <SortableTableHead
+                label="Employee"
+                column="employee"
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[12%]"
+              />
+              <SortableTableHead
+                label="Position"
+                column="position"
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[10%]"
+              />
+              <SortableTableHead
+                label="Level"
+                column="level"
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className="text-left font-medium text-gray-600 px-3 py-2 truncate w-[8%] border-r border-gray-200"
+              />
               {weekDates.map((date) => {
                 const d = new Date(`${date}T12:00:00`);
                 const dayUnfixed = unfixedByDate.get(date);
                 return (
-                  <th
+                  <SortableTableHead
                     key={date}
-                    className={`text-center font-medium text-gray-600 px-2 py-2  ${
+                    label={`${d.toLocaleDateString('en-US', { weekday: 'short' })} ${d.getDate()}`}
+                    column={`day:${date}`}
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleSort}
+                    className={`text-center font-medium text-gray-600 px-2 py-2 ${
                       dayUnfixed ? 'bg-amber-100 text-amber-950' : ''
                     }`}
-                  >
-                    <div>{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                    <div className="text-xs text-gray-400 font-normal">{d.getDate()}</div>
-                  </th>
+                    align="center"
+                  />
                 );
               })}
             </tr>

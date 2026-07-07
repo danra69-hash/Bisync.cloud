@@ -1,13 +1,29 @@
-import { useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { sortTableRows } from '../../utils/tableSort';
 import { inputCls } from '../../data/countries';
 import type { ProvidentFundBracketItem } from '../../modules/hr/types';
 
-const thCls = 'text-left px-2 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+const thCls = 'px-2 py-2 font-sans font-normal whitespace-nowrap';
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
+
+type EpfSortColumn = 'minAge' | 'maxAge' | 'minSalary' | 'maxSalary' | 'companyPct' | 'employeePct';
+
+const EPF_TABLE_COLUMNS: SortableColumnDef<EpfSortColumn>[] = [
+  { key: 'minAge', label: 'Min Age', className: thCls },
+  { key: 'maxAge', label: 'Max Age', className: thCls },
+  { key: 'minSalary', label: 'Min Salary (RM)', className: thCls },
+  { key: 'maxSalary', label: 'Max Salary (RM)', className: thCls },
+  { key: 'companyPct', label: 'Company %', className: thCls },
+  { key: 'employeePct', label: 'Employee %', className: thCls },
+];
+
+const EPF_FOREIGN_TABLE_COLUMNS: SortableColumnDef<EpfSortColumn>[] = EPF_TABLE_COLUMNS.map(c => ({ ...c, sortable: false }));
 
 type Props = {
   brackets: ProvidentFundBracketItem[];
@@ -46,6 +62,28 @@ export function MalaysiaProvidentFundSection({
     });
   }
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<EpfSortColumn>();
+
+  useEffect(() => { resetSort(); }, [brackets, resetSort]);
+
+  const sortedBrackets = useMemo(
+    () =>
+      sortTableRows(
+        brackets,
+        sortColumn,
+        sortDirection,
+        {
+          minAge: b => b.minAge ?? -1,
+          maxAge: b => b.maxAge ?? -1,
+          minSalary: b => b.minMonthlySalary ?? -1,
+          maxSalary: b => b.maxMonthlySalary ?? -1,
+          companyPct: b => b.employerPct,
+          employeePct: b => b.employeePct,
+        },
+      ),
+    [brackets, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedBrackets,
@@ -53,7 +91,7 @@ export function MalaysiaProvidentFundSection({
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(brackets, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedBrackets, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -73,14 +111,18 @@ export function MalaysiaProvidentFundSection({
         <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                {['Min Age', 'Max Age', 'Min Salary (RM)', 'Max Salary (RM)', 'Company %', 'Employee %'].map(h => (
-                  <th key={h} className={thCls}>{h}</th>
-                ))}
-              </tr>
+              <SortableTableHeaderRow
+                columns={EPF_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className=""
+              />
             </thead>
             <tbody className="divide-y divide-border">
-              {pagedBrackets.map((bracket, index) => (
+              {pagedBrackets.map(bracket => {
+                const index = brackets.indexOf(bracket);
+                return (
                 <tr key={index} className="hover:bg-muted/20">
                   <td className="px-2 py-2">
                     <input
@@ -147,7 +189,8 @@ export function MalaysiaProvidentFundSection({
                     />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {brackets.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground italic">
@@ -172,14 +215,13 @@ export function MalaysiaProvidentFundSection({
         <div className="border border-border rounded-lg ">
           <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                <th className={thCls}>Min Age</th>
-                <th className={thCls}>Max Age</th>
-                <th className={thCls}>Min Salary (RM)</th>
-                <th className={thCls}>Max Salary (RM)</th>
-                <th className={thCls}>Company %</th>
-                <th className={thCls}>Employee %</th>
-              </tr>
+              <SortableTableHeaderRow
+                columns={EPF_FOREIGN_TABLE_COLUMNS}
+                sortColumn={null}
+                sortDirection="asc"
+                onSort={() => {}}
+                className=""
+              />
             </thead>
             <tbody>
               <tr className="hover:bg-muted/20">

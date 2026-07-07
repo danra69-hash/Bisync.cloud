@@ -5,7 +5,8 @@ namespace Bisync.Api.Services;
 public static class SuperAdminAccess
 {
     public const string SuperAdminEmail = "dra@cubevalue.com";
-    public const string SuperAdminPassword = "12345678";
+    /// <summary>Default super-admin password for new installs. Matches platform demo password.</summary>
+    public const string SuperAdminPassword = "Pass@123";
 
     static readonly string[] Modules = ["RMS", "POS", "HRM", "Accounting"];
 

@@ -1,13 +1,32 @@
-import { useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { inputCls } from '../../data/countries';
 import type { SocsoBracketItem } from '../../modules/hr/types';
 import { formatSocsoSalaryRange } from './malaysiaSocsoDefaults';
 
-const thCls = 'text-left px-2 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+const thCls = 'px-2 py-2 font-sans font-normal whitespace-nowrap';
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
+
+type SocsoSortColumn = 'salaryRange' | 'companyAmount' | 'employeeAmount';
+
+const SOCSO_TABLE_COLUMNS: SortableColumnDef<SocsoSortColumn>[] = [
+  { key: 'salaryRange', label: 'Salary Range', className: thCls },
+  { key: 'companyAmount', label: 'Company (RM)', className: thCls },
+  { key: 'employeeAmount', label: 'Employee (RM)', className: thCls },
+];
+
+type ForeignSocsoSortColumn = 'salaryRange' | 'companyPct' | 'employeePct';
+
+const FOREIGN_SOCSO_TABLE_COLUMNS: SortableColumnDef<ForeignSocsoSortColumn>[] = [
+  { key: 'salaryRange', label: 'Salary Range', className: thCls, sortable: false },
+  { key: 'companyPct', label: 'Company %', className: thCls, sortable: false },
+  { key: 'employeePct', label: 'Employee %', className: thCls, sortable: false },
+];
 
 type Props = {
   brackets: SocsoBracketItem[];
@@ -33,6 +52,26 @@ function SocsoCategoryTable({
     onChange(allBrackets.map(b => (b === bracket ? { ...b, ...patch } : b)));
   }
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<SocsoSortColumn>();
+
+  useEffect(() => { resetSort(); }, [brackets, resetSort]);
+
+  const sortedBrackets = useMemo(
+    () =>
+      sortTableRows(
+        brackets,
+        sortColumn,
+        sortDirection,
+        {
+          salaryRange: b => b.minMonthlySalary ?? 0,
+          companyAmount: b => b.employerAmount,
+          employeeAmount: b => b.employeeAmount,
+        },
+        { tieBreaker: (a, b) => compareSortValues(formatSocsoSalaryRange(a), formatSocsoSalaryRange(b)) },
+      ),
+    [brackets, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedBrackets,
@@ -40,7 +79,7 @@ function SocsoCategoryTable({
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(brackets, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedBrackets, { scrollRootRef });
 
   return (
     <div>
@@ -52,11 +91,13 @@ function SocsoCategoryTable({
         <TableScrollContainer ref={scrollRootRef} className="max-h-56 overflow-y-auto ">
           <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border sticky top-0 z-10">
-              <tr>
-                {['Salary Range', 'Company (RM)', 'Employee (RM)'].map(h => (
-                  <th key={h} className={thCls}>{h}</th>
-                ))}
-              </tr>
+              <SortableTableHeaderRow
+                columns={SOCSO_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className=""
+              />
             </thead>
             <tbody className="divide-y divide-border">
               {pagedBrackets.map((bracket, index) => (
@@ -135,11 +176,13 @@ export function MalaysiaSocsoSection({ brackets, onChange, foreignEmployerPct, o
         <div className="border border-border rounded-lg ">
           <table className="w-full table-fixed text-xs">
             <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                <th className={thCls}>Salary Range</th>
-                <th className={thCls}>Company %</th>
-                <th className={thCls}>Employee %</th>
-              </tr>
+              <SortableTableHeaderRow
+                columns={FOREIGN_SOCSO_TABLE_COLUMNS}
+                sortColumn={null}
+                sortDirection="asc"
+                onSort={() => {}}
+                className=""
+              />
             </thead>
             <tbody>
               <tr className="hover:bg-muted/20">

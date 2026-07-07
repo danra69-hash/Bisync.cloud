@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
@@ -37,6 +40,31 @@ function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>) {
   } satisfies Ingredient;
 }
 
+type IngredientSortColumn =
+  | 'componentId'
+  | 'name'
+  | 'uom'
+  | 'lastPrice'
+  | 'dailyUsage'
+  | 'orderFreq'
+  | 'storage'
+  | 'products'
+  | 'vendors'
+  | 'active';
+
+const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
+  { key: 'componentId', label: 'Component ID' },
+  { key: 'name', label: 'Component Name' },
+  { key: 'uom', label: 'UOM' },
+  { key: 'lastPrice', label: 'Last UOM Price', align: 'right' },
+  { key: 'dailyUsage', label: 'Daily Usage', align: 'right' },
+  { key: 'orderFreq', label: 'Order Freq (days)', align: 'right' },
+  { key: 'storage', label: 'Storage' },
+  { key: 'products', label: 'Products', align: 'center' },
+  { key: 'vendors', label: 'Vendors', align: 'center' },
+  { key: 'active', label: 'Active', align: 'center', sortable: false },
+];
+
 function FilterSelect({ label, value, options, onChange }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void;
 }) {
@@ -64,23 +92,27 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
   const [editRow, setEditRow] = useState<ComponentRow | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<IngredientSortColumn>();
 
   useEffect(() => {
-    if (!selectedCompanyId) {
-      setRows([]);
-      setLoading(false);
-      setEditRow(null);
-      setIsNewRow(false);
-      setSaveError(null);
-      return;
-    }
-
     setLoading(true);
     api.ingredients()
       .then(data => setRows(data.map(ingredientToRow)))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setEditRow(null);
+      setIsNewRow(false);
+      setSaveError(null);
+    }
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    resetSort();
+  }, [catFilter, grpFilter, search, uomType, resetSort]);
 
   const filtered = useMemo(() => {
     return rows.filter(row => {
@@ -88,13 +120,38 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
       const matchGrp = grpFilter === 'All' || row.group === grpFilter;
       const q = search.toLowerCase();
       const matchQ = !q
-        || row.name.toLowerCase().includes(q)
-        || row.componentId.toLowerCase().includes(q)
-        || row.category.toLowerCase().includes(q)
-        || row.group.toLowerCase().includes(q);
+        || (row.name ?? '').toLowerCase().includes(q)
+        || (row.componentId ?? '').toLowerCase().includes(q)
+        || (row.category ?? '').toLowerCase().includes(q)
+        || (row.group ?? '').toLowerCase().includes(q);
       return matchCat && matchGrp && matchQ;
     });
   }, [rows, catFilter, grpFilter, search]);
+
+  const uom = (r: ComponentRow) => uomType === 'recipe' ? fromApiUom(r.recipeUOM) : fromApiUom(r.inventoryUOM);
+  const price = (r: ComponentRow) => uomType === 'recipe' ? r.lastPriceRecipe : r.lastPriceInventory;
+
+  const sortedFiltered = useMemo(
+    () =>
+      sortTableRows(
+        filtered,
+        sortColumn,
+        sortDirection,
+        {
+          componentId: row => row.componentId || '',
+          name: row => row.name,
+          uom: row => uom(row),
+          lastPrice: row => price(row),
+          dailyUsage: row => row.dailyUsage,
+          orderFreq: row => row.orderFreqDays,
+          storage: row => (Array.isArray(row.storage) ? row.storage : []).join(', '),
+          products: row => row.attachedProducts,
+          vendors: row => row.attachedVendors,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [filtered, sortColumn, sortDirection, uomType],
+  );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
@@ -103,11 +160,12 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(filtered, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedFiltered, { scrollRootRef });
 
   const hasFilters = catFilter !== 'All' || grpFilter !== 'All' || !!search;
 
   function openAdd() {
+    if (!selectedCompanyId) return;
     setSaveError(null);
     setIsNewRow(true);
     setEditRow({ ...blankComponentRow });
@@ -150,22 +208,25 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
     }
   }
 
-  const uom = (r: ComponentRow) => uomType === 'recipe' ? fromApiUom(r.recipeUOM) : fromApiUom(r.inventoryUOM);
-  const price = (r: ComponentRow) => uomType === 'recipe' ? r.lastPriceRecipe : r.lastPriceInventory;
-
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
-      {selectedCompanyId && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground font-sans">{filtered.length} of {rows.length} items</p>
-          <button onClick={openAdd} className="text-xs font-sans bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
-            + Add Component
-          </button>
-        </div>
+      {!selectedCompanyId && (
+        <p className="text-sm text-muted-foreground border border-dashed border-border rounded-lg px-4 py-3">
+          Select a company in the header to add components or assign locations. The list below shows all smart components.
+        </p>
       )}
 
-      {selectedCompanyId && (
-        <>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground font-sans">{filtered.length} of {rows.length} items</p>
+        <button
+          onClick={openAdd}
+          disabled={!selectedCompanyId}
+          className="text-xs font-sans bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          + Add Component
+        </button>
+      </div>
+
       <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
           <FilterSelect label="Category" value={catFilter} options={siCategories} onChange={setCatFilter} />
@@ -235,12 +296,14 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full table-fixed text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  {['Component ID', 'Component Name', 'UOM', 'Last UOM Price', 'Daily Usage', 'Order Freq (days)', 'Storage', 'Products', 'Vendors', 'Active'].map(h => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-sans text-muted-foreground uppercase tracking-wider font-normal truncate">{h}</th>
-                  ))}
-                </tr>
+              <thead className="bg-muted/30">
+                <SortableTableHeaderRow
+                  columns={INGREDIENT_TABLE_COLUMNS}
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSort={toggleSort}
+                  className="border-b border-border"
+                />
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
@@ -269,7 +332,7 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
                     </td>
                     <td className="px-4 py-3 ">
                       <div className="flex flex-col gap-1">
-                        {row.storage.map((s, si) => (
+                        {(Array.isArray(row.storage) ? row.storage : []).map((s, si) => (
                           <span key={si} className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans inline-block w-fit">{s}</span>
                         ))}
                       </div>
@@ -302,7 +365,7 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
         )}
       </div>
 
-      {editRow && selectedCompanyId && (
+      {editRow && (
         <ComponentEditPanel
           row={editRow}
           isNew={isNewRow}
@@ -312,8 +375,6 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
           onClose={() => { setEditRow(null); setIsNewRow(false); setSaveError(null); }}
           onSave={handleSave}
         />
-      )}
-        </>
       )}
     </div>
   );

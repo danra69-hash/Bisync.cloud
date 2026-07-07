@@ -1,8 +1,8 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   api,
+  type InventoryCountHistoryLine,
   type InventoryCountSession,
-  type InventoryCountSessionSummary,
   type InventoryCountSessionType,
   type StockCardListRow,
 } from '../../api';
@@ -16,9 +16,22 @@ import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { InventoryConfirmModal } from './InventoryConfirmModal';
+import { StorageFilter } from './StorageFilter';
+import {
+  listStoragesForFilter,
+  loadStorageAssignment,
+  parseComponentStorageJson,
+  resolveComponentAreaStorage,
+  resolveStorageLocationLabels,
+  rowMatchesStorageFilter,
+  selectedStorageTypes,
+} from '../../data/storageAssignment';
 import {
   buildComponentConversion,
   computeTotalQty,
@@ -31,13 +44,83 @@ import {
   formatStockCardMonthLabel,
 } from './stockCardPeriod';
 
-const TABLE_COL_COUNT = 10;
+const TABLE_COL_COUNT = 12;
+const HISTORY_TABLE_COL_COUNT = 13;
 const INVENTORY_TABS = [
   { id: 'count', label: 'Count' },
   { id: 'history', label: 'History' },
 ] as const;
+const CATEGORY_OPTIONS = ['All', 'Food', 'Beverage'] as const;
 
 type InventoryPageTab = (typeof INVENTORY_TABS)[number]['id'];
+
+type InventoryDisplayRow = StockCardListRow & {
+  areaLabel: string;
+  storageLabel: string;
+  sortArea: string;
+  sortStorage: string;
+};
+
+type CountSortColumn =
+  | 'type'
+  | 'group'
+  | 'name'
+  | 'uom'
+  | 'onHand'
+  | 'principalUom'
+  | 'inventoryUom'
+  | 'totalQty'
+  | 'area'
+  | 'storage';
+
+type HistorySortColumn =
+  | 'itemName'
+  | 'location'
+  | 'savedAt'
+  | 'confirmedAt'
+  | 'effectiveDate'
+  | 'uom'
+  | 'systemQty'
+  | 'countedQty'
+  | 'varianceQty'
+  | 'systemValue'
+  | 'actualValue'
+  | 'varianceValue';
+
+const COUNT_TABLE_COLUMNS: SortableColumnDef<string>[] = [
+  { key: 'type', label: 'Type' },
+  { key: 'group', label: 'Group' },
+  { key: 'name', label: 'Name' },
+  { key: 'uom', label: 'UOM' },
+  { key: 'onHand', label: 'Quantity on Hand', align: 'right' as const },
+  { key: 'principalUom', label: 'Principal Component UOM', align: 'right' as const },
+  { key: 'principalQty', label: 'QTY', align: 'right' as const, sortable: false },
+  { key: 'inventoryUom', label: 'Inventory UOM', align: 'right' as const },
+  { key: 'inventoryQty', label: 'QTY', align: 'right' as const, sortable: false },
+  { key: 'totalQty', label: 'Total QTY', align: 'right' as const, className: 'w-28' },
+  { key: 'area', label: 'Area' },
+  { key: 'storage', label: 'Storage' },
+] ;
+
+const HISTORY_TABLE_COLUMNS: SortableColumnDef<string>[] = [
+  { key: 'itemName', label: 'Item' },
+  { key: 'location', label: 'Location' },
+  { key: 'savedAt', label: 'Date Created' },
+  { key: 'confirmedAt', label: 'Date Confirmed' },
+  { key: 'effectiveDate', label: 'Effective Date' },
+  { key: 'uom', label: 'UOM' },
+  { key: 'systemQty', label: 'System Qty', align: 'right' as const },
+  { key: 'countedQty', label: 'Actual Inventory', align: 'right' as const },
+  { key: 'varianceQty', label: 'Variance', align: 'right' as const },
+  { key: 'systemValue', label: 'System Value', align: 'right' as const },
+  { key: 'actualValue', label: 'Actual Value', align: 'right' as const },
+  { key: 'varianceValue', label: 'Variance', align: 'right' as const },
+  { key: 'actions', label: 'Actions', align: 'right', sortable: false },
+];
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 type Props = {
   selectedCompanyId: number | null;
@@ -45,44 +128,10 @@ type Props = {
 };
 
 const ITEM_TYPES = ['All', 'Product', 'Sub-Product', 'Smart Component'] as const;
-
-function InventoryTypeToggle({
-  value,
-  onChange,
-}: {
-  value: InventoryCountSessionType;
-  onChange: (value: InventoryCountSessionType) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Inventory</label>
-      <div className="flex h-9 rounded-md border border-border overflow-hidden">
-        <button
-          type="button"
-          onClick={() => onChange('spot')}
-          className={`px-4 text-sm font-medium transition-colors ${
-            value === 'spot'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-background text-foreground hover:bg-muted'
-          }`}
-        >
-          Spot
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange('full')}
-          className={`px-4 text-sm font-medium border-l border-border transition-colors ${
-            value === 'full'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-background text-foreground hover:bg-muted'
-          }`}
-        >
-          Full
-        </button>
-      </div>
-    </div>
-  );
-}
+const INVENTORY_MODES = [
+  { value: 'spot' as const, label: 'Spot' },
+  { value: 'full' as const, label: 'Full' },
+];
 
 function rowKey(row: StockCardListRow) {
   return `${row.itemType}-${row.itemKey}`;
@@ -101,12 +150,6 @@ function fmtVarianceQty(value: number | null | undefined) {
   return `${sign}${fmtQty(value)}`;
 }
 
-function fmtVariancePct(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return '—';
-  if (value === 0) return '0%';
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(1)}%`;
-}
 
 function varianceTone(value: number | null | undefined) {
   if (value == null || value === 0) return 'text-muted-foreground';
@@ -144,6 +187,11 @@ function parseQty(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function fmtMoney(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function formatDateTime(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -161,19 +209,24 @@ function FilterSelect({
   value,
   options,
   onChange,
+  required = false,
 }: {
   label: string;
   value: string;
   options: { value: string; label: string }[] | string[];
   onChange: (v: string) => void;
+  required?: boolean;
 }) {
   const normalized = options.map(option =>
     typeof option === 'string' ? { value: option, label: option } : option,
   );
 
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
+    <div className="flex flex-col gap-1 shrink-0">
+      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+        {label}
+        {required ? <span className="text-destructive"> *</span> : null}
+      </label>
       <select value={value} onChange={e => onChange(e.target.value)} className={`${filterSelectCls} min-w-[140px]`}>
         {normalized.map(option => (
           <option key={option.value} value={option.value}>
@@ -202,59 +255,6 @@ function sessionStatusLabel(session: InventoryCountSession, inventoryMode: Inven
   return `Full inventory confirmed on ${formatDateTime(session.confirmedAt ?? session.savedAt)} by ${session.confirmedBy || '—'}`;
 }
 
-function historyStatusLabel(summary: InventoryCountSessionSummary) {
-  if (summary.status === 'pending_confirmation') {
-    const deadline = summary.confirmDeadlineAt ? formatDateTime(summary.confirmDeadlineAt) : '—';
-    return `Pending confirmation — confirm by ${deadline}`;
-  }
-  if (summary.status === 'auto_confirmed') {
-    return `Auto-confirmed on ${formatDateTime(summary.confirmedAt ?? summary.savedAt)}`;
-  }
-  if (summary.status === 'confirmed') {
-    return `Confirmed on ${formatDateTime(summary.confirmedAt ?? summary.savedAt)} by ${summary.confirmedBy || '—'}`;
-  }
-  return `Saved on ${formatDateTime(summary.savedAt)} by ${summary.savedBy || '—'}`;
-}
-
-function historyStatusBadgeClass(status: string) {
-  switch (status) {
-    case 'pending_confirmation':
-      return 'bg-amber-100 text-amber-900';
-    case 'confirmed':
-      return 'bg-emerald-100 text-emerald-900';
-    case 'auto_confirmed':
-      return 'bg-muted text-muted-foreground';
-    default:
-      return 'bg-secondary text-secondary-foreground';
-  }
-}
-
-function historyStatusBadgeText(status: string) {
-  switch (status) {
-    case 'pending_confirmation':
-      return 'Pending';
-    case 'confirmed':
-      return 'Confirmed';
-    case 'auto_confirmed':
-      return 'Auto-confirmed';
-    default:
-      return 'Saved';
-  }
-}
-
-function itemTypeFilterLabel(filter: string) {
-  switch (filter) {
-    case 'product':
-      return 'Product';
-    case 'sub-product':
-      return 'Sub-Product';
-    case 'component':
-      return 'Smart Component';
-    default:
-      return 'All types';
-  }
-}
-
 export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const { currentUser } = useCurrentUser();
   const access = useMemo(
@@ -264,32 +264,48 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const canSave = access ? canSaveInventoryCount(access) : false;
   const canConfirm = access ? canConfirmInventoryCount(access) : false;
 
+  const [categoryFilter, setCategoryFilter] = useState<(typeof CATEGORY_OPTIONS)[number]>('All');
+  const [historyMonth, setHistoryMonth] = useState('');
+
   const [rows, setRows] = useState<StockCardListRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [groupFilter, setGroupFilter] = useState('All');
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
   const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
+  const [countDate, setCountDate] = useState(todayIsoDate);
   const [inventoryMode, setInventoryMode] = useState<InventoryCountSessionType>('spot');
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CountSortColumn>();
+  const {
+    sortColumn: historySortColumn,
+    sortDirection: historySortDirection,
+    toggleSort: toggleHistorySort,
+    resetSort: resetHistorySort,
+  } = useTableSort<HistorySortColumn>();
   const [pageTab, setPageTab] = useState<InventoryPageTab>('count');
-  const [historyRows, setHistoryRows] = useState<InventoryCountSessionSummary[]>([]);
+  const [historyLineRows, setHistoryLineRows] = useState<InventoryCountHistoryLine[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
-  const [expandedSession, setExpandedSession] = useState<InventoryCountSession | null>(null);
-  const [expandedLoading, setExpandedLoading] = useState(false);
   const [confirmingHistoryId, setConfirmingHistoryId] = useState<number | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ id: number; periodMonth: string } | null>(null);
   const [recipeQtyByKey, setRecipeQtyByKey] = useState<Record<string, string>>({});
   const [inventoryQtyByKey, setInventoryQtyByKey] = useState<Record<string, string>>({});
   const [componentDetails, setComponentDetails] = useState<Record<string, string>>({});
+  const [componentStorageByKey, setComponentStorageByKey] = useState<Record<string, string[]>>({});
+  const [itemCategoryByKey, setItemCategoryByKey] = useState<Record<string, string>>({});
+  const [areaFilter, setAreaFilter] = useState('All');
+  const [selectedStorageKeys, setSelectedStorageKeys] = useState<string[]>([]);
   const [activeSession, setActiveSession] = useState<InventoryCountSession | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [listLoaded, setListLoaded] = useState(false);
   const scrollRootRef = useRef<HTMLDivElement>(null);
+
+  const countLocationIds = useMemo(
+    () => (selectedLocationIds.length > 0 ? [selectedLocationIds[0]] : []),
+    [selectedLocationIds],
+  );
 
   const isReadOnly = inventoryMode === 'full' && !!activeSession?.isReadOnly;
 
@@ -299,10 +315,29 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     setRecipeQtyByKey({});
     setInventoryQtyByKey({});
     setComponentDetails({});
+    setComponentStorageByKey({});
+    setItemCategoryByKey({});
     setActiveSession(null);
     setError(null);
     setActionMessage(null);
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, inventoryMode]);
+  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, countDate, inventoryMode, categoryFilter]);
+
+  useEffect(() => {
+    resetSort();
+    resetHistorySort();
+  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, countDate, inventoryMode, categoryFilter, areaFilter, selectedStorageKeys, resetSort, resetHistorySort]);
+
+  useEffect(() => {
+    setAreaFilter('All');
+    setSelectedStorageKeys([]);
+  }, [selectedLocationIds]);
+
+  const activeStorageTypes = useMemo(() => {
+    const assignment = loadStorageAssignment();
+    const locationLabels = resolveStorageLocationLabels(countLocationIds);
+    const storages = listStoragesForFilter(assignment, locationLabels, areaFilter);
+    return selectedStorageTypes(storages, selectedStorageKeys);
+  }, [countLocationIds, areaFilter, selectedStorageKeys]);
 
   const loadHistory = useCallback(async () => {
     if (!selectedCompanyId || selectedLocationIds.length === 0) return;
@@ -310,50 +345,78 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const rows = await api.inventoryCountHistory(inventoryMode, selectedCompanyId, selectedLocationIds);
-      setHistoryRows(rows);
+      const rows = await api.inventoryCountHistoryLines(
+        inventoryMode,
+        selectedCompanyId,
+        selectedLocationIds,
+        historyMonth || undefined,
+        categoryFilter,
+      );
+      setHistoryLineRows(rows);
     } catch (e) {
       setHistoryError(e instanceof Error ? e.message : 'Failed to load inventory history.');
-      setHistoryRows([]);
+      setHistoryLineRows([]);
     } finally {
       setHistoryLoading(false);
     }
-  }, [selectedCompanyId, selectedLocationIds, inventoryMode]);
+  }, [selectedCompanyId, selectedLocationIds, inventoryMode, historyMonth, categoryFilter]);
 
   useEffect(() => {
     if (pageTab !== 'history') return;
-    setExpandedHistoryId(null);
-    setExpandedSession(null);
     void loadHistory();
   }, [pageTab, loadHistory]);
 
   const loadInventoryList = useCallback(async () => {
-    if (!selectedCompanyId || selectedLocationIds.length === 0) return;
+    if (!selectedCompanyId || countLocationIds.length === 0) return;
+
+    const ready =
+      !!inventoryMode &&
+      !!selectedMonth &&
+      (inventoryMode === 'full' || !!countDate);
+    if (!ready) {
+      setError(
+        inventoryMode === 'spot'
+          ? 'Select inventory type, month, and count date before creating.'
+          : 'Select inventory type and month before creating.',
+      );
+      return;
+    }
 
     setLoading(true);
     setError(null);
     setActionMessage(null);
 
     try {
-      const [stockRows, session, ingredients] = await Promise.all([
-        api.stockCards(selectedCompanyId, selectedLocationIds, {
+      const [stockRows, session, ingredients, products] = await Promise.all([
+        api.stockCards(selectedCompanyId, countLocationIds, {
           itemType: itemTypeFilterParam(itemTypeFilter),
           uomMode: 'inventory',
           period: selectedMonth,
         }),
-        api.activeInventoryCount(inventoryMode, selectedCompanyId, selectedLocationIds, selectedMonth, uomMode),
+        api.activeInventoryCount(inventoryMode, selectedCompanyId, countLocationIds, selectedMonth, uomMode),
         api.ingredients(),
+        api.products(selectedCompanyId),
       ]);
 
       const detailMap: Record<string, string> = {};
+      const storageMap: Record<string, string[]> = {};
+      const categoryMap: Record<string, string> = {};
       for (const ingredient of ingredients) {
         if (ingredient.detailConfigJson) {
           detailMap[ingredient.componentId] = ingredient.detailConfigJson;
         }
+        storageMap[ingredient.componentId] = parseComponentStorageJson(ingredient.storageJson);
+        categoryMap[`component-${ingredient.componentId}`] = ingredient.category;
+      }
+      for (const product of products) {
+        const type = product.isSubProduct ? 'sub-product' : 'product';
+        categoryMap[`${type}-${product.id}`] = product.category;
       }
 
       setRows(stockRows);
       setComponentDetails(detailMap);
+      setComponentStorageByKey(storageMap);
+      setItemCategoryByKey(categoryMap);
       setActiveSession(session);
 
       const nextRecipe: Record<string, string> = {};
@@ -376,19 +439,61 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     } finally {
       setLoading(false);
     }
-  }, [selectedCompanyId, selectedLocationIds, itemTypeFilter, uomMode, selectedMonth, inventoryMode]);
-
-  const groups = useMemo(() => {
-    const unique = new Set(rows.map(row => row.group).filter(Boolean));
-    return ['All', ...Array.from(unique).sort((a, b) => a.localeCompare(b))];
-  }, [rows]);
+  }, [selectedCompanyId, countLocationIds, itemTypeFilter, uomMode, selectedMonth, countDate, inventoryMode]);
 
   const filteredRows = useMemo(() => {
-    if (groupFilter === 'All') return rows;
-    return rows.filter(row => row.group === groupFilter);
-  }, [rows, groupFilter]);
+    let next = rows;
+    if (categoryFilter !== 'All') {
+      next = next.filter(row => {
+        const category = itemCategoryByKey[`${row.itemType}-${row.itemKey}`];
+        return category === categoryFilter;
+      });
+    }
+    if (activeStorageTypes.length > 0) {
+      next = next.filter(row =>
+        rowMatchesStorageFilter(row.itemType, row.itemKey, componentStorageByKey, activeStorageTypes),
+      );
+    }
+    return next;
+  }, [rows, categoryFilter, itemCategoryByKey, activeStorageTypes, componentStorageByKey]);
 
-  const { visibleItems, hasMore, sentinelRef } = useInfiniteScrollSlice(filteredRows, { scrollRootRef });
+  const requiredFiltersReady =
+    !!inventoryMode &&
+    !!selectedMonth &&
+    (inventoryMode === 'full' || !!countDate);
+
+  const sortedHistoryLineRows = useMemo(
+    () =>
+      sortTableRows(
+        historyLineRows,
+        historySortColumn,
+        historySortDirection,
+        {
+          itemName: row => row.itemName,
+          location: row => row.locationLabel,
+          savedAt: row => row.savedAt,
+          confirmedAt: row => row.confirmedAt ?? '',
+          effectiveDate: row => row.effectiveDate,
+          uom: row => row.uom,
+          systemQty: row => row.systemQty,
+          countedQty: row => row.countedQty ?? -1,
+          varianceQty: row => row.varianceQty ?? 0,
+          systemValue: row => row.systemValue,
+          actualValue: row => row.actualValue ?? -1,
+          varianceValue: row => row.varianceValue ?? 0,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.itemName, b.itemName) },
+      ),
+    [historyLineRows, historySortColumn, historySortDirection],
+  );
+
+  const firstHistoryRowBySession = useMemo(() => {
+    const map = new Map<number, number>();
+    sortedHistoryLineRows.forEach((row, index) => {
+      if (!map.has(row.sessionId)) map.set(row.sessionId, index);
+    });
+    return map;
+  }, [sortedHistoryLineRows]);
 
   function updateRecipeQty(key: string, value: string) {
     if (isReadOnly) return;
@@ -418,8 +523,79 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     );
   }
 
+  const displayRows = useMemo(() => {
+    const assignment = loadStorageAssignment();
+    const locationLabels = resolveStorageLocationLabels(countLocationIds);
+    const enriched: InventoryDisplayRow[] = filteredRows.map(row => {
+      if (row.itemType !== 'component') {
+        return {
+          ...row,
+          areaLabel: '—',
+          storageLabel: '—',
+          sortArea: '',
+          sortStorage: '',
+        };
+      }
+      const storageTypes = componentStorageByKey[row.itemKey] ?? [];
+      const labels = resolveComponentAreaStorage(storageTypes, locationLabels, assignment);
+      return {
+        ...row,
+        areaLabel: labels.areas,
+        storageLabel: labels.storages,
+        sortArea: labels.sortArea,
+        sortStorage: labels.sortStorage,
+      };
+    });
+    return sortTableRows(
+      enriched,
+      sortColumn,
+      sortDirection,
+      {
+        type: row => itemTypeLabel(row.itemType),
+        group: row => row.group || '',
+        name: row => row.name,
+        uom: row => displayUomForRow(row, uomMode),
+        onHand: row => row.onHandQty,
+        principalUom: row => row.recipeUom || row.uom || '',
+        inventoryUom: row => row.inventoryUom || row.uom || '',
+        totalQty: row => rowTotalQty(row) ?? -1,
+        area: row => row.sortArea,
+        storage: row => row.sortStorage,
+      },
+      {
+        compare: {
+          area: (a, b) =>
+            compareSortValues(a.sortArea, b.sortArea) || compareSortValues(a.sortStorage, b.sortStorage),
+          storage: (a, b) =>
+            compareSortValues(a.sortArea, b.sortArea) || compareSortValues(a.sortStorage, b.sortStorage),
+        },
+        tieBreaker: (a, b) => compareSortValues(a.name, b.name),
+      },
+    );
+  }, [
+    filteredRows,
+    countLocationIds,
+    componentStorageByKey,
+    sortColumn,
+    sortDirection,
+    uomMode,
+    recipeQtyByKey,
+    inventoryQtyByKey,
+    componentDetails,
+  ]);
+
+  const { visibleItems, hasMore, sentinelRef } = useInfiniteScrollSlice(displayRows, { scrollRootRef });
+
+  function handleSort(column: CountSortColumn) {
+    toggleSort(column);
+  }
+
+  function handleHistorySort(column: HistorySortColumn) {
+    toggleHistorySort(column);
+  }
+
   async function handleSave() {
-    if (!selectedCompanyId || !canSave || isReadOnly || !listLoaded) return;
+    if (!selectedCompanyId || countLocationIds.length === 0 || !canSave || isReadOnly || !listLoaded) return;
 
     const lines = filteredRows
       .map(row => {
@@ -449,12 +625,12 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
       const result = await api.saveInventoryCount({
         sessionType: inventoryMode,
         companyId: selectedCompanyId,
-        locationIds: selectedLocationIds.join(','),
+        locationIds: countLocationIds.join(','),
         periodMonth: selectedMonth,
         uomMode,
         itemTypeFilter: itemTypeFilterParam(itemTypeFilter),
-        groupFilter,
-        countDate: new Date().toISOString().slice(0, 10),
+        groupFilter: 'All',
+        countDate: inventoryMode === 'spot' ? countDate : new Date().toISOString().slice(0, 10),
         savedBy: currentUser?.fullName ?? 'Unknown user',
         lines,
       });
@@ -499,9 +675,6 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         `Full inventory for ${formatStockCardMonthLabel(periodMonth, false)} confirmed. Stock adjusted as of ${effectiveDate}.`,
       );
       if (pageTab === 'history') {
-        if (expandedHistoryId === sessionId) {
-          setExpandedSession(result.session);
-        }
         await loadHistory();
       }
     } catch (e) {
@@ -514,96 +687,120 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     }
   }
 
-  function openHistoryConfirm(row: InventoryCountSessionSummary) {
+  function openHistoryConfirm(row: InventoryCountHistoryLine) {
     if (!canConfirm || !row.canConfirm) return;
-    setConfirmTarget({ id: row.id, periodMonth: row.periodMonth });
-  }
-
-  async function toggleHistoryExpand(sessionId: number) {
-    if (expandedHistoryId === sessionId) {
-      setExpandedHistoryId(null);
-      setExpandedSession(null);
-      return;
-    }
-
-    if (!selectedCompanyId) return;
-
-    setExpandedHistoryId(sessionId);
-    setExpandedSession(null);
-    setExpandedLoading(true);
-    try {
-      const session = await api.getInventoryCountSession(sessionId, selectedCompanyId, selectedLocationIds);
-      setExpandedSession(session);
-    } catch (e) {
-      setHistoryError(e instanceof Error ? e.message : 'Failed to load inventory session.');
-      setExpandedHistoryId(null);
-    } finally {
-      setExpandedLoading(false);
-    }
+    setConfirmTarget({ id: row.sessionId, periodMonth: row.periodMonth });
   }
 
   if (!selectedCompanyId || selectedLocationIds.length === 0) {
     return (
       <div className={pageShellClass()}>
-        <p className="text-sm text-muted-foreground">Select a company and at least one location to view inventory.</p>
+        <p className="text-sm text-muted-foreground">Select a company and location in the header to view inventory.</p>
       </div>
     );
   }
 
   return (
     <div className={pageShellClass()}>
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
-        <InventoryTypeToggle value={inventoryMode} onChange={setInventoryMode} />
-      </div>
-
       <HrConfigTabBar tabs={INVENTORY_TABS} active={pageTab} onChange={setPageTab} />
 
       {pageTab === 'count' ? (
         <>
-      <div className="flex flex-wrap items-end gap-3 mb-4 mt-4">
-        <FilterSelect
-          label="Type"
-          value={itemTypeFilter}
-          options={[...ITEM_TYPES]}
-          onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])}
-        />
-        <FilterSelect label="Group" value={groupFilter} options={groups} onChange={setGroupFilter} />
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-          <select
-            value={uomMode}
-            onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-            className={`${filterSelectCls} min-w-[160px]`}
-          >
-            <option value="inventory">Inventory UOM</option>
-            <option value="recipe">Component UOM</option>
-          </select>
+      <div className="mb-4 mt-4 space-y-3">
+        <div className="rounded-md border border-border bg-muted/20 p-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Required</p>
+          <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
+            <FilterSelect
+              label="Inventory"
+              value={inventoryMode}
+              options={INVENTORY_MODES}
+              onChange={value => setInventoryMode(value as InventoryCountSessionType)}
+              required
+            />
+            <div className="flex flex-col gap-1 shrink-0">
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                Month<span className="text-destructive"> *</span>
+              </label>
+              <input
+                type="month"
+                value={selectedMonth}
+                min={earliestStockCardMonth()}
+                max={currentStockCardMonth()}
+                onChange={e => {
+                  if (e.target.value) setSelectedMonth(e.target.value);
+                }}
+                className={`${filterSelectCls} min-w-[140px]`}
+              />
+            </div>
+            {inventoryMode === 'spot' ? (
+              <div className="flex flex-col gap-1 shrink-0">
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                  Count Date<span className="text-destructive"> *</span>
+                </label>
+                <input
+                  type="date"
+                  value={countDate}
+                  max={todayIsoDate()}
+                  onChange={e => {
+                    if (e.target.value) setCountDate(e.target.value);
+                  }}
+                  className={`${filterSelectCls} min-w-[140px]`}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
-          <input
-            type="month"
-            value={selectedMonth}
-            min={earliestStockCardMonth()}
-            max={currentStockCardMonth()}
-            onChange={e => {
-              if (e.target.value) setSelectedMonth(e.target.value);
-            }}
-            className={`${filterSelectCls} min-w-[160px]`}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-sans text-transparent uppercase tracking-wider select-none" aria-hidden="true">
-            Create
-          </span>
-          <button
-            type="button"
-            onClick={() => void loadInventoryList()}
-            disabled={loading}
-            className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 min-w-[100px]"
-          >
-            {loading ? 'Loading…' : 'Create'}
-          </button>
+
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Filters</p>
+          <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
+            <FilterSelect
+              label="Category"
+              value={categoryFilter}
+              options={[...CATEGORY_OPTIONS]}
+              onChange={value => setCategoryFilter(value as (typeof CATEGORY_OPTIONS)[number])}
+            />
+            <FilterSelect
+              label="Type"
+              value={itemTypeFilter}
+              options={[...ITEM_TYPES]}
+              onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])}
+            />
+            <StorageFilter
+              locationIds={countLocationIds}
+              areaFilter={areaFilter}
+              selectedStorageKeys={selectedStorageKeys}
+              onAreaChange={area => {
+                setAreaFilter(area);
+                setSelectedStorageKeys([]);
+              }}
+              onStorageKeysChange={setSelectedStorageKeys}
+            />
+            <div className="flex flex-col gap-1 shrink-0">
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
+              <select
+                value={uomMode}
+                onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
+                className={`${filterSelectCls} min-w-[130px]`}
+              >
+                <option value="inventory">Inventory UOM</option>
+                <option value="recipe">Component UOM</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 shrink-0">
+              <span className="text-xs font-sans text-transparent uppercase tracking-wider select-none" aria-hidden="true">
+                Create
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadInventoryList()}
+                disabled={loading || !requiredFiltersReady}
+                className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 min-w-[100px]"
+              >
+                {loading ? 'Loading…' : 'Create'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -615,6 +812,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
             {inventoryMode === 'spot'
               ? 'Spot counts can be saved any day and remain in history for comparison.'
               : 'Full inventory is saved first, then confirmed within 72 hours or auto-confirmed.'}
+            {activeStorageTypes.length > 0 ? ' · Showing components for selected storage only.' : ''}
           </p>
           {activeSession ? (
             <p className="text-xs text-foreground">{sessionStatusLabel(activeSession, inventoryMode)}</p>
@@ -651,18 +849,12 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
       <TableScrollContainer ref={scrollRootRef}>
         <table className="w-full text-sm font-sans">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
-              <th className="px-3 py-2 font-medium">Type</th>
-              <th className="px-3 py-2 font-medium">Group</th>
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="px-3 py-2 font-medium">UOM</th>
-              <th className="px-3 py-2 font-medium text-right">Quantity on Hand</th>
-              <th className="px-3 py-2 font-medium text-right">Principal Component UOM</th>
-              <th className="px-3 py-2 font-medium text-right w-28">QTY</th>
-              <th className="px-3 py-2 font-medium text-right">Inventory UOM</th>
-              <th className="px-3 py-2 font-medium text-right w-28">QTY</th>
-              <th className="px-3 py-2 font-medium text-right w-28">Total QTY</th>
-            </tr>
+            <SortableTableHeaderRow
+              columns={COUNT_TABLE_COLUMNS}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSort={column => handleSort(column as CountSortColumn)}
+            />
           </thead>
           <tbody>
             {loading ? (
@@ -729,6 +921,8 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">
                       {totalQty != null ? fmtQty(totalQty) : '—'}
                     </td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{row.areaLabel}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{row.storageLabel}</td>
                   </tr>
                 );
               })
@@ -740,10 +934,43 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         </>
       ) : (
         <div className="mt-4 space-y-4">
+          <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
+            <FilterSelect
+              label="Inventory"
+              value={inventoryMode}
+              options={INVENTORY_MODES}
+              onChange={value => setInventoryMode(value as InventoryCountSessionType)}
+            />
+            <FilterSelect
+              label="Category"
+              value={categoryFilter}
+              options={[...CATEGORY_OPTIONS]}
+              onChange={value => setCategoryFilter(value as (typeof CATEGORY_OPTIONS)[number])}
+            />
+            <div className="flex flex-col gap-1 shrink-0">
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
+              <input
+                type="month"
+                value={historyMonth}
+                min={earliestStockCardMonth()}
+                max={currentStockCardMonth()}
+                onChange={e => setHistoryMonth(e.target.value)}
+                className={`${filterSelectCls} min-w-[140px]`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setHistoryMonth('')}
+              className="h-9 px-3 shrink-0 rounded-md border border-border bg-background text-sm font-medium hover:bg-muted"
+            >
+              All months
+            </button>
+          </div>
+
           <p className="text-xs text-muted-foreground">
             {inventoryMode === 'full'
-              ? 'Unconfirmed full inventories appear first. Confirm pending counts before the 72-hour deadline.'
-              : 'Spot inventory history for comparison across saved counts.'}
+              ? 'Unconfirmed full inventories can be confirmed from the Actions column before the 72-hour deadline.'
+              : 'Spot inventory history with quantity and value variance by line.'}
           </p>
 
           {historyError ? <p className="text-sm text-destructive">{historyError}</p> : null}
@@ -751,130 +978,77 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
           <TableScrollContainer>
             <table className="w-full text-sm font-sans">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground border-b border-border">
-                  <th className="px-3 py-2 font-medium">Saved</th>
-                  <th className="px-3 py-2 font-medium">Month</th>
-                  <th className="px-3 py-2 font-medium">Filters</th>
-                  <th className="px-3 py-2 font-medium text-right">Lines</th>
-                  <th className="px-3 py-2 font-medium text-right">Difference</th>
-                  <th className="px-3 py-2 font-medium">Effective</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium text-right">Actions</th>
-                </tr>
+                <SortableTableHeaderRow
+                  columns={HISTORY_TABLE_COLUMNS}
+                  sortColumn={historySortColumn}
+                  sortDirection={historySortDirection}
+                  onSort={column => handleHistorySort(column as HistorySortColumn)}
+                />
               </thead>
               <tbody>
                 {historyLoading ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={HISTORY_TABLE_COL_COUNT} className="px-3 py-8 text-center text-muted-foreground">
                       Loading history…
                     </td>
                   </tr>
-                ) : historyRows.length === 0 ? (
+                ) : sortedHistoryLineRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                      No {inventoryMode === 'full' ? 'full' : 'spot'} inventory history yet.
+                    <td colSpan={HISTORY_TABLE_COL_COUNT} className="px-3 py-8 text-center text-muted-foreground">
+                      No {inventoryMode === 'full' ? 'full' : 'spot'} inventory history for the selected filters.
                     </td>
                   </tr>
                 ) : (
-                  historyRows.map(row => (
-                    <Fragment key={row.id}>
-                      <tr className="border-b border-border/60 hover:bg-muted/40">
+                  sortedHistoryLineRows.map((row, index) => {
+                    const showConfirm =
+                      row.canConfirm &&
+                      canConfirm &&
+                      firstHistoryRowBySession.get(row.sessionId) === index;
+
+                    return (
+                      <tr key={`${row.sessionId}-${row.lineId}`} className="border-b border-border/60 hover:bg-muted/40">
                         <td className="px-3 py-2.5">
-                          <div className="font-medium text-foreground">{formatDateTime(row.savedAt)}</div>
-                          <div className="text-xs text-muted-foreground">{row.savedBy || '—'}</div>
-                        </td>
-                        <td className="px-3 py-2.5">{formatStockCardMonthLabel(row.periodMonth, false)}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">
-                          <div>{itemTypeFilterLabel(row.itemTypeFilter)}</div>
-                          <div className="text-xs">
-                            {row.groupFilter} · {row.uomMode === 'recipe' ? 'Component UOM' : 'Inventory UOM'}
+                          <div className="font-medium text-foreground">{row.itemName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {row.category || '—'} · {formatStockCardMonthLabel(row.periodMonth, false)}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{row.lineCount}</td>
-                        <td className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(row.totalVarianceQty)}`}>
-                          <div className="font-medium">{fmtVarianceQty(row.totalVarianceQty)}</div>
-                          <div className="text-xs">{fmtVariancePct(row.variancePct)}</div>
-                        </td>
+                        <td className="px-3 py-2.5">{row.locationLabel || '—'}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{formatDateTime(row.savedAt)}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">
-                          {row.effectiveDate || '—'}
+                          {row.confirmedAt ? formatDateTime(row.confirmedAt) : '—'}
                         </td>
-                        <td className="px-3 py-2.5">
-                          <span
-                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${historyStatusBadgeClass(row.status)}`}
-                          >
-                            {historyStatusBadgeText(row.status)}
-                          </span>
-                          <div className="text-xs text-muted-foreground mt-1">{historyStatusLabel(row)}</div>
+                        <td className="px-3 py-2.5 text-muted-foreground">{row.effectiveDate || '—'}</td>
+                        <td className="px-3 py-2.5">{row.uom}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.systemQty)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">
+                          {row.countedQty != null ? fmtQty(row.countedQty) : '—'}
+                        </td>
+                        <td className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(row.varianceQty)}`}>
+                          {fmtVarianceQty(row.varianceQty)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtMoney(row.systemValue)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtMoney(row.actualValue)}</td>
+                        <td className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(row.varianceValue)}`}>
+                          {fmtVarianceQty(row.varianceValue)}
                         </td>
                         <td className="px-3 py-2.5 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {row.canConfirm && canConfirm ? (
-                              <button
-                                type="button"
-                                onClick={() => openHistoryConfirm(row)}
-                                disabled={confirmingHistoryId === row.id || confirming}
-                                className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-                              >
-                                {confirmingHistoryId === row.id ? 'Confirming…' : 'Confirm'}
-                              </button>
-                            ) : null}
+                          {showConfirm ? (
                             <button
                               type="button"
-                              onClick={() => void toggleHistoryExpand(row.id)}
-                              className="h-8 px-3 rounded-md border border-border bg-background text-xs font-medium hover:bg-muted"
+                              onClick={() => openHistoryConfirm(row)}
+                              disabled={confirmingHistoryId === row.sessionId || confirming}
+                              className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
                             >
-                              {expandedHistoryId === row.id ? 'Hide' : 'View'}
+                              {confirmingHistoryId === row.sessionId ? 'Confirming…' : 'Confirm'}
                             </button>
-                          </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                       </tr>
-                      {expandedHistoryId === row.id ? (
-                        <tr className="border-b border-border/60 bg-muted/20">
-                          <td colSpan={8} className="px-3 py-3">
-                            {expandedLoading ? (
-                              <p className="text-sm text-muted-foreground">Loading lines…</p>
-                            ) : expandedSession ? (
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs font-sans">
-                                  <thead>
-                                    <tr className="text-left uppercase tracking-wider text-muted-foreground border-b border-border">
-                                      <th className="px-2 py-1.5 font-medium">Type</th>
-                                      <th className="px-2 py-1.5 font-medium">Group</th>
-                                      <th className="px-2 py-1.5 font-medium">Name</th>
-                                      <th className="px-2 py-1.5 font-medium">UOM</th>
-                                      <th className="px-2 py-1.5 font-medium text-right">System</th>
-                                      <th className="px-2 py-1.5 font-medium text-right">Counted</th>
-                                      <th className="px-2 py-1.5 font-medium text-right">Difference</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {expandedSession.lines.map(line => (
-                                      <tr key={`${line.itemType}-${line.itemKey}`} className="border-b border-border/40">
-                                        <td className="px-2 py-1.5 text-muted-foreground">{line.itemType}</td>
-                                        <td className="px-2 py-1.5">{line.groupName || '—'}</td>
-                                        <td className="px-2 py-1.5 font-medium">{line.itemName}</td>
-                                        <td className="px-2 py-1.5">{line.uom}</td>
-                                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtQty(line.systemQty)}</td>
-                                        <td className="px-2 py-1.5 text-right tabular-nums">
-                                          {line.countedQty != null ? fmtQty(line.countedQty) : '—'}
-                                        </td>
-                                        <td className={`px-2 py-1.5 text-right tabular-nums ${varianceTone(line.varianceQty)}`}>
-                                          <div>{fmtVarianceQty(line.varianceQty)}</div>
-                                          <div className="text-[11px]">{fmtVariancePct(line.variancePct)}</div>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No line details available.</p>
-                            )}
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

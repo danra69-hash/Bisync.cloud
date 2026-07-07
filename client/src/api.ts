@@ -52,6 +52,9 @@ export interface LocationConfig {
   postcode: string;
   principalContactUserId: number | null;
   principalContactName: string | null;
+  businessTypesJson: string;
+  vendorPolicyTagsJson: string;
+  profileOverridden?: boolean;
 }
 
 export interface Company {
@@ -69,6 +72,8 @@ export interface Company {
   fax: string;
   email: string;
   active: boolean;
+  businessTypesJson: string;
+  vendorPolicyTagsJson: string;
   locationCount?: number;
 }
 
@@ -147,6 +152,7 @@ export interface Vendor {
   externalId: string;
   name: string;
   type: string;
+  brn: string;
   products: string;
   city: string;
   state: string;
@@ -157,7 +163,10 @@ export interface Vendor {
   email: string;
   contactsJson: string;
   engaged: boolean;
+  productPolicyTag?: VendorProductPolicyTag;
 }
+
+export type VendorProductPolicyTag = 'halal' | 'muslim-friendly' | 'non-halal';
 
 export interface VendorCreatePayload {
   externalId: string;
@@ -172,6 +181,22 @@ export interface VendorCreatePayload {
   contactPosition: string;
   mobile: string;
   email: string;
+  productPolicyTag: VendorProductPolicyTag;
+}
+
+export interface VendorUpdatePayload {
+  name: string;
+  type: string;
+  brn: string;
+  products: string;
+  city: string;
+  state: string;
+  address: string;
+  contactPerson: string;
+  contactPosition: string;
+  mobile: string;
+  email: string;
+  productPolicyTag: VendorProductPolicyTag;
 }
 
 export interface PurchaseOrderItem {
@@ -191,6 +216,7 @@ export interface PurchaseOrderItem {
   reconciledQuantity?: number | null;
   reconciledUnitPrice?: number | null;
   taxAmount?: number;
+  halalCertNo?: string;
 }
 
 export interface PurchaseOrder {
@@ -253,6 +279,7 @@ export interface PurchaseOrderLineWorkflowPayload {
   unitPrice: number;
   componentUom?: string;
   taxAmount?: number;
+  halalCertNo?: string;
 }
 
 export interface PurchaseOrderWorkflowPayload {
@@ -725,6 +752,10 @@ export interface InventoryCountSessionLine {
   countedQty: number | null;
   varianceQty: number | null;
   variancePct: number | null;
+  systemUnitPrice?: number | null;
+  systemValue?: number;
+  actualValue?: number | null;
+  varianceValue?: number | null;
 }
 
 export interface InventoryCountSession {
@@ -793,6 +824,29 @@ export interface InventoryCountSessionSummary {
   variancePct: number | null;
 }
 
+export interface InventoryCountHistoryLine {
+  sessionId: number;
+  lineId: number;
+  sessionType: InventoryCountSessionType;
+  status: string;
+  locationLabel: string;
+  locationIds: string[];
+  savedAt: string;
+  confirmedAt: string | null;
+  effectiveDate: string;
+  periodMonth: string;
+  itemName: string;
+  category: string;
+  uom: string;
+  systemQty: number;
+  countedQty: number | null;
+  varianceQty: number | null;
+  systemValue: number;
+  actualValue: number | null;
+  varianceValue: number | null;
+  canConfirm: boolean;
+}
+
 export interface StockCardDetail {
   itemType: StockCardItemType;
   itemKey: string;
@@ -827,6 +881,23 @@ export interface ProgressData {
   milestones: { phase: string; items: { id: number; title: string; status: string; progressPercent: number; notes?: string }[] }[];
 }
 
+function parseApiErrorText(text: string, fallback: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return fallback;
+
+  const firstLine = trimmed.split(/\r?\n/)[0]?.trim() ?? '';
+  if (
+    trimmed.length > 240
+    || firstLine.includes('Exception')
+    || /\sat\s[\w.]+/.test(trimmed)
+    || firstLine.startsWith('Microsoft.')
+  ) {
+    return fallback;
+  }
+
+  return firstLine || fallback;
+}
+
 async function fetchJsonWithMethod<T>(path: string, method: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -835,7 +906,8 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
   });
   if (!res.ok) {
     const text = await res.text();
-    let message = `API error ${res.status}: ${path}`;
+    const fallback = `API error ${res.status}: ${path}`;
+    let message = fallback;
     let shortages: ProduceBatchShortage[] | undefined;
     let components: ProduceBatchShortage[] | undefined;
     try {
@@ -853,7 +925,7 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
         shortages = parsed.shortages;
       }
     } catch {
-      if (text) message = text;
+      message = parseApiErrorText(text, fallback);
     }
     if (components?.length || shortages?.length) {
       throw new ApiError(message, shortages, components);
@@ -867,8 +939,10 @@ export const api = {
   health: () => fetchJson<{ status: string }>('/api/health'),
   locations: () => fetchJson<Location[]>('/api/locations'),
   locationsConfig: () => fetchJson<LocationConfig[]>('/api/locations/config'),
-  updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName'>) =>
-    fetchJsonWithMethod(`/api/locations/${id}/config`, 'PUT', data),
+  createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'profileOverridden'>) =>
+    fetchJsonWithMethod<LocationConfig>('/api/locations/config', 'POST', data),
+  updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'profileOverridden'>) =>
+    fetchJsonWithMethod<LocationConfig>(`/api/locations/${id}/config`, 'PUT', data),
   companies: () => fetchJson<Company[]>('/api/companies'),
   createCompany: (data: Omit<Company, 'id' | 'locationCount'>) => fetchJsonWithMethod<Company>('/api/companies', 'POST', data),
   updateCompany: (id: number, data: Company) => fetchJsonWithMethod<Company>(`/api/companies/${id}`, 'PUT', data),
@@ -881,6 +955,8 @@ export const api = {
   menu: (category?: string) => fetchJson<MenuItem[]>(`/api/menu${category ? `?category=${category}` : ''}`),
   vendors: (engaged?: boolean) => fetchJson<Vendor[]>(`/api/vendors${engaged !== undefined ? `?engaged=${engaged}` : ''}`),
   createVendor: (data: VendorCreatePayload) => fetchJsonWithMethod<Vendor>('/api/vendors', 'POST', data),
+  updateVendor: (externalId: string, data: VendorUpdatePayload) =>
+    fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}`, 'PUT', data),
   engageVendor: (externalId: string, data: EngageVendorPayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}/engage`, 'POST', data),
   ingredients: () => fetchJson<Ingredient[]>('/api/ingredients'),
@@ -1063,6 +1139,21 @@ export const api = {
       'POST',
       { confirmedBy, effectiveDate },
     ),
+  inventoryCountHistoryLines: (
+    sessionType: InventoryCountSessionType | undefined,
+    companyId: number | undefined,
+    locationIds: string[],
+    periodMonth?: string,
+    category?: string,
+  ) => {
+    const params = new URLSearchParams();
+    if (sessionType) params.set('sessionType', sessionType);
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (periodMonth) params.set('periodMonth', periodMonth);
+    if (category && category !== 'All') params.set('category', category);
+    return fetchJson<InventoryCountHistoryLine[]>(`/api/inventory-counts/history/lines?${params.toString()}`);
+  },
   inventoryCountHistory: (
     sessionType: InventoryCountSessionType | undefined,
     companyId: number | undefined,

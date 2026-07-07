@@ -17,4 +17,6 @@ public class Vendor
     public string Address { get; set; } = string.Empty;
     public string ContactsJson { get; set; } = "[]";
     public bool Engaged { get; set; }
+    /// <summary>halal | muslim-friendly | non-halal — classifies products supplied by this vendor.</summary>
+    public string ProductPolicyTag { get; set; } = "non-halal";
 }

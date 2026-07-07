@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { sortTableRows } from '../../utils/tableSort';
 import { History } from 'lucide-react';
 import { selectCls } from '../../data/countries';
 import { hrApi } from '../../modules/hr/api';
@@ -15,15 +18,30 @@ import {
 } from './payrollProcess';
 import { formatPayrollAmount } from './payrollDisplay';
 
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
 const amountCls = 'px-3 py-2.5 text-right font-sans whitespace-nowrap text-xs';
 const textCls = 'px-3 py-2.5 text-xs';
 
-const TABLE_COLUMNS = [
-  { key: 'id', label: 'Employee ID', align: 'left' },
-  { key: 'name', label: 'Employee', align: 'left' },
-  { key: 'position', label: 'Position', align: 'left' },
-  { key: 'attendance', label: 'Attendance', align: 'left' },
+type PayrollPreviewSortColumn =
+  | 'id'
+  | 'name'
+  | 'position'
+  | 'attendance'
+  | 'overtime'
+  | 'base'
+  | 'service'
+  | 'accommodation'
+  | 'transport'
+  | 'mobile'
+  | 'epf'
+  | 'socso'
+  | 'tax'
+  | 'payout';
+
+const TABLE_COLUMNS: SortableColumnDef<PayrollPreviewSortColumn>[] = [
+  { key: 'id', label: 'Employee ID' },
+  { key: 'name', label: 'Employee' },
+  { key: 'position', label: 'Position' },
+  { key: 'attendance', label: 'Attendance' },
   { key: 'overtime', label: 'Overtime', align: 'right' },
   { key: 'base', label: 'Base Salary', align: 'right' },
   { key: 'service', label: 'Service', align: 'right' },
@@ -34,7 +52,7 @@ const TABLE_COLUMNS = [
   { key: 'socso', label: 'SOCSO', align: 'right' },
   { key: 'tax', label: 'Income Tax', align: 'right' },
   { key: 'payout', label: 'Total Payout', align: 'right' },
-] as const;
+];
 
 type Props = {
   selectedCompanyId: number | null;
@@ -54,6 +72,11 @@ export function ProcessPayrollPanel({
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<PayrollPreviewSortColumn>();
+
+  useEffect(() => {
+    resetSort();
+  }, [selectedCompanyId, year, month, resetSort]);
 
   const loadPreview = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -78,6 +101,31 @@ export function ProcessPayrollPanel({
   }, [loadPreview]);
 
   const previewLines = preview?.lines ?? [];
+  const sortedPreviewLines = useMemo(
+    () =>
+      sortTableRows(
+        previewLines,
+        sortColumn,
+        sortDirection,
+        {
+          id: line => line.employeeCode,
+          name: line => line.employeeName,
+          position: line => line.position || line.department || '',
+          attendance: line => line.presentDays,
+          overtime: line => line.overtimeAmount,
+          base: line => line.baseSalary,
+          service: line => line.serviceAllowance,
+          accommodation: line => line.accommodationAllowance,
+          transport: line => line.transportAllowance,
+          mobile: line => line.mobileAllowance,
+          epf: line => line.epfEmployeeAmount,
+          socso: line => line.socsoEmployeeAmount,
+          tax: line => line.incomeTaxAmount,
+          payout: line => line.totalPayout,
+        },
+      ),
+    [previewLines, sortColumn, sortDirection],
+  );
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedPreviewLines,
@@ -85,7 +133,7 @@ export function ProcessPayrollPanel({
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(previewLines, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedPreviewLines, { scrollRootRef });
 
   const handleProcess = async () => {
     if (!selectedCompanyId || !preview || preview.alreadyProcessed) return;
@@ -194,16 +242,12 @@ export function ProcessPayrollPanel({
             <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-sm">
                 <thead className="bg-muted/40 border-b border-border">
-                  <tr>
-                    {TABLE_COLUMNS.map(column => (
-                      <th
-                        key={column.key}
-                        className={`${thCls} ${column.align === 'right' ? 'text-right' : ''}`}
-                      >
-                        {column.label}
-                      </th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={TABLE_COLUMNS}
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleSort}
+                  />
                 </thead>
                 <tbody>
                   {preview.lines.length === 0 ? (

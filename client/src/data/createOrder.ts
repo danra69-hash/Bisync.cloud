@@ -5,8 +5,14 @@ import {
   applyVendorProductOverrides,
   formatDeliveryUnitPath,
   resolveComponentUomQty,
+  vendorProductPolicyTag,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
+import {
+  productMatchesOrgPolicy,
+  vendorMatchesOrgPolicy,
+  type CompanyVendorPolicyTag,
+} from './vendorPolicyRules';
 
 export type CreateOrderLine = {
   key: string;
@@ -65,6 +71,25 @@ export function resolveTaggedProductsForComponent(
   }
 
   return tagged;
+}
+
+function productAllowedByOrgPolicy(
+  product: VendorProductCatalogItem,
+  vendorsByExternalId: Map<string, Vendor>,
+  orgPolicyTags: CompanyVendorPolicyTag[],
+): boolean {
+  const vendor = vendorsByExternalId.get(product.vendorExternalId);
+  if (vendor && !vendorMatchesOrgPolicy(vendor.productPolicyTag, orgPolicyTags, vendor)) return false;
+  const productTag = vendorProductPolicyTag(product, vendorsByExternalId);
+  return productMatchesOrgPolicy(productTag, vendor?.productPolicyTag, orgPolicyTags, product.group);
+}
+
+export function catalogProductAllowedByOrgPolicy(
+  product: VendorProductCatalogItem,
+  vendors: Vendor[],
+  orgPolicyTags: CompanyVendorPolicyTag[],
+): boolean {
+  return productAllowedByOrgPolicy(product, new Map(vendors.map(v => [v.externalId, v])), orgPolicyTags);
 }
 
 export type EngagedVendorReferencePrice = {
@@ -152,8 +177,10 @@ export function resolveVendorsForSelectedLocations(
   components: ComponentRow[],
   locationIds: string[],
   vendors: Vendor[],
+  orgPolicyTags: CompanyVendorPolicyTag[] = [],
 ): Vendor[] {
   const catalog = applyVendorProductOverrides();
+  const vendorsByExternalId = new Map(vendors.map(v => [v.externalId, v]));
   const vendorIds = new Set<string>();
 
   for (const component of components) {
@@ -161,12 +188,15 @@ export function resolveVendorsForSelectedLocations(
     if (!componentMatchesLocations(component, locationIds)) continue;
 
     for (const product of resolveTaggedProductsForComponent(component, catalog, { locationIds })) {
+      if (!productAllowedByOrgPolicy(product, vendorsByExternalId, orgPolicyTags)) continue;
       vendorIds.add(product.vendorExternalId);
     }
   }
 
   return vendors
-    .filter(v => v.engaged && vendorIds.has(v.externalId))
+    .filter(v => v.engaged
+      && vendorIds.has(v.externalId)
+      && vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -176,8 +206,11 @@ export function buildCreateOrderLines(
   vendorExternalId: string,
   categoryFilter: string,
   search: string,
+  vendors: Vendor[] = [],
+  orgPolicyTags: CompanyVendorPolicyTag[] = [],
 ): CreateOrderLine[] {
   const catalog = applyVendorProductOverrides();
+  const vendorsByExternalId = new Map(vendors.map(v => [v.externalId, v]));
   const query = search.trim().toLowerCase();
   const lines: CreateOrderLine[] = [];
 
@@ -200,14 +233,17 @@ export function buildCreateOrderLines(
       vendorExternalId: vendorExternalId || undefined,
       locationIds,
     };
-    const taggedProducts = resolveTaggedProductsForComponent(component, catalog, resolveOptions);
+    const taggedProducts = resolveTaggedProductsForComponent(component, catalog, resolveOptions)
+      .filter(product => productAllowedByOrgPolicy(product, vendorsByExternalId, orgPolicyTags));
     if (vendorExternalId && taggedProducts.length === 0) continue;
 
     const products = taggedProducts.length > 0
       ? taggedProducts
       : vendorExternalId
         ? []
-        : resolveTaggedProductsForComponent(component, catalog, { locationIds }).slice(0, 1);
+        : resolveTaggedProductsForComponent(component, catalog, { locationIds })
+          .filter(product => productAllowedByOrgPolicy(product, vendorsByExternalId, orgPolicyTags))
+          .slice(0, 1);
 
     for (const product of products) {
       const detail = resolveDetailConfigForRow(component);

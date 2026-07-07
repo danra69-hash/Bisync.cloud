@@ -6,10 +6,11 @@ import { SYSTEM_HR_CONFIG_TABS, type SystemHrConfigTabId } from './hrConfigTabs'
 import { PAGE_SHELL_CLS } from '../layout/pageLayout';
 
 type Props = {
+  selectedCompanyId: number | null;
   onOrgDataChanged?: () => void;
 };
 
-export function SystemConfigurationPage({ onOrgDataChanged }: Props) {
+export function SystemConfigurationPage({ selectedCompanyId, onOrgDataChanged }: Props) {
   const [tab, setTab] = useState<SystemHrConfigTabId>('companies');
 
   return (
@@ -25,7 +26,9 @@ export function SystemConfigurationPage({ onOrgDataChanged }: Props) {
       <HrConfigTabBar tabs={SYSTEM_HR_CONFIG_TABS} active={tab} onChange={setTab} />
 
       {tab === 'companies' && <CompaniesTab onOrgDataChanged={onOrgDataChanged} />}
-      {tab === 'locations' && <LocationsConfigTab onOrgDataChanged={onOrgDataChanged} />}
+      {tab === 'locations' && (
+        <LocationsConfigTab selectedCompanyId={selectedCompanyId} onOrgDataChanged={onOrgDataChanged} />
+      )}
     </div>
   );
 }

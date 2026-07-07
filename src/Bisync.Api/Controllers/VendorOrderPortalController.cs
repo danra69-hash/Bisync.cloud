@@ -42,12 +42,14 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         order.VendorAcceptedBy = acceptedBy;
 
         if (string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(order.Status, PurchaseOrderWorkflow.StatusOpen, StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReceived, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
         {
-            order.Status = PurchaseOrderWorkflow.StatusConfirmed;
+            order.Status = PurchaseOrderWorkflow.StatusAccepted;
         }
 
         await db.SaveChangesAsync();
+        await UserNotificationService.NotifyPurchaseOrderAcceptedAsync(db, order);
         return Ok(await BuildPortalViewAsync(order));
     }
 

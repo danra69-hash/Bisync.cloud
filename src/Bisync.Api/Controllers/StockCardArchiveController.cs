@@ -7,21 +7,17 @@ namespace Bisync.Api.Controllers;
 [Route("api/stock-card-archive")]
 public class StockCardArchiveController(
     StockCardArchiveService archiveService,
-    IConfiguration configuration,
-    IHostEnvironment environment) : ControllerBase
+    IConfiguration configuration) : ControllerBase
 {
     [HttpGet("status")]
     public async Task<ActionResult<object>> Status(CancellationToken cancellationToken)
     {
-        var directory = StockCardArchivePaths.ResolveArchiveDirectory(configuration, environment);
-        var databasePath = StockCardArchivePaths.ResolveArchiveDatabasePath(configuration, environment);
+        var archiveConnection = configuration.GetConnectionString("ArchiveConnection");
         var cutoff = archiveService.ResolveArchiveCutoffUtc();
 
         return Ok(new
         {
-            archiveDirectory = directory,
-            archiveDatabase = databasePath,
-            archiveDatabaseExists = System.IO.File.Exists(databasePath),
+            archiveConnection,
             retentionYears = archiveService.RetentionYears,
             archiveCutoff = cutoff,
             runs = await archiveService.GetRecentRunsAsync(10, cancellationToken),

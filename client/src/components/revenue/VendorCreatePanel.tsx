@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { FilePlus2, Plus, Trash2, Upload, X } from 'lucide-react';
 import { api, type Vendor, type VendorCreatePayload } from '../../api';
 import { inputCls, selectCls } from '../../data/componentForm';
+import { VENDOR_PRODUCT_POLICY_OPTIONS } from '../../data/vendorPolicyRules';
 import {
   applyVendorProductOverrides,
   parseVendorProductsFromOcrText,
@@ -34,6 +35,7 @@ const blank = (nextExternalId: string): VendorCreatePayload => ({
   contactPosition: '',
   mobile: '',
   email: '',
+  productPolicyTag: 'non-halal',
 });
 
 export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, onCreated, onProductsImported }: Props) {
@@ -248,6 +250,14 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
         setError('Please verify parsed vendor products before creating vendor.');
         return;
       }
+      if (!form.name.trim()) {
+        setError('Vendor name is required.');
+        return;
+      }
+      if (!form.productPolicyTag) {
+        setError('Product policy is required.');
+        return;
+      }
       const created = await api.createVendor({
         ...form,
         externalId: form.externalId.trim().toUpperCase(),
@@ -312,6 +322,21 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
             <div className="col-span-3">
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Type of Product Supplied</p>
               <input value={form.products} onChange={e => setField('products', e.target.value)} className={inputCls} />
+            </div>
+            <div className="col-span-3">
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Product Policy *</p>
+              <select
+                value={form.productPolicyTag}
+                onChange={e => setField('productPolicyTag', e.target.value as VendorCreatePayload['productPolicyTag'])}
+                className={selectCls}
+              >
+                {VENDOR_PRODUCT_POLICY_OPTIONS.map(option => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {VENDOR_PRODUCT_POLICY_OPTIONS.find(option => option.id === form.productPolicyTag)?.description}
+              </p>
             </div>
             <div className="col-span-3">
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Address</p>

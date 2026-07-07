@@ -3,6 +3,8 @@ import { Search, Tag, UserPlus } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
+import { vendorMatchesOrgPolicy } from '../../data/vendorPolicyRules';
+import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import {
   buildComparePriceMatrix,
   comparePriceCellKey,
@@ -20,14 +22,21 @@ import type { VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { componentRowToIngredientPayload } from '../../data/vendorProductTagging';
 import { ingredientToRow } from './smartIngredientShared';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
 
-const thCls =
-  'text-left px-3 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal border-r border-border last:border-r-0 truncate';
 const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0 min-w-0';
+
+const COMPONENT_SORT_KEY = 'component';
+
+function vendorSortKey(externalId: string) {
+  return `vendor:${externalId}`;
+}
 
 function ComparePriceCellView({
   slot,
@@ -135,7 +144,14 @@ function ComparePriceCellView({
   );
 }
 
-export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
+export function ComparePricePage({
+  selectedCompanyId,
+  selectedLocationIds,
+}: {
+  selectedCompanyId: number | null;
+  selectedLocationIds: string[];
+}) {
+  const orgPolicyTags = useOrgVendorPolicy(selectedCompanyId, selectedLocationIds);
   const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [search, setSearch] = useState('');
@@ -163,6 +179,7 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
   } | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<string>();
 
   const loadData = useCallback(() => {
     if (!selectedCompanyId) {
@@ -188,9 +205,18 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    resetSort();
+  }, [search, groupFilter, vendorFilter, resetSort]);
+
+  const policyFilteredVendors = useMemo(
+    () => vendors.filter(v => vendorMatchesOrgPolicy(v.productPolicyTag, orgPolicyTags, v)),
+    [vendors, orgPolicyTags],
+  );
+
   const { components, vendorColumns, slots } = useMemo(
-    () => buildComparePriceMatrix(componentRows, vendors),
-    [componentRows, vendors, moveVersion],
+    () => buildComparePriceMatrix(componentRows, policyFilteredVendors),
+    [componentRows, policyFilteredVendors, moveVersion],
   );
 
   const filteredVendorColumns = useMemo(() => {
@@ -214,6 +240,41 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
     });
   }, [components, search, groupFilter]);
 
+  const compareTableColumns = useMemo((): SortableColumnDef<string>[] => [
+    { key: COMPONENT_SORT_KEY, label: 'Component', className: 'bg-muted/95 w-[14%]' },
+    ...filteredVendorColumns.map(vendor => ({
+      key: vendorSortKey(vendor.externalId),
+      label: vendor.name,
+    })),
+  ], [filteredVendorColumns]);
+
+  const compareSortAccessors = useMemo(() => {
+    const accessors: Partial<Record<string, (row: ComponentRow) => string | number | null>> = {
+      [COMPONENT_SORT_KEY]: row => row.name,
+    };
+    for (const vendor of filteredVendorColumns) {
+      const key = vendorSortKey(vendor.externalId);
+      accessors[key] = row => {
+        if (!row.id) return null;
+        const slot = slots.get(comparePriceCellKey(vendor.externalId, row.id));
+        if (!slot) return null;
+        const pricing = slot.isTagged
+          ? resolveComparePriceCell(row, slot.product)
+          : slot.pricing;
+        return pricing?.uomCost ?? null;
+      };
+    }
+    return accessors;
+  }, [filteredVendorColumns, slots]);
+
+  const sortedFilteredComponents = useMemo(
+    () =>
+      sortTableRows(filteredComponents, sortColumn, sortDirection, compareSortAccessors, {
+        tieBreaker: (a, b) => compareSortValues(a.name, b.name),
+      }),
+    [filteredComponents, sortColumn, sortDirection, compareSortAccessors],
+  );
+
   const compareColSpan = 1 + filteredVendorColumns.length;
   const {
     visibleItems: pagedFilteredComponents,
@@ -221,7 +282,7 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(filteredComponents, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedFilteredComponents, { scrollRootRef });
 
   const bestByComponent = useMemo(
     () => findBestUomCostByComponent(filteredComponents, slots),
@@ -406,28 +467,13 @@ export function ComparePricePage({ selectedCompanyId }: { selectedCompanyId: num
             <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-220px)]">
                 <table ref={tableRef} className="w-full text-xs border-collapse table-fixed">
                   <thead className="sticky top-0 z-20 bg-muted/90 backdrop-blur-sm">
-                    <tr className="border-b border-border">
-                      <th className={`${thCls} bg-muted/95 w-[14%]`}>Component</th>
-                      {filteredVendorColumns.map(vendor => (
-                        <th key={vendor.externalId} className={thCls}>
-                          <div className="space-y-0.5">
-                            <div className="flex flex-wrap items-center gap-1">
-                              <p className="text-[11px] font-semibold text-foreground normal-case tracking-normal">
-                                {vendor.name}
-                              </p>
-                              {vendor.engaged && (
-                                <span className="text-[11px] font-sans px-1 py-0.5 rounded bg-[#5A7A2A]/15 text-[#5A7A2A]">
-                                  Engaged
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs font-sans text-muted-foreground normal-case">
-                              {vendor.externalId}
-                            </p>
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
+                    <SortableTableHeaderRow
+                      columns={compareTableColumns}
+                      sortColumn={sortColumn}
+                      sortDirection={sortDirection}
+                      onSort={toggleSort}
+                      className="border-b border-border"
+                    />
                   </thead>
                   <tbody>
                     {pagedFilteredComponents.map(component => {

@@ -105,6 +105,34 @@ public sealed class InventoryCountSessionLineDto
     public decimal? CountedQty { get; init; }
     public decimal? VarianceQty { get; init; }
     public decimal? VariancePct { get; init; }
+    public decimal? SystemUnitPrice { get; init; }
+    public decimal SystemValue { get; init; }
+    public decimal? ActualValue { get; init; }
+    public decimal? VarianceValue { get; init; }
+}
+
+public sealed class InventoryCountHistoryLineDto
+{
+    public int SessionId { get; init; }
+    public int LineId { get; init; }
+    public string SessionType { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public string LocationLabel { get; init; } = string.Empty;
+    public IReadOnlyList<string> LocationIds { get; init; } = [];
+    public DateTime SavedAt { get; init; }
+    public DateTime? ConfirmedAt { get; init; }
+    public string EffectiveDate { get; init; } = string.Empty;
+    public string PeriodMonth { get; init; } = string.Empty;
+    public string ItemName { get; init; } = string.Empty;
+    public string Category { get; init; } = string.Empty;
+    public string Uom { get; init; } = string.Empty;
+    public decimal SystemQty { get; init; }
+    public decimal? CountedQty { get; init; }
+    public decimal? VarianceQty { get; init; }
+    public decimal SystemValue { get; init; }
+    public decimal? ActualValue { get; init; }
+    public decimal? VarianceValue { get; init; }
+    public bool CanConfirm { get; init; }
 }
 
 public sealed class InventoryCountSaveLineRequest

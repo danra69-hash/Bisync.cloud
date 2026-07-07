@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
@@ -39,6 +42,16 @@ function isPendingStatus(status: string) {
 function orderValue(order: PurchaseOrder) {
   return order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 }
+
+type PendingOrderSortColumn = 'po' | 'vendor' | 'delivery' | 'value' | 'status';
+
+const PENDING_ORDER_TABLE_COLUMNS: SortableColumnDef<PendingOrderSortColumn>[] = [
+  { key: 'po', label: 'PO' },
+  { key: 'vendor', label: 'Vendor' },
+  { key: 'delivery', label: 'Delivery' },
+  { key: 'value', label: 'Value', align: 'right' },
+  { key: 'status', label: 'Status' },
+];
 
 function formatPostedDate(iso: string) {
   const date = new Date(iso);
@@ -120,6 +133,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
   const [loading, setLoading] = useState(true);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [openingOrderId, setOpeningOrderId] = useState<number | null>(null);
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<PendingOrderSortColumn>();
 
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
@@ -169,6 +183,28 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
 
   const pendingOrders = actionableOrders;
 
+  useEffect(() => {
+    resetSort();
+  }, [selectedCompanyId, selectedLocationIds, resetSort]);
+
+  const sortedPendingOrders = useMemo(
+    () =>
+      sortTableRows(
+        pendingOrders,
+        sortColumn,
+        sortDirection,
+        {
+          po: o => o.poNumber,
+          vendor: o => o.vendorName,
+          delivery: o => o.deliveryDate,
+          value: o => orderValue(o),
+          status: o => o.status,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.poNumber, b.poNumber) },
+      ),
+    [pendingOrders, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedPendingOrders,
@@ -176,7 +212,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(pendingOrders, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedPendingOrders, { scrollRootRef });
 
   const activityItems = useMemo(
     () => buildActivityToday(actionableOrders, pendingOrders.length),
@@ -431,14 +467,14 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
               </div>
             ) : (
               <table className="w-full table-fixed text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-muted/30">
-                    {['PO', 'Vendor', 'Delivery', 'Value', 'Status'].map(h => (
-                      <th key={h} className="text-left px-4 py-2 text-muted-foreground font-normal uppercase text-[10px] tracking-wide">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
+                <thead className="bg-muted/30">
+                  <SortableTableHeaderRow
+                    columns={PENDING_ORDER_TABLE_COLUMNS}
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleSort}
+                    className="border-b border-border"
+                  />
                 </thead>
                 <tbody>
                   {pagedPendingOrders.map(order => (

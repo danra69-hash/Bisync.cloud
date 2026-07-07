@@ -61,6 +61,7 @@ export function buildPurchaseOrderPdfData(params: {
     vendor: {
       name: params.vendor?.name ?? params.group.vendorName,
       address: params.vendor ? formatVendorAddress(params.vendor) : '',
+      brn: params.vendor?.brn,
       contact: params.vendor ? formatVendorContact(params.vendor) : '',
     },
     items,

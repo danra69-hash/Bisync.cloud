@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
@@ -16,6 +19,7 @@ import {
   saveVendorProductOverride,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
+import type { CompanyVendorPolicyTag } from '../../data/vendorPolicyRules';
 import {
   componentRowTagsVendorProduct,
   findComponentRowForTaggedProduct,
@@ -55,12 +59,37 @@ function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ing
   };
 }
 
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal truncate border-r border-border last:border-r-0';
+type VendorProductSortColumn =
+  | 'productName'
+  | 'photo'
+  | 'id'
+  | 'group'
+  | 'specification'
+  | 'deliveryUnit'
+  | 'deliveryPrice'
+  | 'vendor'
+  | 'tag';
+
+function vendorProductColumns(showVendorColumn: boolean): SortableColumnDef<VendorProductSortColumn>[] {
+  const cols: SortableColumnDef<VendorProductSortColumn>[] = [
+    { key: 'productName', label: 'Vendor Product Name' },
+    { key: 'photo', label: 'Photo', sortable: false, className: 'w-12' },
+    { key: 'id', label: 'Vendor Product ID' },
+    { key: 'group', label: 'Group' },
+    { key: 'specification', label: 'Product Specification' },
+    { key: 'deliveryUnit', label: 'Delivery Unit' },
+    { key: 'deliveryPrice', label: 'Delivery Price', align: 'right' },
+  ];
+  if (showVendorColumn) cols.push({ key: 'vendor', label: 'Vendor' });
+  cols.push({ key: 'tag', label: 'Tag', sortable: false });
+  return cols;
+}
 
 type Props = {
   products: VendorProductCatalogItem[];
   vendors: Vendor[];
   selectedCompanyId: number | null;
+  orgPolicyTags?: CompanyVendorPolicyTag[];
   showVendorColumn?: boolean;
   tagFilter?: 'all' | 'tagged' | 'untagged';
   onVendorUpdated?: (vendor: Vendor) => void;
@@ -92,6 +121,11 @@ export function VendorProductsList({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
   const [taggedProductIds, setTaggedProductIds] = useState<Set<string>>(new Set());
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<VendorProductSortColumn>();
+
+  useEffect(() => {
+    resetSort();
+  }, [products, tagFilter, resetSort]);
 
   useEffect(() => {
     setVendorMap(new Map(vendors.map(v => [v.externalId, v])));
@@ -241,6 +275,31 @@ export function VendorProductsList({
     return products.filter(p => !taggedProductIds.has(p.id));
   }, [products, tagFilter, taggedProductIds]);
 
+  const sortedVisibleProducts = useMemo(
+    () =>
+      sortTableRows(
+        visibleProducts,
+        sortColumn,
+        sortDirection,
+        {
+          productName: p => p.productName,
+          id: p => p.id,
+          group: p => p.group,
+          specification: p => p.specification,
+          deliveryUnit: p => formatDeliveryUnitPath(p.delivery),
+          deliveryPrice: p => p.deliveryPrice,
+          vendor: p => p.vendorName,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.productName, b.productName) },
+      ),
+    [visibleProducts, sortColumn, sortDirection],
+  );
+
+  const tableColumns = useMemo(
+    () => vendorProductColumns(showVendorColumn),
+    [showVendorColumn],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const productColSpan = showVendorColumn ? 9 : 8;
   const {
@@ -249,7 +308,7 @@ export function VendorProductsList({
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(visibleProducts, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
 
   const modalRoot = typeof document !== 'undefined' ? document.body : null;
 
@@ -329,18 +388,14 @@ export function VendorProductsList({
       <div className="border border-border rounded-lg overflow-hidden">
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className={thCls}>Vendor Product Name</th>
-                <th className={`${thCls} w-12`}>Photo</th>
-                <th className={thCls}>Vendor Product ID</th>
-                <th className={thCls}>Group</th>
-                <th className={thCls}>Product Specification</th>
-                <th className={thCls}>Delivery Unit</th>
-                <th className={thCls}>Delivery Price</th>
-                {showVendorColumn && <th className={thCls}>Vendor</th>}
-                <th className={`${thCls} border-r-0`}>Tag</th>
-              </tr>
+            <thead className="bg-muted/40">
+              <SortableTableHeaderRow
+                columns={tableColumns}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className="border-b border-border"
+              />
             </thead>
             <tbody>
               {pagedVisibleProducts.map(product => {

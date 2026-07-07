@@ -11,6 +11,7 @@ public static class PurchaseOrderWorkflow
     public const string StatusPendingApproval = "Pending Approval";
     public const string StatusOpen = "Open";
     public const string StatusConfirmed = "Confirmed";
+    public const string StatusAccepted = "Accepted";
     public const string StatusReceived = "Received";
     public const string StatusReconciled = "Reconciled";
 
@@ -38,7 +39,8 @@ public static class PurchaseOrderWorkflow
 
         return string.Equals(order.Status, StatusOpen, StringComparison.OrdinalIgnoreCase)
             || string.Equals(order.Status, "Pending", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(order.Status, "Confirmed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.Status, StatusConfirmed, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.Status, StatusAccepted, StringComparison.OrdinalIgnoreCase)
             || string.Equals(order.Status, "In Transit", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -88,6 +90,14 @@ public static class PurchaseOrderWorkflow
             ? DocumentTypePr
             : order.DocumentType;
 
+        var status = order.Status?.Trim() ?? string.Empty;
+        if (order.VendorAcceptedAt is not null
+            && !string.Equals(status, StatusReceived, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase))
+        {
+            status = StatusAccepted;
+        }
+
         return new
     {
         order.Id,
@@ -96,7 +106,7 @@ public static class PurchaseOrderWorkflow
         orderDate = order.OrderDate,
         deliveryDate = order.DeliveryDate,
         documentType,
-        status = order.Status?.Trim() ?? string.Empty,
+        status,
         companyId = order.CompanyId,
         locationExternalIds = DeserializeLocationIds(order.LocationIdsJson),
         initiatedBy = order.InitiatedBy,
@@ -132,6 +142,7 @@ public static class PurchaseOrderWorkflow
         reconciledQuantity = item.ReconciledQuantity,
         reconciledUnitPrice = item.ReconciledUnitPrice,
         taxAmount = item.TaxAmount,
+        halalCertNo = item.HalalCertNo,
     };
 
     public static List<string> DeserializeLocationIds(string? json)

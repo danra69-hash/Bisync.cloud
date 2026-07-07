@@ -2,6 +2,7 @@ import { getConversion, RECIPE_UNITS, type AltUnitEntry } from './componentForm'
 import { mergeServerVendorProductPrices } from './vendorProductPrices';
 import { EXTENDED_VENDOR_CONTACTS, EXTENDED_VENDOR_PRODUCTS } from './vendorProductCatalogExtras';
 import type { Vendor } from '../api';
+import type { VendorProductPolicyTag } from './vendorPolicyRules';
 
 export type DeliveryUnitBreakdown = {
   orderUnit: string;
@@ -28,6 +29,7 @@ export type VendorProductCatalogItem = {
   imageUrl?: string;
   deliveryPrice: number;
   delivery: DeliveryUnitBreakdown;
+  productPolicyTag?: VendorProductPolicyTag;
 };
 
 export type VendorProductImportDraft = {
@@ -36,7 +38,43 @@ export type VendorProductImportDraft = {
   specification: string;
   deliveryUnitText: string;
   deliveryPrice: number;
+  productPolicyTag?: VendorProductPolicyTag;
 };
+
+const NON_HALAL_VENDOR_IDS = new Set(['V004', 'V022', 'V026']);
+
+const HALAL_VENDOR_IDS = new Set([
+  'V042', 'V043', 'V044', 'V045', 'V046', 'V047', 'V048', 'V049', 'V050', 'V051',
+]);
+
+export function inferCatalogProductPolicyTag(
+  product: Pick<VendorProductCatalogItem, 'vendorExternalId' | 'group' | 'specification' | 'productPolicyTag'>,
+  vendorTag?: VendorProductPolicyTag | null,
+): VendorProductPolicyTag {
+  if (product.productPolicyTag) return product.productPolicyTag;
+  if (vendorTag) return vendorTag;
+  if (HALAL_VENDOR_IDS.has(product.vendorExternalId)) return 'halal';
+  if (NON_HALAL_VENDOR_IDS.has(product.vendorExternalId)) return 'non-halal';
+
+  const spec = product.specification.toLowerCase();
+  const group = product.group.toLowerCase();
+  if (spec.includes('non-halal') || spec.includes('pork') || spec.includes('wine') || spec.includes('spirit') || spec.includes('beer')) {
+    return 'non-halal';
+  }
+  if (spec.includes('halal')) return 'halal';
+  if (group.includes('beverage') && (spec.includes('abv') || spec.includes('wine') || spec.includes('spirit'))) {
+    return 'non-halal';
+  }
+  return 'halal';
+}
+
+export function vendorProductPolicyTag(
+  product: VendorProductCatalogItem,
+  vendorsByExternalId: Map<string, Vendor>,
+): VendorProductPolicyTag {
+  const vendor = vendorsByExternalId.get(product.vendorExternalId);
+  return inferCatalogProductPolicyTag(product, vendor?.productPolicyTag);
+}
 
 export const VENDOR_PRODUCT_CATALOG: VendorProductCatalogItem[] = [
   {
@@ -172,6 +210,7 @@ export function catalogVendorStub(
     externalId: product.vendorExternalId,
     name: product.vendorName,
     type: 'offline',
+    brn: '',
     products: product.group,
     city: '',
     state: '',
@@ -182,6 +221,11 @@ export function catalogVendorStub(
     email: contact?.email ?? '',
     contactsJson: '[]',
     engaged: false,
+    productPolicyTag: HALAL_VENDOR_IDS.has(product.vendorExternalId)
+      ? 'halal'
+      : NON_HALAL_VENDOR_IDS.has(product.vendorExternalId)
+        ? 'non-halal'
+        : 'halal',
   };
 }
 

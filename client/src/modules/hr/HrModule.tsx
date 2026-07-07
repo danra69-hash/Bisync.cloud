@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import React from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
+import { SortableTableHead } from '../../components/shared/SortableTableHead';
+import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
 import { api as bisyncApi, type AppUser } from '../../api';
 import { hrApi as api } from './api';
@@ -91,6 +94,16 @@ const getLeaveTypeLabel = (type: string) => {
     default: return type;
   }
 };
+
+type AttendanceEmployeeSortColumn = 'name' | `day:${string}`;
+type LeaveBalanceSortColumn = 'employee' | 'rdo' | 'rph' | 'al';
+
+const LEAVE_BALANCE_COLUMNS = [
+  { key: 'employee' as const, label: 'Employee' },
+  { key: 'rdo' as const, label: 'RDO', align: 'center' as const },
+  { key: 'rph' as const, label: 'RPH', align: 'center' as const },
+  { key: 'al' as const, label: 'AL', align: 'center' as const },
+];
 
 // ---------- app ----------
 
@@ -302,6 +315,106 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
   const shiftEmployees = companyEmployees.filter(e => employeeIsShift(e));
   const nonShiftEmployees = companyEmployees.filter(e => !employeeIsShift(e));
 
+  const {
+    sortColumn: shiftAttendanceSortColumn,
+    sortDirection: shiftAttendanceSortDirection,
+    toggleSort: toggleShiftAttendanceSort,
+    resetSort: resetShiftAttendanceSort,
+  } = useTableSort<AttendanceEmployeeSortColumn>();
+  const {
+    sortColumn: nonShiftAttendanceSortColumn,
+    sortDirection: nonShiftAttendanceSortDirection,
+    toggleSort: toggleNonShiftAttendanceSort,
+    resetSort: resetNonShiftAttendanceSort,
+  } = useTableSort<AttendanceEmployeeSortColumn>();
+  const {
+    sortColumn: leaveBalanceSortColumn,
+    sortDirection: leaveBalanceSortDirection,
+    toggleSort: toggleLeaveBalanceSort,
+    resetSort: resetLeaveBalanceSort,
+  } = useTableSort<LeaveBalanceSortColumn>();
+
+  useEffect(() => {
+    resetShiftAttendanceSort();
+    resetNonShiftAttendanceSort();
+  }, [
+    selectedCompanyId,
+    attendanceView,
+    attendanceAnchorDate,
+    resetShiftAttendanceSort,
+    resetNonShiftAttendanceSort,
+  ]);
+
+  useEffect(() => {
+    resetLeaveBalanceSort();
+  }, [selectedCompanyId, resetLeaveBalanceSort]);
+
+  const shiftAttendanceDaySort = shiftAttendanceSortColumn?.startsWith('day:')
+    ? shiftAttendanceSortColumn.slice(4)
+    : null;
+  const nonShiftAttendanceDaySort = nonShiftAttendanceSortColumn?.startsWith('day:')
+    ? nonShiftAttendanceSortColumn.slice(4)
+    : null;
+
+  const shiftAttendanceSortAccessors = useMemo(
+    () => ({
+      name: (employee: Employee) => employee.name,
+      ...(shiftAttendanceDaySort
+        ? {
+            [`day:${shiftAttendanceDaySort}`]: (employee: Employee) => {
+              const record = attendance.find(a => a.employeeId === employee.id && a.date === shiftAttendanceDaySort);
+              if (!record) return '';
+              const si = hm(record.scheduledIn);
+              const so = hm(record.scheduledOut);
+              const ai = hm(record.actualIn);
+              const ao = hm(record.actualOut);
+              if (si && so && ai && ao) return calcHours(si, so, ai, ao).actual;
+              return record.status;
+            },
+          }
+        : {}),
+    }),
+    [shiftAttendanceDaySort, attendance],
+  );
+
+  const nonShiftAttendanceSortAccessors = useMemo(
+    () => ({
+      name: (employee: Employee) => employee.name,
+      ...(nonShiftAttendanceDaySort
+        ? {
+            [`day:${nonShiftAttendanceDaySort}`]: (employee: Employee) => {
+              const record = attendance.find(a => a.employeeId === employee.id && a.date === nonShiftAttendanceDaySort);
+              return record?.status ?? '';
+            },
+          }
+        : {}),
+    }),
+    [nonShiftAttendanceDaySort, attendance],
+  );
+
+  const sortedShiftEmployees = useMemo(
+    () =>
+      sortTableRows(
+        shiftEmployees,
+        shiftAttendanceSortColumn,
+        shiftAttendanceSortDirection,
+        shiftAttendanceSortAccessors,
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [shiftEmployees, shiftAttendanceSortColumn, shiftAttendanceSortDirection, shiftAttendanceSortAccessors],
+  );
+  const sortedNonShiftEmployees = useMemo(
+    () =>
+      sortTableRows(
+        nonShiftEmployees,
+        nonShiftAttendanceSortColumn,
+        nonShiftAttendanceSortDirection,
+        nonShiftAttendanceSortAccessors,
+        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+      ),
+    [nonShiftEmployees, nonShiftAttendanceSortColumn, nonShiftAttendanceSortDirection, nonShiftAttendanceSortAccessors],
+  );
+
   const companyEmployeeIds = useMemo(
     () => new Set(companyEmployees.map(e => e.id)),
     [companyEmployees],
@@ -317,10 +430,27 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
     [leaveBalances, companyEmployeeIds],
   );
 
-  const shiftEmployeesScroll = useInfiniteScrollSlice(shiftEmployees, { scrollRootRef: shiftAttendanceScrollRef });
-  const nonShiftEmployeesScroll = useInfiniteScrollSlice(nonShiftEmployees, { scrollRootRef: nonShiftAttendanceScrollRef });
+  const sortedCompanyLeaveBalances = useMemo(
+    () =>
+      sortTableRows(
+        companyLeaveBalances,
+        leaveBalanceSortColumn,
+        leaveBalanceSortDirection,
+        {
+          employee: row => row.employeeName,
+          rdo: row => row.rdoBalance,
+          rph: row => row.rphBalance,
+          al: row => row.alBalance,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.employeeName, b.employeeName) },
+      ),
+    [companyLeaveBalances, leaveBalanceSortColumn, leaveBalanceSortDirection],
+  );
+
+  const shiftEmployeesScroll = useInfiniteScrollSlice(sortedShiftEmployees, { scrollRootRef: shiftAttendanceScrollRef });
+  const nonShiftEmployeesScroll = useInfiniteScrollSlice(sortedNonShiftEmployees, { scrollRootRef: nonShiftAttendanceScrollRef });
   const leaveBalanceScrollRef = useRef<HTMLDivElement>(null);
-  const leaveBalancesScroll = useInfiniteScrollSlice(companyLeaveBalances, { scrollRootRef: leaveBalanceScrollRef });
+  const leaveBalancesScroll = useInfiniteScrollSlice(sortedCompanyLeaveBalances, { scrollRootRef: leaveBalanceScrollRef });
   const shiftAttendanceColSpan = 1 + attendanceDates.length * 4;
   const nonShiftAttendanceColSpan = 1 + attendanceDates.length;
 
@@ -555,11 +685,27 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 <table className="w-full table-fixed">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th rowSpan={2} className={`px-2 py-2 text-left text-xs text-gray-700 border-b-2 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 '}`}>Name</th>
+                      <SortableTableHead
+                        rowSpan={2}
+                        label="Name"
+                        column="name"
+                        sortColumn={shiftAttendanceSortColumn}
+                        sortDirection={shiftAttendanceSortDirection}
+                        onSort={toggleShiftAttendanceSort}
+                        className={`px-2 py-2 text-xs text-gray-700 border-b-2 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50'}`}
+                      />
                       {attendanceDates.map((date) => (
-                        <th key={date} colSpan={4} className={`px-0.5 py-1.5 text-center text-[11px] text-gray-700 border-b border-l border-gray-200 ${attendanceWeekView ? '' : ''}`}>
-                          {formatDayHeader(date)}
-                        </th>
+                        <SortableTableHead
+                          key={date}
+                          colSpan={4}
+                          label={formatDayHeader(date)}
+                          column={`day:${date}`}
+                          sortColumn={shiftAttendanceSortColumn}
+                          sortDirection={shiftAttendanceSortDirection}
+                          onSort={toggleShiftAttendanceSort}
+                          className={`px-0.5 py-1.5 text-center text-[11px] text-gray-700 border-b border-l border-gray-200 ${attendanceWeekView ? '' : ''}`}
+                          align="center"
+                        />
                       ))}
                     </tr>
                     <tr>
@@ -651,11 +797,25 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 <table className="w-full table-fixed">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className={`px-2 py-2 text-left text-xs text-gray-700 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50 '}`}>Name</th>
+                      <SortableTableHead
+                        label="Name"
+                        column="name"
+                        sortColumn={nonShiftAttendanceSortColumn}
+                        sortDirection={nonShiftAttendanceSortDirection}
+                        onSort={toggleNonShiftAttendanceSort}
+                        className={`px-2 py-2 text-xs text-gray-700 border-r border-gray-200 ${attendanceWeekView ? 'w-[11%]' : 'sticky left-0 z-10 bg-gray-50'}`}
+                      />
                       {attendanceDates.map((date) => (
-                        <th key={date} className={`px-0.5 py-2 text-center text-[11px] text-gray-700 border-l border-gray-200 ${attendanceWeekView ? '' : ''}`}>
-                          {formatDayHeader(date)}
-                        </th>
+                        <SortableTableHead
+                          key={date}
+                          label={formatDayHeader(date)}
+                          column={`day:${date}`}
+                          sortColumn={nonShiftAttendanceSortColumn}
+                          sortDirection={nonShiftAttendanceSortDirection}
+                          onSort={toggleNonShiftAttendanceSort}
+                          className={`px-0.5 py-2 text-center text-[11px] text-gray-700 border-l border-gray-200 ${attendanceWeekView ? '' : ''}`}
+                          align="center"
+                        />
                       ))}
                     </tr>
                   </thead>
@@ -788,10 +948,18 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                   <table className="w-full table-fixed">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        <th className="px-6 py-3 text-left text-sm text-gray-700">Employee</th>
-                        <th className="px-6 py-3 text-center text-sm text-gray-700">RDO</th>
-                        <th className="px-6 py-3 text-center text-sm text-gray-700">RPH</th>
-                        <th className="px-6 py-3 text-center text-sm text-gray-700">AL</th>
+                        {LEAVE_BALANCE_COLUMNS.map(column => (
+                          <SortableTableHead
+                            key={column.key}
+                            label={column.label}
+                            column={column.key}
+                            sortColumn={leaveBalanceSortColumn}
+                            sortDirection={leaveBalanceSortDirection}
+                            onSort={toggleLeaveBalanceSort}
+                            className={`px-6 py-3 text-sm text-gray-700 ${column.align === 'center' ? 'text-center' : 'text-left'}`}
+                            align={column.align === 'center' ? 'center' : 'left'}
+                          />
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">

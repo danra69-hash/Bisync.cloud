@@ -40,11 +40,6 @@ public static class StockCardArchiveStartup
 {
     public static async Task InitializeAsync(IServiceProvider services)
     {
-        var configuration = services.GetRequiredService<IConfiguration>();
-        var environment = services.GetRequiredService<IHostEnvironment>();
-        var archiveDirectory = StockCardArchivePaths.ResolveArchiveDirectory(configuration, environment);
-        Directory.CreateDirectory(archiveDirectory);
-
         var archiveDb = services.GetRequiredService<StockCardArchiveDbContext>();
         await archiveDb.Database.EnsureCreatedAsync();
     }

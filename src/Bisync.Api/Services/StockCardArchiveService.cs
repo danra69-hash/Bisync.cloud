@@ -142,7 +142,7 @@ public class StockCardArchiveService(
         await db.SaveChangesAsync(cancellationToken);
 
         var notes =
-            $"Archived to {StockCardArchivePaths.ArchiveFileName}. Cutoff {cutoff:yyyy-MM-dd}.";
+            $"Archived to PostgreSQL archive database. Cutoff {cutoff:yyyy-MM-dd}.";
         logger.LogInformation(
             "Stock card archive complete: {Movements} movements, {Purchases} purchases, {Logs} production logs, {Consolidations} consolidation movements.",
             expiredMovements.Count,

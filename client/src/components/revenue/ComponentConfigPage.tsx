@@ -1,32 +1,54 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { sortTableRows } from '../../utils/tableSort';
 import { pageShellClass } from '../layout/pageLayout';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { selectCls } from '../../data/componentForm';
+import {
+  loadStorageAssignment,
+  saveStorageAssignment,
+  STORAGE_CATALOG,
+  type MyStorageEntry,
+  type StorageCatalogRow,
+} from '../../data/storageAssignment';
 import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
 import { StorageAreaPicker } from './StorageAreaPicker';
 import { UomConfigPanel } from './UomConfigPanel';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
-type StorageRow = { id: number; name: string; type: string; capacity: string; location: string; items: number };
-
-type MyStorageEntry = {
-  id: number;
-  location: string;
-  area: string;
-  sourceStorageId: number;
-  name: string;
-  type: string;
-  items: number;
-};
-
 type MyStorageTableRow =
   | { kind: 'header'; id: string; label: string }
   | { kind: 'entry'; entry: MyStorageEntry };
 
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
+type GroupSortColumn = 'category' | 'name' | 'items' | 'actions';
+type StorageSortColumn = 'name' | 'type' | 'items';
+
+const ALL_GROUPS_COLUMNS: SortableColumnDef<GroupSortColumn>[] = [
+  { key: 'category', label: 'Category' },
+  { key: 'name', label: 'Group Name' },
+  { key: 'actions', label: 'Actions', sortable: false },
+];
+
+const MY_GROUPS_COLUMNS: SortableColumnDef<GroupSortColumn>[] = [
+  { key: 'category', label: 'Category' },
+  { key: 'name', label: 'Group Name' },
+  { key: 'items', label: 'Components', align: 'right' },
+];
+
+const ALL_STORAGE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
+  { key: 'name', label: 'Storage Name' },
+  { key: 'type', label: 'Type' },
+];
+
+const MY_STORAGE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
+  { key: 'name', label: 'Storage Name' },
+  { key: 'type', label: 'Type' },
+  { key: 'items', label: 'No. of stored Components', align: 'right' },
+];
 
 const CONFIG_TABS = [
   { id: 'group' as const, label: 'Group Assignment' },
@@ -36,8 +58,6 @@ const CONFIG_TABS = [
 
 const STORAGE_LOCATIONS = ['Downtown', 'Midtown', 'Westend'] as const;
 
-const DEFAULT_AREAS = ['Dining Room', 'Bar', 'Kitchen', 'Prep Kitchen', 'Hot Kitchen'];
-
 const initialGroups: GroupRow[] = [
   { id: 1, name: 'Proteins', category: 'Food', items: 12 },
   { id: 2, name: 'Dairy', category: 'Food', items: 8 },
@@ -46,22 +66,13 @@ const initialGroups: GroupRow[] = [
   { id: 5, name: 'Dry Goods', category: 'Food', items: 18 },
 ];
 
-const initialStorage: StorageRow[] = [
-  { id: 1, name: 'Walk-in Freezer', type: 'Freezer', capacity: '120 m³', location: 'Downtown', items: 18 },
-  { id: 2, name: 'Main Chiller', type: 'Chiller', capacity: '80 m³', location: 'Downtown', items: 32 },
-  { id: 3, name: 'Wine Cellar', type: 'Wine Cellar', capacity: '45 m³', location: 'Downtown', items: 14 },
-  { id: 4, name: 'Dry Store', type: 'Dry Store', capacity: '60 m³', location: 'All Locations', items: 41 },
-  { id: 5, name: 'Bar Cooler', type: 'Chiller', capacity: '12 m³', location: 'Midtown', items: 9 },
-  { id: 6, name: 'Prep Kitchen Store', type: 'Prep Kitchen', capacity: '25 m³', location: 'Midtown', items: 22 },
-  { id: 7, name: 'Westend Freezer', type: 'Freezer', capacity: '90 m³', location: 'Westend', items: 11 },
-  { id: 8, name: 'Westend Chiller', type: 'Chiller', capacity: '55 m³', location: 'Westend', items: 16 },
-];
+const initialStorage: StorageCatalogRow[] = STORAGE_CATALOG;
 
-function storageMatchesLocation(row: StorageRow, location: string) {
+function storageMatchesLocation(row: StorageCatalogRow, location: string) {
   return row.location === location || row.location === 'All Locations';
 }
 
-export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
+export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: { selectedCompanyId: number | null }) {
   const [tab, setTab] = useState<'group' | 'storage' | 'uom'>('group');
 
   const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Group Assignment';
@@ -70,10 +81,10 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
   const [storage] = useState(initialStorage);
   const [myGroupIds, setMyGroupIds] = useState<number[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>(STORAGE_LOCATIONS[0]);
-  const [areas, setAreas] = useState<string[]>(DEFAULT_AREAS);
-  const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>([]);
-  const [nextEntryId, setNextEntryId] = useState(1);
-  const [pendingStorage, setPendingStorage] = useState<StorageRow | null>(null);
+  const [areas, setAreas] = useState<string[]>(() => loadStorageAssignment().areas);
+  const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>(() => loadStorageAssignment().entries);
+  const [nextEntryId, setNextEntryId] = useState(() => loadStorageAssignment().nextEntryId);
+  const [pendingStorage, setPendingStorage] = useState<StorageCatalogRow | null>(null);
   const [editingGroup, setEditingGroup] = useState<GroupRow | null>(null);
   const [isNewGroup, setIsNewGroup] = useState(false);
 
@@ -92,22 +103,95 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
 
   const hasMyStorage = myStorageByArea.length > 0;
 
-  const myStorageTableRows = useMemo((): MyStorageTableRow[] => {
-    return myStorageByArea.flatMap(section => [
-      { kind: 'header' as const, id: `hdr-${section.area}`, label: section.area },
-      ...section.entries.map(entry => ({ kind: 'entry' as const, entry })),
-    ]);
-  }, [myStorageByArea]);
-
   const groupsScrollRef = useRef<HTMLDivElement>(null);
   const myGroupsScrollRef = useRef<HTMLDivElement>(null);
   const locationStorageScrollRef = useRef<HTMLDivElement>(null);
   const myStorageScrollRef = useRef<HTMLDivElement>(null);
 
-  const groupsScroll = useInfiniteScrollSlice(groups, { scrollRootRef: groupsScrollRef });
-  const myGroupsScroll = useInfiniteScrollSlice(myGroups, { scrollRootRef: myGroupsScrollRef });
-  const locationStorageScroll = useInfiniteScrollSlice(locationStorage, { scrollRootRef: locationStorageScrollRef });
-  const myStorageScroll = useInfiniteScrollSlice(myStorageTableRows, { scrollRootRef: myStorageScrollRef });
+  const {
+    sortColumn: groupsSortColumn,
+    sortDirection: groupsSortDirection,
+    toggleSort: toggleGroupsSort,
+    resetSort: resetGroupsSort,
+  } = useTableSort<GroupSortColumn>();
+  const {
+    sortColumn: myGroupsSortColumn,
+    sortDirection: myGroupsSortDirection,
+    toggleSort: toggleMyGroupsSort,
+    resetSort: resetMyGroupsSort,
+  } = useTableSort<GroupSortColumn>();
+  const {
+    sortColumn: locationStorageSortColumn,
+    sortDirection: locationStorageSortDirection,
+    toggleSort: toggleLocationStorageSort,
+    resetSort: resetLocationStorageSort,
+  } = useTableSort<StorageSortColumn>();
+  const {
+    sortColumn: myStorageSortColumn,
+    sortDirection: myStorageSortDirection,
+    toggleSort: toggleMyStorageSort,
+    resetSort: resetMyStorageSort,
+  } = useTableSort<StorageSortColumn>();
+
+  useEffect(() => {
+    resetGroupsSort();
+    resetMyGroupsSort();
+  }, [tab, resetGroupsSort, resetMyGroupsSort]);
+
+  useEffect(() => {
+    resetLocationStorageSort();
+    resetMyStorageSort();
+  }, [tab, selectedLocation, myGroupIds, myStorageEntries, resetLocationStorageSort, resetMyStorageSort]);
+
+  const sortedGroups = useMemo(
+    () =>
+      sortTableRows(groups, groupsSortColumn, groupsSortDirection, {
+        category: row => row.category,
+        name: row => row.name,
+        items: row => row.items,
+      }),
+    [groups, groupsSortColumn, groupsSortDirection],
+  );
+  const sortedMyGroups = useMemo(
+    () =>
+      sortTableRows(myGroups, myGroupsSortColumn, myGroupsSortDirection, {
+        category: row => row.category,
+        name: row => row.name,
+        items: row => row.items,
+      }),
+    [myGroups, myGroupsSortColumn, myGroupsSortDirection],
+  );
+  const sortedLocationStorage = useMemo(
+    () =>
+      sortTableRows(locationStorage, locationStorageSortColumn, locationStorageSortDirection, {
+        name: row => row.name,
+        type: row => row.type,
+      }),
+    [locationStorage, locationStorageSortColumn, locationStorageSortDirection],
+  );
+  const sortedMyStorageTableRows = useMemo((): MyStorageTableRow[] => {
+    return myStorageByArea.flatMap(section => {
+      const sortedEntries = sortTableRows(
+        section.entries,
+        myStorageSortColumn,
+        myStorageSortDirection,
+        {
+          name: row => row.name,
+          type: row => row.type,
+          items: row => row.items,
+        },
+      );
+      return [
+        { kind: 'header' as const, id: `hdr-${section.area}`, label: section.area },
+        ...sortedEntries.map(entry => ({ kind: 'entry' as const, entry })),
+      ];
+    });
+  }, [myStorageByArea, myStorageSortColumn, myStorageSortDirection]);
+
+  const groupsScroll = useInfiniteScrollSlice(sortedGroups, { scrollRootRef: groupsScrollRef });
+  const myGroupsScroll = useInfiniteScrollSlice(sortedMyGroups, { scrollRootRef: myGroupsScrollRef });
+  const locationStorageScroll = useInfiniteScrollSlice(sortedLocationStorage, { scrollRootRef: locationStorageScrollRef });
+  const myStorageScroll = useInfiniteScrollSlice(sortedMyStorageTableRows, { scrollRootRef: myStorageScrollRef });
 
   function openNewGroup() {
     const nextId = groups.reduce((max, g) => Math.max(max, g.id), 0) + 1;
@@ -145,7 +229,7 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
     setMyGroupIds(prev => prev.filter(x => x !== id));
   }
 
-  function openStorageAreaPicker(source: StorageRow) {
+  function openStorageAreaPicker(source: StorageCatalogRow) {
     setPendingStorage(source);
   }
 
@@ -156,7 +240,11 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
   function addArea(name: string) {
     const trimmed = name.trim();
     if (!trimmed || areas.some(a => a.toLowerCase() === trimmed.toLowerCase())) return;
-    setAreas(prev => [...prev, trimmed]);
+    setAreas(prev => {
+      const next = [...prev, trimmed];
+      saveStorageAssignment({ areas: next, entries: myStorageEntries, nextEntryId });
+      return next;
+    });
   }
 
   function confirmAddToMyStorage(area: string) {
@@ -170,19 +258,26 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
       type: pendingStorage.type,
       items: pendingStorage.items,
     };
-    setNextEntryId(id => id + 1);
-    setMyStorageEntries(prev => [...prev, entry]);
+    const nextId = nextEntryId + 1;
+    setNextEntryId(nextId);
+    setMyStorageEntries(prev => {
+      const next = [...prev, entry];
+      saveStorageAssignment({ areas, entries: next, nextEntryId: nextId });
+      return next;
+    });
     setPendingStorage(null);
   }
 
   function removeMyStorageEntry(entryId: number) {
-    setMyStorageEntries(prev => prev.filter(e => e.id !== entryId));
+    setMyStorageEntries(prev => {
+      const next = prev.filter(e => e.id !== entryId);
+      saveStorageAssignment({ areas, entries: next, nextEntryId });
+      return next;
+    });
   }
 
   return (
     <div className={pageShellClass()}>
-      {selectedCompanyId && (
-      <>
       <div className="flex gap-1 border-b border-border">
         {CONFIG_TABS.map(t => (
           <button
@@ -218,11 +313,13 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
               <TableScrollContainer ref={groupsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    {['Category', 'Group Name', 'Actions'].map(h => (
-                      <th key={h} className={thCls}>{h}</th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={ALL_GROUPS_COLUMNS}
+                    sortColumn={groupsSortColumn}
+                    sortDirection={groupsSortDirection}
+                    onSort={toggleGroupsSort}
+                    className="border-b border-border bg-muted/40"
+                  />
                 </thead>
                 <tbody>
                   {groupsScroll.visibleItems.map(g => {
@@ -279,11 +376,13 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
               <TableScrollContainer ref={myGroupsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    {['Category', 'Group Name', 'Components'].map(h => (
-                      <th key={h} className={thCls}>{h}</th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={MY_GROUPS_COLUMNS}
+                    sortColumn={myGroupsSortColumn}
+                    sortDirection={myGroupsSortDirection}
+                    onSort={toggleMyGroupsSort}
+                    className="border-b border-border bg-muted/40"
+                  />
                 </thead>
                 <tbody>
                   {myGroupsScroll.visibleItems.map(g => (
@@ -350,11 +449,13 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
               <TableScrollContainer ref={locationStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    {['Storage Name', 'Type'].map(h => (
-                      <th key={h} className={thCls}>{h}</th>
-                    ))}
-                  </tr>
+                  <SortableTableHeaderRow
+                    columns={ALL_STORAGE_COLUMNS}
+                    sortColumn={locationStorageSortColumn}
+                    sortDirection={locationStorageSortDirection}
+                    onSort={toggleLocationStorageSort}
+                    className="border-b border-border bg-muted/40"
+                  />
                 </thead>
                 <tbody>
                   {locationStorageScroll.visibleItems.map(s => (
@@ -403,11 +504,13 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
                 <TableScrollContainer ref={myStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                   <table className="w-full table-fixed text-xs">
                     <thead>
-                      <tr className="border-b border-border bg-muted/40">
-                        {['Storage Name', 'Type', 'No. of stored Components'].map(h => (
-                          <th key={h} className={thCls}>{h}</th>
-                        ))}
-                      </tr>
+                      <SortableTableHeaderRow
+                        columns={MY_STORAGE_COLUMNS}
+                        sortColumn={myStorageSortColumn}
+                        sortDirection={myStorageSortDirection}
+                        onSort={toggleMyStorageSort}
+                        className="border-b border-border bg-muted/40"
+                      />
                     </thead>
                     <tbody>
                       {myStorageScroll.visibleItems.map(row => {
@@ -468,8 +571,6 @@ export function ComponentConfigPage({ selectedCompanyId }: { selectedCompanyId: 
           onConfirm={confirmAddToMyStorage}
           onAddArea={addArea}
         />
-      )}
-      </>
       )}
     </div>
   );

@@ -6,12 +6,30 @@ import {
   serializeDetailConfig,
   type ComponentRow,
 } from '../../data/componentForm';
+import { parseComponentStorageJson } from '../../data/storageAssignment';
+
+function parseLocationsJson(json: string | null | undefined): string[] {
+  if (!json?.trim()) return ['all'];
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (Array.isArray(parsed)) {
+      const values = parsed.map(value => String(value).trim()).filter(Boolean);
+      return values.length > 0 ? values : ['all'];
+    }
+    if (typeof parsed === 'string') {
+      const value = parsed.trim();
+      return value ? [value] : ['all'];
+    }
+  } catch {
+    const trimmed = json.trim();
+    if (trimmed) return [trimmed];
+  }
+  return ['all'];
+}
 
 export function ingredientToRow(i: Ingredient): ComponentRow {
-  let storage: string[] = [];
-  try { storage = JSON.parse(i.storageJson); } catch { storage = []; }
-  let locations: string[] = [];
-  try { locations = JSON.parse(i.locationsJson); } catch { locations = ['all']; }
+  const storage = parseComponentStorageJson(i.storageJson);
+  const locations = parseLocationsJson(i.locationsJson);
   const detailConfigJson = readDetailConfigJsonFromIngredient(i);
   return {
     id: i.id,

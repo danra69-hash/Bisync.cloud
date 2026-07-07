@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Check, ChevronDown, Plus, X } from 'lucide-react';
 import { api, type AppUser, type AvailableEmployee, type Company, type LocationConfig, type UserUpsert } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
@@ -22,6 +25,21 @@ import {
 } from '../../data/userAccess';
 import { ToggleSwitch } from './ToggleSwitch';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS, NESTED_PANEL_OVERLAY_CLS, NESTED_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
+
+type UserSortColumn = 'employeeId' | 'name' | 'company' | 'locations' | 'email' | 'role' | 'access' | 'status';
+
+const thCls = 'px-4 py-2.5 font-sans font-normal';
+
+const USER_TABLE_COLUMNS: SortableColumnDef<UserSortColumn>[] = [
+  { key: 'employeeId', label: 'Employee ID', className: thCls },
+  { key: 'name', label: 'Name', className: thCls },
+  { key: 'company', label: 'Company', className: thCls },
+  { key: 'locations', label: 'Locations', className: thCls },
+  { key: 'email', label: 'Email', className: thCls },
+  { key: 'role', label: 'Role', className: thCls },
+  { key: 'access', label: 'Access', className: thCls },
+  { key: 'status', label: 'Status', className: thCls },
+];
 
 const blankUser = (): UserUpsert => ({
   employeeId: null,
@@ -541,6 +559,31 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
 
   useEffect(() => { load(); }, []);
 
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<UserSortColumn>();
+
+  useEffect(() => { resetSort(); }, [users, resetSort]);
+
+  const sortedUsers = useMemo(
+    () =>
+      sortTableRows(
+        users,
+        sortColumn,
+        sortDirection,
+        {
+          employeeId: u => u.employeeCode || '',
+          name: u => u.fullName,
+          company: u => u.companyName || '',
+          locations: u => (u.locationNames ?? []).join(', '),
+          email: u => u.email,
+          role: u => u.role || '',
+          access: u => accessBadges(u.accessJson).join(', '),
+          status: u => u.active,
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.fullName, b.fullName) },
+      ),
+    [users, sortColumn, sortDirection],
+  );
+
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedUsers,
@@ -548,7 +591,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
     sentinelRef,
     totalCount,
     visibleCount,
-  } = useInfiniteScrollSlice(users, { scrollRootRef });
+  } = useInfiniteScrollSlice(sortedUsers, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -572,11 +615,13 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">
             <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {['Employee ID', 'Name', 'Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
-                ))}
-              </tr>
+              <SortableTableHeaderRow
+                columns={USER_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+                className="border-b border-border bg-muted/30"
+              />
             </thead>
             <tbody>
               {pagedUsers.map(u => (
