@@ -624,7 +624,7 @@ INSERT INTO AppUsers VALUES(31,'Nur Izzati Kamal','nur.izzati@bisync.cloud','Kit
 INSERT INTO AppUsers VALUES(32,'Tan Boon Kiat','boon.kiat@bisync.cloud','Grill Cook','+60 12-602 2007',1,1,'[2,3]','{"modules":[]}',33,NULL);
 INSERT INTO AppUsers VALUES(33,'Ravi Chandran','ravi.chandran@bisync.cloud','Kitchen Steward','+60 12-602 2008',1,1,'[1]','{"modules":[]}',34,NULL);
 INSERT INTO AppUsers VALUES(34,'Test Persist User','test.persist@bisync.cloud','Operations Coordinator','+60 12-999 8877',0,1,'[]','{"modules":[]}',36,NULL);
-INSERT INTO AppUsers VALUES(35,'DRA Super Admin','dra@cubevalue.com','Super Admin','+60 3-0000 0000',1,1,'[3,7,8,1,2,5,6,4]','{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}',NULL,'v1:Uv8YqJ4BRdS1ZltT4HheGA==:wKcF2yPIyVL46PP5T+I6GkOiwViUOk2hapeWb5z9E1s=');
+INSERT INTO AppUsers VALUES(35,'DRA Super Admin','dra@cubevalue.com','Super Admin','+60 3-0000 0000',1,1,'[3,7,8,1,2,5,6,4]','{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}',NULL,'v1:S3eB44WIR1dEsNoQfnFFtg==:3mUtoRyqTIJNH3G8RJm6FVoxKxN7kh9Ru1ofpB6bqbc=');
 CREATE TABLE IF NOT EXISTS "EmployeeLevels" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_EmployeeLevels" PRIMARY KEY AUTOINCREMENT,
@@ -2438,6 +2438,10 @@ CREATE TABLE IF NOT EXISTS "InventoryCountSessions" (
     "UpdatedAt" TEXT NOT NULL
 
 , "EffectiveDate" TEXT NOT NULL DEFAULT '', "AdjustmentsAppliedAt" TEXT NULL);
+INSERT INTO InventoryCountSessions VALUES(1,'spot','saved',1,'["downtown"]','2026-06','inventory','component','All','2026-06-18','2026-06-25 02:27:10.9125887','Sarah Chen',NULL,NULL,'',0,'2026-06-25 02:27:10.9125887','2026-06-25 02:27:10.9125887','',NULL);
+INSERT INTO InventoryCountSessions VALUES(2,'spot','saved',1,'["downtown"]','2026-05','inventory','component','All','2026-05-22','2026-05-26 02:27:10.9125887','James Dubois',NULL,NULL,'',0,'2026-05-26 02:27:10.9125887','2026-05-26 02:27:10.9125887','',NULL);
+INSERT INTO InventoryCountSessions VALUES(3,'full','pending_confirmation',1,'["downtown"]','2026-06','inventory','component','All','2026-06-30','2026-07-05 02:27:10.9125887','Melissa Tan','2026-07-09 02:27:10.9125887',NULL,'',0,'2026-07-05 02:27:10.9125887','2026-07-05 02:27:10.9125887','',NULL);
+INSERT INTO InventoryCountSessions VALUES(4,'full','confirmed',1,'["downtown"]','2026-05','inventory','component','All','2026-05-31','2026-06-02 02:27:10.9125887','Sarah Chen',NULL,'2026-06-04 02:27:10.9125887','Sarah Chen',0,'2026-06-02 02:27:10.9125887','2026-06-02 02:27:10.9125887','2026-06-03','2026-06-04 02:27:10.9125887');
 CREATE TABLE IF NOT EXISTS "InventoryCountSessionLines" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryCountSessionLines" PRIMARY KEY AUTOINCREMENT,
@@ -2458,13 +2462,25 @@ CREATE TABLE IF NOT EXISTS "InventoryCountSessionLines" (
 
     "CountedQty" REAL NULL,
 
-    "VarianceQty" REAL NULL,
+    "VarianceQty" REAL NULL, "SystemUnitPrice" REAL NULL,
 
     CONSTRAINT "FK_InventoryCountSessionLines_InventoryCountSessions_SessionId"
 
         FOREIGN KEY ("SessionId") REFERENCES "InventoryCountSessions" ("Id") ON DELETE CASCADE
 
 );
+INSERT INTO InventoryCountSessionLines VALUES(1,1,'component','CMP-WAGYUB-001','Wagyu Beef A5','Proteins','kg',12.4,12.1,-0.3,42.0);
+INSERT INTO InventoryCountSessionLines VALUES(2,1,'component','CMP-BURRAT-001','Burrata','Dairy','pcs',26.0,24.0,-2.0,52.5);
+INSERT INTO InventoryCountSessionLines VALUES(3,1,'component','CMP-FRESHO-001','Fresh Orange Juice','Beverages','l',18.5,18.5,0.0,8.0);
+INSERT INTO InventoryCountSessionLines VALUES(4,2,'component','CMP-WAGYUB-001','Wagyu Beef A5','Proteins','kg',11.8,11.5,-0.3,42.0);
+INSERT INTO InventoryCountSessionLines VALUES(5,2,'component','CMP-BURRAT-001','Burrata','Dairy','pcs',22.0,20.0,-2.0,52.5);
+INSERT INTO InventoryCountSessionLines VALUES(6,3,'component','CMP-WAGYUB-001','Wagyu Beef A5','Proteins','kg',12.4,11.9,-0.5,42.0);
+INSERT INTO InventoryCountSessionLines VALUES(7,3,'component','CMP-BURRAT-001','Burrata','Dairy','pcs',26.0,25.0,-1.0,52.5);
+INSERT INTO InventoryCountSessionLines VALUES(8,3,'component','CMP-FRESHO-001','Fresh Orange Juice','Beverages','l',18.5,17.2,-1.3,8.0);
+INSERT INTO InventoryCountSessionLines VALUES(9,3,'component','CMP-BLACKT-001','Black Truffle','Produce','g',0.45,0.42,-0.03,180.0);
+INSERT INTO InventoryCountSessionLines VALUES(10,4,'component','CMP-WAGYUB-001','Wagyu Beef A5','Proteins','kg',11.2,11.0,-0.2,42.0);
+INSERT INTO InventoryCountSessionLines VALUES(11,4,'component','CMP-BURRAT-001','Burrata','Dairy','pcs',20.0,19.0,-1.0,52.5);
+INSERT INTO InventoryCountSessionLines VALUES(12,4,'component','CMP-FRESHO-001','Fresh Orange Juice','Beverages','l',16.0,15.5,-0.5,8.0);
 PRAGMA writable_schema=ON;
 CREATE TABLE IF NOT EXISTS sqlite_sequence(name,seq);
 DELETE FROM sqlite_sequence;
@@ -2502,6 +2518,8 @@ INSERT INTO sqlite_sequence VALUES('ProductComponentItems',28);
 INSERT INTO sqlite_sequence VALUES('ProductB2bLocationStocks',40);
 INSERT INTO sqlite_sequence VALUES('ProductProductionLogs',42);
 INSERT INTO sqlite_sequence VALUES('InventoryMovements',226);
+INSERT INTO sqlite_sequence VALUES('InventoryCountSessions',4);
+INSERT INTO sqlite_sequence VALUES('InventoryCountSessionLines',12);
 CREATE UNIQUE INDEX "IX_Locations_ExternalId" ON "Locations" ("ExternalId");
 CREATE INDEX "IX_PurchaseOrderItems_PurchaseOrderId" ON "PurchaseOrderItems" ("PurchaseOrderId");
 CREATE UNIQUE INDEX "IX_PurchaseOrders_PoNumber" ON "PurchaseOrders" ("PoNumber");
