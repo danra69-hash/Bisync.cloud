@@ -624,7 +624,7 @@ INSERT INTO AppUsers VALUES(31,'Nur Izzati Kamal','nur.izzati@bisync.cloud','Kit
 INSERT INTO AppUsers VALUES(32,'Tan Boon Kiat','boon.kiat@bisync.cloud','Grill Cook','+60 12-602 2007',1,1,'[2,3]','{"modules":[]}',33,NULL);
 INSERT INTO AppUsers VALUES(33,'Ravi Chandran','ravi.chandran@bisync.cloud','Kitchen Steward','+60 12-602 2008',1,1,'[1]','{"modules":[]}',34,NULL);
 INSERT INTO AppUsers VALUES(34,'Test Persist User','test.persist@bisync.cloud','Operations Coordinator','+60 12-999 8877',0,1,'[]','{"modules":[]}',36,NULL);
-INSERT INTO AppUsers VALUES(35,'DRA Super Admin','dra@cubevalue.com','Super Admin','+60 3-0000 0000',1,1,'[3,7,8,1,2,5,6,4]','{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}',NULL,'v1:g32EwuAjrXqiLLr+kYDs8A==:p+4/mH2hsRJ1dIdOY4fJu5YP8b0RkWLwNIYLa8sj4aw=');
+INSERT INTO AppUsers VALUES(35,'DRA Super Admin','dra@cubevalue.com','Super Admin','+60 3-0000 0000',1,1,'[3,7,8,1,2,5,6,4]','{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}',NULL,'v1:Uv8YqJ4BRdS1ZltT4HheGA==:wKcF2yPIyVL46PP5T+I6GkOiwViUOk2hapeWb5z9E1s=');
 CREATE TABLE IF NOT EXISTS "EmployeeLevels" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_EmployeeLevels" PRIMARY KEY AUTOINCREMENT,
@@ -2437,7 +2437,7 @@ CREATE TABLE IF NOT EXISTS "InventoryCountSessions" (
 
     "UpdatedAt" TEXT NOT NULL
 
-);
+, "EffectiveDate" TEXT NOT NULL DEFAULT '', "AdjustmentsAppliedAt" TEXT NULL);
 CREATE TABLE IF NOT EXISTS "InventoryCountSessionLines" (
 
     "Id" INTEGER NOT NULL CONSTRAINT "PK_InventoryCountSessionLines" PRIMARY KEY AUTOINCREMENT,
