@@ -215,5 +215,7 @@ export function normalizeImportDraft(
     altRecipeUnits: normalizeAltUnits(draft.altRecipeUnits),
     altInventoryUnits: normalizeAltUnits(draft.altInventoryUnits),
     storage: draft.storage.map(resolveStorageName).filter(Boolean),
+    convertFromInventoryQty: draft.convertFromInventoryQty || '1',
+    convertToRecipeQty: draft.convertToRecipeQty || '1',
   };
 }

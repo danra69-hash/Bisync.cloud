@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { FileUp, X } from 'lucide-react';
 import type { SmartComponentImportDraft } from '../../data/smartComponentCatalog';
+import { prepareImportDraftForSave } from '../../data/smartComponentCatalog';
+import { componentParStockUomOptions } from '../../data/componentParStock';
 import { inputCls } from '../layout/formControls';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import {
@@ -35,6 +37,9 @@ function patchCreate(
     altRecipeConversion1?: string;
     altInventoryUnit1?: string;
     altInventoryConversion1?: string;
+    principalInventoryConversion?: string;
+    templateParStock?: number;
+    parStockUom?: string;
     storageText?: string;
   },
 ): EditableImportCreate {
@@ -60,6 +65,26 @@ function patchCreate(
     next.storage = patch.storageText.split(/[;|]/).map(value => value.trim()).filter(Boolean);
   }
 
+  if (patch.principalInventoryConversion !== undefined) {
+    const conv = patch.principalInventoryConversion.trim();
+    if (!conv) {
+      next.convertFromInventoryQty = '1';
+      next.convertToRecipeQty = '1';
+    } else if (conv.includes('=')) {
+      const [left, right] = conv.split('=').map(part => part.trim());
+      next.convertFromInventoryQty = left || '1';
+      next.convertToRecipeQty = right || '1';
+    } else {
+      next.convertFromInventoryQty = '1';
+      next.convertToRecipeQty = conv;
+    }
+  }
+
+  if (patch.templateParStock !== undefined || patch.parStockUom !== undefined) {
+    next.templateParStock = patch.templateParStock ?? row.templateParStock;
+    next.parStockUom = patch.parStockUom ?? row.parStockUom;
+  }
+
   return next;
 }
 
@@ -82,7 +107,7 @@ export function SmartComponentImportNewComponentsPanel({
     if (!confirmed) return;
     setSaving(true);
     try {
-      await onConfirm(rows.map(({ clientKey: _clientKey, ...draft }) => draft));
+      await onConfirm(rows.map(({ clientKey: _clientKey, ...draft }) => prepareImportDraftForSave(draft)));
     } finally {
       setSaving(false);
     }
@@ -118,12 +143,15 @@ export function SmartComponentImportNewComponentsPanel({
                     <TableHeaderCell>Category</TableHeaderCell>
                     <TableHeaderCell>Group</TableHeaderCell>
                     <TableHeaderCell>Name</TableHeaderCell>
-                    <TableHeaderCell>Principal UOM</TableHeaderCell>
-                    <TableHeaderCell>Alt Component 1</TableHeaderCell>
+                    <TableHeaderCell>Principal Component</TableHeaderCell>
+                    <TableHeaderCell>Unit Alternate Component Unit 1</TableHeaderCell>
                     <TableHeaderCell>Conversion 1</TableHeaderCell>
-                    <TableHeaderCell>Inventory UOM</TableHeaderCell>
+                    <TableHeaderCell>Principal Inventory Unit</TableHeaderCell>
+                    <TableHeaderCell>Principal inventory Conversion</TableHeaderCell>
                     <TableHeaderCell>Alt Inventory 1</TableHeaderCell>
                     <TableHeaderCell>Inv Conversion 1</TableHeaderCell>
+                    <TableHeaderCell>Par Stock</TableHeaderCell>
+                    <TableHeaderCell>Par Stock UOM</TableHeaderCell>
                     <TableHeaderCell>Area</TableHeaderCell>
                     <TableHeaderCell>Storage</TableHeaderCell>
                   </tr>
@@ -200,6 +228,13 @@ export function SmartComponentImportNewComponentsPanel({
                       <td className="px-2 py-2">
                         <input
                           className={`${inputCls} !text-xs !min-h-7`}
+                          value={row.convertToRecipeQty === '1' ? '' : (row.convertFromInventoryQty === '1' ? row.convertToRecipeQty : `${row.convertFromInventoryQty} = ${row.convertToRecipeQty}`)}
+                          onChange={e => updateRow(row.clientKey, { principalInventoryConversion: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          className={`${inputCls} !text-xs !min-h-7`}
                           value={row.altInventoryUnits[0]?.unit ?? ''}
                           onChange={e => updateRow(row.clientKey, { altInventoryUnit1: e.target.value })}
                         />
@@ -210,6 +245,32 @@ export function SmartComponentImportNewComponentsPanel({
                           value={row.altInventoryUnits[0]?.qty ?? ''}
                           onChange={e => updateRow(row.clientKey, { altInventoryConversion1: e.target.value })}
                         />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          className={`${inputCls} !text-xs !min-h-7`}
+                          value={row.templateParStock !== undefined ? String(row.templateParStock) : ''}
+                          onChange={e => updateRow(row.clientKey, {
+                            templateParStock: parseFloat(e.target.value) || 0,
+                          })}
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          className={`${inputCls} !text-xs !min-h-7`}
+                          value={row.parStockUom ?? ''}
+                          onChange={e => updateRow(row.clientKey, { parStockUom: e.target.value })}
+                        >
+                          <option value="">—</option>
+                          {componentParStockUomOptions({
+                            recipeUom: row.recipeUom,
+                            inventoryUom: row.inventoryUom,
+                            altRecipeUnits: row.altRecipeUnits,
+                            altInventoryUnits: row.altInventoryUnits,
+                          }, row.parStockUom).map(unit => (
+                            <option key={unit} value={unit}>{unit}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-2 py-2">
                         <input

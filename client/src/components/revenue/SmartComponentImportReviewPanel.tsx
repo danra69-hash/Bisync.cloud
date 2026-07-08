@@ -9,6 +9,7 @@ import {
 import {
   applyMergeResolutions,
   draftToComponentRow,
+  prepareImportDraftForSave,
   type SmartComponentImportDraft,
   type SmartComponentImportPlan,
   type SmartComponentLocationScope,
@@ -135,7 +136,7 @@ export function SmartComponentImportReviewPanel({
 
       for (const update of planToApply.updates) {
         if (!update.existing.id) continue;
-        const draft = normalizeImportDraft(update.draft, existingRows);
+        const draft = prepareImportDraftForSave(normalizeImportDraft(update.draft, existingRows));
         const row = draftToComponentRow(draft, existingIds, update.existing);
         const saved = await api.updateIngredient(update.existing.id, rowToIngredient(row));
         const merged = mergeSavedRow(saved, row);
@@ -146,7 +147,7 @@ export function SmartComponentImportReviewPanel({
       }
 
       for (const create of planToApply.creates) {
-        const draft = normalizeImportDraft(create, existingRows);
+        const draft = prepareImportDraftForSave(normalizeImportDraft(create, existingRows));
         const row = draftToComponentRow(draft, existingIds);
         existingIds.push(row.componentId);
         const saved = await api.createIngredient(rowToIngredient(row));

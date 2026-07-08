@@ -1,4 +1,4 @@
-import { fromApiUom, getConversion, resolveDetailConfigForRow, type ComponentRow } from './componentForm';
+import { fromApiUom, getConversion, resolveDetailConfigForRow, type AltUnitEntry, type ComponentRow } from './componentForm';
 
 export type ParStockUomBasis = 'recipe' | 'inventory';
 
@@ -136,4 +136,172 @@ export function formatParStock(value: number, uom: string): string {
   if (value <= 0) return '—';
   const decimals = value < 1 ? 4 : value < 10 ? 2 : 1;
   return `${value.toFixed(decimals)} ${uom}`;
+}
+
+export type ComponentUomSource = {
+  recipeUom: string;
+  inventoryUom: string;
+  altRecipeUnits: AltUnitEntry[];
+  altInventoryUnits: AltUnitEntry[];
+};
+
+function normalizeComponentUom(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return fromApiUom(trimmed) || trimmed;
+}
+
+export function collectComponentUoms(source: ComponentUomSource): string[] {
+  const values = [
+    source.recipeUom,
+    source.inventoryUom,
+    ...source.altRecipeUnits.map(alt => alt.unit),
+    ...source.altInventoryUnits.map(alt => alt.unit),
+  ]
+    .map(normalizeComponentUom)
+    .filter(Boolean);
+  return [...new Set(values)];
+}
+
+export function componentParStockUomOptions(
+  source: ComponentUomSource,
+  currentUom = '',
+): string[] {
+  const values = [...collectComponentUoms(source), currentUom]
+    .map(normalizeComponentUom)
+    .filter(Boolean);
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+export function isValidComponentParStockUom(
+  uom: string,
+  source: ComponentUomSource,
+): boolean {
+  const normalized = normalizeComponentUom(uom);
+  if (!normalized) return false;
+  const allowed = collectComponentUoms(source);
+  return allowed.some(unit => unit.toLowerCase() === normalized.toLowerCase());
+}
+
+export function convertComponentQtyBetweenUoms(
+  qty: number,
+  fromUom: string,
+  toUom: string,
+  options: ComponentUomSource & {
+    convertFromInventoryQty?: string;
+    convertToRecipeQty?: string;
+  },
+): number | null {
+  if (!Number.isFinite(qty)) return null;
+
+  const from = normalizeComponentUom(fromUom);
+  const to = normalizeComponentUom(toUom);
+  if (!from || !to) return null;
+  if (from.toLowerCase() === to.toLowerCase()) return qty;
+
+  const recipeUom = normalizeComponentUom(options.recipeUom);
+  const inventoryUom = normalizeComponentUom(options.inventoryUom);
+  const {
+    convertFromInventoryQty = '1',
+    convertToRecipeQty = '1',
+  } = options;
+
+  const toRecipeBasis = (value: number, unit: string): number | null => {
+    const normalized = normalizeComponentUom(unit);
+    if (normalized.toLowerCase() === recipeUom.toLowerCase()) return value;
+    if (normalized.toLowerCase() === inventoryUom.toLowerCase()) {
+      return convertQtyBetweenPrincipalUoms(
+        value,
+        'inventory',
+        'recipe',
+        recipeUom,
+        inventoryUom,
+        convertFromInventoryQty,
+        convertToRecipeQty,
+      );
+    }
+    const conv = getConversion(normalized, recipeUom);
+    return conv !== null ? value * conv : null;
+  };
+
+  const fromRecipe = toRecipeBasis(qty, from);
+  if (fromRecipe === null) return null;
+  if (to.toLowerCase() === recipeUom.toLowerCase()) return fromRecipe;
+  if (to.toLowerCase() === inventoryUom.toLowerCase()) {
+    return convertQtyBetweenPrincipalUoms(
+      fromRecipe,
+      'recipe',
+      'inventory',
+      recipeUom,
+      inventoryUom,
+      convertFromInventoryQty,
+      convertToRecipeQty,
+    );
+  }
+  const conv = getConversion(recipeUom, to);
+  return conv !== null ? fromRecipe * conv : null;
+}
+
+export function deriveDailyUsageFromParStock(
+  parStock: number,
+  parStockUom: string,
+  orderFreqDays: number,
+  options: ComponentUomSource & {
+    convertFromInventoryQty?: string;
+    convertToRecipeQty?: string;
+  },
+): number | null {
+  if (parStock <= 0 || orderFreqDays <= 0) return null;
+  const recipeUom = normalizeComponentUom(options.recipeUom);
+  const recipeParStock = convertComponentQtyBetweenUoms(
+    parStock,
+    parStockUom,
+    recipeUom,
+    options,
+  );
+  if (recipeParStock === null || recipeParStock <= 0) return null;
+  return recipeParStock / orderFreqDays;
+}
+
+export function exportComponentParStockFields(
+  row: ComponentRow,
+  preferredUom?: string,
+): { parStock: string; parStockUom: string } {
+  const detail = resolveDetailConfigForRow(row);
+  const recipeUom = fromApiUom(row.recipeUOM);
+  const inventoryUom = fromApiUom(row.inventoryUOM);
+  const source: ComponentUomSource = {
+    recipeUom,
+    inventoryUom,
+    altRecipeUnits: detail.altRecipeUnits,
+    altInventoryUnits: detail.altInventoryUnits,
+  };
+  const baseRecipe = calcBaseParStockInRecipeUom(row.dailyUsage, row.orderFreqDays);
+  if (baseRecipe <= 0) return { parStock: '', parStockUom: '' };
+
+  const options = componentParStockUomOptions(source, preferredUom || recipeUom);
+  const exportUom = preferredUom && isValidComponentParStockUom(preferredUom, source)
+    ? normalizeComponentUom(preferredUom)
+    : (options[0] || recipeUom);
+
+  const exportedValue = convertComponentQtyBetweenUoms(
+    baseRecipe,
+    recipeUom,
+    exportUom,
+    {
+      ...source,
+      convertFromInventoryQty: detail.convertFromInventoryQty,
+      convertToRecipeQty: detail.convertToRecipeQty,
+    },
+  );
+
+  if (exportedValue === null || exportedValue <= 0) {
+    return { parStock: String(baseRecipe), parStockUom: recipeUom };
+  }
+
+  const decimals = exportedValue < 1 ? 4 : exportedValue < 10 ? 2 : 1;
+  return {
+    parStock: String(Number(exportedValue.toFixed(decimals))),
+    parStockUom: exportUom,
+  };
 }
