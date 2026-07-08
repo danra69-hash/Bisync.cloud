@@ -781,6 +781,9 @@ public class UpsertProductRequest
     public bool IsSubProduct { get; set; }
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
+    [MaxLength(20)]
+    public string? B2bPackageUnit { get; set; }
+    public string? B2bSalesConfigJson { get; set; }
     public decimal? Rrp { get; set; }
     [Range(0, 999999999)]
     public decimal? YieldQuantity { get; set; }
@@ -788,6 +791,12 @@ public class UpsertProductRequest
     public string? YieldUom { get; set; }
     [Range(0, 9999)]
     public int? ExpiryPeriodDays { get; set; }
+    [Range(0, 99999)]
+    public int? ActivationPeriodHours { get; set; }
+    [Range(0, 999999999)]
+    public decimal? ParStock { get; set; }
+    [MaxLength(20)]
+    public string? ParStockUom { get; set; }
     public bool? PosEnabled { get; set; }
     public bool? Active { get; set; }
     public int? CompanyId { get; set; }

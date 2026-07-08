@@ -3,6 +3,7 @@ import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues, type SortDirection } from '../../utils/tableSort';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { tableHeaderCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderStyles';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
@@ -615,8 +616,8 @@ export function ProductManagementPage({ selectedCompanyId, selectedLocationIds }
                     />
                   </thead>
                 </table>
-                <div className="w-[5.5rem] shrink-0 border-l border-border px-2 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal text-center">
-                  Actions
+                <div className={`${tableHeaderCls('center')} w-[5.5rem] shrink-0 border-l border-border`}>
+                  <span className={TABLE_HEADER_LABEL_CLS}>Actions</span>
                 </div>
               </div>
 

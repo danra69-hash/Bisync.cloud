@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { api, type Vendor } from '../../api';
-import { siCategories, siGroups } from '../../data/revenueManagement';
+import { siCategories } from '../../data/revenueManagement';
+import {
+  getKnownGroups,
+  getKnownRecipeUnits,
+  getKnownStorageOptions,
+} from '../../data/componentCatalogConfig';
 import {
   type AltUnitEntry,
   type ComponentForm,
   type ComponentRow,
-  RECIPE_UNITS,
-  STORAGE_OPTIONS,
   generateComponentId,
   getConversion,
   getComponentUomChoices,
+  isConversionQtyAutoFilled,
+  resolveInventoryToRecipeQty,
   inputCls,
   isComponentNameTaken,
   MAX_ALTERNATE_UOMS,
@@ -22,7 +27,14 @@ import {
 } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_DETAIL_CLS, DETAIL_PANEL_OVERLAY_ELEVATED_CLS, DETAIL_PANEL_SHELL_ELEVATED_CLS } from '../layout/sidePanelShared';
 import { VendorProductTable, type CompanyLocationOption } from './VendorProductTable';
-import { isVendorProductTagReady } from '../../data/vendorProductTagging';
+import { isVendorProductTagReady, countComponentTaggedVendors } from '../../data/vendorProductTagging';
+import {
+  dailyUsageToRecipeBasis,
+  formatParStock,
+  resolveDailyUsageInBasis,
+  resolveParStockDisplay,
+  type ParStockUomBasis,
+} from '../../data/componentParStock';
 import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 
 function computeTaggedVendorProductPricing(
@@ -79,8 +91,8 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 
 const COMPACT_INPUT_CLS =
   'bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary shrink-0';
-const COMPACT_FROM_QTY_CLS = `${COMPACT_INPUT_CLS} w-10`;
-const COMPACT_TO_QTY_CLS = `${COMPACT_INPUT_CLS} w-14`;
+const COMPACT_FROM_QTY_CLS = `${COMPACT_INPUT_CLS} w-12 min-w-[3rem]`;
+const COMPACT_TO_QTY_CLS = `${COMPACT_INPUT_CLS} w-24 min-w-[5.5rem]`;
 const COMPACT_SELECT_CLS =
   'bg-background border border-border rounded px-1 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer w-[3.25rem] shrink-0';
 
@@ -135,10 +147,10 @@ function UomConversionLine({
           placeholder="Qty"
           value={qty}
           onChange={e => onQtyChange(e.target.value)}
-          className={`${COMPACT_TO_QTY_CLS}${autoFilled ? ' pr-6' : ''}`}
+          className={`${COMPACT_TO_QTY_CLS}${autoFilled ? ' pr-8' : ''}`}
         />
         {autoFilled && (
-          <span className="absolute right-0.5 top-1/2 -translate-y-1/2 text-[6px] font-sans text-primary pointer-events-none">auto</span>
+          <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[6px] font-sans text-primary pointer-events-none">auto</span>
         )}
       </div>
       <span className="text-xs font-sans text-foreground shrink-0">{targetUom}</span>
@@ -189,11 +201,7 @@ function refreshAltUnitQtys(altUnits: AltUnitEntry[], principalUom: string): Alt
 }
 
 function isAltQtyAutoFilled(altUnit: string, principalUom: string, qty: string, fromQty: string) {
-  const conv = getConversion(altUnit, principalUom);
-  if (conv === null) return false;
-  const from = parseFloat(fromQty || '1') || 1;
-  const expected = conv * from;
-  return qty === String(expected) || qty === String(Number(expected.toFixed(10)));
+  return isConversionQtyAutoFilled(altUnit, principalUom, qty, fromQty);
 }
 
 type PrincipalAlternateUomBlockProps = {
@@ -231,13 +239,14 @@ function PrincipalAlternateUomBlock({
   showComponentUomChoices = false,
   className = 'mb-6',
 }: PrincipalAlternateUomBlockProps) {
-  const unitOptions = RECIPE_UNITS.filter(u => u !== principalUnit);
+  const recipeUnits = getKnownRecipeUnits();
+  const unitOptions = recipeUnits.filter(u => u !== principalUnit);
   const componentUomChoices = showComponentUomChoices
     ? getComponentUomChoices(principalUnit, altUnits)
     : [];
   const otherPrincipalUnits = showComponentUomChoices
-    ? RECIPE_UNITS.filter(u => !componentUomChoices.includes(u))
-    : RECIPE_UNITS;
+    ? recipeUnits.filter(u => !componentUomChoices.includes(u))
+    : recipeUnits;
 
   function updateAltUnit(idx: number, part: Partial<AltUnitEntry>) {
     const arr = [...altUnits];
@@ -264,7 +273,7 @@ function PrincipalAlternateUomBlock({
     if (altUnits.length >= MAX_ALTERNATE_UOMS) return;
     onAltUnitsChange([
       ...altUnits,
-      { fromQty: '1', qty: '', unit: unitOptions[0] ?? RECIPE_UNITS[1] },
+      { fromQty: '1', qty: '', unit: unitOptions[0] ?? recipeUnits[1] },
     ]);
   }
 
@@ -291,7 +300,7 @@ function PrincipalAlternateUomBlock({
                 ))}
               </optgroup>
             )}
-            {!showComponentUomChoices && RECIPE_UNITS.map(u => <option key={u}>{u}</option>)}
+            {!showComponentUomChoices && recipeUnits.map(u => <option key={u}>{u}</option>)}
           </select>
         </FormField>
       </div>
@@ -371,13 +380,14 @@ type Props = {
   isNew?: boolean;
   existingComponents: ComponentRow[];
   selectedCompanyId: number | null;
+  selectedLocationIds?: string[];
   saveError?: string | null;
   elevated?: boolean;
   onClose: () => void;
   onSave: (updated: Partial<ComponentRow>) => void;
 };
 
-export function ComponentEditPanel({ row, isNew = false, existingComponents, selectedCompanyId, saveError, elevated = false, onClose, onSave }: Props) {
+export function ComponentEditPanel({ row, isNew = false, existingComponents, selectedCompanyId, selectedLocationIds = [], saveError, elevated = false, onClose, onSave }: Props) {
   const existingComponentIds = existingComponents.map(c => c.componentId).filter(Boolean);
   const [form, setForm] = useState<ComponentForm>(() => toForm(row, existingComponentIds));
   const [nameError, setNameError] = useState<string | null>(null);
@@ -385,6 +395,23 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [vendorSearch, setVendorSearch] = useState('');
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationOption[]>([]);
+  const [parStockUomBasis, setParStockUomBasis] = useState<ParStockUomBasis>('recipe');
+
+  const groupOptions = useMemo(() => {
+    const options = getKnownGroups(existingComponents);
+    if (form.group && !options.some(group => group.toLowerCase() === form.group.toLowerCase())) {
+      return [...options, form.group].sort((a, b) => a.localeCompare(b));
+    }
+    return options;
+  }, [existingComponents, form.group]);
+
+  const storageOptions = useMemo(() => {
+    const options = getKnownStorageOptions();
+    const extras = form.storages.filter(
+      storage => storage && !options.some(option => option.toLowerCase() === storage.toLowerCase()),
+    );
+    return extras.length > 0 ? [...options, ...extras].sort((a, b) => a.localeCompare(b)) : options;
+  }, [form.storages]);
 
   useEffect(() => {
     setForm(toForm(row, existingComponentIds));
@@ -445,13 +472,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     fromQty: string,
     currentQty: string,
   ) {
-    if (inventoryUnit === recipeUnit) return { fromQty: '1', qty: '1' };
-    const from = parseFloat(fromQty || '1') || 1;
-    const conv = getConversion(inventoryUnit, recipeUnit);
-    return {
-      fromQty: fromQty || '1',
-      qty: conv !== null ? String(conv * from) : currentQty,
-    };
+    return resolveInventoryToRecipeQty(inventoryUnit, recipeUnit, fromQty, currentQty);
   }
 
   function handleComponentUnitChange(val: string) {
@@ -561,35 +582,58 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   }
 
   function handleToggleVendorProductTag(product: VendorProductCatalogItem, tagged: boolean) {
+    const activeLocationIds = selectedLocationIds;
+
     if (tagged) {
       const componentUom = form.vendorProductComponentUom[product.id] ?? form.recipeUnit;
+      const assignedLocations = form.vendorProductLocations[product.id] ?? [];
+      const tagReadyLocations = activeLocationIds.length > 0
+        ? [...new Set([...assignedLocations, ...activeLocationIds])]
+        : assignedLocations;
       const tagReady = isVendorProductTagReady(product, {
         recipeUnit: form.recipeUnit,
         altRecipeUnits: form.altRecipeUnits,
         componentUom,
         principalQty: form.vendorProductPrincipalQty[product.id],
-        productLocationIds: form.vendorProductLocations[product.id] ?? [],
+        productLocationIds: tagReadyLocations.length > 0
+          ? tagReadyLocations
+          : companyLocations.map(location => location.externalId),
         companyLocationCount: companyLocations.length,
       });
       if (!tagReady.ready) return;
     }
 
     setForm(f => {
-      const taggedVendorProductIds = tagged
-        ? [...f.taggedVendorProductIds, product.id].filter((id, i, arr) => arr.indexOf(id) === i)
-        : f.taggedVendorProductIds.filter(id => id !== product.id);
-
+      let taggedVendorProductIds = [...f.taggedVendorProductIds];
       const vendorProductLocations = { ...f.vendorProductLocations };
-      if (tagged && !vendorProductLocations[product.id]) {
-        vendorProductLocations[product.id] = companyLocations.map(l => l.externalId);
-      }
-      if (!tagged) {
+      let productLocations = [...(vendorProductLocations[product.id] ?? [])];
+
+      if (tagged) {
+        if (!taggedVendorProductIds.includes(product.id)) {
+          taggedVendorProductIds.push(product.id);
+        }
+        if (activeLocationIds.length > 0) {
+          productLocations = [...new Set([...productLocations, ...activeLocationIds])];
+        } else if (productLocations.length === 0) {
+          productLocations = companyLocations.map(location => location.externalId);
+        }
+        vendorProductLocations[product.id] = productLocations;
+      } else if (activeLocationIds.length > 0) {
+        productLocations = productLocations.filter(id => !activeLocationIds.includes(id));
+        if (productLocations.length === 0) {
+          delete vendorProductLocations[product.id];
+          taggedVendorProductIds = taggedVendorProductIds.filter(id => id !== product.id);
+        } else {
+          vendorProductLocations[product.id] = productLocations;
+        }
+      } else {
         delete vendorProductLocations[product.id];
+        taggedVendorProductIds = taggedVendorProductIds.filter(id => id !== product.id);
       }
 
-      const primary = tagged
-        ? product
-        : VENDOR_PRODUCT_CATALOG.find(p => taggedVendorProductIds.includes(p.id));
+      const primary = taggedVendorProductIds.length > 0
+        ? VENDOR_PRODUCT_CATALOG.find(p => taggedVendorProductIds.includes(p.id))
+        : undefined;
 
       return {
         ...f,
@@ -601,10 +645,6 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       };
     });
 
-    if (tagged) {
-      setProductSearch('');
-      setVendorSearch('');
-    }
   }
 
   function handleProductLocationsChange(productId: string, locationIds: string[]) {
@@ -640,6 +680,51 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const delivPrice = taggedPricing?.product.deliveryPrice ?? (parseFloat(form.deliveryUnitPrice) || 0);
   const componentPrice = taggedPricing?.nettPrice ?? 0;
 
+  const dailyUsageRecipe = parseFloat(form.dailyUsage) > 0
+    ? parseFloat(form.dailyUsage) || 0
+    : 0;
+
+  const dailyUsageDisplay = resolveDailyUsageInBasis(
+    dailyUsageRecipe,
+    parStockUomBasis,
+    form.recipeUnit,
+    form.inventoryUnit,
+    form.convertFromInventoryQty,
+    form.convertToRecipeQty,
+  );
+
+  const parStockDisplay = resolveParStockDisplay({
+    dailyUsage: dailyUsageRecipe,
+    orderFreqDays: parseInt(form.orderFreqDays, 10) || 0,
+    basis: parStockUomBasis,
+    recipeUnit: form.recipeUnit,
+    inventoryUnit: form.inventoryUnit,
+    convertFromInventoryQty: form.convertFromInventoryQty,
+    convertToRecipeQty: form.convertToRecipeQty,
+  });
+
+  function handleDailyUsageChange(rawValue: string) {
+    if (!rawValue.trim()) {
+      set('dailyUsage', '');
+      return;
+    }
+    const parsed = parseFloat(rawValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    const recipeValue = dailyUsageToRecipeBasis(
+      parsed,
+      parStockUomBasis,
+      form.recipeUnit,
+      form.inventoryUnit,
+      form.convertFromInventoryQty,
+      form.convertToRecipeQty,
+    );
+    set('dailyUsage', String(recipeValue));
+  }
+
+  function toggleParStockUomBasis() {
+    setParStockUomBasis(prev => (prev === 'recipe' ? 'inventory' : 'recipe'));
+  }
+
   const vendorNames = useMemo(() => {
     const fromApi = vendors.map(v => v.name);
     const fromCatalog = VENDOR_PRODUCT_CATALOG.map(p => p.vendorName);
@@ -668,9 +753,13 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       inventoryUOM: toApiUom(form.inventoryUnit),
       lastPriceInventory: delivPrice,
       lastPriceRecipe: componentPrice,
-      attachedVendors: form.taggedVendorProductIds.length,
+      dailyUsage: dailyUsageRecipe,
+      orderFreqDays: parseInt(form.orderFreqDays, 10) || 7,
+      attachedVendors: countComponentTaggedVendors({ detailConfig: detailConfigFromForm(form) }),
       detailConfig: detailConfigFromForm(form),
     });
+    setProductSearch('');
+    setVendorSearch('');
   }
 
   return (
@@ -721,7 +810,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               </FormField>
               <FormField label="Group">
                 <select className={selectCls} value={form.group} onChange={e => set('group', e.target.value)}>
-                  {siGroups.filter(g => g !== 'All').map(g => <option key={g}>{g}</option>)}
+                  {groupOptions.map(group => <option key={group}>{group}</option>)}
                 </select>
               </FormField>
             </div>
@@ -740,7 +829,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                         }}
                         className={`${selectCls} flex-1`}
                       >
-                        {STORAGE_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                        {storageOptions.map(option => <option key={option}>{option}</option>)}
                       </select>
                       {form.storages.length > 1 && (
                         <button
@@ -755,7 +844,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                   ))}
                   <button
                     type="button"
-                    onClick={() => set('storages', [...form.storages, STORAGE_OPTIONS.find(o => !form.storages.includes(o)) ?? STORAGE_OPTIONS[0]])}
+                    onClick={() => set('storages', [...form.storages, storageOptions.find(option => !form.storages.includes(option)) ?? storageOptions[0]])}
                     className="text-xs font-sans text-primary hover:underline flex items-center gap-1"
                   >
                     + Add storage location
@@ -826,7 +915,66 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
           </div>
 
           <div>
-            <SectionTitle>Vendor & Pricing</SectionTitle>
+            <SectionTitle>Usage &amp; Par Stock</SectionTitle>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="text-xs text-muted-foreground font-sans">
+                Base par stock = daily usage × order frequency. Stored daily usage uses component UOM.
+              </p>
+              <div className="flex items-center border border-border rounded-md overflow-hidden text-xs font-sans shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setParStockUomBasis('recipe')}
+                  className={`px-3 py-1.5 transition-colors ${parStockUomBasis === 'recipe' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Component UOM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setParStockUomBasis('inventory')}
+                  className={`px-3 py-1.5 border-l border-border transition-colors ${parStockUomBasis === 'inventory' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Inventory UOM
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <FormField label={`Daily Usage (${parStockUomBasis === 'recipe' ? form.recipeUnit : form.inventoryUnit}/day)`}>
+                <input
+                  className={inputCls}
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={dailyUsageDisplay > 0 ? String(dailyUsageDisplay) : ''}
+                  onChange={e => handleDailyUsageChange(e.target.value)}
+                  placeholder="0"
+                />
+              </FormField>
+              <FormField label="Order Freq (days)">
+                <input
+                  className={inputCls}
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.orderFreqDays}
+                  onChange={e => set('orderFreqDays', e.target.value)}
+                />
+              </FormField>
+              <FormField label="Base Par Stock">
+                <button
+                  type="button"
+                  onClick={toggleParStockUomBasis}
+                  className={`${inputCls} text-left cursor-pointer hover:border-primary/60 transition-colors`}
+                  title="Click to switch par stock UOM basis"
+                >
+                  {formatParStock(parStockDisplay.value, parStockDisplay.uom)}
+                </button>
+              </FormField>
+            </div>
+          </div>
+
+          <div>
+            <SectionTitle>Vendor &amp; Pricing</SectionTitle>
 
             <VendorProductTable
               vendorNames={vendorNames}
@@ -842,6 +990,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               lossYieldByProduct={form.vendorProductLossYield}
               locationsByProduct={form.vendorProductLocations}
               companyLocations={companyLocations}
+              activeLocationIds={selectedLocationIds}
               onVendorChange={setVendorSearch}
               onProductSearchChange={setProductSearch}
               onPrincipalQtyChange={handlePrincipalQtyChange}

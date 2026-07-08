@@ -34,17 +34,15 @@ import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS } from '../layout/sid
 
 type PayStructureSortColumn = 'company' | 'country' | 'payType' | 'payCycle' | 'pf' | 'socso' | 'otherContributions' | 'active';
 
-const thCls = 'px-4 py-2.5 font-sans';
-
 const PAY_STRUCTURE_TABLE_COLUMNS: SortableColumnDef<PayStructureSortColumn>[] = [
-  { key: 'company', label: 'Company', className: thCls },
-  { key: 'country', label: 'Country', className: thCls },
-  { key: 'payType', label: 'Pay Type', className: thCls },
-  { key: 'payCycle', label: 'Pay Cycle', className: thCls },
-  { key: 'pf', label: 'PF (Co/Emp)', className: thCls },
-  { key: 'socso', label: 'SOCSO', className: thCls },
-  { key: 'otherContributions', label: 'Other Contributions', className: thCls },
-  { key: 'active', label: 'Active', align: 'center', className: thCls },
+  { key: 'company', label: 'Company' },
+  { key: 'country', label: 'Country' },
+  { key: 'payType', label: 'Pay Type' },
+  { key: 'payCycle', label: 'Pay Cycle' },
+  { key: 'pf', label: 'PF (Co/Emp)' },
+  { key: 'socso', label: 'SOCSO' },
+  { key: 'otherContributions', label: 'Other Contributions' },
+  { key: 'active', label: 'Active', align: 'center' },
 ];
 
 function PayStructurePanel({

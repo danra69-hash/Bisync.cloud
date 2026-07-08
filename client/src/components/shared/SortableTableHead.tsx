@@ -1,4 +1,10 @@
 import type { SortDirection } from '../../utils/tableSort';
+import {
+  tableHeaderCls,
+  tableHeaderSortBtnCls,
+  tableHeaderSortLabelCls,
+  TABLE_HEADER_LABEL_CLS,
+} from './tableHeaderStyles';
 
 export type SortableColumnDef<T extends string> = {
   key: T;
@@ -34,8 +40,6 @@ export function SortableTableHead<T extends string>({
   colSpan,
 }: SortableTableHeadProps<T>) {
   const active = sortColumn === column;
-  const alignCls =
-    align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
   const ariaSort = !sortable ? undefined : active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none';
 
   if (!sortable) {
@@ -43,9 +47,9 @@ export function SortableTableHead<T extends string>({
       <th
         rowSpan={rowSpan}
         colSpan={colSpan}
-        className={`px-3 py-2 font-medium text-xs uppercase tracking-wider text-muted-foreground ${alignCls} ${className}`}
+        className={tableHeaderCls(align, className)}
       >
-        {label}
+        <span className={TABLE_HEADER_LABEL_CLS}>{label}</span>
       </th>
     );
   }
@@ -55,18 +59,18 @@ export function SortableTableHead<T extends string>({
       rowSpan={rowSpan}
       colSpan={colSpan}
       aria-sort={ariaSort}
-      className={`px-3 py-2 font-medium ${alignCls} ${className}`}
+      className={tableHeaderCls(align, className)}
     >
       <button
         type="button"
         onClick={() => onSort(column)}
         title={active ? (sortDirection === 'asc' ? 'Sorted ascending — click for descending' : 'Sorted descending — click for ascending') : 'Sort ascending'}
-        className={`inline-flex items-center gap-1 uppercase tracking-wider text-xs hover:text-foreground transition-colors ${
+        className={`${tableHeaderSortBtnCls} ${
           active ? 'text-foreground' : 'text-muted-foreground'
-        } ${align === 'right' ? 'ml-auto' : ''}`}
+        } ${align === 'right' ? 'ml-auto text-right' : align === 'center' ? 'mx-auto text-center' : 'text-left'}`}
       >
-        {label}
-        {active ? <span aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span> : null}
+        <span className={tableHeaderSortLabelCls}>{label}</span>
+        {active ? <span aria-hidden="true" className="shrink-0 leading-none">{sortDirection === 'asc' ? '↑' : '↓'}</span> : null}
       </button>
     </th>
   );

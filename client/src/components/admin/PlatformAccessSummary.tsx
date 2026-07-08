@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import type { AppUser } from '../../api';
 import { parseUserAccess } from '../../data/userAccess';
+import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 function accessBadges(accessJson: string): string[] {
   return parseUserAccess(accessJson).modules;
@@ -36,7 +37,7 @@ export function PlatformAccessSummary({ user, onManageAccess }: Props) {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-2.5 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal">{h}</th>
+                  <th key={h} className={tableHeaderCls('left')}>{h}</th>
                 ))}
               </tr>
             </thead>

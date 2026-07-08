@@ -9,23 +9,23 @@ import { inputCls } from '../../data/countries';
 import type { SocsoBracketItem } from '../../modules/hr/types';
 import { formatSocsoSalaryRange } from './malaysiaSocsoDefaults';
 
-const thCls = 'px-2 py-2 font-sans font-normal whitespace-nowrap';
+
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
 
 type SocsoSortColumn = 'salaryRange' | 'companyAmount' | 'employeeAmount';
 
 const SOCSO_TABLE_COLUMNS: SortableColumnDef<SocsoSortColumn>[] = [
-  { key: 'salaryRange', label: 'Salary Range', className: thCls },
-  { key: 'companyAmount', label: 'Company (RM)', className: thCls },
-  { key: 'employeeAmount', label: 'Employee (RM)', className: thCls },
+  { key: 'salaryRange', label: 'Salary Range' },
+  { key: 'companyAmount', label: 'Company (RM)' },
+  { key: 'employeeAmount', label: 'Employee (RM)' },
 ];
 
 type ForeignSocsoSortColumn = 'salaryRange' | 'companyPct' | 'employeePct';
 
 const FOREIGN_SOCSO_TABLE_COLUMNS: SortableColumnDef<ForeignSocsoSortColumn>[] = [
-  { key: 'salaryRange', label: 'Salary Range', className: thCls, sortable: false },
-  { key: 'companyPct', label: 'Company %', className: thCls, sortable: false },
-  { key: 'employeePct', label: 'Employee %', className: thCls, sortable: false },
+  { key: 'salaryRange', label: 'Salary Range', sortable: false },
+  { key: 'companyPct', label: 'Company %', sortable: false },
+  { key: 'employeePct', label: 'Employee %', sortable: false },
 ];
 
 type Props = {

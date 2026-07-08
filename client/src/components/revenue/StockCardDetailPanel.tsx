@@ -10,6 +10,7 @@ import { formatRm } from '../../data/createOrder';
 import { currentStockCardMonth, formatStockCardMonthLabel } from './stockCardPeriod';
 import { AvgCogsWithTrend, computeOnHandAverageCogs } from './stockCardCogsTrend';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
+import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 import {
 
@@ -411,28 +412,17 @@ export function StockCardDetailPanel({
 
                 <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
 
-                  <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-
-                    <th className="px-5 py-2 font-medium">Date &amp; time</th>
-
-                    <th className="px-3 py-2 font-medium">Type</th>
-
-                    <th className="px-3 py-2 font-medium text-right">Inbound</th>
-
-                    <th className="px-3 py-2 font-medium text-right">Outbound</th>
-
-                    <th className="px-3 py-2 font-medium">UOM</th>
-
-                    <th className="px-3 py-2 font-medium text-right">UOM price</th>
-
-                    <th className="px-3 py-2 font-medium text-right">Subtotal</th>
-
-                    <th className="px-3 py-2 font-medium">Reference / reason</th>
-
-                    <th className="px-3 py-2 font-medium">FIFO detail</th>
-
-                    <th className="px-3 py-2 font-medium text-right">Balance</th>
-
+                  <tr>
+                    <th className={tableHeaderCls('left', 'px-5')}>Date &amp; time</th>
+                    <th className={tableHeaderCls('left')}>Type</th>
+                    <th className={tableHeaderCls('right')}>Inbound</th>
+                    <th className={tableHeaderCls('right')}>Outbound</th>
+                    <th className={tableHeaderCls('left')}>UOM</th>
+                    <th className={tableHeaderCls('right')}>UOM price</th>
+                    <th className={tableHeaderCls('right')}>Subtotal</th>
+                    <th className={tableHeaderCls('left')}>Reference / reason</th>
+                    <th className={tableHeaderCls('left')}>FIFO detail</th>
+                    <th className={tableHeaderCls('right')}>Balance</th>
                   </tr>
 
                 </thead>

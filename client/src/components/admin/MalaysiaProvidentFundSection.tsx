@@ -9,18 +9,18 @@ import { sortTableRows } from '../../utils/tableSort';
 import { inputCls } from '../../data/countries';
 import type { ProvidentFundBracketItem } from '../../modules/hr/types';
 
-const thCls = 'px-2 py-2 font-sans font-normal whitespace-nowrap';
+
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
 
 type EpfSortColumn = 'minAge' | 'maxAge' | 'minSalary' | 'maxSalary' | 'companyPct' | 'employeePct';
 
 const EPF_TABLE_COLUMNS: SortableColumnDef<EpfSortColumn>[] = [
-  { key: 'minAge', label: 'Min Age', className: thCls },
-  { key: 'maxAge', label: 'Max Age', className: thCls },
-  { key: 'minSalary', label: 'Min Salary (RM)', className: thCls },
-  { key: 'maxSalary', label: 'Max Salary (RM)', className: thCls },
-  { key: 'companyPct', label: 'Company %', className: thCls },
-  { key: 'employeePct', label: 'Employee %', className: thCls },
+  { key: 'minAge', label: 'Min Age' },
+  { key: 'maxAge', label: 'Max Age' },
+  { key: 'minSalary', label: 'Min Salary (RM)' },
+  { key: 'maxSalary', label: 'Max Salary (RM)' },
+  { key: 'companyPct', label: 'Company %' },
+  { key: 'employeePct', label: 'Employee %' },
 ];
 
 const EPF_FOREIGN_TABLE_COLUMNS: SortableColumnDef<EpfSortColumn>[] = EPF_TABLE_COLUMNS.map(c => ({ ...c, sortable: false }));

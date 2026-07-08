@@ -28,17 +28,15 @@ import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS, NESTED_PANEL_OVERLAY
 
 type UserSortColumn = 'employeeId' | 'name' | 'company' | 'locations' | 'email' | 'role' | 'access' | 'status';
 
-const thCls = 'px-4 py-2.5 font-sans font-normal';
-
 const USER_TABLE_COLUMNS: SortableColumnDef<UserSortColumn>[] = [
-  { key: 'employeeId', label: 'Employee ID', className: thCls },
-  { key: 'name', label: 'Name', className: thCls },
-  { key: 'company', label: 'Company', className: thCls },
-  { key: 'locations', label: 'Locations', className: thCls },
-  { key: 'email', label: 'Email', className: thCls },
-  { key: 'role', label: 'Role', className: thCls },
-  { key: 'access', label: 'Access', className: thCls },
-  { key: 'status', label: 'Status', className: thCls },
+  { key: 'employeeId', label: 'Employee ID' },
+  { key: 'name', label: 'Name' },
+  { key: 'company', label: 'Company' },
+  { key: 'locations', label: 'Locations' },
+  { key: 'email', label: 'Email' },
+  { key: 'role', label: 'Role' },
+  { key: 'access', label: 'Access' },
+  { key: 'status', label: 'Status' },
 ];
 
 const blankUser = (): UserUpsert => ({

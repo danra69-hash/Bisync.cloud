@@ -14,11 +14,9 @@ import { ToggleSwitch } from './ToggleSwitch';
 
 type HolidaySortColumn = 'holiday' | 'date' | 'gazetted' | 'recognized';
 
-const thCls = 'px-3 py-2 font-sans font-normal';
-
 const HOLIDAY_TABLE_COLUMNS: SortableColumnDef<HolidaySortColumn>[] = [
-  { key: 'holiday', label: 'Holiday', className: thCls },
-  { key: 'date', label: 'Date', className: thCls },
+  { key: 'holiday', label: 'Holiday' },
+  { key: 'date', label: 'Date' },
   { key: 'gazetted', label: 'Gazetted', align: 'center', className: 'px-2 py-2 font-sans font-normal' },
   { key: 'recognized', label: 'Recognized', align: 'center', className: 'px-2 py-2 font-sans font-normal' },
 ];

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
@@ -20,22 +21,23 @@ import { COUNTRIES, getCountry, inputCls, selectCls } from '../../data/countries
 import type { AddressParts } from '../../utils/countryFormat';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 import { CompanyProfileFields } from './CompanyProfileFields';
+import { ToggleSwitch } from './ToggleSwitch';
 
 type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'locations' | 'status';
 
-const thCls = 'px-4 py-2.5 font-sans font-normal';
-
 const COMPANY_TABLE_COLUMNS: SortableColumnDef<CompanySortColumn>[] = [
-  { key: 'name', label: 'Company', className: thCls },
-  { key: 'brn', label: 'BRN', className: thCls },
-  { key: 'gstTin', label: 'GST/TIN', className: thCls },
-  { key: 'country', label: 'Country', className: thCls },
-  { key: 'email', label: 'Email', className: thCls },
-  { key: 'locations', label: 'Locations', align: 'center', className: thCls },
-  { key: 'status', label: 'Status', className: thCls },
+  { key: 'name', label: 'Company' },
+  { key: 'brn', label: 'BRN' },
+  { key: 'gstTin', label: 'GST/TIN' },
+  { key: 'country', label: 'Country' },
+  { key: 'email', label: 'Email' },
+  { key: 'locations', label: 'Locations', align: 'center' },
+  { key: 'status', label: 'Status' },
 ];
 
-const blankCompany = (): Omit<Company, 'id' | 'locationCount'> => ({
+type CompanyDraft = Omit<Company, 'id' | 'locationCount'>;
+
+const blankCompany = (): CompanyDraft => ({
   name: '',
   brn: '',
   gstTin: '',
@@ -56,7 +58,7 @@ const blankCompany = (): Omit<Company, 'id' | 'locationCount'> => ({
 function CompanyPanel({
   company, isNew, onClose, onSave,
 }: {
-  company: Company | Omit<Company, 'id' | 'locationCount'>;
+  company: Company | CompanyDraft;
   isNew: boolean;
   onClose: () => void;
   onSave: () => void;
@@ -69,6 +71,7 @@ function CompanyPanel({
     () => parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[],
   );
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setForm(company);
@@ -102,8 +105,37 @@ function CompanyPanel({
     setError(null);
   }
 
+  function buildPayload(active = form.active) {
+    return {
+      ...form,
+      active,
+      businessTypesJson: serializeStringArray(businessTypes),
+      vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
+    };
+  }
+
+  async function toggleActive() {
+    if (isNew || !('id' in form)) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const nextActive = !form.active;
+      await api.updateCompany(form.id, { ...buildPayload(nextActive), id: form.id } as Company);
+      setForm(f => ({ ...f, active: nextActive }));
+      onSave();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update company status.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function save() {
-    if (!form.name.trim()) return;
+    if (!form.name.trim()) {
+      setError('Company name is required.');
+      return;
+    }
 
     const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
     if (profileError) {
@@ -120,12 +152,10 @@ function CompanyPanel({
       return;
     }
 
-    const payload = {
-      ...form,
-      businessTypesJson: serializeStringArray(businessTypes),
-      vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
-    };
+    const payload = buildPayload();
 
+    setSaving(true);
+    setError(null);
     try {
       if (isNew) await api.createCompany(payload);
       else if ('id' in form) await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
@@ -133,19 +163,28 @@ function CompanyPanel({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save company.');
+    } finally {
+      setSaving(false);
     }
   }
 
-  return (
+  return createPortal(
     <>
       <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
       <div className={SIDE_PANEL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Company</p>
-            <h3 className="text-sm font-semibold">{isNew ? 'New Company' : form.name}</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold">{isNew ? 'New Company' : form.name}</h3>
+              {!isNew && (
+                <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${form.active ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
+                  {form.active ? 'Active' : 'Inactive'}
+                </span>
+              )}
+            </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted"><X size={14} className="text-muted-foreground" /></button>
+          <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"><X size={14} className="text-muted-foreground" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -211,6 +250,24 @@ function CompanyPanel({
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">General Email</label>
             <input type="email" className={inputCls} value={form.email} onChange={e => set('email', e.target.value)} placeholder="hq@company.com" />
 
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+              <div>
+                <p className="text-xs font-medium">Company status</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Inactive companies stay in the registry but are hidden from day-to-day selection.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-muted-foreground">{form.active ? 'Active' : 'Inactive'}</span>
+                <ToggleSwitch
+                  checked={form.active}
+                  disabled={saving}
+                  onChange={active => set('active', active)}
+                  label={form.active ? 'Deactivate company' : 'Activate company'}
+                />
+              </div>
+            </div>
+
             <CompanyProfileFields
               businessTypes={businessTypes}
               vendorPolicyTags={vendorPolicyTags}
@@ -226,21 +283,45 @@ function CompanyPanel({
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
-          <button onClick={save} disabled={!form.name.trim() || businessTypes.length === 0 || vendorPolicyTags.length === 0} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
-            {isNew ? 'Add Company' : 'Save Changes'}
-          </button>
+        <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            {!isNew && 'id' in form ? (
+              <button
+                type="button"
+                onClick={() => void toggleActive()}
+                disabled={saving}
+                className={`text-xs font-sans border rounded-md px-4 py-2 disabled:opacity-50 ${
+                  form.active
+                    ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
+                    : 'border-[#5A7A2A]/30 text-[#5A7A2A] hover:bg-[#5A7A2A]/10'
+                }`}
+              >
+                {saving ? 'Saving…' : form.active ? 'Deactivate Company' : 'Activate Company'}
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => void save()} disabled={saving} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50">
+                {saving ? 'Saving…' : isNew ? 'Add Company' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground text-right">
+            Required: company name, at least one business type, and one vendor product policy.
+          </p>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
 export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => void }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editCompany, setEditCompany] = useState<Company | null>(null);
+  const [panelDraft, setPanelDraft] = useState<Company | CompanyDraft | null>(null);
   const [isNew, setIsNew] = useState(false);
 
   function refreshList() {
@@ -295,7 +376,9 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">{companies.length} registered companies</p>
-        <button onClick={() => { setIsNew(true); setEditCompany(blankCompany() as Company); }}
+        <button
+          type="button"
+          onClick={() => { setIsNew(true); setPanelDraft(blankCompany()); }}
           className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md">
           <Plus size={12} /> Add Company
         </button>
@@ -318,7 +401,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
             </thead>
             <tbody>
               {pagedCompanies.map(c => (
-                <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer" onClick={() => { setIsNew(false); setEditCompany(c); }}>
+                <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer" onClick={() => { setIsNew(false); setPanelDraft(c); }}>
                   <td className="px-4 py-3 font-medium">{c.name}</td>
                   <td className="px-4 py-3 font-sans text-muted-foreground">{c.brn || '—'}</td>
                   <td className="px-4 py-3 font-sans text-muted-foreground">{c.gstTin || '—'}</td>
@@ -342,11 +425,11 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
         )}
       </div>
 
-      {editCompany && (
+      {panelDraft && (
         <CompanyPanel
-          company={editCompany}
+          company={panelDraft}
           isNew={isNew}
-          onClose={() => { setEditCompany(null); setIsNew(false); }}
+          onClose={() => { setPanelDraft(null); setIsNew(false); }}
           onSave={afterSave}
         />
       )}

@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import type { ProduceBatchShortage } from '../../api';
 import { fromApiUom } from '../../data/componentForm';
+import { TableHeaderCell } from '../shared/TableHeaderCell';
 
 type Props = {
   productName: string;
@@ -259,11 +260,11 @@ export function ProduceBatchModal({
                 <table className="w-full text-[11px] min-w-[28rem]">
                   <thead className="sticky top-0 bg-muted/40">
                     <tr className="text-left">
-                      <th className="px-2 py-1.5 font-semibold text-muted-foreground">Component</th>
-                      <th className="px-2 py-1.5 font-semibold text-muted-foreground">UOM</th>
-                      <th className="px-2 py-1.5 font-semibold text-muted-foreground text-right">Required</th>
-                      <th className="px-2 py-1.5 font-semibold text-muted-foreground text-right">On hand</th>
-                      <th className="px-2 py-1.5 font-semibold text-muted-foreground text-center">Status</th>
+                      <TableHeaderCell compact>Component</TableHeaderCell>
+                      <TableHeaderCell compact>UOM</TableHeaderCell>
+                      <TableHeaderCell compact headerAlign="right">Required</TableHeaderCell>
+                      <TableHeaderCell compact headerAlign="right">On hand</TableHeaderCell>
+                      <TableHeaderCell compact headerAlign="center">Status</TableHeaderCell>
                     </tr>
                   </thead>
                   <tbody>

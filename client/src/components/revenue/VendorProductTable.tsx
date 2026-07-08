@@ -4,7 +4,12 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MapPin, Search, X } from 'lucide-react';
 import { inputCls, selectCls, type AltUnitEntry } from '../../data/componentForm';
-import { isVendorProductTagReady } from '../../data/vendorProductTagging';
+import {
+  countVendorProductLocationsInScope,
+  filterTaggedVendorProductIdsForLocations,
+  isVendorProductTagReady,
+  isVendorProductTaggedAtLocations,
+} from '../../data/vendorProductTagging';
 import {
   calcComponentPrincipalUomPrice,
   calcNettUomPrice,
@@ -15,8 +20,7 @@ import {
   VENDOR_PRODUCT_CATALOG,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
-
-const thCls = 'text-left px-2 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
+import { tableHeaderCompactCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderStyles';
 
 export type CompanyLocationOption = {
   externalId: string;
@@ -33,6 +37,7 @@ type RowHandlers = {
   lossYieldByProduct: Record<string, string>;
   locationsByProduct: Record<string, string[]>;
   taggedProductIds: string[];
+  activeLocationIds?: string[];
   onPrincipalQtyChange: (productId: string, qty: string) => void;
   onLossYieldChange: (productId: string, loss: string) => void;
   onComponentUomChange: (productId: string, uom: string) => void;
@@ -169,6 +174,7 @@ export function VendorProductTableBody({
     lossYieldByProduct,
     locationsByProduct,
     taggedProductIds,
+    activeLocationIds = [],
     onPrincipalQtyChange,
     onLossYieldChange,
     onComponentUomChange,
@@ -196,17 +202,17 @@ export function VendorProductTableBody({
       <table className="w-full text-xs table-fixed">
         <thead>
           <tr className="border-b border-border bg-muted/40">
-            <th className={`${thCls} w-[9%]`}>Vendor Product ID</th>
-            <th className={`${thCls} w-[20%]`}>Vendor Product Name</th>
-            <th className={`${thCls} w-[8%]`}>Delivery Price</th>
-            <th className={`${thCls} w-[8%]`}>Principal UOM Qty</th>
-            <th className={`${thCls} w-[9%]`}>Component Principal UOM Price</th>
-            <th className={`${thCls} w-[7%]`}>Component UOM</th>
-            <th className={`${thCls} w-[7%]`}>Yield Loss %</th>
-            <th className={`${thCls} w-[8%]`}>Nett UOM Qty</th>
-            <th className={`${thCls} w-[8%]`}>Nett UOM Price</th>
-            {showLocationColumn && <th className={`${thCls} w-[5%] text-center`}>Loc</th>}
-            {showTagColumn && <th className={`${thCls} w-[5%] text-center`}>Tag</th>}
+            <th className={`${tableHeaderCompactCls('left')} w-[9%]`}><span className={TABLE_HEADER_LABEL_CLS}>Vendor Product ID</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[20%]`}><span className={TABLE_HEADER_LABEL_CLS}>Vendor Product Name</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Delivery Price</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Principal UOM Qty</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[9%]`}><span className={TABLE_HEADER_LABEL_CLS}>Component Principal UOM Price</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[7%]`}><span className={TABLE_HEADER_LABEL_CLS}>Component UOM</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[7%]`}><span className={TABLE_HEADER_LABEL_CLS}>Yield Loss %</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Qty</span></th>
+            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Price</span></th>
+            {showLocationColumn && <th className={`${tableHeaderCompactCls('center')} w-[5%]`}><span className={TABLE_HEADER_LABEL_CLS}>Loc</span></th>}
+            {showTagColumn && <th className={`${tableHeaderCompactCls('center')} w-[5%]`}><span className={TABLE_HEADER_LABEL_CLS}>Tag</span></th>}
           </tr>
         </thead>
         <tbody>
@@ -233,14 +239,27 @@ export function VendorProductTableBody({
             const principalPrice = calcComponentPrincipalUomPrice(product.deliveryPrice, principalQty);
             const nettQty = calcNettUomQty(principalQty, lossYield);
             const nettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
-            const tagged = taggedProductIds.includes(product.id);
+            const tagged = isVendorProductTaggedAtLocations(
+              product.id,
+              taggedProductIds,
+              locationsByProduct,
+              activeLocationIds,
+            );
             const assignedLocations = locationsByProduct[product.id] ?? [];
+            const scopedLocationCount = countVendorProductLocationsInScope(
+              product.id,
+              locationsByProduct,
+              activeLocationIds,
+            );
+            const tagReadyLocations = activeLocationIds.length > 0
+              ? [...new Set([...assignedLocations, ...activeLocationIds])]
+              : assignedLocations;
             const tagReady = isVendorProductTagReady(product, {
               recipeUnit: principalComponentUom,
               altRecipeUnits,
               componentUom,
               principalQty: storedQty,
-              productLocationIds: assignedLocations,
+              productLocationIds: tagReadyLocations,
               companyLocationCount: companyLocations.length,
             });
 
@@ -314,15 +333,19 @@ export function VendorProductTableBody({
                       onClick={() => setLocationModalProductId(product.id)}
                       className="relative inline-flex items-center justify-center p-1.5 rounded-md border border-border hover:bg-muted/60 transition-colors"
                       title={
-                        assignedLocations.length > 0
-                          ? `Assigned to ${assignedLocations.length} location(s)`
-                          : 'Assign to company locations'
+                        scopedLocationCount > 0
+                          ? activeLocationIds.length > 0
+                            ? `Assigned at ${scopedLocationCount} selected location(s)`
+                            : `Assigned to ${scopedLocationCount} location(s)`
+                          : activeLocationIds.length > 0
+                            ? 'Not assigned to the selected location(s)'
+                            : 'Assign to company locations'
                       }
                     >
-                      <MapPin size={13} className={assignedLocations.length > 0 ? 'text-primary' : 'text-muted-foreground'} />
-                      {assignedLocations.length > 0 && (
+                      <MapPin size={13} className={scopedLocationCount > 0 ? 'text-primary' : 'text-muted-foreground'} />
+                      {scopedLocationCount > 0 && (
                         <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-[11px] font-sans text-primary-foreground leading-[14px]">
-                          {assignedLocations.length}
+                          {scopedLocationCount}
                         </span>
                       )}
                     </button>
@@ -338,9 +361,13 @@ export function VendorProductTableBody({
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       title={
                         tagged
-                          ? 'Untag vendor product'
+                          ? activeLocationIds.length > 0
+                            ? 'Untag vendor product for selected location(s)'
+                            : 'Untag vendor product'
                           : tagReady.ready
-                            ? 'Tag vendor product to this component'
+                            ? activeLocationIds.length > 0
+                              ? 'Tag vendor product for selected location(s)'
+                              : 'Tag vendor product to this component'
                             : tagReady.reason
                       }
                     />
@@ -381,6 +408,7 @@ export function VendorProductTable({
   lossYieldByProduct,
   locationsByProduct,
   companyLocations,
+  activeLocationIds = [],
   onVendorChange,
   onProductSearchChange,
   onPrincipalQtyChange,
@@ -392,7 +420,12 @@ export function VendorProductTable({
   const searchRows = filterVendorProducts(VENDOR_PRODUCT_CATALOG, productSearch, vendor)
     .filter(product => !taggedProductIds.includes(product.id));
   const showSearchTable = productSearch.trim().length > 0 || !!vendor;
-  const taggedProducts = taggedProductIds
+  const scopedTaggedProductIds = filterTaggedVendorProductIdsForLocations(
+    taggedProductIds,
+    locationsByProduct,
+    activeLocationIds,
+  );
+  const taggedProducts = scopedTaggedProductIds
     .map(id => VENDOR_PRODUCT_CATALOG.find(p => p.id === id))
     .filter((p): p is VendorProductCatalogItem => !!p);
 
@@ -406,6 +439,7 @@ export function VendorProductTable({
     lossYieldByProduct,
     locationsByProduct,
     taggedProductIds,
+    activeLocationIds,
     onPrincipalQtyChange,
     onLossYieldChange,
     onComponentUomChange,

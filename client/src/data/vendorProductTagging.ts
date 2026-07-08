@@ -73,6 +73,57 @@ export function componentRowTagsVendorProduct(row: ComponentRow, productId: stri
   return detail.taggedVendorProductIds.includes(productId);
 }
 
+export function isVendorProductTaggedAtLocations(
+  productId: string,
+  taggedProductIds: string[],
+  locationsByProduct: Record<string, string[]>,
+  activeLocationIds: string[],
+): boolean {
+  if (!taggedProductIds.includes(productId)) return false;
+  if (activeLocationIds.length === 0) return true;
+  const productLocationIds = locationsByProduct[productId] ?? [];
+  return activeLocationIds.some(locationId => productLocationIds.includes(locationId));
+}
+
+export function countVendorProductLocationsInScope(
+  productId: string,
+  locationsByProduct: Record<string, string[]>,
+  activeLocationIds: string[],
+): number {
+  const productLocationIds = locationsByProduct[productId] ?? [];
+  if (activeLocationIds.length === 0) return productLocationIds.length;
+  return productLocationIds.filter(locationId => activeLocationIds.includes(locationId)).length;
+}
+
+export function filterTaggedVendorProductIdsForLocations(
+  taggedProductIds: string[],
+  locationsByProduct: Record<string, string[]>,
+  activeLocationIds: string[],
+): string[] {
+  if (activeLocationIds.length === 0) return taggedProductIds;
+  return taggedProductIds.filter(productId =>
+    isVendorProductTaggedAtLocations(productId, taggedProductIds, locationsByProduct, activeLocationIds),
+  );
+}
+
+export function countComponentTaggedVendors(
+  row: { detailConfig?: ComponentDetailConfig; detailConfigJson?: string | null },
+  activeLocationIds: string[] = [],
+): number {
+  const detail = row.detailConfig ?? resolveDetailConfigForRow({
+    detailConfig: row.detailConfig,
+    detailConfigJson: row.detailConfigJson ?? undefined,
+  });
+  const taggedIds = [...new Set(detail.taggedVendorProductIds.filter(Boolean))];
+  if (taggedIds.length === 0) return 0;
+  if (activeLocationIds.length === 0) return taggedIds.length;
+  return filterTaggedVendorProductIdsForLocations(
+    taggedIds,
+    detail.vendorProductLocations,
+    activeLocationIds,
+  ).length;
+}
+
 export function findComponentRowForTaggedProduct(
   rows: ComponentRow[],
   productId: string,
@@ -146,7 +197,7 @@ export function buildComponentRowWithVendorProductTag(
   const principalQty = options.principalQty.trim()
     || (resolved.qty !== null ? String(resolved.qty) : '');
 
-  const taggedVendorProductIds = [...detail.taggedVendorProductIds, product.id];
+  const taggedVendorProductIds = [...new Set([...detail.taggedVendorProductIds, product.id])];
   const isPrimary = taggedVendorProductIds.length === 1;
 
   const nextDetail: ComponentDetailConfig = {
@@ -188,7 +239,7 @@ export function buildComponentRowWithVendorProductTag(
     storage: storages,
     detailConfig: nextDetail,
     detailConfigJson: serializeDetailConfig(nextDetail),
-    attachedVendors: taggedVendorProductIds.length,
+    attachedVendors: countComponentTaggedVendors({ detailConfig: nextDetail }),
     lastPriceInventory: isPrimary ? product.deliveryPrice : row.lastPriceInventory,
     lastPriceRecipe: isPrimary && nettPrice > 0 ? nettPrice : row.lastPriceRecipe,
   };
@@ -213,7 +264,7 @@ export function componentRowToIngredientPayload(row: ComponentRow): Ingredient {
     storageNote: pricedRow.storageNote ?? '',
     detailConfigJson: serializeDetailConfig(detailConfig),
     attachedProducts: pricedRow.attachedProducts,
-    attachedVendors: detailConfig.taggedVendorProductIds.length || pricedRow.attachedVendors,
+    attachedVendors: countComponentTaggedVendors(pricedRow),
     active: pricedRow.active,
     locationsJson: JSON.stringify(pricedRow.locations),
   };

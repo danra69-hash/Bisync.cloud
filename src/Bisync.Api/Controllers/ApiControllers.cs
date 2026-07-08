@@ -94,11 +94,11 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
     public async Task<ActionResult<object>> CreateConfig([FromBody] LocationConfigCreate body)
     {
         if (body.CompanyId is null)
-            return BadRequest(new { error = "Company is required." });
+            return BadRequest(new { message = "Company is required." });
 
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == body.CompanyId);
         if (company is null)
-            return BadRequest(new { error = "Company not found." });
+            return BadRequest(new { message = "Company not found." });
 
         var businessTypesJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.BusinessTypesJson, company.BusinessTypesJson);
         var vendorPolicyTagsJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.VendorPolicyTagsJson, company.VendorPolicyTagsJson, ignoreCase: true);
@@ -107,7 +107,9 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
 
         var validationError = CompanyProfileRules.Validate(effectiveBusinessTypesJson, effectiveVendorPolicyTagsJson);
         if (validationError is not null)
-            return BadRequest(new { error = validationError });
+            return BadRequest(new { message = validationError });
+
+        await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Locations");
 
         var externalId = await GenerateUniqueExternalIdAsync(body.Name);
         var loc = new Location
@@ -136,11 +138,11 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
     public async Task<ActionResult<object>> UpdateConfig(int id, [FromBody] LocationConfigUpdate body)
     {
         if (body.CompanyId is null)
-            return BadRequest(new { error = "Company is required." });
+            return BadRequest(new { message = "Company is required." });
 
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == body.CompanyId);
         if (company is null)
-            return BadRequest(new { error = "Company not found." });
+            return BadRequest(new { message = "Company not found." });
 
         var businessTypesJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.BusinessTypesJson, company.BusinessTypesJson);
         var vendorPolicyTagsJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.VendorPolicyTagsJson, company.VendorPolicyTagsJson, ignoreCase: true);
@@ -149,7 +151,7 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
 
         var validationError = CompanyProfileRules.Validate(effectiveBusinessTypesJson, effectiveVendorPolicyTagsJson);
         if (validationError is not null)
-            return BadRequest(new { error = validationError });
+            return BadRequest(new { message = validationError });
 
         var loc = await db.Locations.FindAsync(id);
         if (loc is null) return NotFound();
@@ -465,6 +467,7 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
         item.AttachedProducts = updated.AttachedProducts;
         item.AttachedVendors = updated.AttachedVendors;
         item.LocationsJson = updated.LocationsJson;
+        item.UpdatedAt = DateTime.UtcNow;
 
         if (string.IsNullOrWhiteSpace(item.ComponentId))
             item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, item.Name, item.Id);
@@ -495,6 +498,8 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
             ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, name);
 
         ingredient.DetailConfigJson = string.IsNullOrWhiteSpace(ingredient.DetailConfigJson) ? "{}" : ingredient.DetailConfigJson;
+        ingredient.CreatedAt = DateTime.UtcNow;
+        ingredient.UpdatedAt = DateTime.UtcNow;
 
         db.Ingredients.Add(ingredient);
         await db.SaveChangesAsync();

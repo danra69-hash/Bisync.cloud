@@ -14,18 +14,16 @@ import { ToggleSwitch } from './ToggleSwitch';
 
 type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'break' | 'shift' | 'ot' | 'ph' | 'active';
 
-const thCls = 'px-4 py-2.5 font-sans';
-
 const LEVEL_TABLE_COLUMNS: SortableColumnDef<LevelSortColumn>[] = [
-  { key: 'level', label: 'Level', className: thCls },
-  { key: 'annual', label: 'Annual', className: thCls },
-  { key: 'sick', label: 'Sick', className: thCls },
-  { key: 'hrsPerDay', label: 'Hrs/Day', className: thCls },
-  { key: 'break', label: 'Break', className: thCls },
-  { key: 'shift', label: 'Shift', className: thCls },
-  { key: 'ot', label: 'OT', className: thCls },
-  { key: 'ph', label: 'PH', className: thCls },
-  { key: 'active', label: 'Active', align: 'center', className: thCls },
+  { key: 'level', label: 'Level' },
+  { key: 'annual', label: 'Annual' },
+  { key: 'sick', label: 'Sick' },
+  { key: 'hrsPerDay', label: 'Hrs/Day' },
+  { key: 'break', label: 'Break' },
+  { key: 'shift', label: 'Shift' },
+  { key: 'ot', label: 'OT' },
+  { key: 'ph', label: 'PH' },
+  { key: 'active', label: 'Active', align: 'center' },
 ];
 
 const emptyForm = {

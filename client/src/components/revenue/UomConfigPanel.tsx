@@ -4,6 +4,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Plus } from 'lucide-react';
 import { inputCls } from '../../data/componentForm';
+import { ensureRecipeUnitsExist, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
 import {
   METRIC_FB_CHART,
   METRIC_IMPERIAL_PAIRS,
@@ -12,14 +13,15 @@ import {
   type ConversionRow,
 } from '../../data/uomConfig';
 
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
+import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 const INITIAL_ALL_UOMS = ['GR', 'KG', 'ML', 'LT', 'Each', 'Slice', 'Can', 'BTL'] as const;
 
 type UomRow = { id: number; code: string };
 
 function buildInitialUoms(): UomRow[] {
-  return INITIAL_ALL_UOMS.map((code, index) => ({ id: index + 1, code }));
+  const codes = [...new Set([...INITIAL_ALL_UOMS, ...getKnownRecipeUnits()])];
+  return codes.map((code, index) => ({ id: index + 1, code }));
 }
 
 function ConversionTable({ title, description, rows, showCategory = false }: {
@@ -49,7 +51,7 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {(showCategory ? ['Scale', 'From', 'To', 'Multiply by', 'Example'] : ['From', 'To', 'Multiply by', 'Example']).map(h => (
-                <th key={h} className={thCls}>{h}</th>
+                <th key={h} className={tableHeaderCls('left')}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -78,7 +80,6 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
 export function UomConfigPanel() {
   const [allUoms, setAllUoms] = useState<UomRow[]>(buildInitialUoms);
   const [myUomIds, setMyUomIds] = useState<number[]>([]);
-  const [nextUomId, setNextUomId] = useState(INITIAL_ALL_UOMS.length + 1);
   const [newUomCode, setNewUomCode] = useState('');
   const [addUomError, setAddUomError] = useState<string | null>(null);
 
@@ -117,8 +118,9 @@ export function UomConfigPanel() {
       setAddUomError('This UOM already exists.');
       return;
     }
-    setAllUoms(prev => [...prev, { id: nextUomId, code: trimmed }]);
-    setNextUomId(id => id + 1);
+    ensureRecipeUnitsExist([trimmed]);
+    const codes = [...new Set([...allUoms.map(u => u.code), trimmed])];
+    setAllUoms(codes.map((code, index) => ({ id: index + 1, code })));
     setNewUomCode('');
     setAddUomError(null);
   }
@@ -165,7 +167,7 @@ export function UomConfigPanel() {
             <table className="w-full table-fixed text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className={thCls}>UOM</th>
+                  <th className={tableHeaderCls('left')}>UOM</th>
                 </tr>
               </thead>
               <tbody>
@@ -203,7 +205,7 @@ export function UomConfigPanel() {
             <table className="w-full table-fixed text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className={thCls}>UOM</th>
+                  <th className={tableHeaderCls('left')}>UOM</th>
                 </tr>
               </thead>
               <tbody>

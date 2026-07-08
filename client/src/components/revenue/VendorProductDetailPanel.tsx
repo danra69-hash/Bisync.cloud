@@ -3,6 +3,7 @@ import { FilePlus2, X } from 'lucide-react';
 import { inputCls } from '../../data/componentForm';
 import {
   DELIVERY_ORDER_UNITS,
+  downloadVendorProductTemplateCsv,
   formatDeliveryUnitDetailPath,
   hasSmallestDeliveryBreakdown,
   resolveDeliveryUnitLevels,
@@ -106,22 +107,7 @@ export function VendorProductDetailPanel({ product, elevated = false, onClose, o
   }
 
   function downloadTemplateCsv() {
-    const header = ['Product Name', 'Group', 'Specification', 'Delivery Unit', 'Price'];
-    const sample = [
-      ['Baked Beans', 'Dry Goods', 'Baked beans in tomato sauce, 400g tins', 'Box/12tin/400gr', '42.00'],
-      ['Olive Oil Extra Virgin', 'Dry Goods', 'Cold pressed olive oil, 5L tin', 'Tin/5ltr', '165.00'],
-      ['Fresh Orange Juice', 'Beverages', 'Cold-pressed orange juice, 2L bottle', 'Bottle/2ltr', '18.00'],
-    ];
-    const csv = [header, ...sample]
-      .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'vendor-product-template.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadVendorProductTemplateCsv();
   }
 
   const overlayCls = elevated ? DETAIL_PANEL_OVERLAY_ELEVATED_CLS : SIDE_PANEL_OVERLAY_CLS;

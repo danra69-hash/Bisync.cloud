@@ -233,6 +233,31 @@ export function productLineFromComponent(component: ComponentRow): ProductLine {
   };
 }
 
+export function productLineFromSubProduct(product: {
+  productId: string;
+  name: string;
+  totalCost: number;
+  packagingCost?: number;
+  yieldQuantity: number;
+  yieldUom: string;
+  isSubProduct: boolean;
+}): ProductLine {
+  const batchCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, {
+    isSubProduct: true,
+    b2bEnabled: false,
+    b2cEnabled: false,
+  });
+  const batchLabel = formatSubProductBatchPackageUnit(product);
+  return {
+    key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    componentId: product.productId,
+    componentName: product.name,
+    componentUom: batchLabel !== '—' ? batchLabel : fromApiUom(product.yieldUom),
+    componentUomPrice: batchCogs > 0 ? String(batchCogs) : '',
+    quantity: '1',
+  };
+}
+
 export function filterComponentsForPicker(
   components: ComponentRow[],
   query: string,

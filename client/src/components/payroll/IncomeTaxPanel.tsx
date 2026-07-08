@@ -20,7 +20,7 @@ import { payrollYearOptions } from './payrollProcess';
 
 const textCls = 'px-3 py-2.5 text-xs';
 const cellInputCls = `${inputCls} py-1.5 min-w-0`;
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal whitespace-nowrap';
+import { tableHeaderCls } from '../shared/tableHeaderStyles';
 const amountCls = 'px-3 py-2.5 text-right font-sans whitespace-nowrap text-xs';
 
 type BracketSortColumn = 'range' | 'from' | 'to' | 'rate' | 'baseTax';
@@ -566,14 +566,14 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                 <table className="w-full table-fixed">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      <th className={thCls}>Employee ID</th>
-                      <th className={thCls}>Employee</th>
-                      <th className={thCls}>Position</th>
-                      <th className={`${thCls} text-right`}>Annual Gross</th>
-                      <th className={`${thCls} text-right`}>EPF</th>
-                      <th className={`${thCls} text-right`}>Base Tax Amount</th>
-                      <th className={`${thCls} text-right`}>Annual Tax</th>
-                      <th className={`${thCls} text-right`}>Monthly PCB</th>
+                      <th className={tableHeaderCls('left')}>Employee ID</th>
+                      <th className={tableHeaderCls('left')}>Employee</th>
+                      <th className={tableHeaderCls('left')}>Position</th>
+                      <th className={tableHeaderCls('right')}>Annual Gross</th>
+                      <th className={tableHeaderCls('right')}>EPF</th>
+                      <th className={tableHeaderCls('right')}>Base Tax Amount</th>
+                      <th className={tableHeaderCls('right')}>Annual Tax</th>
+                      <th className={tableHeaderCls('right')}>Monthly PCB</th>
                     </tr>
                   </thead>
                   <tbody>

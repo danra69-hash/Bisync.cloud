@@ -7,12 +7,8 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Tag, UserPlus } from 'lucide-react';
-import { api, type EngageVendorContact, type Ingredient, type Vendor } from '../../api';
-import {
-  resolveDetailConfigForRow,
-  resolveDetailConfigJsonForSave,
-  type ComponentRow,
-} from '../../data/componentForm';
+import { api, type EngageVendorContact, type Vendor } from '../../api';
+import type { ComponentRow } from '../../data/componentForm';
 import {
   formatDeliveryUnitPath,
   resolveCatalogVendor,
@@ -25,39 +21,13 @@ import {
   findComponentRowForTaggedProduct,
 } from '../../data/vendorProductTagging';
 import { ComponentEditPanel } from './ComponentEditPanel';
-import { ingredientToRow, mergeSavedRow } from './smartIngredientShared';
+import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
 import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductDetailPanel } from './VendorProductDetailPanel';
 import { VendorProductImageLightbox } from './VendorProductImageLightbox';
 import { VendorProductTagModal } from './VendorProductTagModal';
 import { VendorProductThumbnail } from './VendorProductThumbnail';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
-
-function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>): Ingredient {
-  const merged = { ...row, ...partial };
-  const detailConfig = resolveDetailConfigForRow(merged);
-  const detailConfigJson = resolveDetailConfigJsonForSave(row, partial);
-  return {
-    id: merged.id ?? 0,
-    componentId: merged.componentId,
-    name: merged.name,
-    category: merged.category,
-    group: merged.group,
-    recipeUom: merged.recipeUOM,
-    inventoryUom: merged.inventoryUOM,
-    lastPriceRecipe: merged.lastPriceRecipe,
-    lastPriceInventory: merged.lastPriceInventory,
-    dailyUsage: merged.dailyUsage,
-    orderFreqDays: merged.orderFreqDays,
-    storageJson: JSON.stringify(merged.storage),
-    storageNote: merged.storageNote ?? '',
-    detailConfigJson,
-    attachedProducts: merged.attachedProducts,
-    attachedVendors: detailConfig.taggedVendorProductIds.length || merged.attachedVendors,
-    active: merged.active,
-    locationsJson: JSON.stringify(merged.locations),
-  };
-}
 
 type VendorProductSortColumn =
   | 'productName'

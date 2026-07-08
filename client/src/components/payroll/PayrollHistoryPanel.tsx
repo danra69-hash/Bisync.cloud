@@ -13,7 +13,7 @@ import {
   groupRunsByYear,
 } from './payrollProcess';
 
-const thCls = 'text-left px-3 py-2 text-xs font-sans uppercase tracking-wider text-muted-foreground font-normal';
+import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 type Props = {
   companyId: number;
@@ -160,12 +160,12 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
                         <table className="w-full table-fixed text-xs">
                           <thead>
                             <tr className="border-b border-border/60">
-                              <th className={thCls}>Employee ID</th>
-                              <th className={thCls}>Employee</th>
-                              <th className={thCls}>Position (Dept)</th>
-                              <th className={thCls}>Attendance</th>
-                              <th className={`${thCls} text-right`}>Gross</th>
-                              <th className={`${thCls} text-right`}>Total Payout</th>
+                              <th className={tableHeaderCls('left')}>Employee ID</th>
+                              <th className={tableHeaderCls('left')}>Employee</th>
+                              <th className={tableHeaderCls('left')}>Position (Dept)</th>
+                              <th className={tableHeaderCls('left')}>Attendance</th>
+                              <th className={tableHeaderCls('right')}>Gross</th>
+                              <th className={tableHeaderCls('right')}>Total Payout</th>
                             </tr>
                           </thead>
                           <tbody>

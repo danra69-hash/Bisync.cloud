@@ -15,8 +15,6 @@ import { OrgSelectFields } from './OrgSelectFields';
 import { selectableEmployeeLevels } from './employeeTabShared';
 import { ToggleSwitch } from './ToggleSwitch';
 
-const thCls = 'px-4 py-2.5 font-sans font-normal';
-
 type EmployeeSortColumn =
   | 'employeeId'
   | 'employee'
@@ -32,18 +30,18 @@ type EmployeeSortColumn =
   | 'active';
 
 const EMPLOYEE_TABLE_COLUMNS: SortableColumnDef<EmployeeSortColumn>[] = [
-  { key: 'employeeId', label: 'Employee ID', className: thCls },
-  { key: 'employee', label: 'Employee', className: thCls },
-  { key: 'company', label: 'Company', className: thCls },
-  { key: 'location', label: 'Location', className: thCls },
-  { key: 'division', label: 'Division', className: thCls },
-  { key: 'department', label: 'Department', className: thCls },
-  { key: 'position', label: 'Position', className: thCls },
-  { key: 'level', label: 'Employee Level', className: thCls },
-  { key: 'shift', label: 'Shift', align: 'center', className: thCls },
-  { key: 'platformAccess', label: 'Platform Access', className: thCls },
-  { key: 'checkinMethod', label: 'Check-in Method', className: thCls },
-  { key: 'active', label: 'Active', align: 'center', className: thCls },
+  { key: 'employeeId', label: 'Employee ID' },
+  { key: 'employee', label: 'Employee' },
+  { key: 'company', label: 'Company' },
+  { key: 'location', label: 'Location' },
+  { key: 'division', label: 'Division' },
+  { key: 'department', label: 'Department' },
+  { key: 'position', label: 'Position' },
+  { key: 'level', label: 'Employee Level' },
+  { key: 'shift', label: 'Shift', align: 'center' },
+  { key: 'platformAccess', label: 'Platform Access' },
+  { key: 'checkinMethod', label: 'Check-in Method' },
+  { key: 'active', label: 'Active', align: 'center' },
 ];
 
 type EmployeeFormData = {

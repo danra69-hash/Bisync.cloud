@@ -10,12 +10,12 @@ import {
   calcSubProductUnitCost,
   formatCogsPercent,
 } from '../../data/productForm';
+import { formatProductParStock } from '../../data/productParStock';
+import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 const fieldCls =
   'w-full rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground';
 const labelCls = 'text-xs font-medium text-foreground';
-const thCls =
-  'px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/20';
 const tdCls = 'px-3 py-2 text-xs border-b border-border align-middle';
 
 type LocationOption = { externalId: string; name: string };
@@ -69,11 +69,11 @@ function ComponentItemsTable({
           <table className="w-full table-fixed border-collapse">
             <thead>
               <tr>
-                <th className={thCls}>Smart component</th>
-                <th className={thCls}>Smart component UOM</th>
-                <th className={thCls}>Smart component UOM price</th>
-                <th className={thCls}>Qty</th>
-                <th className={thCls}>Subtotal</th>
+                <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Smart component</th>
+                <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Smart component UOM</th>
+                <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Smart component UOM price</th>
+                <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Qty</th>
+                <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Subtotal</th>
               </tr>
             </thead>
             <tbody>
@@ -128,6 +128,7 @@ export function ProductReadOnlyView({
   }, [rrpDraft, product.rrp]);
 
   const yieldUomLabel = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+  const parStockUomLabel = product.parStockUom ? fromApiUom(product.parStockUom) : '';
   const subProductUnitCost = product.isSubProduct && product.yieldQuantity > 0
     ? calcSubProductUnitCost(productCogs, String(product.yieldQuantity))
     : 0;
@@ -194,7 +195,9 @@ export function ProductReadOnlyView({
       </section>
 
       <section className="rounded-lg border border-border bg-card p-4 space-y-4">
-        <h3 className="text-sm font-semibold">{product.isSubProduct ? 'Yield & locations' : 'Pricing & locations'}</h3>
+        <h3 className="text-sm font-semibold">
+          {product.isSubProduct ? 'Batch Production & Location' : 'Pricing, Par Stock & Location'}
+        </h3>
         <p className="text-[11px] text-muted-foreground -mt-2">
           {product.isSubProduct
             ? 'Sub-products are made or prepped in batches. Enter the yield quantity and UOM to calculate unit COGS.'
@@ -289,16 +292,46 @@ export function ProductReadOnlyView({
         )}
 
         {(product.isSubProduct || product.b2bEnabled) ? (
-          <div className="space-y-1.5 max-w-xs">
-            <p className={labelCls}>Expiry period (days)</p>
-            <p className={fieldCls}>
-              {product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '—'}
-            </p>
-            <p className="text-[10px] text-muted-foreground">
-              Production batches expire this many days after their production date.
-            </p>
+          <div className={`grid gap-4 ${product.isSubProduct ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl' : 'max-w-xs'}`}>
+            <div className="space-y-1.5">
+              <p className={labelCls}>Expiry period (days)</p>
+              <p className={fieldCls}>
+                {product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '—'}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Production batches expire this many days after their production date.
+              </p>
+            </div>
+            {product.isSubProduct ? (
+              <div className="space-y-1.5">
+                <p className={labelCls}>Activation (hours)</p>
+                <p className={fieldCls}>
+                  {product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '0'}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Hours after production before the batch can be sold.
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : null}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+          <div className="space-y-1.5">
+            <p className={labelCls}>Par Stock</p>
+            <p className={fieldCls}>{(product.parStock ?? 0) > 0 ? String(product.parStock) : '—'}</p>
+          </div>
+          <div className="space-y-1.5">
+            <p className={labelCls}>UOM</p>
+            <p className={fieldCls}>{parStockUomLabel || '—'}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Base Par Stock</p>
+            <p className="text-sm font-semibold mt-1">
+              {formatProductParStock(product.parStock ?? 0, parStockUomLabel)}
+            </p>
+          </div>
+        </div>
 
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Location</p>

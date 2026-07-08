@@ -11,6 +11,7 @@ public class Product
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
     public string B2bPackageUnit { get; set; } = "pcs";
+    public string B2bSalesConfigJson { get; set; } = "{}";
     public decimal TotalCost { get; set; }
     public decimal PackagingCost { get; set; }
     public decimal Rrp { get; set; }
@@ -20,6 +21,9 @@ public class Product
     public decimal YieldQuantity { get; set; }
     public string YieldUom { get; set; } = string.Empty;
     public int ExpiryPeriodDays { get; set; }
+    public int ActivationPeriodHours { get; set; }
+    public decimal ParStock { get; set; }
+    public string ParStockUom { get; set; } = string.Empty;
     public bool PosEnabled { get; set; }
     public bool Active { get; set; } = true;
     public int? CompanyId { get; set; }

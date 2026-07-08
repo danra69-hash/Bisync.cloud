@@ -5,6 +5,8 @@ import { inputCls, selectCls } from '../../data/componentForm';
 import { VENDOR_PRODUCT_POLICY_OPTIONS } from '../../data/vendorPolicyRules';
 import {
   applyVendorProductOverrides,
+  downloadVendorProductTemplateCsv,
+  parseVendorProductTemplateCsv,
   parseVendorProductsFromOcrText,
   saveImportedVendorProducts,
   type VendorProductImportDraft,
@@ -12,6 +14,7 @@ import {
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
@@ -74,65 +77,6 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
     visibleCount: parsedRowsVisibleCount,
   } = useInfiniteScrollSlice(parsedRows, { scrollRootRef: parsedRowsScrollRef });
 
-  function parseCsvLine(line: string): string[] {
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === ',' && !inQuotes) {
-        values.push(current.trim());
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-    values.push(current.trim());
-    return values.map(v => v.replace(/^"|"$/g, '').trim());
-  }
-
-  function parseVendorTemplateCsv(text: string): VendorProductImportDraft[] {
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    if (lines.length <= 1) return [];
-    const rows = lines.slice(1).map(parseCsvLine);
-    return rows
-      .filter(r => r.length >= 5)
-      .map(r => ({
-        productName: r[0],
-        group: r[1],
-        specification: r[2],
-        deliveryUnitText: r[3],
-        deliveryPrice: parseFloat(String(r[4]).replace(/[^0-9.]/g, '')) || 0,
-      }))
-      .filter(r => r.productName && r.group && r.deliveryUnitText && r.deliveryPrice > 0);
-  }
-
-  function downloadTemplateCsv() {
-    const header = ['Product Name', 'Group', 'Specification', 'Delivery Unit', 'Price'];
-    const sample = [
-      ['Baked Beans', 'Dry Goods', 'Baked beans in tomato sauce, 400g tins', 'Box/12tin/400gr', '42.00'],
-      ['Olive Oil Extra Virgin', 'Dry Goods', 'Cold pressed olive oil, 5L tin', 'Tin/5ltr', '165.00'],
-      ['Fresh Orange Juice', 'Beverages', 'Cold-pressed orange juice, 2L bottle', 'Bottle/2ltr', '18.00'],
-    ];
-    const csv = [header, ...sample]
-      .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'vendor-product-template.csv';
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   function setField<K extends keyof VendorCreatePayload>(key: K, value: VendorCreatePayload[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
   }
@@ -151,9 +95,9 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
     try {
       const first = incoming[0];
       const text = await first.text();
-      const drafts = parseVendorTemplateCsv(text);
+      const drafts = parseVendorProductTemplateCsv(text);
       if (drafts.length === 0) {
-        setError('Template file parsed no valid rows. Use: Product Name, Group, Specification, Delivery Unit, Price.');
+        setError('Template file parsed no valid rows. Use: Vendor Product ID, Product Name, Group, Specification, Delivery Unit, Price.');
         return;
       }
       setParsedRows(drafts);
@@ -205,6 +149,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
     setParsedRows(prev => [
       ...prev,
       {
+        vendorProductId: '',
         productName: '',
         group: 'Dry Goods',
         specification: '',
@@ -397,7 +342,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
             <div className="flex gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={downloadTemplateCsv}
+                onClick={downloadVendorProductTemplateCsv}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] hover:bg-[#2563eb]/15"
               >
                 <FilePlus2 size={11} />
@@ -451,7 +396,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                 {ocrRunning ? 'Running OCR…' : 'Run OCR on Scanned Document'}
               </button>
               <p className="text-xs text-muted-foreground">
-                Expected format: Product Name | Group | Specification | Delivery Unit | Price
+                Expected format: Vendor Product ID | Product Name | Group | Specification | Delivery Unit | Price
               </p>
               {parsedRows.length > 0 && (
                 <div className="space-y-2">
@@ -473,17 +418,21 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                       <table className="w-full table-fixed text-xs">
                         <thead className="sticky top-0 bg-muted/50">
                           <tr className="border-b border-border">
-                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Product Name</th>
-                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Group</th>
-                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Specification</th>
-                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Delivery Unit</th>
-                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Price</th>
-                            <th className="text-left px-2 py-1.5 font-sans uppercase tracking-wider text-muted-foreground">Action</th>
+                            <TableHeaderCell compact>Vendor Product ID</TableHeaderCell>
+                            <TableHeaderCell compact>Product Name</TableHeaderCell>
+                            <TableHeaderCell compact>Group</TableHeaderCell>
+                            <TableHeaderCell compact>Specification</TableHeaderCell>
+                            <TableHeaderCell compact>Delivery Unit</TableHeaderCell>
+                            <TableHeaderCell compact>Price</TableHeaderCell>
+                            <TableHeaderCell compact>Action</TableHeaderCell>
                           </tr>
                         </thead>
                         <tbody>
                           {pagedParsedRows.map((row, i) => (
                             <tr key={`row-${i}`} className="border-b border-border last:border-b-0">
+                              <td className="p-1.5 ">
+                                <input className={`${inputCls} text-xs`} value={row.vendorProductId ?? ''} onChange={e => updateParsedRow(i, { vendorProductId: e.target.value })} placeholder="VP-..." />
+                              </td>
                               <td className="p-1.5 ">
                                 <input className={`${inputCls} text-xs`} value={row.productName} onChange={e => updateParsedRow(i, { productName: e.target.value })} />
                               </td>
@@ -524,7 +473,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
                               </td>
                             </tr>
                           ))}
-                          <InfiniteScrollTableSentinel colSpan={6} hasMore={parsedRowsHasMore} sentinelRef={parsedRowsSentinelRef} totalCount={parsedRowsTotalCount} visibleCount={parsedRowsVisibleCount} />
+                          <InfiniteScrollTableSentinel colSpan={7} hasMore={parsedRowsHasMore} sentinelRef={parsedRowsSentinelRef} totalCount={parsedRowsTotalCount} visibleCount={parsedRowsVisibleCount} />
                         </tbody>
                       </table>
                     </TableScrollContainer>

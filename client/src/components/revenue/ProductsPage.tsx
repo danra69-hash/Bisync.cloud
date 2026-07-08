@@ -8,7 +8,15 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type Product } from '../../api';
-import { blankComponentRow, fromApiUom, RECIPE_UNITS, toApiUom } from '../../data/componentForm';
+import { blankComponentRow, fromApiUom, toApiUom } from '../../data/componentForm';
+import { loadExtraGroups, saveExtraGroups, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
+import {
+  convertProductParStockQty,
+  formatProductParStock,
+  productParStockUomOptions,
+  resolveDefaultProductParStockUom,
+  serializeProductParStockUom,
+} from '../../data/productParStock';
 import { componentMatchesLocations, formatRm } from '../../data/createOrder';
 import {
   blankProductAlias,
@@ -21,9 +29,26 @@ import {
   generateProductId,
   isProductLineFilled,
   productLineFromComponent,
+  productLineFromSubProduct,
   type ProductAliasLine,
   type ProductLine,
 } from '../../data/productForm';
+import {
+  blankB2bSalesConfig,
+  b2bDeliveryResolvesToYieldUom,
+  buildB2bConfigForSave,
+  describeB2bDeliveryYieldResolution,
+  isB2bAlternateLineActive,
+  parseB2bSalesConfigJson,
+  resolveLinkedSubProduct,
+  resolvePrincipalB2bRrp,
+  seedB2bSalesFromSubProduct,
+  serializeB2bSalesConfig,
+  type B2bSalesConfig,
+} from '../../data/productB2bSales';
+import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
+import { B2bSalesBox } from './B2bSalesBox';
+import { SubProductPicker } from './SubProductPicker';
 import { siCategories, siGroups } from '../../data/revenueManagement';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import { ComponentEditPanel } from './ComponentEditPanel';
@@ -60,23 +85,7 @@ const BOM_LINE_TABLE_COLUMNS: SortableColumnDef<BomLineSortColumn>[] = [
   { key: 'action', label: '', sortable: false, className: 'w-10' },
 ];
 
-const EXTRA_GROUPS_KEY = 'bisync.productExtraGroups';
 const categoryOptions = siCategories.filter(c => c !== 'All');
-
-function loadExtraGroups(): string[] {
-  try {
-    const raw = localStorage.getItem(EXTRA_GROUPS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as string[];
-    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveExtraGroups(groups: string[]) {
-  localStorage.setItem(EXTRA_GROUPS_KEY, JSON.stringify(groups));
-}
 
 type ComponentRow = ReturnType<typeof ingredientToRow>;
 
@@ -87,8 +96,11 @@ type ComponentLinesSectionProps = {
   totalCost: number;
   totalLabel: string;
   availableComponents: ComponentRow[];
+  pickerMode?: 'component' | 'subproduct';
+  availableSubProducts?: Product[];
   onUpdateLine: (key: string, patch: Partial<ProductLine>) => void;
   onComponentSelect: (key: string, component: ComponentRow | null) => void;
+  onSubProductSelect?: (key: string, product: Product | null) => void;
   onRemoveLine: (key: string) => void;
   onAddLine: () => void;
   onOpenAddComponent: (lineKey: string) => void;
@@ -101,12 +113,25 @@ function ComponentLinesSection({
   totalCost,
   totalLabel,
   availableComponents,
+  pickerMode = 'component',
+  availableSubProducts = [],
   onUpdateLine,
   onComponentSelect,
+  onSubProductSelect,
   onRemoveLine,
   onAddLine,
   onOpenAddComponent,
 }: ComponentLinesSectionProps) {
+  const isSubProductMode = pickerMode === 'subproduct';
+  const columns = isSubProductMode
+    ? BOM_LINE_TABLE_COLUMNS.map(column => (
+      column.key === 'component'
+        ? { ...column, label: 'Sub-product' }
+        : column.key === 'uom'
+          ? { ...column, label: 'Batch UOM' }
+          : column
+    ))
+    : BOM_LINE_TABLE_COLUMNS;
   const showAddRow = lines.length > 0 && isProductLineFilled(lines[lines.length - 1]);
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const { sortColumn, sortDirection, toggleSort } = useTableSort<BomLineSortColumn>();
@@ -146,7 +171,7 @@ function ComponentLinesSection({
         <table className="w-full table-fixed border-collapse">
           <thead>
             <SortableTableHeaderRow
-              columns={BOM_LINE_TABLE_COLUMNS}
+              columns={columns}
               sortColumn={sortColumn}
               sortDirection={sortDirection}
               onSort={toggleSort}
@@ -161,21 +186,31 @@ function ComponentLinesSection({
                   <td className={tdCls}>
                     <div className="flex gap-1.5 items-center">
                       <div className="flex-1 min-w-0">
-                        <SmartComponentPicker
-                          components={availableComponents}
-                          value={line.componentId}
-                          onChange={component => onComponentSelect(line.key, component)}
-                        />
+                        {isSubProductMode ? (
+                          <SubProductPicker
+                            products={availableSubProducts}
+                            value={line.componentId}
+                            onChange={product => onSubProductSelect?.(line.key, product)}
+                          />
+                        ) : (
+                          <SmartComponentPicker
+                            components={availableComponents}
+                            value={line.componentId}
+                            onChange={component => onComponentSelect(line.key, component)}
+                          />
+                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onOpenAddComponent(line.key)}
-                        className={addBtnCls}
-                        title="Create new smart component"
-                        aria-label="Create new smart component"
-                      >
-                        <Plus size={14} />
-                      </button>
+                      {!isSubProductMode ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddComponent(line.key)}
+                          className={addBtnCls}
+                          title="Create new smart component"
+                          aria-label="Create new smart component"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                   <td className={tdCls}>
@@ -286,11 +321,15 @@ export function ProductsPage({
   const [yieldQuantity, setYieldQuantity] = useState('');
   const [yieldUom, setYieldUom] = useState('');
   const [expiryPeriodDays, setExpiryPeriodDays] = useState('');
+  const [activationPeriodHours, setActivationPeriodHours] = useState('');
+  const [parStock, setParStock] = useState('');
+  const [parStockUom, setParStockUom] = useState('');
   const [productLocationIds, setProductLocationIds] = useState<string[]>([]);
   const [aliases, setAliases] = useState<ProductAliasLine[]>([]);
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
   const [lines, setLines] = useState<ProductLine[]>([blankProductLine()]);
   const [packagingLines, setPackagingLines] = useState<ProductLine[]>([blankProductLine()]);
+  const [b2bSalesConfig, setB2bSalesConfig] = useState<B2bSalesConfig>(() => blankB2bSalesConfig());
 
   const [components, setComponents] = useState<ReturnType<typeof ingredientToRow>[]>([]);
   const [extraGroups, setExtraGroups] = useState<string[]>(() => loadExtraGroups());
@@ -301,6 +340,14 @@ export function ProductsPage({
   const [editComponentRow, setEditComponentRow] = useState<ReturnType<typeof ingredientToRow> | null>(null);
   const [isNewComponent, setIsNewComponent] = useState(false);
   const [componentSaveError, setComponentSaveError] = useState<string | null>(null);
+  const saveErrorRef = useRef<HTMLDivElement>(null);
+
+  function showSaveError(message: string) {
+    setError(message);
+    requestAnimationFrame(() => {
+      saveErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
 
   const groupOptions = useMemo(() => {
     const fromComponents = components.map(c => c.group).filter(Boolean);
@@ -381,6 +428,21 @@ export function ProductsPage({
     [components, selectedLocationIds],
   );
 
+  const availableSubProducts = useMemo(
+    () => savedProducts.filter(product =>
+      product.isSubProduct
+      && product.active
+      && (!product.locationExternalIds?.length
+        || product.locationExternalIds.some(id => selectedLocationIds.includes(id))),
+    ),
+    [savedProducts, selectedLocationIds],
+  );
+
+  const linkedSubProduct = useMemo(
+    () => resolveLinkedSubProduct(lines, savedProducts),
+    [lines, savedProducts],
+  );
+
   const existingProductIds = useMemo(
     () => savedProducts.map(p => p.productId),
     [savedProducts],
@@ -416,6 +478,54 @@ export function ProductsPage({
     [effectiveProductCogs, yieldQuantity],
   );
 
+  const parStockUomOptionList = useMemo(
+    () => productParStockUomOptions(
+      getKnownRecipeUnits(),
+      parStockUom,
+      [
+        yieldUom,
+        resolveDefaultProductParStockUom({
+          isSubProduct,
+          yieldUom,
+          b2bEnabled,
+          b2bSalesConfig,
+        }),
+        ...(b2bEnabled ? [formatDeliveryUnitPath(b2bSalesConfig.principal.delivery)] : []),
+      ],
+    ),
+    [parStockUom, yieldUom, isSubProduct, b2bEnabled, b2bSalesConfig],
+  );
+
+  useEffect(() => {
+    if (parStockUom.trim()) return;
+    const defaultUom = resolveDefaultProductParStockUom({
+      isSubProduct,
+      yieldUom,
+      b2bEnabled,
+      b2bSalesConfig,
+    });
+    if (defaultUom) setParStockUom(defaultUom);
+  }, [isSubProduct, yieldUom, b2bEnabled, b2bSalesConfig, parStockUom]);
+
+  function handleParStockUomChange(nextUom: string) {
+    const currentQty = parseFloat(parStock) || 0;
+    if (currentQty > 0 && parStockUom && nextUom && nextUom !== parStockUom) {
+      const converted = convertProductParStockQty(currentQty, parStockUom, nextUom);
+      if (converted !== null) {
+        setParStock(String(Number(converted.toFixed(4))));
+      }
+    }
+    setParStockUom(nextUom);
+  }
+
+  function toggleParStockUomBasis() {
+    const options = parStockUomOptionList;
+    if (options.length < 2) return;
+    const currentIndex = Math.max(0, options.indexOf(parStockUom));
+    const nextUom = options[(currentIndex + 1) % options.length];
+    handleParStockUomChange(nextUom);
+  }
+
   function setProductType(subProduct: boolean) {
     setIsSubProduct(subProduct);
     if (subProduct) {
@@ -428,6 +538,7 @@ export function ProductsPage({
       setB2bEnabled(false);
       setYieldQuantity('');
       setYieldUom('');
+      setActivationPeriodHours('');
     }
   }
 
@@ -444,10 +555,14 @@ export function ProductsPage({
     setYieldQuantity('');
     setYieldUom('');
     setExpiryPeriodDays('');
+    setActivationPeriodHours('');
+    setParStock('');
+    setParStockUom('');
     setProductLocationIds(selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
     setAliases([]);
     setLines([blankProductLine()]);
     setPackagingLines([blankProductLine()]);
+    setB2bSalesConfig(blankB2bSalesConfig());
     setIsEditing(true);
     setError(null);
   }
@@ -465,6 +580,9 @@ export function ProductsPage({
     setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : '');
     setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : '');
     setExpiryPeriodDays(product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '');
+    setActivationPeriodHours(product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '');
+    setParStock((product.parStock ?? 0) > 0 ? String(product.parStock) : '');
+    setParStockUom(product.parStockUom ? fromApiUom(product.parStockUom) : '');
     setProductLocationIds(product.locationExternalIds?.length
       ? [...product.locationExternalIds]
       : selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
@@ -476,11 +594,39 @@ export function ProductsPage({
     })));
     setLines(mapProductItemsToLines(product.items));
     setPackagingLines(mapProductItemsToLines(product.packagingItems));
+    const parsedB2bSales = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
+    if (product.b2bEnabled && !product.isSubProduct && !parsedB2bSales.principal.rrp && product.rrp > 0) {
+      parsedB2bSales.principal.rrp = String(product.rrp);
+    }
+    setB2bSalesConfig(parsedB2bSales);
     setError(null);
   }
 
   function updateLine(key: string, patch: Partial<ProductLine>) {
     setLines(prev => prev.map(line => (line.key === key ? { ...line, ...patch } : line)));
+  }
+
+  function handleSubProductSelect(key: string, product: Product | null) {
+    if (!product) {
+      updateLine(key, {
+        componentId: '',
+        componentName: '',
+        componentUom: '',
+        componentUomPrice: '',
+      });
+      return;
+    }
+    const next = productLineFromSubProduct(product);
+    updateLine(key, {
+      componentId: next.componentId,
+      componentName: next.componentName,
+      componentUom: next.componentUom,
+      componentUomPrice: next.componentUomPrice,
+      quantity: next.quantity,
+    });
+    if (b2bEnabled && !isSubProduct) {
+      setB2bSalesConfig(prev => seedB2bSalesFromSubProduct(prev, product));
+    }
   }
 
   function handleComponentSelect(key: string, component: ReturnType<typeof ingredientToRow> | null) {
@@ -628,48 +774,102 @@ export function ProductsPage({
     ));
   }
 
+  function handleB2bEnabledChange(checked: boolean) {
+    setB2bEnabled(checked);
+    if (!checked) {
+      setB2bSalesConfig(blankB2bSalesConfig());
+      return;
+    }
+    if (rrp.trim()) {
+      setB2bSalesConfig(prev => ({
+        ...prev,
+        principal: prev.principal.rrp.trim()
+          ? prev.principal
+          : { ...prev.principal, rrp },
+      }));
+    }
+  }
+
   async function handleSave() {
     if (!orgReady || !selectedCompanyId) {
-      setError('Select a company and at least one location in the header.');
+      showSaveError('Select a company and at least one location in the header.');
       return;
     }
     if (!name.trim()) {
-      setError(isSubProduct
+      showSaveError(isSubProduct
         ? 'Enter a sub-product name to generate the product ID.'
         : 'Enter a principal product name to generate the product ID.');
       return;
     }
     if (!category) {
-      setError('Category is required.');
+      showSaveError('Category is required.');
       return;
     }
     if (!group) {
-      setError('Group is required.');
+      showSaveError('Group is required.');
       return;
     }
     if (!isSubProduct && !b2cEnabled && !b2bEnabled) {
-      setError('Select at least one channel: B2C or B2B.');
+      showSaveError('Select at least one channel: B2C or B2B.');
       return;
     }
+
+    const b2bConfigForSave = !isSubProduct && b2bEnabled
+      ? buildB2bConfigForSave(b2bSalesConfig, rrpValue)
+      : b2bSalesConfig;
+
     if (isSubProduct) {
       const yieldQty = parseFloat(yieldQuantity) || 0;
       if (yieldQty <= 0) {
-        setError('Enter a yield quantity greater than zero.');
+        showSaveError('Enter a yield quantity greater than zero.');
         return;
       }
       if (!yieldUom) {
-        setError('Select a UOM for this sub-product.');
+        showSaveError('Select a UOM for this sub-product.');
         return;
       }
       const expiryDays = parseInt(expiryPeriodDays, 10);
       if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
-        setError('Enter an expiry period (days) greater than zero.');
+        showSaveError('Enter an expiry period (days) greater than zero.');
+        return;
+      }
+      const activationHours = parseInt(activationPeriodHours, 10);
+      if (!Number.isFinite(activationHours) || activationHours < 0) {
+        showSaveError('Enter activation hours as zero or greater.');
         return;
       }
     } else if (b2bEnabled) {
       const expiryDays = parseInt(expiryPeriodDays, 10);
       if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
-        setError('Enter an expiry period (days) greater than zero for B2B products.');
+        showSaveError('Enter an expiry period (days) greater than zero for B2B products.');
+        return;
+      }
+      const linked = resolveLinkedSubProduct(lines, savedProducts);
+      if (!linked) {
+        showSaveError('Select a sub-product in Product Component for B2B sales COGS.');
+        return;
+      }
+      const principalRrp = resolvePrincipalB2bRrp(b2bConfigForSave, rrpValue);
+      if (principalRrp <= 0) {
+        showSaveError(b2cEnabled
+          ? 'Enter an RRP for the product or the principal B2B delivery unit.'
+          : 'Enter an RRP for the principal B2B delivery unit.');
+        return;
+      }
+      if (!b2bDeliveryResolvesToYieldUom(b2bConfigForSave.principal.delivery, linked)) {
+        const hint = describeB2bDeliveryYieldResolution(b2bConfigForSave.principal.delivery, linked);
+        showSaveError(hint.message || 'Principal delivery unit must break down to the sub-product batch UOM.');
+        return;
+      }
+      if (b2bConfigForSave.alternates.some(line => (
+        isB2bAlternateLineActive(line)
+        && !b2bDeliveryResolvesToYieldUom(line.delivery, linked)
+      ))) {
+        showSaveError('Each alternate delivery unit with an RRP must break down to the sub-product batch UOM.');
+        return;
+      }
+      if (b2bConfigForSave.alternates.some(line => isB2bAlternateLineActive(line) && (parseFloat(line.rrp) || 0) <= 0)) {
+        showSaveError('Each alternate delivery unit with an RRP needs a value greater than zero.');
         return;
       }
     }
@@ -685,11 +885,13 @@ export function ProductsPage({
       }));
 
     if (payloadItems.length === 0) {
-      setError('Add at least one smart component line.');
+      showSaveError(b2bEnabled && !isSubProduct
+        ? 'Add at least one sub-product line.'
+        : 'Add at least one smart component line.');
       return;
     }
     if (payloadItems.some(item => item.quantity <= 0)) {
-      setError('Each line requires a quantity greater than zero.');
+      showSaveError('Each line requires a quantity greater than zero.');
       return;
     }
 
@@ -704,7 +906,7 @@ export function ProductsPage({
       }));
 
     if (payloadPackagingItems.some(item => item.quantity <= 0)) {
-      setError('Each packaging line requires a quantity greater than zero.');
+      showSaveError('Each packaging line requires a quantity greater than zero.');
       return;
     }
 
@@ -716,6 +918,12 @@ export function ProductsPage({
         rrp: parseFloat(alias.rrp) || 0,
       }));
 
+    const effectiveRrp = isSubProduct
+      ? 0
+      : b2bEnabled
+        ? resolvePrincipalB2bRrp(b2bConfigForSave, rrpValue)
+        : rrpValue;
+
     const payload = {
       productId: productId || undefined,
       name: name.trim(),
@@ -724,10 +932,26 @@ export function ProductsPage({
       isSubProduct,
       b2cEnabled: isSubProduct ? false : b2cEnabled,
       b2bEnabled: isSubProduct ? false : b2bEnabled,
-      rrp: isSubProduct ? 0 : rrpValue,
+      b2bPackageUnit: isSubProduct || !b2bEnabled
+        ? undefined
+        : formatDeliveryUnitPath(b2bConfigForSave.principal.delivery),
+      b2bSalesConfigJson: isSubProduct || !b2bEnabled
+        ? undefined
+        : serializeB2bSalesConfig(b2bConfigForSave),
+      rrp: effectiveRrp,
       yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
       yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
+      activationPeriodHours: isSubProduct ? parseInt(activationPeriodHours, 10) || 0 : undefined,
+      parStock: parseFloat(parStock) || 0,
+      parStockUom: (parseFloat(parStock) || 0) > 0
+        ? serializeProductParStockUom(parStockUom || resolveDefaultProductParStockUom({
+          isSubProduct,
+          yieldUom,
+          b2bEnabled,
+          b2bSalesConfig,
+        }))
+        : undefined,
       active: true,
       companyId: selectedCompanyId,
       locationExternalIds: productLocationIds,
@@ -746,10 +970,13 @@ export function ProductsPage({
       setSelectedProductId(String(saved.id));
       setProductId(saved.productId);
       loadProduct(saved);
+      if (!isSubProduct && b2bEnabled) {
+        setB2bSalesConfig(b2bConfigForSave);
+      }
       setIsEditing(false);
       loadSavedProducts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save product.');
+      showSaveError(err instanceof Error ? err.message : 'Failed to save product.');
     } finally {
       setSaving(false);
     }
@@ -898,7 +1125,7 @@ export function ProductsPage({
                       type="checkbox"
                       checked={b2bEnabled}
                       disabled={isSubProduct}
-                      onChange={e => setB2bEnabled(e.target.checked)}
+                      onChange={e => handleB2bEnabledChange(e.target.checked)}
                       className="rounded border-border disabled:cursor-not-allowed"
                     />
                     B2B
@@ -971,7 +1198,9 @@ export function ProductsPage({
           </section>
 
           <section className="rounded-lg border border-border bg-card p-4 space-y-4">
-            <h3 className="text-sm font-semibold">{isSubProduct ? 'Yield & locations' : 'Pricing & locations'}</h3>
+            <h3 className="text-sm font-semibold">
+              {isSubProduct ? 'Batch Production & Location' : 'Pricing, Par Stock & Location'}
+            </h3>
             <p className="text-[11px] text-muted-foreground -mt-2">
               {isSubProduct
                 ? 'Sub-products are made or prepped in batches. Enter the yield quantity and UOM to calculate unit COGS.'
@@ -1015,7 +1244,7 @@ export function ProductsPage({
                       className={fieldCls}
                     >
                       <option value="">Select UOM…</option>
-                      {RECIPE_UNITS.map(unit => (
+                      {getKnownRecipeUnits().map(unit => (
                         <option key={unit} value={unit}>{unit}</option>
                       ))}
                     </select>
@@ -1127,18 +1356,24 @@ export function ProductsPage({
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">RRP</p>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs text-muted-foreground">RM</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={rrp}
-                        onChange={e => setRrp(e.target.value)}
-                        placeholder="0.00"
-                        className={fieldCls}
-                      />
-                    </div>
+                    {b2bEnabled && !b2cEnabled ? (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Set RRP per delivery unit in B2B Sales below.
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-xs text-muted-foreground">RM</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={rrp}
+                          onChange={e => setRrp(e.target.value)}
+                          placeholder="0.00"
+                          className={fieldCls}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS %</p>
@@ -1149,23 +1384,87 @@ export function ProductsPage({
             )}
 
             {(isSubProduct || b2bEnabled) ? (
-              <div className="space-y-1.5 max-w-xs">
-                <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
-                <input
-                  id="expiry-period-days"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={expiryPeriodDays}
-                  onChange={e => setExpiryPeriodDays(e.target.value)}
-                  placeholder="e.g. 7"
-                  className={fieldCls}
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Each production batch expires this many days after its production date.
-                </p>
+              <div className={`grid gap-4 ${isSubProduct ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl' : 'max-w-xs'}`}>
+                <div className="space-y-1.5">
+                  <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
+                  <input
+                    id="expiry-period-days"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={expiryPeriodDays}
+                    onChange={e => setExpiryPeriodDays(e.target.value)}
+                    placeholder="e.g. 7"
+                    className={fieldCls}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Each production batch expires this many days after its production date.
+                  </p>
+                </div>
+                {isSubProduct ? (
+                  <div className="space-y-1.5">
+                    <label className={labelCls} htmlFor="activation-period-hours">Activation (hours)</label>
+                    <input
+                      id="activation-period-hours"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={activationPeriodHours}
+                      onChange={e => setActivationPeriodHours(e.target.value)}
+                      placeholder="e.g. 24"
+                      className={fieldCls}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Hours after production before the batch can be sold. Use 0 if sellable immediately.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+              <div className="space-y-1.5">
+                <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
+                <input
+                  id="par-stock-qty"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={parStock}
+                  onChange={e => setParStock(e.target.value)}
+                  placeholder="0"
+                  className={fieldCls}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className={labelCls} htmlFor="par-stock-uom">UOM</label>
+                <select
+                  id="par-stock-uom"
+                  value={parStockUom}
+                  onChange={e => handleParStockUomChange(e.target.value)}
+                  className={fieldCls}
+                >
+                  <option value="">Select UOM…</option>
+                  {parStockUomOptionList.map(unit => (
+                    <option key={unit} value={unit}>{unit}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Base Par Stock</p>
+                <button
+                  type="button"
+                  onClick={toggleParStockUomBasis}
+                  className={`${fieldCls} text-left mt-1 cursor-pointer hover:border-primary/60 transition-colors`}
+                  title="Click to recalculate par stock in the next UOM"
+                >
+                  {formatProductParStock(parseFloat(parStock) || 0, parStockUom || '—')}
+                </button>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Click to switch UOM and recalculate quantity.
+                </p>
+              </div>
+            </div>
 
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -1202,15 +1501,29 @@ export function ProductsPage({
             </div>
           </section>
 
+          {!isSubProduct && b2bEnabled ? (
+            <B2bSalesBox
+              config={b2bSalesConfig}
+              linkedSubProduct={linkedSubProduct}
+              disabled={!isEditing || saving}
+              onChange={setB2bSalesConfig}
+            />
+          ) : null}
+
           <ComponentLinesSection
             title="Product Component"
-            description="Add smart components and quantities to calculate product cost"
+            description={!isSubProduct && b2bEnabled
+              ? 'Link a sub-product batch. Delivery-unit COGS is calculated from the sub-product yield UOM.'
+              : 'Add smart components and quantities to calculate product cost'}
             lines={lines}
             totalCost={totalCost}
             totalLabel="Total cost"
             availableComponents={availableComponents}
+            pickerMode={!isSubProduct && b2bEnabled ? 'subproduct' : 'component'}
+            availableSubProducts={availableSubProducts}
             onUpdateLine={updateLine}
             onComponentSelect={handleComponentSelect}
+            onSubProductSelect={handleSubProductSelect}
             onRemoveLine={removeLine}
             onAddLine={addLine}
             onOpenAddComponent={lineKey => openAddComponent(lineKey, 'product')}
@@ -1230,6 +1543,15 @@ export function ProductsPage({
             onOpenAddComponent={lineKey => openAddComponent(lineKey, 'packaging')}
           />
           </fieldset>
+
+          {error ? (
+            <div
+              ref={saveErrorRef}
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-400"
+            >
+              {error}
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             {selectedProductId ? (
@@ -1298,12 +1620,6 @@ export function ProductsPage({
             </div>
           </div>
 
-          {error ? (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-400">
-              {error}
-            </div>
-          ) : null}
-
           {editingGroup ? (
             <GroupEditPanel
               group={editingGroup}
@@ -1322,6 +1638,7 @@ export function ProductsPage({
               isNew={isNewComponent}
               existingComponents={components}
               selectedCompanyId={selectedCompanyId}
+              selectedLocationIds={selectedLocationIds}
               saveError={componentSaveError}
               elevated
               onClose={() => {

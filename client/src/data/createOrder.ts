@@ -13,6 +13,8 @@ import {
   vendorMatchesOrgPolicy,
   type CompanyVendorPolicyTag,
 } from './vendorPolicyRules';
+import { filterTaggedVendorProductIdsForLocations, isVendorProductTaggedAtLocations } from './vendorProductTagging';
+import { calcBaseParStockInRecipeUom } from './componentParStock';
 
 export type CreateOrderLine = {
   key: string;
@@ -36,8 +38,7 @@ export function componentMatchesLocations(
 }
 
 export function calcParStock(component: ComponentRow): number {
-  if (component.dailyUsage <= 0 || component.orderFreqDays <= 0) return 0;
-  return component.dailyUsage * component.orderFreqDays;
+  return calcBaseParStockInRecipeUom(component.dailyUsage, component.orderFreqDays);
 }
 
 export function vendorProductMatchesLocations(
@@ -45,11 +46,13 @@ export function vendorProductMatchesLocations(
   productId: string,
   locationIds: string[],
 ): boolean {
-  if (locationIds.length === 0) return false;
   const detail = resolveDetailConfigForRow(component);
-  const assigned = detail.vendorProductLocations[productId] ?? [];
-  if (assigned.length === 0) return false;
-  return locationIds.some(id => assigned.includes(id));
+  return isVendorProductTaggedAtLocations(
+    productId,
+    detail.taggedVendorProductIds,
+    detail.vendorProductLocations,
+    locationIds,
+  );
 }
 
 export function resolveTaggedProductsForComponent(
@@ -58,13 +61,19 @@ export function resolveTaggedProductsForComponent(
   options?: { vendorExternalId?: string; locationIds?: string[] },
 ): VendorProductCatalogItem[] {
   const detail = resolveDetailConfigForRow(component);
-  let tagged = detail.taggedVendorProductIds
-    .map(id => catalog.find(p => p.id === id))
-    .filter((p): p is VendorProductCatalogItem => Boolean(p));
+  let taggedIds = [...new Set(detail.taggedVendorProductIds.filter(Boolean))];
 
   if (options?.locationIds && options.locationIds.length > 0) {
-    tagged = tagged.filter(p => vendorProductMatchesLocations(component, p.id, options.locationIds!));
+    taggedIds = filterTaggedVendorProductIdsForLocations(
+      taggedIds,
+      detail.vendorProductLocations,
+      options.locationIds,
+    );
   }
+
+  let tagged = taggedIds
+    .map(id => catalog.find(p => p.id === id))
+    .filter((p): p is VendorProductCatalogItem => Boolean(p));
 
   if (options?.vendorExternalId) {
     tagged = tagged.filter(p => p.vendorExternalId === options.vendorExternalId);

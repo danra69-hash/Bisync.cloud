@@ -25,6 +25,53 @@ export function getConversion(from: string, to: string): number | null {
   return UNIT_CONV[from]?.[to] ?? null;
 }
 
+export function isConversionQtyAutoFilled(
+  fromUnit: string,
+  toUnit: string,
+  qty: string,
+  fromQty: string,
+): boolean {
+  const conv = getConversion(fromUnit, toUnit);
+  if (conv === null) return false;
+  const from = parseFloat(fromQty || '1') || 1;
+  const expected = conv * from;
+  const parsed = parseFloat(qty);
+  if (!Number.isFinite(parsed)) return false;
+  return Math.abs(parsed - expected) < 0.0001;
+}
+
+export function resolveInventoryToRecipeQty(
+  inventoryUnit: string,
+  recipeUnit: string,
+  fromQty: string,
+  currentQty?: string,
+): { fromQty: string; qty: string } {
+  if (inventoryUnit === recipeUnit) return { fromQty: '1', qty: '1' };
+  const from = parseFloat(fromQty || '1') || 1;
+  const conv = getConversion(inventoryUnit, recipeUnit);
+  return {
+    fromQty: fromQty || '1',
+    qty: conv !== null ? String(conv * from) : (currentQty?.trim() || ''),
+  };
+}
+
+function resolveInventoryToRecipeQtyOnLoad(
+  inventoryUnit: string,
+  recipeUnit: string,
+  fromQty: string,
+  storedQty?: string,
+): string {
+  if (inventoryUnit === recipeUnit) return storedQty?.trim() || '1';
+  const from = parseFloat(fromQty || '1') || 1;
+  const conv = getConversion(inventoryUnit, recipeUnit);
+  if (conv === null) return storedQty?.trim() || '';
+  const expected = String(conv * from);
+  const stored = storedQty?.trim();
+  if (!stored || stored === '1') return expected;
+  if (isConversionQtyAutoFilled(inventoryUnit, recipeUnit, stored, fromQty)) return stored;
+  return stored;
+}
+
 export function toApiUom(unit: string): string {
   const map: Record<string, string> = {
     Mg: 'mg', Gr: 'g', Kg: 'kg', Tonne: 't',
@@ -219,6 +266,8 @@ export type ComponentForm = {
   convertFromInventoryQty: string;
   convertToRecipeQty: string;
   lossYield: string;
+  dailyUsage: string;
+  orderFreqDays: string;
 };
 
 export function buildComponentIdPrefix(name: string): string {
@@ -265,6 +314,8 @@ export type ComponentRow = {
   locations: string[];
   detailConfig?: ComponentDetailConfig;
   detailConfigJson?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export function toForm(row: ComponentRow, existingComponentIds: string[] = []): ComponentForm {
@@ -294,12 +345,15 @@ export function toForm(row: ComponentRow, existingComponentIds: string[] = []): 
     vendorProductLocations: { ...detail.vendorProductLocations },
     deliveryUnitPrice: detail.deliveryUnitPrice || String(row.lastPriceInventory),
     convertFromInventoryQty: detail.convertFromInventoryQty || '1',
-    convertToRecipeQty: detail.convertToRecipeQty || (
-      inventoryUnit === recipeUnit
-        ? '1'
-        : String(getConversion(inventoryUnit, recipeUnit) ?? '')
+    convertToRecipeQty: resolveInventoryToRecipeQtyOnLoad(
+      inventoryUnit,
+      recipeUnit,
+      detail.convertFromInventoryQty || '1',
+      detail.convertToRecipeQty,
     ),
     lossYield: '0',
+    dailyUsage: row.dailyUsage > 0 ? String(row.dailyUsage) : '',
+    orderFreqDays: String(row.orderFreqDays > 0 ? row.orderFreqDays : 7),
   };
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
@@ -33,16 +34,14 @@ type LocationSortColumn =
   | 'productPolicy'
   | 'country';
 
-const thCls = 'px-4 py-2.5 font-sans font-normal';
-
 const LOCATION_TABLE_COLUMNS: SortableColumnDef<LocationSortColumn>[] = [
-  { key: 'location', label: 'Location', className: thCls },
-  { key: 'company', label: 'Company', className: thCls },
-  { key: 'address', label: 'Address', className: thCls },
-  { key: 'principalContact', label: 'Principal Contact', className: thCls },
-  { key: 'businessType', label: 'Type of Business', className: thCls },
-  { key: 'productPolicy', label: 'Product Policy', className: thCls },
-  { key: 'country', label: 'Country', className: thCls },
+  { key: 'location', label: 'Location' },
+  { key: 'company', label: 'Company' },
+  { key: 'address', label: 'Address' },
+  { key: 'principalContact', label: 'Principal Contact' },
+  { key: 'businessType', label: 'Type of Business' },
+  { key: 'productPolicy', label: 'Product Policy' },
+  { key: 'country', label: 'Country' },
 ];
 
 function blankLocation(companyId: number | null = null): LocationConfig {
@@ -93,8 +92,25 @@ function LocationPanel({
     return profileArraysFromCompany(initialCompany ?? location).vendorPolicyTags;
   });
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const company = companies.find(c => c.id === form.companyId);
   const country = getCountry(company?.countryCode ?? form.countryCode);
+
+  useEffect(() => {
+    setForm(location);
+    const initial = companies.find(c => c.id === location.companyId);
+    const inherits = isNew || location.profileOverridden !== true;
+    setInheritsCompanyProfile(inherits);
+    if (!isNew && location.profileOverridden) {
+      setBusinessTypes(parseStringArrayJson(location.businessTypesJson) as CompanyBusinessType[]);
+      setVendorPolicyTags(parseStringArrayJson(location.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
+    } else {
+      const profile = profileArraysFromCompany(initial ?? location);
+      setBusinessTypes(profile.businessTypes);
+      setVendorPolicyTags(profile.vendorPolicyTags);
+    }
+    setError(null);
+  }, [location, isNew, companies]);
 
   useEffect(() => {
     if (!inheritsCompanyProfile || !form.companyId) return;
@@ -190,6 +206,8 @@ function LocationPanel({
       vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
     };
 
+    setSaving(true);
+    setError(null);
     try {
       const saved = isNew
         ? await api.createLocationConfig(payload)
@@ -207,19 +225,21 @@ function LocationPanel({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save location.');
+    } finally {
+      setSaving(false);
     }
   }
 
-  return (
+  return createPortal(
     <>
-      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
+      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={() => !saving && onClose()} />
       <div className={SIDE_PANEL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Location</p>
             <h3 className="text-sm font-semibold">{isNew ? 'New Location' : form.name}</h3>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted"><X size={14} className="text-muted-foreground" /></button>
+          <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"><X size={14} className="text-muted-foreground" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -281,18 +301,25 @@ function LocationPanel({
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-border flex justify-end gap-3 shrink-0">
-          <button onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">Cancel</button>
-          <button
-            onClick={save}
-            disabled={!form.companyId || !form.name.trim() || businessTypes.length === 0 || vendorPolicyTags.length === 0}
-            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
-          >
-            {isNew ? 'Add Location' : 'Save Changes'}
-          </button>
+        <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : isNew ? 'Add Location' : 'Save Changes'}
+            </button>
+          </div>
+          <p className="text-[11px] text-muted-foreground text-right">
+            Required: company, location name, address, and business/policy settings (inherited from company is fine).
+          </p>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
@@ -411,6 +438,7 @@ export function LocationsConfigTab({
             : `${locations.length} locations · each belongs to a company`}
         </p>
         <button
+          type="button"
           onClick={openCreate}
           className="inline-flex items-center gap-1.5 text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-2"
         >

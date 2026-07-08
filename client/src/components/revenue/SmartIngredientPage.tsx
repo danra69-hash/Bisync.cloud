@@ -7,38 +7,22 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
-import { Search, X } from 'lucide-react';
-import { api, type Ingredient } from '../../api';
+import { FilePlus2, Search, Upload, X } from 'lucide-react';
+import { api } from '../../api';
 import { siCategories, siGroups } from '../../data/revenueManagement';
-import { blankComponentRow, fromApiUom, resolveDetailConfigForRow, resolveDetailConfigJsonForSave, type ComponentRow } from '../../data/componentForm';
+import { blankComponentRow, fromApiUom, type ComponentRow } from '../../data/componentForm';
+import {
+  buildSmartComponentImportPlan,
+  downloadSmartComponentTemplateCsv,
+  parseSmartComponentTemplateCsv,
+  type SmartComponentImportPlan,
+  type SmartComponentLocationScope,
+} from '../../data/smartComponentCatalog';
 import { ComponentEditPanel } from './ComponentEditPanel';
-import { ingredientToRow, mergeSavedRow } from './smartIngredientShared';
-
-function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow>) {
-  const merged = { ...row, ...partial };
-  const detailConfig = resolveDetailConfigForRow(merged);
-  const detailConfigJson = resolveDetailConfigJsonForSave(row, partial);
-  return {
-    id: merged.id ?? 0,
-    componentId: merged.componentId,
-    name: merged.name,
-    category: merged.category,
-    group: merged.group,
-    recipeUom: merged.recipeUOM,
-    inventoryUom: merged.inventoryUOM,
-    lastPriceRecipe: merged.lastPriceRecipe,
-    lastPriceInventory: merged.lastPriceInventory,
-    dailyUsage: merged.dailyUsage,
-    orderFreqDays: merged.orderFreqDays,
-    storageJson: JSON.stringify(merged.storage),
-    storageNote: merged.storageNote ?? '',
-    detailConfigJson,
-    attachedProducts: merged.attachedProducts,
-    attachedVendors: detailConfig.taggedVendorProductIds.length || merged.attachedVendors,
-    active: merged.active,
-    locationsJson: JSON.stringify(merged.locations),
-  } satisfies Ingredient;
-}
+import { SmartComponentImportReviewPanel } from './SmartComponentImportReviewPanel';
+import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
+import { countComponentTaggedVendors } from '../../data/vendorProductTagging';
+import { formatParStock, resolveComponentParStock } from '../../data/componentParStock';
 
 type IngredientSortColumn =
   | 'componentId'
@@ -47,6 +31,7 @@ type IngredientSortColumn =
   | 'lastPrice'
   | 'dailyUsage'
   | 'orderFreq'
+  | 'parStock'
   | 'storage'
   | 'products'
   | 'vendors'
@@ -59,6 +44,7 @@ const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
   { key: 'lastPrice', label: 'Last UOM Price', align: 'right' },
   { key: 'dailyUsage', label: 'Daily Usage', align: 'right' },
   { key: 'orderFreq', label: 'Order Freq (days)', align: 'right' },
+  { key: 'parStock', label: 'Par Stock', align: 'right' },
   { key: 'storage', label: 'Storage' },
   { key: 'products', label: 'Products', align: 'center' },
   { key: 'vendors', label: 'Vendors', align: 'center' },
@@ -82,9 +68,16 @@ function FilterSelect({ label, value, options, onChange }: {
   );
 }
 
-export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: number | null }) {
+export function SmartIngredientPage({
+  selectedCompanyId,
+  selectedLocationIds,
+}: {
+  selectedCompanyId: number | null;
+  selectedLocationIds: string[];
+}) {
   const [rows, setRows] = useState<ComponentRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [companyLocations, setCompanyLocations] = useState<{ externalId: string; name: string }[]>([]);
   const [catFilter, setCatFilter] = useState('All');
   const [grpFilter, setGrpFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -92,6 +85,9 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
   const [editRow, setEditRow] = useState<ComponentRow | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [importPlan, setImportPlan] = useState<SmartComponentImportPlan | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const templateRef = useRef<HTMLInputElement | null>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<IngredientSortColumn>();
 
   useEffect(() => {
@@ -101,6 +97,23 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setCompanyLocations([]);
+      return;
+    }
+    api.locationsConfig()
+      .then(locations => {
+        setCompanyLocations(
+          locations
+            .filter(location => location.companyId === selectedCompanyId)
+            .map(location => ({ externalId: location.externalId, name: location.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      })
+      .catch(() => setCompanyLocations([]));
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) {
@@ -130,6 +143,8 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
 
   const uom = (r: ComponentRow) => uomType === 'recipe' ? fromApiUom(r.recipeUOM) : fromApiUom(r.inventoryUOM);
   const price = (r: ComponentRow) => uomType === 'recipe' ? r.lastPriceRecipe : r.lastPriceInventory;
+  const vendorCount = (r: ComponentRow) => countComponentTaggedVendors(r, selectedLocationIds);
+  const parStock = (r: ComponentRow) => resolveComponentParStock(r, uomType);
 
   const sortedFiltered = useMemo(
     () =>
@@ -144,13 +159,14 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
           lastPrice: row => price(row),
           dailyUsage: row => row.dailyUsage,
           orderFreq: row => row.orderFreqDays,
+          parStock: row => parStock(row).value,
           storage: row => (Array.isArray(row.storage) ? row.storage : []).join(', '),
           products: row => row.attachedProducts,
-          vendors: row => row.attachedVendors,
+          vendors: row => vendorCount(row),
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
-    [filtered, sortColumn, sortDirection, uomType],
+    [filtered, sortColumn, sortDirection, uomType, selectedLocationIds],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -162,7 +178,22 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
     visibleCount,
   } = useInfiniteScrollSlice(sortedFiltered, { scrollRootRef });
 
-  const hasFilters = catFilter !== 'All' || grpFilter !== 'All' || !!search;
+  const locationScope = useMemo<SmartComponentLocationScope | undefined>(() => {
+    if (!selectedCompanyId || selectedLocationIds.length === 0) return undefined;
+    return {
+      companyLocations,
+      selectedLocationIds,
+    };
+  }, [companyLocations, selectedCompanyId, selectedLocationIds]);
+
+  const scopedLocationNames = useMemo(
+    () => companyLocations
+      .filter(location => selectedLocationIds.includes(location.externalId))
+      .map(location => location.name),
+    [companyLocations, selectedLocationIds],
+  );
+
+  const templateLocationReady = !selectedCompanyId || selectedLocationIds.length > 0;
 
   function openAdd() {
     if (!selectedCompanyId) return;
@@ -208,6 +239,40 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
     }
   }
 
+  const hasFilters = catFilter !== 'All' || grpFilter !== 'All' || !!search;
+
+  function handleDownloadTemplate() {
+    if (!templateLocationReady) {
+      setImportError('Select at least one location in the header filter before downloading the template.');
+      return;
+    }
+    setImportError(null);
+    downloadSmartComponentTemplateCsv(rows, locationScope);
+  }
+
+  async function handleTemplateUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (!templateLocationReady) {
+      setImportError('Select at least one location in the header filter before uploading the template.');
+      return;
+    }
+    setImportError(null);
+    try {
+      const text = await files[0].text();
+      const drafts = parseSmartComponentTemplateCsv(text, locationScope);
+      if (drafts.length === 0) {
+        setImportError('Template file parsed no valid rows. Use the downloaded Smart Component template format.');
+        return;
+      }
+      const plan = buildSmartComponentImportPlan(drafts, rows, locationScope);
+      setImportPlan(plan);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to read smart component template.');
+    } finally {
+      if (templateRef.current) templateRef.current.value = '';
+    }
+  }
+
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
       {!selectedCompanyId && (
@@ -216,16 +281,54 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
         </p>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-muted-foreground font-sans">{filtered.length} of {rows.length} items</p>
-        <button
-          onClick={openAdd}
-          disabled={!selectedCompanyId}
-          className="text-xs font-sans bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          + Add Component
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            disabled={!templateLocationReady}
+            className="inline-flex items-center gap-1.5 text-xs font-sans border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] rounded-md px-3 py-2 hover:bg-[#2563eb]/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FilePlus2 size={12} />
+            Download Template CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => templateRef.current?.click()}
+            disabled={!templateLocationReady}
+            className="inline-flex items-center gap-1.5 text-xs font-sans border border-[#7c3aed]/40 bg-[#7c3aed]/10 text-[#6d28d9] rounded-md px-3 py-2 hover:bg-[#7c3aed]/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Upload size={12} />
+            Upload Template CSV
+          </button>
+          <input
+            ref={templateRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={e => void handleTemplateUpload(e.target.files)}
+          />
+          <button
+            onClick={openAdd}
+            disabled={!selectedCompanyId}
+            className="text-xs font-sans bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            + Add Component
+          </button>
+        </div>
       </div>
+
+      {importError && (
+        <p className="text-xs text-red-500 border border-red-300/50 rounded-lg px-3 py-2">{importError}</p>
+      )}
+
+      {selectedCompanyId && scopedLocationNames.length > 0 && (
+        <p className="text-xs text-muted-foreground border border-border rounded-lg px-3 py-2">
+          Template locations are scoped to the header filter: {scopedLocationNames.join(', ')}.
+          Components assigned to <span className="font-medium">All</span> locations export as these location names only.
+        </p>
+      )}
 
       <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
@@ -308,11 +411,14 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
+                    <td colSpan={11} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No items match the selected filters.
                     </td>
                   </tr>
-                ) : pagedFiltered.map(row => (
+                ) : pagedFiltered.map(row => {
+                  const vendors = vendorCount(row);
+                  const par = parStock(row);
+                  return (
                   <tr key={row.id ?? row.name}
                     className={`border-b border-border last:border-0 transition-colors ${row.active ? 'hover:bg-muted/30' : 'opacity-50 hover:opacity-70'}`}>
                     <td className="px-4 py-3 font-sans text-muted-foreground">{row.componentId || '—'}</td>
@@ -330,6 +436,9 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
                     <td className="px-4 py-3 font-sans text-muted-foreground">
                       {row.orderFreqDays >= 90 ? `${row.orderFreqDays}d` : `Every ${row.orderFreqDays}d`}
                     </td>
+                    <td className="px-4 py-3 font-sans text-muted-foreground text-right">
+                      {formatParStock(par.value, par.uom)}
+                    </td>
                     <td className="px-4 py-3 ">
                       <div className="flex flex-col gap-1">
                         {(Array.isArray(row.storage) ? row.storage : []).map((s, si) => (
@@ -343,8 +452,8 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
                       ) : <span className="text-muted-foreground font-sans">—</span>}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {row.attachedVendors > 0 ? (
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-sans font-semibold">{row.attachedVendors}</span>
+                      {vendors > 0 ? (
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-sans font-semibold">{vendors}</span>
                       ) : <span className="text-muted-foreground font-sans">—</span>}
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -357,8 +466,9 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
                       </button>
                     </td>
                   </tr>
-                ))}
-                <InfiniteScrollTableSentinel colSpan={10} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                  );
+                })}
+                <InfiniteScrollTableSentinel colSpan={11} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
@@ -371,9 +481,24 @@ export function SmartIngredientPage({ selectedCompanyId }: { selectedCompanyId: 
           isNew={isNewRow}
           existingComponents={rows}
           selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
           saveError={saveError}
           onClose={() => { setEditRow(null); setIsNewRow(false); setSaveError(null); }}
           onSave={handleSave}
+        />
+      )}
+
+      {importPlan && (
+        <SmartComponentImportReviewPanel
+          plan={importPlan}
+          existingRows={rows}
+          locationScope={locationScope}
+          onClose={() => setImportPlan(null)}
+          onApplied={nextRows => {
+            setRows(nextRows);
+            setImportPlan(null);
+            setImportError(null);
+          }}
         />
       )}
     </div>

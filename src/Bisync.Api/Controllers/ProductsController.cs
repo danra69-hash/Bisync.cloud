@@ -69,10 +69,19 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             IsSubProduct = request.IsSubProduct,
             B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled,
             B2bEnabled = request.IsSubProduct ? false : request.B2bEnabled,
+            B2bPackageUnit = request.IsSubProduct
+                ? "pcs"
+                : (string.IsNullOrWhiteSpace(request.B2bPackageUnit) ? "pcs" : request.B2bPackageUnit.Trim()),
+            B2bSalesConfigJson = request.IsSubProduct
+                ? "{}"
+                : (string.IsNullOrWhiteSpace(request.B2bSalesConfigJson) ? "{}" : request.B2bSalesConfigJson),
             Rrp = request.IsSubProduct ? 0 : (request.Rrp ?? 0),
             YieldQuantity = request.IsSubProduct ? (request.YieldQuantity ?? 0) : 0,
             YieldUom = request.IsSubProduct ? (request.YieldUom?.Trim() ?? string.Empty) : string.Empty,
             ExpiryPeriodDays = ResolveExpiryPeriodDays(request),
+            ActivationPeriodHours = ResolveActivationPeriodHours(request),
+            ParStock = request.ParStock ?? 0,
+            ParStockUom = request.ParStockUom?.Trim() ?? string.Empty,
             PosEnabled = request.PosEnabled ?? false,
             Active = request.Active ?? true,
             TotalCost = items.Sum(i => i.Subtotal),
@@ -135,6 +144,20 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         product.IsSubProduct = request.IsSubProduct;
         product.B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled;
         product.B2bEnabled = request.IsSubProduct ? false : request.B2bEnabled;
+        if (!request.IsSubProduct)
+        {
+            product.B2bPackageUnit = string.IsNullOrWhiteSpace(request.B2bPackageUnit)
+                ? product.B2bPackageUnit
+                : request.B2bPackageUnit.Trim();
+            product.B2bSalesConfigJson = string.IsNullOrWhiteSpace(request.B2bSalesConfigJson)
+                ? "{}"
+                : request.B2bSalesConfigJson;
+        }
+        else
+        {
+            product.B2bPackageUnit = "pcs";
+            product.B2bSalesConfigJson = "{}";
+        }
         if (request.IsSubProduct)
         {
             product.YieldQuantity = request.YieldQuantity ?? 0;
@@ -146,6 +169,9 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             product.YieldUom = string.Empty;
         }
         product.ExpiryPeriodDays = ResolveExpiryPeriodDays(request);
+        product.ActivationPeriodHours = ResolveActivationPeriodHours(request);
+        if (request.ParStock.HasValue) product.ParStock = request.ParStock.Value;
+        if (request.ParStockUom is not null) product.ParStockUom = request.ParStockUom.Trim();
         if (request.PosEnabled.HasValue) product.PosEnabled = request.PosEnabled.Value;
         if (request.Active.HasValue) product.Active = request.Active.Value;
         product.CompanyId = request.CompanyId;
@@ -285,6 +311,13 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         return Math.Max(0, request.ExpiryPeriodDays ?? 0);
     }
 
+    static int ResolveActivationPeriodHours(UpsertProductRequest request)
+    {
+        if (!request.IsSubProduct)
+            return 0;
+        return Math.Max(0, request.ActivationPeriodHours ?? 0);
+    }
+
     static List<ProductComponentItem> MapItems(List<UpsertProductComponentItemRequest> items)
         => items.Select((item, index) =>
         {
@@ -343,6 +376,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         b2cEnabled = product.B2cEnabled,
         b2bEnabled = product.B2bEnabled,
         b2bPackageUnit = product.B2bPackageUnit,
+        b2bSalesConfigJson = product.B2bSalesConfigJson,
         totalCost = product.TotalCost,
         packagingCost = product.PackagingCost,
         rrp = product.Rrp,
@@ -352,6 +386,9 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         yieldQuantity = product.YieldQuantity,
         yieldUom = product.YieldUom,
         expiryPeriodDays = product.ExpiryPeriodDays,
+        activationPeriodHours = product.ActivationPeriodHours,
+        parStock = product.ParStock,
+        parStockUom = product.ParStockUom,
         posEnabled = product.PosEnabled,
         active = product.Active,
         companyId = product.CompanyId,

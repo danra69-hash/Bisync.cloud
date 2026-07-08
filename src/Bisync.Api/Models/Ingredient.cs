@@ -20,4 +20,6 @@ public class Ingredient
     public int AttachedVendors { get; set; }
     public bool Active { get; set; } = true;
     public string LocationsJson { get; set; } = "[]";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

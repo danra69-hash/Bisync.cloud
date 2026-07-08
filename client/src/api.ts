@@ -494,6 +494,7 @@ export interface Product {
   b2cEnabled: boolean;
   b2bEnabled: boolean;
   b2bPackageUnit?: string;
+  b2bSalesConfigJson?: string;
   totalCost: number;
   packagingCost: number;
   rrp: number;
@@ -503,6 +504,9 @@ export interface Product {
   yieldQuantity: number;
   yieldUom: string;
   expiryPeriodDays: number;
+  activationPeriodHours: number;
+  parStock: number;
+  parStockUom: string;
   posEnabled: boolean;
   active: boolean;
   companyId?: number | null;
@@ -528,10 +532,15 @@ export interface UpsertProductPayload {
   isSubProduct: boolean;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
+  b2bPackageUnit?: string;
+  b2bSalesConfigJson?: string;
   rrp?: number;
   yieldQuantity?: number;
   yieldUom?: string;
   expiryPeriodDays?: number;
+  activationPeriodHours?: number;
+  parStock?: number;
+  parStockUom?: string;
   posEnabled?: boolean;
   active?: boolean;
   companyId?: number | null;
@@ -658,6 +667,8 @@ export interface Ingredient {
   attachedVendors: number;
   active: boolean;
   locationsJson: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type StockCardItemType = 'component' | 'product' | 'sub-product';
@@ -917,7 +928,7 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
         shortages?: ProduceBatchShortage[];
         components?: ProduceBatchShortage[];
       };
-      message = parsed.message ?? parsed.title ?? message;
+      message = parsed.message ?? parsed.title ?? (parsed as { error?: string }).error ?? message;
       if (Array.isArray(parsed.components) && parsed.components.length > 0) {
         components = parsed.components;
       }

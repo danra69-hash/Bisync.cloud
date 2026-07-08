@@ -36,7 +36,12 @@ function renderRevMgmtContent(
 
   switch (label) {
     case 'Smart Component':
-      return <SmartIngredientPage selectedCompanyId={selectedCompanyId} />;
+      return (
+        <SmartIngredientPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'Component Config':
       return <ComponentConfigPage selectedCompanyId={selectedCompanyId} />;
     case 'Vendor List & Products':

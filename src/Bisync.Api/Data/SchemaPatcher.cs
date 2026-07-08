@@ -105,6 +105,8 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ComponentId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "StorageNote", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "DetailConfigJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CreatedAt", "TIMESTAMP NOT NULL DEFAULT NOW()");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "UpdatedAt", "TIMESTAMP NOT NULL DEFAULT NOW()");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await BackfillIngredientComponentIdsAsync(db);
@@ -257,7 +259,11 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousPackagingCost", "REAL NULL");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousRrp", "REAL NULL");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "B2bPackageUnit", "TEXT NOT NULL DEFAULT 'pcs'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "B2bSalesConfigJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "ExpiryPeriodDays", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "ActivationPeriodHours", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "ParStock", "REAL NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "ParStockUom", "TEXT NOT NULL DEFAULT ''");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "ProductB2bLocationStocks" (
@@ -431,6 +437,7 @@ public static class SchemaPatcher
 
         await InventoryCountHistorySeeder.EnsureAsync(db);
 
+        await DatabaseSchemaHelper.ResyncProductIdentitySequencesAsync(db);
         await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);
     }
 

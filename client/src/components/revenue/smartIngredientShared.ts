@@ -7,6 +7,7 @@ import {
   type ComponentRow,
 } from '../../data/componentForm';
 import { parseComponentStorageJson } from '../../data/storageAssignment';
+import { countComponentTaggedVendors } from '../../data/vendorProductTagging';
 
 function parseLocationsJson(json: string | null | undefined): string[] {
   if (!json?.trim()) return ['all'];
@@ -31,6 +32,7 @@ export function ingredientToRow(i: Ingredient): ComponentRow {
   const storage = parseComponentStorageJson(i.storageJson);
   const locations = parseLocationsJson(i.locationsJson);
   const detailConfigJson = readDetailConfigJsonFromIngredient(i);
+  const detailConfig = resolveDetailConfigForRow({ detailConfigJson });
   return {
     id: i.id,
     componentId: i.componentId ?? '',
@@ -46,11 +48,13 @@ export function ingredientToRow(i: Ingredient): ComponentRow {
     storage,
     storageNote: i.storageNote ?? '',
     attachedProducts: i.attachedProducts,
-    attachedVendors: i.attachedVendors,
+    attachedVendors: countComponentTaggedVendors({ detailConfig, detailConfigJson }),
     active: i.active,
     locations,
     detailConfigJson,
-    detailConfig: resolveDetailConfigForRow({ detailConfigJson }),
+    detailConfig,
+    createdAt: i.createdAt,
+    updatedAt: i.updatedAt,
   };
 }
 
@@ -74,7 +78,7 @@ export function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow
     storageNote: merged.storageNote ?? '',
     detailConfigJson,
     attachedProducts: merged.attachedProducts,
-    attachedVendors: detailConfig.taggedVendorProductIds.length || merged.attachedVendors,
+    attachedVendors: countComponentTaggedVendors({ detailConfig, detailConfigJson }),
     active: merged.active,
     locationsJson: JSON.stringify(merged.locations),
   };
@@ -102,7 +106,7 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
       lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
       detailConfig,
       detailConfigJson: serializeDetailConfig(detailConfig),
-      attachedVendors: detailConfig.taggedVendorProductIds.length || savedRow.attachedVendors,
+      attachedVendors: countComponentTaggedVendors({ detailConfig, detailConfigJson: serializeDetailConfig(detailConfig) }),
     };
   }
 
@@ -111,7 +115,7 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
       ...savedRow,
       detailConfig: sentConfig,
       detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }),
-      attachedVendors: sentConfig.taggedVendorProductIds.length,
+      attachedVendors: countComponentTaggedVendors({ detailConfig: sentConfig, detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }) }),
       lastPriceRecipe: sent.lastPriceRecipe > 0 ? sent.lastPriceRecipe : savedRow.lastPriceRecipe,
       lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
     };

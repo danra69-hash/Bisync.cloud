@@ -33,6 +33,7 @@ export type VendorProductCatalogItem = {
 };
 
 export type VendorProductImportDraft = {
+  vendorProductId?: string;
   productName: string;
   group: string;
   specification: string;
@@ -40,6 +41,111 @@ export type VendorProductImportDraft = {
   deliveryPrice: number;
   productPolicyTag?: VendorProductPolicyTag;
 };
+
+export const VENDOR_PRODUCT_TEMPLATE_HEADERS = [
+  'Vendor Product ID',
+  'Product Name',
+  'Group',
+  'Specification',
+  'Delivery Unit',
+  'Price',
+] as const;
+
+const VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS: string[][] = [
+  ['VP-BEAN001', 'Baked Beans', 'Dry Goods', 'Baked beans in tomato sauce, 400g tins', 'Box/12tin/400gr', '42.00'],
+  ['VP-OIL001', 'Olive Oil Extra Virgin', 'Dry Goods', 'Cold pressed olive oil, 5L tin', 'Tin/5ltr', '165.00'],
+  ['VP-OJ001', 'Fresh Orange Juice', 'Beverages', 'Cold-pressed orange juice, 2L bottle', 'Bottle/2ltr', '18.00'],
+];
+
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  values.push(current.trim());
+  return values.map(v => v.replace(/^"|"$/g, '').trim());
+}
+
+function isVendorProductTemplateHeader(cols: string[]): boolean {
+  const first = cols[0]?.toLowerCase() ?? '';
+  return first.includes('vendor product id') || first === 'product name';
+}
+
+function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | null {
+  if (cols.length >= 6) {
+    const deliveryPrice = parseFloat(String(cols[5]).replace(/[^0-9.]/g, '')) || 0;
+    const productName = cols[1];
+    const group = cols[2];
+    const deliveryUnitText = cols[4];
+    if (!productName || !group || !deliveryUnitText || deliveryPrice <= 0) return null;
+    const vendorProductId = cols[0].trim();
+    return {
+      vendorProductId: vendorProductId || undefined,
+      productName,
+      group,
+      specification: cols[3],
+      deliveryUnitText,
+      deliveryPrice,
+    };
+  }
+  if (cols.length >= 5) {
+    const deliveryPrice = parseFloat(String(cols[4]).replace(/[^0-9.]/g, '')) || 0;
+    const productName = cols[0];
+    const group = cols[1];
+    const deliveryUnitText = cols[3];
+    if (!productName || !group || !deliveryUnitText || deliveryPrice <= 0) return null;
+    return {
+      productName,
+      group,
+      specification: cols[2],
+      deliveryUnitText,
+      deliveryPrice,
+    };
+  }
+  return null;
+}
+
+export function buildVendorProductTemplateCsv(): string {
+  return [VENDOR_PRODUCT_TEMPLATE_HEADERS, ...VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS]
+    .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+}
+
+export function downloadVendorProductTemplateCsv(): void {
+  const blob = new Blob([buildVendorProductTemplateCsv()], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'vendor-product-template.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function parseVendorProductTemplateCsv(text: string): VendorProductImportDraft[] {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1) return [];
+  const firstCols = parseCsvLine(lines[0]);
+  const dataLines = isVendorProductTemplateHeader(firstCols) ? lines.slice(1) : lines.slice(1);
+  return dataLines
+    .map(parseCsvLine)
+    .map(rowToVendorProductDraft)
+    .filter((draft): draft is VendorProductImportDraft => draft !== null);
+}
 
 const NON_HALAL_VENDOR_IDS = new Set(['V004', 'V022', 'V026']);
 
@@ -385,16 +491,8 @@ export function parseVendorProductsFromOcrText(text: string): VendorProductImpor
   const drafts: VendorProductImportDraft[] = [];
   for (const line of lines) {
     const parts = line.split(/\t|,|;|\|/).map(p => p.trim());
-    if (parts.length < 5) continue;
-    const price = parseFloat(parts[4].replace(/[^0-9.]/g, ''));
-    if (!Number.isFinite(price)) continue;
-    drafts.push({
-      productName: parts[0],
-      group: parts[1],
-      specification: parts[2],
-      deliveryUnitText: parts[3],
-      deliveryPrice: price,
-    });
+    const draft = rowToVendorProductDraft(parts);
+    if (draft) drafts.push(draft);
   }
   return drafts;
 }
@@ -408,6 +506,19 @@ function makeImportedProductId(vendorExternalId: string, productName: string, us
   return `VP-${vendorExternalId.replace(/^V/i, '')}${Date.now().toString().slice(-6)}`;
 }
 
+function resolveImportedProductId(
+  draft: VendorProductImportDraft,
+  vendorExternalId: string,
+  used: Set<string>,
+): string | null {
+  const requested = draft.vendorProductId?.trim().toUpperCase();
+  if (requested) {
+    if (used.has(requested)) return null;
+    return requested;
+  }
+  return makeImportedProductId(vendorExternalId, draft.productName, used);
+}
+
 export function saveImportedVendorProducts(
   vendorExternalId: string,
   vendorName: string,
@@ -419,7 +530,8 @@ export function saveImportedVendorProducts(
   for (const draft of drafts) {
     const delivery = parseDeliveryUnitPath(draft.deliveryUnitText);
     if (!delivery) continue;
-    const id = makeImportedProductId(vendorExternalId, draft.productName, used);
+    const id = resolveImportedProductId(draft, vendorExternalId, used);
+    if (!id) continue;
     used.add(id);
     nextProducts.push({
       id,

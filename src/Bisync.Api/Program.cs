@@ -108,7 +108,12 @@ app.Use(async (context, next) =>
         context.Response.ContentType = "application/json";
         var message = pg.SqlState switch
         {
-            "23505" => "A record with the same identifier already exists. Please refresh and try again.",
+            "23505" => pg.ConstraintName switch
+            {
+                "PK_Products" => "Could not create product because the database ID sequence is out of sync. Restart the API to apply the latest schema patch.",
+                "IX_Products_ProductId" => "Product ID already exists. Refresh and choose a different name.",
+                _ => "A record with the same identifier already exists. Please refresh and try again.",
+            },
             "23503" => "This action references missing data. Please refresh and try again.",
             _ => "Could not save changes. Please try again.",
         };

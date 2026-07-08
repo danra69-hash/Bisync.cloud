@@ -349,7 +349,7 @@ export function ComparePricePage({
 
     const taggedVendorProductIds = detail.taggedVendorProductIds.includes(cell.product.id)
       ? detail.taggedVendorProductIds
-      : [...detail.taggedVendorProductIds, cell.product.id];
+      : [...new Set([...detail.taggedVendorProductIds, cell.product.id])];
     const isPrimary = taggedVendorProductIds[0] === cell.product.id;
 
     const nextDetail = {

@@ -114,10 +114,27 @@ public static class DatabaseSchemaHelper
             "InventoryPurchases",
             "AppUsers",
             "Companies",
+            "Locations",
             "CashPurchases",
             "OrderTemplates",
             "OrderTemplateItems",
             "UserNotifications",
+        ];
+
+        foreach (var table in tables)
+            await TryResyncIdentitySequenceAsync(db, table);
+    }
+
+    public static async Task ResyncProductIdentitySequencesAsync(DbContext db)
+    {
+        string[] tables =
+        [
+            "Products",
+            "ProductComponentItems",
+            "ProductPackagingItems",
+            "ProductAliases",
+            "ProductB2bLocationStocks",
+            "ProductProductionLogs",
         ];
 
         foreach (var table in tables)

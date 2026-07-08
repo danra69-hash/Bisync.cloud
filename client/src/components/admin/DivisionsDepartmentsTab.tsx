@@ -12,13 +12,11 @@ import { inputCls, selectCls } from '../../data/countries';
 
 type DivisionDeptSortColumn = 'division' | 'code' | 'department' | 'actions';
 
-const thCls = 'px-4 py-2.5 font-sans';
-
 const DIVISION_DEPT_TABLE_COLUMNS: SortableColumnDef<DivisionDeptSortColumn>[] = [
-  { key: 'division', label: 'Division', className: thCls },
-  { key: 'code', label: 'Code', className: `${thCls} w-28` },
-  { key: 'department', label: 'Department', className: thCls },
-  { key: 'actions', label: 'Actions', align: 'right', sortable: false, className: `${thCls} w-44` },
+  { key: 'division', label: 'Division' },
+  { key: 'code', label: 'Code', className: 'w-28' },
+  { key: 'department', label: 'Department' },
+  { key: 'actions', label: 'Actions', align: 'right', sortable: false, className: 'w-44' },
 ];
 
 const emptyDivision = { name: '', code: '' };

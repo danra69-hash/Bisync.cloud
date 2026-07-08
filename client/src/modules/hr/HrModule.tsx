@@ -4,6 +4,7 @@ import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
 import { SortableTableHead } from '../../components/shared/SortableTableHead';
+import { tableHeaderCls, tableHeaderCompactCls } from '../../components/shared/tableHeaderStyles';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
 import { api as bisyncApi, type AppUser } from '../../api';
@@ -711,10 +712,10 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                     <tr>
                       {attendanceDates.map((date) => (
                         <React.Fragment key={date}>
-                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-l border-gray-200">In</th>
-                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-gray-200">Out</th>
-                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-gray-200">Hrs</th>
-                          <th className="px-0.5 py-1 text-center text-xs text-gray-600 border-b border-gray-200">OT</th>
+                          <th className={tableHeaderCompactCls('center', 'px-0.5 border-b border-l border-gray-200 text-gray-600')}>In</th>
+                          <th className={tableHeaderCompactCls('center', 'px-0.5 border-b border-gray-200 text-gray-600')}>Out</th>
+                          <th className={tableHeaderCompactCls('center', 'px-0.5 border-b border-gray-200 text-gray-600')}>Hrs</th>
+                          <th className={tableHeaderCompactCls('center', 'px-0.5 border-b border-gray-200 text-gray-600')}>OT</th>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -1145,14 +1146,14 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 <table className="w-full table-fixed">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-6 py-3 text-left text-sm text-gray-700">Date</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Scheduled In</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Actual In</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Scheduled Out</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Actual Out</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Hours Worked</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Overtime</th>
-                      <th className="px-6 py-3 text-center text-sm text-gray-700">Status</th>
+                      <th className={tableHeaderCls('left', 'px-6 text-gray-700')}>Date</th>
+                      <th className={tableHeaderCls('center', 'px-6 text-gray-700')}>Scheduled In</th>
+                      <th className={tableHeaderCls('center', 'px-6 text-gray-700')}>Actual In</th>
+                      <th className={tableHeaderCls('center', 'px-6 text-gray-700')}>Scheduled Out</th>
+                      <th className={tableHeaderCls('center', 'px-6 text-gray-700')}>Actual Out</th>
+                      <th className={tableHeaderCls('center', 'px-6 text-gray-700')}>Hours Worked</th>
+                      <th className={tableHeaderCls('center', 'px-6 text-gray-700')}>Overtime</th>
+                      <th className={tableHeaderCls('center', 'px-6 text-gray-700')}>Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">

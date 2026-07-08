@@ -49,7 +49,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     public async Task<ActionResult<Company>> Create([FromBody] Company company)
     {
         var validationError = CompanyProfileRules.Validate(company.BusinessTypesJson, company.VendorPolicyTagsJson);
-        if (validationError is not null) return BadRequest(validationError);
+        if (validationError is not null) return BadRequest(new { message = validationError });
+
+        await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Companies");
 
         db.Companies.Add(company);
         await db.SaveChangesAsync();
@@ -60,7 +62,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     public async Task<ActionResult<Company>> Update(int id, [FromBody] Company updated)
     {
         var validationError = CompanyProfileRules.Validate(updated.BusinessTypesJson, updated.VendorPolicyTagsJson);
-        if (validationError is not null) return BadRequest(validationError);
+        if (validationError is not null) return BadRequest(new { message = validationError });
 
         var company = await db.Companies.FindAsync(id);
         if (company is null) return NotFound();
