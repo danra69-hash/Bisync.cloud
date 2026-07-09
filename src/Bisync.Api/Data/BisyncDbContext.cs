@@ -90,11 +90,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.HasIndex(x => x.ExternalId).IsUnique();
             e.HasIndex(x => x.CompanyId);
+            e.Property(x => x.Active).HasConversion<int>();
         });
         modelBuilder.Entity<PosCustomer>(e =>
         {
             e.HasIndex(x => x.ExternalId).IsUnique();
             e.HasIndex(x => x.CompanyId);
+            e.Property(x => x.Active).HasConversion<int>();
         });
         modelBuilder.Entity<Ingredient>(e =>
         {
