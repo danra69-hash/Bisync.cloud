@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type Product } from '../../api';
 import { blankComponentRow, fromApiUom, toApiUom, type AltUnitEntry } from '../../data/componentForm';
-import { loadExtraGroups, saveExtraGroups, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
+import { loadExtraGroups, removeExtraGroup, saveExtraGroups, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
 import {
   convertProductParStockQty,
   formatProductParStock,
@@ -34,7 +34,9 @@ import {
   type ProductLine,
 } from '../../data/productForm';
 import {
+  findSubProductForLine,
   resolveProductLineUomOptions,
+  subProductComponentUomOptions,
   withCurrentProductLineUomOption,
 } from '../../data/productComponentUomOptions';
 import {
@@ -56,6 +58,13 @@ import { siCategories, siGroups } from '../../data/revenueManagement';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import { ComponentEditPanel } from './ComponentEditPanel';
 import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
+import { ProductGroupSelect } from './ProductGroupSelect';
+import { DeleteProductGroupModal } from './DeleteProductGroupModal';
+import {
+  findProductsUsingGroup,
+  groupsMatch,
+  productToUpsertPayload,
+} from '../../data/productGroupCatalog';
 import { ProductionMethodModal } from './ProductionMethodModal';
 import { productKeyFromParts } from '../../data/productProductionMethod';
 import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
@@ -113,6 +122,7 @@ type ComponentLinesSectionProps = {
   availableComponents: ComponentRow[];
   includeSubProducts?: boolean;
   availableSubProducts?: Product[];
+  subProductCatalog?: Product[];
   onUpdateLine: (key: string, patch: Partial<ProductLine>) => void;
   onComponentSelect: (key: string, component: ComponentRow | null) => void;
   onSubProductSelect?: (key: string, product: Product | null) => void;
@@ -131,6 +141,7 @@ function ComponentLinesSection({
   availableComponents,
   includeSubProducts = false,
   availableSubProducts = [],
+  subProductCatalog = [],
   onUpdateLine,
   onComponentSelect,
   onSubProductSelect,
@@ -149,6 +160,35 @@ function ComponentLinesSection({
   const showAddRow = lines.length > 0 && isProductLineFilled(lines[lines.length - 1]);
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const { sortColumn, sortDirection, toggleSort } = useTableSort<BomLineSortColumn>();
+  const [enrichedSubProducts, setEnrichedSubProducts] = useState<Record<number, Product>>({});
+
+  const resolvedSubProductCatalog = useMemo(() => {
+    const merged = new Map<number, Product>();
+    for (const product of subProductCatalog) {
+      if (product.isSubProduct) merged.set(product.id, product);
+    }
+    for (const product of Object.values(enrichedSubProducts)) {
+      if (product.isSubProduct) merged.set(product.id, product);
+    }
+    return [...merged.values()];
+  }, [subProductCatalog, enrichedSubProducts]);
+
+  useEffect(() => {
+    if (!includeSubProducts) return;
+
+    for (const line of lines) {
+      const subProduct = findSubProductForLine(line, resolvedSubProductCatalog);
+      if (!subProduct) continue;
+      if (subProductComponentUomOptions(subProduct).length > 1) continue;
+      if (enrichedSubProducts[subProduct.id]) continue;
+
+      void api.product(subProduct.id)
+        .then(fresh => {
+          setEnrichedSubProducts(prev => ({ ...prev, [fresh.id]: fresh }));
+        })
+        .catch(() => undefined);
+    }
+  }, [includeSubProducts, lines, resolvedSubProductCatalog, enrichedSubProducts]);
 
   const sortedLines = useMemo(
     () =>
@@ -172,13 +212,13 @@ function ComponentLinesSection({
       map.set(
         line.key,
         withCurrentProductLineUomOption(
-          resolveProductLineUomOptions(line, availableComponents, availableSubProducts),
+          resolveProductLineUomOptions(line, availableComponents, resolvedSubProductCatalog),
           line,
         ),
       );
     }
     return map;
-  }, [lines, availableComponents, availableSubProducts]);
+  }, [lines, availableComponents, resolvedSubProductCatalog]);
 
   const {
     visibleItems: pagedLines,
@@ -341,15 +381,25 @@ function ComponentLinesSection({
   );
 }
 
-function mapProductItemsToLines(items?: Product['items']): ProductLine[] {
-  const mapped = (items ?? []).map(item => ({
-    key: item.id ? `saved-${item.id}` : `line-${item.componentId}`,
-    componentId: item.componentId,
-    componentName: item.componentName,
-    componentUom: item.componentUom,
-    componentUomPrice: String(item.componentUomPrice),
-    quantity: String(item.quantity),
-  }));
+function mapProductItemsToLines(
+  items: Product['items'] | undefined,
+  subProducts: Product[],
+): ProductLine[] {
+  const mapped = (items ?? []).map(item => {
+    const linkedSubProduct = subProducts.find(product =>
+      product.isSubProduct
+      && product.productId.trim().toLowerCase() === item.componentId.trim().toLowerCase(),
+    );
+    return {
+      key: item.id ? `saved-${item.id}` : `line-${item.componentId}`,
+      componentId: item.componentId,
+      componentName: item.componentName,
+      componentUom: item.componentUom,
+      componentUomPrice: String(item.componentUomPrice),
+      quantity: String(item.quantity),
+      sourceProductId: linkedSubProduct?.id,
+    };
+  });
   return mapped.length > 0 ? mapped : [blankProductLine()];
 }
 
@@ -413,6 +463,9 @@ export function ProductsPage({
 
   const [components, setComponents] = useState<ReturnType<typeof ingredientToRow>[]>([]);
   const [extraGroups, setExtraGroups] = useState<string[]>(() => loadExtraGroups());
+  const [deletingGroup, setDeletingGroup] = useState<string | null>(null);
+  const [deletingGroupError, setDeletingGroupError] = useState<string | null>(null);
+  const [deletingGroupSaving, setDeletingGroupSaving] = useState(false);
   const [editingGroup, setEditingGroup] = useState<GroupRow | null>(null);
   const [isNewGroup, setIsNewGroup] = useState(false);
   const [componentEditorLineKey, setComponentEditorLineKey] = useState<string | null>(null);
@@ -432,14 +485,16 @@ export function ProductsPage({
 
   const groupOptions = useMemo(() => {
     const fromComponents = components.map(c => c.group).filter(Boolean);
+    const fromProducts = savedProducts.map(product => product.group).filter(Boolean);
     const merged = new Set([
       ...siGroups.filter(g => g !== 'All'),
       ...extraGroups,
       ...fromComponents,
+      ...fromProducts,
       ...(group ? [group] : []),
     ]);
     return [...merged].sort((a, b) => a.localeCompare(b));
-  }, [components, extraGroups, group]);
+  }, [components, extraGroups, group, savedProducts]);
 
   const loadComponents = useCallback(() => {
     if (!orgReady) {
@@ -526,6 +581,11 @@ export function ProductsPage({
     [availableSubProducts, selectedProductId],
   );
 
+  const subProductCatalog = useMemo(
+    () => savedProducts.filter(product => product.isSubProduct),
+    [savedProducts],
+  );
+
   const linkedSubProduct = useMemo(
     () => resolveLinkedSubProduct(lines, savedProducts),
     [lines, savedProducts],
@@ -566,6 +626,18 @@ export function ProductsPage({
     [effectiveProductCogs, yieldQuantity],
   );
 
+  const supportsBatchAdditionalUom = isSubProduct || b2bEnabled;
+
+  const batchUomForAdditional = useMemo(() => {
+    if (isSubProduct) return yieldUom.trim();
+    if (!b2bEnabled) return '';
+    return formatDeliveryUnitPath(b2bSalesConfig.principal.delivery).trim();
+  }, [isSubProduct, b2bEnabled, yieldUom, b2bSalesConfig]);
+
+  const batchQtyForAdditional = isSubProduct
+    ? (parseFloat(yieldQuantity) || 0)
+    : 1;
+
   const parStockUomOptionList = useMemo(
     () => productParStockUomOptions(
       getKnownRecipeUnits(),
@@ -590,9 +662,9 @@ export function ProductsPage({
   }, [isSubProduct, yieldUom]);
 
   useEffect(() => {
-    if (!isSubProduct) return;
-    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, parseFloat(yieldQuantity) || 0, yieldUom));
-  }, [isSubProduct, yieldQuantity, yieldUom]);
+    if (!supportsBatchAdditionalUom || !batchUomForAdditional) return;
+    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, batchQtyForAdditional, batchUomForAdditional));
+  }, [supportsBatchAdditionalUom, batchQtyForAdditional, batchUomForAdditional]);
 
   useEffect(() => {
     if (parStockUom.trim()) return;
@@ -681,10 +753,18 @@ export function ProductsPage({
     setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : '');
     setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : '');
     const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+    const parsedB2bSales = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
+    const loadedBatchUom = product.isSubProduct
+      ? loadedYieldUom
+      : (product.b2bEnabled
+        ? (product.b2bPackageUnit?.trim()
+          || formatDeliveryUnitPath(parsedB2bSales.principal.delivery).trim())
+        : '');
+    const loadedBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
     setYieldAltUnits(refreshBatchAdditionalUoms(
-      loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
-      product.yieldQuantity,
-      loadedYieldUom,
+      loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedBatchUom),
+      loadedBatchQty,
+      loadedBatchUom,
     ));
     setExpiryPeriodDays(product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '');
     setActivationPeriodHours(product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '');
@@ -699,9 +779,8 @@ export function ProductsPage({
       name: alias.name,
       rrp: alias.rrp > 0 ? String(alias.rrp) : '',
     })));
-    setLines(mapProductItemsToLines(product.items));
-    setPackagingLines(mapProductItemsToLines(product.packagingItems));
-    const parsedB2bSales = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
+    setLines(mapProductItemsToLines(product.items, subProductCatalog));
+    setPackagingLines(mapProductItemsToLines(product.packagingItems, subProductCatalog));
     if (product.b2bEnabled && !product.isSubProduct && !parsedB2bSales.principal.rrp && product.rrp > 0) {
       parsedB2bSales.principal.rrp = String(product.rrp);
     }
@@ -713,26 +792,37 @@ export function ProductsPage({
     setLines(prev => prev.map(line => (line.key === key ? { ...line, ...patch } : line)));
   }
 
-  function handleSubProductSelect(key: string, product: Product | null) {
+  async function handleSubProductSelect(key: string, product: Product | null) {
     if (!product) {
       updateLine(key, {
         componentId: '',
         componentName: '',
         componentUom: '',
         componentUomPrice: '',
+        sourceProductId: undefined,
       });
       return;
     }
-    const next = productLineFromSubProduct(product);
+
+    let resolved = savedProducts.find(item => item.id === product.id) ?? product;
+    try {
+      resolved = await api.product(product.id);
+      setSavedProducts(prev => prev.map(item => (item.id === resolved.id ? resolved : item)));
+    } catch {
+      // Use the list copy when the detail fetch fails.
+    }
+
+    const next = productLineFromSubProduct(resolved);
     updateLine(key, {
       componentId: next.componentId,
       componentName: next.componentName,
       componentUom: next.componentUom,
       componentUomPrice: next.componentUomPrice,
       quantity: next.quantity,
+      sourceProductId: resolved.id,
     });
     if (b2bEnabled && !isSubProduct) {
-      setB2bSalesConfig(prev => seedB2bSalesFromSubProduct(prev, product));
+      setB2bSalesConfig(prev => seedB2bSalesFromSubProduct(prev, resolved));
     }
   }
 
@@ -752,6 +842,7 @@ export function ProductsPage({
       componentName: next.componentName,
       componentUom: next.componentUom,
       componentUomPrice: next.componentUomPrice,
+      sourceProductId: undefined,
     });
   }
 
@@ -779,6 +870,43 @@ export function ProductsPage({
     if (category !== updated.category) setCategory(updated.category);
     setEditingGroup(null);
     setIsNewGroup(false);
+  }
+
+  async function confirmDeleteGroup(reassignTo: string) {
+    if (!deletingGroup) return;
+    const affected = findProductsUsingGroup(savedProducts, deletingGroup);
+    const draftUsesGroup = Boolean(group) && groupsMatch(group, deletingGroup);
+    const needsReassignment = affected.length > 0 || draftUsesGroup;
+
+    if (needsReassignment && !reassignTo.trim()) {
+      setDeletingGroupError('Select a group to reassign affected products.');
+      return;
+    }
+
+    setDeletingGroupSaving(true);
+    setDeletingGroupError(null);
+    try {
+      for (const product of affected) {
+        const updated = await api.updateProduct(
+          product.id,
+          productToUpsertPayload(product, { group: reassignTo }),
+        );
+        setSavedProducts(prev => prev.map(item => (item.id === updated.id ? updated : item)));
+      }
+
+      if (draftUsesGroup) {
+        setGroup(reassignTo);
+      } else if (groupsMatch(group, deletingGroup)) {
+        setGroup('');
+      }
+
+      setExtraGroups(removeExtraGroup(deletingGroup));
+      setDeletingGroup(null);
+    } catch (err) {
+      setDeletingGroupError(err instanceof Error ? err.message : 'Failed to delete group.');
+    } finally {
+      setDeletingGroupSaving(false);
+    }
   }
 
   function openAddComponent(lineKey: string, target: 'product' | 'packaging' = 'product') {
@@ -881,12 +1009,24 @@ export function ProductsPage({
     ));
   }
 
-  function handleB2bEnabledChange(checked: boolean) {
-    setB2bEnabled(checked);
+  function handleB2cEnabledChange(checked: boolean) {
     if (!checked) {
+      setB2cEnabled(false);
+      return;
+    }
+    setB2cEnabled(true);
+    setB2bEnabled(false);
+    setB2bSalesConfig(blankB2bSalesConfig());
+  }
+
+  function handleB2bEnabledChange(checked: boolean) {
+    if (!checked) {
+      setB2bEnabled(false);
       setB2bSalesConfig(blankB2bSalesConfig());
       return;
     }
+    setB2bEnabled(true);
+    setB2cEnabled(false);
     if (rrp.trim()) {
       setB2bSalesConfig(prev => ({
         ...prev,
@@ -917,7 +1057,11 @@ export function ProductsPage({
       return;
     }
     if (!isSubProduct && !b2cEnabled && !b2bEnabled) {
-      showSaveError('Select at least one channel: B2C or B2B.');
+      showSaveError('Select a product type: B2C or B2B.');
+      return;
+    }
+    if (!isSubProduct && b2cEnabled && b2bEnabled) {
+      showSaveError('A product must be either B2C or B2B, not both.');
       return;
     }
 
@@ -942,13 +1086,18 @@ export function ProductsPage({
       }
       const activationHours = parseInt(activationPeriodHours, 10);
       if (!Number.isFinite(activationHours) || activationHours < 0) {
-        showSaveError('Enter activation hours as zero or greater.');
+        showSaveError('Enter incubation hours as zero or greater.');
         return;
       }
     } else if (b2bEnabled) {
       const expiryDays = parseInt(expiryPeriodDays, 10);
       if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
         showSaveError('Enter an expiry period (days) greater than zero for B2B products.');
+        return;
+      }
+      const activationHours = parseInt(activationPeriodHours, 10);
+      if (!Number.isFinite(activationHours) || activationHours < 0) {
+        showSaveError('Enter incubation hours as zero or greater.');
         return;
       }
       const linked = resolveLinkedSubProduct(lines, savedProducts);
@@ -1048,9 +1197,11 @@ export function ProductsPage({
       rrp: effectiveRrp,
       yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
       yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
-      yieldAltUnitsJson: isSubProduct ? serializeYieldAltUnits(yieldAltUnits) : undefined,
+      yieldAltUnitsJson: supportsBatchAdditionalUom ? serializeYieldAltUnits(yieldAltUnits) : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
-      activationPeriodHours: isSubProduct ? parseInt(activationPeriodHours, 10) || 0 : undefined,
+      activationPeriodHours: supportsBatchAdditionalUom
+        ? parseInt(activationPeriodHours, 10) || 0
+        : undefined,
       parStock: parseFloat(parStock) || 0,
       parStockUom: (parseFloat(parStock) || 0) > 0
         ? serializeProductParStockUom(isSubProduct
@@ -1213,39 +1364,45 @@ export function ProductsPage({
               </div>
 
               <div className="space-y-3">
-                <p className={labelCls}>Channel</p>
+                <p className={labelCls}>Type</p>
                 <div
                   className={`flex flex-wrap gap-4 rounded-md border px-3 py-2 ${
                     isSubProduct ? 'border-border bg-muted/30 opacity-70' : 'border-transparent'
                   }`}
-                  title={isSubProduct ? 'Sub-products are prep items and are not sold on B2C/B2B channels.' : undefined}
+                  title={isSubProduct ? 'Sub-products are prep items used inside a B2C or B2B product.' : undefined}
                 >
                   <label className={`inline-flex items-center gap-2 text-xs ${isSubProduct ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="product-type"
                       checked={b2cEnabled}
                       disabled={isSubProduct}
-                      onChange={e => setB2cEnabled(e.target.checked)}
-                      className="rounded border-border disabled:cursor-not-allowed"
+                      onChange={() => handleB2cEnabledChange(true)}
+                      className="border-border disabled:cursor-not-allowed"
                     />
                     B2C
                   </label>
                   <label className={`inline-flex items-center gap-2 text-xs ${isSubProduct ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="product-type"
                       checked={b2bEnabled}
                       disabled={isSubProduct}
-                      onChange={e => handleB2bEnabledChange(e.target.checked)}
-                      className="rounded border-border disabled:cursor-not-allowed"
+                      onChange={() => handleB2bEnabledChange(true)}
+                      className="border-border disabled:cursor-not-allowed"
                     />
                     B2B
                   </label>
                 </div>
                 {isSubProduct ? (
                   <p className="text-[10px] text-muted-foreground">
-                    Channel is locked for sub-products — they are made or prepped as part of a product.
+                    Sub-products are made or prepped as part of a B2C or B2B product — they are not sold directly on a channel.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="text-[10px] text-muted-foreground">
+                    A product is either B2C (POS / takeaway / online retail) or B2B (wholesale sales orders).
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1282,17 +1439,16 @@ export function ProductsPage({
               <div className="space-y-1.5">
                 <label className={labelCls} htmlFor="product-group">Group</label>
                 <div className="flex gap-1.5 items-center">
-                  <select
-                    id="product-group"
+                  <ProductGroupSelect
                     value={group}
-                    onChange={e => setGroup(e.target.value)}
-                    className={`${fieldCls} flex-1 min-w-0`}
-                  >
-                    <option value="">Select group…</option>
-                    {groupOptions.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
+                    options={groupOptions}
+                    onChange={setGroup}
+                    onDeleteRequest={name => {
+                      setDeletingGroupError(null);
+                      setDeletingGroup(name);
+                    }}
+                    className="flex-1 min-w-0"
+                  />
                   <button
                     type="button"
                     onClick={openAddGroup}
@@ -1512,7 +1668,7 @@ export function ProductsPage({
             )}
 
             {(isSubProduct || b2bEnabled) ? (
-              <div className={`grid gap-4 ${isSubProduct ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl' : 'max-w-xs'}`}>
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 max-w-2xl">
                 <div className="space-y-1.5">
                   <label className={labelCls} htmlFor="expiry-period-days">Expiry period (days)</label>
                   <input
@@ -1529,24 +1685,22 @@ export function ProductsPage({
                     Each production batch expires this many days after its production date.
                   </p>
                 </div>
-                {isSubProduct ? (
-                  <div className="space-y-1.5">
-                    <label className={labelCls} htmlFor="activation-period-hours">Activation (hours)</label>
-                    <input
-                      id="activation-period-hours"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={activationPeriodHours}
-                      onChange={e => setActivationPeriodHours(e.target.value)}
-                      placeholder="e.g. 24"
-                      className={fieldCls}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Hours after production before the batch can be sold. Use 0 if sellable immediately.
-                    </p>
-                  </div>
-                ) : null}
+                <div className="space-y-1.5">
+                  <label className={labelCls} htmlFor="incubation-period-hours">Incubation (hours)</label>
+                  <input
+                    id="incubation-period-hours"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={activationPeriodHours}
+                    onChange={e => setActivationPeriodHours(e.target.value)}
+                    placeholder="e.g. 24"
+                    className={fieldCls}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Hours after production before the batch can be sold. Use 0 if sellable immediately.
+                  </p>
+                </div>
               </div>
             ) : null}
 
@@ -1661,6 +1815,49 @@ export function ProductsPage({
             />
           ) : null}
 
+          {!isSubProduct && b2bEnabled ? (
+            <section className="rounded-lg border border-border bg-card p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold">Additional UOM</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Alternate units for the principal B2B delivery unit
+                  {batchUomForAdditional ? ` (${batchUomForAdditional})` : ''}.
+                </p>
+              </div>
+              {batchUomForAdditional ? (
+                <>
+                  <div className="flex gap-1.5 items-center max-w-md">
+                    <p className={`${fieldCls} flex-1`}>{batchUomForAdditional}</p>
+                    <button
+                      type="button"
+                      onClick={() => setYieldAltUnits(prev => createDefaultBatchAdditionalEntry(
+                        prev,
+                        String(batchQtyForAdditional),
+                        batchUomForAdditional,
+                      ))}
+                      disabled={!isEditing || saving}
+                      className={addBtnCls}
+                      title="Add additional UOM"
+                      aria-label="Add additional UOM"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <SubProductBatchAdditionalUoms
+                    yieldQuantity={String(batchQtyForAdditional)}
+                    yieldUom={batchUomForAdditional}
+                    altUnits={yieldAltUnits}
+                    onAltUnitsChange={setYieldAltUnits}
+                  />
+                </>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Configure the principal delivery unit in B2B Sales to add alternate units.
+                </p>
+              )}
+            </section>
+          ) : null}
+
           <ComponentLinesSection
             title="Product Component"
             description={!isSubProduct && b2bEnabled
@@ -1672,6 +1869,7 @@ export function ProductsPage({
             availableComponents={availableComponents}
             includeSubProducts
             availableSubProducts={productComponentSubProducts}
+            subProductCatalog={subProductCatalog}
             onUpdateLine={updateLine}
             onComponentSelect={handleComponentSelect}
             onSubProductSelect={handleSubProductSelect}
@@ -1781,6 +1979,23 @@ export function ProductsPage({
                 setIsNewGroup(false);
               }}
               onSave={saveGroup}
+            />
+          ) : null}
+
+          {deletingGroup ? (
+            <DeleteProductGroupModal
+              groupName={deletingGroup}
+              affectedProducts={findProductsUsingGroup(savedProducts, deletingGroup)}
+              groupOptions={groupOptions}
+              draftUsesGroup={Boolean(group) && groupsMatch(group, deletingGroup)}
+              saving={deletingGroupSaving}
+              error={deletingGroupError}
+              onClose={() => {
+                if (deletingGroupSaving) return;
+                setDeletingGroup(null);
+                setDeletingGroupError(null);
+              }}
+              onConfirm={reassignTo => void confirmDeleteGroup(reassignTo)}
             />
           ) : null}
 

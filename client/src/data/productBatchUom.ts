@@ -131,3 +131,26 @@ export function loadYieldAltUnitsFromProduct(json: string | null | undefined, ba
   if (!batchUom.trim()) return entries;
   return refreshBatchAdditionalUoms(entries, 0, batchUom);
 }
+
+/** Compare/save helper: normalize alt units with the actual batch size. */
+export function normalizedYieldAltUnitsJson(
+  json: string | null | undefined,
+  batchQty: number,
+  batchUom: string,
+): string {
+  const entries = parseYieldAltUnitsJson(json).map(entry => ({
+    ...entry,
+    unit: fromApiUom(entry.unit) || entry.unit,
+  }));
+  if (!batchUom.trim()) return serializeYieldAltUnits(entries);
+  return serializeYieldAltUnits(refreshBatchAdditionalUoms(entries, batchQty, batchUom));
+}
+
+export function normalizedYieldAltUnitsFromEntries(
+  entries: AltUnitEntry[],
+  batchQty: number,
+  batchUom: string,
+): string {
+  if (!batchUom.trim()) return serializeYieldAltUnits(entries);
+  return serializeYieldAltUnits(refreshBatchAdditionalUoms(entries, batchQty, batchUom));
+}

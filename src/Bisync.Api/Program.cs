@@ -37,6 +37,8 @@ builder.Services.AddScoped<ComponentStockService>();
 builder.Services.AddScoped<ProductSaleInventoryService>();
 builder.Services.AddScoped<ProductionInventoryService>();
 builder.Services.AddScoped<StockCardService>();
+builder.Services.AddScoped<SalesDataService>();
+builder.Services.AddScoped<B2bSalesOrderService>();
 builder.Services.AddScoped<InventoryCountService>();
 builder.Services.Configure<StockCardArchiveOptions>(
     builder.Configuration.GetSection(StockCardArchiveOptions.SectionName));
@@ -45,6 +47,7 @@ builder.Services.AddDbContext<StockCardArchiveDbContext>(options =>
 builder.Services.AddScoped<StockCardArchiveService>();
 builder.Services.AddHostedService<StockCardArchiveHostedService>();
 builder.Services.AddHostedService<InventoryCountAutoConfirmHostedService>();
+builder.Services.AddHostedService<SalesOrderLockExpiryHostedService>();
 
 builder.Services.AddCors(options =>
 {

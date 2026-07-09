@@ -870,6 +870,42 @@ public class PatchProductionBatchRequest
     public bool OverrideStock { get; set; }
 }
 
+public class FulfillB2bSalesOrderRequest
+{
+    public bool DeliveryOrderIssued { get; set; }
+    public bool InvoiceIssued { get; set; }
+}
+
+public class CreateB2bSalesOrderRequest
+{
+  [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [MaxLength(80)]
+    public string CustomerExternalId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string CustomerName { get; set; } = string.Empty;
+    /// <summary>sales_order or online_order</summary>
+    [MaxLength(40)]
+    public string Source { get; set; } = "sales_order";
+    [Range(1, 365)]
+    public int LockPeriodDays { get; set; }
+    public List<CreateB2bSalesOrderLineRequest> Lines { get; set; } = [];
+}
+
+public class CreateB2bSalesOrderLineRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [MaxLength(80)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [Range(0.0001, 999999999)]
+    public decimal QuantityOrdered { get; set; }
+    [MaxLength(40)]
+    public string? Uom { get; set; }
+    [Range(0, 999999999)]
+    public decimal? Rrp { get; set; }
+}
+
 public class PurchaseOrderWorkflowRequest
 {
     public List<PurchaseOrderLineWorkflowRequest> Items { get; set; } = [];

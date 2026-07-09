@@ -11,7 +11,7 @@ import { OrderPage } from './OrderPage';
 import { CashPurchasePage } from './CashPurchasePage';
 import { OrderTemplatePage } from './OrderTemplatePage';
 import { ProductsSection } from './ProductsSection';
-import { ProductManagementPage } from './ProductManagementPage';
+import { ProductionSection } from './ProductionSection';
 import { StockCardPage } from './StockCardPage';
 import { InventoryPage } from './InventoryPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
@@ -84,11 +84,36 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
-    case 'Product Management':
+    case 'Production':
       return (
-        <ProductManagementPage
+        <ProductionSection
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'B2B Product':
+    case 'Product Management':
+      return (
+        <ProductionSection
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          initialTab="b2bProduct"
+        />
+      );
+    case 'Sales Data':
+      return (
+        <ProductionSection
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          initialTab="salesData"
+        />
+      );
+    case 'Sub-Product':
+      return (
+        <ProductionSection
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          initialTab="subProduct"
         />
       );
     case 'Stock Card':

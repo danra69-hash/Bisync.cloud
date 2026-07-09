@@ -12,20 +12,27 @@ namespace Bisync.Api.Controllers;
 [Route("api/product-management")]
 public class ProductManagementController(
     BisyncDbContext db,
-    ProductionInventoryService productionInventory) : ControllerBase
+    ProductionInventoryService productionInventory,
+    B2bSalesOrderService salesOrderService) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List(
         [FromQuery] int? companyId,
-        [FromQuery] string? locationIds)
+        [FromQuery] string? locationIds,
+        [FromQuery] string? view)
     {
+        await salesOrderService.ReleaseExpiredLocksAsync();
+
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
             return Ok(Array.Empty<object>());
 
+        var subProductView = string.Equals(view, "sub-product", StringComparison.OrdinalIgnoreCase);
         IQueryable<Product> productQuery = db.Products
             .AsNoTracking()
-            .Where(p => p.Active && ((!p.IsSubProduct && p.B2bEnabled) || p.IsSubProduct));
+            .Where(p => p.Active && (subProductView
+                ? p.IsSubProduct
+                : !p.IsSubProduct && p.B2bEnabled));
 
         if (companyId is int id)
             productQuery = productQuery.Where(p => p.CompanyId == null || p.CompanyId == id);
@@ -48,6 +55,8 @@ public class ProductManagementController(
             .Where(s => productIds.Contains(s.ProductId) && locationIdList.Contains(s.LocationExternalId))
             .ToListAsync();
 
+        var lockExpiryByProduct = await ResolveLockExpiryByProductAsync(productIds, locationIdList);
+
         var stockByProduct = stockRows
             .GroupBy(s => s.ProductId)
             .ToDictionary(g => g.Key, g => g.ToList());
@@ -68,22 +77,57 @@ public class ProductManagementController(
             .ThenByDescending(l => l.Id)
             .ToListAsync();
 
+        var toProduceLogs = await db.ProductProductionLogs
+            .AsNoTracking()
+            .Where(l => productIds.Contains(l.ProductId) && l.EntryType == "to_produce")
+            .OrderByDescending(l => l.CreatedAt)
+            .ThenByDescending(l => l.Id)
+            .ToListAsync();
+
+        var utcNow = DateTime.UtcNow;
         var result = new List<object>();
         foreach (var product in visibleProducts)
         {
             stockByProduct.TryGetValue(product.Id, out var rows);
             rows ??= [];
             var summary = BuildSummaryData(product, rows);
+            lockExpiryByProduct.TryGetValue(product.Id, out var lockExpiryDate);
 
             var productLogs = producedLogs
                 .Where(l => l.ProductId == product.Id && LogMatchesLocations(l, locationIdList))
                 .ToList();
 
-            result.Add(MapBatchRow(summary, log: null));
+            var latestToProduce = toProduceLogs
+                .Where(l => l.ProductId == product.Id && LogMatchesLocations(l, locationIdList))
+                .OrderByDescending(l => l.CreatedAt)
+                .ThenByDescending(l => l.Id)
+                .FirstOrDefault();
+
+            var incubatingLogs = productLogs
+                .Where(l => IsInIncubation(product, l, utcNow))
+                .ToList();
+            var summaryIncubationQty = incubatingLogs.Sum(l => l.Quantity);
+            string? summaryIncubationTimeLeft = null;
+            if (incubatingLogs.Count > 0)
+            {
+                var earliestEnd = incubatingLogs
+                    .Select(l => l.CreatedAt.AddHours(product.ActivationPeriodHours))
+                    .Min();
+                summaryIncubationTimeLeft = FormatIncubationTimeLeft(utcNow, earliestEnd);
+            }
+
+            result.Add(MapBatchRow(
+                summary,
+                product,
+                log: null,
+                latestToProduce,
+                summaryIncubationQty > 0 ? summaryIncubationQty : null,
+                summaryIncubationTimeLeft,
+                lockExpiryDate));
 
             foreach (var log in productLogs)
             {
-                result.Add(MapBatchRow(summary, log));
+                result.Add(MapBatchRow(summary, product, log, latestToProduce));
             }
         }
 
@@ -600,6 +644,34 @@ public class ProductManagementController(
         return logLocs.Any(locationIds.Contains);
     }
 
+    async Task<Dictionary<int, string>> ResolveLockExpiryByProductAsync(
+        IReadOnlyList<int> productIds,
+        IReadOnlyList<string> locationIds)
+    {
+        if (productIds.Count == 0)
+            return new Dictionary<int, string>();
+
+        var lines = await db.B2bSalesOrderLines.AsNoTracking()
+            .Where(l => productIds.Contains(l.ProductId)
+                && locationIds.Contains(l.LocationExternalId)
+                && l.Status == "locked"
+                && l.QuantityLocked > 0)
+            .Join(
+                db.B2bSalesOrders.AsNoTracking().Where(o => o.Status == "issued"),
+                line => line.SalesOrderId,
+                order => order.Id,
+                (line, order) => new { line.ProductId, order.LockExpiryDate })
+            .Where(x => x.LockExpiryDate != "")
+            .ToListAsync();
+
+        return lines
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Min(x => x.LockExpiryDate),
+                EqualityComparer<int>.Default);
+    }
+
     sealed record ProductManagementSummaryData(
         int ProductId,
         string BatchUnit,
@@ -607,6 +679,7 @@ public class ProductManagementController(
         decimal BatchSize,
         bool IsSubProduct,
         decimal InStock,
+        decimal OnOrderQty,
         decimal SalesPerDay,
         decimal ToProduceQty,
         decimal ProducedQty,
@@ -622,14 +695,68 @@ public class ProductManagementController(
             GetBatchSize(product),
             product.IsSubProduct,
             rows.Sum(r => r.InStock),
+            rows.Sum(r => r.OnOrderQty),
             rows.Sum(r => r.SalesPerDay),
             rows.Sum(r => r.ToProduceQty),
             rows.Sum(r => r.ProducedQty),
             ResolveEarliestExpiry(rows));
     }
 
-    static object MapBatchRow(ProductManagementSummaryData summary, ProductProductionLog? log) =>
-        new
+    static bool IsInIncubation(Product product, ProductProductionLog log, DateTime utcNow) =>
+        product.ActivationPeriodHours > 0
+        && utcNow < log.CreatedAt.AddHours(product.ActivationPeriodHours);
+
+    static string? FormatIncubationTimeLeft(DateTime utcNow, DateTime activationEndsAt)
+    {
+        if (activationEndsAt <= utcNow)
+            return null;
+
+        var remaining = activationEndsAt - utcNow;
+        if (remaining.TotalHours >= 1)
+            return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
+
+        var minutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
+        return $"{minutes}m";
+    }
+
+    static string? ResolveDateRequested(ProductManagementSummaryData summary, ProductProductionLog? latestToProduce)
+    {
+        if (summary.ToProduceQty <= 0 || latestToProduce is null)
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(latestToProduce.ProductionDate))
+            return latestToProduce.ProductionDate.Trim();
+
+        return DateOnly.FromDateTime(latestToProduce.CreatedAt).ToString("yyyy-MM-dd");
+    }
+
+    static object MapBatchRow(
+        ProductManagementSummaryData summary,
+        Product product,
+        ProductProductionLog? log,
+        ProductProductionLog? latestToProduce,
+        decimal? summaryIncubationQty = null,
+        string? summaryIncubationTimeLeft = null,
+        string? lockExpiryDate = null)
+    {
+        var utcNow = DateTime.UtcNow;
+        decimal? incubationQty = summaryIncubationQty;
+        string? incubationTimeLeft = summaryIncubationTimeLeft;
+
+        if (log is not null)
+        {
+            incubationQty = null;
+            incubationTimeLeft = null;
+            if (IsInIncubation(product, log, utcNow))
+            {
+                incubationQty = log.Quantity;
+                incubationTimeLeft = FormatIncubationTimeLeft(
+                    utcNow,
+                    log.CreatedAt.AddHours(product.ActivationPeriodHours));
+            }
+        }
+
+        return new
         {
             productId = summary.ProductId,
             batchUnit = summary.BatchUnit,
@@ -637,6 +764,8 @@ public class ProductManagementController(
             batchSize = summary.BatchSize,
             isSubProduct = summary.IsSubProduct,
             inStock = summary.InStock,
+            onOrderQty = summary.OnOrderQty,
+            lockExpiryDate = log is null ? lockExpiryDate : null,
             salesPerDay = summary.SalesPerDay,
             toProduceQty = summary.ToProduceQty,
             producedQty = summary.ProducedQty,
@@ -646,7 +775,11 @@ public class ProductManagementController(
             productionDate = string.IsNullOrWhiteSpace(log?.ProductionDate) ? null : log!.ProductionDate.Trim(),
             expiryDate = string.IsNullOrWhiteSpace(log?.ExpiryDate) ? null : log!.ExpiryDate.Trim(),
             batchQty = log is null ? (decimal?)null : log.Quantity,
+            incubationQty,
+            incubationTimeLeft,
+            dateRequested = log is null ? ResolveDateRequested(summary, latestToProduce) : null,
         };
+    }
 
     static object MapSummary(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
     {
@@ -659,6 +792,7 @@ public class ProductManagementController(
             batchSize = summary.BatchSize,
             isSubProduct = summary.IsSubProduct,
             inStock = summary.InStock,
+            onOrderQty = summary.OnOrderQty,
             salesPerDay = summary.SalesPerDay,
             toProduceQty = summary.ToProduceQty,
             producedQty = summary.ProducedQty,

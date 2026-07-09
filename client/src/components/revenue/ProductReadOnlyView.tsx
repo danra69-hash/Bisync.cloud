@@ -160,6 +160,11 @@ export function ProductReadOnlyView({
 
   const yieldUomLabel = product.yieldUom ? fromApiUom(product.yieldUom) : '';
   const parStockUomLabel = product.parStockUom ? fromApiUom(product.parStockUom) : '';
+  const b2bBatchUom = product.b2bPackageUnit?.trim() || '';
+  const batchUomForAdditional = product.isSubProduct ? yieldUomLabel : b2bBatchUom;
+  const batchQtyForAdditional = product.isSubProduct
+    ? (product.yieldQuantity > 0 ? String(product.yieldQuantity) : '')
+    : '1';
   const subProductUnitCost = product.isSubProduct && product.yieldQuantity > 0
     ? calcSubProductUnitCost(productCogs, String(product.yieldQuantity))
     : 0;
@@ -183,24 +188,36 @@ export function ProductReadOnlyView({
           </div>
 
           <div className="space-y-3">
-            <p className={labelCls}>Channel</p>
+            <p className={labelCls}>Type</p>
             <div
               className={`flex flex-wrap gap-4 rounded-md border px-3 py-2 ${
                 product.isSubProduct ? 'border-border bg-muted/30 opacity-70' : 'border-transparent'
               }`}
             >
               <label className="inline-flex items-center gap-2 text-xs">
-                <input type="checkbox" checked={product.b2cEnabled} disabled className="rounded border-border" />
+                <input
+                  type="radio"
+                  checked={product.b2cEnabled}
+                  disabled
+                  className="border-border"
+                  readOnly
+                />
                 B2C
               </label>
               <label className="inline-flex items-center gap-2 text-xs">
-                <input type="checkbox" checked={product.b2bEnabled} disabled className="rounded border-border" />
+                <input
+                  type="radio"
+                  checked={product.b2bEnabled}
+                  disabled
+                  className="border-border"
+                  readOnly
+                />
                 B2B
               </label>
             </div>
             {product.isSubProduct ? (
               <p className="text-[10px] text-muted-foreground">
-                Channel is locked for sub-products — they are made or prepped as part of a product.
+                Sub-products are made or prepped as part of a B2C or B2B product.
               </p>
             ) : null}
           </div>
@@ -345,11 +362,40 @@ export function ProductReadOnlyView({
                 <p className="text-sm font-semibold mt-1">{formatCogsPercent(productCogs, rrpValue)}</p>
               </div>
             </div>
+            {product.b2bEnabled && onYieldAltUnitsChange && batchUomForAdditional ? (
+              <div className="space-y-2">
+                <div className="flex gap-1.5 items-center max-w-md">
+                  <p className={`${fieldCls} flex-1`}>{batchUomForAdditional}</p>
+                  {onAddBatchAdditionalUom ? (
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onAddBatchAdditionalUom();
+                      }}
+                      disabled={saving || !batchUomForAdditional}
+                      className={addBatchUomButtonCls}
+                      title="Add additional UOM"
+                      aria-label="Add additional UOM"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  ) : null}
+                </div>
+                <SubProductBatchAdditionalUoms
+                  yieldQuantity={batchQtyForAdditional}
+                  yieldUom={batchUomForAdditional}
+                  altUnits={yieldAltUnits}
+                  onAltUnitsChange={onYieldAltUnitsChange}
+                />
+              </div>
+            ) : null}
           </>
         )}
 
         {(product.isSubProduct || product.b2bEnabled) ? (
-          <div className={`grid gap-4 ${product.isSubProduct ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl' : 'max-w-xs'}`}>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 max-w-2xl">
             <div className="space-y-1.5">
               <p className={labelCls}>Expiry period (days)</p>
               <p className={fieldCls}>
@@ -359,17 +405,15 @@ export function ProductReadOnlyView({
                 Production batches expire this many days after their production date.
               </p>
             </div>
-            {product.isSubProduct ? (
-              <div className="space-y-1.5">
-                <p className={labelCls}>Activation (hours)</p>
-                <p className={fieldCls}>
-                  {product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '0'}
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  Hours after production before the batch can be sold.
-                </p>
-              </div>
-            ) : null}
+            <div className="space-y-1.5">
+              <p className={labelCls}>Incubation (hours)</p>
+              <p className={fieldCls}>
+                {product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '0'}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Hours after production before the batch can be sold.
+              </p>
+            </div>
           </div>
         ) : null}
 

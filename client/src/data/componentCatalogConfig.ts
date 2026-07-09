@@ -42,6 +42,25 @@ export function saveExtraGroups(groups: string[]) {
   saveStringList(EXTRA_GROUPS_KEY, uniqueSorted(groups));
 }
 
+export function removeExtraGroup(groupName: string): string[] {
+  const key = groupName.trim().toLowerCase();
+  const next = loadExtraGroups().filter(group => group.toLowerCase() !== key);
+  saveExtraGroups(next);
+  return next;
+}
+
+export function isBuiltinGroup(groupName: string): boolean {
+  const trimmed = groupName.trim();
+  if (!trimmed) return false;
+  return siGroups
+    .filter(group => group !== 'All')
+    .some(group => group.toLowerCase() === trimmed.toLowerCase());
+}
+
+export function isDeletableProductGroup(groupName: string): boolean {
+  return Boolean(groupName.trim()) && !isBuiltinGroup(groupName);
+}
+
 export function getKnownGroups(existingRows: ComponentRow[] = []): string[] {
   const fromRows = existingRows.map(row => row.group).filter(Boolean);
   const base = siGroups.filter(group => group !== 'All');

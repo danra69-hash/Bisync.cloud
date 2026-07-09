@@ -1,11 +1,13 @@
 using Bisync.Api.Data;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/dev")]
-public class DevSeedController(BisyncDbContext db, IWebHostEnvironment env) : ControllerBase
+public class DevSeedController(BisyncDbContext db, IWebHostEnvironment env, B2bSalesOrderService salesOrderService) : ControllerBase
 {
     [HttpPost("seed-stock-cards")]
     public async Task<ActionResult<object>> SeedStockCards([FromQuery] int? companyId = 1)
@@ -33,5 +35,23 @@ public class DevSeedController(BisyncDbContext db, IWebHostEnvironment env) : Co
 
         var result = await StockCardFifoDemoSeeder.EnsureAsync(db, companyId ?? 1, force);
         return Ok(result);
+    }
+
+    [HttpPost("seed-sales-orders")]
+    public async Task<ActionResult<object>> SeedSalesOrders(CancellationToken cancellationToken)
+    {
+        if (!env.IsDevelopment())
+            return NotFound();
+
+        var before = await db.B2bSalesOrders.CountAsync(cancellationToken);
+        await B2bSalesOrderSeeder.EnsureDemoSalesOrdersAsync(db, salesOrderService, cancellationToken);
+        var after = await db.B2bSalesOrders.CountAsync(cancellationToken);
+
+        return Ok(new
+        {
+            ordersBefore = before,
+            ordersAfter = after,
+            ordersAdded = after - before,
+        });
     }
 }

@@ -78,7 +78,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             Rrp = request.IsSubProduct ? 0 : (request.Rrp ?? 0),
             YieldQuantity = request.IsSubProduct ? (request.YieldQuantity ?? 0) : 0,
             YieldUom = request.IsSubProduct ? (request.YieldUom?.Trim() ?? string.Empty) : string.Empty,
-            YieldAltUnitsJson = request.IsSubProduct
+            YieldAltUnitsJson = request.IsSubProduct || request.B2bEnabled
                 ? (string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson)
                 : "[]",
             ExpiryPeriodDays = ResolveExpiryPeriodDays(request),
@@ -165,6 +165,12 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         {
             product.YieldQuantity = request.YieldQuantity ?? 0;
             product.YieldUom = request.YieldUom?.Trim() ?? string.Empty;
+            product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
+        }
+        else if (request.B2bEnabled)
+        {
+            product.YieldQuantity = 0;
+            product.YieldUom = string.Empty;
             product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
         }
         else
@@ -283,7 +289,11 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         }
         else if (!request.B2cEnabled && !request.B2bEnabled)
         {
-            return "Select at least one channel: B2C or B2B.";
+            return "Select a product type: B2C or B2B.";
+        }
+        else if (request.B2cEnabled && request.B2bEnabled)
+        {
+            return "A product must be either B2C or B2B, not both.";
         }
         else if (request.B2bEnabled && (request.ExpiryPeriodDays is null or <= 0))
         {
@@ -324,7 +334,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
 
     static int ResolveActivationPeriodHours(UpsertProductRequest request)
     {
-        if (!request.IsSubProduct)
+        if (!request.IsSubProduct && !request.B2bEnabled)
             return 0;
         return Math.Max(0, request.ActivationPeriodHours ?? 0);
     }

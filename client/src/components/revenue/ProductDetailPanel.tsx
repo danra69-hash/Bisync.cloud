@@ -5,8 +5,10 @@ import { api, type PatchProductPayload, type Product } from '../../api';
 import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
 import {
   loadYieldAltUnitsFromProduct,
+  normalizedYieldAltUnitsFromEntries,
+  normalizedYieldAltUnitsJson,
+  parseYieldAltUnitsJson,
   refreshBatchAdditionalUoms,
-  serializeYieldAltUnits,
 } from '../../data/productBatchUom';
 import { serializeProductParStockUom } from '../../data/productParStock';
 import { configLocationToDropdown } from '../../utils/orgFilters';
@@ -52,19 +54,25 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
 
     if (initializedProductIdRef.current !== product.id) {
       initializedProductIdRef.current = product.id;
-      const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+      const initialBatchUom = product.isSubProduct
+        ? (product.yieldUom ? fromApiUom(product.yieldUom) : '')
+        : (product.b2bPackageUnit?.trim() || '');
+      const initialBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
       setYieldAltUnits(refreshBatchAdditionalUoms(
-        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
-        product.yieldQuantity,
-        loadedYieldUom,
+        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, initialBatchUom),
+        initialBatchQty,
+        initialBatchUom,
       ));
     }
   }, [product]);
 
   useEffect(() => {
-    const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
-    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, product.yieldQuantity, loadedYieldUom));
-  }, [product.id, product.yieldQuantity, product.yieldUom]);
+    const currentBatchUom = product.isSubProduct
+      ? (product.yieldUom ? fromApiUom(product.yieldUom) : '')
+      : (product.b2bPackageUnit?.trim() || '');
+    const currentBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
+    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, currentBatchQty, currentBatchUom));
+  }, [product.id, product.isSubProduct, product.b2bEnabled, product.yieldQuantity, product.yieldUom, product.b2bPackageUnit]);
 
   useEffect(() => {
     if (!companyId) {
@@ -80,33 +88,49 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
       .catch(() => setLocations([]));
   }, [companyId]);
 
+  const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+  const batchUomForAdditional = product.isSubProduct
+    ? loadedYieldUom
+    : (product.b2bPackageUnit?.trim() || '');
+  const batchQtyForAdditional = product.isSubProduct ? product.yieldQuantity : 1;
+  const supportsBatchAdditionalUom = product.isSubProduct || product.b2bEnabled;
+
   const hasUnsavedChanges = useMemo(() => {
     const rrpNext = rrpDraft.trim() === '' ? 0 : parseFloat(rrpDraft);
     const parNext = parStockDraft.trim() === '' ? 0 : parseFloat(parStockDraft);
     const rrpChanged = Number.isFinite(rrpNext) && rrpNext >= 0 && rrpNext !== product.rrp;
     const parChanged = Number.isFinite(parNext) && parNext >= 0 && parNext !== (product.parStock ?? 0);
-    const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
-    const serverAlt = serializeYieldAltUnits(
-      loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+    const serverAlt = normalizedYieldAltUnitsJson(
+      product.yieldAltUnitsJson,
+      batchQtyForAdditional,
+      batchUomForAdditional,
     );
-    const altChanged = product.isSubProduct && serializeYieldAltUnits(yieldAltUnits) !== serverAlt;
+    const nextAlt = normalizedYieldAltUnitsFromEntries(
+      yieldAltUnits,
+      batchQtyForAdditional,
+      batchUomForAdditional,
+    );
+    const altChanged = supportsBatchAdditionalUom && nextAlt !== serverAlt;
     return rrpChanged || parChanged || altChanged;
-  }, [rrpDraft, parStockDraft, yieldAltUnits, product]);
+  }, [rrpDraft, parStockDraft, yieldAltUnits, product, batchUomForAdditional, batchQtyForAdditional, supportsBatchAdditionalUom]);
 
-  async function patchProduct(payload: PatchProductPayload) {
+  async function patchProduct(payload: PatchProductPayload): Promise<boolean> {
     setSaving(true);
     setError(null);
     try {
       const updated = await api.patchProduct(product.id, payload);
       if (payload.yieldAltUnitsJson !== undefined) {
-        const loadedYieldUom = updated.yieldUom ? fromApiUom(updated.yieldUom) : '';
-        const fromServer = loadYieldAltUnitsFromProduct(updated.yieldAltUnitsJson, loadedYieldUom);
-        const fallback = loadYieldAltUnitsFromProduct(payload.yieldAltUnitsJson, loadedYieldUom);
+        const updatedYieldUom = updated.yieldUom ? fromApiUom(updated.yieldUom) : '';
+        const fromServer = loadYieldAltUnitsFromProduct(updated.yieldAltUnitsJson, updatedYieldUom);
+        const fallback = parseYieldAltUnitsJson(payload.yieldAltUnitsJson).map(entry => ({
+          ...entry,
+          unit: fromApiUom(entry.unit) || entry.unit,
+        }));
         const entries = fromServer.length > 0 ? fromServer : fallback;
         setYieldAltUnits(refreshBatchAdditionalUoms(
           entries,
           updated.yieldQuantity,
-          loadedYieldUom,
+          updatedYieldUom,
         ));
         onUpdated?.({
           ...updated,
@@ -115,8 +139,10 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
       } else {
         onUpdated?.(updated);
       }
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update product.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -146,20 +172,29 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
       payload.parStockUom = parNext > 0 ? yieldUom : '';
     }
 
-    if (product.isSubProduct) {
-      const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
-      const serverAlt = serializeYieldAltUnits(
-        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+    if (supportsBatchAdditionalUom) {
+      const serverAlt = normalizedYieldAltUnitsJson(
+        product.yieldAltUnitsJson,
+        batchQtyForAdditional,
+        batchUomForAdditional,
       );
-      const nextAlt = serializeYieldAltUnits(yieldAltUnits);
+      const nextAlt = normalizedYieldAltUnitsFromEntries(
+        yieldAltUnits,
+        batchQtyForAdditional,
+        batchUomForAdditional,
+      );
       if (nextAlt !== serverAlt) {
         payload.yieldAltUnitsJson = nextAlt;
       }
     }
 
-    if (Object.keys(payload).length === 0) return;
+    if (Object.keys(payload).length === 0) {
+      setError('No changes to save.');
+      return;
+    }
     setError(null);
-    await patchProduct(payload);
+    const saved = await patchProduct(payload);
+    if (saved) onClose();
   }
 
   function handleYieldAltUnitsChange(entries: AltUnitEntry[]) {
@@ -167,11 +202,13 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
   }
 
   function addBatchAdditionalUom() {
-    const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+    const currentBatchUom = product.isSubProduct
+      ? (product.yieldUom ? fromApiUom(product.yieldUom) : '')
+      : (product.b2bPackageUnit?.trim() || '');
     const next = createDefaultBatchAdditionalEntry(
       yieldAltUnits,
-      product.yieldQuantity > 0 ? String(product.yieldQuantity) : '',
-      loadedYieldUom,
+      product.isSubProduct && product.yieldQuantity > 0 ? String(product.yieldQuantity) : '1',
+      currentBatchUom,
     );
     if (next.length === yieldAltUnits.length) return;
     setYieldAltUnits(next);
@@ -245,7 +282,7 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
             onParStockChange={setParStockDraft}
             yieldAltUnits={yieldAltUnits}
             onYieldAltUnitsChange={handleYieldAltUnitsChange}
-            onAddBatchAdditionalUom={product.isSubProduct ? addBatchAdditionalUom : undefined}
+            onAddBatchAdditionalUom={supportsBatchAdditionalUom ? addBatchAdditionalUom : undefined}
             addBatchUomButtonCls={addBtnCls}
             onToggleLocation={externalId => void toggleLocation(externalId)}
             onOpenProductionMethod={() => setProductionMethodOpen(true)}

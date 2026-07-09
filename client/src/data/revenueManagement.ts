@@ -17,8 +17,7 @@ export const revMgmtNav: RevMgmtSection[] = [
       {
         subtitle: 'Production',
         items: [
-          { label: 'Product Management' },
-          { label: 'Batch & Stock Adjustment' },
+          { label: 'Production' },
         ],
       },
       {

@@ -705,6 +705,8 @@ export interface ProductManagementSummary {
   batchSize?: number;
   isSubProduct?: boolean;
   inStock: number;
+  onOrderQty?: number;
+  lockExpiryDate?: string | null;
   salesPerDay: number;
   toProduceQty: number;
   producedQty: number;
@@ -715,6 +717,40 @@ export interface ProductManagementSummary {
   batchNumber?: string | null;
   productionDate?: string | null;
   batchQty?: number | null;
+  incubationQty?: number | null;
+  incubationTimeLeft?: string | null;
+  dateRequested?: string | null;
+}
+
+export interface SalesDataSummary {
+  totalQuantity: number;
+  totalValue: number;
+  lineCount: number;
+  productCount: number;
+  customerCount: number;
+}
+
+export interface SalesDataRow {
+  date: string;
+  category: string;
+  group: string;
+  productName: string;
+  uom: string;
+  productType: string;
+  salesChannel: string;
+  qtySold: number;
+  rrp: number;
+  totalValue: number;
+  customerName: string;
+  customerExternalId: string;
+  productId?: number | null;
+}
+
+export interface SalesDataResult {
+  month: string;
+  viewBy: 'product' | 'customer';
+  summary: SalesDataSummary;
+  rows: SalesDataRow[];
 }
 
 export interface ProduceBatchPayload {
@@ -1180,10 +1216,11 @@ export const api = {
     fetchJsonWithMethod<Product>(`/api/products/${id}`, 'PATCH', payload),
   deleteProduct: (id: number) =>
     fetchJsonWithMethod<void>(`/api/products/${id}`, 'DELETE'),
-  productManagement: (companyId: number | undefined, locationIds: string[]) => {
+  productManagement: (companyId: number | undefined, locationIds: string[], view?: 'b2b' | 'sub-product') => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (view) params.set('view', view);
     const query = params.toString();
     return fetchJson<ProductManagementSummary[]>(`/api/product-management${query ? `?${query}` : ''}`);
   },
@@ -1213,6 +1250,19 @@ export const api = {
       'POST',
       payload,
     ),
+  salesData: (
+    companyId: number | undefined,
+    locationIds: string[],
+    month: string,
+    viewBy: 'product' | 'customer',
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    params.set('month', month);
+    params.set('viewBy', viewBy);
+    return fetchJson<SalesDataResult>(`/api/sales-data?${params.toString()}`);
+  },
   stockCards: (
     companyId: number | undefined,
     locationIds: string[],

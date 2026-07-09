@@ -162,6 +162,8 @@ export type ProductLine = {
   componentUom: string;
   componentUomPrice: string;
   quantity: string;
+  /** Set when the line references a sub-product recipe (not a smart component). */
+  sourceProductId?: number;
 };
 
 export function buildComponentIdPrefix(name: string): string {
@@ -235,6 +237,7 @@ export function productLineFromComponent(component: ComponentRow): ProductLine {
 }
 
 export function productLineFromSubProduct(product: {
+  id?: number;
   productId: string;
   name: string;
   totalCost: number;
@@ -256,6 +259,7 @@ export function productLineFromSubProduct(product: {
     componentUom: batchLabel !== '—' ? batchLabel : fromApiUom(product.yieldUom),
     componentUomPrice: batchCogs > 0 ? String(batchCogs) : '',
     quantity: '1',
+    sourceProductId: product.id,
   };
 }
 

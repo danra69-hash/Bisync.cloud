@@ -48,6 +48,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProductPackagingItem> ProductPackagingItems => Set<ProductPackagingItem>();
     public DbSet<ProductAlias> ProductAliases => Set<ProductAlias>();
     public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
+    public DbSet<B2bSalesOrder> B2bSalesOrders => Set<B2bSalesOrder>();
+    public DbSet<B2bSalesOrderLine> B2bSalesOrderLines => Set<B2bSalesOrderLine>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
     public DbSet<InventoryCountSession> InventoryCountSessions => Set<InventoryCountSession>();
@@ -143,6 +145,21 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasOne(x => x.Product)
                 .WithMany()
                 .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<B2bSalesOrder>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.OrderNumber }).IsUnique();
+            e.HasMany(x => x.Lines)
+                .WithOne(x => x.SalesOrder)
+                .HasForeignKey(x => x.SalesOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<B2bSalesOrderLine>(e =>
+        {
+            e.HasOne(x => x.SalesOrder)
+                .WithMany(x => x.Lines)
+                .HasForeignKey(x => x.SalesOrderId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<InventoryMovement>().HasIndex(m => new { m.ComponentId, m.LocationExternalId });

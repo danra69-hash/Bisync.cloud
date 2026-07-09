@@ -115,14 +115,33 @@ export function componentComponentUomOptions(component: ComponentRow): ProductCo
   }));
 }
 
+export function findSubProductForLine(line: ProductLine, subProducts: Product[]): Product | null {
+  if (line.sourceProductId) {
+    const byId = subProducts.find(product => product.id === line.sourceProductId && product.isSubProduct);
+    if (byId) return byId;
+  }
+
+  const componentKey = line.componentId.trim().toLowerCase();
+  if (!componentKey) return null;
+
+  return subProducts.find(product =>
+    product.isSubProduct
+    && product.productId.trim().toLowerCase() === componentKey,
+  ) ?? null;
+}
+
+export function isSubProductLine(line: ProductLine, subProducts: Product[]): boolean {
+  return findSubProductForLine(line, subProducts) !== null;
+}
+
 export function resolveProductLineUomOptions(
   line: ProductLine,
   components: ComponentRow[],
   subProducts: Product[] = [],
 ): ProductComponentUomOption[] {
-  if (!line.componentId.trim()) return [];
+  if (!line.componentId.trim() && !line.sourceProductId) return [];
 
-  const subProduct = subProducts.find(product => product.productId === line.componentId);
+  const subProduct = findSubProductForLine(line, subProducts);
   if (subProduct) return subProductComponentUomOptions(subProduct);
 
   const component = components.find(item => item.componentId === line.componentId);
