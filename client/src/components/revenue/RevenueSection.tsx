@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RevMgmtBar } from './RevMgmtBar';
 import { POSBar } from './POSBar';
 import { ModuleContent } from './ModuleContent';
@@ -18,6 +18,9 @@ import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import { setComponentCatalogCompanyId } from '../../data/componentCatalogConfig';
+import { ensureRevMgmtConfig } from '../../data/revMgmtConfigStore';
+import { refreshVendorProductCatalog } from '../../data/vendorProductCatalog';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
@@ -145,6 +148,16 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
   const { t } = useAppTranslation();
   const [revItem, setRevItem] = useState<string | null>(null);
   const [posItem, setPosItem] = useState<string | null>(null);
+
+  useEffect(() => {
+    void refreshVendorProductCatalog();
+  }, []);
+
+  useEffect(() => {
+    setComponentCatalogCompanyId(selectedCompanyId);
+    if (!selectedCompanyId) return;
+    void ensureRevMgmtConfig(selectedCompanyId);
+  }, [selectedCompanyId]);
 
   if (section === 'Point-of-Sales') {
     return (

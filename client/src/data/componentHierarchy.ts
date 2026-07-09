@@ -1,3 +1,9 @@
+import {
+  ensureComponentHierarchy,
+  getCachedComponentHierarchy,
+  saveComponentHierarchyApi,
+} from './revMgmtConfigStore';
+
 export type ComponentCategory = {
   id: number;
   name: string;
@@ -34,8 +40,6 @@ export type HierarchyAssignmentRow = {
   items: number;
 };
 
-const STORAGE_KEY = 'bisync.componentHierarchy';
-
 function defaultState(): ComponentHierarchyState {
   const categories: ComponentCategory[] = [
     { id: 1, name: 'Food' },
@@ -65,29 +69,16 @@ function defaultState(): ComponentHierarchyState {
 }
 
 export function loadComponentHierarchy(): ComponentHierarchyState {
-  if (typeof window === 'undefined') return defaultState();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultState();
-    const parsed = JSON.parse(raw) as ComponentHierarchyState;
-    if (!parsed?.categories?.length) return defaultState();
-    return {
-      categories: parsed.categories ?? [],
-      groups: parsed.groups ?? [],
-      subGroups: parsed.subGroups ?? [],
-      nextCategoryId: parsed.nextCategoryId ?? 1,
-      nextGroupId: parsed.nextGroupId ?? 1,
-      nextSubGroupId: parsed.nextSubGroupId ?? 1,
-    };
-  } catch {
-    return defaultState();
-  }
+  return getCachedComponentHierarchy() ?? defaultState();
 }
 
-export function saveComponentHierarchy(state: ComponentHierarchyState): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  window.dispatchEvent(new CustomEvent('bisync:componentHierarchyChanged'));
+export async function loadComponentHierarchyForCompany(companyId: number): Promise<ComponentHierarchyState> {
+  return ensureComponentHierarchy(companyId);
+}
+
+export function saveComponentHierarchy(state: ComponentHierarchyState, companyId?: number | null): void {
+  if (!companyId) return;
+  void saveComponentHierarchyApi(companyId, state);
 }
 
 function uniqueSorted(values: string[]): string[] {

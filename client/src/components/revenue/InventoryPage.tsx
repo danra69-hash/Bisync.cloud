@@ -296,6 +296,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [itemCategoryByKey, setItemCategoryByKey] = useState<Record<string, string>>({});
   const [areaFilter, setAreaFilter] = useState('All');
   const [selectedStorageKeys, setSelectedStorageKeys] = useState<string[]>([]);
+  const [storageAssignmentVersion, setStorageAssignmentVersion] = useState(0);
   const [activeSession, setActiveSession] = useState<InventoryCountSession | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -333,11 +334,17 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     setSelectedStorageKeys([]);
   }, [selectedLocationIds]);
 
+  useEffect(() => {
+    const reload = () => setStorageAssignmentVersion(version => version + 1);
+    window.addEventListener('bisync:storageAssignmentChanged', reload);
+    return () => window.removeEventListener('bisync:storageAssignmentChanged', reload);
+  }, []);
+
   const activeStorageTypes = useMemo(() => {
     const assignment = loadStorageAssignment();
     const storages = listStoragesForFilter(assignment, countLocationIds, areaFilter);
     return selectedStorageTypes(storages, selectedStorageKeys);
-  }, [countLocationIds, areaFilter, selectedStorageKeys]);
+  }, [countLocationIds, areaFilter, selectedStorageKeys, storageAssignmentVersion]);
 
   const loadHistory = useCallback(async () => {
     if (!selectedCompanyId || selectedLocationIds.length === 0) return;
@@ -581,6 +588,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     recipeQtyByKey,
     inventoryQtyByKey,
     componentDetails,
+    storageAssignmentVersion,
   ]);
 
   const { visibleItems, hasMore, sentinelRef } = useInfiniteScrollSlice(displayRows, { scrollRootRef });

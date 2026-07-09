@@ -135,9 +135,10 @@ export function VendorProductsPanel({
           elevated
           onClose={() => setNewProduct(null)}
           onSave={product => {
-            saveNewVendorProduct(product);
-            setNewProduct(null);
-            setCatalogRefresh(key => key + 1);
+            void saveNewVendorProduct(product).then(() => {
+              setNewProduct(null);
+              setCatalogRefresh(key => key + 1);
+            });
           }}
         />
       )}

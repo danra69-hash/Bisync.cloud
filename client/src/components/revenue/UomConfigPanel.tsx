@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -77,11 +77,18 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
   );
 }
 
-export function UomConfigPanel() {
+export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: number | null }) {
   const [allUoms, setAllUoms] = useState<UomRow[]>(buildInitialUoms);
   const [myUomIds, setMyUomIds] = useState<number[]>([]);
   const [newUomCode, setNewUomCode] = useState('');
   const [addUomError, setAddUomError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const reload = () => setAllUoms(buildInitialUoms());
+    reload();
+    window.addEventListener('bisync:componentCatalogChanged', reload);
+    return () => window.removeEventListener('bisync:componentCatalogChanged', reload);
+  }, [selectedCompanyId]);
 
   const myUoms = useMemo(
     () => allUoms.filter(u => myUomIds.includes(u.id)),
@@ -118,7 +125,7 @@ export function UomConfigPanel() {
       setAddUomError('This UOM already exists.');
       return;
     }
-    ensureRecipeUnitsExist([trimmed]);
+    ensureRecipeUnitsExist([trimmed], selectedCompanyId);
     const codes = [...new Set([...allUoms.map(u => u.code), trimmed])];
     setAllUoms(codes.map((code, index) => ({ id: index + 1, code })));
     setNewUomCode('');

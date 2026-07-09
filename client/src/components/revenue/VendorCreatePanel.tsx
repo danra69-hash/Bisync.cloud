@@ -169,7 +169,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
     setVerifiedImport(false);
   }
 
-  function importParsedProducts(): number {
+  async function importParsedProducts(): Promise<number> {
     setImportMessage(null);
     const vendorExternalId = form.externalId.trim().toUpperCase();
     const vendorName = form.name.trim();
@@ -181,7 +181,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
       setError('Verify scanned document against extracted text before adding to DB.');
       return 0;
     }
-    const added = saveImportedVendorProducts(vendorExternalId, vendorName, parsedRows);
+    const added = await saveImportedVendorProducts(vendorExternalId, vendorName, parsedRows);
     if (added.length === 0) {
       setError('No valid vendor products found to import.');
       return 0;
@@ -222,7 +222,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
         email: form.email.trim(),
       });
       if (parsedRows.length > 0) {
-        importParsedProducts();
+        await importParsedProducts();
       }
       onCreated(created);
     } catch (err) {

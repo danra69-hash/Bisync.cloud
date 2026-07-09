@@ -73,6 +73,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<BisyncDbContext>();
     await db.Database.EnsureCreatedAsync();
     await SchemaPatcher.ApplyAsync(db);
+    await RevMgmtStartup.InitializeAsync(db);
     await DataSeeder.SeedAsync(db);
     await ConfigurationSeeder.SeedAsync(db);
     await ConfigurationSeeder.PatchUserAssignmentsAsync(db);

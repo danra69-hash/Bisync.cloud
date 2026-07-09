@@ -523,17 +523,17 @@ export function draftToCatalogProduct(
   };
 }
 
-export function applyVendorProductImportPlan(
+export async function applyVendorProductImportPlan(
   plan: VendorProductImportPlan,
   vendor: Vendor,
-): { created: number; updated: number; deactivated: number } {
+): Promise<{ created: number; updated: number; deactivated: number }> {
   let created = 0;
   let updated = 0;
   let deactivated = 0;
 
   const activeCreates = plan.creates.filter(draft => draft.active !== false);
   if (activeCreates.length > 0) {
-    const added = saveImportedVendorProducts(vendor.externalId, vendor.name, activeCreates);
+    const added = await saveImportedVendorProducts(vendor.externalId, vendor.name, activeCreates);
     created += added.length;
   }
 
@@ -541,14 +541,14 @@ export function applyVendorProductImportPlan(
     if (update.draft.active === false) continue;
     const product = draftToCatalogProduct(update.draft, vendor, update.existing);
     if (!product) continue;
-    persistVendorProductUpdate(product);
-    reactivateVendorProducts([product.id]);
+    await persistVendorProductUpdate(product);
+    await reactivateVendorProducts([product.id]);
     updated += 1;
   }
 
   const deactivateIds = plan.deactivations.map(item => item.existing.id);
   if (deactivateIds.length > 0) {
-    deactivateVendorProducts(deactivateIds);
+    await deactivateVendorProducts(deactivateIds);
     deactivated += deactivateIds.length;
   }
 

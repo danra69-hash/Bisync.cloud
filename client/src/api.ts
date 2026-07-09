@@ -517,6 +517,54 @@ export interface VendorProductPriceRow {
   updatedAt?: string;
 }
 
+export interface RevMgmtConfigResponse {
+  companyId: number;
+  configKey: string;
+  state: unknown;
+  seeded?: boolean;
+  updatedAt?: string;
+}
+
+export interface VendorProductCatalogRow {
+  id: string;
+  group: string;
+  vendorExternalId: string;
+  vendorName: string;
+  productName: string;
+  specification: string;
+  imageUrl?: string;
+  deliveryPrice: number;
+  delivery: {
+    orderUnit: string;
+    orderQty: number;
+    packUnit: string;
+    packQty: number;
+    unitUnit: string;
+    unitQty: number;
+  };
+  productPolicyTag?: string;
+  isPrivate?: boolean;
+  privateLocationIds?: string[];
+  active?: boolean;
+  updatedAt?: string;
+}
+
+export interface VendorProductCatalogUpsert {
+  id?: string;
+  vendorExternalId: string;
+  vendorName: string;
+  productName: string;
+  group: string;
+  specification: string;
+  imageUrl?: string;
+  deliveryPrice: number;
+  deliveryJson: string;
+  productPolicyTag?: string;
+  isPrivate?: boolean;
+  privateLocationIds?: string[];
+  active?: boolean;
+}
+
 export interface InventoryPurchase {
   id: number;
   componentId: string;
@@ -1209,6 +1257,26 @@ export const api = {
   acceptVendorOrder: (token: string, acceptedBy?: string) =>
     fetchJsonWithMethod<VendorOrderPortal>(`/api/vendor-orders/${token}/accept`, 'POST', { acceptedBy }),
   vendorProductPrices: () => fetchJson<VendorProductPriceRow[]>('/api/vendorproducts/prices'),
+  vendorProductCatalog: (vendorExternalId?: string) =>
+    fetchJson<VendorProductCatalogRow[]>(
+      `/api/vendorproducts/catalog${vendorExternalId ? `?vendorExternalId=${encodeURIComponent(vendorExternalId)}` : ''}`,
+    ),
+  createVendorProductCatalog: (payload: VendorProductCatalogUpsert) =>
+    fetchJsonWithMethod<VendorProductCatalogRow>('/api/vendorproducts/catalog', 'POST', payload),
+  updateVendorProductCatalog: (externalId: string, payload: Partial<VendorProductCatalogUpsert>) =>
+    fetchJsonWithMethod<VendorProductCatalogRow>(`/api/vendorproducts/catalog/${encodeURIComponent(externalId)}`, 'PUT', payload),
+  deactivateVendorProductCatalog: (externalId: string) =>
+    fetchJsonWithMethod<void>(`/api/vendorproducts/catalog/${encodeURIComponent(externalId)}/deactivate`, 'POST'),
+  reactivateVendorProductCatalog: (externalId: string) =>
+    fetchJsonWithMethod<void>(`/api/vendorproducts/catalog/${encodeURIComponent(externalId)}/reactivate`, 'POST'),
+  revMgmtConfig: (companyId: number, configKey: string) =>
+    fetchJson<RevMgmtConfigResponse>(`/api/rev-mgmt/config/${companyId}/${encodeURIComponent(configKey)}`),
+  updateRevMgmtConfig: (companyId: number, configKey: string, stateJson: string) =>
+    fetchJsonWithMethod<RevMgmtConfigResponse>(
+      `/api/rev-mgmt/config/${companyId}/${encodeURIComponent(configKey)}`,
+      'PUT',
+      { stateJson },
+    ),
   inventoryPurchases: (companyId?: number) =>
     fetchJson<InventoryPurchase[]>(`/api/inventory/purchases${companyId ? `?companyId=${companyId}` : ''}`),
   cashPurchases: (companyId?: number) =>

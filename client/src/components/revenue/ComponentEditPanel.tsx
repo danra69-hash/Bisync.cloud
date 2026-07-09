@@ -408,6 +408,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [parStockUomBasis, setParStockUomBasis] = useState<ParStockUomBasis>('recipe');
   const [splitUseError, setSplitUseError] = useState<string | null>(null);
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
+  const [catalogVersion, setCatalogVersion] = useState(0);
 
   const categoryOptions = useMemo(
     () => getHierarchyCategoryOptions(hierarchy, form.category, []),
@@ -425,7 +426,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       storage => storage && !options.some(option => option.toLowerCase() === storage.toLowerCase()),
     );
     return extras.length > 0 ? [...options, ...extras].sort((a, b) => a.localeCompare(b)) : options;
-  }, [form.storages]);
+  }, [form.storages, catalogVersion]);
 
   useEffect(() => {
     setForm(toForm(row, existingComponentIds));
@@ -436,11 +437,14 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
 
   useEffect(() => {
     const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
+    const reloadCatalog = () => setCatalogVersion(version => version + 1);
     reloadHierarchy();
     window.addEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
+    window.addEventListener('bisync:componentCatalogChanged', reloadCatalog);
     window.addEventListener('storage', reloadHierarchy);
     return () => {
       window.removeEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
+      window.removeEventListener('bisync:componentCatalogChanged', reloadCatalog);
       window.removeEventListener('storage', reloadHierarchy);
     };
   }, []);

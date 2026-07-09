@@ -1,10 +1,12 @@
 import { fromApiUom, RECIPE_UNITS, STORAGE_OPTIONS, toApiUom, type ComponentRow } from './componentForm';
 import { siGroups } from './revenueManagement';
 import type { SmartComponentImportDraft, SmartComponentImportPlan } from './smartComponentCatalog';
-
-const EXTRA_GROUPS_KEY = 'bisync.productExtraGroups';
-const EXTRA_UOMS_KEY = 'bisync.componentExtraUoms';
-const EXTRA_STORAGES_KEY = 'bisync.componentExtraStorages';
+import {
+  ensureComponentCatalog,
+  getCachedComponentCatalog,
+  saveComponentCatalogApi,
+  type ComponentCatalogState,
+} from './revMgmtConfigStore';
 
 export type CatalogEnsureResult = {
   groups: string[];
@@ -13,40 +15,61 @@ export type CatalogEnsureResult = {
   storages: string[];
 };
 
-function loadStringList(key: string): string[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as string[];
-    return Array.isArray(parsed) ? parsed.map(value => value.trim()).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStringList(key: string, values: string[]) {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(values));
-}
-
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+function emptyCatalog(): ComponentCatalogState {
+  return { extraGroups: [], extraUoms: [], extraStorages: [] };
+}
+
+function currentCatalog(): ComponentCatalogState {
+  return getCachedComponentCatalog() ?? emptyCatalog();
+}
+
+let pendingCatalogCompanyId: number | null = null;
+
+/** Company used for catalog writes when callers omit companyId. */
+export function setComponentCatalogCompanyId(companyId: number | null) {
+  pendingCatalogCompanyId = companyId;
+}
+
+export function getComponentCatalogCompanyId(): number | null {
+  return pendingCatalogCompanyId;
+}
+
+function resolveCompanyId(companyId?: number | null): number | null {
+  return companyId ?? pendingCatalogCompanyId;
+}
+
+function persistCatalog(next: ComponentCatalogState, companyId?: number | null) {
+  const id = resolveCompanyId(companyId);
+  if (!id) return;
+  void saveComponentCatalogApi(id, next);
+}
+
+export async function loadComponentCatalogForCompany(companyId: number): Promise<ComponentCatalogState> {
+  pendingCatalogCompanyId = companyId;
+  return ensureComponentCatalog(companyId);
+}
+
 export function loadExtraGroups(): string[] {
-  return loadStringList(EXTRA_GROUPS_KEY);
+  return currentCatalog().extraGroups;
 }
 
-export function saveExtraGroups(groups: string[]) {
-  saveStringList(EXTRA_GROUPS_KEY, uniqueSorted(groups));
+export function saveExtraGroups(groups: string[], companyId?: number | null) {
+  const next = {
+    ...currentCatalog(),
+    extraGroups: uniqueSorted(groups),
+  };
+  persistCatalog(next, companyId);
 }
 
-export function removeExtraGroup(groupName: string): string[] {
+export function removeExtraGroup(groupName: string, companyId?: number | null): string[] {
   const key = groupName.trim().toLowerCase();
-  const next = loadExtraGroups().filter(group => group.toLowerCase() !== key);
-  saveExtraGroups(next);
-  return next;
+  const nextGroups = loadExtraGroups().filter(group => group.toLowerCase() !== key);
+  saveExtraGroups(nextGroups, companyId);
+  return nextGroups;
 }
 
 export function isBuiltinGroup(groupName: string): boolean {
@@ -67,9 +90,13 @@ export function getKnownGroups(existingRows: ComponentRow[] = []): string[] {
   return uniqueSorted([...base, ...loadExtraGroups(), ...fromRows]);
 }
 
-export function ensureGroupsExist(groups: string[], existingRows: ComponentRow[] = []): { added: string[] } {
+export function ensureGroupsExist(
+  groups: string[],
+  existingRows: ComponentRow[] = [],
+  companyId?: number | null,
+): { added: string[] } {
   const known = new Set(getKnownGroups(existingRows).map(group => group.toLowerCase()));
-  const extras = loadExtraGroups();
+  const extras = [...loadExtraGroups()];
   const added: string[] = [];
 
   for (const group of groups) {
@@ -82,7 +109,7 @@ export function ensureGroupsExist(groups: string[], existingRows: ComponentRow[]
     added.push(trimmed);
   }
 
-  if (added.length > 0) saveExtraGroups(extras);
+  if (added.length > 0) saveExtraGroups(extras, companyId);
   return { added };
 }
 
@@ -96,13 +123,13 @@ export function normalizeRecipeUnitInput(raw: string): string {
 }
 
 export function getKnownRecipeUnits(): string[] {
-  const extras = loadStringList(EXTRA_UOMS_KEY).map(normalizeRecipeUnitInput).filter(Boolean);
+  const extras = currentCatalog().extraUoms.map(normalizeRecipeUnitInput).filter(Boolean);
   return uniqueSorted([...RECIPE_UNITS, ...extras]);
 }
 
-export function ensureRecipeUnitsExist(units: string[]): { added: string[] } {
+export function ensureRecipeUnitsExist(units: string[], companyId?: number | null): { added: string[] } {
   const known = new Set(getKnownRecipeUnits().map(unit => unit.toLowerCase()));
-  const extras = loadStringList(EXTRA_UOMS_KEY);
+  const extras = [...currentCatalog().extraUoms];
   const added: string[] = [];
 
   for (const unit of units) {
@@ -115,18 +142,20 @@ export function ensureRecipeUnitsExist(units: string[]): { added: string[] } {
     added.push(normalized);
   }
 
-  if (added.length > 0) saveStringList(EXTRA_UOMS_KEY, uniqueSorted(extras));
+  if (added.length > 0) {
+    persistCatalog({ ...currentCatalog(), extraUoms: uniqueSorted(extras) }, companyId);
+  }
   return { added };
 }
 
 export function getKnownStorageOptions(): string[] {
-  const extras = loadStringList(EXTRA_STORAGES_KEY);
+  const extras = currentCatalog().extraStorages;
   return uniqueSorted([...STORAGE_OPTIONS, ...extras]);
 }
 
-export function ensureStorageOptionsExist(names: string[]): { added: string[] } {
+export function ensureStorageOptionsExist(names: string[], companyId?: number | null): { added: string[] } {
   const known = new Set(getKnownStorageOptions().map(name => name.toLowerCase()));
-  const extras = loadStringList(EXTRA_STORAGES_KEY);
+  const extras = [...currentCatalog().extraStorages];
   const added: string[] = [];
 
   for (const name of names) {
@@ -139,7 +168,9 @@ export function ensureStorageOptionsExist(names: string[]): { added: string[] } 
     added.push(trimmed);
   }
 
-  if (added.length > 0) saveStringList(EXTRA_STORAGES_KEY, uniqueSorted(extras));
+  if (added.length > 0) {
+    persistCatalog({ ...currentCatalog(), extraStorages: uniqueSorted(extras) }, companyId);
+  }
   return { added };
 }
 
@@ -204,14 +235,15 @@ export function resolveStorageName(raw: string): string {
 export function ensureComponentCatalogFromPlan(
   plan: SmartComponentImportPlan,
   existingRows: ComponentRow[] = [],
+  companyId?: number | null,
 ): CatalogEnsureResult {
   const drafts = collectDraftsFromPlan(plan);
   const uoms = collectDraftUoms(drafts);
   return {
-    groups: ensureGroupsExist(drafts.map(draft => draft.group), existingRows).added,
-    recipeUoms: ensureRecipeUnitsExist(uoms).added,
-    inventoryUoms: ensureRecipeUnitsExist(uoms).added,
-    storages: ensureStorageOptionsExist(drafts.flatMap(draft => draft.storage)).added,
+    groups: ensureGroupsExist(drafts.map(draft => draft.group), existingRows, companyId).added,
+    recipeUoms: ensureRecipeUnitsExist(uoms, companyId).added,
+    inventoryUoms: ensureRecipeUnitsExist(uoms, companyId).added,
+    storages: ensureStorageOptionsExist(drafts.flatMap(draft => draft.storage), companyId).added,
   };
 }
 

@@ -1,3 +1,9 @@
+import {
+  ensureStorageAssignment,
+  getCachedStorageAssignment,
+  saveStorageAssignmentApi,
+} from './revMgmtConfigStore';
+
 export type StorageCatalogRow = {
   id: number;
   name: string;
@@ -89,19 +95,6 @@ const DEFAULT_MY_STORAGE_ENTRIES: Omit<MyStorageEntry, 'id'>[] = [
   { location: 'westend', area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 41 },
 ];
 
-const STORAGE_ASSIGNMENT_KEY = 'bisync.storageAssignment';
-
-function normalizeStorageArea(area: string): string {
-  const trimmed = area.trim();
-  if (!trimmed) return STORAGE_AREAS[0];
-  const match = STORAGE_AREAS.find(item => item.toLowerCase() === trimmed.toLowerCase());
-  if (match) return match;
-  const lower = trimmed.toLowerCase();
-  if (lower.includes('bar')) return 'Bar';
-  if (lower.includes('kitchen') || lower.includes('prep')) return 'Kitchen';
-  if (lower.includes('dining')) return 'Dining Room';
-  return STORAGE_AREAS[0];
-}
 
 function defaultState(): StorageAssignmentState {
   return {
@@ -141,36 +134,16 @@ export function resolveStorageLocationLabels(locationIds: string[]): string[] {
 }
 
 export function loadStorageAssignment(): StorageAssignmentState {
-  if (typeof localStorage === 'undefined') return defaultState();
-  try {
-    const raw = localStorage.getItem(STORAGE_ASSIGNMENT_KEY);
-    if (!raw) return defaultState();
-    const parsed = JSON.parse(raw) as Partial<StorageAssignmentState>;
-    const areas = [...STORAGE_AREAS];
-    const entries = (Array.isArray(parsed.entries) ? parsed.entries : []).map(entry => ({
-      ...entry,
-      location: normalizeStorageLocationKey(entry.location),
-      area: normalizeStorageArea(entry.area),
-    }));
-    const nextEntryId = typeof parsed.nextEntryId === 'number' ? parsed.nextEntryId : entries.length + 1;
-    if (entries.length === 0) return defaultState();
-    return { areas, entries, nextEntryId };
-  } catch {
-    return defaultState();
-  }
+  return getCachedStorageAssignment() ?? defaultState();
 }
 
-export function saveStorageAssignment(state: StorageAssignmentState) {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_ASSIGNMENT_KEY, JSON.stringify({
-    ...state,
-    areas: [...STORAGE_AREAS],
-    entries: state.entries.map(entry => ({
-      ...entry,
-      location: normalizeStorageLocationKey(entry.location),
-      area: normalizeStorageArea(entry.area),
-    })),
-  }));
+export async function loadStorageAssignmentForCompany(companyId: number): Promise<StorageAssignmentState> {
+  return ensureStorageAssignment(companyId);
+}
+
+export function saveStorageAssignment(state: StorageAssignmentState, companyId?: number | null) {
+  if (!companyId) return;
+  void saveStorageAssignmentApi(companyId, state);
 }
 
 export function storageEntryKey(entry: Pick<MyStorageEntry, 'location' | 'area' | 'sourceStorageId' | 'name'>) {

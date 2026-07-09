@@ -1,6 +1,7 @@
 import { getConversion, RECIPE_UNITS, type AltUnitEntry } from './componentForm';
 import { formatCountryNumber } from '../utils/numberFormat';
-import { mergeServerVendorProductPrices } from './vendorProductPrices';
+import { mergeServerVendorProductPrices, refreshVendorProductPricesFromApi } from './vendorProductPrices';
+import { api, type VendorProductCatalogRow, type VendorProductCatalogUpsert } from '../api';
 import { EXTENDED_VENDOR_CONTACTS, EXTENDED_VENDOR_PRODUCTS } from './vendorProductCatalogExtras';
 import type { Vendor } from '../api';
 import type { VendorProductPolicyTag } from './vendorPolicyRules';
@@ -397,18 +398,51 @@ export function resolveDeliveryUnitLevels(delivery: DeliveryUnitBreakdown): Deli
   return { orderUnit, firstBreakdown, secondBreakdown };
 }
 
-const VENDOR_PRODUCT_OVERRIDES_KEY = 'bisync.vendorProductOverrides';
-const VENDOR_IMPORTED_PRODUCTS_KEY = 'bisync.vendorImportedProducts';
-const VENDOR_DEACTIVATED_PRODUCTS_KEY = 'bisync.deactivatedVendorProductIds';
+const LEGACY_OVERRIDES_KEY = 'bisync.vendorProductOverrides';
+const LEGACY_IMPORTED_KEY = 'bisync.vendorImportedProducts';
+const LEGACY_DEACTIVATED_KEY = 'bisync.deactivatedVendorProductIds';
 
-export const DELIVERY_ORDER_UNITS = [
-  'Box', 'Crate', 'Keg', 'Case', 'Carton', 'Bag', 'Pallet', 'Bottle', 'Can', 'Tin',
-  ...RECIPE_UNITS,
-];
+let catalogCache: VendorProductCatalogItem[] | null = null;
+let catalogRefreshPromise: Promise<VendorProductCatalogItem[]> | null = null;
 
-export function loadVendorProductOverrides(): Record<string, Partial<VendorProductCatalogItem>> {
+function mapApiRow(row: VendorProductCatalogRow): VendorProductCatalogItem {
+  return {
+    id: row.id,
+    group: row.group,
+    vendorExternalId: row.vendorExternalId,
+    vendorName: row.vendorName,
+    productName: row.productName,
+    specification: row.specification,
+    imageUrl: row.imageUrl,
+    deliveryPrice: row.deliveryPrice,
+    delivery: row.delivery,
+    productPolicyTag: row.productPolicyTag as VendorProductPolicyTag | undefined,
+    isPrivate: row.isPrivate,
+    privateLocationIds: row.privateLocationIds ?? [],
+  };
+}
+
+function toUpsertPayload(product: VendorProductCatalogItem): VendorProductCatalogUpsert {
+  return {
+    id: product.id,
+    vendorExternalId: product.vendorExternalId,
+    vendorName: product.vendorName,
+    productName: product.productName,
+    group: product.group,
+    specification: product.specification,
+    imageUrl: product.imageUrl,
+    deliveryPrice: product.deliveryPrice,
+    deliveryJson: JSON.stringify(product.delivery),
+    productPolicyTag: product.productPolicyTag,
+    isPrivate: product.isPrivate,
+    privateLocationIds: product.privateLocationIds ?? [],
+    active: true,
+  };
+}
+
+function readLegacyOverrides(): Record<string, Partial<VendorProductCatalogItem>> {
   try {
-    const raw = localStorage.getItem(VENDOR_PRODUCT_OVERRIDES_KEY);
+    const raw = localStorage.getItem(LEGACY_OVERRIDES_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, Partial<VendorProductCatalogItem>>;
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -417,9 +451,9 @@ export function loadVendorProductOverrides(): Record<string, Partial<VendorProdu
   }
 }
 
-export function loadImportedVendorProducts(): VendorProductCatalogItem[] {
+function readLegacyImported(): VendorProductCatalogItem[] {
   try {
-    const raw = localStorage.getItem(VENDOR_IMPORTED_PRODUCTS_KEY);
+    const raw = localStorage.getItem(LEGACY_IMPORTED_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as VendorProductCatalogItem[];
     return Array.isArray(parsed) ? parsed : [];
@@ -428,13 +462,9 @@ export function loadImportedVendorProducts(): VendorProductCatalogItem[] {
   }
 }
 
-function saveImportedVendorProductsRaw(products: VendorProductCatalogItem[]) {
-  localStorage.setItem(VENDOR_IMPORTED_PRODUCTS_KEY, JSON.stringify(products));
-}
-
-export function loadDeactivatedVendorProductIds(): Set<string> {
+function readLegacyDeactivated(): Set<string> {
   try {
-    const raw = localStorage.getItem(VENDOR_DEACTIVATED_PRODUCTS_KEY);
+    const raw = localStorage.getItem(LEGACY_DEACTIVATED_KEY);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as string[];
     return new Set(Array.isArray(parsed) ? parsed : []);
@@ -443,20 +473,135 @@ export function loadDeactivatedVendorProductIds(): Set<string> {
   }
 }
 
-function saveDeactivatedVendorProductIds(ids: Set<string>) {
-  localStorage.setItem(VENDOR_DEACTIVATED_PRODUCTS_KEY, JSON.stringify([...ids]));
+function clearLegacyVendorProductStorage() {
+  localStorage.removeItem(LEGACY_OVERRIDES_KEY);
+  localStorage.removeItem(LEGACY_IMPORTED_KEY);
+  localStorage.removeItem(LEGACY_DEACTIVATED_KEY);
 }
 
-export function deactivateVendorProducts(productIds: string[]) {
-  const next = loadDeactivatedVendorProductIds();
-  productIds.forEach(id => next.add(id));
-  saveDeactivatedVendorProductIds(next);
+async function upsertVendorProductCatalogItem(
+  product: VendorProductCatalogItem,
+  refreshAfter = true,
+): Promise<void> {
+  const payload = toUpsertPayload(product);
+  try {
+    await api.updateVendorProductCatalog(product.id, payload);
+  } catch {
+    await api.createVendorProductCatalog(payload);
+  }
+  if (refreshAfter) {
+    invalidateVendorProductCatalog();
+    await refreshVendorProductCatalog();
+  }
 }
 
-export function reactivateVendorProducts(productIds: string[]) {
-  const next = loadDeactivatedVendorProductIds();
-  productIds.forEach(id => next.delete(id));
-  saveDeactivatedVendorProductIds(next);
+async function migrateLegacyVendorProductsIfNeeded(): Promise<void> {
+  const overrides = readLegacyOverrides();
+  const imported = readLegacyImported();
+  const deactivated = readLegacyDeactivated();
+  if (imported.length === 0 && Object.keys(overrides).length === 0 && deactivated.size === 0) return;
+
+  const baseCatalog = catalogCache ?? [];
+  const merged = new Map<string, VendorProductCatalogItem>();
+
+  for (const product of baseCatalog) {
+    merged.set(product.id, product);
+  }
+  for (const product of imported) {
+    merged.set(product.id, product);
+  }
+  for (const [id, patch] of Object.entries(overrides)) {
+    const base = merged.get(id) ?? baseCatalog.find(item => item.id === id);
+    if (!base) continue;
+    merged.set(id, {
+      ...base,
+      ...patch,
+      delivery: patch.delivery ? { ...base.delivery, ...patch.delivery } : base.delivery,
+    });
+  }
+
+  const productsToUpsert = new Set<string>();
+  for (const product of imported) productsToUpsert.add(product.id);
+  for (const id of Object.keys(overrides)) productsToUpsert.add(id);
+
+  for (const id of productsToUpsert) {
+    const product = merged.get(id);
+    if (!product) continue;
+    await upsertVendorProductCatalogItem(product, false);
+  }
+
+  for (const id of deactivated) {
+    try {
+      await api.deactivateVendorProductCatalog(id);
+    } catch {
+      // ignore missing rows during migration
+    }
+  }
+
+  clearLegacyVendorProductStorage();
+}
+
+export async function refreshVendorProductCatalog(): Promise<VendorProductCatalogItem[]> {
+  if (!catalogRefreshPromise) {
+    catalogRefreshPromise = (async () => {
+      try {
+        const rows = await api.vendorProductCatalog();
+        catalogCache = rows.map(mapApiRow);
+        await migrateLegacyVendorProductsIfNeeded();
+        const rowsAfterMigration = await api.vendorProductCatalog();
+        catalogCache = rowsAfterMigration.map(mapApiRow);
+        await refreshVendorProductPricesFromApi();
+        catalogCache = mergeServerVendorProductPrices(catalogCache);
+      } catch {
+        catalogCache = mergeServerVendorProductPrices([...VENDOR_PRODUCT_CATALOG]);
+      }
+      window.dispatchEvent(new CustomEvent('bisync:vendorProductCatalogChanged'));
+      catalogRefreshPromise = null;
+      return catalogCache;
+    })();
+  }
+  return catalogRefreshPromise;
+}
+
+export function invalidateVendorProductCatalog() {
+  catalogCache = null;
+  catalogRefreshPromise = null;
+}
+
+export const DELIVERY_ORDER_UNITS = [
+  'Box', 'Crate', 'Keg', 'Case', 'Carton', 'Bag', 'Pallet', 'Bottle', 'Can', 'Tin',
+  ...RECIPE_UNITS,
+];
+
+/** @deprecated Overrides are stored in the database. */
+export function loadVendorProductOverrides(): Record<string, Partial<VendorProductCatalogItem>> {
+  return {};
+}
+
+/** @deprecated Imported products are stored in the database. */
+export function loadImportedVendorProducts(): VendorProductCatalogItem[] {
+  return catalogCache ?? [];
+}
+
+/** @deprecated Deactivated products are stored in the database. */
+export function loadDeactivatedVendorProductIds(): Set<string> {
+  return new Set();
+}
+
+export async function deactivateVendorProducts(productIds: string[]) {
+  for (const id of productIds) {
+    await api.deactivateVendorProductCatalog(id);
+  }
+  invalidateVendorProductCatalog();
+  await refreshVendorProductCatalog();
+}
+
+export async function reactivateVendorProducts(productIds: string[]) {
+  for (const id of productIds) {
+    await api.reactivateVendorProductCatalog(id);
+  }
+  invalidateVendorProductCatalog();
+  await refreshVendorProductCatalog();
 }
 
 export function vendorProductVisibleToLocations(
@@ -506,68 +651,23 @@ export function createBlankVendorProduct(
   };
 }
 
-export function saveNewVendorProduct(product: VendorProductCatalogItem): void {
-  const imported = loadImportedVendorProducts();
-  const inCatalog = VENDOR_PRODUCT_CATALOG.some(item => item.id === product.id);
-  if (inCatalog) {
-    persistVendorProductUpdate(product);
-    return;
-  }
-  const index = imported.findIndex(item => item.id === product.id);
-  if (index >= 0) {
-    imported[index] = product;
-  } else {
-    imported.push(product);
-  }
-  saveImportedVendorProductsRaw(imported);
-}
-export function saveVendorProductOverride(product: VendorProductCatalogItem): void {
-  const overrides = loadVendorProductOverrides();
-  overrides[product.id] = {
-    productName: product.productName,
-    group: product.group,
-    specification: product.specification,
-    deliveryPrice: product.deliveryPrice,
-    delivery: product.delivery,
-    isPrivate: product.isPrivate,
-    privateLocationIds: product.privateLocationIds,
-  };
-  localStorage.setItem(VENDOR_PRODUCT_OVERRIDES_KEY, JSON.stringify(overrides));
+export async function saveNewVendorProduct(product: VendorProductCatalogItem): Promise<void> {
+  await persistVendorProductUpdate(product);
 }
 
-export function persistVendorProductUpdate(product: VendorProductCatalogItem): void {
-  const imported = loadImportedVendorProducts();
-  const index = imported.findIndex(item => item.id === product.id);
-  if (index >= 0) {
-    imported[index] = product;
-    saveImportedVendorProductsRaw(imported);
-    return;
-  }
-  saveVendorProductOverride(product);
+/** @deprecated Use persistVendorProductUpdate. */
+export function saveVendorProductOverride(product: VendorProductCatalogItem): void {
+  void persistVendorProductUpdate(product);
+}
+
+export async function persistVendorProductUpdate(product: VendorProductCatalogItem): Promise<void> {
+  await upsertVendorProductCatalogItem(product, true);
 }
 
 export function applyVendorProductOverrides(
-  catalog: VendorProductCatalogItem[] = VENDOR_PRODUCT_CATALOG,
+  catalog: VendorProductCatalogItem[] = catalogCache ?? VENDOR_PRODUCT_CATALOG,
 ): VendorProductCatalogItem[] {
-  const deactivated = loadDeactivatedVendorProductIds();
-  const mergedCatalog = [...catalog, ...loadImportedVendorProducts()];
-  const overrides = loadVendorProductOverrides();
-  const withOverrides = mergedCatalog
-    .filter(item => !deactivated.has(item.id))
-    .map(item => {
-    const patch = overrides[item.id];
-    if (!patch) return item;
-    return {
-      ...item,
-      ...patch,
-      group: patch.group ?? item.group,
-      specification: patch.specification ?? item.specification,
-      delivery: patch.delivery ? { ...item.delivery, ...patch.delivery } : item.delivery,
-      isPrivate: patch.isPrivate ?? item.isPrivate,
-      privateLocationIds: patch.privateLocationIds ?? item.privateLocationIds,
-    };
-  });
-  return mergeServerVendorProductPrices(withOverrides);
+  return mergeServerVendorProductPrices(catalog);
 }
 
 function normalizeUnitName(unit: string): string {
@@ -654,13 +754,13 @@ function resolveImportedProductId(
   return makeImportedProductId(vendorExternalId, draft.productName, used);
 }
 
-export function saveImportedVendorProducts(
+export async function saveImportedVendorProducts(
   vendorExternalId: string,
   vendorName: string,
   drafts: VendorProductImportDraft[],
-): VendorProductCatalogItem[] {
+): Promise<VendorProductCatalogItem[]> {
   const existingImported = loadImportedVendorProducts();
-  const used = new Set([...VENDOR_PRODUCT_CATALOG.map(p => p.id), ...existingImported.map(p => p.id)]);
+  const used = new Set([...applyVendorProductOverrides().map(p => p.id), ...existingImported.map(p => p.id)]);
   const nextProducts: VendorProductCatalogItem[] = [];
   for (const draft of drafts) {
     const delivery = parseDeliveryUnitPath(draft.deliveryUnitText);
@@ -681,7 +781,9 @@ export function saveImportedVendorProducts(
     });
   }
   if (nextProducts.length === 0) return [];
-  saveImportedVendorProductsRaw([...existingImported, ...nextProducts]);
+  for (const product of nextProducts) {
+    await persistVendorProductUpdate(product);
+  }
   return nextProducts;
 }
 

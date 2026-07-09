@@ -496,6 +496,7 @@ export function SmartIngredientPage({
         <SmartComponentImportReviewPanel
           plan={importPlan}
           existingRows={rows}
+          selectedCompanyId={selectedCompanyId}
           locationScope={locationScope}
           onClose={() => setImportPlan(null)}
           onApplied={nextRows => {

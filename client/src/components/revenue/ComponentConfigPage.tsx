@@ -10,6 +10,7 @@ import { Plus } from 'lucide-react';
 import { api, type LocationConfig } from '../../api';
 import {
   loadStorageAssignment,
+  loadStorageAssignmentForCompany,
   saveStorageAssignment,
   STORAGE_AREAS,
   STORAGE_CATALOG,
@@ -21,6 +22,7 @@ import {
 } from '../../data/storageAssignment';
 import {
   loadComponentHierarchy,
+  loadComponentHierarchyForCompany,
   saveComponentHierarchy,
   type ComponentHierarchyState,
 } from '../../data/componentHierarchy';
@@ -90,8 +92,35 @@ export function ComponentConfigPage({
 
   function updateHierarchy(next: ComponentHierarchyState) {
     setHierarchy(next);
-    saveComponentHierarchy(next);
+    saveComponentHierarchy(next, selectedCompanyId);
   }
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    void Promise.all([
+      loadComponentHierarchyForCompany(selectedCompanyId),
+      loadStorageAssignmentForCompany(selectedCompanyId),
+    ]).then(([nextHierarchy, nextStorage]) => {
+      setHierarchy(nextHierarchy);
+      setMyStorageEntries(nextStorage.entries);
+      setNextEntryId(nextStorage.nextEntryId);
+    });
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
+    const reloadStorage = () => {
+      const nextStorage = loadStorageAssignment();
+      setMyStorageEntries(nextStorage.entries);
+      setNextEntryId(nextStorage.nextEntryId);
+    };
+    window.addEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
+    window.addEventListener('bisync:storageAssignmentChanged', reloadStorage);
+    return () => {
+      window.removeEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
+      window.removeEventListener('bisync:storageAssignmentChanged', reloadStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedCompanyId) {
@@ -211,7 +240,7 @@ export function ComponentConfigPage({
     setNextEntryId(nextId);
     setMyStorageEntries(prev => {
       const next = [...prev, ...newEntries];
-      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId: nextId });
+      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId: nextId }, selectedCompanyId);
       return next;
     });
     setPendingStorage(null);
@@ -220,7 +249,7 @@ export function ComponentConfigPage({
   function removeMyStorageEntry(entryId: number) {
     setMyStorageEntries(prev => {
       const next = prev.filter(e => e.id !== entryId);
-      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId });
+      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId }, selectedCompanyId);
       return next;
     });
   }
@@ -390,7 +419,7 @@ export function ComponentConfigPage({
           )}
         </div>
       ) : (
-        <UomConfigPanel />
+        <UomConfigPanel selectedCompanyId={selectedCompanyId} />
       )}
 
       {pendingStorage && (

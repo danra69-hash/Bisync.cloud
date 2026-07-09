@@ -93,6 +93,12 @@ export function VendorListPage({
   );
 
   useEffect(() => {
+    const onCatalogChanged = () => setCatalogRefresh(key => key + 1);
+    window.addEventListener('bisync:vendorProductCatalogChanged', onCatalogChanged);
+    return () => window.removeEventListener('bisync:vendorProductCatalogChanged', onCatalogChanged);
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     Promise.all([api.vendors(), api.companies(), api.locationsConfig()])
       .then(([vendorRows, companyRows, locationRows]) => {

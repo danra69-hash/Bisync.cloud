@@ -96,7 +96,7 @@ export function VendorProductImportReviewPanel({
     const planToApply: VendorProductImportPlan = { ...workingPlan, creates };
 
     try {
-      applyVendorProductImportPlan(planToApply, vendor);
+      await applyVendorProductImportPlan(planToApply, vendor);
       onApplied();
       onClose();
     } catch (err) {

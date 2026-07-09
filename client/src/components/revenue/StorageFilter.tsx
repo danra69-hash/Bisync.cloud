@@ -33,8 +33,18 @@ export function StorageFilter({
   onStorageKeysChange,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [assignmentVersion, setAssignmentVersion] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
-  const assignment = useMemo(() => loadStorageAssignment(), [open, areaFilter, locationIds.join(',')]);
+  const assignment = useMemo(
+    () => loadStorageAssignment(),
+    [open, areaFilter, locationIds.join(','), assignmentVersion],
+  );
+
+  useEffect(() => {
+    const reload = () => setAssignmentVersion(version => version + 1);
+    window.addEventListener('bisync:storageAssignmentChanged', reload);
+    return () => window.removeEventListener('bisync:storageAssignmentChanged', reload);
+  }, []);
 
   const areas = useMemo(
     () => ['All', ...listAreasForLocations(assignment, locationIds)],

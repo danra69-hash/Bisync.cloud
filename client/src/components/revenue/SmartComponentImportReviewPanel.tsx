@@ -27,6 +27,7 @@ import { SmartComponentImportNewComponentsPanel } from './SmartComponentImportNe
 type Props = {
   plan: SmartComponentImportPlan;
   existingRows: ComponentRow[];
+  selectedCompanyId?: number | null;
   locationScope?: SmartComponentLocationScope;
   onClose: () => void;
   onApplied: (rows: ComponentRow[]) => void;
@@ -38,6 +39,7 @@ function formatAppliedTimestamp(): string {
 
 export function SmartComponentImportReviewPanel({
   plan,
+  selectedCompanyId = null,
   existingRows,
   locationScope,
   onClose,
@@ -117,7 +119,7 @@ export function SmartComponentImportReviewPanel({
     const planToApply: SmartComponentImportPlan = { ...workingPlan, creates };
 
     try {
-      ensureComponentCatalogFromPlan(planToApply, existingRows);
+      ensureComponentCatalogFromPlan(planToApply, existingRows, selectedCompanyId);
 
       const existingIds = existingRows.map(row => row.componentId).filter(Boolean);
       const nextRows = [...existingRows];

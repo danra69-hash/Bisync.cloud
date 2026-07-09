@@ -60,6 +60,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<DevelopmentMilestone> DevelopmentMilestones => Set<DevelopmentMilestone>();
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<AccessControlSettings> AccessControlSettings => Set<AccessControlSettings>();
+    public DbSet<RevMgmtCompanyConfig> RevMgmtCompanyConfigs => Set<RevMgmtCompanyConfig>();
+    public DbSet<VendorProduct> VendorProducts => Set<VendorProduct>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -174,5 +176,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         });
         modelBuilder.Entity<InventoryCountSessionLine>().HasIndex(x => x.SessionId);
         modelBuilder.Entity<VendorProductPrice>().HasKey(p => p.ExternalId);
+        modelBuilder.Entity<VendorProduct>().HasKey(p => p.ExternalId);
+        modelBuilder.Entity<RevMgmtCompanyConfig>()
+            .HasIndex(c => new { c.CompanyId, c.ConfigKey })
+            .IsUnique();
     }
 }

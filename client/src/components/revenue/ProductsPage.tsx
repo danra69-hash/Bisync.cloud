@@ -10,7 +10,13 @@ import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type Product } from '../../api';
 import { blankComponentRow, fromApiUom, toApiUom, type AltUnitEntry } from '../../data/componentForm';
 import { getDefaultCategoryAndGroup, loadComponentHierarchy } from '../../data/componentHierarchy';
-import { loadExtraGroups, removeExtraGroup, saveExtraGroups, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
+import {
+  getKnownRecipeUnits,
+  loadComponentCatalogForCompany,
+  loadExtraGroups,
+  removeExtraGroup,
+  saveExtraGroups,
+} from '../../data/componentCatalogConfig';
 import {
   convertProductParStockQty,
   formatProductParStock,
@@ -536,6 +542,22 @@ export function ProductsPage({
 
   useEffect(() => {
     if (!selectedCompanyId) {
+      setExtraGroups([]);
+      return;
+    }
+    void loadComponentCatalogForCompany(selectedCompanyId).then(state => {
+      setExtraGroups(state.extraGroups);
+    });
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    const reload = () => setExtraGroups(loadExtraGroups());
+    window.addEventListener('bisync:componentCatalogChanged', reload);
+    return () => window.removeEventListener('bisync:componentCatalogChanged', reload);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
       setLocations([]);
       return;
     }
@@ -897,7 +919,7 @@ export function ProductsPage({
 
     setExtraGroups(prev => {
       const next = prev.includes(name) ? prev : [...prev, name];
-      saveExtraGroups(next);
+      saveExtraGroups(next, selectedCompanyId);
       return next;
     });
     setGroup(name);
@@ -934,7 +956,7 @@ export function ProductsPage({
         setGroup('');
       }
 
-      setExtraGroups(removeExtraGroup(deletingGroup));
+      setExtraGroups(removeExtraGroup(deletingGroup, selectedCompanyId));
       setDeletingGroup(null);
     } catch (err) {
       setDeletingGroupError(err instanceof Error ? err.message : 'Failed to delete group.');

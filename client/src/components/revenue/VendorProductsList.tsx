@@ -226,10 +226,11 @@ export function VendorProductsList({
   }
 
   function handleSaveVendorProduct(updated: VendorProductCatalogItem) {
-    persistVendorProductUpdate(updated);
-    setDetailProduct(null);
-    setDetailIsNew(false);
-    onProductUpdated?.();
+    void persistVendorProductUpdate(updated).then(() => {
+      setDetailProduct(null);
+      setDetailIsNew(false);
+      onProductUpdated?.();
+    });
   }
 
   function handleEngageVendorClick(e: React.MouseEvent, vendor: Vendor) {
