@@ -58,7 +58,28 @@ The Vite dev server proxies `/api` to the backend.
 
 ### Publish database backups
 
-PostgreSQL data lives in the Docker volume `bisync_pg_data`. Back up with `pg_dump`:
+PostgreSQL data lives in the Docker volume `bisync_pg_data`. Export and publish with:
+
+```powershell
+.\scripts\publish-postgres-db.ps1
+```
+
+This writes `src/Bisync.Api/bisync-postgres-latest.sql` (and archive dump when present), commits/pushes to GitHub, and restores into Cloud SQL.
+
+On another machine after `git pull`:
+
+```powershell
+docker compose up -d
+.\scripts\restore-postgres-db.ps1
+```
+
+Legacy SQLite publish (older Cloud Run volume workflow):
+
+```powershell
+.\scripts\publish-local-db.ps1
+```
+
+Manual PostgreSQL backup:
 
 ```powershell
 docker exec bisync-postgres pg_dump -U bisync bisync > backup-bisync.sql
