@@ -16,6 +16,7 @@ export type ProductionMethodPdfData = {
   components: ProductComponentItem[];
   nutritionRows: NutritionalFactorRow[];
   yieldQuantity?: number;
+  countryCode?: string;
 };
 
 type JsPDFDoc = import('jspdf').jsPDF;
@@ -41,6 +42,7 @@ function drawWrappedText(doc: JsPDFDoc, text: string, x: number, y: number, maxW
 }
 
 async function renderProductionMethodPage(doc: JsPDFDoc, data: ProductionMethodPdfData): Promise<void> {
+  const countryCode = data.countryCode;
   const margin = 14;
   const pageWidth = 210;
   const contentWidth = pageWidth - margin * 2;
@@ -142,8 +144,8 @@ async function renderProductionMethodPage(doc: JsPDFDoc, data: ProductionMethodP
         item.componentName || item.componentId || '—',
         item.componentUom || '—',
         String(item.quantity),
-        formatRm(item.componentUomPrice),
-        formatRm(item.subtotal ?? item.componentUomPrice * item.quantity),
+        formatRm(item.componentUomPrice, countryCode),
+        formatRm(item.subtotal ?? item.componentUomPrice * item.quantity, countryCode),
       ];
       colX = tableX;
       row.forEach((cell, cellIndex) => {
@@ -202,7 +204,7 @@ async function renderProductionMethodPage(doc: JsPDFDoc, data: ProductionMethodP
     }
     const cells = [
       row.factor,
-      formatNutritionValue(row.perRecipe, row.unit),
+      formatNutritionValue(row.perRecipe, row.unit, countryCode),
       row.unit,
     ];
     colX = tableX;

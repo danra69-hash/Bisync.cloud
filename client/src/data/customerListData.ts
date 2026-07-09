@@ -21,7 +21,7 @@ export function blankB2bContact(): B2bCustomerContact {
     name: '',
     position: '',
     mobile: '',
-    fax: '',
+    email: '',
     isDefault: true,
   };
 }
@@ -64,9 +64,9 @@ export function parseB2bCustomerContacts(customer: Pick<B2bCustomer, 'contactsJs
       name: readString(c, 'name', 'Name'),
       position: readString(c, 'position', 'Position'),
       mobile: readString(c, 'mobile', 'Mobile'),
-      fax: readString(c, 'fax', 'Fax'),
+      email: readString(c, 'email', 'Email') || readString(c, 'fax', 'Fax'),
       isDefault: readBool(c, 'isDefault', 'IsDefault'),
-    })).filter(c => c.name || c.mobile || c.fax);
+    })).filter(c => c.name || c.mobile || c.email);
   } catch {
     return [];
   }
@@ -76,6 +76,19 @@ export function parseTaggedProductIds(customer: Pick<B2bCustomer, 'taggedProduct
   if (!customer.taggedProductIdsJson?.trim() || customer.taggedProductIdsJson === '[]') return [];
   try {
     const parsed = JSON.parse(customer.taggedProductIdsJson);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(v => Number(v)).filter(n => Number.isFinite(n) && n > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function parseTaggedProductAliasIds(
+  customer: Pick<B2bCustomer, 'taggedProductAliasIdsJson'>,
+): number[] {
+  if (!customer.taggedProductAliasIdsJson?.trim() || customer.taggedProductAliasIdsJson === '[]') return [];
+  try {
+    const parsed = JSON.parse(customer.taggedProductAliasIdsJson);
     if (!Array.isArray(parsed)) return [];
     return parsed.map(v => Number(v)).filter(n => Number.isFinite(n) && n > 0);
   } catch {
@@ -202,7 +215,9 @@ export function formatCustomerAddress(parts: {
 
 export function nextB2bCustomerExternalId(existing: B2bCustomer[]): string {
   const max = existing.reduce((acc, c) => {
-    const n = parseInt(c.externalId.replace(/^B2BC-/i, ''), 10);
+    const match = /^B2BC-(\d+)$/i.exec(c.externalId.trim());
+    if (!match) return acc;
+    const n = parseInt(match[1], 10);
     return Number.isFinite(n) ? Math.max(acc, n) : acc;
   }, 0);
   return `B2BC-${String(max + 1).padStart(3, '0')}`;
@@ -210,7 +225,9 @@ export function nextB2bCustomerExternalId(existing: B2bCustomer[]): string {
 
 export function nextPosCustomerExternalId(existing: PosCustomer[]): string {
   const max = existing.reduce((acc, c) => {
-    const n = parseInt(c.externalId.replace(/^POSC-/i, ''), 10);
+    const match = /^POSC-(\d+)$/i.exec(c.externalId.trim());
+    if (!match) return acc;
+    const n = parseInt(match[1], 10);
     return Number.isFinite(n) ? Math.max(acc, n) : acc;
   }, 0);
   return `POSC-${String(max + 1).padStart(3, '0')}`;
@@ -220,7 +237,9 @@ export function b2bCustomerToPayload(
   customer: B2bCustomer,
   contacts: B2bCustomerContact[],
   taggedProductIds: number[],
+  taggedProductAliasIds: number[],
   purchaseHistory: B2bPurchaseHistoryLine[],
+  taggedB2bProductUnits: import('../api').TaggedB2bProductUnit[] = [],
 ): import('../api').UpsertB2bCustomerPayload {
   return {
     companyId: customer.companyId,
@@ -236,6 +255,8 @@ export function b2bCustomerToPayload(
     email: customer.email,
     contacts,
     taggedProductIds,
+    taggedProductAliasIds,
+    taggedB2bProductUnits,
     purchaseHistory,
     active: customer.active,
   };

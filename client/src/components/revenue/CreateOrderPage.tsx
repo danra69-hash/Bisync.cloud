@@ -7,10 +7,10 @@ import {
   buildCartItems,
   buildCreateOrderLines,
   countCartItems,
-  formatRm,
   resolveVendorsForSelectedLocations,
   type CreateOrderLine,
 } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { buildOrderQtyFromTemplate } from '../../data/orderTemplates';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
@@ -60,6 +60,7 @@ type Props = {
 };
 
 export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedded = false }: Props) {
+  const { number, rm } = useCountryFormatters();
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorFilter, setVendorFilter] = useState('');
@@ -355,7 +356,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                           : '—'}
                       </td>
                       <td className={`${tdCls} font-sans text-foreground`}>
-                        {line.parStock > 0 ? `${line.parStock.toFixed(2)} ${line.parStockUom}` : '—'}
+                        {line.parStock > 0 ? `${number(line.parStock)} ${line.parStockUom}` : '—'}
                       </td>
                       <td className={tdCls}>
                         {line.suggestedDeliveryUnits === null ? (
@@ -376,7 +377,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                         <p className="text-xs text-muted-foreground font-sans">{line.vendorProduct.vendorName}</p>
                       </td>
                       <td className={`${tdCls} font-sans text-muted-foreground`}>{line.deliveryUnitLabel}</td>
-                      <td className={`${tdCls} font-sans text-foreground`}>{formatRm(line.deliveryPrice)}</td>
+                      <td className={`${tdCls} font-sans text-foreground`}>{rm(line.deliveryPrice)}</td>
                       <td className={tdCls}>
                         <input
                           type="number"
@@ -389,7 +390,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                         />
                       </td>
                       <td className={`${tdCls} font-sans font-semibold text-foreground`}>
-                        {lineTotal(line) > 0 ? formatRm(lineTotal(line)) : '—'}
+                        {lineTotal(line) > 0 ? rm(lineTotal(line)) : '—'}
                       </td>
                     </tr>
                   ))}
@@ -402,7 +403,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                         Grand Total
                       </td>
                       <td className="px-3 py-3 font-sans font-semibold text-sm text-foreground">
-                        {grandTotal > 0 ? formatRm(grandTotal) : '—'}
+                        {grandTotal > 0 ? rm(grandTotal) : '—'}
                       </td>
                     </tr>
                   </tfoot>

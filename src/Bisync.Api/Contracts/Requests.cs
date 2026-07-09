@@ -766,6 +766,7 @@ public class UpsertProductAliasRequest
     public string Name { get; set; } = string.Empty;
     [Range(0, 999999999)]
     public decimal Rrp { get; set; }
+    public string? B2bSalesConfigJson { get; set; }
 }
 
 public class UpsertProductRequest
@@ -810,6 +811,7 @@ public class UpsertProductRequest
 public class PatchProductRequest
 {
     public bool? PosEnabled { get; set; }
+    public List<PosDeliveryUnitRequest>? PosDeliveryUnits { get; set; }
     public bool? Active { get; set; }
     [Range(0, 999999999)]
     public decimal? Rrp { get; set; }
@@ -896,6 +898,7 @@ public class CreateB2bSalesOrderLineRequest
 {
     [Range(1, int.MaxValue)]
     public int ProductId { get; set; }
+    public int? ProductAliasId { get; set; }
     [MaxLength(80)]
     public string LocationExternalId { get; set; } = string.Empty;
     [Range(0.0001, 999999999)]
@@ -920,8 +923,8 @@ public class B2bCustomerContactRequest
     public string Position { get; set; } = string.Empty;
     [MaxLength(30)]
     public string Mobile { get; set; } = string.Empty;
-    [MaxLength(30)]
-    public string Fax { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
     public bool IsDefault { get; set; }
 }
 
@@ -937,6 +940,20 @@ public class B2bPurchaseHistoryLineRequest
     public decimal TotalRevenue { get; set; }
     public decimal Cogs { get; set; }
     public decimal CogsPercent { get; set; }
+}
+
+public class TaggedB2bProductUnitRequest
+{
+    public int ProductId { get; set; }
+    public int? AliasId { get; set; }
+    [MaxLength(80)]
+    public string UnitKey { get; set; } = string.Empty;
+}
+
+public class PosDeliveryUnitRequest
+{
+    [MaxLength(80)]
+    public string UnitKey { get; set; } = string.Empty;
 }
 
 public class UpsertB2bCustomerRequest
@@ -964,6 +981,8 @@ public class UpsertB2bCustomerRequest
     public string Email { get; set; } = string.Empty;
     public List<B2bCustomerContactRequest> Contacts { get; set; } = [];
     public List<int> TaggedProductIds { get; set; } = [];
+    public List<int> TaggedProductAliasIds { get; set; } = [];
+    public List<TaggedB2bProductUnitRequest> TaggedB2bProductUnits { get; set; } = [];
     public List<B2bPurchaseHistoryLineRequest> PurchaseHistory { get; set; } = [];
     public bool Active { get; set; } = true;
 }

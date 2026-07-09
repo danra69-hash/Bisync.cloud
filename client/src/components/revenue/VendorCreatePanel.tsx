@@ -15,9 +15,13 @@ import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { CountryLocalityFields } from '../shared/CountryLocalityFields';
+import { CountryPhoneInput } from '../shared/CountryPhoneInput';
+import type { LocalityParts } from '../../utils/countryFormat';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
+  countryCode: string;
   nextExternalId: string;
   existingVendors: Vendor[];
   onClose: () => void;
@@ -41,9 +45,9 @@ const blank = (nextExternalId: string): VendorCreatePayload => ({
   productPolicyTag: 'non-halal',
 });
 
-export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, onCreated, onProductsImported }: Props) {
+export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors, onClose, onCreated, onProductsImported }: Props) {
   const [form, setForm] = useState<VendorCreatePayload>(() => blank(nextExternalId));
-  const [postcode, setPostcode] = useState('');
+  const [locality, setLocality] = useState<LocalityParts>({ city: '', state: '', postcode: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scannedDocs, setScannedDocs] = useState<File[]>([]);
@@ -211,7 +215,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
         products: form.products.trim(),
         city: form.city.trim(),
         state: form.state.trim(),
-        address: [form.address.trim(), postcode.trim()].filter(Boolean).join(', '),
+        address: [form.address.trim(), locality.postcode.trim()].filter(Boolean).join(', '),
         contactPerson: form.contactPerson.trim(),
         contactPosition: form.contactPosition.trim(),
         mobile: form.mobile.trim(),
@@ -287,33 +291,23 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Address</p>
               <input value={form.address} onChange={e => setField('address', e.target.value)} className={inputCls} />
             </div>
-            <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">City</p>
-              <input
-                list="vendor-city-options"
-                value={form.city}
-                onChange={e => setField('city', e.target.value)}
-                className={inputCls}
+            <div className="col-span-3 grid grid-cols-3 gap-3">
+              <CountryLocalityFields
+                countryCode={countryCode}
+                value={{
+                  city: form.city,
+                  state: form.state,
+                  postcode: locality.postcode,
+                }}
+                onChange={next => {
+                  setField('city', next.city);
+                  setField('state', next.state);
+                  setLocality(prev => ({ ...prev, postcode: next.postcode }));
+                }}
+                extraCityOptions={cityOptions}
+                extraStateOptions={stateOptions}
+                labelClassName="text-xs font-sans text-muted-foreground uppercase tracking-wider"
               />
-              <datalist id="vendor-city-options">
-                {cityOptions.map(city => <option key={city} value={city} />)}
-              </datalist>
-            </div>
-            <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Zip Code</p>
-              <input value={postcode} onChange={e => setPostcode(e.target.value)} className={inputCls} />
-            </div>
-            <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">State</p>
-              <input
-                list="vendor-state-options"
-                value={form.state}
-                onChange={e => setField('state', e.target.value)}
-                className={inputCls}
-              />
-              <datalist id="vendor-state-options">
-                {stateOptions.map(state => <option key={state} value={state} />)}
-              </datalist>
             </div>
             <div>
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Contact Person</p>
@@ -328,8 +322,14 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
               <input value={form.email} onChange={e => setField('email', e.target.value)} className={inputCls} />
             </div>
             <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Mobile Number of Contact Person</p>
-              <input value={form.mobile} onChange={e => setField('mobile', e.target.value)} className={inputCls} />
+              <CountryPhoneInput
+                countryCode={countryCode}
+                value={form.mobile}
+                onChange={value => setField('mobile', value)}
+                label="Mobile Number of Contact Person"
+                variant="mobile"
+                showError={false}
+              />
             </div>
             <div />
           </div>

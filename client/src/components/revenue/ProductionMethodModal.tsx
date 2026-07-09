@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Plus, Printer, X } from 'lucide-react';
 import type { ProductComponentItem } from '../../api';
 import { fieldCls } from '../../data/componentForm';
-import { formatRm } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { downloadProductionMethodPdf } from '../../data/generateProductionMethodPdf';
 import {
   estimateNutritionalFactors,
@@ -35,6 +35,7 @@ export function ProductionMethodModal({
   yieldQuantity = 1,
   onClose,
 }: Props) {
+  const { rm, countryCode } = useCountryFormatters();
   const [draft, setDraft] = useState<ProductProductionMethod>(() => loadProductionMethod(productKey));
   const [printing, setPrinting] = useState(false);
   const fileInputRefs = useRef<Array<HTMLInputElement | null>>([]);
@@ -88,6 +89,7 @@ export function ProductionMethodModal({
         components: sequencedComponents,
         nutritionRows,
         yieldQuantity,
+        countryCode,
       });
     } finally {
       setPrinting(false);
@@ -211,8 +213,8 @@ export function ProductionMethodModal({
                       <td className="px-3 py-2 font-medium">{item.componentName || item.componentId}</td>
                       <td className="px-3 py-2">{item.componentUom || '—'}</td>
                       <td className="px-3 py-2">{item.quantity}</td>
-                      <td className="px-3 py-2">{formatRm(item.componentUomPrice)}</td>
-                      <td className="px-3 py-2 font-medium">{formatRm(item.subtotal ?? item.componentUomPrice * item.quantity)}</td>
+                      <td className="px-3 py-2">{rm(item.componentUomPrice)}</td>
+                      <td className="px-3 py-2 font-medium">{rm(item.subtotal ?? item.componentUomPrice * item.quantity)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -254,7 +256,7 @@ export function ProductionMethodModal({
                 {nutritionRows.map(row => (
                   <tr key={row.factor} className="border-b border-border/60 last:border-0">
                     <td className="px-3 py-2 font-medium">{row.factor}</td>
-                    <td className="px-3 py-2">{formatNutritionValue(row.perRecipe, row.unit)}</td>
+                    <td className="px-3 py-2">{formatNutritionValue(row.perRecipe, row.unit, countryCode)}</td>
                     <td className="px-3 py-2 text-muted-foreground">{row.unit}</td>
                   </tr>
                 ))}

@@ -37,8 +37,8 @@ public static class CustomerSeeder
                 Email = "procurement@metrofoods.my",
                 ContactsJson = JsonSerializer.Serialize(new[]
                 {
-                    new { id = "c1", name = "Ahmad Razif", position = "Procurement Manager", mobile = "+60 12-345 6789", fax = "", isDefault = true },
-                    new { id = "c2", name = "Siti Nurhaliza", position = "Accounts Executive", mobile = "+60 16-234 5678", fax = "+60 3-5512 8802", isDefault = false },
+                    new { id = "c1", name = "Ahmad Razif", position = "Procurement Manager", mobile = "+60 12-345 6789", email = "ahmad.razif@metrofoods.my", isDefault = true },
+                    new { id = "c2", name = "Siti Nurhaliza", position = "Accounts Executive", mobile = "+60 16-234 5678", email = "siti.nurhaliza@metrofoods.my", isDefault = false },
                 }, JsonOptions),
                 TaggedProductIdsJson = "[]",
                 PurchaseHistoryJson = JsonSerializer.Serialize(new[]
@@ -86,7 +86,7 @@ public static class CustomerSeeder
                 Email = "orders@greenleaf.my",
                 ContactsJson = JsonSerializer.Serialize(new[]
                 {
-                    new { id = "c3", name = "David Tan", position = "Operations Director", mobile = "+60 19-876 5432", fax = "", isDefault = true },
+                    new { id = "c3", name = "David Tan", position = "Operations Director", mobile = "+60 19-876 5432", email = "david.tan@greenleaf.my", isDefault = true },
                 }, JsonOptions),
                 TaggedProductIdsJson = "[]",
                 PurchaseHistoryJson = "[]",

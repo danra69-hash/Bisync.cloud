@@ -23,7 +23,47 @@ export type StorageAssignmentState = {
   nextEntryId: number;
 };
 
-export const DEFAULT_AREAS = ['Dining Room', 'Bar', 'Kitchen', 'Prep Kitchen', 'Hot Kitchen'];
+export const STORAGE_AREAS = ['Dining Room', 'Bar', 'Kitchen'] as const;
+
+/** Maps demo catalog location labels to location external IDs. */
+export const CATALOG_LOCATION_TO_EXTERNAL_ID: Record<string, string> = {
+  Downtown: 'downtown',
+  Midtown: 'midtown',
+  Westend: 'westend',
+  'All Locations': 'all',
+};
+
+export function normalizeStorageLocationKey(location: string): string {
+  const trimmed = location.trim();
+  if (!trimmed) return '';
+  const fromCatalog = CATALOG_LOCATION_TO_EXTERNAL_ID[trimmed];
+  if (fromCatalog) return fromCatalog;
+  return trimmed.toLowerCase();
+}
+
+export function storageCatalogMatchesLocations(
+  catalogLocation: string,
+  selectedLocationIds: string[],
+): boolean {
+  if (selectedLocationIds.length === 0) return false;
+  if (catalogLocation === 'All Locations') return true;
+  const catalogKey = normalizeStorageLocationKey(catalogLocation);
+  const selected = new Set(selectedLocationIds.map(id => id.trim().toLowerCase()).filter(Boolean));
+  return selected.has(catalogKey);
+}
+
+export function storageEntryMatchesLocations(
+  entryLocation: string,
+  selectedLocationIds: string[],
+): boolean {
+  if (selectedLocationIds.length === 0) return false;
+  const entryKey = normalizeStorageLocationKey(entryLocation);
+  const selected = new Set(selectedLocationIds.map(id => id.trim().toLowerCase()).filter(Boolean));
+  return selected.has(entryKey);
+}
+
+/** @deprecated Use STORAGE_AREAS */
+export const DEFAULT_AREAS = [...STORAGE_AREAS];
 
 export const STORAGE_CATALOG: StorageCatalogRow[] = [
   { id: 1, name: 'Walk-in Freezer', type: 'Freezer', capacity: '120 m³', location: 'Downtown', items: 18 },
@@ -37,23 +77,35 @@ export const STORAGE_CATALOG: StorageCatalogRow[] = [
 ];
 
 const DEFAULT_MY_STORAGE_ENTRIES: Omit<MyStorageEntry, 'id'>[] = [
-  { location: 'Downtown', area: 'Kitchen', sourceStorageId: 1, name: 'Walk-in Freezer', type: 'Freezer', items: 18 },
-  { location: 'Downtown', area: 'Kitchen', sourceStorageId: 2, name: 'Main Chiller', type: 'Chiller', items: 32 },
-  { location: 'Downtown', area: 'Bar', sourceStorageId: 3, name: 'Wine Cellar', type: 'Wine Cellar', items: 14 },
-  { location: 'Downtown', area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 41 },
-  { location: 'Midtown', area: 'Bar', sourceStorageId: 5, name: 'Bar Cooler', type: 'Chiller', items: 9 },
-  { location: 'Midtown', area: 'Prep Kitchen', sourceStorageId: 6, name: 'Prep Kitchen Store', type: 'Prep Kitchen', items: 22 },
-  { location: 'Westend', area: 'Kitchen', sourceStorageId: 7, name: 'Westend Freezer', type: 'Freezer', items: 11 },
-  { location: 'Westend', area: 'Kitchen', sourceStorageId: 8, name: 'Westend Chiller', type: 'Chiller', items: 16 },
-  { location: 'Midtown', area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 41 },
-  { location: 'Westend', area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 41 },
+  { location: 'downtown', area: 'Kitchen', sourceStorageId: 1, name: 'Walk-in Freezer', type: 'Freezer', items: 18 },
+  { location: 'downtown', area: 'Kitchen', sourceStorageId: 2, name: 'Main Chiller', type: 'Chiller', items: 32 },
+  { location: 'downtown', area: 'Bar', sourceStorageId: 3, name: 'Wine Cellar', type: 'Wine Cellar', items: 14 },
+  { location: 'downtown', area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 41 },
+  { location: 'midtown', area: 'Bar', sourceStorageId: 5, name: 'Bar Cooler', type: 'Chiller', items: 9 },
+  { location: 'midtown', area: 'Kitchen', sourceStorageId: 6, name: 'Prep Kitchen Store', type: 'Prep Kitchen', items: 22 },
+  { location: 'westend', area: 'Kitchen', sourceStorageId: 7, name: 'Westend Freezer', type: 'Freezer', items: 11 },
+  { location: 'westend', area: 'Kitchen', sourceStorageId: 8, name: 'Westend Chiller', type: 'Chiller', items: 16 },
+  { location: 'midtown', area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 41 },
+  { location: 'westend', area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 41 },
 ];
 
 const STORAGE_ASSIGNMENT_KEY = 'bisync.storageAssignment';
 
+function normalizeStorageArea(area: string): string {
+  const trimmed = area.trim();
+  if (!trimmed) return STORAGE_AREAS[0];
+  const match = STORAGE_AREAS.find(item => item.toLowerCase() === trimmed.toLowerCase());
+  if (match) return match;
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('bar')) return 'Bar';
+  if (lower.includes('kitchen') || lower.includes('prep')) return 'Kitchen';
+  if (lower.includes('dining')) return 'Dining Room';
+  return STORAGE_AREAS[0];
+}
+
 function defaultState(): StorageAssignmentState {
   return {
-    areas: [...DEFAULT_AREAS],
+    areas: [...STORAGE_AREAS],
     entries: DEFAULT_MY_STORAGE_ENTRIES.map((entry, index) => ({ ...entry, id: index + 1 })),
     nextEntryId: DEFAULT_MY_STORAGE_ENTRIES.length + 1,
   };
@@ -79,13 +131,13 @@ export function parseComponentStorageJson(storageJson: string | null | undefined
 
 export function externalIdToStorageLocation(externalId: string): string {
   const trimmed = externalId.trim();
-  if (!trimmed) return 'Downtown';
+  if (!trimmed) return '';
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 export function resolveStorageLocationLabels(locationIds: string[]): string[] {
-  if (locationIds.length === 0) return ['Downtown'];
-  return [...new Set(locationIds.map(externalIdToStorageLocation))];
+  if (locationIds.length === 0) return [];
+  return [...new Set(locationIds.map(externalIdToStorageLocation).filter(Boolean))];
 }
 
 export function loadStorageAssignment(): StorageAssignmentState {
@@ -94,8 +146,12 @@ export function loadStorageAssignment(): StorageAssignmentState {
     const raw = localStorage.getItem(STORAGE_ASSIGNMENT_KEY);
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw) as Partial<StorageAssignmentState>;
-    const areas = Array.isArray(parsed.areas) && parsed.areas.length > 0 ? parsed.areas : [...DEFAULT_AREAS];
-    const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
+    const areas = [...STORAGE_AREAS];
+    const entries = (Array.isArray(parsed.entries) ? parsed.entries : []).map(entry => ({
+      ...entry,
+      location: normalizeStorageLocationKey(entry.location),
+      area: normalizeStorageArea(entry.area),
+    }));
     const nextEntryId = typeof parsed.nextEntryId === 'number' ? parsed.nextEntryId : entries.length + 1;
     if (entries.length === 0) return defaultState();
     return { areas, entries, nextEntryId };
@@ -106,29 +162,35 @@ export function loadStorageAssignment(): StorageAssignmentState {
 
 export function saveStorageAssignment(state: StorageAssignmentState) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_ASSIGNMENT_KEY, JSON.stringify(state));
+  localStorage.setItem(STORAGE_ASSIGNMENT_KEY, JSON.stringify({
+    ...state,
+    areas: [...STORAGE_AREAS],
+    entries: state.entries.map(entry => ({
+      ...entry,
+      location: normalizeStorageLocationKey(entry.location),
+      area: normalizeStorageArea(entry.area),
+    })),
+  }));
 }
 
 export function storageEntryKey(entry: Pick<MyStorageEntry, 'location' | 'area' | 'sourceStorageId' | 'name'>) {
   return `${entry.location}::${entry.area}::${entry.sourceStorageId}::${entry.name}`;
 }
 
-export function listAreasForLocations(state: StorageAssignmentState, locationLabels: string[]): string[] {
-  const labels = new Set(locationLabels);
+export function listAreasForLocations(state: StorageAssignmentState, locationIds: string[]): string[] {
   const areas = state.entries
-    .filter(entry => labels.has(entry.location))
+    .filter(entry => storageEntryMatchesLocations(entry.location, locationIds))
     .map(entry => entry.area);
   return [...new Set(areas)].sort((a, b) => a.localeCompare(b));
 }
 
 export function listStoragesForFilter(
   state: StorageAssignmentState,
-  locationLabels: string[],
+  locationIds: string[],
   areaFilter: string,
 ): MyStorageEntry[] {
-  const labels = new Set(locationLabels);
   return state.entries
-    .filter(entry => labels.has(entry.location))
+    .filter(entry => storageEntryMatchesLocations(entry.location, locationIds))
     .filter(entry => areaFilter === 'All' || entry.area === areaFilter)
     .sort((a, b) => a.area.localeCompare(b.area) || a.name.localeCompare(b.name));
 }
@@ -163,16 +225,16 @@ export type ComponentAreaStorageLabels = {
 
 export function resolveComponentAreaStorage(
   componentStorageTypes: string[],
-  locationLabels: string[],
+  locationIds: string[],
   assignment: StorageAssignmentState,
 ): ComponentAreaStorageLabels {
   if (componentStorageTypes.length === 0) {
     return { areas: '—', storages: '—', sortArea: '', sortStorage: '' };
   }
 
-  const labels = new Set(locationLabels);
   const matched = assignment.entries.filter(
-    entry => labels.has(entry.location) && componentStorageTypes.includes(entry.type),
+    entry => storageEntryMatchesLocations(entry.location, locationIds)
+      && componentStorageTypes.includes(entry.type),
   );
 
   const areas = [...new Set(matched.map(entry => entry.area))].sort((a, b) => a.localeCompare(b));

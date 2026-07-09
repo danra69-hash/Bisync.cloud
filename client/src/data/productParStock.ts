@@ -1,6 +1,7 @@
 import { fromApiUom, getConversion, toApiUom } from './componentForm';
 import type { B2bSalesConfig } from './productB2bSales';
 import { formatDeliveryUnitPath } from './vendorProductCatalog';
+import { formatCountryNumber } from '../utils/numberFormat';
 
 export function convertProductParStockQty(
   qty: number,
@@ -48,8 +49,7 @@ export function serializeProductParStockUom(uom: string): string {
   return toApiUom(uom) || uom;
 }
 
-export function formatProductParStock(value: number, uom: string): string {
+export function formatProductParStock(value: number, uom: string, countryCode = 'MY'): string {
   if (value <= 0) return '—';
-  const decimals = value < 1 ? 4 : value < 10 ? 2 : 1;
-  return `${value.toFixed(decimals)} ${uom}`;
+  return `${formatCountryNumber(value, countryCode)} ${uom}`;
 }

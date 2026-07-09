@@ -191,4 +191,105 @@ public static class DatabaseSchemaHelper
                 await connection.CloseAsync();
         }
     }
+
+    static async Task<string?> GetColumnDataTypeAsync(DbContext db, string table, string column)
+    {
+        var connection = db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync();
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND lower(table_name) = lower(@table)
+                  AND lower(column_name) = lower(@column)
+                """;
+
+            var tableParam = command.CreateParameter();
+            tableParam.ParameterName = "@table";
+            tableParam.Value = table;
+            command.Parameters.Add(tableParam);
+
+            var columnParam = command.CreateParameter();
+            columnParam.ParameterName = "@column";
+            columnParam.Value = column;
+            command.Parameters.Add(columnParam);
+
+            var result = await command.ExecuteScalarAsync();
+            return result as string;
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
+    }
+
+    public static async Task PromoteLegacyIntegerBooleansAsync(DbContext db)
+    {
+        (string Table, string Column)[] columns =
+        [
+            ("B2bSalesOrders", "DeliveryOrderIssued"),
+            ("B2bSalesOrders", "InvoiceIssued"),
+        ];
+
+        foreach (var (table, column) in columns)
+        {
+            if (!await ColumnExistsAsync(db, table, column))
+                continue;
+            if (!string.Equals(await GetColumnDataTypeAsync(db, table, column), "integer", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync($"""ALTER TABLE "{table}" ALTER COLUMN "{column}" DROP DEFAULT;""");
+                await db.Database.ExecuteSqlRawAsync(
+                    $"""ALTER TABLE "{table}" ALTER COLUMN "{column}" TYPE boolean USING ("{column}" <> 0);""");
+                await db.Database.ExecuteSqlRawAsync(
+                    $"""ALTER TABLE "{table}" ALTER COLUMN "{column}" SET DEFAULT false;""");
+            }
+            catch
+            {
+                // Column may have been promoted concurrently.
+            }
+        }
+    }
+
+    public static async Task PromoteLegacyTextTimestampsAsync(DbContext db)
+    {
+        (string Table, string Column)[] columns =
+        [
+            ("B2bSalesOrders", "CreatedAt"),
+            ("B2bSalesOrders", "UpdatedAt"),
+        ];
+
+        foreach (var (table, column) in columns)
+        {
+            if (!await ColumnExistsAsync(db, table, column))
+                continue;
+            if (!string.Equals(await GetColumnDataTypeAsync(db, table, column), "text", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    $"""
+                    ALTER TABLE "{table}" ALTER COLUMN "{column}" TYPE timestamp with time zone
+                    USING CASE
+                        WHEN "{column}" IS NULL OR BTRIM("{column}") = '' THEN NOW()
+                        ELSE "{column}"::timestamp with time zone
+                    END;
+                    """);
+            }
+            catch
+            {
+                // Column may have been promoted concurrently.
+            }
+        }
+    }
 }

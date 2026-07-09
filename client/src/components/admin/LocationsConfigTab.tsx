@@ -27,6 +27,8 @@ import {
 } from '../../data/companyProfile';
 import {
   buildLocationModulesPayload,
+  LOCATION_ACCESS_COLUMN_MODULES,
+  locationModulesInheritFromCompany,
   modulesFromCompany,
   resolveLocationModulesForDisplay,
   validateLocationModules,
@@ -42,15 +44,68 @@ type LocationSortColumn =
   | 'productPolicy'
   | 'country';
 
-const LOCATION_TABLE_COLUMNS: SortableColumnDef<LocationSortColumn>[] = [
+type LocationTableColumn = LocationSortColumn | 'accessControl';
+
+const LOCATION_TABLE_COLUMNS: SortableColumnDef<LocationTableColumn>[] = [
   { key: 'location', label: 'Location' },
   { key: 'company', label: 'Company' },
   { key: 'address', label: 'Address' },
+  { key: 'accessControl', label: 'Access Control', sortable: false, className: 'w-[11.5rem]' },
   { key: 'principalContact', label: 'Principal Contact' },
   { key: 'businessType', label: 'Type of Business' },
   { key: 'productPolicy', label: 'Product Policy' },
   { key: 'country', label: 'Country' },
 ];
+
+function LocationAccessControlCell({
+  location,
+  company,
+  disabled,
+  onToggle,
+}: {
+  location: LocationConfig;
+  company: Company | undefined;
+  disabled: boolean;
+  onToggle: (moduleId: AccessModule) => void;
+}) {
+  const enabled = resolveLocationModulesForDisplay(location, company ?? null);
+  const companyModules = company ? modulesFromCompany(company) : [];
+  const inherits = locationModulesInheritFromCompany(location);
+
+  return (
+    <div className="space-y-1 py-0.5" onClick={e => e.stopPropagation()}>
+      {LOCATION_ACCESS_COLUMN_MODULES.map(module => {
+        const checked = enabled.includes(module.id);
+        const moduleDisabled = disabled || !companyModules.includes(module.id);
+        return (
+          <label
+            key={module.id}
+            className={`flex items-center gap-2 ${moduleDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            title={moduleDisabled && !companyModules.includes(module.id)
+              ? `${module.label} is not enabled for this company`
+              : module.label}
+            onClick={e => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={moduleDisabled}
+              onChange={e => {
+                e.stopPropagation();
+                if (!moduleDisabled) onToggle(module.id);
+              }}
+              className="rounded border-border shrink-0"
+            />
+            <span className="text-[11px] leading-tight text-foreground truncate">{module.label}</span>
+          </label>
+        );
+      })}
+      {inherits && (
+        <span className="block text-[10px] text-primary/80 mt-0.5">From company</span>
+      )}
+    </div>
+  );
+}
 
 function blankLocation(companyId: number | null = null): LocationConfig {
   return {
@@ -262,6 +317,7 @@ function LocationPanel({
         businessTypesJson: saved.businessTypesJson ?? profilePayload.effectiveBusinessTypesJson,
         vendorPolicyTagsJson: saved.vendorPolicyTagsJson ?? profilePayload.effectiveVendorPolicyTagsJson,
         modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
+        modulesOverridden: saved.modulesOverridden,
         profileOverridden: saved.profileOverridden ?? (profilePayload.profileOverridden || modulesPayload.modulesJson !== '[]'),
       });
       onClose();
@@ -386,6 +442,7 @@ export function LocationsConfigTab({
   const [loading, setLoading] = useState(true);
   const [editLocation, setEditLocation] = useState<LocationConfig | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [togglingLocationId, setTogglingLocationId] = useState<number | null>(null);
 
   function refreshList() {
     setLoading(true);
@@ -429,6 +486,60 @@ export function LocationsConfigTab({
   function closePanel() {
     setEditLocation(null);
     setIsNew(false);
+  }
+
+  async function toggleLocationModule(location: LocationConfig, moduleId: AccessModule) {
+    const company = companies.find(c => c.id === location.companyId);
+    if (!company) return;
+
+    const companyModules = modulesFromCompany(company);
+    const current = resolveLocationModulesForDisplay(location, company);
+    const next = current.includes(moduleId)
+      ? current.filter(value => value !== moduleId)
+      : [...current, moduleId];
+    const modulesError = validateLocationModules(next, companyModules);
+    if (modulesError) return;
+
+    const profile = resolveLocationProfileForDisplay(location, company);
+    const modulesPayload = buildLocationModulesPayload(company, next, false);
+
+    setTogglingLocationId(location.id);
+    try {
+      const saved = await api.updateLocationConfig(location.id, {
+        companyId: location.companyId,
+        name: location.name,
+        addressLine1: location.addressLine1,
+        addressLine2: location.addressLine2,
+        city: location.city,
+        stateProvince: location.stateProvince,
+        postcode: location.postcode,
+        principalContactUserId: location.principalContactUserId,
+        businessTypesJson: profile.businessTypesJson ?? '[]',
+        vendorPolicyTagsJson: profile.vendorPolicyTagsJson ?? '[]',
+        modulesJson: modulesPayload.modulesJson,
+      });
+      setLocations(prev => prev.map(loc => (
+        loc.id === location.id
+          ? {
+              ...loc,
+              ...saved,
+              companyName: company.name,
+              countryCode: company.countryCode,
+              principalContactName: location.principalContactName,
+              businessTypesJson: saved.businessTypesJson ?? profile.businessTypesJson,
+              vendorPolicyTagsJson: saved.vendorPolicyTagsJson ?? profile.vendorPolicyTagsJson,
+              modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
+              modulesOverridden: saved.modulesOverridden,
+              profileOverridden: saved.profileOverridden,
+            }
+          : loc
+      )));
+      onOrgDataChanged?.();
+    } catch {
+      refreshList();
+    } finally {
+      setTogglingLocationId(null);
+    }
   }
 
   useEffect(() => { refreshList(); }, []);
@@ -505,7 +616,7 @@ export function LocationsConfigTab({
           <table className="w-full table-fixed text-xs">
             <thead>
               <SortableTableHeaderRow
-                columns={LOCATION_TABLE_COLUMNS}
+                columns={LOCATION_TABLE_COLUMNS as SortableColumnDef<LocationSortColumn>[]}
                 sortColumn={sortColumn}
                 sortDirection={sortDirection}
                 onSort={toggleSort}
@@ -523,6 +634,14 @@ export function LocationsConfigTab({
                   <td className="px-4 py-3 text-muted-foreground">
                     {[loc.addressLine1, loc.city, loc.stateProvince].filter(Boolean).join(', ') || loc.name}
                   </td>
+                  <td className="px-3 py-2 align-top">
+                    <LocationAccessControlCell
+                      location={loc}
+                      company={company}
+                      disabled={togglingLocationId === loc.id}
+                      onToggle={moduleId => void toggleLocationModule(loc, moduleId)}
+                    />
+                  </td>
                   <td className="px-4 py-3">{loc.principalContactName ?? '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground" title={formatBusinessTypesCell(profile.businessTypesJson)}>
                     <span className="line-clamp-2">
@@ -537,7 +656,7 @@ export function LocationsConfigTab({
                   <td className="px-4 py-3">{getCountry(loc.countryCode).name}</td>
                 </tr>
               );})}
-              <InfiniteScrollTableSentinel colSpan={7} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
           </TableScrollContainer>

@@ -18,6 +18,12 @@ export const COMPANY_ACCESS_COLUMN_MODULES = [
   { id: 'Accounting' as const, label: 'Accounting' },
 ] as const;
 
+export const LOCATION_ACCESS_COLUMN_MODULES = [
+  { id: 'RMS' as const, label: 'Revenue Management' },
+  { id: 'POS' as const, label: 'Point-of-Sales' },
+  { id: 'HRM' as const, label: 'Human Resources' },
+] as const;
+
 export const LOCATION_PLATFORM_MODULES = PLATFORM_MODULES.filter(module => module.id !== 'Accounting');
 
 const NAV_TO_MODULE = new Map<NavItem, AccessModule>(
@@ -64,6 +70,13 @@ export function validateLocationBusinessTypesSubset(
 
 export function modulesFromCompany(company: Pick<Company, 'modulesJson'>): AccessModule[] {
   return parseCompanyModules(company.modulesJson);
+}
+
+export function locationModulesInheritFromCompany(
+  location: Pick<LocationConfig, 'modulesOverridden' | 'profileOverridden'>,
+): boolean {
+  if (location.modulesOverridden !== undefined) return !location.modulesOverridden;
+  return location.profileOverridden !== true;
 }
 
 export function resolveLocationModulesForDisplay(

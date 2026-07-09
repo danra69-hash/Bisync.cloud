@@ -4,6 +4,8 @@ import { X } from 'lucide-react';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import type { ProduceBatchShortage } from '../../api';
 import { fromApiUom } from '../../data/componentForm';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 
 type Props = {
@@ -42,9 +44,9 @@ function compareIsoDates(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-function formatStockQty(value: number): string {
-  if (!Number.isFinite(value)) return '0';
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+function formatStockQty(value: number, countryCode: string): string {
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
+  return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 }
 
 export function ProduceBatchModal({
@@ -63,6 +65,7 @@ export function ProduceBatchModal({
   onClose,
   onConfirm,
 }: Props) {
+  const countryCode = useOrgCountryCode();
   const defaultExpiryDays = expiryPeriodDays > 0 ? expiryPeriodDays : 7;
   const [batchQty, setBatchQty] = useState(
     defaultBatchQty > 0 ? String(defaultBatchQty) : '1',
@@ -280,9 +283,9 @@ export function ProduceBatchModal({
                             <p className="text-[10px] text-muted-foreground font-mono">{line.componentId}</p>
                           </td>
                           <td className="px-2 py-1.5 text-muted-foreground">{fromApiUom(line.uom)}</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums font-medium">{formatStockQty(line.requiredQty)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-medium">{formatStockQty(line.requiredQty, countryCode)}</td>
                           <td className={`px-2 py-1.5 text-right tabular-nums font-medium ${insufficient ? 'text-destructive' : ''}`}>
-                            {formatStockQty(line.onHandQty)}
+                            {formatStockQty(line.onHandQty, countryCode)}
                           </td>
                           <td className="px-2 py-1.5 text-center">
                             {insufficient ? (

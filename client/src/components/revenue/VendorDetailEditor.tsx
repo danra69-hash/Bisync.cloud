@@ -10,8 +10,11 @@ import {
   VENDOR_PRODUCT_POLICY_OPTIONS,
   resolveVendorProductPolicyTag,
 } from '../../data/vendorPolicyRules';
+import { CountryLocalityFields } from '../shared/CountryLocalityFields';
+import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 
 type Props = {
+  countryCode: string;
   vendor: Vendor;
   onVendorUpdated: (vendor: Vendor) => void;
 };
@@ -69,7 +72,7 @@ export function VendorProductPolicySingleSelect({
   );
 }
 
-export function VendorDetailEditor({ vendor, onVendorUpdated }: Props) {
+export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Props) {
   const [form, setForm] = useState(() => vendorToForm(vendor));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,15 +191,17 @@ export function VendorDetailEditor({ vendor, onVendorUpdated }: Props) {
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Address (PO)</p>
               <input value={form.address} onChange={e => setField('address', e.target.value)} className={inputCls} />
             </div>
-            <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">City</p>
-              <input value={form.city} onChange={e => setField('city', e.target.value)} className={inputCls} />
+            <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <CountryLocalityFields
+                countryCode={countryCode}
+                value={{ city: form.city, state: form.state, postcode: '' }}
+                onChange={next => {
+                  setField('city', next.city);
+                  setField('state', next.state);
+                }}
+                labelClassName="text-xs font-sans text-muted-foreground uppercase tracking-wider"
+              />
             </div>
-            <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">State</p>
-              <input value={form.state} onChange={e => setField('state', e.target.value)} className={inputCls} />
-            </div>
-            <div />
             <div>
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Contact person</p>
               <input value={form.contactPerson} onChange={e => setField('contactPerson', e.target.value)} className={inputCls} />
@@ -207,8 +212,14 @@ export function VendorDetailEditor({ vendor, onVendorUpdated }: Props) {
             </div>
             <div />
             <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Mobile</p>
-              <input value={form.mobile} onChange={e => setField('mobile', e.target.value)} className={inputCls} />
+              <CountryPhoneInput
+                countryCode={countryCode}
+                value={form.mobile}
+                onChange={value => setField('mobile', value)}
+                label="Mobile"
+                variant="mobile"
+                showError={false}
+              />
             </div>
             <div>
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Email</p>

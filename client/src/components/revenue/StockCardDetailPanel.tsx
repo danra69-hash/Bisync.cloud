@@ -4,12 +4,16 @@ import { createPortal } from 'react-dom';
 
 import { X } from 'lucide-react';
 
-import { api, type StockCardDetail, type StockCardLedgerEntry, type StockCardOnHandLayer } from '../../api';
+import { api, type Ingredient, type StockCardDetail, type StockCardLedgerEntry, type StockCardOnHandLayer } from '../../api';
 
-import { formatRm } from '../../data/createOrder';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { currentStockCardMonth, formatStockCardMonthLabel } from './stockCardPeriod';
 import { AvgCogsWithTrend, computeOnHandAverageCogs } from './stockCardCogsTrend';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
+import { StockCardSplitUsePanel } from './StockCardSplitUsePanel';
+import { parseDetailConfigJson } from '../../data/componentForm';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 import {
@@ -46,13 +50,11 @@ type Props = {
 
 
 
-function fmtQty(value: number) {
+function fmtQty(value: number, countryCode: string) {
 
-  if (!Number.isFinite(value)) return '0';
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
 
-  const rounded = Math.round(value * 1000) / 1000;
-
-  return rounded % 1 === 0 ? String(rounded) : rounded.toFixed(3).replace(/\.?0+$/, '');
+  return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 
 }
 
@@ -156,8 +158,8 @@ function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
 
 
 
-function entryInboundOutbound(entry: StockCardLedgerEntry): { inbound: string; outbound: string } {
-  const qty = fmtQty(Math.abs(entry.signedQty));
+function entryInboundOutbound(entry: StockCardLedgerEntry, countryCode: string): { inbound: string; outbound: string } {
+  const qty = fmtQty(Math.abs(entry.signedQty), countryCode);
   if (entry.signedQty > 0) return { inbound: qty, outbound: '—' };
   if (entry.signedQty < 0) return { inbound: '—', outbound: qty };
   return { inbound: '—', outbound: '—' };
@@ -187,6 +189,8 @@ export function StockCardDetailPanel({
 
 }: Props) {
 
+  const countryCode = useOrgCountryCode();
+  const { rm } = useCountryFormatters();
   const [detail, setDetail] = useState<StockCardDetail | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -194,6 +198,7 @@ export function StockCardDetailPanel({
   const [error, setError] = useState<string | null>(null);
 
   const [adjustmentOpen, setAdjustmentOpen] = useState(false);
+  const [splitUseIngredient, setSplitUseIngredient] = useState<Ingredient | null>(null);
 
 
 
@@ -233,6 +238,16 @@ export function StockCardDetailPanel({
 
   }, [loadDetail]);
 
+  useEffect(() => {
+    if (itemType !== 'component' || !itemKey) {
+      setSplitUseIngredient(null);
+      return;
+    }
+    api.ingredients()
+      .then(rows => setSplitUseIngredient(rows.find(row => row.componentId === itemKey) ?? null))
+      .catch(() => setSplitUseIngredient(null));
+  }, [itemType, itemKey]);
+
 
 
   const canToggleUom = useMemo(() => {
@@ -242,6 +257,11 @@ export function StockCardDetailPanel({
     return detail.recipeUom.trim().toLowerCase() !== detail.inventoryUom.trim().toLowerCase();
 
   }, [detail]);
+
+  const splitUseConfig = useMemo(() => {
+    if (!splitUseIngredient) return null;
+    return parseDetailConfigJson(splitUseIngredient.detailConfigJson).splitUse;
+  }, [splitUseIngredient]);
 
 
 
@@ -379,17 +399,17 @@ export function StockCardDetailPanel({
 
             <div className="px-5 py-4 border-b border-border shrink-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
 
-              <SummaryCell label="B/F" value={fmtQty(detail.balanceForward)} uom={detail.uom} />
+              <SummaryCell label="B/F" value={fmtQty(detail.balanceForward, countryCode)} uom={detail.uom} />
 
-              <SummaryCell label="Inbound" value={fmtQty(detail.inboundQty)} uom={detail.uom} />
+              <SummaryCell label="Inbound" value={fmtQty(detail.inboundQty, countryCode)} uom={detail.uom} />
 
-              <SummaryCell label="Outbound" value={fmtQty(detail.outboundQty)} uom={detail.uom} />
+              <SummaryCell label="Outbound" value={fmtQty(detail.outboundQty, countryCode)} uom={detail.uom} />
 
-              <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty)} uom={detail.uom} />
+              <SummaryCell label="Adjustment" value={fmtQty(detail.adjustmentQty, countryCode)} uom={detail.uom} />
 
               <SummaryCell
                 label="Avg outbound price"
-                value={detail.averageCogs > 0 ? formatRm(detail.averageCogs) : '—'}
+                value={detail.averageCogs > 0 ? rm(detail.averageCogs) : '—'}
                 uom={`per ${detail.uom}`}
               />
 
@@ -404,7 +424,22 @@ export function StockCardDetailPanel({
 
             </div>
 
-
+            {splitUseConfig?.enabled && detail && splitUseIngredient ? (
+              <div className="px-5 py-3 border-b border-border shrink-0">
+                <StockCardSplitUsePanel
+                  splitUse={splitUseConfig}
+                  componentName={detail.name}
+                  onHandQty={detail.onHandQty}
+                  displayUom={detail.uom}
+                  inventoryUom={splitUseIngredient.inventoryUom}
+                  recipeUom={splitUseIngredient.recipeUom}
+                  convertFromInventoryQty={parseDetailConfigJson(splitUseIngredient.detailConfigJson).convertFromInventoryQty}
+                  convertToRecipeQty={parseDetailConfigJson(splitUseIngredient.detailConfigJson).convertToRecipeQty}
+                  componentPrice={splitUseIngredient.lastPriceRecipe}
+                  principalQty={parseFloat(parseDetailConfigJson(splitUseIngredient.detailConfigJson).convertToRecipeQty) || 1}
+                />
+              </div>
+            ) : null}
 
             <div className="flex-1 overflow-auto">
 
@@ -430,7 +465,7 @@ export function StockCardDetailPanel({
                 <tbody>
 
                   {detail.entries.map((entry, index) => {
-                    const { inbound, outbound } = entryInboundOutbound(entry);
+                    const { inbound, outbound } = entryInboundOutbound(entry, countryCode);
                     return (
                     <tr key={`${entry.id}-${entry.splitIndex ?? 0}-${index}`} className="border-t border-border/60 hover:bg-muted/30 align-top">
 
@@ -446,13 +481,13 @@ export function StockCardDetailPanel({
 
                       <td className="px-3 py-2.5 text-right tabular-nums">
 
-                        {entry.unitPrice > 0 ? formatRm(entry.unitPrice) : '—'}
+                        {entry.unitPrice > 0 ? rm(entry.unitPrice) : '—'}
 
                       </td>
 
                       <td className="px-3 py-2.5 text-right tabular-nums">
 
-                        {entry.subtotal > 0 ? formatRm(entry.subtotal) : '—'}
+                        {entry.subtotal > 0 ? rm(entry.subtotal) : '—'}
 
                       </td>
 
@@ -476,7 +511,7 @@ export function StockCardDetailPanel({
 
                       <td className="px-3 py-2.5 text-right tabular-nums font-medium">
 
-                        {fmtQty(entry.runningBalance)}
+                        {fmtQty(entry.runningBalance, countryCode)}
 
                       </td>
 
@@ -542,6 +577,8 @@ function OnHandSummaryCell({
   outboundAverageCogs: number;
   onAdjust?: () => void;
 }) {
+  const countryCode = useOrgCountryCode();
+  const { rm } = useCountryFormatters();
   const activeLayers = layers.filter(l => l.quantity > 0);
   const resolvedOnHandAverageCogs =
     onHandAverageCogs > 0 ? onHandAverageCogs : computeOnHandAverageCogs(layers);
@@ -561,7 +598,7 @@ function OnHandSummaryCell({
         ) : null}
       </div>
       <p className="text-base font-semibold tabular-nums text-primary">
-        {fmtQty(quantity)}
+        {fmtQty(quantity, countryCode)}
       </p>
       <p className="text-xs text-muted-foreground truncate">{uom}</p>
       <p className="mt-1 text-xs tabular-nums text-foreground">
@@ -575,7 +612,7 @@ function OnHandSummaryCell({
               key={`${layer.unitPrice}-${layer.quantity}`}
               className="text-[11px] tabular-nums text-muted-foreground leading-snug"
             >
-              {fmtQty(layer.quantity)} @ {formatRm(layer.unitPrice)}
+              {fmtQty(layer.quantity, countryCode)} @ {rm(layer.unitPrice)}
             </li>
           ))}
         </ul>

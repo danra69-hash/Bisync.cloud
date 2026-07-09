@@ -11,6 +11,7 @@ import { Search, UserPlus } from 'lucide-react';
 import { api, type Company, type EngageVendorContact, type LocationConfig, type Vendor } from '../../api';
 import {
   applyVendorProductOverrides,
+  filterVendorProductsByLocationVisibility,
   vendorProductPolicyTag,
 } from '../../data/vendorProductCatalog';
 import {
@@ -112,6 +113,11 @@ export function VendorListPage({
     return resolveOrgVendorPolicyTags(company, configLocations, selectedLocationIds);
   }, [companies, configLocations, selectedCompanyId, selectedLocationIds]);
 
+  const countryCode = useMemo(
+    () => companies.find(c => c.id === selectedCompanyId)?.countryCode ?? 'MY',
+    [companies, selectedCompanyId],
+  );
+
   useEffect(() => {
     if (!selectedCompanyId) {
       setEngageTarget(null);
@@ -209,7 +215,8 @@ export function VendorListPage({
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
     const vendorsByExternalId = new Map(vendors.map(v => [v.externalId, v]));
-    return catalogProducts.filter(product => {
+    const locationScoped = filterVendorProductsByLocationVisibility(catalogProducts, selectedLocationIds);
+    return locationScoped.filter(product => {
       const vendor = vendorsByExternalId.get(product.vendorExternalId);
       if (vendor && !vendorMatchesOrgPolicy(vendor.productPolicyTag, orgPolicyTags, vendor)) return false;
       const productTag = vendorProductPolicyTag(product, vendorsByExternalId);
@@ -231,7 +238,7 @@ export function VendorListPage({
       if (vendorCmp !== 0) return vendorCmp;
       return a.productName.localeCompare(b.productName);
     });
-  }, [catalogProducts, productSearch, productVendorFilter, productGroupFilter, vendors, orgPolicyTags]);
+  }, [catalogProducts, productSearch, productVendorFilter, productGroupFilter, vendors, orgPolicyTags, selectedLocationIds]);
 
   async function handleConfirmEngage(vendor: Vendor, contacts: EngageVendorContact[]) {
     setEngaging(true);
@@ -484,6 +491,7 @@ export function VendorListPage({
         products={filteredProducts}
         vendors={vendors}
         selectedCompanyId={selectedCompanyId}
+        selectedLocationIds={selectedLocationIds}
         orgPolicyTags={orgPolicyTags}
         showVendorColumn
         tagFilter={productTagFilter}
@@ -513,6 +521,8 @@ export function VendorListPage({
         <VendorProductsPanel
           vendor={productsVendor}
           selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          countryCode={countryCode}
           onClose={() => setProductsVendor(null)}
           onVendorUpdated={handleVendorUpdated}
         />
@@ -520,6 +530,7 @@ export function VendorListPage({
 
       {showCreateVendor && (
         <VendorCreatePanel
+          countryCode={countryCode}
           nextExternalId={nextVendorExternalId}
           existingVendors={vendors}
           onClose={() => setShowCreateVendor(false)}

@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { api, type Vendor } from '../../api';
-import { siCategories } from '../../data/revenueManagement';
 import {
-  getKnownGroups,
   getKnownRecipeUnits,
   getKnownStorageOptions,
 } from '../../data/componentCatalogConfig';
+import {
+  getHierarchyCategoryOptions,
+  getHierarchyGroupOptions,
+  loadComponentHierarchy,
+  type ComponentHierarchyState,
+} from '../../data/componentHierarchy';
 import {
   type AltUnitEntry,
   type ComponentForm,
@@ -36,10 +40,13 @@ import {
   type ParStockUomBasis,
 } from '../../data/componentParStock';
 import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
+import { ComponentSplitUseSection } from './ComponentSplitUseSection';
+import { createSplitUseLine, validateSplitUseConfig } from '../../data/componentSplitUse';
 
 function computeTaggedVendorProductPricing(
   product: VendorProductCatalogItem,
   form: ComponentForm,
+  skipYieldLoss = false,
 ) {
   const productUom = form.vendorProductComponentUom[product.id] ?? form.recipeUnit;
   const resolved = resolveComponentUomQty(
@@ -56,7 +63,7 @@ function computeTaggedVendorProductPricing(
         ? String(resolved.qty)
         : '',
   ) || 0;
-  const lossYield = parseFloat(form.vendorProductLossYield[product.id] ?? '0') || 0;
+  const lossYield = skipYieldLoss ? 0 : (parseFloat(form.vendorProductLossYield[product.id] ?? '0') || 0);
   const principalPrice = calcComponentPrincipalUomPrice(product.deliveryPrice, principalQty);
   const nettQty = calcNettUomQty(principalQty, lossYield);
   const nettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
@@ -220,6 +227,7 @@ type PrincipalAlternateUomBlockProps = {
   onAltUnitsChange: (units: AltUnitEntry[]) => void;
   showComponentUomChoices?: boolean;
   className?: string;
+  principalAside?: React.ReactNode;
 };
 
 function PrincipalAlternateUomBlock({
@@ -238,6 +246,7 @@ function PrincipalAlternateUomBlock({
   onAltUnitsChange,
   showComponentUomChoices = false,
   className = 'mb-6',
+  principalAside,
 }: PrincipalAlternateUomBlockProps) {
   const recipeUnits = getKnownRecipeUnits();
   const unitOptions = recipeUnits.filter(u => u !== principalUnit);
@@ -283,7 +292,7 @@ function PrincipalAlternateUomBlock({
 
   return (
     <div className={className}>
-      <div className="mb-5">
+      <div className={`mb-5 ${principalAside ? 'flex flex-wrap items-start gap-4' : ''}`}>
         <FormField label={principalLabel}>
           <select className={`${selectCls} w-40`} value={principalUnit} onChange={e => onPrincipalChange(e.target.value)}>
             {showComponentUomChoices && componentUomChoices.length > 0 && (
@@ -303,6 +312,7 @@ function PrincipalAlternateUomBlock({
             {!showComponentUomChoices && recipeUnits.map(u => <option key={u}>{u}</option>)}
           </select>
         </FormField>
+        {principalAside}
       </div>
 
       {referencePrincipalUom && onReferenceFromQtyChange && onReferenceQtyChange && (
@@ -396,14 +406,18 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationOption[]>([]);
   const [parStockUomBasis, setParStockUomBasis] = useState<ParStockUomBasis>('recipe');
+  const [splitUseError, setSplitUseError] = useState<string | null>(null);
+  const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
 
-  const groupOptions = useMemo(() => {
-    const options = getKnownGroups(existingComponents);
-    if (form.group && !options.some(group => group.toLowerCase() === form.group.toLowerCase())) {
-      return [...options, form.group].sort((a, b) => a.localeCompare(b));
-    }
-    return options;
-  }, [existingComponents, form.group]);
+  const categoryOptions = useMemo(
+    () => getHierarchyCategoryOptions(hierarchy, form.category, []),
+    [hierarchy, form.category],
+  );
+
+  const groupOptions = useMemo(
+    () => getHierarchyGroupOptions(hierarchy, form.category, form.group, []),
+    [hierarchy, form.category, form.group],
+  );
 
   const storageOptions = useMemo(() => {
     const options = getKnownStorageOptions();
@@ -419,6 +433,32 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     setProductSearch('');
     setVendorSearch('');
   }, [row]);
+
+  useEffect(() => {
+    const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
+    reloadHierarchy();
+    window.addEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
+    window.addEventListener('storage', reloadHierarchy);
+    return () => {
+      window.removeEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
+      window.removeEventListener('storage', reloadHierarchy);
+    };
+  }, []);
+
+  useEffect(() => {
+    setForm(f => {
+      const categories = getHierarchyCategoryOptions(hierarchy, f.category, []);
+      const categoryValid = categories.some(
+        category => category.toLowerCase() === f.category.toLowerCase(),
+      );
+      const category = categoryValid ? f.category : (categories[0] ?? f.category);
+      const groups = getHierarchyGroupOptions(hierarchy, category, f.group, []);
+      const groupValid = groups.some(group => group.toLowerCase() === f.group.toLowerCase());
+      const group = groupValid ? f.group : (groups[0] ?? f.group);
+      if (category === f.category && group === f.group) return f;
+      return { ...f, category, group };
+    });
+  }, [hierarchy]);
 
   useEffect(() => {
     api.vendors(true).then(setVendors).catch(() => setVendors([]));
@@ -448,6 +488,18 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
+
+  function handleCategoryChange(category: string) {
+    setForm(f => {
+      const groups = getHierarchyGroupOptions(hierarchy, category, f.group, []);
+      const groupStillValid = groups.some(group => group.toLowerCase() === f.group.toLowerCase());
+      return {
+        ...f,
+        category,
+        group: groupStillValid ? f.group : (groups[0] ?? ''),
+      };
+    });
+  }
 
   function set<K extends keyof ComponentForm>(key: K, val: ComponentForm[K]) {
     setForm(f => {
@@ -665,7 +717,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     const product = VENDOR_PRODUCT_CATALOG.find(p => p.id === primaryId);
     if (!product) return null;
 
-    const pricing = computeTaggedVendorProductPricing(product, form);
+    const pricing = computeTaggedVendorProductPricing(product, form, form.splitUse.enabled);
 
     return { product, ...pricing };
   }, [
@@ -675,6 +727,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     form.vendorProductComponentUom,
     form.recipeUnit,
     form.altRecipeUnits,
+    form.splitUse.enabled,
   ]);
 
   const delivPrice = taggedPricing?.product.deliveryPrice ?? (parseFloat(form.deliveryUnitPrice) || 0);
@@ -731,6 +784,21 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     return [...new Set([...fromApi, ...fromCatalog])].sort();
   }, [vendors]);
 
+  function handleSplitUseEnabledChange(enabled: boolean) {
+    setSplitUseError(null);
+    setForm(f => {
+      const nextSplitUse = { ...f.splitUse, enabled };
+      if (enabled && nextSplitUse.lines.length === 0) {
+        nextSplitUse.lines = [createSplitUseLine()];
+      }
+      if (enabled && (!nextSplitUse.componentQty.trim() || nextSplitUse.componentQty === '1')) {
+        nextSplitUse.componentQty = f.convertFromInventoryQty || '1';
+        nextSplitUse.qtyBasis = 'inventory';
+      }
+      return { ...f, splitUse: nextSplitUse };
+    });
+  }
+
   function save() {
     const trimmedName = form.name.trim();
     if (!trimmedName) {
@@ -741,6 +809,18 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       setNameError('A component with this name already exists.');
       return;
     }
+    const splitError = validateSplitUseConfig(
+      form.splitUse,
+      form.inventoryUnit,
+      form.recipeUnit,
+      form.convertFromInventoryQty,
+      form.convertToRecipeQty,
+    );
+    if (splitError) {
+      setSplitUseError(splitError);
+      return;
+    }
+    setSplitUseError(null);
     onSave({
       name: trimmedName,
       componentId: form.componentId,
@@ -804,8 +884,8 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 )}
               </FormField>
               <FormField label="Category">
-                <select className={selectCls} value={form.category} onChange={e => set('category', e.target.value)}>
-                  {siCategories.filter(c => c !== 'All').map(c => <option key={c}>{c}</option>)}
+                <select className={selectCls} value={form.category} onChange={e => handleCategoryChange(e.target.value)}>
+                  {categoryOptions.map(category => <option key={category}>{category}</option>)}
                 </select>
               </FormField>
               <FormField label="Group">
@@ -910,7 +990,31 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               altUnits={form.altInventoryUnits}
               onPrincipalChange={handleInventoryUnitChange}
               onAltUnitsChange={units => set('altInventoryUnits', units.slice(0, MAX_ALTERNATE_UOMS))}
-              className=""
+              principalAside={(
+                <div className="flex-1 min-w-[280px] rounded-md border border-border bg-muted/10 p-3">
+                  <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.splitUse.enabled}
+                      onChange={e => handleSplitUseEnabledChange(e.target.checked)}
+                      className="rounded border-border"
+                    />
+                    Split Use
+                  </label>
+                  {form.splitUse.enabled ? (
+                    <ComponentSplitUseSection
+                      form={form}
+                      componentPrice={componentPrice}
+                      principalQty={taggedPricing?.principalQty ?? (parseFloat(form.convertToRecipeQty) || 1)}
+                      onChange={splitUse => setForm(f => ({ ...f, splitUse }))}
+                    />
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      Break this component into sub-components for stock and costing (e.g. whole chicken into parts).
+                    </p>
+                  )}
+                </div>
+              )}
             />
           </div>
 
@@ -988,6 +1092,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               componentUomByProduct={form.vendorProductComponentUom}
               principalQtyByProduct={form.vendorProductPrincipalQty}
               lossYieldByProduct={form.vendorProductLossYield}
+              hideYieldLoss={form.splitUse.enabled}
               locationsByProduct={form.vendorProductLocations}
               companyLocations={companyLocations}
               activeLocationIds={selectedLocationIds}
@@ -1003,8 +1108,8 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         </div>
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
-          {(saveError || nameError) && (
-            <p className="text-xs text-red-500 text-right">{saveError ?? nameError}</p>
+          {(saveError || nameError || splitUseError) && (
+            <p className="text-xs text-red-500 text-right">{saveError ?? splitUseError ?? nameError}</p>
           )}
           <div className="flex items-center justify-end gap-3">
           <button type="button" onClick={onClose}

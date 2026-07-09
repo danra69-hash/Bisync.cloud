@@ -8,6 +8,7 @@ import {
   resolveComponentUomQty,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
+import { formatCountryNumber } from '../utils/numberFormat';
 import { componentRowTagsVendorProduct, resolveVendorProductPrincipalQty } from './vendorProductTagging';
 
 export type ComparePriceCell = {
@@ -267,13 +268,13 @@ export function sortComparePriceVendorColumns(
   return [...engaged, ...unengaged];
 }
 
-export function formatDeliveryPriceLine(product: VendorProductCatalogItem): string {
-  return `${formatDeliveryUnitPath(product.delivery)} · $${product.deliveryPrice.toFixed(2)}`;
+export function formatDeliveryPriceLine(product: VendorProductCatalogItem, countryCode = 'MY'): string {
+  return `${formatDeliveryUnitPath(product.delivery)} · $${formatCountryNumber(product.deliveryPrice, countryCode)}`;
 }
 
-export function formatUomCost(uomCost: number | null, componentUom: string): string {
+export function formatUomCost(uomCost: number | null, componentUom: string, countryCode = 'MY'): string {
   if (uomCost === null || uomCost <= 0) return '—';
-  return `$${uomCost.toFixed(4)}/${componentUom.toLowerCase()}`;
+  return `$${formatCountryNumber(uomCost, countryCode)}/${componentUom.toLowerCase()}`;
 }
 
 export function findBestUomCostByComponent(

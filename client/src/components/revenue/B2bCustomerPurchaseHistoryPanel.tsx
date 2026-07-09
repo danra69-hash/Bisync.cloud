@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import type { B2bCustomer } from '../../api';
 import { filterPurchaseHistoryLastTwoYears, parseB2bPurchaseHistory } from '../../data/customerListData';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function B2bCustomerPurchaseHistoryPanel({ customer, onClose }: Props) {
+  const { number, percent } = useCountryFormatters();
   const lines = useMemo(
     () => filterPurchaseHistoryLastTwoYears(parseB2bPurchaseHistory(customer)),
     [customer],
@@ -52,11 +54,11 @@ export function B2bCustomerPurchaseHistoryPanel({ customer, onClose }: Props) {
               <div className="flex flex-wrap gap-4 mb-4 text-xs">
                 <div className="rounded-md border border-border px-3 py-2">
                   <p className="text-muted-foreground">Total Revenue</p>
-                  <p className="font-semibold tabular-nums">{totals.revenue.toFixed(2)}</p>
+                  <p className="font-semibold tabular-nums">{number(totals.revenue)}</p>
                 </div>
                 <div className="rounded-md border border-border px-3 py-2">
                   <p className="text-muted-foreground">Total COGS</p>
-                  <p className="font-semibold tabular-nums">{totals.cogs.toFixed(2)}</p>
+                  <p className="font-semibold tabular-nums">{number(totals.cogs)}</p>
                 </div>
               </div>
               <table className="w-full text-xs">
@@ -81,12 +83,12 @@ export function B2bCustomerPurchaseHistoryPanel({ customer, onClose }: Props) {
                       <td className="py-2 pr-2 whitespace-nowrap">{line.dateDelivered || '—'}</td>
                       <td className="py-2 pr-2">{line.productName}</td>
                       <td className="py-2 pr-2 text-muted-foreground">{line.deliveryUom || '—'}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{line.rrp.toFixed(2)}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{line.qtyOrdered}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{line.actualRrp.toFixed(2)}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{line.totalRevenue.toFixed(2)}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{line.cogs.toFixed(2)}</td>
-                      <td className="py-2 text-right tabular-nums">{line.cogsPercent.toFixed(1)}%</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{number(line.rrp)}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{number(line.qtyOrdered)}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{number(line.actualRrp)}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{number(line.totalRevenue)}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{number(line.cogs)}</td>
+                      <td className="py-2 text-right tabular-nums">{percent(line.cogsPercent)}</td>
                     </tr>
                   ))}
                 </tbody>

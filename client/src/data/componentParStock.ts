@@ -1,4 +1,5 @@
 import { fromApiUom, getConversion, resolveDetailConfigForRow, type AltUnitEntry, type ComponentRow } from './componentForm';
+import { formatCountryNumber } from '../utils/numberFormat';
 
 export type ParStockUomBasis = 'recipe' | 'inventory';
 
@@ -132,10 +133,9 @@ export function resolveComponentParStock(
   });
 }
 
-export function formatParStock(value: number, uom: string): string {
+export function formatParStock(value: number, uom: string, countryCode = 'MY'): string {
   if (value <= 0) return '—';
-  const decimals = value < 1 ? 4 : value < 10 ? 2 : 1;
-  return `${value.toFixed(decimals)} ${uom}`;
+  return `${formatCountryNumber(value, countryCode)} ${uom}`;
 }
 
 export type ComponentUomSource = {
@@ -266,6 +266,7 @@ export function deriveDailyUsageFromParStock(
 export function exportComponentParStockFields(
   row: ComponentRow,
   preferredUom?: string,
+  countryCode = 'MY',
 ): { parStock: string; parStockUom: string } {
   const detail = resolveDetailConfigForRow(row);
   const recipeUom = fromApiUom(row.recipeUOM);
@@ -299,9 +300,8 @@ export function exportComponentParStockFields(
     return { parStock: String(baseRecipe), parStockUom: recipeUom };
   }
 
-  const decimals = exportedValue < 1 ? 4 : exportedValue < 10 ? 2 : 1;
   return {
-    parStock: String(Number(exportedValue.toFixed(decimals))),
+    parStock: formatCountryNumber(exportedValue, countryCode),
     parStockUom: exportUom,
   };
 }

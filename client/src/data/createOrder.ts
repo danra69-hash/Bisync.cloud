@@ -1,4 +1,5 @@
 import type { Vendor } from '../api';
+import { formatCountryCurrency } from '../utils/numberFormat';
 import { fromApiUom, getConversion, resolveDetailConfigForRow, type ComponentRow } from './componentForm';
 import { resolveComparePriceCell } from './comparePrice';
 import {
@@ -6,6 +7,7 @@ import {
   formatDeliveryUnitPath,
   resolveComponentUomQty,
   vendorProductPolicyTag,
+  vendorProductVisibleToLocations,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
 import {
@@ -74,6 +76,10 @@ export function resolveTaggedProductsForComponent(
   let tagged = taggedIds
     .map(id => catalog.find(p => p.id === id))
     .filter((p): p is VendorProductCatalogItem => Boolean(p));
+
+  if (options?.locationIds && options.locationIds.length > 0) {
+    tagged = tagged.filter(product => vendorProductVisibleToLocations(product, options.locationIds!));
+  }
 
   if (options?.vendorExternalId) {
     tagged = tagged.filter(p => p.vendorExternalId === options.vendorExternalId);
@@ -294,9 +300,11 @@ export function buildCreateOrderLines(
   return lines.sort((a, b) => a.component.name.localeCompare(b.component.name));
 }
 
-export function formatRm(value: number): string {
-  return `RM ${value.toFixed(2)}`;
+export function formatRm(value: number, countryCode = 'MY'): string {
+  return formatCountryCurrency(value, countryCode);
 }
+
+export { formatCountryNumber, formatCountryCurrency, formatCountryPercent } from '../utils/numberFormat';
 
 export type OrderCartItem = {
   lineKey: string;

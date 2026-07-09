@@ -7,11 +7,15 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { pageShellClass } from '../layout/pageLayout';
 import { Plus } from 'lucide-react';
-import { selectCls } from '../../data/componentForm';
+import { api, type LocationConfig } from '../../api';
 import {
   loadStorageAssignment,
   saveStorageAssignment,
+  STORAGE_AREAS,
   STORAGE_CATALOG,
+  storageCatalogMatchesLocations,
+  storageEntryMatchesLocations,
+  storageEntryKey,
   type MyStorageEntry,
   type StorageCatalogRow,
 } from '../../data/storageAssignment';
@@ -48,21 +52,38 @@ const CONFIG_TABS = [
   { id: 'uom' as const, label: 'UOM Config' },
 ] as const;
 
-const STORAGE_LOCATIONS = ['Downtown', 'Midtown', 'Westend'] as const;
+const STORAGE_AREAS_LIST = [...STORAGE_AREAS];
 
-function storageMatchesLocation(row: StorageCatalogRow, location: string) {
-  return row.location === location || row.location === 'All Locations';
+function resolveFallbackLocationLabels(locationIds: string[]): string {
+  return locationIds
+    .map(id => id.trim())
+    .filter(Boolean)
+    .map(id => id.charAt(0).toUpperCase() + id.slice(1))
+    .join(', ');
 }
 
-export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: { selectedCompanyId: number | null }) {
+export function ComponentConfigPage({
+  selectedCompanyId,
+  selectedLocationIds,
+}: {
+  selectedCompanyId: number | null;
+  selectedLocationIds: string[];
+}) {
   const [tab, setTab] = useState<'hierarchy' | 'storage' | 'uom'>('hierarchy');
 
   const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Component Hierarchy';
   useRevMgmtPageLabel(activeTabLabel);
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
   const [storage] = useState(STORAGE_CATALOG);
-  const [selectedLocation, setSelectedLocation] = useState<string>(STORAGE_LOCATIONS[0]);
-  const [areas, setAreas] = useState<string[]>(() => loadStorageAssignment().areas);
+  const [companyLocations, setCompanyLocations] = useState<LocationConfig[]>([]);
+  const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
+  const selectedLocations = useMemo(
+    () => companyLocations.filter(location => selectedLocationIds.includes(location.externalId)),
+    [companyLocations, selectedLocationIds],
+  );
+  const locationLabelDisplay = selectedLocations.length > 0
+    ? selectedLocations.map(location => location.name).join(', ')
+    : resolveFallbackLocationLabels(selectedLocationIds);
   const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>(() => loadStorageAssignment().entries);
   const [nextEntryId, setNextEntryId] = useState(() => loadStorageAssignment().nextEntryId);
   const [pendingStorage, setPendingStorage] = useState<StorageCatalogRow | null>(null);
@@ -72,19 +93,32 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
     saveComponentHierarchy(next);
   }
 
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setCompanyLocations([]);
+      return;
+    }
+    api.locationsConfig()
+      .then(locations => setCompanyLocations(
+        locations.filter(location => location.companyId === selectedCompanyId),
+      ))
+      .catch(() => setCompanyLocations([]));
+  }, [selectedCompanyId]);
+
   const locationStorage = useMemo(
-    () => storage.filter(s => storageMatchesLocation(s, selectedLocation)),
-    [storage, selectedLocation],
+    () => storage.filter(row => storageCatalogMatchesLocations(row.location, selectedLocationIds)),
+    [storage, selectedLocationIds],
   );
 
   const myStorageByArea = useMemo(() => {
-    const entries = myStorageEntries.filter(e => e.location === selectedLocation);
-    return areas
-      .map(area => ({ area, entries: entries.filter(e => e.area === area) }))
-      .filter(section => section.entries.length > 0);
-  }, [areas, myStorageEntries, selectedLocation]);
+    const entries = myStorageEntries.filter(entry => storageEntryMatchesLocations(entry.location, selectedLocationIds));
+    return STORAGE_AREAS_LIST.map(area => ({
+      area,
+      entries: entries.filter(entry => entry.area === area),
+    }));
+  }, [myStorageEntries, selectedLocationIds]);
 
-  const hasMyStorage = myStorageByArea.length > 0;
+  const hasMyStorage = myStorageByArea.some(section => section.entries.length > 0);
 
   const locationStorageScrollRef = useRef<HTMLDivElement>(null);
   const myStorageScrollRef = useRef<HTMLDivElement>(null);
@@ -105,7 +139,7 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
   useEffect(() => {
     resetLocationStorageSort();
     resetMyStorageSort();
-  }, [tab, selectedLocation, myStorageEntries, resetLocationStorageSort, resetMyStorageSort]);
+  }, [tab, selectedLocationIds, myStorageEntries, resetLocationStorageSort, resetMyStorageSort]);
 
   const sortedLocationStorage = useMemo(
     () =>
@@ -145,32 +179,39 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
     setPendingStorage(null);
   }
 
-  function addArea(name: string) {
-    const trimmed = name.trim();
-    if (!trimmed || areas.some(a => a.toLowerCase() === trimmed.toLowerCase())) return;
-    setAreas(prev => {
-      const next = [...prev, trimmed];
-      saveStorageAssignment({ areas: next, entries: myStorageEntries, nextEntryId });
-      return next;
-    });
-  }
-
   function confirmAddToMyStorage(area: string) {
-    if (!pendingStorage) return;
-    const entry: MyStorageEntry = {
-      id: nextEntryId,
-      location: selectedLocation,
-      area,
-      sourceStorageId: pendingStorage.id,
-      name: pendingStorage.name,
-      type: pendingStorage.type,
-      items: pendingStorage.items,
-    };
-    const nextId = nextEntryId + 1;
+    if (!pendingStorage || selectedLocationIds.length === 0) return;
+    const existingKeys = new Set(myStorageEntries.map(storageEntryKey));
+    const newEntries: MyStorageEntry[] = [];
+    let nextId = nextEntryId;
+
+    for (const location of selectedLocationIds) {
+      const candidate: MyStorageEntry = {
+        id: nextId,
+        location,
+        area,
+        sourceStorageId: pendingStorage.id,
+        name: pendingStorage.name,
+        type: pendingStorage.type,
+        items: pendingStorage.items,
+      };
+      const key = storageEntryKey(candidate);
+      if (!existingKeys.has(key)) {
+        newEntries.push(candidate);
+        existingKeys.add(key);
+        nextId += 1;
+      }
+    }
+
+    if (newEntries.length === 0) {
+      setPendingStorage(null);
+      return;
+    }
+
     setNextEntryId(nextId);
     setMyStorageEntries(prev => {
-      const next = [...prev, entry];
-      saveStorageAssignment({ areas, entries: next, nextEntryId: nextId });
+      const next = [...prev, ...newEntries];
+      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId: nextId });
       return next;
     });
     setPendingStorage(null);
@@ -179,7 +220,7 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
   function removeMyStorageEntry(entryId: number) {
     setMyStorageEntries(prev => {
       const next = prev.filter(e => e.id !== entryId);
-      saveStorageAssignment({ areas, entries: next, nextEntryId });
+      saveStorageAssignment({ areas: STORAGE_AREAS_LIST, entries: next, nextEntryId });
       return next;
     });
   }
@@ -204,22 +245,16 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
         <ComponentHierarchyPanel state={hierarchy} onChange={updateHierarchy} />
       ) : tab === 'storage' ? (
         <div className="space-y-3">
+          {!orgReady ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              Select a company and at least one location to manage storage assignment.
+            </p>
+          ) : (
+          <>
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <label htmlFor="storage-location" className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
-                Location
-              </label>
-              <select
-                id="storage-location"
-                value={selectedLocation}
-                onChange={e => setSelectedLocation(e.target.value)}
-                className={`${selectCls} mt-1 `}
-              >
-                {STORAGE_LOCATIONS.map(location => (
-                  <option key={location} value={location}>{location}</option>
-                ))}
-              </select>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Location: <span className="font-medium text-foreground">{locationLabelDisplay}</span>
+            </p>
             <button
               type="button"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
@@ -231,7 +266,7 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
-                <p className="text-xs font-semibold">All Storage — {selectedLocation}</p>
+                <p className="text-xs font-semibold">All Storage — {locationLabelDisplay}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Click a storage area, then choose an area to copy it to My Storage</p>
               </div>
               <TableScrollContainer ref={locationStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
@@ -280,14 +315,28 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
 
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
-                <p className="text-xs font-semibold">My Storage — {selectedLocation}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Grouped by area. Click a storage area to remove it.</p>
+                <p className="text-xs font-semibold">My Storage — {locationLabelDisplay}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Grouped by Dining Room, Bar, and Kitchen. Click a storage area to remove it.</p>
               </div>
 
               {!hasMyStorage ? (
-                <p className="px-3 py-8 text-center text-xs text-muted-foreground">
-                  No storage assigned yet. Click a storage area on the left and select an area.
-                </p>
+                <div className="px-3 py-6">
+                  <p className="text-center text-xs text-muted-foreground mb-4">
+                    No storage assigned yet. Click a storage area on the left and select Dining Room, Bar, or Kitchen.
+                  </p>
+                  <table className="w-full table-fixed text-xs">
+                    <tbody>
+                      {STORAGE_AREAS_LIST.map(area => (
+                        <tr key={area} className="border-b border-border/60">
+                          <td className="px-3 py-2 text-xs font-sans font-semibold uppercase tracking-wider text-muted-foreground">
+                            {area}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">—</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <TableScrollContainer ref={myStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                   <table className="w-full table-fixed text-xs">
@@ -337,6 +386,8 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
               )}
             </div>
           </div>
+          </>
+          )}
         </div>
       ) : (
         <UomConfigPanel />
@@ -345,10 +396,9 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
       {pendingStorage && (
         <StorageAreaPicker
           storageName={pendingStorage.name}
-          areas={areas}
+          areas={STORAGE_AREAS_LIST}
           onClose={closeStorageAreaPicker}
           onConfirm={confirmAddToMyStorage}
-          onAddArea={addArea}
         />
       )}
     </div>

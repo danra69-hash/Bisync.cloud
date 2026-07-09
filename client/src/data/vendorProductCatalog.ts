@@ -1,4 +1,5 @@
 import { getConversion, RECIPE_UNITS, type AltUnitEntry } from './componentForm';
+import { formatCountryNumber } from '../utils/numberFormat';
 import { mergeServerVendorProductPrices } from './vendorProductPrices';
 import { EXTENDED_VENDOR_CONTACTS, EXTENDED_VENDOR_PRODUCTS } from './vendorProductCatalogExtras';
 import type { Vendor } from '../api';
@@ -30,6 +31,10 @@ export type VendorProductCatalogItem = {
   deliveryPrice: number;
   delivery: DeliveryUnitBreakdown;
   productPolicyTag?: VendorProductPolicyTag;
+  /** When true, product is only visible to assigned locations. */
+  isPrivate?: boolean;
+  /** Location external IDs that can see this product when isPrivate is true. */
+  privateLocationIds?: string[];
 };
 
 export type VendorProductImportDraft = {
@@ -123,6 +128,7 @@ function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | nul
 
 export function buildVendorProductTemplateCsv(
   existingProducts: VendorProductCatalogItem[] = [],
+  countryCode = 'MY',
 ): string {
   const rows = existingProducts.length > 0
     ? existingProducts.map(product => [
@@ -131,7 +137,7 @@ export function buildVendorProductTemplateCsv(
       product.group,
       product.specification,
       formatDeliveryUnitPath(product.delivery),
-      product.deliveryPrice.toFixed(2),
+      formatCountryNumber(product.deliveryPrice, countryCode),
     ])
     : VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS;
 
@@ -453,6 +459,68 @@ export function reactivateVendorProducts(productIds: string[]) {
   saveDeactivatedVendorProductIds(next);
 }
 
+export function vendorProductVisibleToLocations(
+  product: Pick<VendorProductCatalogItem, 'isPrivate' | 'privateLocationIds'>,
+  locationIds: string[],
+): boolean {
+  if (!product.isPrivate) return true;
+  const assigned = product.privateLocationIds ?? [];
+  if (assigned.length === 0) return false;
+  if (locationIds.length === 0) return false;
+  return locationIds.some(id => assigned.includes(id));
+}
+
+export function filterVendorProductsByLocationVisibility(
+  products: VendorProductCatalogItem[],
+  locationIds: string[],
+): VendorProductCatalogItem[] {
+  return products.filter(product => vendorProductVisibleToLocations(product, locationIds));
+}
+
+export function createBlankVendorProduct(
+  vendor: Pick<Vendor, 'externalId' | 'name'>,
+  selectedLocationIds: string[] = [],
+): VendorProductCatalogItem {
+  const catalog = applyVendorProductOverrides();
+  const used = new Set(catalog.map(item => item.id));
+  const id = makeImportedProductId(vendor.externalId, 'New Product', used);
+  return {
+    id,
+    vendorExternalId: vendor.externalId,
+    vendorName: vendor.name,
+    productName: '',
+    group: 'Dry Goods',
+    specification: '',
+    deliveryPrice: 0,
+    delivery: {
+      orderUnit: 'Box',
+      orderQty: 1,
+      packUnit: 'Box',
+      packQty: 1,
+      unitUnit: 'Each',
+      unitQty: 1,
+    },
+    imageUrl: `https://picsum.photos/seed/${id.toLowerCase()}/80/80`,
+    isPrivate: false,
+    privateLocationIds: selectedLocationIds.length > 0 ? [...selectedLocationIds] : [],
+  };
+}
+
+export function saveNewVendorProduct(product: VendorProductCatalogItem): void {
+  const imported = loadImportedVendorProducts();
+  const inCatalog = VENDOR_PRODUCT_CATALOG.some(item => item.id === product.id);
+  if (inCatalog) {
+    persistVendorProductUpdate(product);
+    return;
+  }
+  const index = imported.findIndex(item => item.id === product.id);
+  if (index >= 0) {
+    imported[index] = product;
+  } else {
+    imported.push(product);
+  }
+  saveImportedVendorProductsRaw(imported);
+}
 export function saveVendorProductOverride(product: VendorProductCatalogItem): void {
   const overrides = loadVendorProductOverrides();
   overrides[product.id] = {
@@ -461,6 +529,8 @@ export function saveVendorProductOverride(product: VendorProductCatalogItem): vo
     specification: product.specification,
     deliveryPrice: product.deliveryPrice,
     delivery: product.delivery,
+    isPrivate: product.isPrivate,
+    privateLocationIds: product.privateLocationIds,
   };
   localStorage.setItem(VENDOR_PRODUCT_OVERRIDES_KEY, JSON.stringify(overrides));
 }
@@ -493,6 +563,8 @@ export function applyVendorProductOverrides(
       group: patch.group ?? item.group,
       specification: patch.specification ?? item.specification,
       delivery: patch.delivery ? { ...item.delivery, ...patch.delivery } : item.delivery,
+      isPrivate: patch.isPrivate ?? item.isPrivate,
+      privateLocationIds: patch.privateLocationIds ?? item.privateLocationIds,
     };
   });
   return mergeServerVendorProductPrices(withOverrides);
@@ -613,10 +685,16 @@ export function saveImportedVendorProducts(
   return nextProducts;
 }
 
-export function getVendorCatalogProducts(vendorExternalId: string): VendorProductCatalogItem[] {
-  return applyVendorProductOverrides()
-    .filter(p => p.vendorExternalId === vendorExternalId)
-    .sort((a, b) => a.group.localeCompare(b.group) || a.productName.localeCompare(b.productName));
+export function getVendorCatalogProducts(
+  vendorExternalId: string,
+  options?: { locationIds?: string[]; vendorDetailMode?: boolean },
+): VendorProductCatalogItem[] {
+  const products = applyVendorProductOverrides()
+    .filter(p => p.vendorExternalId === vendorExternalId);
+  const scoped = options?.vendorDetailMode
+    ? products
+    : filterVendorProductsByLocationVisibility(products, options?.locationIds ?? []);
+  return scoped.sort((a, b) => a.group.localeCompare(b.group) || a.productName.localeCompare(b.productName));
 }
 function formatUnitSegment(qty: number, unit: string, lowercaseUnit = false): string {
   const u = lowercaseUnit ? unit.toLowerCase() : unit;
@@ -808,11 +886,14 @@ export function filterVendorProducts(
   catalog: VendorProductCatalogItem[],
   productSearch: string,
   vendorName: string,
+  locationIds: string[] = [],
 ): VendorProductCatalogItem[] {
   const q = productSearch.trim().toLowerCase();
   if (!q && !vendorName) return [];
 
-  return catalog.filter(item => {
+  const visible = filterVendorProductsByLocationVisibility(catalog, locationIds);
+
+  return visible.filter(item => {
     const matchVendor = !vendorName || item.vendorName === vendorName;
     const matchSearch = !q
       || item.id.toLowerCase().includes(q)

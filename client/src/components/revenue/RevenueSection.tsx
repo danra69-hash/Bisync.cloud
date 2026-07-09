@@ -17,6 +17,7 @@ import { InventoryPage } from './InventoryPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
+import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
@@ -44,7 +45,12 @@ function renderRevMgmtContent(
         />
       );
     case 'Component Config':
-      return <ComponentConfigPage selectedCompanyId={selectedCompanyId} />;
+      return (
+        <ComponentConfigPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'Customer List':
       return (
         <CustomerListPage
@@ -136,6 +142,7 @@ function renderRevMgmtContent(
 }
 
 export function RevenueSection({ section, selectedCompanyId, selectedLocationIds }: Props) {
+  const { t } = useAppTranslation();
   const [revItem, setRevItem] = useState<string | null>(null);
   const [posItem, setPosItem] = useState<string | null>(null);
 
@@ -147,7 +154,7 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
           <ModuleContent section="Point-of-Sales" label={posItem} />
         ) : (
           <div className="p-2 sm:p-3 w-full min-w-0">
-            <p className="text-sm text-muted-foreground">Select a POS module from the navigation bar above.</p>
+            <p className="text-sm text-muted-foreground">{t('pos.selectModule')}</p>
           </div>
         )}
       </>

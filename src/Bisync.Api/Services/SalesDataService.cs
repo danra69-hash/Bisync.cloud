@@ -183,13 +183,13 @@ public sealed class SalesDataService(BisyncDbContext db)
                 if (!ActivityMatchesLocations(activity.ActivityLocation, locationIds, locationNameToExternalId))
                     continue;
 
-                var channel = ResolvePosSalesChannel(product, MapPosActivityChannel(activity.ActivityType));
                 foreach (var receiptLine in activity.ReceiptLines)
                 {
                     if (IsNonProductReceiptLine(receiptLine.ItemName))
                         continue;
 
                     productByName.TryGetValue(receiptLine.ItemName.Trim(), out var product);
+                    var channel = ResolvePosSalesChannel(product, MapPosActivityChannel(activity.ActivityType));
                     var qty = receiptLine.Qty > 0 ? receiptLine.Qty : 0;
                     var rrp = receiptLine.UnitPrice > 0 ? receiptLine.UnitPrice : product?.Rrp ?? 0;
                     var total = receiptLine.LineTotal > 0 ? receiptLine.LineTotal : qty * rrp;

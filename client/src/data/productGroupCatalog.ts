@@ -54,6 +54,7 @@ export function productToUpsertPayload(
       id: alias.id,
       name: alias.name,
       rrp: alias.rrp,
+      b2bSalesConfigJson: alias.b2bSalesConfigJson,
     })),
     ...overrides,
   };

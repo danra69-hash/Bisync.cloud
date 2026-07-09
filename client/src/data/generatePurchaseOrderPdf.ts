@@ -1,4 +1,5 @@
 import { getPurchaseDocumentLabels } from './purchaseOrderSignatories';
+import { formatCountryCurrency } from '../utils/numberFormat';
 
 export type PurchaseOrderPdfParty = {
   name: string;
@@ -29,6 +30,7 @@ export type PurchaseOrderPdfData = {
   documentKind: 'purchase_order' | 'purchase_request';
   orderDate: string;
   deliveryDate: string;
+  countryCode?: string;
   company: PurchaseOrderPdfParty;
   deliveryLocations: PurchaseOrderPdfLocation[];
   vendor: PurchaseOrderPdfParty;
@@ -89,8 +91,8 @@ function safePdfFilename(poNumber: string): string {
   return poNumber.replace(/[^a-zA-Z0-9-_]/g, '_');
 }
 
-function formatRm(value: number): string {
-  return `RM ${value.toFixed(2)}`;
+function formatRm(value: number, countryCode = 'MY'): string {
+  return formatCountryCurrency(value, countryCode);
 }
 
 function drawMultilineBlock(
@@ -242,9 +244,9 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
     doc.text(productLines, cols.product, y);
     doc.text(deliveryLinesWrapped, cols.delivery, y);
     doc.text(String(item.quantity), cols.qty, y, { align: 'right' });
-    doc.text(formatRm(item.unitPrice), cols.price, y, { align: 'right' });
-    doc.text(formatRm(item.taxAmount), cols.tax, y, { align: 'right' });
-    doc.text(formatRm(item.lineTotal), cols.total, y, { align: 'right' });
+    doc.text(formatRm(item.unitPrice, data.countryCode), cols.price, y, { align: 'right' });
+    doc.text(formatRm(item.taxAmount, data.countryCode), cols.tax, y, { align: 'right' });
+    doc.text(formatRm(item.lineTotal, data.countryCode), cols.total, y, { align: 'right' });
     y += rowHeight;
   }
 
@@ -256,14 +258,14 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text('Order Total:', totalsX, y);
-  doc.text(formatRm(data.orderTotal), right, y, { align: 'right' });
+  doc.text(formatRm(data.orderTotal, data.countryCode), right, y, { align: 'right' });
   y += 6;
   doc.text('Tax Total:', totalsX, y);
-  doc.text(formatRm(data.taxTotal), right, y, { align: 'right' });
+  doc.text(formatRm(data.taxTotal, data.countryCode), right, y, { align: 'right' });
   y += 6;
   doc.setFont('helvetica', 'bold');
   doc.text('Total Amount:', totalsX, y);
-  doc.text(formatRm(data.totalAmount), right, y, { align: 'right' });
+  doc.text(formatRm(data.totalAmount, data.countryCode), right, y, { align: 'right' });
   y += 12;
 
   doc.setFont('helvetica', 'bold');

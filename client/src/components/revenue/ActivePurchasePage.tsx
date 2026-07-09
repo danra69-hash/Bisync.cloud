@@ -8,7 +8,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { RefreshCw } from 'lucide-react';
 import { api, type PurchaseOrder } from '../../api';
-import { formatRm } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { ActivePurchasePanel } from './ActivePurchasePanel';
 import {
@@ -68,6 +68,7 @@ function nextActionLabel(order: PurchaseOrder): string {
 }
 
 export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Props) {
+  const { rm } = useCountryFormatters();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,7 +249,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                     <td className={`${tdCls} font-sans text-muted-foreground`}>{order.orderDate}</td>
                     <td className={`${tdCls} font-sans text-muted-foreground`}>{order.deliveryDate}</td>
                     <td className={tdCls}>{order.items.length}</td>
-                    <td className={`${tdCls} font-sans`}>{formatRm(orderTotal(order))}</td>
+                    <td className={`${tdCls} font-sans`}>{rm(orderTotal(order))}</td>
                     <td className={tdCls}>{statusBadge(order)}</td>
                     <td className={tdCls}>
                       <span className="text-xs font-medium text-primary">{nextActionLabel(order)}</span>

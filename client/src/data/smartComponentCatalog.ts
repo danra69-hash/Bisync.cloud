@@ -16,10 +16,8 @@ import {
 import { countComponentTaggedVendors } from './vendorProductTagging';
 import { componentMatchesLocations } from './createOrder';
 import {
-  externalIdToStorageLocation,
   loadStorageAssignment,
   resolveComponentAreaStorage,
-  resolveStorageLocationLabels,
 } from './storageAssignment';
 
 export type SmartComponentLocationOption = {
@@ -390,25 +388,25 @@ function filterRowsForLocationScope(
   return rows.filter(row => componentMatchesLocations(row, scope.selectedLocationIds));
 }
 
-function resolveRowLocationLabels(
+function resolveRowLocationExternalIds(
   row: ComponentRow,
   scope?: SmartComponentLocationScope,
 ): string[] {
   if (!scope || scope.selectedLocationIds.length === 0) {
-    return resolveStorageLocationLabels(row.locations);
+    return row.locations.filter(location => location !== 'all');
   }
 
   const scoped = getScopedLocations(scope);
   if (row.locations.includes('all')) {
-    return scoped.map(location => externalIdToStorageLocation(location.externalId));
+    return scoped.map(location => location.externalId);
   }
 
   const matched = scoped.filter(location => row.locations.includes(location.externalId));
   if (matched.length === 0) {
-    return resolveStorageLocationLabels(row.locations);
+    return row.locations.filter(location => location !== 'all');
   }
 
-  return matched.map(location => externalIdToStorageLocation(location.externalId));
+  return matched.map(location => location.externalId);
 }
 
 function resolveTemplateArea(
@@ -416,8 +414,8 @@ function resolveTemplateArea(
   scope?: SmartComponentLocationScope,
 ): string {
   const assignment = loadStorageAssignment();
-  const locationLabels = resolveRowLocationLabels(row, scope);
-  return resolveComponentAreaStorage(row.storage, locationLabels, assignment).areas;
+  const locationIds = resolveRowLocationExternalIds(row, scope);
+  return resolveComponentAreaStorage(row.storage, locationIds, assignment).areas;
 }
 
 function formatAltUnitPair(

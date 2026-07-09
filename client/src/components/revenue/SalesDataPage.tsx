@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { api, type SalesDataRow } from '../../api';
-import { formatRm } from '../../data/createOrder';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -23,14 +24,9 @@ type ViewBy = 'product' | 'customer';
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 const filterCls = filterSelectCls;
 
-function formatQty(value: number): string {
-  if (!Number.isFinite(value)) return '0';
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
-
-function formatMoney(value: number): string {
-  if (!Number.isFinite(value)) return '0.00';
-  return value.toFixed(2);
+function formatQty(value: number, countryCode: string): string {
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
+  return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 }
 
 function formatDisplayDate(iso: string): string {
@@ -47,6 +43,7 @@ function groupKey(row: SalesDataRow, viewBy: ViewBy): string {
 }
 
 export function SalesDataPage({ selectedCompanyId, selectedLocationIds, embedded = false }: Props) {
+  const { countryCode, number, rm } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [viewBy, setViewBy] = useState<ViewBy>('product');
@@ -189,11 +186,11 @@ export function SalesDataPage({ selectedCompanyId, selectedLocationIds, embedded
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div className="rounded-lg border border-border bg-card px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total QTY Sold</p>
-              <p className="text-sm font-semibold tabular-nums mt-1">{formatQty(summary.totalQuantity)}</p>
+              <p className="text-sm font-semibold tabular-nums mt-1">{formatQty(summary.totalQuantity, countryCode)}</p>
             </div>
             <div className="rounded-lg border border-border bg-card px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total Value</p>
-              <p className="text-sm font-semibold tabular-nums mt-1">{formatRm(summary.totalValue)}</p>
+              <p className="text-sm font-semibold tabular-nums mt-1">{rm(summary.totalValue)}</p>
             </div>
             <div className="rounded-lg border border-border bg-card px-3 py-2.5">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Lines</p>
@@ -269,9 +266,9 @@ export function SalesDataPage({ selectedCompanyId, selectedLocationIds, embedded
                         <td className={tdCls}>{row.uom || '—'}</td>
                         <td className={tdCls}>{row.productType || '—'}</td>
                         <td className={tdCls}>{row.salesChannel || '—'}</td>
-                        <td className={`${tdCls} text-right tabular-nums`}>{formatQty(row.qtySold)}</td>
-                        <td className={`${tdCls} text-right tabular-nums`}>{formatMoney(row.rrp)}</td>
-                        <td className={`${tdCls} text-right tabular-nums font-medium`}>{formatMoney(row.totalValue)}</td>
+                        <td className={`${tdCls} text-right tabular-nums`}>{formatQty(row.qtySold, countryCode)}</td>
+                        <td className={`${tdCls} text-right tabular-nums`}>{number(row.rrp)}</td>
+                        <td className={`${tdCls} text-right tabular-nums font-medium`}>{number(row.totalValue)}</td>
                       </tr>
                     )),
                   ])

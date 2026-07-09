@@ -9,11 +9,14 @@ import {
   parsePosLoyaltySummary,
   posCustomerToPayload,
 } from '../../data/customerListData';
+import { CountryLocalityFields } from '../shared/CountryLocalityFields';
+import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 import { filterSelectCls } from '../layout/formControls';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
   companyId: number;
+  countryCode: string;
   customer: PosCustomer | null;
   nextExternalId: string;
   onClose: () => void;
@@ -64,7 +67,7 @@ function yearOptions(): number[] {
   return [current, current - 1, current - 2];
 }
 
-export function PosCustomerPanel({ companyId, customer, nextExternalId, onClose, onSaved }: Props) {
+export function PosCustomerPanel({ companyId, countryCode, customer, nextExternalId, onClose, onSaved }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(customer, nextExternalId));
   const [loyaltySummary, setLoyaltySummary] = useState<PosLoyaltyYearSummary[]>([]);
   const [couponSummary, setCouponSummary] = useState<PosCouponYearSummary[]>([]);
@@ -200,26 +203,29 @@ export function PosCustomerPanel({ companyId, customer, nextExternalId, onClose,
                 <span className="text-[11px] text-muted-foreground">Address</span>
                 <input className={`${inputCls} mt-1 w-full`} value={form.address} onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))} />
               </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">City</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.city} onChange={e => setForm(prev => ({ ...prev, city: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">State</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.state} onChange={e => setForm(prev => ({ ...prev, state: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">Postcode</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.postcode} onChange={e => setForm(prev => ({ ...prev, postcode: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">Phone</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">Fax</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.fax} onChange={e => setForm(prev => ({ ...prev, fax: e.target.value }))} />
-              </label>
+              <CountryLocalityFields
+                countryCode={countryCode}
+                value={{ city: form.city, state: form.state, postcode: form.postcode }}
+                onChange={next => setForm(prev => ({ ...prev, city: next.city, state: next.state, postcode: next.postcode }))}
+                fieldClassName="block"
+              />
+              <CountryPhoneInput
+                countryCode={countryCode}
+                value={form.phone}
+                onChange={phone => setForm(prev => ({ ...prev, phone }))}
+                label="Phone"
+                showError={false}
+                className="block"
+              />
+              <CountryPhoneInput
+                countryCode={countryCode}
+                value={form.fax}
+                onChange={fax => setForm(prev => ({ ...prev, fax }))}
+                label="Fax"
+                variant="fax"
+                showError={false}
+                className="block"
+              />
               <label className="block sm:col-span-2">
                 <span className="text-[11px] text-muted-foreground">Email</span>
                 <input className={`${inputCls} mt-1 w-full`} type="email" value={form.email} onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))} />

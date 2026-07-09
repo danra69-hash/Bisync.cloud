@@ -26,6 +26,7 @@ public class Product
     public decimal ParStock { get; set; }
     public string ParStockUom { get; set; } = string.Empty;
     public bool PosEnabled { get; set; }
+    public string PosDeliveryUnitsJson { get; set; } = "[]";
     public bool Active { get; set; } = true;
     public int? CompanyId { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
@@ -57,6 +58,7 @@ public class ProductAlias
     public Product? Product { get; set; }
     public string Name { get; set; } = string.Empty;
     public decimal Rrp { get; set; }
+    public string B2bSalesConfigJson { get; set; } = "{}";
     public int SortOrder { get; set; }
 }
 

@@ -87,6 +87,63 @@ export function loadComponentHierarchy(): ComponentHierarchyState {
 export function saveComponentHierarchy(state: ComponentHierarchyState): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  window.dispatchEvent(new CustomEvent('bisync:componentHierarchyChanged'));
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+/** First category + first group under it for new component defaults. */
+export function getDefaultCategoryAndGroup(state: ComponentHierarchyState): { category: string; group: string } {
+  const category = state.categories[0];
+  if (!category) return { category: 'Food', group: 'Proteins' };
+  const groups = state.groups
+    .filter(group => group.categoryId === category.id)
+    .map(group => group.name);
+  return {
+    category: category.name,
+    group: groups[0] ?? '',
+  };
+}
+
+/** Category names for component detail dropdowns. */
+export function getHierarchyCategoryOptions(
+  state: ComponentHierarchyState,
+  currentValue = '',
+  fallback: string[] = [],
+): string[] {
+  const fromHierarchy = state.categories.map(category => category.name);
+  const base = fromHierarchy.length > 0 ? fromHierarchy : fallback;
+  const current = currentValue.trim();
+  if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
+    return uniqueSorted([...base, current]);
+  }
+  return uniqueSorted(base);
+}
+
+/** Group names under a category for component detail dropdowns. */
+export function getHierarchyGroupOptions(
+  state: ComponentHierarchyState,
+  categoryName: string,
+  currentValue = '',
+  fallback: string[] = [],
+): string[] {
+  const category = state.categories.find(
+    item => item.name.toLowerCase() === categoryName.trim().toLowerCase(),
+  );
+  const hasHierarchy = state.categories.length > 0;
+  const fromHierarchy = category
+    ? state.groups.filter(group => group.categoryId === category.id).map(group => group.name)
+    : hasHierarchy
+      ? uniqueSorted(state.groups.map(group => group.name))
+      : [];
+  const base = fromHierarchy.length > 0 ? fromHierarchy : (hasHierarchy ? [] : fallback);
+  const current = currentValue.trim();
+  if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
+    return uniqueSorted([...base, current]);
+  }
+  return uniqueSorted(base);
 }
 
 export function flattenHierarchyForAssignment(state: ComponentHierarchyState): HierarchyAssignmentRow[] {

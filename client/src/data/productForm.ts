@@ -1,26 +1,33 @@
 import { fromApiUom } from './componentForm';
 import type { ComponentRow } from './componentForm';
 import type { Product } from '../api';
+import { formatCountryPercent } from '../utils/numberFormat';
+import type { B2bSalesConfig } from './productB2bSales';
+import { blankB2bSalesConfig } from './productB2bSales';
 
 export type ProductAliasLine = {
   key: string;
   id?: number;
   name: string;
   rrp: string;
+  b2bSalesConfig: B2bSalesConfig;
 };
 
-export function blankProductAlias(): ProductAliasLine {
+export function blankProductAlias(principalConfig?: B2bSalesConfig): ProductAliasLine {
   return {
     key: `alias-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: '',
     rrp: '',
+    b2bSalesConfig: principalConfig
+      ? structuredClone(principalConfig)
+      : blankB2bSalesConfig(),
   };
 }
 
-export function formatCogsPercent(cogs: number, rrp: number): string {
+export function formatCogsPercent(cogs: number, rrp: number, countryCode = 'MY'): string {
   const value = calcCogsPercentValue(cogs, rrp);
   if (value === null) return '—';
-  return `${value.toFixed(1)}%`;
+  return formatCountryPercent(value, countryCode);
 }
 
 export function calcCogsPercentValue(cogs: number, rrp: number): number | null {
@@ -151,6 +158,24 @@ export function calcManagementBatchCogs(
   product: ProductCogsInput & { totalCost: number; packagingCost?: number },
 ): number {
   return calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
+}
+
+export function parseOptionalActivationPeriodHours(value: string): {
+  hours: number;
+  valid: boolean;
+} {
+  const trimmed = value.trim();
+  if (!trimmed) return { hours: 0, valid: true };
+  if (!/^\d+$/.test(trimmed)) return { hours: 0, valid: false };
+  return { hours: parseInt(trimmed, 10), valid: true };
+}
+
+export function formatActivationPeriodHoursDisplay(hours: number): string {
+  return hours > 0 ? String(hours) : '—';
+}
+
+export function hasActivationPeriod(hours: number): boolean {
+  return hours > 0;
 }
 
 export type ProductKind = 'product' | 'subproduct';

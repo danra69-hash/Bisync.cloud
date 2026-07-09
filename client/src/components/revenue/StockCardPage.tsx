@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { api, type StockCardListRow } from '../../api';
-import { formatRm } from '../../data/createOrder';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { AvgCogsWithTrend } from './stockCardCogsTrend';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
@@ -49,10 +51,9 @@ const STOCK_CARD_TABLE_COLUMNS: SortableColumnDef<StockCardSortColumn>[] = [
   { key: 'avgCogs', label: 'Avg COGS', align: 'right' },
 ];
 
-function fmtQty(value: number) {
-  if (!Number.isFinite(value)) return '0';
-  const rounded = Math.round(value * 1000) / 1000;
-  return rounded % 1 === 0 ? String(rounded) : rounded.toFixed(3).replace(/\.?0+$/, '');
+function fmtQty(value: number, countryCode: string) {
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
+  return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 }
 
 function itemTypeLabel(itemType: StockCardListRow['itemType']) {
@@ -105,6 +106,8 @@ function FilterSelect({
 }
 
 export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const countryCode = useOrgCountryCode();
+  const { rm } = useCountryFormatters();
   const [rows, setRows] = useState<StockCardListRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,12 +283,12 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
                   <td className="px-3 py-2.5">{row.group || '—'}</td>
                   <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
                   <td className="px-3 py-2.5">{row.uom}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.inboundQty)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.outboundQty)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.inboundQty, countryCode)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.outboundQty, countryCode)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
-                    {row.averageCogs > 0 ? formatRm(row.averageCogs) : '—'}
+                    {row.averageCogs > 0 ? rm(row.averageCogs) : '—'}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty, countryCode)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     <AvgCogsWithTrend onHand={row.onHandAverageCogs} outbound={row.averageCogs} />
                   </td>

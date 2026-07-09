@@ -5,11 +5,12 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import type { Product, ProductComponentItem } from '../../api';
 import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
-import { formatRm } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import {
   calcProductCogs,
   calcSubProductUnitCost,
-  formatCogsPercent,
+  formatActivationPeriodHoursDisplay,
+  hasActivationPeriod,
 } from '../../data/productForm';
 import { formatProductParStock } from '../../data/productParStock';
 import { SubProductBatchAdditionalUoms } from './SubProductBatchUomSection';
@@ -56,6 +57,7 @@ function ComponentItemsTable({
   totalLabel: string;
   onOpenProductionMethod?: () => void;
 }) {
+  const { rm } = useCountryFormatters();
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedItems,
@@ -107,9 +109,9 @@ function ComponentItemsTable({
                     <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{item.componentId}</p>
                   </td>
                   <td className={tdCls}>{item.componentUom || '—'}</td>
-                  <td className={tdCls}>{formatRm(item.componentUomPrice)}</td>
+                  <td className={tdCls}>{rm(item.componentUomPrice)}</td>
                   <td className={tdCls}>{item.quantity}</td>
-                  <td className={`${tdCls} font-medium`}>{formatRm(item.subtotal)}</td>
+                  <td className={`${tdCls} font-medium`}>{rm(item.subtotal)}</td>
                 </tr>
               ))}
               <InfiniteScrollTableSentinel colSpan={5} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
@@ -120,7 +122,7 @@ function ComponentItemsTable({
 
       <div className="px-4 py-3 border-t border-border bg-muted/10 flex items-center justify-end gap-3">
         <span className="text-xs text-muted-foreground">{totalLabel}</span>
-        <span className="text-sm font-semibold">{formatRm(totalCost)}</span>
+        <span className="text-sm font-semibold">{rm(totalCost)}</span>
       </div>
     </section>
   );
@@ -144,6 +146,7 @@ export function ProductReadOnlyView({
   onToggleLocation,
   onOpenProductionMethod,
 }: Props) {
+  const { rm, currency, cogsPercent } = useCountryFormatters();
   const items = product.items ?? [];
   const packagingItems = product.packagingItems ?? [];
   const packagingCost = product.packagingCost ?? 0;
@@ -289,11 +292,11 @@ export function ProductReadOnlyView({
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS</p>
                 <p className="text-sm font-semibold mt-1">
                   {yieldUomLabel && product.yieldQuantity > 0
-                    ? `${formatRm(subProductUnitCost)} / ${yieldUomLabel}`
+                    ? `${rm(subProductUnitCost)} / ${yieldUomLabel}`
                     : '—'}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Product COGS {formatRm(productCogs)} ÷ {product.yieldQuantity > 0 ? product.yieldQuantity : '—'}
+                  Product COGS {rm(productCogs)} ÷ {product.yieldQuantity > 0 ? product.yieldQuantity : '—'}
                 </p>
               </div>
             </div>
@@ -324,8 +327,8 @@ export function ProductReadOnlyView({
                     className="grid grid-cols-1 sm:grid-cols-[1fr_8rem_5rem] gap-2 items-center text-xs"
                   >
                     <p className={fieldCls}>{alias.name}</p>
-                    <p className={fieldCls}>RM {alias.rrp > 0 ? alias.rrp.toFixed(2) : '0.00'}</p>
-                    <span className="text-muted-foreground">{formatCogsPercent(productCogs, alias.rrp)}</span>
+                    <p className={fieldCls}>{currency(alias.rrp)}</p>
+                    <span className="text-muted-foreground">{cogsPercent(productCogs, alias.rrp)}</span>
                   </div>
                 ))}
               </div>
@@ -334,10 +337,10 @@ export function ProductReadOnlyView({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product COGS</p>
-                <p className="text-sm font-semibold mt-1">{formatRm(productCogs)}</p>
+                <p className="text-sm font-semibold mt-1">{rm(productCogs)}</p>
                 {!product.isSubProduct && product.b2cEnabled && !product.b2bEnabled && packagingCost > 0 ? (
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    B2C dine-in excludes packaging; takeaway adds {formatRm(packagingCost)} at POS.
+                    B2C dine-in excludes packaging; takeaway adds {rm(packagingCost)} at POS.
                   </p>
                 ) : null}
               </div>
@@ -359,7 +362,7 @@ export function ProductReadOnlyView({
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS %</p>
-                <p className="text-sm font-semibold mt-1">{formatCogsPercent(productCogs, rrpValue)}</p>
+                <p className="text-sm font-semibold mt-1">{cogsPercent(productCogs, rrpValue)}</p>
               </div>
             </div>
             {product.b2bEnabled && onYieldAltUnitsChange && batchUomForAdditional ? (
@@ -408,10 +411,12 @@ export function ProductReadOnlyView({
             <div className="space-y-1.5">
               <p className={labelCls}>Incubation (hours)</p>
               <p className={fieldCls}>
-                {product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '0'}
+                {formatActivationPeriodHoursDisplay(product.activationPeriodHours)}
               </p>
               <p className="text-[10px] text-muted-foreground">
-                Hours after production before the batch can be sold.
+                {hasActivationPeriod(product.activationPeriodHours)
+                  ? 'Hours after production before the batch can be sold.'
+                  : 'No incubation — batch is sellable immediately after production.'}
               </p>
             </div>
           </div>

@@ -253,6 +253,7 @@ public static class SchemaPatcher
 
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Rrp", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosDeliveryUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldQuantity", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldUom", "TEXT NOT NULL DEFAULT ''");
@@ -267,6 +268,10 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "ActivationPeriodHours", "INTEGER NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "ParStock", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "ParStockUom", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductAliases", "B2bSalesConfigJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "B2bCustomers", "TaggedProductAliasIdsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "B2bCustomers", "TaggedB2bProductUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "B2bSalesOrderLines", "ProductAliasId", "INTEGER NULL");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "ProductB2bLocationStocks" (
@@ -283,7 +288,7 @@ public static class SchemaPatcher
             """);
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductB2bLocationStocks", "ProducedQty", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductB2bLocationStocks", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
-        await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductB2bLocationStocks", "OnOrderQty", "REAL NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductB2bLocationStocks", "OnOrderQty", "NUMERIC NOT NULL DEFAULT 0");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "B2bSalesOrders" (
@@ -297,11 +302,11 @@ public static class SchemaPatcher
                 "LockPeriodDays" INTEGER NOT NULL DEFAULT 0,
                 "IssuedDate" TEXT NOT NULL DEFAULT '',
                 "LockExpiryDate" TEXT NOT NULL DEFAULT '',
-                "DeliveryOrderIssued" INTEGER NOT NULL DEFAULT 0,
-                "InvoiceIssued" INTEGER NOT NULL DEFAULT 0,
+                "DeliveryOrderIssued" BOOLEAN NOT NULL DEFAULT FALSE,
+                "InvoiceIssued" BOOLEAN NOT NULL DEFAULT FALSE,
                 "FulfilledDate" TEXT NOT NULL DEFAULT '',
-                "CreatedAt" TEXT NOT NULL,
-                "UpdatedAt" TEXT NOT NULL
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone NOT NULL
             );
             """);
         await db.Database.ExecuteSqlRawAsync("""
@@ -311,10 +316,10 @@ public static class SchemaPatcher
                 "ProductId" INTEGER NOT NULL,
                 "ProductName" TEXT NOT NULL DEFAULT '',
                 "LocationExternalId" TEXT NOT NULL DEFAULT '',
-                "QuantityOrdered" REAL NOT NULL DEFAULT 0,
-                "QuantityLocked" REAL NOT NULL DEFAULT 0,
+                "QuantityOrdered" NUMERIC NOT NULL DEFAULT 0,
+                "QuantityLocked" NUMERIC NOT NULL DEFAULT 0,
                 "Uom" TEXT NOT NULL DEFAULT '',
-                "Rrp" REAL NOT NULL DEFAULT 0,
+                "Rrp" NUMERIC NOT NULL DEFAULT 0,
                 "Status" TEXT NOT NULL DEFAULT 'open',
                 CONSTRAINT "FK_B2bSalesOrderLines_B2bSalesOrders_SalesOrderId"
                     FOREIGN KEY ("SalesOrderId") REFERENCES "B2bSalesOrders" ("Id") ON DELETE CASCADE,
@@ -544,6 +549,11 @@ public static class SchemaPatcher
             """);
 
         await CustomerSeeder.EnsureDemoCustomersAsync(db);
+
+        await DatabaseSchemaHelper.PromoteAllRealColumnsToNumericAsync(db);
+        await DatabaseSchemaHelper.PromoteLegacyIntegerBooleansAsync(db);
+        await DatabaseSchemaHelper.PromoteLegacyTextTimestampsAsync(db);
+
         await B2bSalesOrderSeeder.EnsureDemoSalesOrdersAsync(db, new B2bSalesOrderService(db));
 
         await db.Database.ExecuteSqlRawAsync("""
@@ -554,7 +564,6 @@ public static class SchemaPatcher
 
         await DatabaseSchemaHelper.ResyncProductIdentitySequencesAsync(db);
         await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);
-        await DatabaseSchemaHelper.PromoteAllRealColumnsToNumericAsync(db);
     }
 
     static async Task TryCreateIndexAsync(BisyncDbContext db, string indexName, string table, string columns)

@@ -1,4 +1,5 @@
 import { posItems } from '../../data/revenueManagement';
+import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 type Props = {
   selectedItem: string | null;
@@ -6,6 +7,8 @@ type Props = {
 };
 
 export function POSBar({ selectedItem, onSelectItem }: Props) {
+  const { posItem } = useAppTranslation();
+
   return (
     <div className="bg-card border-b border-border px-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
@@ -21,7 +24,7 @@ export function POSBar({ selectedItem, onSelectItem }: Props) {
                   : 'border-border text-foreground hover:border-primary/50 hover:text-primary'
               }`}
             >
-              {item}
+              {posItem(item)}
             </button>
           );
         })}

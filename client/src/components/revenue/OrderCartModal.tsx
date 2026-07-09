@@ -3,11 +3,11 @@ import { createPortal } from 'react-dom';
 import { Calendar, Copy, Download, ExternalLink, ShoppingBag, X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type Vendor } from '../../api';
 import {
-  formatRm,
   groupCartByVendor,
   type OrderCartItem,
   type OrderCartVendorGroup,
 } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { buildPurchaseOrderPdfData, findVendorForGroup } from '../../data/buildPurchaseOrderPdfData';
 import { resolvePurchaseDocumentLabels, resolvePurchaseOrderSignatories } from '../../data/purchaseOrderSignatories';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
@@ -71,6 +71,7 @@ export function OrderCartModal({
   onClose,
   onConfirmed,
 }: Props) {
+  const { rm } = useCountryFormatters();
   const { currentUser, loading: userLoading } = useCurrentUser();
   const [company, setCompany] = useState<Company | null>(null);
   const [locations, setLocations] = useState<LocationConfig[]>([]);
@@ -554,7 +555,7 @@ export function OrderCartModal({
           {step === 'review' && (
             <div className="flex items-center justify-between text-sm">
               <span className="font-sans text-muted-foreground uppercase text-xs tracking-wider">Grand Total</span>
-              <span className="font-sans font-semibold text-foreground">{formatRm(grandTotal)}</span>
+              <span className="font-sans font-semibold text-foreground">{rm(grandTotal)}</span>
             </div>
           )}
           {error && <p className="text-xs text-red-500 text-right">{error}</p>}
@@ -588,6 +589,7 @@ export function OrderCartModal({
 }
 
 function VendorGroupCard({ group }: { group: OrderCartVendorGroup }) {
+  const { rm } = useCountryFormatters();
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-3 bg-muted/30 border-b border-border flex items-center justify-between gap-3">
@@ -595,7 +597,7 @@ function VendorGroupCard({ group }: { group: OrderCartVendorGroup }) {
           <p className="text-xs font-semibold text-foreground">{group.vendorName}</p>
           <p className="text-xs text-muted-foreground font-sans">{group.vendorExternalId}</p>
         </div>
-        <p className="text-xs font-sans font-semibold text-foreground">{formatRm(group.subtotal)}</p>
+        <p className="text-xs font-sans font-semibold text-foreground">{rm(group.subtotal)}</p>
       </div>
       <div className="divide-y divide-border">
         {group.items.map(item => (
@@ -609,8 +611,8 @@ function VendorGroupCard({ group }: { group: OrderCartVendorGroup }) {
             </div>
             <div className="text-right shrink-0">
               <p className="font-sans text-foreground">× {item.quantity}</p>
-              <p className="font-sans text-muted-foreground mt-0.5">{formatRm(item.deliveryPrice)} ea</p>
-              <p className="font-sans font-semibold text-foreground mt-1">{formatRm(item.lineTotal)}</p>
+              <p className="font-sans text-muted-foreground mt-0.5">{rm(item.deliveryPrice)} ea</p>
+              <p className="font-sans font-semibold text-foreground mt-1">{rm(item.lineTotal)}</p>
             </div>
           </div>
         ))}

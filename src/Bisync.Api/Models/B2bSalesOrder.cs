@@ -28,6 +28,7 @@ public class B2bSalesOrderLine
     public int SalesOrderId { get; set; }
     public B2bSalesOrder? SalesOrder { get; set; }
     public int ProductId { get; set; }
+    public int? ProductAliasId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string LocationExternalId { get; set; } = string.Empty;
     public decimal QuantityOrdered { get; set; }

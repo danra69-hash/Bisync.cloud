@@ -8,11 +8,12 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Tag, UserPlus } from 'lucide-react';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import type { ComponentRow } from '../../data/componentForm';
 import {
   formatDeliveryUnitPath,
+  persistVendorProductUpdate,
   resolveCatalogVendor,
-  saveVendorProductOverride,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
 import type { CompanyVendorPolicyTag } from '../../data/vendorPolicyRules';
@@ -59,6 +60,7 @@ type Props = {
   products: VendorProductCatalogItem[];
   vendors: Vendor[];
   selectedCompanyId: number | null;
+  selectedLocationIds?: string[];
   orgPolicyTags?: CompanyVendorPolicyTag[];
   showVendorColumn?: boolean;
   tagFilter?: 'all' | 'tagged' | 'untagged';
@@ -72,6 +74,7 @@ export function VendorProductsList({
   products,
   vendors,
   selectedCompanyId,
+  selectedLocationIds = [],
   showVendorColumn = false,
   tagFilter = 'all',
   onVendorUpdated,
@@ -79,6 +82,7 @@ export function VendorProductsList({
   engageVendorRequest,
   onEngageVendorRequestHandled,
 }: Props) {
+  const { number } = useCountryFormatters();
   const [vendorMap, setVendorMap] = useState(() => new Map(vendors.map(v => [v.externalId, v])));
   const [engageVendor, setEngageVendor] = useState<Vendor | null>(null);
   const [engaging, setEngaging] = useState(false);
@@ -87,6 +91,7 @@ export function VendorProductsList({
   const [previewImage, setPreviewImage] = useState<VendorProductCatalogItem | null>(null);
   const [engageError, setEngageError] = useState<string | null>(null);
   const [detailProduct, setDetailProduct] = useState<VendorProductCatalogItem | null>(null);
+  const [detailIsNew, setDetailIsNew] = useState(false);
   const [detailRow, setDetailRow] = useState<ComponentRow | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
@@ -216,12 +221,14 @@ export function VendorProductsList({
   function handleProductNameClick(e: React.MouseEvent, product: VendorProductCatalogItem) {
     e.stopPropagation();
     setSaveError(null);
+    setDetailIsNew(false);
     setDetailProduct(product);
   }
 
   function handleSaveVendorProduct(updated: VendorProductCatalogItem) {
-    saveVendorProductOverride(updated);
+    persistVendorProductUpdate(updated);
     setDetailProduct(null);
+    setDetailIsNew(false);
     onProductUpdated?.();
   }
 
@@ -321,8 +328,14 @@ export function VendorProductsList({
       {detailProduct && (
         <VendorProductDetailPanel
           product={detailProduct}
+          isNew={detailIsNew}
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
           elevated
-          onClose={() => setDetailProduct(null)}
+          onClose={() => {
+            setDetailProduct(null);
+            setDetailIsNew(false);
+          }}
           onSave={handleSaveVendorProduct}
         />
       )}
@@ -382,7 +395,14 @@ export function VendorProductsList({
                         title="View vendor product details"
                         className="text-left font-medium text-foreground hover:text-primary hover:underline transition-colors"
                       >
-                        {product.productName}
+                        <span className="inline-flex items-center gap-1.5">
+                          {product.productName}
+                          {product.isPrivate && (
+                            <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 uppercase tracking-wide">
+                              Private
+                            </span>
+                          )}
+                        </span>
                       </button>
                     </td>
                     <td className="px-3 py-2.5 border-r border-border">
@@ -400,7 +420,7 @@ export function VendorProductsList({
                     <td className="px-3 py-2.5 font-sans text-foreground border-r border-border whitespace-nowrap">
                       {deliveryUnit}
                     </td>
-                    <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border">${product.deliveryPrice.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border">${number(product.deliveryPrice)}</td>
                     {showVendorColumn && (
                       <td className="px-3 py-2.5 border-r border-border ">
                         <div className="flex flex-col gap-1">

@@ -6,6 +6,7 @@ import {
   LOYALTY_UNIT_LABEL,
   parsePosActivityHistory,
 } from '../../data/customerListData';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls } from '../layout/formControls';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS, SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
@@ -27,6 +28,7 @@ function ReceiptDetailModal({
   activity: PosCustomerActivity;
   onClose: () => void;
 }) {
+  const { number } = useCountryFormatters();
   const lines: PosReceiptLine[] = activity.receiptLines ?? [];
 
   return (
@@ -63,15 +65,15 @@ function ReceiptDetailModal({
                   <tr key={`${line.itemName}-${index}`} className="border-b border-border/50">
                     <td className="py-1.5 pr-2">{line.itemName}</td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">{line.qty}</td>
-                    <td className="py-1.5 pr-2 text-right tabular-nums">{line.unitPrice.toFixed(2)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{line.lineTotal.toFixed(2)}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">{number(line.unitPrice)}</td>
+                    <td className="py-1.5 text-right tabular-nums">{number(line.lineTotal)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td colSpan={3} className="pt-2 text-right font-semibold">Total</td>
-                  <td className="pt-2 text-right font-semibold tabular-nums">{activity.totalSpending.toFixed(2)}</td>
+                  <td className="pt-2 text-right font-semibold tabular-nums">{number(activity.totalSpending)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -86,6 +88,7 @@ function ReceiptDetailModal({
 }
 
 export function PosCustomerHistoryPanel({ customer, onClose }: Props) {
+  const { number } = useCountryFormatters();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [receiptActivity, setReceiptActivity] = useState<PosCustomerActivity | null>(null);
@@ -172,7 +175,7 @@ export function PosCustomerHistoryPanel({ customer, onClose }: Props) {
                         {activity.checkNo || '—'}
                       </button>
                     </td>
-                    <td className="py-2 pr-2 text-right tabular-nums">{activity.totalSpending.toFixed(2)}</td>
+                    <td className="py-2 pr-2 text-right tabular-nums">{number(activity.totalSpending)}</td>
                     <td className="py-2 pr-2 text-right tabular-nums">{activity.pointsEarned.toFixed(0)}</td>
                     <td className="py-2 pr-2 text-right tabular-nums">{activity.pointsUsed.toFixed(0)}</td>
                     <td className="py-2 pr-2 text-right tabular-nums">{activity.pointsBalance.toFixed(0)}</td>

@@ -16,6 +16,8 @@ public class B2bCustomer
     public string Email { get; set; } = string.Empty;
     public string ContactsJson { get; set; } = "[]";
     public string TaggedProductIdsJson { get; set; } = "[]";
+    public string TaggedProductAliasIdsJson { get; set; } = "[]";
+    public string TaggedB2bProductUnitsJson { get; set; } = "[]";
     public string PurchaseHistoryJson { get; set; } = "[]";
     public bool Active { get; set; } = true;
 }

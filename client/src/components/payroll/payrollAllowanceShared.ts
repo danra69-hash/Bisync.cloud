@@ -1,4 +1,5 @@
 import type { Employee, PayStructure } from '../../modules/hr/types';
+import { formatCountryCurrency } from '../../utils/numberFormat';
 
 export const MALAYSIA_MOBILE_OPERATORS = ['Maxis', 'Celcom', 'Digi', 'U-Mobile', 'Yes'] as const;
 
@@ -41,10 +42,9 @@ export function formatOvertimeConfigLabel(
   payStructure: Pick<PayStructure, 'overtimeCalculationMode' | 'overtimeRateMultiplier' | 'overtimeFixedHourlyRate' | 'payCycle'>,
   countryCode = 'MY',
 ) {
-  const symbol = countryCode === 'MY' ? 'RM' : '$';
   if (payStructure.overtimeCalculationMode === 'Fixed') {
     const rate = payStructure.overtimeFixedHourlyRate ?? 0;
-    return rate > 0 ? `${symbol} ${rate.toFixed(2)} per hour (fixed)` : 'Fixed hourly rate not set';
+    return rate > 0 ? `${formatCountryCurrency(rate, countryCode)} per hour (fixed)` : 'Fixed hourly rate not set';
   }
   const period = payStructure.payCycle === 'Weekly' ? 'weekly salary' : 'monthly salary';
   const multiplier = payStructure.overtimeRateMultiplier > 0 ? payStructure.overtimeRateMultiplier : 1.5;

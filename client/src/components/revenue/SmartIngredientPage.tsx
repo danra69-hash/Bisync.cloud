@@ -11,6 +11,7 @@ import { FilePlus2, Search, Upload, X } from 'lucide-react';
 import { api } from '../../api';
 import { siCategories, siGroups } from '../../data/revenueManagement';
 import { blankComponentRow, fromApiUom, type ComponentRow } from '../../data/componentForm';
+import { getDefaultCategoryAndGroup, loadComponentHierarchy } from '../../data/componentHierarchy';
 import {
   buildSmartComponentImportPlan,
   downloadSmartComponentTemplateCsv,
@@ -23,6 +24,7 @@ import { SmartComponentImportReviewPanel } from './SmartComponentImportReviewPan
 import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
 import { countComponentTaggedVendors } from '../../data/vendorProductTagging';
 import { formatParStock, resolveComponentParStock } from '../../data/componentParStock';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 
 type IngredientSortColumn =
   | 'componentId'
@@ -75,6 +77,7 @@ export function SmartIngredientPage({
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 }) {
+  const { number } = useCountryFormatters();
   const [rows, setRows] = useState<ComponentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [companyLocations, setCompanyLocations] = useState<{ externalId: string; name: string }[]>([]);
@@ -199,7 +202,8 @@ export function SmartIngredientPage({
     if (!selectedCompanyId) return;
     setSaveError(null);
     setIsNewRow(true);
-    setEditRow({ ...blankComponentRow });
+    const defaults = getDefaultCategoryAndGroup(loadComponentHierarchy());
+    setEditRow({ ...blankComponentRow, category: defaults.category, group: defaults.group });
   }
 
   async function handleSave(updated: Partial<ComponentRow>) {
@@ -429,7 +433,7 @@ export function SmartIngredientPage({
                       </button>
                     </td>
                     <td className="px-4 py-3 font-sans text-foreground">{uom(row)}</td>
-                    <td className="px-4 py-3 font-sans text-foreground">${price(row).toFixed(uomType === 'recipe' && price(row) < 1 ? 4 : 2)}</td>
+                    <td className="px-4 py-3 font-sans text-foreground">${number(price(row))}</td>
                     <td className="px-4 py-3 font-sans text-muted-foreground">
                       {row.dailyUsage > 0 ? `${row.dailyUsage} ${uom(row)}/day` : '—'}
                     </td>

@@ -55,6 +55,7 @@ export interface LocationConfig {
   businessTypesJson: string;
   vendorPolicyTagsJson: string;
   modulesJson: string;
+  modulesOverridden?: boolean;
   profileOverridden?: boolean;
 }
 
@@ -211,7 +212,7 @@ export interface B2bCustomerContact {
   name: string;
   position: string;
   mobile: string;
-  fax: string;
+  email: string;
   isDefault: boolean;
 }
 
@@ -243,6 +244,8 @@ export interface B2bCustomer {
   email: string;
   contactsJson: string;
   taggedProductIdsJson: string;
+  taggedProductAliasIdsJson: string;
+  taggedB2bProductUnitsJson: string;
   purchaseHistoryJson: string;
   active: boolean;
 }
@@ -261,8 +264,20 @@ export interface UpsertB2bCustomerPayload {
   email: string;
   contacts: B2bCustomerContact[];
   taggedProductIds: number[];
+  taggedProductAliasIds: number[];
+  taggedB2bProductUnits: TaggedB2bProductUnit[];
   purchaseHistory: B2bPurchaseHistoryLine[];
   active: boolean;
+}
+
+export interface TaggedB2bProductUnit {
+  productId: number;
+  aliasId: number | null;
+  unitKey: string;
+}
+
+export interface PosDeliveryUnitSelection {
+  unitKey: string;
 }
 
 export type PosActivityType = 'Dine-in' | 'Take-out' | 'Pick-up' | 'Online Delivery';
@@ -617,6 +632,7 @@ export interface ProductAlias {
   id: number;
   name: string;
   rrp: number;
+  b2bSalesConfigJson?: string;
   sortOrder?: number;
 }
 
@@ -645,6 +661,7 @@ export interface Product {
   parStock: number;
   parStockUom: string;
   posEnabled: boolean;
+  posDeliveryUnitsJson?: string;
   active: boolean;
   companyId?: number | null;
   locationExternalIds?: string[];
@@ -659,6 +676,7 @@ export interface UpsertProductAliasPayload {
   id?: number;
   name: string;
   rrp: number;
+  b2bSalesConfigJson?: string;
 }
 
 export interface UpsertProductPayload {
@@ -690,6 +708,7 @@ export interface UpsertProductPayload {
 
 export interface PatchProductPayload {
   posEnabled?: boolean;
+  posDeliveryUnits?: PosDeliveryUnitSelection[];
   active?: boolean;
   rrp?: number;
   parStock?: number;

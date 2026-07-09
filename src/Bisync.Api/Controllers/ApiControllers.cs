@@ -31,6 +31,7 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
         businessTypesJson = CompanyProfileRules.ResolveProfileJson(l.BusinessTypesJson, l.Company?.BusinessTypesJson),
         vendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(l.VendorPolicyTagsJson, l.Company?.VendorPolicyTagsJson),
         modulesJson = CompanyModuleRules.ResolveModulesJson(l.ModulesJson, l.Company?.ModulesJson),
+        modulesOverridden = CompanyModuleRules.LocationModulesOverridden(l.ModulesJson),
         profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
     };
 

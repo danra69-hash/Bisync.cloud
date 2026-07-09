@@ -38,6 +38,19 @@ public class B2bSalesOrdersController(
             ? request.Source.Trim().ToLowerInvariant()
             : "sales_order";
 
+        var customer = await db.B2bCustomers.AsNoTracking()
+            .FirstOrDefaultAsync(
+                c => c.ExternalId == request.CustomerExternalId.Trim()
+                    && c.CompanyId == request.CompanyId,
+                cancellationToken);
+
+        var productIds = request.Lines.Select(l => l.ProductId).Distinct().ToList();
+        var products = await db.Products.AsNoTracking()
+            .Include(p => p.Aliases)
+            .Where(p => productIds.Contains(p.Id))
+            .ToListAsync(cancellationToken);
+        var productById = products.ToDictionary(p => p.Id);
+
         var orderNumber = await GenerateOrderNumberAsync(request.CompanyId, cancellationToken);
         var order = new B2bSalesOrder
         {
@@ -50,14 +63,35 @@ public class B2bSalesOrdersController(
             Status = "draft",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
-            Lines = request.Lines.Select(line => new B2bSalesOrderLine
+            Lines = request.Lines.Select(line =>
             {
-                ProductId = line.ProductId,
-                LocationExternalId = line.LocationExternalId.Trim(),
-                QuantityOrdered = line.QuantityOrdered,
-                Uom = line.Uom?.Trim() ?? string.Empty,
-                Rrp = line.Rrp ?? 0,
-                Status = "open",
+                productById.TryGetValue(line.ProductId, out var product);
+                var pricing = product is null
+                    ? new B2bProductPricing.ResolvedB2bPricing(line.Rrp ?? 0, line.Uom?.Trim() ?? string.Empty, line.ProductAliasId, null)
+                    : B2bProductPricing.ResolveForCustomerProduct(product, customer, line.ProductAliasId);
+
+                var rrp = line.Rrp is > 0 ? line.Rrp.Value : pricing.Rrp;
+                var uom = !string.IsNullOrWhiteSpace(line.Uom) ? line.Uom.Trim() : pricing.Uom;
+                var aliasId = line.ProductAliasId ?? pricing.ProductAliasId;
+                var productName = product?.Name ?? string.Empty;
+                if (aliasId is int id && product is not null)
+                {
+                    var alias = product.Aliases.FirstOrDefault(a => a.Id == id);
+                    if (alias is not null && !string.IsNullOrWhiteSpace(alias.Name))
+                        productName = alias.Name;
+                }
+
+                return new B2bSalesOrderLine
+                {
+                    ProductId = line.ProductId,
+                    ProductAliasId = aliasId,
+                    ProductName = productName,
+                    LocationExternalId = line.LocationExternalId.Trim(),
+                    QuantityOrdered = line.QuantityOrdered,
+                    Uom = uom,
+                    Rrp = rrp,
+                    Status = "open",
+                };
             }).ToList(),
         };
 
@@ -130,6 +164,7 @@ public class B2bSalesOrdersController(
         {
             id = line.Id,
             productId = line.ProductId,
+            productAliasId = line.ProductAliasId,
             productName = line.ProductName,
             locationExternalId = line.LocationExternalId,
             quantityOrdered = line.QuantityOrdered,

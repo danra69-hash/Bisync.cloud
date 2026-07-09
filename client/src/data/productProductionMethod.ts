@@ -1,4 +1,5 @@
 import type { ProductComponentItem } from '../api';
+import { formatCountryNumber } from '../utils/numberFormat';
 
 export const PRODUCTION_METHOD_IMAGE_COUNT = 7;
 
@@ -201,10 +202,10 @@ export function estimateNutritionalFactors(
   }));
 }
 
-export function formatNutritionValue(value: number, unit: string): string {
+export function formatNutritionValue(value: number, unit: string, countryCode = 'MY'): string {
   if (!Number.isFinite(value)) return '—';
   if (unit === 'kcal' || unit === 'mg') return value.toFixed(0);
-  return value.toFixed(2);
+  return formatCountryNumber(value, countryCode);
 }
 
 export function productKeyFromParts(productId: number | null | undefined, fallbackCode?: string): string {

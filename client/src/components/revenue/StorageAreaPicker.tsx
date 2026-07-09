@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
-import { inputCls } from '../../data/componentForm';
+import { X } from 'lucide-react';
 
 type Props = {
   storageName: string;
-  areas: string[];
+  areas: readonly string[];
   onClose: () => void;
   onConfirm: (area: string) => void;
-  onAddArea: (area: string) => void;
 };
 
 export function StorageAreaPicker({
@@ -15,20 +13,8 @@ export function StorageAreaPicker({
   areas,
   onClose,
   onConfirm,
-  onAddArea,
 }: Props) {
   const [selectedArea, setSelectedArea] = useState(areas[0] ?? '');
-  const [showNewArea, setShowNewArea] = useState(false);
-  const [newAreaName, setNewAreaName] = useState('');
-
-  function handleAddArea() {
-    const trimmed = newAreaName.trim();
-    if (!trimmed) return;
-    onAddArea(trimmed);
-    setSelectedArea(trimmed);
-    setNewAreaName('');
-    setShowNewArea(false);
-  }
 
   return (
     <>
@@ -66,34 +52,6 @@ export function StorageAreaPicker({
               </label>
             ))}
           </div>
-
-          {showNewArea ? (
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                className={inputCls}
-                value={newAreaName}
-                onChange={e => setNewAreaName(e.target.value)}
-                placeholder="New area name"
-                onKeyDown={e => e.key === 'Enter' && handleAddArea()}
-              />
-              <button
-                type="button"
-                onClick={handleAddArea}
-                disabled={!newAreaName.trim()}
-                className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
-              >
-                Add
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowNewArea(true)}
-              className="flex items-center gap-1 text-xs font-sans text-primary hover:underline"
-            >
-              <Plus size={12} /> Add area
-            </button>
-          )}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border px-4 py-3">

@@ -9,11 +9,16 @@ import {
   parseB2bCustomerContacts,
   parseB2bPurchaseHistory,
   parseTaggedProductIds,
+  parseTaggedProductAliasIds,
 } from '../../data/customerListData';
+import { parseTaggedB2bProductUnits } from '../../data/b2bCustomerProductTags';
+import { CountryLocalityFields } from '../shared/CountryLocalityFields';
+import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
   companyId: number;
+  countryCode: string;
   customer: B2bCustomer | null;
   nextExternalId: string;
   onClose: () => void;
@@ -66,7 +71,7 @@ function toForm(customer: B2bCustomer | null, nextExternalId: string): FormState
   };
 }
 
-export function B2bCustomerPanel({ companyId, customer, nextExternalId, onClose, onSaved }: Props) {
+export function B2bCustomerPanel({ companyId, countryCode, customer, nextExternalId, onClose, onSaved }: Props) {
   const [form, setForm] = useState<FormState>(() => toForm(customer, nextExternalId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +134,8 @@ export function B2bCustomerPanel({ companyId, customer, nextExternalId, onClose,
     }
 
     const taggedProductIds = customer ? parseTaggedProductIds(customer) : [];
+    const taggedProductAliasIds = customer ? parseTaggedProductAliasIds(customer) : [];
+    const taggedB2bProductUnits = customer ? parseTaggedB2bProductUnits(customer, []) : [];
     const purchaseHistory = customer ? parseB2bPurchaseHistory(customer) : [];
 
     const base: B2bCustomer = customer ?? {
@@ -146,6 +153,8 @@ export function B2bCustomerPanel({ companyId, customer, nextExternalId, onClose,
       email: form.email,
       contactsJson: '[]',
       taggedProductIdsJson: '[]',
+      taggedProductAliasIdsJson: '[]',
+      taggedB2bProductUnitsJson: '[]',
       purchaseHistoryJson: '[]',
       active: true,
     };
@@ -168,10 +177,12 @@ export function B2bCustomerPanel({ companyId, customer, nextExternalId, onClose,
         name: c.name.trim(),
         position: c.position.trim(),
         mobile: c.mobile.trim(),
-        fax: c.fax.trim(),
+        email: c.email.trim(),
       })),
       taggedProductIds,
+      taggedProductAliasIds,
       purchaseHistory,
+      taggedB2bProductUnits,
     );
 
     setSaving(true);
@@ -227,26 +238,29 @@ export function B2bCustomerPanel({ companyId, customer, nextExternalId, onClose,
                 <span className="text-[11px] text-muted-foreground">Address</span>
                 <input className={`${inputCls} mt-1 w-full`} value={form.address} onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))} />
               </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">City</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.city} onChange={e => setForm(prev => ({ ...prev, city: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">State</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.state} onChange={e => setForm(prev => ({ ...prev, state: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">Postcode</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.postcode} onChange={e => setForm(prev => ({ ...prev, postcode: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">Phone</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.phone} onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))} />
-              </label>
-              <label className="block">
-                <span className="text-[11px] text-muted-foreground">Fax</span>
-                <input className={`${inputCls} mt-1 w-full`} value={form.fax} onChange={e => setForm(prev => ({ ...prev, fax: e.target.value }))} />
-              </label>
+              <CountryLocalityFields
+                countryCode={countryCode}
+                value={{ city: form.city, state: form.state, postcode: form.postcode }}
+                onChange={next => setForm(prev => ({ ...prev, city: next.city, state: next.state, postcode: next.postcode }))}
+                fieldClassName="block"
+              />
+              <CountryPhoneInput
+                countryCode={countryCode}
+                value={form.phone}
+                onChange={phone => setForm(prev => ({ ...prev, phone }))}
+                label="Phone"
+                showError={false}
+                className="block"
+              />
+              <CountryPhoneInput
+                countryCode={countryCode}
+                value={form.fax}
+                onChange={fax => setForm(prev => ({ ...prev, fax }))}
+                label="Fax"
+                variant="fax"
+                showError={false}
+                className="block"
+              />
               <label className="block sm:col-span-2">
                 <span className="text-[11px] text-muted-foreground">Email</span>
                 <input className={`${inputCls} mt-1 w-full`} type="email" value={form.email} onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))} />
@@ -293,23 +307,33 @@ export function B2bCustomerPanel({ companyId, customer, nextExternalId, onClose,
                     <span className="text-[11px] text-muted-foreground">Position</span>
                     <input className={`${inputCls} mt-1 w-full`} value={contact.position} onChange={e => setContact(index, { position: e.target.value })} />
                   </label>
+                  <CountryPhoneInput
+                    countryCode={countryCode}
+                    value={contact.mobile}
+                    onChange={mobile => setContact(index, { mobile })}
+                    label="Mobile"
+                    variant="mobile"
+                    showError={false}
+                    className="block"
+                  />
                   <label className="block">
-                    <span className="text-[11px] text-muted-foreground">Mobile</span>
-                    <input className={`${inputCls} mt-1 w-full`} value={contact.mobile} onChange={e => setContact(index, { mobile: e.target.value })} />
-                  </label>
-                  <label className="block">
-                    <span className="text-[11px] text-muted-foreground">Fax</span>
-                    <input className={`${inputCls} mt-1 w-full`} value={contact.fax} onChange={e => setContact(index, { fax: e.target.value })} />
+                    <span className="text-[11px] text-muted-foreground">Email</span>
+                    <input
+                      className={`${inputCls} mt-1 w-full`}
+                      type="email"
+                      value={contact.email}
+                      onChange={e => setContact(index, { email: e.target.value })}
+                    />
                   </label>
                 </div>
               </div>
             ))}
           </section>
-
-          {error ? <p className="text-xs text-destructive">{error}</p> : null}
         </div>
 
-        <div className="px-5 py-3 border-t border-border flex justify-end gap-2 shrink-0">
+        <div className="px-5 py-3 border-t border-border flex flex-col gap-2 shrink-0">
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-md border border-border">
             Cancel
           </button>
@@ -321,6 +345,7 @@ export function B2bCustomerPanel({ companyId, customer, nextExternalId, onClose,
           >
             {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Customer'}
           </button>
+          </div>
         </div>
       </div>
     </>

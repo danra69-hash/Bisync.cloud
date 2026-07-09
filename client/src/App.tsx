@@ -20,8 +20,11 @@ import { AccountingPage } from './components/accounting/AccountingPage';
 import { aggregateLocationMetrics } from './utils/locationMetrics';
 import { configLocationToDropdown, filterMetricsByOrg } from './utils/orgFilters';
 import { useOrgFilters } from './hooks/useOrgFilters';
+import { OrgCountryProvider } from './context/OrgCountryContext';
 import { isNavItemEnabled, moduleForNavItem, resolveOrgEnabledModules } from './data/companyModules';
 import type { NavItem } from './data/revenueManagement';
+import { useAppTranslation } from './i18n/useAppTranslation';
+import { NAV_ITEM_I18N } from './i18n/navKeys';
 
 function fmtUsd(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -37,23 +40,8 @@ function delta(current: number, prev: number) {
 type MenuSortColumn = 'item' | 'orders' | 'revenue' | 'margin';
 type OrderSortColumn = 'po' | 'vendor' | 'delivery' | 'value' | 'status';
 
-const MENU_TABLE_COLUMNS: SortableColumnDef<MenuSortColumn>[] = [
-  { key: 'item', label: 'Item' },
-  { key: 'orders', label: 'Orders', align: 'right' },
-  { key: 'revenue', label: 'Revenue', align: 'right' },
-  { key: 'margin', label: 'Margin', align: 'right' },
-];
-
-const ORDERS_TABLE_COLUMNS: SortableColumnDef<OrderSortColumn>[] = [
-  { key: 'po', label: 'PO' },
-  { key: 'vendor', label: 'Vendor' },
-  { key: 'delivery', label: 'Delivery' },
-  { key: 'value', label: 'Value', align: 'right' },
-  { key: 'status', label: 'Status' },
-];
-
-function MetricCard({ title, value, deltaVal, icon: Icon, accent }: {
-  title: string; value: string; deltaVal: number; icon: React.ElementType; accent?: boolean;
+function MetricCard({ title, value, deltaVal, icon: Icon, accent, deltaLabel }: {
+  title: string; value: string; deltaVal: number; icon: React.ElementType; accent?: boolean; deltaLabel: string;
 }) {
   const up = deltaVal >= 0;
   return (
@@ -67,7 +55,7 @@ function MetricCard({ title, value, deltaVal, icon: Icon, accent }: {
       <p className="text-2xl font-semibold leading-none">{value}</p>
       <div className={`flex items-center gap-1 text-xs font-sans ${up ? 'text-[#5A7A2A]' : 'text-accent'}`}>
         {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-        {up ? '+' : ''}{deltaVal}% vs prior period
+        {up ? '+' : ''}{deltaVal}% {deltaLabel}
       </div>
     </div>
   );
@@ -90,21 +78,27 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
   );
 }
 
-function PlaceholderModule({ title }: { title: string }) {
+function PlaceholderModule({ title }: { title: NavItem | string }) {
+  const { t, navLabel } = useAppTranslation();
+  const displayTitle = typeof title === 'string' && title in NAV_ITEM_I18N
+    ? navLabel(title as NavItem)
+    : String(title);
+
   return (
     <div className="p-2 sm:p-3 w-full min-w-0">
       <div className="bg-card border border-border rounded-lg flex flex-col items-center justify-center text-center gap-3 p-12">
         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
           <FileText size={18} className="text-muted-foreground" />
         </div>
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground font-sans max-w-xs">This module is ready to be configured.</p>
+        <p className="text-sm font-medium">{displayTitle}</p>
+        <p className="text-xs text-muted-foreground font-sans max-w-xs">{t('common.moduleReady')}</p>
       </div>
     </div>
   );
 }
 
 export default function App() {
+  const { t } = useAppTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [editLayout, setEditLayout] = useState(false);
@@ -167,6 +161,7 @@ export default function App() {
     ? configLocations.filter(l => l.companyId === selectedCompanyId)
     : [];
   const selectedCompany = companies.find(company => company.id === selectedCompanyId) ?? null;
+  const orgCountryCode = selectedCompany?.countryCode ?? 'MY';
   const enabledModules = useMemo(
     () => resolveOrgEnabledModules(selectedCompany, configLocations, selectedCompanyId, selectedLocationIds),
     [selectedCompany, configLocations, selectedCompanyId, selectedLocationIds],
@@ -192,6 +187,21 @@ export default function App() {
   const overviewOrders = selectedCompanyId ? orders : [];
   const overviewRevenue = selectedCompanyId ? revenue : [];
   const overviewProgress = selectedCompanyId ? progress : null;
+
+  const menuTableColumns = useMemo<SortableColumnDef<MenuSortColumn>[]>(() => [
+    { key: 'item', label: t('overview.item') },
+    { key: 'orders', label: t('overview.orders'), align: 'right' },
+    { key: 'revenue', label: t('overview.revenue'), align: 'right' },
+    { key: 'margin', label: t('overview.margin'), align: 'right' },
+  ], [t]);
+
+  const ordersTableColumns = useMemo<SortableColumnDef<OrderSortColumn>[]>(() => [
+    { key: 'po', label: t('overview.po') },
+    { key: 'vendor', label: t('common.vendor') },
+    { key: 'delivery', label: t('overview.delivery') },
+    { key: 'value', label: t('overview.value'), align: 'right' },
+    { key: 'status', label: t('common.status') },
+  ], [t]);
 
   const {
     sortColumn: menuSortColumn,
@@ -274,20 +284,21 @@ export default function App() {
           onToggleEditLayout={() => setEditLayout(v => !v)}
         />
 
+        <OrgCountryProvider countryCode={orgCountryCode}>
         <main className={`flex-1 flex flex-col min-h-0 w-full min-w-0 overflow-x-hidden ${isFullBleed ? '' : 'p-2 sm:p-3 space-y-3'}`}>
           {activeNav === 'Overview' ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-                <MetricCard title="Sales Today" value={fmtUsd(totalSales)} deltaVal={delta(totalSales, totalSalesPrev)} icon={TrendingUp} accent />
-                <MetricCard title="Covers Today" value={totalCovers.toLocaleString()} deltaVal={delta(totalCovers, totalCoversPrev)} icon={Users} />
-                <MetricCard title="Avg Order Value" value={`$${aov.toFixed(2)}`} deltaVal={delta(aov, aovPrev)} icon={ShoppingBag} />
-                <MetricCard title="Open POs" value={String(overviewOrders.length)} deltaVal={0} icon={Package} />
+                <MetricCard title={t('overview.salesToday')} value={fmtUsd(totalSales)} deltaVal={delta(totalSales, totalSalesPrev)} icon={TrendingUp} accent deltaLabel={t('common.vsPriorPeriod')} />
+                <MetricCard title={t('overview.coversToday')} value={totalCovers.toLocaleString()} deltaVal={delta(totalCovers, totalCoversPrev)} icon={Users} deltaLabel={t('common.vsPriorPeriod')} />
+                <MetricCard title={t('overview.avgOrderValue')} value={`$${aov.toFixed(2)}`} deltaVal={delta(aov, aovPrev)} icon={ShoppingBag} deltaLabel={t('common.vsPriorPeriod')} />
+                <MetricCard title={t('overview.openPOs')} value={String(overviewOrders.length)} deltaVal={0} icon={Package} deltaLabel={t('common.vsPriorPeriod')} />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
                 <div className="lg:col-span-2 bg-card border border-border rounded-lg p-3">
-                  <h2 className="text-sm font-semibold">Revenue Trend</h2>
-                  <p className="text-xs text-muted-foreground mb-1">This week vs last week</p>
+                  <h2 className="text-sm font-semibold">{t('overview.revenueTrend')}</h2>
+                  <p className="text-xs text-muted-foreground mb-1">{t('overview.revenueTrendSubtitle')}</p>
                   <RevenueChart data={overviewRevenue} />
                 </div>
                 <ProgressPanel progress={overviewProgress} />
@@ -296,13 +307,13 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
                 <div className="bg-card border border-border rounded-lg overflow-hidden">
                   <div className="p-2 border-b border-border">
-                    <h2 className="text-sm font-semibold">Menu Performance</h2>
+                    <h2 className="text-sm font-semibold">{t('overview.menuPerformance')}</h2>
                   </div>
                   <TableScrollContainer ref={menuScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                   <table className="w-full table-fixed text-xs">
                     <thead>
                       <SortableTableHeaderRow
-                        columns={MENU_TABLE_COLUMNS}
+                        columns={menuTableColumns}
                         sortColumn={menuSortColumn}
                         sortDirection={menuSortDirection}
                         onSort={toggleMenuSort}
@@ -326,7 +337,7 @@ export default function App() {
 
                 <div className="bg-card border border-border rounded-lg overflow-hidden">
                   <div className="p-2 border-b border-border">
-                    <h2 className="text-sm font-semibold">Inventory Alerts</h2>
+                    <h2 className="text-sm font-semibold">{t('overview.inventoryAlerts')}</h2>
                   </div>
                   <div className="divide-y divide-border">
                     {overviewAlerts.map(a => (
@@ -334,7 +345,7 @@ export default function App() {
                         <AlertTriangle size={13} className={`mt-0.5 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
                         <div className="flex-1">
                           <p className="text-xs font-medium">{a.itemName}</p>
-                          <p className="text-xs text-muted-foreground">Stock: {a.stock} · Min: {a.threshold}</p>
+                          <p className="text-xs text-muted-foreground">{t('overview.stockMin', { stock: a.stock, min: a.threshold })}</p>
                         </div>
                         <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
                       </div>
@@ -345,13 +356,13 @@ export default function App() {
 
               <div className="bg-card border border-border rounded-lg overflow-hidden">
                 <div className="p-2 border-b border-border">
-                  <h2 className="text-sm font-semibold">Active Purchase Orders</h2>
+                  <h2 className="text-sm font-semibold">{t('overview.activePurchaseOrders')}</h2>
                 </div>
                 <TableScrollContainer ref={ordersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                 <table className="w-full table-fixed text-xs">
                   <thead>
                     <SortableTableHeaderRow
-                      columns={ORDERS_TABLE_COLUMNS}
+                      columns={ordersTableColumns}
                       sortColumn={ordersSortColumn}
                       sortDirection={ordersSortDirection}
                       onSort={toggleOrdersSort}
@@ -398,6 +409,7 @@ export default function App() {
             <PlaceholderModule title={activeNav} />
           )}
         </main>
+        </OrgCountryProvider>
       </div>
     </div>
   );

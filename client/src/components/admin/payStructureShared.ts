@@ -1,4 +1,5 @@
 import type { MandatoryContributionItem, PayStructure, PayStructureRequest, ProvidentFundBracketItem, SocsoBracketItem } from '../../modules/hr/types';
+import { formatCountryCurrency } from '../../utils/numberFormat';
 import { MALAYSIA_DEFAULT_FOREIGN_SOCSO_EMPLOYER, MALAYSIA_DEFAULT_SOCSO_BRACKETS } from './malaysiaSocsoDefaults';
 
 export const PAY_TYPES = ['Fixed Salary', 'Hourly', 'Daily', 'Contract'] as const;
@@ -203,7 +204,7 @@ export function formatSocsoSummary(structure: Pick<PayStructure, 'countryCode' |
   if (count === 0) return `Foreign ${foreign}%`;
   const first = structure.socsoBrackets?.find(b => b.maxAge === 59);
   const malaysian = first
-    ? `RM ${first.employerAmount.toFixed(2)} / RM ${first.employeeAmount.toFixed(2)}`
+    ? `${formatCountryCurrency(first.employerAmount, structure.countryCode)} / ${formatCountryCurrency(first.employeeAmount, structure.countryCode)}`
     : 'tiered';
   return `MY ${malaysian} · Foreign ${foreign}%`;
 }

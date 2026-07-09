@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
@@ -11,6 +12,11 @@ namespace Bisync.Api.Controllers;
 [Route("api/products")]
 public class ProductsController(BisyncDbContext db) : ControllerBase
 {
+    static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List([FromQuery] int? companyId)
     {
@@ -232,6 +238,15 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
 
         if (request.PosEnabled.HasValue)
             product.PosEnabled = request.PosEnabled.Value;
+        if (request.PosDeliveryUnits is not null)
+        {
+            product.PosDeliveryUnitsJson = JsonSerializer.Serialize(
+                request.PosDeliveryUnits
+                    .Where(unit => !string.IsNullOrWhiteSpace(unit.UnitKey))
+                    .Select(unit => new { unitKey = unit.UnitKey.Trim() })
+                    .DistinctBy(unit => unit.unitKey),
+                JsonOptions);
+        }
         if (request.Active.HasValue)
             product.Active = request.Active.Value;
         if (request.Rrp.HasValue)
@@ -381,6 +396,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
                 ProductId = productId,
                 Name = item.Name.Trim(),
                 Rrp = item.Rrp,
+                B2bSalesConfigJson = string.IsNullOrWhiteSpace(item.B2bSalesConfigJson) ? "{}" : item.B2bSalesConfigJson.Trim(),
                 SortOrder = index,
             })
             .Where(item => !string.IsNullOrWhiteSpace(item.Name))
@@ -412,6 +428,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         parStock = product.ParStock,
         parStockUom = product.ParStockUom,
         posEnabled = product.PosEnabled,
+        posDeliveryUnitsJson = product.PosDeliveryUnitsJson,
         active = product.Active,
         companyId = product.CompanyId,
         locationExternalIds = PurchaseOrderWorkflow.DeserializeLocationIds(product.LocationIdsJson),
@@ -425,6 +442,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
                 a.Id,
                 name = a.Name,
                 rrp = a.Rrp,
+                b2bSalesConfigJson = a.B2bSalesConfigJson,
                 sortOrder = a.SortOrder,
             }),
         items = product.Items

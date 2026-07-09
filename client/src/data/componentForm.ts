@@ -1,3 +1,11 @@
+import {
+  EMPTY_SPLIT_USE_CONFIG,
+  parseSplitUseConfig,
+  type ComponentSplitUseConfig,
+} from './componentSplitUse';
+
+export type { ComponentSplitUseConfig, SplitUseLine } from './componentSplitUse';
+
 export const RECIPE_UNITS = [
   'Mg', 'Gr', 'Kg', 'Tonne',
   'Ml', 'Cl', 'Ltr',
@@ -168,6 +176,7 @@ export type ComponentDetailConfig = {
   vendor: string;
   vendorProduct: string;
   deliveryUnitPrice: string;
+  splitUse?: ComponentSplitUseConfig;
 };
 
 export const EMPTY_COMPONENT_DETAIL_CONFIG: ComponentDetailConfig = {
@@ -183,6 +192,7 @@ export const EMPTY_COMPONENT_DETAIL_CONFIG: ComponentDetailConfig = {
   vendor: '',
   vendorProduct: '',
   deliveryUnitPrice: '',
+  splitUse: { ...EMPTY_SPLIT_USE_CONFIG },
 };
 
 export function detailConfigFromForm(form: ComponentForm): ComponentDetailConfig {
@@ -199,6 +209,7 @@ export function detailConfigFromForm(form: ComponentForm): ComponentDetailConfig
     vendor: form.vendor,
     vendorProduct: form.vendorProduct,
     deliveryUnitPrice: form.deliveryUnitPrice,
+    splitUse: form.splitUse,
   };
 }
 
@@ -216,6 +227,7 @@ export function parseDetailConfigJson(json: string | null | undefined): Componen
       vendorProductLossYield: parsed.vendorProductLossYield ?? {},
       vendorProductComponentUom: parsed.vendorProductComponentUom ?? {},
       vendorProductLocations: parsed.vendorProductLocations ?? {},
+      splitUse: parseSplitUseConfig(parsed.splitUse),
     };
   } catch {
     return { ...EMPTY_COMPONENT_DETAIL_CONFIG };
@@ -278,6 +290,7 @@ export type ComponentForm = {
   lossYield: string;
   dailyUsage: string;
   orderFreqDays: string;
+  splitUse: ComponentSplitUseConfig;
 };
 
 export function buildComponentIdPrefix(name: string): string {
@@ -364,6 +377,7 @@ export function toForm(row: ComponentRow, existingComponentIds: string[] = []): 
     lossYield: '0',
     dailyUsage: row.dailyUsage > 0 ? String(row.dailyUsage) : '',
     orderFreqDays: String(row.orderFreqDays > 0 ? row.orderFreqDays : 7),
+    splitUse: detail.splitUse ? { ...detail.splitUse, lines: detail.splitUse.lines.map(line => ({ ...line })) } : { ...EMPTY_SPLIT_USE_CONFIG },
   };
 }
 

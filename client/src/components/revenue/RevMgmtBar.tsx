@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { revMgmtNav } from '../../data/revenueManagement';
+import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 type Props = {
   selectedItem: string | null;
@@ -8,6 +9,7 @@ type Props = {
 };
 
 export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
+  const { revMgmtSection, revMgmtSubtitle, revMgmtItem } = useAppTranslation();
   const [openSection, setOpenSection] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const activeSection = selectedItem ? selectedItem.split('||')[0] : null;
@@ -40,7 +42,7 @@ export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
                     : 'border-border text-foreground hover:border-primary/50 hover:text-primary'
                 }`}
               >
-                {section.title}
+                {revMgmtSection(section.title)}
                 <ChevronDown size={10} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </button>
 
@@ -50,7 +52,7 @@ export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
                     <div key={si}>
                       {sub.subtitle && (
                         <p className="px-3 pt-2 pb-1 text-[11px] font-sans font-bold tracking-widest text-muted-foreground uppercase">
-                          {sub.subtitle}
+                          {revMgmtSubtitle(sub.subtitle)}
                         </p>
                       )}
                       {sub.items.map(item => {
@@ -64,7 +66,7 @@ export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
                               isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'
                             }`}
                           >
-                            {item.label}
+                            {revMgmtItem(item.label)}
                           </button>
                         );
                       })}

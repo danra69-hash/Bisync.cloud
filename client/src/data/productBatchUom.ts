@@ -1,4 +1,5 @@
 import { fromApiUom, getConversionFactor, type AltUnitEntry } from './componentForm';
+import { formatCountryNumber } from '../utils/numberFormat';
 
 export const MAX_BATCH_ADDITIONAL_UOMS = 5;
 
@@ -8,12 +9,10 @@ export function isBatchPackStyleUnit(unit: string, batchUom: string): boolean {
   return getConversionFactor(batchUom, unit) === null;
 }
 
-export function formatBatchAdditionalQty(value: number): string {
-  if (!Number.isFinite(value)) return '';
-  if (value >= 1000) return value.toFixed(2);
-  if (value >= 10) return value.toFixed(2);
-  if (value >= 1) return value.toFixed(2);
-  return value.toFixed(4);
+export function formatBatchAdditionalQty(value: number, countryCode = 'MY'): string {
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
+  if (Number.isInteger(value) && value !== 0) return String(value);
+  return formatCountryNumber(value, countryCode);
 }
 
 export function resolveBatchAdditionalEntry(

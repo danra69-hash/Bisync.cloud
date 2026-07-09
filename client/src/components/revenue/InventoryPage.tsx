@@ -28,10 +28,11 @@ import {
   loadStorageAssignment,
   parseComponentStorageJson,
   resolveComponentAreaStorage,
-  resolveStorageLocationLabels,
   rowMatchesStorageFilter,
   selectedStorageTypes,
 } from '../../data/storageAssignment';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import {
   buildComponentConversion,
   computeTotalQty,
@@ -137,17 +138,16 @@ function rowKey(row: StockCardListRow) {
   return `${row.itemType}-${row.itemKey}`;
 }
 
-function fmtQty(value: number) {
-  if (!Number.isFinite(value)) return '0';
-  const rounded = Math.round(value * 1000) / 1000;
-  return rounded % 1 === 0 ? String(rounded) : rounded.toFixed(3).replace(/\.?0+$/, '');
+function fmtQty(value: number, countryCode: string) {
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
+  return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 }
 
-function fmtVarianceQty(value: number | null | undefined) {
+function fmtVarianceQty(value: number | null | undefined, countryCode: string) {
   if (value == null || !Number.isFinite(value)) return '—';
-  if (value === 0) return '0';
+  if (value === 0) return formatCountryNumber(0, countryCode);
   const sign = value > 0 ? '+' : '';
-  return `${sign}${fmtQty(value)}`;
+  return `${sign}${fmtQty(value, countryCode)}`;
 }
 
 
@@ -256,6 +256,7 @@ function sessionStatusLabel(session: InventoryCountSession, inventoryMode: Inven
 }
 
 export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const countryCode = useOrgCountryCode();
   const { currentUser } = useCurrentUser();
   const access = useMemo(
     () => (currentUser ? parseUserAccess(currentUser.accessJson) : null),
@@ -334,8 +335,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
   const activeStorageTypes = useMemo(() => {
     const assignment = loadStorageAssignment();
-    const locationLabels = resolveStorageLocationLabels(countLocationIds);
-    const storages = listStoragesForFilter(assignment, locationLabels, areaFilter);
+    const storages = listStoragesForFilter(assignment, countLocationIds, areaFilter);
     return selectedStorageTypes(storages, selectedStorageKeys);
   }, [countLocationIds, areaFilter, selectedStorageKeys]);
 
@@ -425,7 +425,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         for (const line of session.lines) {
           if (line.countedQty == null) continue;
           const key = `${line.itemType}-${line.itemKey}`;
-          const qty = fmtQty(line.countedQty);
+          const qty = fmtQty(line.countedQty, countryCode);
           if (uomMode === 'recipe') nextRecipe[key] = qty;
           else nextInventory[key] = qty;
         }
@@ -525,7 +525,6 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
   const displayRows = useMemo(() => {
     const assignment = loadStorageAssignment();
-    const locationLabels = resolveStorageLocationLabels(countLocationIds);
     const enriched: InventoryDisplayRow[] = filteredRows.map(row => {
       if (row.itemType !== 'component') {
         return {
@@ -537,7 +536,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         };
       }
       const storageTypes = componentStorageByKey[row.itemKey] ?? [];
-      const labels = resolveComponentAreaStorage(storageTypes, locationLabels, assignment);
+      const labels = resolveComponentAreaStorage(storageTypes, countLocationIds, assignment);
       return {
         ...row,
         areaLabel: labels.areas,
@@ -891,7 +890,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                     <td className="px-3 py-2.5">{row.group || '—'}</td>
                     <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
                     <td className="px-3 py-2.5">{displayUomForRow(row, uomMode)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(onHand)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(onHand, countryCode)}</td>
                     <td className="px-3 py-2.5 text-right text-muted-foreground">{principalUom}</td>
                     <td className="px-3 py-2.5 text-right">
                       <input
@@ -919,7 +918,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                       />
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-medium">
-                      {totalQty != null ? fmtQty(totalQty) : '—'}
+                      {totalQty != null ? fmtQty(totalQty, countryCode) : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.areaLabel}</td>
                     <td className="px-3 py-2.5 text-muted-foreground">{row.storageLabel}</td>
@@ -1020,17 +1019,17 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground">{row.effectiveDate || '—'}</td>
                         <td className="px-3 py-2.5">{row.uom}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.systemQty)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.systemQty, countryCode)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">
-                          {row.countedQty != null ? fmtQty(row.countedQty) : '—'}
+                          {row.countedQty != null ? fmtQty(row.countedQty, countryCode) : '—'}
                         </td>
                         <td className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(row.varianceQty)}`}>
-                          {fmtVarianceQty(row.varianceQty)}
+                          {fmtVarianceQty(row.varianceQty, countryCode)}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{fmtMoney(row.systemValue)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{fmtMoney(row.actualValue)}</td>
                         <td className={`px-3 py-2.5 text-right tabular-nums ${varianceTone(row.varianceValue)}`}>
-                          {fmtVarianceQty(row.varianceValue)}
+                          {fmtVarianceQty(row.varianceValue, countryCode)}
                         </td>
                         <td className="px-3 py-2.5 text-right">
                           {showConfirm ? (

@@ -1,26 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
-import { UserPlus, X } from 'lucide-react';
+import { Plus, UserPlus, X } from 'lucide-react';
 import { type Vendor } from '../../api';
-import { getVendorCatalogProducts } from '../../data/vendorProductCatalog';
+import {
+  createBlankVendorProduct,
+  getVendorCatalogProducts,
+  saveNewVendorProduct,
+  type VendorProductCatalogItem,
+} from '../../data/vendorProductCatalog';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_VENDOR_PRODUCTS_CLS } from '../layout/sidePanelShared';
 import { VendorProductsList } from './VendorProductsList';
 import { VendorDetailEditor } from './VendorDetailEditor';
+import { VendorProductDetailPanel } from './VendorProductDetailPanel';
 import { VendorProductImportSection } from './VendorProductImportSection';
 
 type Props = {
   vendor: Vendor;
   selectedCompanyId: number | null;
+  selectedLocationIds: string[];
+  countryCode: string;
   onClose: () => void;
   onVendorUpdated: (vendor: Vendor) => void;
 };
 
-export function VendorProductsPanel({ vendor, selectedCompanyId, onClose, onVendorUpdated }: Props) {
+export function VendorProductsPanel({
+  vendor,
+  selectedCompanyId,
+  selectedLocationIds,
+  countryCode,
+  onClose,
+  onVendorUpdated,
+}: Props) {
   const [panelVendor, setPanelVendor] = useState(vendor);
   const [engageVendorRequest, setEngageVendorRequest] = useState<Vendor | null>(null);
   const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [newProduct, setNewProduct] = useState<VendorProductCatalogItem | null>(null);
 
   const products = useMemo(
-    () => getVendorCatalogProducts(panelVendor.externalId),
+    () => getVendorCatalogProducts(panelVendor.externalId, { vendorDetailMode: true }),
     [panelVendor.externalId, catalogRefresh],
   );
 
@@ -75,7 +91,7 @@ export function VendorProductsPanel({ vendor, selectedCompanyId, onClose, onVend
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4">
-          <VendorDetailEditor vendor={panelVendor} onVendorUpdated={handleVendorUpdated} />
+          <VendorDetailEditor countryCode={countryCode} vendor={panelVendor} onVendorUpdated={handleVendorUpdated} />
 
           <VendorProductImportSection
             vendor={panelVendor}
@@ -83,14 +99,25 @@ export function VendorProductsPanel({ vendor, selectedCompanyId, onClose, onVend
             onApplied={() => setCatalogRefresh(key => key + 1)}
           />
 
-          <p className="text-xs text-muted-foreground mb-3">
-            Tag vendor products to smart components for purchase and inventory tracking. Engage the vendor first if Tag prompts engagement.
-          </p>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-xs text-muted-foreground">
+              Tag vendor products to smart components for purchase and inventory tracking. Engage the vendor first if Tag prompts engagement.
+            </p>
+            <button
+              type="button"
+              onClick={() => setNewProduct(createBlankVendorProduct(panelVendor, selectedLocationIds))}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground shrink-0"
+            >
+              <Plus size={12} />
+              New Vendor Product
+            </button>
+          </div>
 
           <VendorProductsList
             products={products}
             vendors={[panelVendor]}
             selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
             onVendorUpdated={handleVendorUpdated}
             onProductUpdated={() => setCatalogRefresh(key => key + 1)}
             engageVendorRequest={engageVendorRequest}
@@ -98,6 +125,22 @@ export function VendorProductsPanel({ vendor, selectedCompanyId, onClose, onVend
           />
         </div>
       </div>
+
+      {newProduct && (
+        <VendorProductDetailPanel
+          product={newProduct}
+          isNew
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          elevated
+          onClose={() => setNewProduct(null)}
+          onSave={product => {
+            saveNewVendorProduct(product);
+            setNewProduct(null);
+            setCatalogRefresh(key => key + 1);
+          }}
+        />
+      )}
     </>
   );
 }

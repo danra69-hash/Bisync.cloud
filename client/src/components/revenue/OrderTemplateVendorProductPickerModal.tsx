@@ -5,7 +5,8 @@ import {
   formatDeliveryUnitPath,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
-import { formatRm, resolveTaggedProductsForComponent } from '../../data/createOrder';
+import { resolveTaggedProductsForComponent } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import type { ingredientToRow } from './smartIngredientShared';
 
 type ComponentRow = ReturnType<typeof ingredientToRow>;
@@ -27,6 +28,7 @@ export function OrderTemplateVendorProductPickerModal({
   onClose,
   onSelect,
 }: Props) {
+  const { rm } = useCountryFormatters();
   const catalog = applyVendorProductOverrides();
   const taggedProducts = resolveTaggedProductsForComponent(component, catalog, {
     locationIds,
@@ -89,7 +91,7 @@ export function OrderTemplateVendorProductPickerModal({
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="font-sans font-medium">{formatRm(product.deliveryPrice)}</p>
+                      <p className="font-sans font-medium">{rm(product.deliveryPrice)}</p>
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">
                         {added ? 'Added' : 'Select'}
                       </p>

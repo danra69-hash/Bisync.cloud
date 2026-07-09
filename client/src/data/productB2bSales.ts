@@ -24,6 +24,7 @@ export type B2bSalesUnitLine = {
   isPrincipal: boolean;
   delivery: DeliveryUnitBreakdown;
   rrp: string;
+  disabled?: boolean;
 };
 
 export type B2bSalesConfig = {
@@ -33,12 +34,12 @@ export type B2bSalesConfig = {
 
 export function blankDeliveryUnit(): DeliveryUnitBreakdown {
   return {
-    orderUnit: 'Box',
-    orderQty: 1,
-    packUnit: 'Each',
-    packQty: 1,
-    unitUnit: 'Gr',
-    unitQty: 1,
+    orderUnit: '',
+    orderQty: 0,
+    packUnit: '',
+    packQty: 0,
+    unitUnit: '',
+    unitQty: 0,
   };
 }
 
@@ -82,7 +83,13 @@ export function b2bSalesUnitTitle(line: B2bSalesUnitLine, alternateIndex = 0): s
 }
 
 export function isB2bAlternateLineActive(line: B2bSalesUnitLine): boolean {
+  if (line.disabled) return false;
   return line.rrp.trim().length > 0;
+}
+
+export function isB2bPrincipalLineActive(line: B2bSalesUnitLine): boolean {
+  if (line.disabled) return false;
+  return line.rrp.trim().length > 0 || parseFloat(line.rrp) > 0;
 }
 
 function unitsMatch(a: string, b: string): boolean {
@@ -131,13 +138,12 @@ export function defaultB2bAlternateFromSubProduct(
 }
 
 export function isDeliveryStillBlankDefault(delivery: DeliveryUnitBreakdown): boolean {
-  const blank = blankDeliveryUnit();
-  return delivery.orderUnit === blank.orderUnit
-    && delivery.orderQty === blank.orderQty
-    && delivery.packUnit === blank.packUnit
-    && delivery.packQty === blank.packQty
-    && delivery.unitUnit === blank.unitUnit
-    && delivery.unitQty === blank.unitQty;
+  return !delivery.orderUnit.trim()
+    && delivery.orderQty <= 0
+    && !delivery.packUnit.trim()
+    && delivery.packQty <= 0
+    && !delivery.unitUnit.trim()
+    && delivery.unitQty <= 0;
 }
 
 export function getB2bDeliveryUnitChoices(
@@ -234,24 +240,9 @@ export function describeB2bDeliveryYieldResolution(
 
 export function seedB2bSalesFromSubProduct(
   config: B2bSalesConfig,
-  subProduct: Pick<Product, 'yieldQuantity' | 'yieldUom'>,
+  _subProduct: Pick<Product, 'yieldQuantity' | 'yieldUom'>,
 ): B2bSalesConfig {
-  return {
-    ...config,
-    principal: isDeliveryStillBlankDefault(config.principal.delivery)
-      ? { ...config.principal, delivery: defaultB2bDeliveryFromSubProduct(subProduct) }
-      : config.principal,
-    alternates: config.alternates.map((line, index) => (
-      isDeliveryStillBlankDefault(line.delivery)
-        ? {
-            ...line,
-            delivery: index === 0
-              ? defaultB2bAlternateFromSubProduct(subProduct)
-              : defaultB2bAlternateFromSubProduct(subProduct),
-          }
-        : line
-    )),
-  };
+  return config;
 }
 
 export function parseB2bSalesConfigJson(json?: string | null): B2bSalesConfig {
@@ -282,19 +273,20 @@ export function parseB2bSalesConfigJson(json?: string | null): B2bSalesConfig {
 }
 
 export function serializeB2bSalesConfig(config: B2bSalesConfig): string {
-  return JSON.stringify({
-    principal: {
-      key: config.principal.key,
-      isPrincipal: true,
-      delivery: config.principal.delivery,
-      rrp: config.principal.rrp,
-    },
-    alternates: config.alternates.slice(0, MAX_B2B_ALTERNATE_DELIVERY_UNITS).map(line => ({
+  const serializeLine = (line: B2bSalesUnitLine, isPrincipal: boolean) => {
+    const payload: Record<string, unknown> = {
       key: line.key,
-      isPrincipal: false,
+      isPrincipal,
       delivery: line.delivery,
-      rrp: line.rrp.trim(),
-    })),
+      rrp: isPrincipal ? line.rrp : line.rrp.trim(),
+    };
+    if (line.disabled) payload.disabled = true;
+    return payload;
+  };
+
+  return JSON.stringify({
+    principal: serializeLine(config.principal, true),
+    alternates: config.alternates.slice(0, MAX_B2B_ALTERNATE_DELIVERY_UNITS).map(line => serializeLine(line, false)),
   });
 }
 
@@ -315,7 +307,17 @@ export function buildB2bConfigForSave(
 }
 
 export function resolvePrincipalB2bRrp(config: B2bSalesConfig, fallbackRrp: number): number {
-  return parseFloat(config.principal.rrp) || fallbackRrp;
+  if (!config.principal.disabled) {
+    const principalRrp = parseFloat(config.principal.rrp);
+    if (principalRrp > 0) return principalRrp;
+  }
+
+  const activeAlternate = config.alternates.find(
+    alternate => !alternate.disabled && parseFloat(alternate.rrp) > 0,
+  );
+  if (activeAlternate) return parseFloat(activeAlternate.rrp);
+
+  return fallbackRrp;
 }
 
 export function resolveLinkedSubProduct(
@@ -330,15 +332,42 @@ export function resolveLinkedSubProduct(
   return savedProducts.find(product => product.productId === match.componentId) ?? null;
 }
 
-export function calcB2bSalesUnitCogs(
-  delivery: DeliveryUnitBreakdown,
-  subProduct: Pick<Product, 'totalCost' | 'packagingCost' | 'yieldQuantity' | 'yieldUom' | 'isSubProduct'>,
-): number {
-  const batchCogs = calcProductCogs(subProduct.totalCost, subProduct.packagingCost ?? 0, {
+export function resolveLinkedSubProductBatchCogs(
+  lines: { componentId: string; quantity: string; componentUomPrice: string; sourceProductId?: number }[],
+  savedProducts: Product[],
+): number | null {
+  const subProduct = resolveLinkedSubProduct(lines, savedProducts);
+  if (!subProduct) return null;
+
+  const line = lines.find(entry =>
+    (entry.sourceProductId != null && entry.sourceProductId === subProduct.id)
+    || entry.componentId === subProduct.productId,
+  );
+  if (line) {
+    const qty = parseFloat(line.quantity) || 0;
+    const price = parseFloat(line.componentUomPrice) || 0;
+    if (qty > 0 && price > 0) return qty * price;
+  }
+
+  return calcProductCogs(subProduct.totalCost, subProduct.packagingCost ?? 0, {
     isSubProduct: true,
     b2bEnabled: false,
     b2cEnabled: false,
   });
+}
+
+export function calcB2bSalesUnitCogs(
+  delivery: DeliveryUnitBreakdown,
+  subProduct: Pick<Product, 'totalCost' | 'packagingCost' | 'yieldQuantity' | 'yieldUom' | 'isSubProduct'>,
+  batchCogsOverride?: number | null,
+): number {
+  const batchCogs = batchCogsOverride != null && batchCogsOverride > 0
+    ? batchCogsOverride
+    : calcProductCogs(subProduct.totalCost, subProduct.packagingCost ?? 0, {
+        isSubProduct: true,
+        b2bEnabled: false,
+        b2cEnabled: false,
+      });
   const unitCogs = calcSubProductUnitCost(batchCogs, String(subProduct.yieldQuantity));
   const resolved = resolveB2bSalesDeliveryToYieldUom(delivery, subProduct);
   if (resolved.qty !== null && resolved.qty > 0) {
@@ -347,10 +376,16 @@ export function calcB2bSalesUnitCogs(
   return 0;
 }
 
+function parseDeliveryUnitRrp(rrp: string): number {
+  const parsed = parseFloat(String(rrp).trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export function summarizeB2bSalesUnit(
   line: B2bSalesUnitLine,
   subProduct: Product | null,
   alternateIndex = 0,
+  batchCogsOverride?: number | null,
 ): {
   label: string;
   detailPath: string;
@@ -361,8 +396,8 @@ export function summarizeB2bSalesUnit(
 } {
   const label = b2bSalesUnitTitle(line, alternateIndex);
   const detailPath = formatDeliveryUnitPath(line.delivery);
-  const rrp = parseFloat(line.rrp) || 0;
-  const cogs = subProduct ? calcB2bSalesUnitCogs(line.delivery, subProduct) : 0;
+  const rrp = parseDeliveryUnitRrp(line.rrp);
+  const cogs = subProduct ? calcB2bSalesUnitCogs(line.delivery, subProduct, batchCogsOverride) : 0;
   const yieldResolution = subProduct
     ? describeB2bDeliveryYieldResolution(line.delivery, subProduct)
     : { ok: false, message: '' };
@@ -393,4 +428,57 @@ export function deliveryUnitDetailPath(delivery: DeliveryUnitBreakdown): string 
   return resolveDeliveryUnitLevels(delivery).firstBreakdown
     ? formatDeliveryUnitPath(delivery)
     : formatDeliveryUnitPath(delivery);
+}
+
+export function seedAliasB2bSalesConfig(
+  aliasConfig: B2bSalesConfig,
+  principalConfig: B2bSalesConfig,
+  fallbackRrp = 0,
+): B2bSalesConfig {
+  const aliasHasDelivery = hasSmallestDeliveryBreakdown(aliasConfig.principal.delivery);
+  const principal = {
+    ...blankB2bSalesUnit(true, aliasConfig.principal.key),
+    ...aliasConfig.principal,
+    delivery: aliasHasDelivery
+      ? aliasConfig.principal.delivery
+      : { ...principalConfig.principal.delivery },
+    rrp: aliasConfig.principal.rrp.trim()
+      || (fallbackRrp > 0 ? String(fallbackRrp) : principalConfig.principal.rrp),
+  };
+  const alternates = aliasConfig.alternates.some(line => hasSmallestDeliveryBreakdown(line.delivery))
+    ? aliasConfig.alternates
+    : principalConfig.alternates.map((line, index) => ({
+      ...blankB2bSalesUnit(false, line.key || `b2b-alt-${index + 1}`),
+      ...line,
+      isPrincipal: false,
+    }));
+  return { principal, alternates };
+}
+
+export function resolveCustomerProductB2bConfig(
+  product: Product,
+  taggedAliasIds: number[],
+): { config: B2bSalesConfig; aliasId: number | null; aliasName: string | null } {
+  const aliases = product.aliases ?? [];
+  const taggedAlias = aliases.find(alias => taggedAliasIds.includes(alias.id));
+  if (taggedAlias) {
+    const config = parseB2bSalesConfigJson(taggedAlias.b2bSalesConfigJson);
+    if (taggedAlias.rrp > 0 && !config.principal.rrp.trim()) {
+      config.principal.rrp = String(taggedAlias.rrp);
+    }
+    return { config, aliasId: taggedAlias.id, aliasName: taggedAlias.name };
+  }
+  return {
+    config: parseB2bSalesConfigJson(product.b2bSalesConfigJson),
+    aliasId: null,
+    aliasName: null,
+  };
+}
+
+export function resolveCustomerProductB2bRrp(
+  product: Product,
+  taggedAliasIds: number[],
+): number {
+  const { config } = resolveCustomerProductB2bConfig(product, taggedAliasIds);
+  return resolvePrincipalB2bRrp(config, product.rrp);
 }

@@ -4,6 +4,7 @@ import { isNavItemEnabled } from '../../data/companyModules';
 import type { AccessModule } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { userInitials } from '../../context/currentUserContext';
+import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 type Props = {
   open: boolean;
@@ -14,8 +15,9 @@ type Props = {
 };
 
 export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }: Props) {
+  const { t, navLabel } = useAppTranslation();
   const { currentUser, users, setCurrentUserId, logout } = useCurrentUser();
-  const displayName = currentUser?.fullName ?? 'Unknown User';
+  const displayName = currentUser?.fullName ?? t('common.unknownUser');
   const displayRole = currentUser?.role ?? '—';
 
   return (
@@ -42,7 +44,7 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
               type="button"
               disabled={!enabled}
               onClick={() => { if (enabled) onNavigate(item); onClose(); }}
-              title={!enabled ? 'Module not enabled for the selected company or location' : undefined}
+              title={!enabled ? t('common.moduleNotEnabled') : undefined}
               className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               style={{
                 background: isActive && enabled ? '#E87722' : 'transparent',
@@ -50,7 +52,7 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
                 fontWeight: isActive && enabled ? 700 : 500,
               }}
             >
-              {item}
+              {navLabel(item)}
             </button>
             );
           })}
@@ -72,7 +74,7 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
               onChange={e => setCurrentUserId(Number(e.target.value))}
               className="w-full rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
               style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
-              title="Switch logged-in user"
+              title={t('common.switchUser')}
             >
               {users.map(user => (
                 <option key={user.id} value={user.id} style={{ color: '#1a1a1a', background: '#ffffff' }}>
@@ -86,7 +88,7 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
             onClick={logout}
             className="w-full rounded-md px-2 py-1.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           >
-            Log out
+            {t('common.logOut')}
           </button>
         </div>
       </aside>

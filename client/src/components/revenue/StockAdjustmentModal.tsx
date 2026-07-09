@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Minus, Plus, X } from 'lucide-react';
 import { api, type StockCardAsOfSnapshot } from '../../api';
-import { formatRm } from '../../data/createOrder';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
 
@@ -23,10 +25,9 @@ type Props = {
   onSaved: () => void;
 };
 
-function fmtQty(value: number) {
-  if (!Number.isFinite(value)) return '0';
-  const rounded = Math.round(value * 1000) / 1000;
-  return rounded % 1 === 0 ? String(rounded) : rounded.toFixed(3).replace(/\.?0+$/, '');
+function fmtQty(value: number, countryCode: string) {
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
+  return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 }
 
 function todayInputValue(): string {
@@ -69,6 +70,8 @@ export function StockAdjustmentModal({
   onClose,
   onSaved,
 }: Props) {
+  const countryCode = useOrgCountryCode();
+  const { rm } = useCountryFormatters();
   const uomOptions = useMemo(
     () => [...new Set([inventoryUom, recipeUom].map(u => u.trim()).filter(Boolean))],
     [inventoryUom, recipeUom],
@@ -224,7 +227,7 @@ export function StockAdjustmentModal({
             ) : snapshot ? (
               <>
                 <p className="text-base font-semibold tabular-nums text-primary">
-                  {fmtQty(snapshot.onHandQty)} <span className="text-sm font-normal text-muted-foreground">{snapshot.uom || defaultUom}</span>
+                  {fmtQty(snapshot.onHandQty, countryCode)} <span className="text-sm font-normal text-muted-foreground">{snapshot.uom || defaultUom}</span>
                 </p>
                 {snapshot.layers.length > 0 ? (
                   <ul className="mt-2 space-y-0.5 border-t border-border/60 pt-2">
@@ -233,7 +236,7 @@ export function StockAdjustmentModal({
                         key={`${layer.unitPrice}-${layer.quantity}`}
                         className="text-xs tabular-nums text-muted-foreground"
                       >
-                        {fmtQty(layer.quantity)} @ {formatRm(layer.unitPrice)}
+                        {fmtQty(layer.quantity, countryCode)} @ {rm(layer.unitPrice)}
                       </li>
                     ))}
                   </ul>
@@ -307,7 +310,7 @@ export function StockAdjustmentModal({
                   <span className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM price (FIFO)</span>
                   <div className="h-9 flex items-center rounded-md border border-border bg-muted/20 px-3 text-sm tabular-nums">
                     {snapshot?.suggestedAdjustmentInUnitPrice && snapshot.suggestedAdjustmentInUnitPrice > 0
-                      ? formatRm(snapshot.suggestedAdjustmentInUnitPrice)
+                      ? rm(snapshot.suggestedAdjustmentInUnitPrice)
                       : '—'}
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-snug">

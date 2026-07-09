@@ -12,59 +12,28 @@ import {
   Zap,
 } from 'lucide-react';
 import { LoginModal } from '../components/auth/LoginModal';
+import { LanguageSelector } from '../components/layout/LanguageSelector';
+import { useAppTranslation } from '../i18n/useAppTranslation';
 
-const AI_CAPABILITIES = [
-  {
-    icon: Brain,
-    title: 'Predictive Demand Engine',
-    description: 'Neural models forecast covers, par levels, and reorder points before stockouts happen.',
-    tag: 'Forecasting',
-  },
-  {
-    icon: Bot,
-    title: 'Autonomous Procurement',
-    description: 'AI agents draft purchase requests, compare vendor pricing, and route approvals intelligently.',
-    tag: 'Automation',
-  },
-  {
-    icon: LineChart,
-    title: 'Real-Time Margin Intelligence',
-    description: 'Live recipe costing and margin signals surface drift across every outlet instantly.',
-    tag: 'Analytics',
-  },
-  {
-    icon: Radar,
-    title: 'Anomaly Detection',
-    description: 'Spot wastage spikes, price outliers, and inventory variance before they hit P&L.',
-    tag: 'Monitoring',
-  },
-  {
-    icon: Workflow,
-    title: 'Adaptive Workflows',
-    description: 'Operations pipelines self-optimise based on outlet patterns, seasonality, and lead times.',
-    tag: 'Orchestration',
-  },
-  {
-    icon: Cpu,
-    title: 'Unified Ops Brain',
-    description: 'One intelligent layer connecting procurement, inventory, recipes, and vendor data.',
-    tag: 'Platform',
-  },
+const CAPABILITY_KEYS = [
+  { key: 'predictive', icon: Brain },
+  { key: 'autonomous', icon: Bot },
+  { key: 'margin', icon: LineChart },
+  { key: 'anomaly', icon: Radar },
+  { key: 'adaptive', icon: Workflow },
+  { key: 'unified', icon: Cpu },
 ] as const;
 
-const PIPELINE = [
-  { step: '01', label: 'Sense', detail: 'Ingest sales, recipes, wastage & vendor feeds' },
-  { step: '02', label: 'Predict', detail: 'AI models forecast demand & cost exposure' },
-  { step: '03', label: 'Act', detail: 'Auto-draft orders, alerts & approvals' },
-  { step: '04', label: 'Learn', detail: 'Continuous feedback sharpens every outlet' },
+const PIPELINE_KEYS = ['sense', 'predict', 'act', 'learn'] as const;
+
+const METRIC_KEYS = [
+  { value: '94%', key: 'forecastAccuracy' },
+  { value: '3.2×', key: 'fasterProcurement' },
+  { value: '−18%', key: 'foodCostVariance' },
+  { value: '24/7', key: 'autonomousMonitoring' },
 ] as const;
 
-const METRICS = [
-  { value: '94%', label: 'Forecast accuracy' },
-  { value: '3.2×', label: 'Faster procurement cycles' },
-  { value: '−18%', label: 'Average food cost variance' },
-  { value: '24/7', label: 'Autonomous monitoring' },
-] as const;
+const ORB_KEYS = ['procurement', 'inventory', 'recipes', 'vendors'] as const;
 
 function BisyncLogo({ className = '' }: { className?: string }) {
   return (
@@ -98,7 +67,7 @@ function GridBackground() {
   );
 }
 
-function AiOrb() {
+function AiOrb({ labels }: { labels: string[] }) {
   return (
     <div className="relative mx-auto aspect-square w-full max-w-md">
       <div className="absolute inset-0 animate-pulse rounded-full bg-herme/10 blur-2xl" />
@@ -111,8 +80,8 @@ function AiOrb() {
           </div>
         </div>
       </div>
-      {['Procurement', 'Inventory', 'Recipes', 'Vendors'].map((label, i) => {
-        const angle = (i / 4) * Math.PI * 2 - Math.PI / 2;
+      {labels.map((label, i) => {
+        const angle = (i / labels.length) * Math.PI * 2 - Math.PI / 2;
         const x = 50 + Math.cos(angle) * 46;
         const y = 50 + Math.sin(angle) * 46;
         return (
@@ -130,47 +99,50 @@ function AiOrb() {
 }
 
 export function LandingPage() {
+  const { t } = useAppTranslation();
   const [loginOpen, setLoginOpen] = useState(false);
 
   function scrollToFeatures() {
     document.getElementById('capabilities')?.scrollIntoView({ behavior: 'smooth' });
   }
 
+  const orbLabels = ORB_KEYS.map(key => t(`landing.orb.${key}`));
+
   return (
     <div className="min-h-screen bg-herme-ink text-white font-sans">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-herme-ink/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <BisyncLogo className="[&_span:first-of-type]:text-white" />
-          <button
-            type="button"
-            onClick={() => setLoginOpen(true)}
-            className="rounded-full border border-herme bg-herme/10 px-6 py-2 text-sm font-semibold text-herme transition-all hover:bg-herme hover:text-white hover:shadow-lg hover:shadow-herme/25"
-          >
-            Login
-          </button>
+          <div className="flex items-center gap-2">
+            <LanguageSelector />
+            <button
+              type="button"
+              onClick={() => setLoginOpen(true)}
+              className="rounded-full border border-herme bg-herme/10 px-6 py-2 text-sm font-semibold text-herme transition-all hover:bg-herme hover:text-white hover:shadow-lg hover:shadow-herme/25"
+            >
+              {t('landing.login')}
+            </button>
+          </div>
         </div>
       </header>
 
       <main>
-        {/* Hero */}
         <section className="relative overflow-hidden">
           <GridBackground />
           <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 md:grid-cols-2 md:py-28">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-herme/30 bg-herme/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-herme-light">
                 <Sparkles size={14} className="text-herme" />
-                AI-Native Hospitality OS
+                {t('landing.badge')}
               </div>
               <h1 className="mt-6 text-4xl font-bold leading-[1.1] tracking-tight md:text-5xl lg:text-6xl">
-                The future of{' '}
+                {t('landing.heroTitle')}{' '}
                 <span className="bg-gradient-to-r from-herme-light via-herme to-herme-muted bg-clip-text text-transparent">
-                  intelligent operations
+                  {t('landing.heroTitleHighlight')}
                 </span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/65">
-                Bisync.cloud fuses procurement, inventory, and cost control into one autonomous
-                platform — powered by predictive AI that learns from every outlet, every shift,
-                every service.
+                {t('landing.heroSubtitle')}
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-4">
                 <button
@@ -178,7 +150,7 @@ export function LandingPage() {
                   onClick={() => setLoginOpen(true)}
                   className="inline-flex items-center gap-2 rounded-full bg-herme px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-herme-dark hover:shadow-lg hover:shadow-herme/30"
                 >
-                  Enter Platform
+                  {t('landing.enterPlatform')}
                   <ArrowRight size={16} />
                 </button>
                 <button
@@ -186,56 +158,54 @@ export function LandingPage() {
                   onClick={scrollToFeatures}
                   className="inline-flex items-center gap-2 rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white/80 transition-colors hover:border-herme/50 hover:text-white"
                 >
-                  Explore AI Capabilities
+                  {t('landing.exploreCapabilities')}
                 </button>
               </div>
             </div>
-            <AiOrb />
+            <AiOrb labels={orbLabels} />
           </div>
         </section>
 
-        {/* Metrics strip */}
         <section className="border-y border-white/10 bg-white/[0.03]">
           <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-6 py-10 md:grid-cols-4">
-            {METRICS.map(({ value, label }) => (
-              <div key={label} className="text-center md:text-left">
+            {METRIC_KEYS.map(({ value, key }) => (
+              <div key={key} className="text-center md:text-left">
                 <p className="text-3xl font-bold text-herme md:text-4xl">{value}</p>
-                <p className="mt-1 text-sm text-white/50">{label}</p>
+                <p className="mt-1 text-sm text-white/50">{t(`landing.metrics.${key}`)}</p>
               </div>
             ))}
           </div>
         </section>
 
-        {/* AI pipeline */}
         <section className="py-20 md:py-28">
           <div className="mx-auto max-w-6xl px-6">
-            <p className="text-sm font-semibold uppercase tracking-widest text-herme">How the AI works</p>
+            <p className="text-sm font-semibold uppercase tracking-widest text-herme">{t('landing.pipeline.eyebrow')}</p>
             <h2 className="mt-2 max-w-2xl text-3xl font-bold md:text-4xl">
-              From raw signals to autonomous action
+              {t('landing.pipeline.title')}
             </h2>
             <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/60">
-              A closed-loop intelligence layer that senses operational data, predicts what happens
-              next, and executes — so your team focuses on guests, not spreadsheets.
+              {t('landing.pipeline.subtitle')}
             </p>
             <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {PIPELINE.map(({ step, label, detail }) => (
+              {PIPELINE_KEYS.map((key, index) => (
                 <div
-                  key={step}
+                  key={key}
                   className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent p-6 transition-colors hover:border-herme/40"
                 >
-                  <div className="absolute right-4 top-4 text-4xl font-bold text-white/[0.04]">{step}</div>
+                  <div className="absolute right-4 top-4 text-4xl font-bold text-white/[0.04]">
+                    {String(index + 1).padStart(2, '0')}
+                  </div>
                   <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-herme/15 text-herme">
                     <Zap size={20} />
                   </div>
-                  <h3 className="text-lg font-bold text-white">{label}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-white/55">{detail}</p>
+                  <h3 className="text-lg font-bold text-white">{t(`landing.pipeline.${key}Label`)}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/55">{t(`landing.pipeline.${key}Detail`)}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Intelligence layer */}
         <section className="bg-gradient-to-b from-herme-darker/40 to-transparent py-20 md:py-28">
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 md:grid-cols-2">
             <div className="order-2 md:order-1">
@@ -243,49 +213,46 @@ export function LandingPage() {
                 <div className="rounded-[1.35rem] bg-[#120a06] p-6 text-sm">
                   <div className="mb-4 flex items-center gap-2">
                     <div className="h-2.5 w-2.5 rounded-full bg-herme" />
-                    <span className="text-xs uppercase tracking-widest text-herme/80">Bisync AI Console</span>
+                    <span className="text-xs uppercase tracking-widest text-herme/80">{t('landing.neural.consoleTitle')}</span>
                   </div>
                   <div className="space-y-3 text-white/70">
-                    <p><span className="text-herme">&gt;</span> Analysing downtown outlet — covers +12% vs forecast</p>
-                    <p><span className="text-herme">&gt;</span> Vendor price drift detected: poultry −4.2% opportunity</p>
-                    <p><span className="text-herme">&gt;</span> Auto-drafting PO for 3 SKUs below par level</p>
-                    <p className="text-herme-light"><span className="text-herme">&gt;</span> Awaiting approval — routed to Operations Manager</p>
+                    <p><span className="text-herme">&gt;</span> {t('landing.neural.consoleLine1')}</p>
+                    <p><span className="text-herme">&gt;</span> {t('landing.neural.consoleLine2')}</p>
+                    <p><span className="text-herme">&gt;</span> {t('landing.neural.consoleLine3')}</p>
+                    <p className="text-herme-light"><span className="text-herme">&gt;</span> {t('landing.neural.consoleLine4')}</p>
                   </div>
                 </div>
               </div>
             </div>
             <div className="order-1 md:order-2">
-              <p className="text-sm font-semibold uppercase tracking-widest text-herme">Neural ops layer</p>
+              <p className="text-sm font-semibold uppercase tracking-widest text-herme">{t('landing.neural.eyebrow')}</p>
               <h2 className="mt-2 text-3xl font-bold md:text-4xl">
-                Chaos becomes clarity — automatically
+                {t('landing.neural.title')}
               </h2>
               <p className="mt-4 text-base leading-relaxed text-white/60">
-                Every purchase, transfer, and recipe change feeds the model. Bisync surfaces what
-                matters, suppresses noise, and keeps your entire network synchronised in real time.
+                {t('landing.neural.subtitle')}
               </p>
               <button
                 type="button"
                 onClick={scrollToFeatures}
                 className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-herme transition-colors hover:text-herme-light"
               >
-                See capabilities
+                {t('landing.neural.seeCapabilities')}
                 <ArrowRight size={16} />
               </button>
             </div>
           </div>
         </section>
 
-        {/* Mobile / edge */}
         <section className="py-20 md:py-28">
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 md:grid-cols-2">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-widest text-herme">Edge Intelligence</p>
+              <p className="text-sm font-semibold uppercase tracking-widest text-herme">{t('landing.edge.eyebrow')}</p>
               <h2 className="mt-2 text-3xl font-bold md:text-4xl">
-                AI in your pocket, across every outlet
+                {t('landing.edge.title')}
               </h2>
               <p className="mt-4 text-base leading-relaxed text-white/60">
-                Approve AI-drafted orders, review margin alerts, and command inventory from anywhere.
-                The same neural engine runs in the cloud and on mobile — always in sync.
+                {t('landing.edge.subtitle')}
               </p>
             </div>
             <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-3xl border border-herme/25 bg-gradient-to-br from-herme/20 via-herme-dark/30 to-herme-ink">
@@ -296,38 +263,36 @@ export function LandingPage() {
                     <Bot size={22} className="text-herme" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-white">Smart Agent Active</p>
-                    <p className="text-xs text-white/50">Monitoring 4 locations</p>
+                    <p className="text-sm font-semibold text-white">{t('landing.edge.agentActive')}</p>
+                    <p className="text-xs text-white/50">{t('landing.edge.monitoringLocations')}</p>
                   </div>
                 </div>
                 <div className="mt-4 space-y-2">
                   <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
                     <div className="h-full w-4/5 rounded-full bg-gradient-to-r from-herme to-herme-light" />
                   </div>
-                  <p className="text-xs text-white/45">System confidence: 87%</p>
+                  <p className="text-xs text-white/45">{t('landing.edge.systemConfidence')}</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Capabilities grid */}
         <section id="capabilities" className="border-t border-white/10 bg-white/[0.02] py-20 md:py-28">
           <div className="mx-auto max-w-6xl px-6">
             <p className="text-center text-sm font-semibold uppercase tracking-widest text-herme">
-              AI Capabilities
+              {t('landing.capabilities.eyebrow')}
             </p>
             <h2 className="mt-2 text-center text-3xl font-bold md:text-4xl">
-              Built for the next decade of hospitality
+              {t('landing.capabilities.title')}
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-center text-base text-white/55">
-              Six intelligent modules working as one — replacing fragmented tools with a single,
-              self-improving operations brain.
+              {t('landing.capabilities.subtitle')}
             </p>
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {AI_CAPABILITIES.map(({ icon: Icon, title, description, tag }) => (
+              {CAPABILITY_KEYS.map(({ key, icon: Icon }) => (
                 <article
-                  key={title}
+                  key={key}
                   className="group rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent p-6 transition-all hover:border-herme/40 hover:shadow-lg hover:shadow-herme/5"
                 >
                   <div className="mb-4 flex items-center justify-between">
@@ -335,11 +300,11 @@ export function LandingPage() {
                       <Icon size={22} />
                     </div>
                     <span className="rounded-full border border-herme/30 bg-herme/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-herme-light">
-                      {tag}
+                      {t(`landing.capabilityItems.${key}.tag`)}
                     </span>
                   </div>
-                  <h3 className="text-lg font-bold text-white">{title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-white/55">{description}</p>
+                  <h3 className="text-lg font-bold text-white">{t(`landing.capabilityItems.${key}.title`)}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-white/55">{t(`landing.capabilityItems.${key}.description`)}</p>
                 </article>
               ))}
             </div>
@@ -349,7 +314,7 @@ export function LandingPage() {
                 onClick={() => setLoginOpen(true)}
                 className="inline-flex items-center gap-2 rounded-full bg-herme px-8 py-3.5 text-sm font-semibold text-white transition-all hover:bg-herme-dark hover:shadow-xl hover:shadow-herme/25"
               >
-                Launch Bisync.cloud
+                {t('landing.capabilities.launch')}
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -359,7 +324,7 @@ export function LandingPage() {
 
       <footer className="border-t border-white/10 py-8">
         <div className="mx-auto max-w-6xl px-6 text-center text-sm text-white/40">
-          Copyright Cube Value Sdn Bhd (1164413X)
+          {t('landing.footer')}
         </div>
       </footer>
 

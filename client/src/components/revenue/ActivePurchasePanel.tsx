@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import { Check, Copy, PackageCheck, X } from 'lucide-react';
 import { api, type PurchaseOrder, type PurchaseOrderLineWorkflowPayload } from '../../api';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
-import { formatRm } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { orgRequiresHalalCertOnReceive } from '../../data/vendorPolicyRules';
 import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { applyVendorProductPriceUpdates } from '../../data/vendorProductPrices';
@@ -79,6 +79,7 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
 }
 
 export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
+  const { rm } = useCountryFormatters();
   const { currentUser } = useCurrentUser();
   const orgPolicyTags = useOrgVendorPolicy(order.companyId, order.locationExternalIds ?? []);
   const requiresHalalCert = orgRequiresHalalCertOnReceive(orgPolicyTags);
@@ -340,10 +341,10 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             )}
             <div>
               <p className="text-muted-foreground">Total</p>
-              <p className="font-sans font-medium mt-0.5">{formatRm(totals.total)}</p>
+              <p className="font-sans font-medium mt-0.5">{rm(totals.total)}</p>
               {totals.taxTotal > 0 && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Subtotal {formatRm(totals.subtotal)} + Tax {formatRm(totals.taxTotal)}
+                  Subtotal {rm(totals.subtotal)} + Tax {rm(totals.taxTotal)}
                 </p>
               )}
             </div>
@@ -431,11 +432,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           )}
                         </td>
                         {mode === 'reconcile' && (
-                          <td className="px-3 py-2 font-sans text-muted-foreground">{formatRm(line.issuedUnitPrice)}</td>
+                          <td className="px-3 py-2 font-sans text-muted-foreground">{rm(line.issuedUnitPrice)}</td>
                         )}
                         <td className="px-3 py-2">
                           {readOnly ? (
-                            <span className="font-sans">{formatRm(price)}</span>
+                            <span className="font-sans">{rm(price)}</span>
                           ) : (
                             <input
                               type="number"
@@ -460,7 +461,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
                               />
                             ) : (
-                              <span className="font-sans">{tax > 0 ? formatRm(tax) : '—'}</span>
+                              <span className="font-sans">{tax > 0 ? rm(tax) : '—'}</span>
                             )}
                           </td>
                         )}
@@ -479,7 +480,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             )}
                           </td>
                         )}
-                        <td className="px-3 py-2 font-sans">{formatRm(lineTotal)}</td>
+                        <td className="px-3 py-2 font-sans">{rm(lineTotal)}</td>
                       </tr>
                     );
                   })}

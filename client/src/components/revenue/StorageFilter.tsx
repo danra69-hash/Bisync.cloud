@@ -4,7 +4,6 @@ import {
   listAreasForLocations,
   listStoragesForFilter,
   loadStorageAssignment,
-  resolveStorageLocationLabels,
   storageEntryKey,
   type MyStorageEntry,
 } from '../../data/storageAssignment';
@@ -36,16 +35,15 @@ export function StorageFilter({
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const assignment = useMemo(() => loadStorageAssignment(), [open, areaFilter, locationIds.join(',')]);
-  const locationLabels = useMemo(() => resolveStorageLocationLabels(locationIds), [locationIds]);
 
   const areas = useMemo(
-    () => ['All', ...listAreasForLocations(assignment, locationLabels)],
-    [assignment, locationLabels],
+    () => ['All', ...listAreasForLocations(assignment, locationIds)],
+    [assignment, locationIds],
   );
 
   const storages = useMemo(
-    () => listStoragesForFilter(assignment, locationLabels, areaFilter),
-    [assignment, locationLabels, areaFilter],
+    () => listStoragesForFilter(assignment, locationIds, areaFilter),
+    [assignment, locationIds, areaFilter],
   );
 
   useEffect(() => {

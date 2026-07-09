@@ -11,6 +11,8 @@ import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { api, ApiError, type Product, type ProductManagementSummary, type ProduceBatchShortage } from '../../api';
 import { resolveManagementBatchUnit } from '../../data/productForm';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import {
   allocateFifoRemainingBatches,
   compareProductBatchesOldestFirst,
@@ -168,9 +170,9 @@ function matchesProductManagementFilters(
   return !product.isSubProduct && product.b2bEnabled;
 }
 
-function formatQty(value: number): string {
-  if (!Number.isFinite(value)) return '0';
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+function formatQty(value: number, countryCode: string): string {
+  if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
+  return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 }
 
 function formatDisplayDate(iso: string | null | undefined): string {
@@ -232,6 +234,7 @@ export function ProductManagementPage({
   embedded = false,
   viewMode = 'b2b',
 }: Props) {
+  const countryCode = useOrgCountryCode();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -746,9 +749,9 @@ export function ProductManagementPage({
                                       'QTY On Hand',
                                       <span className="font-medium tabular-nums">
                                         {row.fifoRemainingQty != null
-                                          ? formatQty(row.fifoRemainingQty)
+                                          ? formatQty(row.fifoRemainingQty, countryCode)
                                           : row.batchQty != null
-                                            ? formatQty(row.batchQty)
+                                            ? formatQty(row.batchQty, countryCode)
                                             : '—'}
                                       </span>,
                                     )}
@@ -763,7 +766,7 @@ export function ProductManagementPage({
                                     {stackedMetric(
                                       'QTY On Order',
                                       <span className="font-medium tabular-nums">
-                                        {row.onOrderQty > 0 ? formatQty(row.onOrderQty) : '—'}
+                                        {row.onOrderQty > 0 ? formatQty(row.onOrderQty, countryCode) : '—'}
                                       </span>,
                                     )}
                                     {stackedMetric(
@@ -780,7 +783,7 @@ export function ProductManagementPage({
                                       'QTY in incubation',
                                       <span className="font-medium tabular-nums">
                                         {row.incubationQty != null && row.incubationQty > 0
-                                          ? formatQty(row.incubationQty)
+                                          ? formatQty(row.incubationQty, countryCode)
                                           : '—'}
                                       </span>,
                                     )}
@@ -795,7 +798,7 @@ export function ProductManagementPage({
                                       'QTY in incubation',
                                       <span className="font-medium tabular-nums">
                                         {row.incubationQty != null && row.incubationQty > 0
-                                          ? formatQty(row.incubationQty)
+                                          ? formatQty(row.incubationQty, countryCode)
                                           : '—'}
                                       </span>,
                                     )}
@@ -808,7 +811,7 @@ export function ProductManagementPage({
                                   {stackedMetric(
                                     'QTY to Produce',
                                     <span className="font-medium tabular-nums">
-                                      {row.toProduceQty > 0 ? formatQty(row.toProduceQty) : '—'}
+                                      {row.toProduceQty > 0 ? formatQty(row.toProduceQty, countryCode) : '—'}
                                     </span>,
                                   )}
                                   {stackedMetric(

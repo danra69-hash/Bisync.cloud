@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type Product } from '../../api';
 import { blankComponentRow, fromApiUom, toApiUom, type AltUnitEntry } from '../../data/componentForm';
+import { getDefaultCategoryAndGroup, loadComponentHierarchy } from '../../data/componentHierarchy';
 import { loadExtraGroups, removeExtraGroup, saveExtraGroups, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
 import {
   convertProductParStockQty,
@@ -17,7 +18,8 @@ import {
   resolveDefaultProductParStockUom,
   serializeProductParStockUom,
 } from '../../data/productParStock';
-import { componentMatchesLocations, formatRm } from '../../data/createOrder';
+import { componentMatchesLocations } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import {
   blankProductAlias,
   blankProductLine,
@@ -25,9 +27,9 @@ import {
   calcProductCogs,
   calcSubProductUnitCost,
   calcTotalCost,
-  formatCogsPercent,
   generateProductId,
   isProductLineFilled,
+  parseOptionalActivationPeriodHours,
   productLineFromComponent,
   productLineFromSubProduct,
   type ProductAliasLine,
@@ -47,13 +49,16 @@ import {
   isB2bAlternateLineActive,
   parseB2bSalesConfigJson,
   resolveLinkedSubProduct,
+  resolveLinkedSubProductBatchCogs,
   resolvePrincipalB2bRrp,
   seedB2bSalesFromSubProduct,
   serializeB2bSalesConfig,
+  summarizeB2bSalesUnit,
   type B2bSalesConfig,
 } from '../../data/productB2bSales';
 import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import { B2bSalesBox } from './B2bSalesBox';
+import { ProductAliasB2bSalesModal } from './ProductAliasB2bSalesModal';
 import { siCategories, siGroups } from '../../data/revenueManagement';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import { ComponentEditPanel } from './ComponentEditPanel';
@@ -150,6 +155,7 @@ function ComponentLinesSection({
   onOpenAddComponent,
   onOpenProductionMethod,
 }: ComponentLinesSectionProps) {
+  const { rm } = useCountryFormatters();
   const columns = includeSubProducts
     ? BOM_LINE_TABLE_COLUMNS.map(column => (
       column.key === 'component'
@@ -340,7 +346,7 @@ function ComponentLinesSection({
                       className={`${fieldCls} max-w-[6rem]`}
                     />
                   </td>
-                  <td className={`${tdCls} font-medium`}>{formatRm(subtotal)}</td>
+                  <td className={`${tdCls} font-medium`}>{rm(subtotal)}</td>
                   <td className={tdCls}>
                     <button
                       type="button"
@@ -375,7 +381,7 @@ function ComponentLinesSection({
 
       <div className="px-4 py-3 border-t border-border bg-muted/10 flex items-center justify-end gap-3">
         <span className="text-xs text-muted-foreground">{totalLabel}</span>
-        <span className="text-sm font-semibold">{formatRm(totalCost)}</span>
+        <span className="text-sm font-semibold">{rm(totalCost)}</span>
       </div>
     </section>
   );
@@ -429,6 +435,7 @@ export function ProductsPage({
   onEditorRequestConsumed,
   onClose,
 }: Props) {
+  const { rm, cogsPercent } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
   const [loading, setLoading] = useState(false);
@@ -456,6 +463,7 @@ export function ProductsPage({
   const [parStockUom, setParStockUom] = useState('');
   const [productLocationIds, setProductLocationIds] = useState<string[]>([]);
   const [aliases, setAliases] = useState<ProductAliasLine[]>([]);
+  const [aliasB2bModalKey, setAliasB2bModalKey] = useState<string | null>(null);
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
   const [lines, setLines] = useState<ProductLine[]>([blankProductLine()]);
   const [packagingLines, setPackagingLines] = useState<ProductLine[]>([blankProductLine()]);
@@ -591,6 +599,23 @@ export function ProductsPage({
     [lines, savedProducts],
   );
 
+  const linkedSubProductBatchCogs = useMemo(
+    () => resolveLinkedSubProductBatchCogs(lines, savedProducts),
+    [lines, savedProducts],
+  );
+
+  const principalB2bUnitSummary = useMemo(
+    () => (linkedSubProduct
+      ? summarizeB2bSalesUnit(
+        b2bSalesConfig.principal,
+        linkedSubProduct,
+        0,
+        linkedSubProductBatchCogs,
+      )
+      : null),
+    [b2bSalesConfig.principal, linkedSubProduct, linkedSubProductBatchCogs],
+  );
+
   const existingProductIds = useMemo(
     () => savedProducts.map(p => p.productId),
     [savedProducts],
@@ -620,7 +645,9 @@ export function ProductsPage({
     const parsed = parseFloat(rrp);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   }, [rrp]);
-  const principalCogsPercent = formatCogsPercent(effectiveProductCogs, rrpValue);
+  const principalCogsPercent = b2bEnabled && !b2cEnabled && principalB2bUnitSummary
+    ? principalB2bUnitSummary.cogsPercent
+    : cogsPercent(effectiveProductCogs, rrpValue);
   const subProductUnitCost = useMemo(
     () => calcSubProductUnitCost(effectiveProductCogs, yieldQuantity),
     [effectiveProductCogs, yieldQuantity],
@@ -773,12 +800,19 @@ export function ProductsPage({
     setProductLocationIds(product.locationExternalIds?.length
       ? [...product.locationExternalIds]
       : selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
-    setAliases((product.aliases ?? []).map(alias => ({
-      key: alias.id ? `saved-alias-${alias.id}` : `alias-${alias.name}`,
-      id: alias.id,
-      name: alias.name,
-      rrp: alias.rrp > 0 ? String(alias.rrp) : '',
-    })));
+    setAliases((product.aliases ?? []).map(alias => {
+      const parsedAliasConfig = parseB2bSalesConfigJson(alias.b2bSalesConfigJson);
+      if (alias.rrp > 0 && !parsedAliasConfig.principal.rrp.trim()) {
+        parsedAliasConfig.principal.rrp = String(alias.rrp);
+      }
+      return {
+        key: alias.id ? `saved-alias-${alias.id}` : `alias-${alias.name}`,
+        id: alias.id,
+        name: alias.name,
+        rrp: alias.rrp > 0 ? String(alias.rrp) : '',
+        b2bSalesConfig: parsedAliasConfig,
+      };
+    }));
     setLines(mapProductItemsToLines(product.items, subProductCatalog));
     setPackagingLines(mapProductItemsToLines(product.packagingItems, subProductCatalog));
     if (product.b2bEnabled && !product.isSubProduct && !parsedB2bSales.principal.rrp && product.rrp > 0) {
@@ -914,10 +948,11 @@ export function ProductsPage({
     setComponentEditorTarget(target);
     setComponentEditorLineKey(lineKey);
     setIsNewComponent(true);
+    const hierarchyDefaults = getDefaultCategoryAndGroup(loadComponentHierarchy());
     setEditComponentRow({
       ...blankComponentRow,
-      category: category || blankComponentRow.category,
-      group: group || blankComponentRow.group,
+      category: category || hierarchyDefaults.category,
+      group: group || hierarchyDefaults.group,
       locations: selectedLocationIds.length > 0 ? [...selectedLocationIds] : blankComponentRow.locations,
     });
   }
@@ -990,7 +1025,7 @@ export function ProductsPage({
   }
 
   function addAlias() {
-    setAliases(prev => [...prev, blankProductAlias()]);
+    setAliases(prev => [...prev, blankProductAlias(b2bEnabled ? b2bSalesConfig : undefined)]);
   }
 
   function updateAlias(key: string, patch: Partial<ProductAliasLine>) {
@@ -1084,9 +1119,9 @@ export function ProductsPage({
         showSaveError('Enter an expiry period (days) greater than zero.');
         return;
       }
-      const activationHours = parseInt(activationPeriodHours, 10);
-      if (!Number.isFinite(activationHours) || activationHours < 0) {
-        showSaveError('Enter incubation hours as zero or greater.');
+      const activation = parseOptionalActivationPeriodHours(activationPeriodHours);
+      if (!activation.valid) {
+        showSaveError('Incubation hours must be a whole number zero or greater, or leave blank for none.');
         return;
       }
     } else if (b2bEnabled) {
@@ -1095,9 +1130,9 @@ export function ProductsPage({
         showSaveError('Enter an expiry period (days) greater than zero for B2B products.');
         return;
       }
-      const activationHours = parseInt(activationPeriodHours, 10);
-      if (!Number.isFinite(activationHours) || activationHours < 0) {
-        showSaveError('Enter incubation hours as zero or greater.');
+      const activation = parseOptionalActivationPeriodHours(activationPeriodHours);
+      if (!activation.valid) {
+        showSaveError('Incubation hours must be a whole number zero or greater, or leave blank for none.');
         return;
       }
       const linked = resolveLinkedSubProduct(lines, savedProducts);
@@ -1168,11 +1203,21 @@ export function ProductsPage({
 
     const payloadAliases = aliases
       .filter(alias => alias.name.trim())
-      .map(alias => ({
-        id: alias.id,
-        name: alias.name.trim(),
-        rrp: parseFloat(alias.rrp) || 0,
-      }));
+      .map(alias => {
+        const aliasConfig = buildB2bConfigForSave(
+          alias.b2bSalesConfig,
+          parseFloat(alias.rrp) || 0,
+        );
+        const aliasRrp = b2bEnabled
+          ? resolvePrincipalB2bRrp(aliasConfig, parseFloat(alias.rrp) || 0)
+          : parseFloat(alias.rrp) || 0;
+        return {
+          id: alias.id,
+          name: alias.name.trim(),
+          rrp: aliasRrp,
+          b2bSalesConfigJson: b2bEnabled ? serializeB2bSalesConfig(aliasConfig) : undefined,
+        };
+      });
 
     const effectiveRrp = isSubProduct
       ? 0
@@ -1200,7 +1245,7 @@ export function ProductsPage({
       yieldAltUnitsJson: supportsBatchAdditionalUom ? serializeYieldAltUnits(yieldAltUnits) : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
       activationPeriodHours: supportsBatchAdditionalUom
-        ? parseInt(activationPeriodHours, 10) || 0
+        ? parseOptionalActivationPeriodHours(activationPeriodHours).hours
         : undefined,
       parStock: parseFloat(parStock) || 0,
       parStockUom: (parseFloat(parStock) || 0) > 0
@@ -1531,11 +1576,11 @@ export function ProductsPage({
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS</p>
                     <p className="text-sm font-semibold mt-1">
                       {yieldUom && (parseFloat(yieldQuantity) || 0) > 0
-                        ? `${formatRm(subProductUnitCost)} / ${yieldUom}`
+                        ? `${rm(subProductUnitCost)} / ${yieldUom}`
                         : '—'}
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Product COGS {formatRm(effectiveProductCogs)} ÷ {yieldQuantity || '—'}
+                      Product COGS {rm(effectiveProductCogs)} ÷ {yieldQuantity || '—'}
                     </p>
                   </div>
                 </div>
@@ -1588,9 +1633,16 @@ export function ProductsPage({
                         </button>
                       </div>
                       {aliases.map(alias => {
-                        const aliasRrp = parseFloat(alias.rrp) || 0;
+                        const aliasRrp = !b2bEnabled ? (parseFloat(alias.rrp) || 0) : 0;
                         return (
-                          <div key={alias.key} className="grid grid-cols-1 sm:grid-cols-[1fr_8rem_5rem_auto] gap-2 items-center">
+                          <div
+                            key={alias.key}
+                            className={`grid grid-cols-1 gap-2 items-center ${
+                              b2bEnabled
+                                ? 'sm:grid-cols-[1fr_auto_auto]'
+                                : 'sm:grid-cols-[1fr_8rem_5rem_auto]'
+                            }`}
+                          >
                             <input
                               type="text"
                               value={alias.name}
@@ -1598,21 +1650,33 @@ export function ProductsPage({
                               placeholder="Client-specific alias name"
                               className={fieldCls}
                             />
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-muted-foreground shrink-0">RM</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={alias.rrp}
-                                onChange={e => updateAlias(alias.key, { rrp: e.target.value })}
-                                placeholder="RRP"
-                                className={fieldCls}
-                              />
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {formatCogsPercent(effectiveProductCogs, aliasRrp)}
-                            </span>
+                            {b2bEnabled ? (
+                              <button
+                                type="button"
+                                onClick={() => setAliasB2bModalKey(alias.key)}
+                                className="inline-flex items-center justify-center px-3 py-1.5 rounded-md border border-border text-xs font-semibold text-primary hover:bg-primary/5 transition-colors whitespace-nowrap"
+                              >
+                                Set RRP
+                              </button>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-muted-foreground shrink-0">RM</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={alias.rrp}
+                                    onChange={e => updateAlias(alias.key, { rrp: e.target.value })}
+                                    placeholder="RRP"
+                                    className={fieldCls}
+                                  />
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  {cogsPercent(effectiveProductCogs, aliasRrp)}
+                                </span>
+                              </>
+                            )}
                             <button
                               type="button"
                               onClick={() => removeAlias(alias.key)}
@@ -1631,10 +1695,10 @@ export function ProductsPage({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product COGS</p>
-                    <p className="text-sm font-semibold mt-1">{formatRm(effectiveProductCogs)}</p>
+                    <p className="text-sm font-semibold mt-1">{rm(effectiveProductCogs)}</p>
                     {!isSubProduct && b2cEnabled && !b2bEnabled && totalPackagingCost > 0 ? (
                       <p className="text-[10px] text-muted-foreground mt-0.5">
-                        B2C dine-in excludes packaging; takeaway adds {formatRm(totalPackagingCost)} at POS.
+                        B2C dine-in excludes packaging; takeaway adds {rm(totalPackagingCost)} at POS.
                       </p>
                     ) : null}
                   </div>
@@ -1694,11 +1758,12 @@ export function ProductsPage({
                     step="1"
                     value={activationPeriodHours}
                     onChange={e => setActivationPeriodHours(e.target.value)}
-                    placeholder="e.g. 24"
+                    placeholder="Optional"
                     className={fieldCls}
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Hours after production before the batch can be sold. Use 0 if sellable immediately.
+                    Optional. Leave blank if the batch is sellable immediately after production.
+                    Enter hours to hold stock in incubation before it can be sold.
                   </p>
                 </div>
               </div>
@@ -1810,6 +1875,7 @@ export function ProductsPage({
             <B2bSalesBox
               config={b2bSalesConfig}
               linkedSubProduct={linkedSubProduct}
+              linkedSubProductBatchCogs={linkedSubProductBatchCogs}
               disabled={!isEditing || saving}
               onChange={setB2bSalesConfig}
             />
@@ -2018,6 +2084,28 @@ export function ProductsPage({
             />,
             document.body,
           ) : null}
+
+          {aliasB2bModalKey ? (() => {
+            const editingAlias = aliases.find(alias => alias.key === aliasB2bModalKey);
+            if (!editingAlias) return null;
+            return (
+              <ProductAliasB2bSalesModal
+                aliasName={editingAlias.name}
+                config={editingAlias.b2bSalesConfig}
+                principalConfig={b2bSalesConfig}
+                fallbackRrp={parseFloat(editingAlias.rrp) || 0}
+                linkedSubProduct={linkedSubProduct}
+                linkedSubProductBatchCogs={linkedSubProductBatchCogs}
+                onSave={(config, rrp) => {
+                  updateAlias(editingAlias.key, {
+                    b2bSalesConfig: config,
+                    rrp: rrp > 0 ? String(rrp) : '',
+                  });
+                }}
+                onClose={() => setAliasB2bModalKey(null)}
+              />
+            );
+          })() : null}
 
           {productionMethodOpen ? (
             <ProductionMethodModal

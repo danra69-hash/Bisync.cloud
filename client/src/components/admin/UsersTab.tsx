@@ -26,6 +26,7 @@ import {
 } from '../../data/userAccess';
 import { AccessControlLevelField } from './AccessControlLevelField';
 import { ToggleSwitch } from './ToggleSwitch';
+import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS, NESTED_PANEL_OVERLAY_CLS, NESTED_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
 
 type UserSortColumn = 'employeeId' | 'name' | 'company' | 'locations' | 'email' | 'role' | 'access' | 'status';
@@ -275,6 +276,7 @@ function UserPanel({
   const companyLocations = allLocations.filter(l => l.companyId === form.companyId);
   const selectedLocationIds = parseLocationIds(form.locationIdsJson);
   const profileLocked = isNew ? !!form.employeeId : ('employeeId' in user && !!user.employeeId);
+  const countryCode = companies.find(c => c.id === form.companyId)?.countryCode ?? 'MY';
 
   function selectEmployee(employeeId: number) {
     const employee = availableEmployees.find(e => e.id === employeeId);
@@ -412,10 +414,14 @@ function UserPanel({
                 <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Role</label>
                 <input className={inputCls} value={form.role} readOnly={profileLocked} onChange={e => set('role', e.target.value)} placeholder="From employee record" />
               </div>
-              <div>
-                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Phone</label>
-                <input className={inputCls} value={form.phone} readOnly={profileLocked} onChange={e => set('phone', e.target.value)} placeholder="From employee record" />
-              </div>
+              <CountryPhoneInput
+                countryCode={countryCode}
+                value={form.phone}
+                onChange={phone => set('phone', phone)}
+                label="Phone"
+                showError={false}
+                readOnly={profileLocked}
+              />
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer w-fit">

@@ -87,11 +87,23 @@ public class B2bCustomersController(BisyncDbContext db) : ControllerBase
                 name = c.Name.Trim(),
                 position = c.Position.Trim(),
                 mobile = c.Mobile.Trim(),
-                fax = c.Fax.Trim(),
+                email = c.Email.Trim(),
                 isDefault = c.IsDefault,
             }),
             JsonOptions);
         customer.TaggedProductIdsJson = JsonSerializer.Serialize(request.TaggedProductIds.Distinct(), JsonOptions);
+        customer.TaggedProductAliasIdsJson = JsonSerializer.Serialize(request.TaggedProductAliasIds.Distinct(), JsonOptions);
+        customer.TaggedB2bProductUnitsJson = JsonSerializer.Serialize(
+            request.TaggedB2bProductUnits
+                .Where(unit => unit.ProductId > 0 && !string.IsNullOrWhiteSpace(unit.UnitKey))
+                .Select(unit => new
+                {
+                    productId = unit.ProductId,
+                    aliasId = unit.AliasId,
+                    unitKey = unit.UnitKey.Trim(),
+                })
+                .DistinctBy(unit => $"{unit.productId}:{unit.aliasId}:{unit.unitKey}"),
+            JsonOptions);
         customer.PurchaseHistoryJson = JsonSerializer.Serialize(request.PurchaseHistory, JsonOptions);
         return customer;
     }

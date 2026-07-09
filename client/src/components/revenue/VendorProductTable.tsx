@@ -17,9 +17,12 @@ import {
   filterVendorProducts,
   formatDeliveryBreakdown,
   resolveComponentUomQty,
+  applyVendorProductOverrides,
   VENDOR_PRODUCT_CATALOG,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
+import { formatCountryNumber } from '../../utils/numberFormat';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { tableHeaderCompactCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderStyles';
 
 export type CompanyLocationOption = {
@@ -50,18 +53,19 @@ type Props = RowHandlers & {
   vendor: string;
   productSearch: string;
   companyLocations: CompanyLocationOption[];
+  hideYieldLoss?: boolean;
   onVendorChange: (vendor: string) => void;
   onProductSearchChange: (search: string) => void;
 };
 
-function formatQty(n: number): string {
+function formatQty(n: number, countryCode: string): string {
   if (n <= 0) return '—';
-  return n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(Number(n.toFixed(4)));
+  return formatCountryNumber(n, countryCode);
 }
 
-function formatPrice(n: number): string {
+function formatPrice(n: number, countryCode: string): string {
   if (n <= 0) return '—';
-  return n < 0.1 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`;
+  return `$${formatCountryNumber(n, countryCode)}`;
 }
 
 function VendorProductLocationModal({
@@ -156,13 +160,16 @@ export function VendorProductTableBody({
   showLocationColumn,
   companyLocations,
   handlers,
+  hideYieldLoss = false,
 }: {
   products: VendorProductCatalogItem[];
   showTagColumn: boolean;
   showLocationColumn: boolean;
   companyLocations: CompanyLocationOption[];
   handlers: RowHandlers;
+  hideYieldLoss?: boolean;
 }) {
+  const countryCode = useOrgCountryCode();
   const [locationModalProductId, setLocationModalProductId] = useState<string | null>(null);
   const {
     defaultComponentUom,
@@ -187,7 +194,7 @@ export function VendorProductTableBody({
     : null;
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
-  const colSpan = 9 + (showLocationColumn ? 1 : 0) + (showTagColumn ? 1 : 0);
+  const colSpan = 9 + (hideYieldLoss ? -1 : 0) + (showLocationColumn ? 1 : 0) + (showTagColumn ? 1 : 0);
   const {
     visibleItems: pagedProducts,
     hasMore,
@@ -208,7 +215,9 @@ export function VendorProductTableBody({
             <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Principal UOM Qty</span></th>
             <th className={`${tableHeaderCompactCls('left')} w-[9%]`}><span className={TABLE_HEADER_LABEL_CLS}>Component Principal UOM Price</span></th>
             <th className={`${tableHeaderCompactCls('left')} w-[7%]`}><span className={TABLE_HEADER_LABEL_CLS}>Component UOM</span></th>
-            <th className={`${tableHeaderCompactCls('left')} w-[7%]`}><span className={TABLE_HEADER_LABEL_CLS}>Yield Loss %</span></th>
+            {!hideYieldLoss ? (
+              <th className={`${tableHeaderCompactCls('left')} w-[7%]`}><span className={TABLE_HEADER_LABEL_CLS}>Yield Loss %</span></th>
+            ) : null}
             <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Qty</span></th>
             <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Price</span></th>
             {showLocationColumn && <th className={`${tableHeaderCompactCls('center')} w-[5%]`}><span className={TABLE_HEADER_LABEL_CLS}>Loc</span></th>}
@@ -235,7 +244,7 @@ export function VendorProductTableBody({
             const qtyAutoFilled = resolved.auto
               && (storedQty === undefined || storedQty === '' || storedQty === String(resolved.qty));
 
-            const lossYield = parseFloat(lossYieldByProduct[product.id] ?? '0') || 0;
+            const lossYield = hideYieldLoss ? 0 : (parseFloat(lossYieldByProduct[product.id] ?? '0') || 0);
             const principalPrice = calcComponentPrincipalUomPrice(product.deliveryPrice, principalQty);
             const nettQty = calcNettUomQty(principalQty, lossYield);
             const nettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
@@ -276,7 +285,7 @@ export function VendorProductTableBody({
                     Delivery: {formatDeliveryBreakdown(product.delivery)}
                   </p>
                 </td>
-                <td className="px-2 py-2.5 font-sans">${product.deliveryPrice.toFixed(2)}</td>
+                <td className="px-2 py-2.5 font-sans">${formatCountryNumber(product.deliveryPrice, countryCode)}</td>
                 <td className="px-2 py-2.5">
                   <div className="relative">
                     <input
@@ -294,7 +303,7 @@ export function VendorProductTableBody({
                     <p className="text-[11px] text-muted-foreground mt-1">Enter conversion manually</p>
                   )}
                 </td>
-                <td className="px-2 py-2.5 font-sans">{formatPrice(principalPrice)}</td>
+                <td className="px-2 py-2.5 font-sans">{formatPrice(principalPrice, countryCode)}</td>
                 <td className="px-2 py-2.5">
                   <select
                     className={`${selectCls} text-xs py-1 w-full`}
@@ -306,26 +315,28 @@ export function VendorProductTableBody({
                     ))}
                   </select>
                 </td>
-                <td className="px-2 py-2.5">
-                  <input
-                    type="number"
-                    className={`${inputCls} text-xs py-1 w-full`}
-                    value={lossYieldByProduct[product.id] ?? ''}
-                    onChange={e => onLossYieldChange(product.id, e.target.value)}
-                    placeholder="0"
-                    min="0"
-                    max="100"
-                  />
-                </td>
+                {!hideYieldLoss ? (
+                  <td className="px-2 py-2.5">
+                    <input
+                      type="number"
+                      className={`${inputCls} text-xs py-1 w-full`}
+                      value={lossYieldByProduct[product.id] ?? ''}
+                      onChange={e => onLossYieldChange(product.id, e.target.value)}
+                      placeholder="0"
+                      min="0"
+                      max="100"
+                    />
+                  </td>
+                ) : null}
                 <td className="px-2 py-2.5 font-sans text-muted-foreground">
-                  {formatQty(nettQty)}
+                  {formatQty(nettQty, countryCode)}
                   {lossYield > 0 && principalQty > 0 && (
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {formatQty(principalQty)} − {lossYield}%
+                      {formatQty(principalQty, countryCode)} − {lossYield}%
                     </p>
                   )}
                 </td>
-                <td className="px-2 py-2.5 font-sans font-medium">{formatPrice(nettPrice)}</td>
+                <td className="px-2 py-2.5 font-sans font-medium">{formatPrice(nettPrice, countryCode)}</td>
                 {showLocationColumn && (
                   <td className="px-2 py-2.5 text-center">
                     <button
@@ -416,8 +427,14 @@ export function VendorProductTable({
   onComponentUomChange,
   onToggleTag,
   onProductLocationsChange,
+  hideYieldLoss = false,
 }: Props) {
-  const searchRows = filterVendorProducts(VENDOR_PRODUCT_CATALOG, productSearch, vendor)
+  const searchRows = filterVendorProducts(
+    applyVendorProductOverrides(),
+    productSearch,
+    vendor,
+    activeLocationIds,
+  )
     .filter(product => !taggedProductIds.includes(product.id));
   const showSearchTable = productSearch.trim().length > 0 || !!vendor;
   const scopedTaggedProductIds = filterTaggedVendorProductIdsForLocations(
@@ -461,6 +478,7 @@ export function VendorProductTable({
               showLocationColumn
               companyLocations={companyLocations}
               handlers={rowHandlers}
+              hideYieldLoss={hideYieldLoss}
             />
           </div>
         </div>
@@ -509,6 +527,7 @@ export function VendorProductTable({
                 showLocationColumn={companyLocations.length > 0}
                 companyLocations={companyLocations}
                 handlers={rowHandlers}
+                hideYieldLoss={hideYieldLoss}
               />
             </div>
           )}

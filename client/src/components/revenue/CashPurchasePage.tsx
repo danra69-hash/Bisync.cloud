@@ -3,10 +3,10 @@ import { ArrowDown, ArrowUp, Check, Paperclip, Plus, X } from 'lucide-react';
 import { api, type CashPurchase, type Vendor } from '../../api';
 import {
   componentMatchesLocations,
-  formatRm,
   resolveLowestEngagedTaggedVendorPrice,
   unitPriceInPrincipalUom,
 } from '../../data/createOrder';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import { fromApiUom } from '../../data/componentForm';
 import { ingredientToRow } from './smartIngredientShared';
@@ -123,6 +123,7 @@ const fieldCls =
 const labelCls = 'text-xs font-medium text-foreground';
 
 export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const { rm } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
   const [loading, setLoading] = useState(false);
@@ -373,7 +374,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
       });
 
       setSuccess(
-        `Added ${result.inventoryPurchase.quantity} ${result.inventoryPurchase.uom} of ${result.inventoryPurchase.componentName} to inventory (${formatRm(result.inventoryPurchase.unitPrice)} per ${result.inventoryPurchase.uom}).`,
+        `Added ${result.inventoryPurchase.quantity} ${result.inventoryPurchase.uom} of ${result.inventoryPurchase.componentName} to inventory (${rm(result.inventoryPurchase.unitPrice)} per ${result.inventoryPurchase.uom}).`,
       );
       resetForm();
       loadHistory();
@@ -587,7 +588,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
 
           <div className="flex items-center justify-between gap-3 pt-2 border-t border-border">
             <p className="text-xs text-muted-foreground">
-              Line total: <span className="font-sans font-medium text-foreground">{formatRm(lineTotal)}</span>
+              Line total: <span className="font-sans font-medium text-foreground">{rm(lineTotal)}</span>
             </p>
             <button
               type="submit"
@@ -623,7 +624,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
             <span className="text-muted-foreground">
               {monthHistory.rows.length} purchase{monthHistory.rows.length === 1 ? '' : 's'}
             </span>
-            <span className="font-sans font-medium">{formatRm(monthHistory.monthTotal)}</span>
+            <span className="font-sans font-medium">{rm(monthHistory.monthTotal)}</span>
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
             <div ref={historyScrollRef} className="flex-1 min-h-0 overflow-y-auto divide-y divide-border">
@@ -685,7 +686,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                             </p>
                           )}
                         </div>
-                        <span className="font-sans font-medium shrink-0">{formatRm(purchase.deliveryPrice)}</span>
+                        <span className="font-sans font-medium shrink-0">{rm(purchase.deliveryPrice)}</span>
                       </div>
                       <p className="text-muted-foreground mt-1">
                         {formatPurchaseDate(purchase.datePurchased)} · {purchase.quantity} {purchase.componentUom}
@@ -693,8 +694,8 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                       <div className="mt-2 rounded-md border border-border bg-muted/20 px-2.5 py-2 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-muted-foreground">
                           {currentUnitPrice !== null
-                            ? `Unit: ${formatRm(currentUnitPrice)} / ${principalUom}`
-                            : `Unit: ${formatRm(unitPriceForPurchase(purchase))} / ${purchase.componentUom}`}
+                            ? `Unit: ${rm(currentUnitPrice)} / ${principalUom}`
+                            : `Unit: ${rm(unitPriceForPurchase(purchase))} / ${purchase.componentUom}`}
                         </span>
                         {reference ? (
                           <span
@@ -705,7 +706,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                             {isUp && <ArrowUp size={12} />}
                             {isDown && <ArrowDown size={12} />}
                             {!isUp && !isDown && '→'}
-                            {reference.label}: {formatRm(reference.unitPrice)}
+                            {reference.label}: {rm(reference.unitPrice)}
                           </span>
                         ) : (
                           <span className="text-[11px] text-muted-foreground">No price benchmark</span>

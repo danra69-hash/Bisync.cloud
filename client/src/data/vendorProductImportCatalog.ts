@@ -13,6 +13,7 @@ import {
   type VendorProductCatalogItem,
   type VendorProductImportDraft,
 } from './vendorProductCatalog';
+import { formatCountryNumber } from '../utils/numberFormat';
 
 export type VendorProductFieldChange = {
   field: string;
@@ -114,14 +115,14 @@ function productToDraft(product: VendorProductCatalogItem): VendorProductImportD
   });
 }
 
-function buildComparable(draft: VendorProductImportDraft): Record<keyof typeof TEMPLATE_FIELD_LABELS, string> {
+function buildComparable(draft: VendorProductImportDraft, countryCode = 'MY'): Record<keyof typeof TEMPLATE_FIELD_LABELS, string> {
   return {
     vendorProductId: draft.vendorProductId || '',
     productName: draft.productName,
     group: draft.group,
     specification: draft.specification,
     deliveryUnit: draft.deliveryUnitText,
-    price: draft.deliveryPrice > 0 ? draft.deliveryPrice.toFixed(2) : '',
+    price: draft.deliveryPrice > 0 ? formatCountryNumber(draft.deliveryPrice, countryCode) : '',
   };
 }
 

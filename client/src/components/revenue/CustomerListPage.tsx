@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Search, UserPlus } from 'lucide-react';
-import { api, type B2bCustomer, type PosCustomer } from '../../api';
+import { api, type B2bCustomer, type Company, type PosCustomer } from '../../api';
 import {
   formatCustomerAddress,
   getDefaultContact,
@@ -64,6 +64,9 @@ export function CustomerListPage({
 
   const [b2bCustomers, setB2bCustomers] = useState<B2bCustomer[]>([]);
   const [posCustomers, setPosCustomers] = useState<PosCustomer[]>([]);
+  const [allB2bCustomers, setAllB2bCustomers] = useState<B2bCustomer[]>([]);
+  const [allPosCustomers, setAllPosCustomers] = useState<PosCustomer[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [b2bSearch, setB2bSearch] = useState('');
   const [posSearch, setPosSearch] = useState('');
@@ -81,10 +84,21 @@ export function CustomerListPage({
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    api.companies().then(setCompanies).catch(() => setCompanies([]));
+  }, []);
+
+  const countryCode = useMemo(
+    () => companies.find(c => c.id === selectedCompanyId)?.countryCode ?? 'MY',
+    [companies, selectedCompanyId],
+  );
+
   function reload() {
     if (!selectedCompanyId) {
       setB2bCustomers([]);
       setPosCustomers([]);
+      setAllB2bCustomers([]);
+      setAllPosCustomers([]);
       setLoading(false);
       return;
     }
@@ -92,14 +106,20 @@ export function CustomerListPage({
     Promise.all([
       api.b2bCustomers(selectedCompanyId),
       api.posCustomers(selectedCompanyId),
+      api.b2bCustomers(),
+      api.posCustomers(),
     ])
-      .then(([b2b, pos]) => {
+      .then(([b2b, pos, allB2b, allPos]) => {
         setB2bCustomers(b2b);
         setPosCustomers(pos);
+        setAllB2bCustomers(allB2b);
+        setAllPosCustomers(allPos);
       })
       .catch(() => {
         setB2bCustomers([]);
         setPosCustomers([]);
+        setAllB2bCustomers([]);
+        setAllPosCustomers([]);
       })
       .finally(() => setLoading(false));
   }
@@ -182,8 +202,8 @@ export function CustomerListPage({
     visibleCount: posVisibleCount,
   } = useInfiniteScrollSlice(sortedPos, { scrollRootRef });
 
-  const nextB2bId = useMemo(() => nextB2bCustomerExternalId(b2bCustomers), [b2bCustomers]);
-  const nextPosId = useMemo(() => nextPosCustomerExternalId(posCustomers), [posCustomers]);
+  const nextB2bId = useMemo(() => nextB2bCustomerExternalId(allB2bCustomers), [allB2bCustomers]);
+  const nextPosId = useMemo(() => nextPosCustomerExternalId(allPosCustomers), [allPosCustomers]);
 
   if (!selectedCompanyId) {
     return (
@@ -263,27 +283,29 @@ export function CustomerListPage({
                       <td className="py-2 pr-3">{customer.email || '—'}</td>
                       <td className="py-2 pr-3">{taggedCount}</td>
                       <td className="py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setB2bEditTarget(customer)}
-                          className="text-primary font-semibold hover:underline mr-2"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMyProductsTarget(customer)}
-                          className="text-primary font-semibold hover:underline mr-2"
-                        >
-                          My Product
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPurchaseHistoryTarget(customer)}
-                          className="text-primary font-semibold hover:underline"
-                        >
-                          Purchase History
-                        </button>
+                        <div className="inline-flex flex-wrap justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setB2bEditTarget(customer)}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMyProductsTarget(customer)}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-600 text-white hover:bg-sky-700 transition-colors"
+                          >
+                            My Product
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPurchaseHistoryTarget(customer)}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+                          >
+                            Purchase History
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -357,20 +379,22 @@ export function CustomerListPage({
                         ) : null}
                       </td>
                       <td className="py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setPosEditTarget(customer)}
-                          className="text-primary font-semibold hover:underline mr-2"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPosHistoryTarget(customer)}
-                          className="text-primary font-semibold hover:underline"
-                        >
-                          History
-                        </button>
+                        <div className="inline-flex flex-wrap justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setPosEditTarget(customer)}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPosHistoryTarget(customer)}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                          >
+                            History
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -391,11 +415,18 @@ export function CustomerListPage({
       {b2bEditTarget ? (
         <B2bCustomerPanel
           companyId={selectedCompanyId}
+          countryCode={countryCode}
           customer={b2bEditTarget === 'new' ? null : b2bEditTarget}
           nextExternalId={nextB2bId}
           onClose={() => setB2bEditTarget(null)}
           onSaved={saved => {
             setB2bCustomers(prev => {
+              const exists = prev.some(c => c.externalId === saved.externalId);
+              return exists
+                ? prev.map(c => c.externalId === saved.externalId ? saved : c)
+                : [...prev, saved];
+            });
+            setAllB2bCustomers(prev => {
               const exists = prev.some(c => c.externalId === saved.externalId);
               return exists
                 ? prev.map(c => c.externalId === saved.externalId ? saved : c)
@@ -409,11 +440,18 @@ export function CustomerListPage({
       {posEditTarget ? (
         <PosCustomerPanel
           companyId={selectedCompanyId}
+          countryCode={countryCode}
           customer={posEditTarget === 'new' ? null : posEditTarget}
           nextExternalId={nextPosId}
           onClose={() => setPosEditTarget(null)}
           onSaved={saved => {
             setPosCustomers(prev => {
+              const exists = prev.some(c => c.externalId === saved.externalId);
+              return exists
+                ? prev.map(c => c.externalId === saved.externalId ? saved : c)
+                : [...prev, saved];
+            });
+            setAllPosCustomers(prev => {
               const exists = prev.some(c => c.externalId === saved.externalId);
               return exists
                 ? prev.map(c => c.externalId === saved.externalId ? saved : c)

@@ -46,6 +46,7 @@ export function buildPurchaseOrderPdfData(params: {
     documentKind,
     orderDate: params.orderDateLabel,
     deliveryDate: params.deliveryDateLabel,
+    countryCode: params.company.countryCode,
     company: {
       name: params.company.name,
       address: formatCompanyAddress(params.company),

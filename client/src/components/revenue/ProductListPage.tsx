@@ -8,13 +8,22 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { Plus, RefreshCw, ArrowDown, ArrowUp } from 'lucide-react';
-import { api, type Product } from '../../api';
+import { api, type PosDeliveryUnitSelection, type Product } from '../../api';
 import { formatRm } from '../../data/createOrder';
-import { calcProductCogs, calcSubProductUnitCost, formatCogsPercent, resolveCogsPercentTrend } from '../../data/productForm';
+import { calcProductCogs, calcSubProductUnitCost, resolveCogsPercentTrend } from '../../data/productForm';
+import {
+  collectProductListRrpPoints,
+  formatProductListCogsPercentRange,
+  formatProductListRrpLines,
+  resolveProductListCogsPercentSortValue,
+  resolveProductListRrpSortValue,
+} from '../../data/productListDisplay';
+import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { fromApiUom } from '../../data/componentForm';
 import { siCategories, siGroups } from '../../data/revenueManagement';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 import { ProductDetailPanel } from './ProductDetailPanel';
+import { ProductPosUnitsModal } from './ProductPosUnitsModal';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
 
 type Props = {
@@ -56,14 +65,18 @@ function productMatchesLocations(product: Product, locationIds: string[]): boole
   return locationIds.some(id => productLocs.includes(id));
 }
 
-function productCogsDisplay(product: Product): string {
-  return formatRm(calcProductCogs(product.totalCost, product.packagingCost ?? 0, product));
+function productCogsDisplay(product: Product, countryCode: string): string {
+  return formatRm(calcProductCogs(product.totalCost, product.packagingCost ?? 0, product), countryCode);
 }
 
-function productCogsPercentDisplay(product: Product): string {
+function productCogsPercentDisplay(
+  product: Product,
+  allProducts: Product[],
+  countryCode: string,
+): string {
   if (product.isSubProduct) return '—';
-  const cogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
-  return formatCogsPercent(cogs, product.rrp);
+  const points = collectProductListRrpPoints(product, allProducts);
+  return formatProductListCogsPercentRange(points, countryCode);
 }
 
 function CogsPercentTrendIcon({ product }: { product: Product }) {
@@ -80,15 +93,29 @@ function CogsPercentTrendIcon({ product }: { product: Product }) {
   );
 }
 
-function rrpDisplay(product: Product): string {
+function rrpDisplay(product: Product, allProducts: Product[], countryCode: string) {
   if (product.isSubProduct) {
     const productCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
     if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
     const unitCost = calcSubProductUnitCost(productCogs, String(product.yieldQuantity));
     const uom = fromApiUom(product.yieldUom);
-    return `${formatRm(unitCost)} / ${uom}`;
+    return `${formatRm(unitCost, countryCode)} / ${uom}`;
   }
-  return product.rrp > 0 ? formatRm(product.rrp) : '—';
+
+  const points = collectProductListRrpPoints(product, allProducts);
+  const lines = formatProductListRrpLines(points, countryCode);
+  if (lines.length === 0) return '—';
+  if (lines.length === 1) return lines[0];
+
+  return (
+    <div className="inline-flex flex-col gap-0.5 rounded border border-border/80 bg-muted/10 px-1.5 py-1">
+      {points
+        .filter(point => point.rrp > 0)
+        .map(point => (
+          <span key={point.key}>{formatRm(point.rrp, countryCode)}</span>
+        ))}
+    </div>
+  );
 }
 
 function channelLabel(product: Product): string {
@@ -105,6 +132,7 @@ export function ProductListPage({
   onCreateProduct,
   onEditProduct,
 }: Props) {
+  const countryCode = useOrgCountryCode();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -119,6 +147,7 @@ export function ProductListPage({
   const [filterB2b, setFilterB2b] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+  const [posModalProduct, setPosModalProduct] = useState<Product | null>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ProductListSortColumn>();
 
   const loadProducts = useCallback(async () => {
@@ -217,24 +246,13 @@ export function ProductListPage({
           name: p => p.name,
           type: p => (p.isSubProduct ? 'Sub-Product' : 'Product'),
           cogs: p => calcProductCogs(p.totalCost, p.packagingCost ?? 0, p),
-          cogsPercent: p => {
-            if (p.isSubProduct) return -1;
-            const cogs = calcProductCogs(p.totalCost, p.packagingCost ?? 0, p);
-            return p.rrp > 0 ? (cogs / p.rrp) * 100 : -1;
-          },
-          rrp: p => {
-            if (p.isSubProduct) {
-              const productCogs = calcProductCogs(p.totalCost, p.packagingCost ?? 0, p);
-              if (p.yieldQuantity <= 0 || !p.yieldUom) return -1;
-              return calcSubProductUnitCost(productCogs, String(p.yieldQuantity));
-            }
-            return p.rrp;
-          },
+          cogsPercent: p => resolveProductListCogsPercentSortValue(p, products),
+          rrp: p => resolveProductListRrpSortValue(p, products),
           channel: p => channelLabel(p),
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
-    [visibleProducts, sortColumn, sortDirection],
+    [visibleProducts, sortColumn, sortDirection, products],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -257,11 +275,21 @@ export function ProductListPage({
     try {
       const updated = await api.patchProduct(product.id, payload);
       replaceProduct(updated);
+      return updated;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update product.');
+      return null;
     } finally {
       setSavingId(null);
     }
+  }
+
+  async function handlePosSave(product: Product, units: PosDeliveryUnitSelection[]) {
+    const updated = await patchProduct(product, {
+      posEnabled: true,
+      posDeliveryUnits: units,
+    });
+    if (updated) setPosModalProduct(null);
   }
 
   const hasActiveFilters = Boolean(
@@ -442,24 +470,42 @@ export function ProductListPage({
                           <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{product.productId}</p>
                         </td>
                         <td className={tdCls}>{product.isSubProduct ? 'Sub-Product' : 'Product'}</td>
-                        <td className={tdCls}>{productCogsDisplay(product)}</td>
+                        <td className={tdCls}>{productCogsDisplay(product, countryCode)}</td>
                         <td className={tdCls}>
                           <span className="inline-flex items-center font-sans">
-                            {productCogsPercentDisplay(product)}
+                            {productCogsPercentDisplay(product, products, countryCode)}
                             <CogsPercentTrendIcon product={product} />
                           </span>
                         </td>
-                        <td className={tdCls}>{rrpDisplay(product)}</td>
+                        <td className={tdCls}>{rrpDisplay(product, products, countryCode)}</td>
                         <td className={tdCls}>{channelLabel(product)}</td>
-                        <td className={`${tdCls} text-center`}>
+                        <td
+                          className={`${tdCls} text-center`}
+                          onDoubleClick={() => {
+                            if (!product.isSubProduct && product.posEnabled) setPosModalProduct(product);
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={product.posEnabled}
                             disabled={rowBusy || product.isSubProduct}
-                            onChange={e => void patchProduct(product, { posEnabled: e.target.checked })}
+                            onChange={e => {
+                              if (product.isSubProduct) return;
+                              if (e.target.checked) {
+                                setPosModalProduct(product);
+                                return;
+                              }
+                              void patchProduct(product, { posEnabled: false, posDeliveryUnits: [] });
+                            }}
                             className="rounded border-border disabled:opacity-40 disabled:cursor-not-allowed"
                             aria-label={`POS for ${product.name}`}
-                            title={product.isSubProduct ? 'POS is not available for sub-products' : undefined}
+                            title={
+                              product.isSubProduct
+                                ? 'POS is not available for sub-products'
+                                : product.posEnabled
+                                  ? 'POS enabled — double-click to change packaging, uncheck to disable'
+                                  : 'Enable POS and choose packaging'
+                            }
                           />
                         </td>
                         <td className={`${tdCls} text-center`}>
@@ -494,6 +540,16 @@ export function ProductListPage({
             setDetailProduct(null);
             onEditProduct(id);
           } : undefined}
+        />
+      ) : null}
+
+      {posModalProduct ? (
+        <ProductPosUnitsModal
+          product={posModalProduct}
+          catalogProducts={products}
+          saving={savingId === posModalProduct.id}
+          onClose={() => setPosModalProduct(null)}
+          onSave={units => void handlePosSave(posModalProduct, units)}
         />
       ) : null}
     </div>

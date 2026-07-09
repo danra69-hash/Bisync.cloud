@@ -303,6 +303,7 @@ function CompanyPanel({
                 value={form.fax}
                 onChange={value => set('fax', value)}
                 label="Fax"
+                variant="fax"
               />
             </div>
 
