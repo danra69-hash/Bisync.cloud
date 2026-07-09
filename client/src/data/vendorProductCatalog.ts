@@ -40,6 +40,7 @@ export type VendorProductImportDraft = {
   deliveryUnitText: string;
   deliveryPrice: number;
   productPolicyTag?: VendorProductPolicyTag;
+  active?: boolean;
 };
 
 export const VENDOR_PRODUCT_TEMPLATE_HEADERS = [
@@ -120,18 +121,34 @@ function rowToVendorProductDraft(cols: string[]): VendorProductImportDraft | nul
   return null;
 }
 
-export function buildVendorProductTemplateCsv(): string {
-  return [VENDOR_PRODUCT_TEMPLATE_HEADERS, ...VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS]
+export function buildVendorProductTemplateCsv(
+  existingProducts: VendorProductCatalogItem[] = [],
+): string {
+  const rows = existingProducts.length > 0
+    ? existingProducts.map(product => [
+      product.id,
+      product.productName,
+      product.group,
+      product.specification,
+      formatDeliveryUnitPath(product.delivery),
+      product.deliveryPrice.toFixed(2),
+    ])
+    : VENDOR_PRODUCT_TEMPLATE_SAMPLE_ROWS;
+
+  return [VENDOR_PRODUCT_TEMPLATE_HEADERS, ...rows]
     .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
     .join('\n');
 }
 
-export function downloadVendorProductTemplateCsv(): void {
-  const blob = new Blob([buildVendorProductTemplateCsv()], { type: 'text/csv;charset=utf-8;' });
+export function downloadVendorProductTemplateCsv(
+  existingProducts: VendorProductCatalogItem[] = [],
+  filename = 'vendor-product-template.csv',
+): void {
+  const blob = new Blob([buildVendorProductTemplateCsv(existingProducts)], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'vendor-product-template.csv';
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -376,6 +393,7 @@ export function resolveDeliveryUnitLevels(delivery: DeliveryUnitBreakdown): Deli
 
 const VENDOR_PRODUCT_OVERRIDES_KEY = 'bisync.vendorProductOverrides';
 const VENDOR_IMPORTED_PRODUCTS_KEY = 'bisync.vendorImportedProducts';
+const VENDOR_DEACTIVATED_PRODUCTS_KEY = 'bisync.deactivatedVendorProductIds';
 
 export const DELIVERY_ORDER_UNITS = [
   'Box', 'Crate', 'Keg', 'Case', 'Carton', 'Bag', 'Pallet', 'Bottle', 'Can', 'Tin',
@@ -408,27 +426,72 @@ function saveImportedVendorProductsRaw(products: VendorProductCatalogItem[]) {
   localStorage.setItem(VENDOR_IMPORTED_PRODUCTS_KEY, JSON.stringify(products));
 }
 
+export function loadDeactivatedVendorProductIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(VENDOR_DEACTIVATED_PRODUCTS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDeactivatedVendorProductIds(ids: Set<string>) {
+  localStorage.setItem(VENDOR_DEACTIVATED_PRODUCTS_KEY, JSON.stringify([...ids]));
+}
+
+export function deactivateVendorProducts(productIds: string[]) {
+  const next = loadDeactivatedVendorProductIds();
+  productIds.forEach(id => next.add(id));
+  saveDeactivatedVendorProductIds(next);
+}
+
+export function reactivateVendorProducts(productIds: string[]) {
+  const next = loadDeactivatedVendorProductIds();
+  productIds.forEach(id => next.delete(id));
+  saveDeactivatedVendorProductIds(next);
+}
+
 export function saveVendorProductOverride(product: VendorProductCatalogItem): void {
   const overrides = loadVendorProductOverrides();
   overrides[product.id] = {
     productName: product.productName,
+    group: product.group,
+    specification: product.specification,
     deliveryPrice: product.deliveryPrice,
     delivery: product.delivery,
   };
   localStorage.setItem(VENDOR_PRODUCT_OVERRIDES_KEY, JSON.stringify(overrides));
 }
 
+export function persistVendorProductUpdate(product: VendorProductCatalogItem): void {
+  const imported = loadImportedVendorProducts();
+  const index = imported.findIndex(item => item.id === product.id);
+  if (index >= 0) {
+    imported[index] = product;
+    saveImportedVendorProductsRaw(imported);
+    return;
+  }
+  saveVendorProductOverride(product);
+}
+
 export function applyVendorProductOverrides(
   catalog: VendorProductCatalogItem[] = VENDOR_PRODUCT_CATALOG,
 ): VendorProductCatalogItem[] {
+  const deactivated = loadDeactivatedVendorProductIds();
   const mergedCatalog = [...catalog, ...loadImportedVendorProducts()];
   const overrides = loadVendorProductOverrides();
-  const withOverrides = mergedCatalog.map(item => {
+  const withOverrides = mergedCatalog
+    .filter(item => !deactivated.has(item.id))
+    .map(item => {
     const patch = overrides[item.id];
     if (!patch) return item;
     return {
       ...item,
       ...patch,
+      group: patch.group ?? item.group,
+      specification: patch.specification ?? item.specification,
       delivery: patch.delivery ? { ...item.delivery, ...patch.delivery } : item.delivery,
     };
   });

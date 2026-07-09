@@ -868,3 +868,125 @@ public class PurchaseOrderWorkflowRequest
 {
     public List<PurchaseOrderLineWorkflowRequest> Items { get; set; } = [];
 }
+
+public class B2bCustomerContactRequest
+{
+    public string? Id { get; set; }
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string Position { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Mobile { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Fax { get; set; } = string.Empty;
+    public bool IsDefault { get; set; }
+}
+
+public class B2bPurchaseHistoryLineRequest
+{
+    public string DateOrdered { get; set; } = string.Empty;
+    public string DateDelivered { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
+    public string DeliveryUom { get; set; } = string.Empty;
+    public decimal Rrp { get; set; }
+    public decimal QtyOrdered { get; set; }
+    public decimal ActualRrp { get; set; }
+    public decimal TotalRevenue { get; set; }
+    public decimal Cogs { get; set; }
+    public decimal CogsPercent { get; set; }
+}
+
+public class UpsertB2bCustomerRequest
+{
+    public int CompanyId { get; set; }
+    [Required, MaxLength(50)]
+    public string ExternalId { get; set; } = string.Empty;
+    [Required, MaxLength(200)]
+    public string CompanyName { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string Brn { get; set; } = string.Empty;
+    [MaxLength(400)]
+    public string Address { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string State { get; set; } = string.Empty;
+    [MaxLength(20)]
+    public string Postcode { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Phone { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Fax { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+    public List<B2bCustomerContactRequest> Contacts { get; set; } = [];
+    public List<int> TaggedProductIds { get; set; } = [];
+    public List<B2bPurchaseHistoryLineRequest> PurchaseHistory { get; set; } = [];
+    public bool Active { get; set; } = true;
+}
+
+public class PosLoyaltyYearSummaryRequest
+{
+    public int Year { get; set; }
+    public decimal Earned { get; set; }
+    public decimal Used { get; set; }
+    public decimal Balance { get; set; }
+}
+
+public class PosCouponYearSummaryRequest
+{
+    public int Year { get; set; }
+    public int Received { get; set; }
+    public int Used { get; set; }
+}
+
+public class PosReceiptLineRequest
+{
+    public string ItemName { get; set; } = string.Empty;
+    public decimal Qty { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineTotal { get; set; }
+}
+
+public class PosCustomerActivityRequest
+{
+    public string ActivityDate { get; set; } = string.Empty;
+    public string ActivityLocation { get; set; } = string.Empty;
+    public string ActivityType { get; set; } = string.Empty;
+    public string CheckNo { get; set; } = string.Empty;
+    public decimal TotalSpending { get; set; }
+    public decimal PointsEarned { get; set; }
+    public decimal PointsUsed { get; set; }
+    public decimal PointsBalance { get; set; }
+    public string? CouponUsed { get; set; }
+    public List<PosReceiptLineRequest> ReceiptLines { get; set; } = [];
+}
+
+public class UpsertPosCustomerRequest
+{
+    public int CompanyId { get; set; }
+    [Required, MaxLength(50)]
+    public string ExternalId { get; set; } = string.Empty;
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(400)]
+    public string Address { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+    [MaxLength(100)]
+    public string State { get; set; } = string.Empty;
+    [MaxLength(20)]
+    public string Postcode { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Phone { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Fax { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+    public List<PosLoyaltyYearSummaryRequest> LoyaltySummary { get; set; } = [];
+    public List<PosCouponYearSummaryRequest> CouponSummary { get; set; } = [];
+    public List<PosCustomerActivityRequest> ActivityHistory { get; set; } = [];
+    public bool Active { get; set; } = true;
+}
+

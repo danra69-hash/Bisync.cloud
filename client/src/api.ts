@@ -199,6 +199,135 @@ export interface VendorUpdatePayload {
   productPolicyTag: VendorProductPolicyTag;
 }
 
+export interface B2bCustomerContact {
+  id: string;
+  name: string;
+  position: string;
+  mobile: string;
+  fax: string;
+  isDefault: boolean;
+}
+
+export interface B2bPurchaseHistoryLine {
+  dateOrdered: string;
+  dateDelivered: string;
+  productName: string;
+  deliveryUom: string;
+  rrp: number;
+  qtyOrdered: number;
+  actualRrp: number;
+  totalRevenue: number;
+  cogs: number;
+  cogsPercent: number;
+}
+
+export interface B2bCustomer {
+  id: number;
+  companyId: number;
+  externalId: string;
+  companyName: string;
+  brn: string;
+  address: string;
+  city: string;
+  state: string;
+  postcode: string;
+  phone: string;
+  fax: string;
+  email: string;
+  contactsJson: string;
+  taggedProductIdsJson: string;
+  purchaseHistoryJson: string;
+  active: boolean;
+}
+
+export interface UpsertB2bCustomerPayload {
+  companyId: number;
+  externalId: string;
+  companyName: string;
+  brn: string;
+  address: string;
+  city: string;
+  state: string;
+  postcode: string;
+  phone: string;
+  fax: string;
+  email: string;
+  contacts: B2bCustomerContact[];
+  taggedProductIds: number[];
+  purchaseHistory: B2bPurchaseHistoryLine[];
+  active: boolean;
+}
+
+export type PosActivityType = 'Dine-in' | 'Take-out' | 'Pick-up' | 'Online Delivery';
+
+export interface PosLoyaltyYearSummary {
+  year: number;
+  earned: number;
+  used: number;
+  balance: number;
+}
+
+export interface PosCouponYearSummary {
+  year: number;
+  received: number;
+  used: number;
+}
+
+export interface PosReceiptLine {
+  itemName: string;
+  qty: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface PosCustomerActivity {
+  activityDate: string;
+  activityLocation: string;
+  activityType: PosActivityType | string;
+  checkNo: string;
+  totalSpending: number;
+  pointsEarned: number;
+  pointsUsed: number;
+  pointsBalance: number;
+  couponUsed?: string | null;
+  receiptLines?: PosReceiptLine[];
+}
+
+export interface PosCustomer {
+  id: number;
+  companyId: number;
+  externalId: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  postcode: string;
+  phone: string;
+  fax: string;
+  email: string;
+  loyaltySummaryJson: string;
+  couponSummaryJson: string;
+  activityHistoryJson: string;
+  active: boolean;
+}
+
+export interface UpsertPosCustomerPayload {
+  companyId: number;
+  externalId: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  postcode: string;
+  phone: string;
+  fax: string;
+  email: string;
+  loyaltySummary: PosLoyaltyYearSummary[];
+  couponSummary: PosCouponYearSummary[];
+  activityHistory: PosCustomerActivity[];
+  active: boolean;
+}
+
 export interface PurchaseOrderItem {
   id: number;
   componentId?: string;
@@ -968,6 +1097,18 @@ export const api = {
   createVendor: (data: VendorCreatePayload) => fetchJsonWithMethod<Vendor>('/api/vendors', 'POST', data),
   updateVendor: (externalId: string, data: VendorUpdatePayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}`, 'PUT', data),
+  b2bCustomers: (companyId?: number) =>
+    fetchJson<B2bCustomer[]>(`/api/b2b-customers${companyId ? `?companyId=${companyId}` : ''}`),
+  createB2bCustomer: (data: UpsertB2bCustomerPayload) =>
+    fetchJsonWithMethod<B2bCustomer>('/api/b2b-customers', 'POST', data),
+  updateB2bCustomer: (externalId: string, data: UpsertB2bCustomerPayload) =>
+    fetchJsonWithMethod<B2bCustomer>(`/api/b2b-customers/${externalId}`, 'PUT', data),
+  posCustomers: (companyId?: number) =>
+    fetchJson<PosCustomer[]>(`/api/pos-customers${companyId ? `?companyId=${companyId}` : ''}`),
+  createPosCustomer: (data: UpsertPosCustomerPayload) =>
+    fetchJsonWithMethod<PosCustomer>('/api/pos-customers', 'POST', data),
+  updatePosCustomer: (externalId: string, data: UpsertPosCustomerPayload) =>
+    fetchJsonWithMethod<PosCustomer>(`/api/pos-customers/${externalId}`, 'PUT', data),
   engageVendor: (externalId: string, data: EngageVendorPayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}/engage`, 'POST', data),
   ingredients: () => fetchJson<Ingredient[]>('/api/ingredients'),

@@ -34,6 +34,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<IncomeTaxRebate> IncomeTaxRebates => Set<IncomeTaxRebate>();
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
     public DbSet<Vendor> Vendors => Set<Vendor>();
+    public DbSet<B2bCustomer> B2bCustomers => Set<B2bCustomer>();
+    public DbSet<PosCustomer> PosCustomers => Set<PosCustomer>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -84,6 +86,16 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         });
         HrModelConfiguration.Configure(modelBuilder);
         modelBuilder.Entity<Vendor>().HasIndex(v => v.ExternalId).IsUnique();
+        modelBuilder.Entity<B2bCustomer>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+        });
+        modelBuilder.Entity<PosCustomer>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+        });
         modelBuilder.Entity<Ingredient>(e =>
         {
             e.Property(x => x.ComponentId).HasMaxLength(32);

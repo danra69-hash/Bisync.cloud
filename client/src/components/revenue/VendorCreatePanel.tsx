@@ -342,7 +342,7 @@ export function VendorCreatePanel({ nextExternalId, existingVendors, onClose, on
             <div className="flex gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={downloadVendorProductTemplateCsv}
+                onClick={() => downloadVendorProductTemplateCsv()}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-[#2563eb]/40 bg-[#2563eb]/10 text-[#1d4ed8] hover:bg-[#2563eb]/15"
               >
                 <FilePlus2 size={11} />

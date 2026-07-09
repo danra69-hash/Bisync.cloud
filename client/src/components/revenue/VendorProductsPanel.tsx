@@ -5,6 +5,7 @@ import { getVendorCatalogProducts } from '../../data/vendorProductCatalog';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_VENDOR_PRODUCTS_CLS } from '../layout/sidePanelShared';
 import { VendorProductsList } from './VendorProductsList';
 import { VendorDetailEditor } from './VendorDetailEditor';
+import { VendorProductImportSection } from './VendorProductImportSection';
 
 type Props = {
   vendor: Vendor;
@@ -75,6 +76,12 @@ export function VendorProductsPanel({ vendor, selectedCompanyId, onClose, onVend
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4">
           <VendorDetailEditor vendor={panelVendor} onVendorUpdated={handleVendorUpdated} />
+
+          <VendorProductImportSection
+            vendor={panelVendor}
+            existingProducts={products}
+            onApplied={() => setCatalogRefresh(key => key + 1)}
+          />
 
           <p className="text-xs text-muted-foreground mb-3">
             Tag vendor products to smart components for purchase and inventory tracking. Engage the vendor first if Tag prompts engagement.

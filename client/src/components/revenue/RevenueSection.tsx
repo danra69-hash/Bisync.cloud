@@ -4,6 +4,7 @@ import { POSBar } from './POSBar';
 import { ModuleContent } from './ModuleContent';
 import { SmartIngredientPage } from './SmartIngredientPage';
 import { ComponentConfigPage } from './ComponentConfigPage';
+import { CustomerListPage } from './CustomerListPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
 import { OrderPage } from './OrderPage';
@@ -44,6 +45,13 @@ function renderRevMgmtContent(
       );
     case 'Component Config':
       return <ComponentConfigPage selectedCompanyId={selectedCompanyId} />;
+    case 'Customer List':
+      return (
+        <CustomerListPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'Vendor List & Products':
       return <VendorListPage selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />;
     case 'Compare Price':
