@@ -12,6 +12,7 @@ export type HrEmployeeConfigTabId = 'employee' | HrConfigTabId;
 export const SYSTEM_HR_CONFIG_TABS = [
   { id: 'companies' as const, label: 'Companies' },
   { id: 'locations' as const, label: 'Locations' },
+  { id: 'accessControl' as const, label: 'Access Control' },
 ] as const;
 
 export type SystemHrConfigTabId = (typeof SYSTEM_HR_CONFIG_TABS)[number]['id'];

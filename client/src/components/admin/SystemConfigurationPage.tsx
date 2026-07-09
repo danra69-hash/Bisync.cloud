@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CompaniesTab } from './CompaniesTab';
+import { AccessControlTab } from './AccessControlTab';
 import { HrConfigTabBar } from './HrConfigTabBar';
 import { LocationsConfigTab } from './LocationsConfigTab';
 import { SYSTEM_HR_CONFIG_TABS, type SystemHrConfigTabId } from './hrConfigTabs';
@@ -19,7 +20,7 @@ export function SystemConfigurationPage({ selectedCompanyId, onOrgDataChanged }:
         <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">System Configuration</p>
         <h2 className="text-lg font-semibold">Platform Config</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Manage companies and locations. Employee, pay, org, and holiday settings live under Human Resources.
+          Manage companies, locations, and platform access control. Employee, pay, org, and holiday settings live under Human Resources.
         </p>
       </div>
 
@@ -29,6 +30,7 @@ export function SystemConfigurationPage({ selectedCompanyId, onOrgDataChanged }:
       {tab === 'locations' && (
         <LocationsConfigTab selectedCompanyId={selectedCompanyId} onOrgDataChanged={onOrgDataChanged} />
       )}
+      {tab === 'accessControl' && <AccessControlTab />}
     </div>
   );
 }

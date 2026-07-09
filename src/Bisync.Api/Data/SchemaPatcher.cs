@@ -485,6 +485,20 @@ public static class SchemaPatcher
         await TryCreateUniqueIndexAsync(db, "IX_PosCustomers_ExternalId", "PosCustomers", "ExternalId");
         await TryCreateIndexAsync(db, "IX_PosCustomers_CompanyId", "PosCustomers", "\"CompanyId\"");
 
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "AccessControlSettings" (
+                "Id" integer NOT NULL CONSTRAINT "PK_AccessControlSettings" PRIMARY KEY,
+                "TypesJson" TEXT NOT NULL DEFAULT '[]',
+                "MatrixJson" TEXT NOT NULL DEFAULT '{{}}'
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "AccessControlSettings" ("Id", "TypesJson", "MatrixJson")
+            SELECT 1, '[]', '{{}}'
+            WHERE NOT EXISTS (SELECT 1 FROM "AccessControlSettings" WHERE "Id" = 1);
+            """);
+
         await CustomerSeeder.EnsureDemoCustomersAsync(db);
 
         await db.Database.ExecuteSqlRawAsync("""

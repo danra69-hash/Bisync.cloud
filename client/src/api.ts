@@ -79,6 +79,11 @@ export interface Company {
   locationCount?: number;
 }
 
+export interface AccessControlSettings {
+  typesJson: string;
+  matrixJson: string;
+}
+
 export interface AppUser {
   id: number;
   employeeId?: number | null;
@@ -1330,6 +1335,9 @@ export const api = {
     return fetchJson<InventoryCountSession>(`/api/inventory-counts/${sessionId}?${params.toString()}`);
   },
   inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
+  accessControl: () => fetchJson<AccessControlSettings>('/api/access-control'),
+  updateAccessControl: (data: AccessControlSettings) =>
+    fetchJsonWithMethod<AccessControlSettings>('/api/access-control', 'PUT', data),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),
 };
