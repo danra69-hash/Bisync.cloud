@@ -8,6 +8,8 @@ import { formatAddress, parseAddress } from '../../utils/countryFormat';
 import type { AddressParts } from '../../utils/countryFormat';
 import { OrgSelectFields } from './OrgSelectFields';
 import { PlatformAccessSummary } from './PlatformAccessSummary';
+import { AccessControlLevelField } from './AccessControlLevelField';
+import { parseUserAccess } from '../../data/userAccess';
 import { CHECKIN_METHODS, DEFAULT_PAYROLL_PIN, DEFAULT_POS_PIN, checkinMethodLabel, initials, selectableEmployeeLevels } from './employeeTabShared';
 import { SIDE_PANEL_DETAIL_SHELL_CLS, SIDE_PANEL_ROOT_CLS } from '../layout/sidePanelShared';
 
@@ -25,6 +27,8 @@ type Props = {
   onDelete: () => void;
   onUpdate: (patch: Partial<Employee>) => void;
   onGrantAccess: () => void;
+  onAccessControlTypeChange: (typeId: string | null) => void;
+  accessControlSaving?: boolean;
   onResetPosPin: () => void;
   onResetPayrollPin: () => void;
 };
@@ -43,6 +47,8 @@ export function EmployeeDetailPanel({
   onDelete,
   onUpdate,
   onGrantAccess,
+  onAccessControlTypeChange,
+  accessControlSaving = false,
   onResetPosPin,
   onResetPayrollPin,
 }: Props) {
@@ -211,6 +217,16 @@ export function EmployeeDetailPanel({
 
           <div>
             <h4 className="text-sm font-semibold mb-3 pb-2 border-b border-border">Platform Access</h4>
+            <div className="mb-4">
+              <AccessControlLevelField
+                value={platformUser ? parseUserAccess(platformUser.accessJson).accessControlTypeId : null}
+                disabled={!platformUser || accessControlSaving}
+                onChange={onAccessControlTypeChange}
+              />
+              {!platformUser ? (
+                <p className="text-xs text-muted-foreground mt-2">Grant platform access to assign an access control level.</p>
+              ) : null}
+            </div>
             <PlatformAccessSummary
               user={platformUser}
               onManageAccess={onGrantAccess}

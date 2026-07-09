@@ -16,6 +16,7 @@ import {
   parseUserAccess,
   rmsGroupAllEnabled,
   rmsGroupSomeEnabled,
+  setAccessControlType,
   setRmsEnabled,
   setRmsGroup,
   setRmsTask,
@@ -23,6 +24,7 @@ import {
   type AccessModule,
   type UserAccess,
 } from '../../data/userAccess';
+import { AccessControlLevelField } from './AccessControlLevelField';
 import { ToggleSwitch } from './ToggleSwitch';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS, NESTED_PANEL_OVERLAY_CLS, NESTED_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
 
@@ -465,6 +467,11 @@ function UserPanel({
               </div>
             )}
           </div>
+
+          <AccessControlLevelField
+            value={access.accessControlTypeId}
+            onChange={typeId => setAccess(setAccessControlType(access, typeId))}
+          />
 
           <div className="space-y-3">
             <div>

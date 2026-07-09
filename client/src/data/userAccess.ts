@@ -110,6 +110,7 @@ export type UserAccess = {
   modules: AccessModule[];
   rms?: RmsPermissions;
   superAdmin?: boolean;
+  accessControlTypeId?: string | null;
 };
 
 export function allRmsTaskIds(): string[] {
@@ -143,6 +144,7 @@ function normalizeUserAccess(access: UserAccess): UserAccess {
     modules: access.modules ?? [],
     rms: { enabled: rms.enabled ?? false, tasks },
     superAdmin: access.superAdmin ?? false,
+    accessControlTypeId: access.accessControlTypeId?.trim() || null,
   };
 }
 
@@ -154,6 +156,10 @@ export function hasModule(access: UserAccess, module: AccessModule): boolean {
   const normalized = parseUserAccess(access);
   if (normalized.superAdmin) return true;
   return normalized.modules.includes(module);
+}
+
+export function setAccessControlType(access: UserAccess, typeId: string | null): UserAccess {
+  return { ...access, accessControlTypeId: typeId?.trim() || null };
 }
 
 export function toggleModule(access: UserAccess, module: AccessModule): UserAccess {

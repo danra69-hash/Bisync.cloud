@@ -35,6 +35,19 @@ function row(module: string, functionName: string, task: string, taskId: string)
   };
 }
 
+function platformConfigRows(): AccessControlRow[] {
+  const groups: { function: string; tasks: string[] }[] = [
+    { function: 'Companies', tasks: ['View Companies', 'Create and Edit Company', 'Manage Company Modules'] },
+    { function: 'Locations', tasks: ['View Locations', 'Create and Edit Location', 'Manage Location Modules'] },
+    { function: 'Access Control', tasks: ['View Access Control', 'Edit Access Control Matrix'] },
+  ];
+  return groups.flatMap(group =>
+    group.tasks.map(task =>
+      row('Platform Config', group.function, task, task.toLowerCase().replace(/[^a-z0-9]+/g, '-')),
+    ),
+  );
+}
+
 function rmsRows(): AccessControlRow[] {
   return RMS_TASK_GROUPS.flatMap(group =>
     group.tasks.map(task => row('Revenue Management', group.label, task.label, task.id)),
@@ -75,6 +88,7 @@ function accountingRows(): AccessControlRow[] {
 }
 
 export const ACCESS_CONTROL_ROWS: AccessControlRow[] = [
+  ...platformConfigRows(),
   ...rmsRows(),
   ...posRows(),
   ...hrmRows(),

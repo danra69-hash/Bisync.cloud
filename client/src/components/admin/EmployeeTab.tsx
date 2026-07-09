@@ -10,6 +10,7 @@ import { PlatformAccessPanel, userUpsertForEmployee } from './UsersTab';
 import { checkinMethodLabel } from './employeeTabShared';
 import { getPhoneValidationError } from '../shared/CountryPhoneInput';
 import { getAddressValidationError } from '../shared/CountryAddressFields';
+import { parseUserAccess, setAccessControlType } from '../../data/userAccess';
 import { parseAddress } from '../../utils/countryFormat';
 
 type Props = {
@@ -31,6 +32,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
   const [formData, setFormData] = useState({ ...emptyEmployeeForm });
   const [accessPanel, setAccessPanel] = useState<{ user: AppUser | UserUpsert; isNew: boolean } | null>(null);
+  const [accessControlSaving, setAccessControlSaving] = useState(false);
 
   const today = new Date();
 
@@ -268,6 +270,33 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
     await notifyChanged();
   });
 
+  const updateAccessControlType = (typeId: string | null) => run(async () => {
+    if (!detailDraft) return;
+    const user = platformUserFor(detailDraft);
+    if (!user) {
+      setError('Grant platform access before assigning an access control level.');
+      return;
+    }
+    setAccessControlSaving(true);
+    try {
+      const access = setAccessControlType(parseUserAccess(user.accessJson), typeId);
+      await bisyncApi.updateUser(user.id, {
+        employeeId: user.employeeId ?? null,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        active: user.active,
+        accessJson: JSON.stringify(access),
+        companyId: user.companyId,
+        locationIdsJson: user.locationIdsJson,
+      });
+      await notifyChanged();
+    } finally {
+      setAccessControlSaving(false);
+    }
+  });
+
   const updateDetailDraft = (patch: Partial<Employee>) => {
     if (!detailDraft) return;
     let next = { ...detailDraft, ...patch };
@@ -344,6 +373,8 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
           }}
           onUpdate={updateDetailDraft}
           onGrantAccess={() => openGrantAccessForEmployee(detailDraft)}
+          onAccessControlTypeChange={updateAccessControlType}
+          accessControlSaving={accessControlSaving}
           onResetPosPin={resetPosPin}
           onResetPayrollPin={resetPayrollPin}
         />
