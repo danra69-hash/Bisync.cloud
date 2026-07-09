@@ -509,6 +509,7 @@ public static class SchemaPatcher
 
         await DatabaseSchemaHelper.ResyncProductIdentitySequencesAsync(db);
         await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);
+        await DatabaseSchemaHelper.PromoteAllRealColumnsToNumericAsync(db);
     }
 
     static async Task TryCreateIndexAsync(BisyncDbContext db, string indexName, string table, string columns)

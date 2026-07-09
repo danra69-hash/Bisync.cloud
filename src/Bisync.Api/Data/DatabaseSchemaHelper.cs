@@ -140,4 +140,55 @@ public static class DatabaseSchemaHelper
         foreach (var table in tables)
             await TryResyncIdentitySequenceAsync(db, table);
     }
+
+    /// <summary>
+    /// Npgsql cannot read PostgreSQL <c>real</c> columns into <see cref="decimal"/> properties.
+    /// Legacy schema patchers created monetary/quantity columns as REAL; promote them to numeric.
+    /// </summary>
+    public static async Task PromoteAllRealColumnsToNumericAsync(DbContext db)
+    {
+        var connection = db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync();
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND data_type = 'real'
+                ORDER BY table_name, column_name
+                """;
+
+            var columns = new List<(string Table, string Column)>();
+            await using (var reader = await command.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    columns.Add((reader.GetString(0), reader.GetString(1)));
+                }
+            }
+
+            foreach (var (table, column) in columns)
+            {
+                try
+                {
+                    await db.Database.ExecuteSqlRawAsync(
+                        $"""ALTER TABLE "{table}" ALTER COLUMN "{column}" TYPE numeric USING "{column}"::numeric;""");
+                }
+                catch
+                {
+                    // Column may have been promoted concurrently or be locked briefly.
+                }
+            }
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
+    }
 }
