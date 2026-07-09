@@ -69,6 +69,8 @@ static async Task DumpDatabaseAsync(string connectionString, string outputPath)
         "-d", builder.Database ?? "bisync",
         "--no-owner",
         "--no-acl",
+        "--clean",
+        "--if-exists",
         "-f", outputPath,
     };
 
@@ -90,7 +92,18 @@ static async Task DumpDatabaseAsync(string connectionString, string outputPath)
     if (process.ExitCode != 0)
         throw new InvalidOperationException($"pg_dump failed for {builder.Database}: {stderr}");
 
+    SanitizeDumpForCloudSql(outputPath);
     Console.WriteLine($"Exported {outputPath}");
+}
+
+static void SanitizeDumpForCloudSql(string outputPath)
+{
+    var lines = File.ReadAllLines(outputPath);
+    var filtered = lines.Where(line =>
+        !line.StartsWith("SET transaction_timeout", StringComparison.Ordinal)
+        && !line.StartsWith("SET idle_session_timeout", StringComparison.Ordinal)
+        && !line.StartsWith("SET statement_timeout", StringComparison.Ordinal)).ToArray();
+    File.WriteAllLines(outputPath, filtered);
 }
 
 static string ResolvePgDump()

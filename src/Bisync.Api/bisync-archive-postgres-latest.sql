@@ -2,15 +2,13 @@
 -- PostgreSQL database dump
 --
 
-\restrict QVm6vsXmEH7kFUOLchkmMIBEKcU2Lb77jmwKEVuQ8UWddWiCsnKnB6d7rZj9PUI
+\restrict v2J3b17aC0b7L2ZVv0qNiD4toqfFdJsnfMWNa3OnqLSffkyTG7eKCElHmjO8VQb
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.4
 
-SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
-SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -19,6 +17,18 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+DROP INDEX IF EXISTS public."IX_ArchivedProductProductionLogs_OriginalId";
+DROP INDEX IF EXISTS public."IX_ArchivedInventoryPurchases_OriginalId";
+DROP INDEX IF EXISTS public."IX_ArchivedInventoryMovements_OriginalId";
+DROP INDEX IF EXISTS public."IX_ArchiveRuns_RanAt";
+ALTER TABLE IF EXISTS ONLY public."ArchivedProductProductionLogs" DROP CONSTRAINT IF EXISTS "PK_ArchivedProductProductionLogs";
+ALTER TABLE IF EXISTS ONLY public."ArchivedInventoryPurchases" DROP CONSTRAINT IF EXISTS "PK_ArchivedInventoryPurchases";
+ALTER TABLE IF EXISTS ONLY public."ArchivedInventoryMovements" DROP CONSTRAINT IF EXISTS "PK_ArchivedInventoryMovements";
+ALTER TABLE IF EXISTS ONLY public."ArchiveRuns" DROP CONSTRAINT IF EXISTS "PK_ArchiveRuns";
+DROP TABLE IF EXISTS public."ArchivedProductProductionLogs";
+DROP TABLE IF EXISTS public."ArchivedInventoryPurchases";
+DROP TABLE IF EXISTS public."ArchivedInventoryMovements";
+DROP TABLE IF EXISTS public."ArchiveRuns";
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -318,5 +328,5 @@ CREATE UNIQUE INDEX "IX_ArchivedProductProductionLogs_OriginalId" ON public."Arc
 -- PostgreSQL database dump complete
 --
 
-\unrestrict QVm6vsXmEH7kFUOLchkmMIBEKcU2Lb77jmwKEVuQ8UWddWiCsnKnB6d7rZj9PUI
+\unrestrict v2J3b17aC0b7L2ZVv0qNiD4toqfFdJsnfMWNa3OnqLSffkyTG7eKCElHmjO8VQb
 
