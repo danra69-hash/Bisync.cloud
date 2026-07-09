@@ -20,5 +20,7 @@ public class Company
     public string BusinessTypesJson { get; set; } = "[]";
     /// <summary>JSON array of vendor policy tag ids: halal, muslim-friendly, non-halal.</summary>
     public string VendorPolicyTagsJson { get; set; } = "[]";
+    /// <summary>JSON array of enabled platform modules: RMS, POS, HRM, Accounting.</summary>
+    public string ModulesJson { get; set; } = "[]";
     public ICollection<Location> Locations { get; set; } = new List<Location>();
 }

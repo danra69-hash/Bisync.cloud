@@ -28,7 +28,9 @@ public static class SchemaPatcher
 
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "ProductPolicyTag", "TEXT NOT NULL DEFAULT 'non-halal'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "HalalCertNo", "TEXT NOT NULL DEFAULT ''");
@@ -484,6 +486,12 @@ public static class SchemaPatcher
         await TryCreateIndexAsync(db, "IX_PosCustomers_CompanyId", "PosCustomers", "\"CompanyId\"");
 
         await CustomerSeeder.EnsureDemoCustomersAsync(db);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "Companies"
+            SET "ModulesJson" = '["RMS","POS","HRM","Accounting"]'
+            WHERE "ModulesJson" IS NULL OR TRIM("ModulesJson") = '' OR "ModulesJson" = '[]';
+            """);
 
         await DatabaseSchemaHelper.ResyncProductIdentitySequencesAsync(db);
         await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);

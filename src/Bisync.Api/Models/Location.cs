@@ -45,4 +45,6 @@ public class Location
     public string BusinessTypesJson { get; set; } = "[]";
     /// <summary>JSON array of vendor policy tag ids (inherits from company on create; overridable per location).</summary>
     public string VendorPolicyTagsJson { get; set; } = "[]";
+    /// <summary>JSON array of enabled modules (inherits from company when empty; Accounting not allowed).</summary>
+    public string ModulesJson { get; set; } = "[]";
 }

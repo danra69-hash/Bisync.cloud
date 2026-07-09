@@ -15,6 +15,11 @@ import {
   type CompanyBusinessType,
   type CompanyVendorPolicyTag,
 } from '../../data/companyProfile';
+import {
+  parseCompanyModules,
+  validateCompanyModules,
+} from '../../data/companyModules';
+import type { AccessModule } from '../../data/userAccess';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { CountryPhoneInput, getPhoneValidationError } from '../shared/CountryPhoneInput';
 import { COUNTRIES, getCountry, inputCls, selectCls } from '../../data/countries';
@@ -53,6 +58,7 @@ const blankCompany = (): CompanyDraft => ({
   active: true,
   businessTypesJson: '[]',
   vendorPolicyTagsJson: '[]',
+  modulesJson: '[]',
 });
 
 function CompanyPanel({
@@ -70,6 +76,9 @@ function CompanyPanel({
   const [vendorPolicyTags, setVendorPolicyTags] = useState<CompanyVendorPolicyTag[]>(
     () => parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[],
   );
+  const [modules, setModules] = useState<AccessModule[]>(
+    () => parseCompanyModules(company.modulesJson),
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -77,6 +86,7 @@ function CompanyPanel({
     setForm(company);
     setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
     setVendorPolicyTags(parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
+    setModules(parseCompanyModules(company.modulesJson));
     setError(null);
   }, [company]);
 
@@ -111,6 +121,7 @@ function CompanyPanel({
       active,
       businessTypesJson: serializeStringArray(businessTypes),
       vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
+      modulesJson: serializeStringArray(modules),
     };
   }
 
@@ -140,6 +151,11 @@ function CompanyPanel({
     const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
     if (profileError) {
       setError(profileError);
+      return;
+    }
+    const modulesError = validateCompanyModules(modules);
+    if (modulesError) {
+      setError(modulesError);
       return;
     }
 
@@ -271,6 +287,7 @@ function CompanyPanel({
             <CompanyProfileFields
               businessTypes={businessTypes}
               vendorPolicyTags={vendorPolicyTags}
+              modules={modules}
               onBusinessTypesChange={values => {
                 setBusinessTypes(values);
                 setError(null);
@@ -279,6 +296,11 @@ function CompanyPanel({
                 setVendorPolicyTags(values);
                 setError(null);
               }}
+              onModulesChange={values => {
+                setModules(values);
+                setError(null);
+              }}
+              moduleScope="company"
             />
           </div>
         </div>

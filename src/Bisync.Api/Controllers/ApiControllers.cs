@@ -30,7 +30,8 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
         principalContactName = l.PrincipalContact?.FullName,
         businessTypesJson = CompanyProfileRules.ResolveProfileJson(l.BusinessTypesJson, l.Company?.BusinessTypesJson),
         vendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(l.VendorPolicyTagsJson, l.Company?.VendorPolicyTagsJson),
-        profileOverridden = CompanyProfileRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson),
+        modulesJson = CompanyModuleRules.ResolveModulesJson(l.ModulesJson, l.Company?.ModulesJson),
+        profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
     };
 
     async Task<Location?> LoadLocationConfigAsync(int id) =>
@@ -102,12 +103,19 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
 
         var businessTypesJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.BusinessTypesJson, company.BusinessTypesJson);
         var vendorPolicyTagsJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.VendorPolicyTagsJson, company.VendorPolicyTagsJson, ignoreCase: true);
+        var modulesJson = CompanyModuleRules.NormalizeLocationModulesForStorage(body.ModulesJson, company.ModulesJson);
         var effectiveBusinessTypesJson = CompanyProfileRules.ResolveProfileJson(businessTypesJson, company.BusinessTypesJson);
         var effectiveVendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(vendorPolicyTagsJson, company.VendorPolicyTagsJson);
 
         var validationError = CompanyProfileRules.Validate(effectiveBusinessTypesJson, effectiveVendorPolicyTagsJson);
         if (validationError is not null)
             return BadRequest(new { message = validationError });
+        var businessSubsetError = CompanyModuleRules.ValidateLocationBusinessTypesSubset(businessTypesJson, company.BusinessTypesJson);
+        if (businessSubsetError is not null)
+            return BadRequest(new { message = businessSubsetError });
+        var modulesError = CompanyModuleRules.ValidateLocationModules(modulesJson, company.ModulesJson);
+        if (modulesError is not null)
+            return BadRequest(new { message = modulesError });
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Locations");
 
@@ -125,6 +133,7 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
             PrincipalContactUserId = body.PrincipalContactUserId,
             BusinessTypesJson = businessTypesJson,
             VendorPolicyTagsJson = vendorPolicyTagsJson,
+            ModulesJson = modulesJson,
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
         };
 
@@ -146,12 +155,19 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
 
         var businessTypesJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.BusinessTypesJson, company.BusinessTypesJson);
         var vendorPolicyTagsJson = CompanyProfileRules.NormalizeLocationProfileForStorage(body.VendorPolicyTagsJson, company.VendorPolicyTagsJson, ignoreCase: true);
+        var modulesJson = CompanyModuleRules.NormalizeLocationModulesForStorage(body.ModulesJson, company.ModulesJson);
         var effectiveBusinessTypesJson = CompanyProfileRules.ResolveProfileJson(businessTypesJson, company.BusinessTypesJson);
         var effectiveVendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(vendorPolicyTagsJson, company.VendorPolicyTagsJson);
 
         var validationError = CompanyProfileRules.Validate(effectiveBusinessTypesJson, effectiveVendorPolicyTagsJson);
         if (validationError is not null)
             return BadRequest(new { message = validationError });
+        var businessSubsetError = CompanyModuleRules.ValidateLocationBusinessTypesSubset(businessTypesJson, company.BusinessTypesJson);
+        if (businessSubsetError is not null)
+            return BadRequest(new { message = businessSubsetError });
+        var modulesError = CompanyModuleRules.ValidateLocationModules(modulesJson, company.ModulesJson);
+        if (modulesError is not null)
+            return BadRequest(new { message = modulesError });
 
         var loc = await db.Locations.FindAsync(id);
         if (loc is null) return NotFound();
@@ -165,6 +181,7 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
         loc.PrincipalContactUserId = body.PrincipalContactUserId;
         loc.BusinessTypesJson = businessTypesJson;
         loc.VendorPolicyTagsJson = vendorPolicyTagsJson;
+        loc.ModulesJson = modulesJson;
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         await db.SaveChangesAsync();
         var saved = await LoadLocationConfigAsync(loc.Id);

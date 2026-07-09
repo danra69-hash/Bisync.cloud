@@ -21,9 +21,17 @@ import {
   profileArraysFromCompany,
   resolveLocationProfileForDisplay,
   validateCompanyProfile,
+  validateLocationBusinessTypesSubset,
   type CompanyBusinessType,
   type CompanyVendorPolicyTag,
 } from '../../data/companyProfile';
+import {
+  buildLocationModulesPayload,
+  modulesFromCompany,
+  resolveLocationModulesForDisplay,
+  validateLocationModules,
+} from '../../data/companyModules';
+import type { AccessModule } from '../../data/userAccess';
 
 type LocationSortColumn =
   | 'location'
@@ -61,6 +69,7 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     principalContactName: null,
     businessTypesJson: '[]',
     vendorPolicyTagsJson: '[]',
+    modulesJson: '[]',
   };
 }
 
@@ -91,6 +100,12 @@ function LocationPanel({
     }
     return profileArraysFromCompany(initialCompany ?? location).vendorPolicyTags;
   });
+  const [modules, setModules] = useState<AccessModule[]>(() => {
+    if (!isNew && location.profileOverridden) {
+      return resolveLocationModulesForDisplay(location, initialCompany ?? null);
+    }
+    return initialCompany ? modulesFromCompany(initialCompany) : [];
+  });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const company = companies.find(c => c.id === form.companyId);
@@ -104,10 +119,12 @@ function LocationPanel({
     if (!isNew && location.profileOverridden) {
       setBusinessTypes(parseStringArrayJson(location.businessTypesJson) as CompanyBusinessType[]);
       setVendorPolicyTags(parseStringArrayJson(location.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
+      setModules(resolveLocationModulesForDisplay(location, initial ?? null));
     } else {
       const profile = profileArraysFromCompany(initial ?? location);
       setBusinessTypes(profile.businessTypes);
       setVendorPolicyTags(profile.vendorPolicyTags);
+      setModules(initial ? modulesFromCompany(initial) : []);
     }
     setError(null);
   }, [location, isNew, companies]);
@@ -119,7 +136,15 @@ function LocationPanel({
     const profile = profileArraysFromCompany(selectedCompany);
     setBusinessTypes(profile.businessTypes);
     setVendorPolicyTags(profile.vendorPolicyTags);
+    setModules(modulesFromCompany(selectedCompany));
   }, [form.companyId, inheritsCompanyProfile, companies]);
+
+  useEffect(() => {
+    if (!company) return;
+    const companyTypes = profileArraysFromCompany(company).businessTypes;
+    setBusinessTypes(prev => prev.filter(type => companyTypes.includes(type)));
+    setModules(prev => prev.filter(module => modulesFromCompany(company).includes(module)));
+  }, [company?.businessTypesJson, company?.modulesJson]);
 
   function set<K extends keyof LocationConfig>(key: K, val: LocationConfig[K]) {
     setForm(f => ({ ...f, [key]: val }));
@@ -136,6 +161,7 @@ function LocationPanel({
     const profile = profileArraysFromCompany(company);
     setBusinessTypes(profile.businessTypes);
     setVendorPolicyTags(profile.vendorPolicyTags);
+    setModules(modulesFromCompany(company));
     setInheritsCompanyProfile(true);
     setError(null);
   }
@@ -176,13 +202,26 @@ function LocationPanel({
       return;
     }
 
+    if (!company) {
+      setError('Selected company could not be found.');
+      return;
+    }
+
     const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
     if (profileError) {
       setError(profileError);
       return;
     }
-    if (!company) {
-      setError('Selected company could not be found.');
+    const companyBusinessTypes = profileArraysFromCompany(company).businessTypes;
+    const companyModules = modulesFromCompany(company);
+    const subsetError = validateLocationBusinessTypesSubset(businessTypes, companyBusinessTypes);
+    if (subsetError) {
+      setError(subsetError);
+      return;
+    }
+    const modulesError = validateLocationModules(modules, companyModules);
+    if (modulesError) {
+      setError(modulesError);
       return;
     }
 
@@ -192,6 +231,7 @@ function LocationPanel({
       vendorPolicyTags,
       inheritsCompanyProfile,
     );
+    const modulesPayload = buildLocationModulesPayload(company, modules, inheritsCompanyProfile);
 
     const payload = {
       companyId: form.companyId,
@@ -204,6 +244,7 @@ function LocationPanel({
       principalContactUserId: form.principalContactUserId,
       businessTypesJson: profilePayload.businessTypesJson,
       vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
+      modulesJson: modulesPayload.modulesJson,
     };
 
     setSaving(true);
@@ -220,7 +261,8 @@ function LocationPanel({
         principalContactName: users.find(u => u.id === form.principalContactUserId)?.fullName ?? null,
         businessTypesJson: saved.businessTypesJson ?? profilePayload.effectiveBusinessTypesJson,
         vendorPolicyTagsJson: saved.vendorPolicyTagsJson ?? profilePayload.effectiveVendorPolicyTagsJson,
-        profileOverridden: saved.profileOverridden ?? profilePayload.profileOverridden,
+        modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
+        profileOverridden: saved.profileOverridden ?? (profilePayload.profileOverridden || modulesPayload.modulesJson !== '[]'),
       });
       onClose();
     } catch (err) {
@@ -275,12 +317,20 @@ function LocationPanel({
           <CompanyProfileFields
             businessTypes={businessTypes}
             vendorPolicyTags={vendorPolicyTags}
+            modules={modules}
+            availableBusinessTypes={company ? profileArraysFromCompany(company).businessTypes : undefined}
+            availableModules={company ? modulesFromCompany(company) : undefined}
+            moduleScope="location"
             onBusinessTypesChange={values => {
               setBusinessTypes(values);
               markProfileOverridden();
             }}
             onVendorPolicyTagsChange={values => {
               setVendorPolicyTags(values);
+              markProfileOverridden();
+            }}
+            onModulesChange={values => {
+              setModules(values);
               markProfileOverridden();
             }}
             hint={inheritsCompanyProfile

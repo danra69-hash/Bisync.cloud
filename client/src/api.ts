@@ -54,6 +54,7 @@ export interface LocationConfig {
   principalContactName: string | null;
   businessTypesJson: string;
   vendorPolicyTagsJson: string;
+  modulesJson: string;
   profileOverridden?: boolean;
 }
 
@@ -74,6 +75,7 @@ export interface Company {
   active: boolean;
   businessTypesJson: string;
   vendorPolicyTagsJson: string;
+  modulesJson: string;
   locationCount?: number;
 }
 

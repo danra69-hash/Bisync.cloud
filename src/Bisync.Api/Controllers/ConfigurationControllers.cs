@@ -34,6 +34,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 c.Active,
                 c.BusinessTypesJson,
                 c.VendorPolicyTagsJson,
+                c.ModulesJson,
                 locationCount = c.Locations.Count,
             })
             .ToListAsync());
@@ -50,6 +51,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     {
         var validationError = CompanyProfileRules.Validate(company.BusinessTypesJson, company.VendorPolicyTagsJson);
         if (validationError is not null) return BadRequest(new { message = validationError });
+        var modulesError = CompanyModuleRules.ValidateCompanyModules(company.ModulesJson);
+        if (modulesError is not null) return BadRequest(new { message = modulesError });
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Companies");
 
@@ -63,6 +66,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     {
         var validationError = CompanyProfileRules.Validate(updated.BusinessTypesJson, updated.VendorPolicyTagsJson);
         if (validationError is not null) return BadRequest(new { message = validationError });
+        var modulesError = CompanyModuleRules.ValidateCompanyModules(updated.ModulesJson);
+        if (modulesError is not null) return BadRequest(new { message = modulesError });
 
         var company = await db.Companies.FindAsync(id);
         if (company is null) return NotFound();
@@ -81,6 +86,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.Active = updated.Active;
         company.BusinessTypesJson = updated.BusinessTypesJson;
         company.VendorPolicyTagsJson = updated.VendorPolicyTagsJson;
+        company.ModulesJson = updated.ModulesJson;
         await db.SaveChangesAsync();
         return Ok(company);
     }
@@ -278,7 +284,8 @@ public record LocationConfigUpdate(
     string Postcode,
     int? PrincipalContactUserId,
     string BusinessTypesJson,
-    string VendorPolicyTagsJson
+    string VendorPolicyTagsJson,
+    string ModulesJson
 );
 
 public record LocationConfigCreate(
@@ -291,5 +298,6 @@ public record LocationConfigCreate(
     string Postcode,
     int? PrincipalContactUserId,
     string? BusinessTypesJson,
-    string? VendorPolicyTagsJson
+    string? VendorPolicyTagsJson,
+    string? ModulesJson
 );

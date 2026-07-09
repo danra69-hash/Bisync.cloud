@@ -20,6 +20,7 @@ import { AccountingPage } from './components/accounting/AccountingPage';
 import { aggregateLocationMetrics } from './utils/locationMetrics';
 import { configLocationToDropdown, filterMetricsByOrg } from './utils/orgFilters';
 import { useOrgFilters } from './hooks/useOrgFilters';
+import { isNavItemEnabled, moduleForNavItem, resolveOrgEnabledModules } from './data/companyModules';
 import type { NavItem } from './data/revenueManagement';
 
 function fmtUsd(n: number) {
@@ -165,6 +166,22 @@ export default function App() {
   const companyScopedConfigLocations = selectedCompanyId
     ? configLocations.filter(l => l.companyId === selectedCompanyId)
     : [];
+  const selectedCompany = companies.find(company => company.id === selectedCompanyId) ?? null;
+  const enabledModules = useMemo(
+    () => resolveOrgEnabledModules(selectedCompany, configLocations, selectedCompanyId, selectedLocationIds),
+    [selectedCompany, configLocations, selectedCompanyId, selectedLocationIds],
+  );
+
+  function handleNavigate(item: NavItem) {
+    if (!isNavItemEnabled(item, enabledModules)) return;
+    setActiveNav(item);
+  }
+
+  useEffect(() => {
+    if (moduleForNavItem(activeNav) && !isNavItemEnabled(activeNav, enabledModules)) {
+      setActiveNav('Overview');
+    }
+  }, [activeNav, enabledModules]);
   const headerLocations = companyScopedConfigLocations.map(configLocationToDropdown);
   const activeLocations = selectedCompanyId
     ? filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds)
@@ -230,8 +247,9 @@ export default function App() {
       <Sidebar
         open={sidebarOpen}
         activeNav={activeNav}
+        enabledModules={enabledModules}
         onClose={() => setSidebarOpen(false)}
-        onNavigate={setActiveNav}
+        onNavigate={handleNavigate}
       />
 
       <div className="flex flex-col min-h-screen w-full min-w-0 overflow-x-hidden">

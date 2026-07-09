@@ -1,16 +1,19 @@
 import { X } from 'lucide-react';
 import { NAV_ITEMS, type NavItem } from '../../data/revenueManagement';
+import { isNavItemEnabled } from '../../data/companyModules';
+import type { AccessModule } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { userInitials } from '../../context/currentUserContext';
 
 type Props = {
   open: boolean;
   activeNav: NavItem;
+  enabledModules: AccessModule[];
   onClose: () => void;
   onNavigate: (item: NavItem) => void;
 };
 
-export function Sidebar({ open, activeNav, onClose, onNavigate }: Props) {
+export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }: Props) {
   const { currentUser, users, setCurrentUserId, logout } = useCurrentUser();
   const displayName = currentUser?.fullName ?? 'Unknown User';
   const displayRole = currentUser?.role ?? '—';
@@ -30,20 +33,27 @@ export function Sidebar({ open, activeNav, onClose, onNavigate }: Props) {
         </div>
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.map(item => {
+            const enabled = isNavItemEnabled(item, enabledModules);
+            const isActive = activeNav === item;
+            return (
             <button
               key={item}
-              onClick={() => { onNavigate(item); onClose(); }}
-              className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors"
+              type="button"
+              disabled={!enabled}
+              onClick={() => { if (enabled) onNavigate(item); onClose(); }}
+              title={!enabled ? 'Module not enabled for the selected company or location' : undefined}
+              className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               style={{
-                background: activeNav === item ? '#E87722' : 'transparent',
-                color: activeNav === item ? '#2C1A0A' : 'rgba(255,255,255,0.6)',
-                fontWeight: activeNav === item ? 700 : 500,
+                background: isActive && enabled ? '#E87722' : 'transparent',
+                color: isActive && enabled ? '#2C1A0A' : 'rgba(255,255,255,0.6)',
+                fontWeight: isActive && enabled ? 700 : 500,
               }}
             >
               {item}
             </button>
-          ))}
+            );
+          })}
         </nav>
 
         <div className="p-4 border-t border-white/10 space-y-2">

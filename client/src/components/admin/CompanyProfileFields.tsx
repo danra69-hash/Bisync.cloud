@@ -8,14 +8,22 @@ import {
   type CompanyBusinessType,
   type CompanyVendorPolicyTag,
 } from '../../data/companyProfile';
+import {
+  LOCATION_PLATFORM_MODULES,
+  PLATFORM_MODULES,
+} from '../../data/companyModules';
+import type { AccessModule } from '../../data/userAccess';
 
 export function BusinessTypeMultiSelect({
   selected,
   onChange,
+  availableTypes,
 }: {
   selected: CompanyBusinessType[];
   onChange: (values: CompanyBusinessType[]) => void;
+  availableTypes?: CompanyBusinessType[];
 }) {
+  const options = availableTypes ?? [...COMPANY_BUSINESS_TYPES];
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -54,7 +62,7 @@ export function BusinessTypeMultiSelect({
 
       {open && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-xl z-50 max-h-56 overflow-y-auto">
-          {COMPANY_BUSINESS_TYPES.map(type => {
+          {options.map(type => {
             const checked = selected.includes(type);
             return (
               <button
@@ -137,11 +145,71 @@ export function VendorPolicyCheckboxGroup({
   );
 }
 
+export function ModuleCheckboxGroup({
+  selected,
+  onChange,
+  scope,
+  availableModules,
+}: {
+  selected: AccessModule[];
+  onChange: (values: AccessModule[]) => void;
+  scope: 'company' | 'location';
+  availableModules?: AccessModule[];
+}) {
+  const moduleOptions = scope === 'company'
+    ? PLATFORM_MODULES
+    : LOCATION_PLATFORM_MODULES.filter(module => !availableModules || availableModules.includes(module.id));
+
+  function toggle(moduleId: AccessModule) {
+    if (selected.includes(moduleId)) {
+      onChange(selected.filter(value => value !== moduleId));
+      return;
+    }
+    onChange([...selected, moduleId]);
+  }
+
+  return (
+    <div className="space-y-2">
+      {moduleOptions.map(module => {
+        const checked = selected.includes(module.id);
+        const disabled = scope === 'location' && availableModules != null && !availableModules.includes(module.id);
+        return (
+          <label
+            key={module.id}
+            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+              checked ? 'border-primary bg-primary/5' : disabled ? 'border-border opacity-50 cursor-not-allowed' : 'border-border hover:border-primary/40 cursor-pointer'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => !disabled && toggle(module.id)}
+              className="mt-0.5 rounded border-border"
+            />
+            <span className="text-xs font-medium text-foreground">{module.label}</span>
+          </label>
+        );
+      })}
+      {scope === 'location' ? (
+        <p className="text-[11px] text-muted-foreground">Accounting is configured at company level only.</p>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">Tick modules to enable access for this company.</p>
+      )}
+    </div>
+  );
+}
+
 type ProfileFieldsProps = {
   businessTypes: CompanyBusinessType[];
   vendorPolicyTags: CompanyVendorPolicyTag[];
+  modules: AccessModule[];
   onBusinessTypesChange: (values: CompanyBusinessType[]) => void;
   onVendorPolicyTagsChange: (values: CompanyVendorPolicyTag[]) => void;
+  onModulesChange: (values: AccessModule[]) => void;
+  availableBusinessTypes?: CompanyBusinessType[];
+  availableModules?: AccessModule[];
+  moduleScope?: 'company' | 'location';
   hint?: string;
   onUseCompanyDefaults?: () => void;
 };
@@ -149,8 +217,13 @@ type ProfileFieldsProps = {
 export function CompanyProfileFields({
   businessTypes,
   vendorPolicyTags,
+  modules,
   onBusinessTypesChange,
   onVendorPolicyTagsChange,
+  onModulesChange,
+  availableBusinessTypes,
+  availableModules,
+  moduleScope = 'company',
   hint,
   onUseCompanyDefaults,
 }: ProfileFieldsProps) {
@@ -173,7 +246,21 @@ export function CompanyProfileFields({
       <div>
         <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Type of Business *</label>
         <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Choose one or more business types.</p>
-        <BusinessTypeMultiSelect selected={businessTypes} onChange={onBusinessTypesChange} />
+        <BusinessTypeMultiSelect
+          selected={businessTypes}
+          onChange={onBusinessTypesChange}
+          availableTypes={availableBusinessTypes}
+        />
+      </div>
+      <div>
+        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Modules *</label>
+        <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Enable platform modules for this {moduleScope === 'company' ? 'company' : 'location'}.</p>
+        <ModuleCheckboxGroup
+          selected={modules}
+          onChange={onModulesChange}
+          scope={moduleScope}
+          availableModules={availableModules}
+        />
       </div>
       <div>
         <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Vendor Product Policy *</label>

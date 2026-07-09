@@ -74,6 +74,17 @@ export function validateCompanyProfile(
   return null;
 }
 
+export function validateLocationBusinessTypesSubset(
+  locationTypes: CompanyBusinessType[],
+  companyTypes: CompanyBusinessType[],
+): string | null {
+  if (locationTypes.length === 0) return null;
+  if (locationTypes.some(type => !companyTypes.includes(type))) {
+    return 'Location business types must be selected from the company Type of Business list.';
+  }
+  return null;
+}
+
 export function vendorPolicyTagsConflict(vendorPolicyTags: string[]): boolean {
   return vendorPolicyTags.includes('non-halal') && vendorPolicyTags.length > 1;
 }
