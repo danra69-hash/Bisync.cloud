@@ -1,7 +1,7 @@
 export const RECIPE_UNITS = [
   'Mg', 'Gr', 'Kg', 'Tonne',
   'Ml', 'Cl', 'Ltr',
-  'Each', 'Punnet', 'Bunch', 'Tray', 'Case', 'Bottle', 'Can', 'Tin', 'Slice',
+  'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Bottle', 'Can', 'Tin', 'Slice',
   'Oz', 'Lb', 'FlOz', 'Gal',
 ];
 export const STORAGE_OPTIONS = ['Chiller', 'Dry Store', 'Freezer', 'Wine Cellar', 'Storeroom', 'Office', 'Warehouse', 'Bar', 'Prep Kitchen'];
@@ -23,6 +23,15 @@ export const UNIT_CONV: Record<string, Record<string, number>> = {
 export function getConversion(from: string, to: string): number | null {
   if (from === to) return 1;
   return UNIT_CONV[from]?.[to] ?? null;
+}
+
+export function getConversionFactor(from: string, to: string): number | null {
+  if (from === to) return 1;
+  const direct = getConversion(from, to);
+  if (direct !== null) return direct;
+  const inverse = getConversion(to, from);
+  if (inverse !== null && inverse !== 0) return 1 / inverse;
+  return null;
 }
 
 export function isConversionQtyAutoFilled(
@@ -77,6 +86,7 @@ export function toApiUom(unit: string): string {
     Mg: 'mg', Gr: 'g', Kg: 'kg', Tonne: 't',
     Ml: 'ml', Cl: 'cl', Ltr: 'L',
     Each: 'pcs', Punnet: 'punnet', Bunch: 'bunch', Tray: 'tray', Case: 'case', Bottle: 'btl', Can: 'can', Tin: 'tin', Slice: 'slice',
+    Pack: 'pack',
     Oz: 'oz', Lb: 'lb', FlOz: 'fl oz', Gal: 'gal',
   };
   return map[unit] ?? unit.toLowerCase();
@@ -86,7 +96,7 @@ export function fromApiUom(unit: string): string {
   const map: Record<string, string> = {
     mg: 'Mg', g: 'Gr', kg: 'Kg', t: 'Tonne',
     ml: 'Ml', cl: 'Cl', L: 'Ltr',
-    pcs: 'Each', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case', btl: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
+    pcs: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case', btl: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
     oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal', box: 'Case', set: 'Each',
   };
   return map[unit] ?? unit;

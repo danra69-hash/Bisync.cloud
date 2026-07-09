@@ -256,6 +256,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldQuantity", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldUom", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldAltUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PackagingCost", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousTotalCost", "REAL NULL");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousPackagingCost", "REAL NULL");

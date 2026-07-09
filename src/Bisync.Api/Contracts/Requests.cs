@@ -789,6 +789,7 @@ public class UpsertProductRequest
     public decimal? YieldQuantity { get; set; }
     [MaxLength(20)]
     public string? YieldUom { get; set; }
+    public string? YieldAltUnitsJson { get; set; }
     [Range(0, 9999)]
     public int? ExpiryPeriodDays { get; set; }
     [Range(0, 99999)]
@@ -812,6 +813,11 @@ public class PatchProductRequest
     public bool? Active { get; set; }
     [Range(0, 999999999)]
     public decimal? Rrp { get; set; }
+    [Range(0, 999999999)]
+    public decimal? ParStock { get; set; }
+    [MaxLength(20)]
+    public string? ParStockUom { get; set; }
+    public string? YieldAltUnitsJson { get; set; }
     public List<string>? LocationExternalIds { get; set; }
 }
 

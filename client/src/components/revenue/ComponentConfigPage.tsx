@@ -6,7 +6,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { pageShellClass } from '../layout/pageLayout';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { selectCls } from '../../data/componentForm';
 import {
   loadStorageAssignment,
@@ -15,7 +15,12 @@ import {
   type MyStorageEntry,
   type StorageCatalogRow,
 } from '../../data/storageAssignment';
-import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
+import {
+  loadComponentHierarchy,
+  saveComponentHierarchy,
+  type ComponentHierarchyState,
+} from '../../data/componentHierarchy';
+import { ComponentHierarchyPanel } from './ComponentHierarchyPanel';
 import { StorageAreaPicker } from './StorageAreaPicker';
 import { UomConfigPanel } from './UomConfigPanel';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
@@ -24,71 +29,49 @@ type MyStorageTableRow =
   | { kind: 'header'; id: string; label: string }
   | { kind: 'entry'; entry: MyStorageEntry };
 
-type GroupSortColumn = 'category' | 'name' | 'items' | 'actions';
 type StorageSortColumn = 'name' | 'type' | 'items';
 
-const ALL_GROUPS_COLUMNS: SortableColumnDef<GroupSortColumn>[] = [
-  { key: 'category', label: 'Category' },
-  { key: 'name', label: 'Group Name' },
-  { key: 'actions', label: 'Actions', sortable: false },
-];
-
-const MY_GROUPS_COLUMNS: SortableColumnDef<GroupSortColumn>[] = [
-  { key: 'category', label: 'Category' },
-  { key: 'name', label: 'Group Name' },
-  { key: 'items', label: 'Components', align: 'right' },
-];
-
 const ALL_STORAGE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
-  { key: 'name', label: 'Storage Name' },
-  { key: 'type', label: 'Type' },
+  { key: 'name', label: 'Storage Area' },
+  { key: 'type', label: 'Storage Type' },
 ];
 
 const MY_STORAGE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
-  { key: 'name', label: 'Storage Name' },
-  { key: 'type', label: 'Type' },
+  { key: 'name', label: 'Storage Area' },
+  { key: 'type', label: 'Storage Type' },
   { key: 'items', label: 'No. of stored Components', align: 'right' },
 ];
 
 const CONFIG_TABS = [
-  { id: 'group' as const, label: 'Group Assignment' },
+  { id: 'hierarchy' as const, label: 'Component Hierarchy' },
   { id: 'storage' as const, label: 'Storage Assignment' },
   { id: 'uom' as const, label: 'UOM Config' },
 ] as const;
 
 const STORAGE_LOCATIONS = ['Downtown', 'Midtown', 'Westend'] as const;
 
-const initialGroups: GroupRow[] = [
-  { id: 1, name: 'Proteins', category: 'Food', items: 12 },
-  { id: 2, name: 'Dairy', category: 'Food', items: 8 },
-  { id: 3, name: 'Produce', category: 'Food', items: 15 },
-  { id: 4, name: 'Spirits', category: 'Beverage', items: 24 },
-  { id: 5, name: 'Dry Goods', category: 'Food', items: 18 },
-];
-
-const initialStorage: StorageCatalogRow[] = STORAGE_CATALOG;
-
 function storageMatchesLocation(row: StorageCatalogRow, location: string) {
   return row.location === location || row.location === 'All Locations';
 }
 
 export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: { selectedCompanyId: number | null }) {
-  const [tab, setTab] = useState<'group' | 'storage' | 'uom'>('group');
+  const [tab, setTab] = useState<'hierarchy' | 'storage' | 'uom'>('hierarchy');
 
-  const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Group Assignment';
+  const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Component Hierarchy';
   useRevMgmtPageLabel(activeTabLabel);
-  const [groups, setGroups] = useState(initialGroups);
-  const [storage] = useState(initialStorage);
-  const [myGroupIds, setMyGroupIds] = useState<number[]>([]);
+  const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
+  const [storage] = useState(STORAGE_CATALOG);
   const [selectedLocation, setSelectedLocation] = useState<string>(STORAGE_LOCATIONS[0]);
   const [areas, setAreas] = useState<string[]>(() => loadStorageAssignment().areas);
   const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>(() => loadStorageAssignment().entries);
   const [nextEntryId, setNextEntryId] = useState(() => loadStorageAssignment().nextEntryId);
   const [pendingStorage, setPendingStorage] = useState<StorageCatalogRow | null>(null);
-  const [editingGroup, setEditingGroup] = useState<GroupRow | null>(null);
-  const [isNewGroup, setIsNewGroup] = useState(false);
 
-  const myGroups = groups.filter(g => myGroupIds.includes(g.id));
+  function updateHierarchy(next: ComponentHierarchyState) {
+    setHierarchy(next);
+    saveComponentHierarchy(next);
+  }
+
   const locationStorage = useMemo(
     () => storage.filter(s => storageMatchesLocation(s, selectedLocation)),
     [storage, selectedLocation],
@@ -103,23 +86,9 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
 
   const hasMyStorage = myStorageByArea.length > 0;
 
-  const groupsScrollRef = useRef<HTMLDivElement>(null);
-  const myGroupsScrollRef = useRef<HTMLDivElement>(null);
   const locationStorageScrollRef = useRef<HTMLDivElement>(null);
   const myStorageScrollRef = useRef<HTMLDivElement>(null);
 
-  const {
-    sortColumn: groupsSortColumn,
-    sortDirection: groupsSortDirection,
-    toggleSort: toggleGroupsSort,
-    resetSort: resetGroupsSort,
-  } = useTableSort<GroupSortColumn>();
-  const {
-    sortColumn: myGroupsSortColumn,
-    sortDirection: myGroupsSortDirection,
-    toggleSort: toggleMyGroupsSort,
-    resetSort: resetMyGroupsSort,
-  } = useTableSort<GroupSortColumn>();
   const {
     sortColumn: locationStorageSortColumn,
     sortDirection: locationStorageSortDirection,
@@ -134,33 +103,10 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
   } = useTableSort<StorageSortColumn>();
 
   useEffect(() => {
-    resetGroupsSort();
-    resetMyGroupsSort();
-  }, [tab, resetGroupsSort, resetMyGroupsSort]);
-
-  useEffect(() => {
     resetLocationStorageSort();
     resetMyStorageSort();
-  }, [tab, selectedLocation, myGroupIds, myStorageEntries, resetLocationStorageSort, resetMyStorageSort]);
+  }, [tab, selectedLocation, myStorageEntries, resetLocationStorageSort, resetMyStorageSort]);
 
-  const sortedGroups = useMemo(
-    () =>
-      sortTableRows(groups, groupsSortColumn, groupsSortDirection, {
-        category: row => row.category,
-        name: row => row.name,
-        items: row => row.items,
-      }),
-    [groups, groupsSortColumn, groupsSortDirection],
-  );
-  const sortedMyGroups = useMemo(
-    () =>
-      sortTableRows(myGroups, myGroupsSortColumn, myGroupsSortDirection, {
-        category: row => row.category,
-        name: row => row.name,
-        items: row => row.items,
-      }),
-    [myGroups, myGroupsSortColumn, myGroupsSortDirection],
-  );
   const sortedLocationStorage = useMemo(
     () =>
       sortTableRows(locationStorage, locationStorageSortColumn, locationStorageSortDirection, {
@@ -188,46 +134,8 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
     });
   }, [myStorageByArea, myStorageSortColumn, myStorageSortDirection]);
 
-  const groupsScroll = useInfiniteScrollSlice(sortedGroups, { scrollRootRef: groupsScrollRef });
-  const myGroupsScroll = useInfiniteScrollSlice(sortedMyGroups, { scrollRootRef: myGroupsScrollRef });
   const locationStorageScroll = useInfiniteScrollSlice(sortedLocationStorage, { scrollRootRef: locationStorageScrollRef });
   const myStorageScroll = useInfiniteScrollSlice(sortedMyStorageTableRows, { scrollRootRef: myStorageScrollRef });
-
-  function openNewGroup() {
-    const nextId = groups.reduce((max, g) => Math.max(max, g.id), 0) + 1;
-    setEditingGroup({ id: nextId, name: '', category: 'Food', items: 0 });
-    setIsNewGroup(true);
-  }
-
-  function openEditGroup(group: GroupRow) {
-    setEditingGroup(group);
-    setIsNewGroup(false);
-  }
-
-  function closeGroupEditor() {
-    setEditingGroup(null);
-    setIsNewGroup(false);
-  }
-
-  function saveGroup(updated: GroupRow) {
-    setGroups(prev => {
-      if (isNewGroup) return [...prev, updated];
-      return prev.map(g => (g.id === updated.id ? updated : g));
-    });
-  }
-
-  function addToMyGroup(id: number) {
-    setMyGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
-  }
-
-  function removeFromMyGroup(id: number) {
-    setMyGroupIds(prev => prev.filter(x => x !== id));
-  }
-
-  function deleteGroup(id: number) {
-    setGroups(prev => prev.filter(x => x.id !== id));
-    setMyGroupIds(prev => prev.filter(x => x !== id));
-  }
 
   function openStorageAreaPicker(source: StorageCatalogRow) {
     setPendingStorage(source);
@@ -292,128 +200,8 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
         ))}
       </div>
 
-      {tab === 'group' ? (
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={openNewGroup}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
-            >
-              <Plus size={11} /> Add Group
-            </button>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
-              <div className="px-3 py-2 border-b border-border bg-muted/30">
-                <p className="text-xs font-semibold">All Groups</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Click a group name to add it to My Group</p>
-              </div>
-              <TableScrollContainer ref={groupsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
-                <thead>
-                  <SortableTableHeaderRow
-                    columns={ALL_GROUPS_COLUMNS}
-                    sortColumn={groupsSortColumn}
-                    sortDirection={groupsSortDirection}
-                    onSort={toggleGroupsSort}
-                    className="border-b border-border bg-muted/40"
-                  />
-                </thead>
-                <tbody>
-                  {groupsScroll.visibleItems.map(g => {
-                    const inMyGroup = myGroupIds.includes(g.id);
-                    return (
-                      <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/20">
-                        <td className="px-3 py-2.5 text-muted-foreground">{g.category}</td>
-                        <td className="px-3 py-2.5">
-                          <button
-                            type="button"
-                            onClick={() => addToMyGroup(g.id)}
-                            disabled={inMyGroup}
-                            className={`font-medium text-left hover:underline ${
-                              inMyGroup ? 'text-muted-foreground cursor-default' : 'text-primary'
-                            }`}
-                          >
-                            {g.name}
-                          </button>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditGroup(g)}
-                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                              title="Edit group"
-                            >
-                              <Pencil size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteGroup(g.id)}
-                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500"
-                              title="Delete group"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  <InfiniteScrollTableSentinel colSpan={3} hasMore={groupsScroll.hasMore} sentinelRef={groupsScroll.sentinelRef} totalCount={groupsScroll.totalCount} visibleCount={groupsScroll.visibleCount} />
-                </tbody>
-              </table>
-              </TableScrollContainer>
-            </div>
-
-            <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
-              <div className="px-3 py-2 border-b border-border bg-muted/30">
-                <p className="text-xs font-semibold">My Group</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Click a group name to remove it from My Group</p>
-              </div>
-              <TableScrollContainer ref={myGroupsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
-                <thead>
-                  <SortableTableHeaderRow
-                    columns={MY_GROUPS_COLUMNS}
-                    sortColumn={myGroupsSortColumn}
-                    sortDirection={myGroupsSortDirection}
-                    onSort={toggleMyGroupsSort}
-                    className="border-b border-border bg-muted/40"
-                  />
-                </thead>
-                <tbody>
-                  {myGroupsScroll.visibleItems.map(g => (
-                    <tr key={g.id} className="border-b border-border last:border-0 hover:bg-muted/20">
-                      <td className="px-3 py-2.5 text-muted-foreground">{g.category}</td>
-                      <td className="px-3 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => removeFromMyGroup(g.id)}
-                          className="font-medium text-left text-primary hover:underline"
-                        >
-                          {g.name}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2.5 font-sans">{g.items}</td>
-                    </tr>
-                  ))}
-                  {myGroups.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
-                        No groups selected. Click a group name on the left to add it here.
-                      </td>
-                    </tr>
-                  )}
-                  <InfiniteScrollTableSentinel colSpan={3} hasMore={myGroupsScroll.hasMore} sentinelRef={myGroupsScroll.sentinelRef} totalCount={myGroupsScroll.totalCount} visibleCount={myGroupsScroll.visibleCount} />
-                </tbody>
-              </table>
-              </TableScrollContainer>
-            </div>
-          </div>
-        </div>
+      {tab === 'hierarchy' ? (
+        <ComponentHierarchyPanel state={hierarchy} onChange={updateHierarchy} />
       ) : tab === 'storage' ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-end justify-between gap-4">
@@ -444,7 +232,7 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
                 <p className="text-xs font-semibold">All Storage — {selectedLocation}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Click a storage name, then choose an area to copy it to My Storage</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Click a storage area, then choose an area to copy it to My Storage</p>
               </div>
               <TableScrollContainer ref={locationStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
@@ -493,12 +281,12 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
             <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
               <div className="px-3 py-2 border-b border-border bg-muted/30">
                 <p className="text-xs font-semibold">My Storage — {selectedLocation}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Grouped by area. Click a storage name to remove it.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Grouped by area. Click a storage area to remove it.</p>
               </div>
 
               {!hasMyStorage ? (
                 <p className="px-3 py-8 text-center text-xs text-muted-foreground">
-                  No storage assigned yet. Click a storage name on the left and select an area.
+                  No storage assigned yet. Click a storage area on the left and select an area.
                 </p>
               ) : (
                 <TableScrollContainer ref={myStorageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
@@ -552,15 +340,6 @@ export function ComponentConfigPage({ selectedCompanyId: _selectedCompanyId }: {
         </div>
       ) : (
         <UomConfigPanel />
-      )}
-
-      {editingGroup && (
-        <GroupEditPanel
-          group={editingGroup}
-          isNew={isNewGroup}
-          onClose={closeGroupEditor}
-          onSave={saveGroup}
-        />
       )}
 
       {pendingStorage && (

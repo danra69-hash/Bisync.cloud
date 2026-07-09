@@ -4,7 +4,14 @@ import { siCategories } from '../../data/revenueManagement';
 import { inputCls, selectCls } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_OVERFLOW_CLS } from '../layout/sidePanelShared';
 
-export type GroupRow = { id: number; name: string; category: string; items: number };
+export type GroupRow = {
+  id: number;
+  name: string;
+  category: string;
+  group?: string;
+  subGroup?: string;
+  items: number;
+};
 
 type Props = {
   group: GroupRow;

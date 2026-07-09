@@ -1,9 +1,10 @@
 import { useMemo, useRef } from 'react';
+import { Plus } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import type { Product, ProductComponentItem } from '../../api';
-import { fromApiUom } from '../../data/componentForm';
+import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
 import { formatRm } from '../../data/createOrder';
 import {
   calcProductCogs,
@@ -11,6 +12,7 @@ import {
   formatCogsPercent,
 } from '../../data/productForm';
 import { formatProductParStock } from '../../data/productParStock';
+import { SubProductBatchAdditionalUoms } from './SubProductBatchUomSection';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 const fieldCls =
@@ -27,8 +29,16 @@ type Props = {
   saving: boolean;
   rrpDraft: string;
   onRrpChange: (value: string) => void;
-  onRrpBlur: () => void;
+  onRrpBlur?: () => void;
+  parStockDraft?: string;
+  onParStockChange?: (value: string) => void;
+  onParStockBlur?: () => void;
+  yieldAltUnits?: AltUnitEntry[];
+  onYieldAltUnitsChange?: (entries: AltUnitEntry[]) => void;
+  onAddBatchAdditionalUom?: () => void;
+  addBatchUomButtonCls?: string;
   onToggleLocation: (externalId: string) => void;
+  onOpenProductionMethod?: () => void;
 };
 
 function ComponentItemsTable({
@@ -37,12 +47,14 @@ function ComponentItemsTable({
   items,
   totalCost,
   totalLabel,
+  onOpenProductionMethod,
 }: {
   title: string;
   description: string;
   items: ProductComponentItem[];
   totalCost: number;
   totalLabel: string;
+  onOpenProductionMethod?: () => void;
 }) {
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
@@ -55,9 +67,20 @@ function ComponentItemsTable({
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/20">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+      <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+        </div>
+        {onOpenProductionMethod ? (
+          <button
+            type="button"
+            onClick={onOpenProductionMethod}
+            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
+          >
+            Production Method
+          </button>
+        ) : null}
       </div>
 
       {items.length === 0 ? (
@@ -111,7 +134,15 @@ export function ProductReadOnlyView({
   rrpDraft,
   onRrpChange,
   onRrpBlur,
+  parStockDraft,
+  onParStockChange,
+  onParStockBlur,
+  yieldAltUnits = [],
+  onYieldAltUnitsChange,
+  onAddBatchAdditionalUom,
+  addBatchUomButtonCls = '',
   onToggleLocation,
+  onOpenProductionMethod,
 }: Props) {
   const items = product.items ?? [];
   const packagingItems = product.packagingItems ?? [];
@@ -217,7 +248,25 @@ export function ProductReadOnlyView({
               </div>
               <div className="space-y-1.5">
                 <p className={labelCls}>UOM</p>
-                <p className={fieldCls}>{yieldUomLabel || '—'}</p>
+                <div className="flex gap-1.5 items-center">
+                  <p className={`${fieldCls} flex-1`}>{yieldUomLabel || '—'}</p>
+                  {onAddBatchAdditionalUom ? (
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onAddBatchAdditionalUom();
+                      }}
+                      disabled={saving || !yieldUomLabel}
+                      className={addBatchUomButtonCls}
+                      title="Add additional UOM"
+                      aria-label="Add additional UOM"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS</p>
@@ -231,6 +280,14 @@ export function ProductReadOnlyView({
                 </p>
               </div>
             </div>
+            {product.isSubProduct && onYieldAltUnitsChange ? (
+              <SubProductBatchAdditionalUoms
+                yieldQuantity={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
+                yieldUom={yieldUomLabel}
+                altUnits={yieldAltUnits}
+                onAltUnitsChange={onYieldAltUnitsChange}
+              />
+            ) : null}
           </>
         ) : (
           <>
@@ -316,6 +373,33 @@ export function ProductReadOnlyView({
           </div>
         ) : null}
 
+        {product.isSubProduct ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+            <div className="space-y-1.5">
+              <p className={labelCls}>Par Stock</p>
+              {onParStockChange ? (
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={parStockDraft ?? ''}
+                  disabled={saving}
+                  onChange={e => onParStockChange(e.target.value)}
+                  onBlur={onParStockBlur}
+                  placeholder="0"
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                />
+              ) : (
+                <p className={fieldCls}>{(product.parStock ?? 0) > 0 ? String(product.parStock) : '—'}</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <p className={labelCls}>UOM</p>
+              <p className={fieldCls}>{yieldUomLabel || parStockUomLabel || '—'}</p>
+              <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+            </div>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
           <div className="space-y-1.5">
             <p className={labelCls}>Par Stock</p>
@@ -332,6 +416,7 @@ export function ProductReadOnlyView({
             </p>
           </div>
         </div>
+        )}
 
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Location</p>
@@ -384,6 +469,7 @@ export function ProductReadOnlyView({
         items={items}
         totalCost={product.totalCost}
         totalLabel="Total cost"
+        onOpenProductionMethod={onOpenProductionMethod}
       />
 
       <ComponentItemsTable

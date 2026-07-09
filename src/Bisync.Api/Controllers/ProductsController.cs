@@ -78,6 +78,9 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             Rrp = request.IsSubProduct ? 0 : (request.Rrp ?? 0),
             YieldQuantity = request.IsSubProduct ? (request.YieldQuantity ?? 0) : 0,
             YieldUom = request.IsSubProduct ? (request.YieldUom?.Trim() ?? string.Empty) : string.Empty,
+            YieldAltUnitsJson = request.IsSubProduct
+                ? (string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson)
+                : "[]",
             ExpiryPeriodDays = ResolveExpiryPeriodDays(request),
             ActivationPeriodHours = ResolveActivationPeriodHours(request),
             ParStock = request.ParStock ?? 0,
@@ -162,11 +165,13 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         {
             product.YieldQuantity = request.YieldQuantity ?? 0;
             product.YieldUom = request.YieldUom?.Trim() ?? string.Empty;
+            product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
         }
         else
         {
             product.YieldQuantity = 0;
             product.YieldUom = string.Empty;
+            product.YieldAltUnitsJson = "[]";
         }
         product.ExpiryPeriodDays = ResolveExpiryPeriodDays(request);
         product.ActivationPeriodHours = ResolveActivationPeriodHours(request);
@@ -234,6 +239,12 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         }
         if (request.LocationExternalIds is not null)
             product.LocationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(request.LocationExternalIds);
+        if (request.ParStock.HasValue)
+            product.ParStock = request.ParStock.Value;
+        if (request.ParStockUom is not null)
+            product.ParStockUom = request.ParStockUom.Trim();
+        if (request.YieldAltUnitsJson is not null)
+            product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
 
         product.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
@@ -385,6 +396,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         previousRrp = product.PreviousRrp,
         yieldQuantity = product.YieldQuantity,
         yieldUom = product.YieldUom,
+        yieldAltUnitsJson = product.YieldAltUnitsJson,
         expiryPeriodDays = product.ExpiryPeriodDays,
         activationPeriodHours = product.ActivationPeriodHours,
         parStock = product.ParStock,

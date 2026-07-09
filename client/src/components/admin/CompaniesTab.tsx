@@ -16,6 +16,7 @@ import {
   type CompanyVendorPolicyTag,
 } from '../../data/companyProfile';
 import {
+  COMPANY_ACCESS_COLUMN_MODULES,
   parseCompanyModules,
   validateCompanyModules,
 } from '../../data/companyModules';
@@ -29,16 +30,58 @@ import { CompanyProfileFields } from './CompanyProfileFields';
 import { ToggleSwitch } from './ToggleSwitch';
 
 type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'locations' | 'status';
+type CompanyTableColumn = CompanySortColumn | 'accessControl';
 
-const COMPANY_TABLE_COLUMNS: SortableColumnDef<CompanySortColumn>[] = [
+const COMPANY_TABLE_COLUMNS: SortableColumnDef<CompanyTableColumn>[] = [
   { key: 'name', label: 'Company' },
   { key: 'brn', label: 'BRN' },
   { key: 'gstTin', label: 'GST/TIN' },
   { key: 'country', label: 'Country' },
+  { key: 'accessControl', label: 'Access Control', sortable: false, className: 'w-[11.5rem]' },
   { key: 'email', label: 'Email' },
   { key: 'locations', label: 'Locations', align: 'center' },
   { key: 'status', label: 'Status' },
 ];
+
+function CompanyAccessControlCell({
+  company,
+  disabled,
+  onToggle,
+}: {
+  company: Company;
+  disabled: boolean;
+  onToggle: (moduleId: AccessModule) => void;
+}) {
+  const enabled = parseCompanyModules(company.modulesJson);
+
+  return (
+    <div className="space-y-1 py-0.5" onClick={e => e.stopPropagation()}>
+      {COMPANY_ACCESS_COLUMN_MODULES.map(module => {
+        const checked = enabled.includes(module.id);
+        return (
+          <label
+            key={module.id}
+            className={`flex items-center gap-2 ${disabled ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+            title={module.label}
+            onClick={e => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={e => {
+                e.stopPropagation();
+                if (!disabled) onToggle(module.id);
+              }}
+              className="rounded border-border shrink-0"
+            />
+            <span className="text-[11px] leading-tight text-foreground truncate">{module.label}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 type CompanyDraft = Omit<Company, 'id' | 'locationCount'>;
 
@@ -345,6 +388,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
   const [loading, setLoading] = useState(true);
   const [panelDraft, setPanelDraft] = useState<Company | CompanyDraft | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [togglingCompanyId, setTogglingCompanyId] = useState<number | null>(null);
 
   function refreshList() {
     setLoading(true);
@@ -357,6 +401,27 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
   function afterSave() {
     refreshList();
     onOrgDataChanged?.();
+  }
+
+  async function toggleCompanyModule(company: Company, moduleId: AccessModule) {
+    const current = parseCompanyModules(company.modulesJson);
+    const next = current.includes(moduleId)
+      ? current.filter(value => value !== moduleId)
+      : [...current, moduleId];
+    const modulesError = validateCompanyModules(next);
+    if (modulesError) return;
+
+    setTogglingCompanyId(company.id);
+    const modulesJson = serializeStringArray(next);
+    try {
+      await api.updateCompany(company.id, { ...company, modulesJson });
+      setCompanies(prev => prev.map(c => (c.id === company.id ? { ...c, modulesJson } : c)));
+      onOrgDataChanged?.();
+    } catch {
+      refreshList();
+    } finally {
+      setTogglingCompanyId(null);
+    }
   }
 
   useEffect(() => { refreshList(); }, []);
@@ -414,7 +479,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
           <table className="w-full table-fixed text-xs">
             <thead>
               <SortableTableHeaderRow
-                columns={COMPANY_TABLE_COLUMNS}
+                columns={COMPANY_TABLE_COLUMNS as SortableColumnDef<CompanySortColumn>[]}
                 sortColumn={sortColumn}
                 sortDirection={sortDirection}
                 onSort={toggleSort}
@@ -428,6 +493,13 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
                   <td className="px-4 py-3 font-sans text-muted-foreground">{c.brn || '—'}</td>
                   <td className="px-4 py-3 font-sans text-muted-foreground">{c.gstTin || '—'}</td>
                   <td className="px-4 py-3">{getCountry(c.countryCode).name}</td>
+                  <td className="px-3 py-2 align-top">
+                    <CompanyAccessControlCell
+                      company={c}
+                      disabled={togglingCompanyId === c.id}
+                      onToggle={moduleId => void toggleCompanyModule(c, moduleId)}
+                    />
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{c.email || '—'}</td>
                   <td className="px-4 py-3 font-sans text-center">{c.locationCount}</td>
                   <td className="px-4 py-3">
@@ -438,9 +510,9 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
                 </tr>
               ))}
               {companies.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No companies yet. Add your first company.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No companies yet. Add your first company.</td></tr>
               )}
-              <InfiniteScrollTableSentinel colSpan={7} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
           </TableScrollContainer>

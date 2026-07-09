@@ -1,13 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pencil, X } from 'lucide-react';
-import { api, type Product } from '../../api';
+import { api, type PatchProductPayload, type Product } from '../../api';
+import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
+import {
+  loadYieldAltUnitsFromProduct,
+  refreshBatchAdditionalUoms,
+  serializeYieldAltUnits,
+} from '../../data/productBatchUom';
+import { serializeProductParStockUom } from '../../data/productParStock';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import {
   SIDE_PANEL_OVERLAY_CLS,
   SIDE_PANEL_SHELL_PRODUCT_DETAIL_CLS,
 } from '../layout/sidePanelShared';
+import {
+  createDefaultBatchAdditionalEntry,
+} from './SubProductBatchUomSection';
+
+const addBtnCls =
+  'shrink-0 inline-flex items-center justify-center h-[34px] w-[34px] rounded-md border border-border bg-background hover:bg-muted/40 text-muted-foreground disabled:opacity-50';
 import { ProductReadOnlyView } from './ProductReadOnlyView';
+import { ProductionMethodModal } from './ProductionMethodModal';
+import { productKeyFromParts } from '../../data/productProductionMethod';
 
 type Props = {
   product: Product;
@@ -21,13 +36,35 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rrpDraft, setRrpDraft] = useState(product.rrp > 0 ? String(product.rrp) : '');
+  const [parStockDraft, setParStockDraft] = useState(
+    (product.parStock ?? 0) > 0 ? String(product.parStock) : '',
+  );
+  const [yieldAltUnits, setYieldAltUnits] = useState<AltUnitEntry[]>([]);
+  const initializedProductIdRef = useRef<number | null>(null);
   const [locationIds, setLocationIds] = useState<string[]>(product.locationExternalIds ?? []);
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
+  const [productionMethodOpen, setProductionMethodOpen] = useState(false);
 
   useEffect(() => {
     setRrpDraft(product.rrp > 0 ? String(product.rrp) : '');
+    setParStockDraft((product.parStock ?? 0) > 0 ? String(product.parStock) : '');
     setLocationIds(product.locationExternalIds ?? []);
+
+    if (initializedProductIdRef.current !== product.id) {
+      initializedProductIdRef.current = product.id;
+      const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+      setYieldAltUnits(refreshBatchAdditionalUoms(
+        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+        product.yieldQuantity,
+        loadedYieldUom,
+      ));
+    }
   }, [product]);
+
+  useEffect(() => {
+    const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, product.yieldQuantity, loadedYieldUom));
+  }, [product.id, product.yieldQuantity, product.yieldUom]);
 
   useEffect(() => {
     if (!companyId) {
@@ -43,12 +80,41 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
       .catch(() => setLocations([]));
   }, [companyId]);
 
-  async function patchProduct(payload: Parameters<typeof api.patchProduct>[1]) {
+  const hasUnsavedChanges = useMemo(() => {
+    const rrpNext = rrpDraft.trim() === '' ? 0 : parseFloat(rrpDraft);
+    const parNext = parStockDraft.trim() === '' ? 0 : parseFloat(parStockDraft);
+    const rrpChanged = Number.isFinite(rrpNext) && rrpNext >= 0 && rrpNext !== product.rrp;
+    const parChanged = Number.isFinite(parNext) && parNext >= 0 && parNext !== (product.parStock ?? 0);
+    const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+    const serverAlt = serializeYieldAltUnits(
+      loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+    );
+    const altChanged = product.isSubProduct && serializeYieldAltUnits(yieldAltUnits) !== serverAlt;
+    return rrpChanged || parChanged || altChanged;
+  }, [rrpDraft, parStockDraft, yieldAltUnits, product]);
+
+  async function patchProduct(payload: PatchProductPayload) {
     setSaving(true);
     setError(null);
     try {
       const updated = await api.patchProduct(product.id, payload);
-      onUpdated?.(updated);
+      if (payload.yieldAltUnitsJson !== undefined) {
+        const loadedYieldUom = updated.yieldUom ? fromApiUom(updated.yieldUom) : '';
+        const fromServer = loadYieldAltUnitsFromProduct(updated.yieldAltUnitsJson, loadedYieldUom);
+        const fallback = loadYieldAltUnitsFromProduct(payload.yieldAltUnitsJson, loadedYieldUom);
+        const entries = fromServer.length > 0 ? fromServer : fallback;
+        setYieldAltUnits(refreshBatchAdditionalUoms(
+          entries,
+          updated.yieldQuantity,
+          loadedYieldUom,
+        ));
+        onUpdated?.({
+          ...updated,
+          yieldAltUnitsJson: updated.yieldAltUnitsJson || payload.yieldAltUnitsJson,
+        });
+      } else {
+        onUpdated?.(updated);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update product.');
     } finally {
@@ -56,14 +122,59 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
     }
   }
 
-  async function saveRrp() {
-    const next = rrpDraft.trim() === '' ? 0 : parseFloat(rrpDraft);
-    if (!Number.isFinite(next) || next < 0) {
-      setRrpDraft(product.rrp > 0 ? String(product.rrp) : '');
+  async function saveAll() {
+    const payload: PatchProductPayload = {};
+    const rrpNext = rrpDraft.trim() === '' ? 0 : parseFloat(rrpDraft);
+    if (!Number.isFinite(rrpNext) || rrpNext < 0) {
+      setError('RRP must be zero or greater.');
       return;
     }
-    if (next === product.rrp) return;
-    await patchProduct({ rrp: next });
+    if (rrpNext !== product.rrp) {
+      payload.rrp = rrpNext;
+    }
+
+    const parNext = parStockDraft.trim() === '' ? 0 : parseFloat(parStockDraft);
+    if (!Number.isFinite(parNext) || parNext < 0) {
+      setError('Par stock must be zero or greater.');
+      return;
+    }
+    if (parNext !== (product.parStock ?? 0)) {
+      const yieldUom = product.yieldUom
+        ? serializeProductParStockUom(fromApiUom(product.yieldUom))
+        : product.parStockUom;
+      payload.parStock = parNext;
+      payload.parStockUom = parNext > 0 ? yieldUom : '';
+    }
+
+    if (product.isSubProduct) {
+      const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+      const serverAlt = serializeYieldAltUnits(
+        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+      );
+      const nextAlt = serializeYieldAltUnits(yieldAltUnits);
+      if (nextAlt !== serverAlt) {
+        payload.yieldAltUnitsJson = nextAlt;
+      }
+    }
+
+    if (Object.keys(payload).length === 0) return;
+    setError(null);
+    await patchProduct(payload);
+  }
+
+  function handleYieldAltUnitsChange(entries: AltUnitEntry[]) {
+    setYieldAltUnits(entries);
+  }
+
+  function addBatchAdditionalUom() {
+    const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+    const next = createDefaultBatchAdditionalEntry(
+      yieldAltUnits,
+      product.yieldQuantity > 0 ? String(product.yieldQuantity) : '',
+      loadedYieldUom,
+    );
+    if (next.length === yieldAltUnits.length) return;
+    setYieldAltUnits(next);
   }
 
   async function toggleLocation(externalId: string) {
@@ -85,6 +196,14 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
             <p className="text-[11px] text-muted-foreground mt-1 font-mono">{product.productId}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => void saveAll()}
+              disabled={saving || !hasUnsavedChanges}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
             {onEdit ? (
               <button
                 type="button"
@@ -122,11 +241,29 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
             saving={saving}
             rrpDraft={rrpDraft}
             onRrpChange={setRrpDraft}
-            onRrpBlur={() => void saveRrp()}
+            parStockDraft={parStockDraft}
+            onParStockChange={setParStockDraft}
+            yieldAltUnits={yieldAltUnits}
+            onYieldAltUnitsChange={handleYieldAltUnitsChange}
+            onAddBatchAdditionalUom={product.isSubProduct ? addBatchAdditionalUom : undefined}
+            addBatchUomButtonCls={addBtnCls}
             onToggleLocation={externalId => void toggleLocation(externalId)}
+            onOpenProductionMethod={() => setProductionMethodOpen(true)}
           />
         </div>
       </aside>
+
+      {productionMethodOpen ? (
+        <ProductionMethodModal
+          category={product.category}
+          group={product.group}
+          productName={product.name}
+          productKey={productKeyFromParts(product.id, product.productId)}
+          components={product.items ?? []}
+          yieldQuantity={product.yieldQuantity || 1}
+          onClose={() => setProductionMethodOpen(false)}
+        />
+      ) : null}
     </>,
     document.body,
   );

@@ -639,6 +639,7 @@ export interface Product {
   previousRrp?: number | null;
   yieldQuantity: number;
   yieldUom: string;
+  yieldAltUnitsJson?: string;
   expiryPeriodDays: number;
   activationPeriodHours: number;
   parStock: number;
@@ -673,6 +674,7 @@ export interface UpsertProductPayload {
   rrp?: number;
   yieldQuantity?: number;
   yieldUom?: string;
+  yieldAltUnitsJson?: string;
   expiryPeriodDays?: number;
   activationPeriodHours?: number;
   parStock?: number;
@@ -690,6 +692,9 @@ export interface PatchProductPayload {
   posEnabled?: boolean;
   active?: boolean;
   rrp?: number;
+  parStock?: number;
+  parStockUom?: string;
+  yieldAltUnitsJson?: string;
   locationExternalIds?: string[];
 }
 

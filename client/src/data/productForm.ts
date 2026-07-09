@@ -1,5 +1,6 @@
 import { fromApiUom } from './componentForm';
 import type { ComponentRow } from './componentForm';
+import type { Product } from '../api';
 
 export type ProductAliasLine = {
   key: string;
@@ -285,4 +286,33 @@ export function filterComponentsForPicker(
   return scored
     .sort((a, b) => b.score - a.score || a.component.name.localeCompare(b.component.name))
     .map(row => row.component);
+}
+
+export function filterSubProductsForPicker(
+  products: Product[],
+  query: string,
+): Product[] {
+  const normalized = query.trim().toLowerCase();
+  const active = products.filter(product => product.isSubProduct && product.active);
+
+  if (!normalized) {
+    return [...active].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const scored = active
+    .map(product => {
+      const name = product.name.toLowerCase();
+      const id = product.productId.toLowerCase();
+      let score = 0;
+      if (name === normalized || id === normalized) score = 100;
+      else if (name.startsWith(normalized) || id.startsWith(normalized)) score = 80;
+      else if (name.includes(normalized) || id.includes(normalized)) score = 60;
+      else return null;
+      return { product, score };
+    })
+    .filter((row): row is { product: Product; score: number } => row !== null);
+
+  return scored
+    .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
+    .map(row => row.product);
 }

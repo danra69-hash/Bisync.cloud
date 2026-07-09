@@ -10,6 +10,14 @@ export const PLATFORM_MODULES = [
   { id: 'Accounting' as const, label: 'Accounting', navItem: 'Accounting' as NavItem },
 ] as const;
 
+/** Labels used on the Platform Config companies table Access Control column. */
+export const COMPANY_ACCESS_COLUMN_MODULES = [
+  { id: 'RMS' as const, label: 'Revenue Management' },
+  { id: 'POS' as const, label: 'Point-of-Sales' },
+  { id: 'HRM' as const, label: 'Human Resources' },
+  { id: 'Accounting' as const, label: 'Accounting' },
+] as const;
+
 export const LOCATION_PLATFORM_MODULES = PLATFORM_MODULES.filter(module => module.id !== 'Accounting');
 
 const NAV_TO_MODULE = new Map<NavItem, AccessModule>(

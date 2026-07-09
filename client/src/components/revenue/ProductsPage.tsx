@@ -8,7 +8,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type Product } from '../../api';
-import { blankComponentRow, fromApiUom, toApiUom } from '../../data/componentForm';
+import { blankComponentRow, fromApiUom, toApiUom, type AltUnitEntry } from '../../data/componentForm';
 import { loadExtraGroups, saveExtraGroups, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
 import {
   convertProductParStockQty,
@@ -34,6 +34,10 @@ import {
   type ProductLine,
 } from '../../data/productForm';
 import {
+  resolveProductLineUomOptions,
+  withCurrentProductLineUomOption,
+} from '../../data/productComponentUomOptions';
+import {
   blankB2bSalesConfig,
   b2bDeliveryResolvesToYieldUom,
   buildB2bConfigForSave,
@@ -48,13 +52,24 @@ import {
 } from '../../data/productB2bSales';
 import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import { B2bSalesBox } from './B2bSalesBox';
-import { SubProductPicker } from './SubProductPicker';
 import { siCategories, siGroups } from '../../data/revenueManagement';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import { ComponentEditPanel } from './ComponentEditPanel';
 import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
+import { ProductionMethodModal } from './ProductionMethodModal';
+import { productKeyFromParts } from '../../data/productProductionMethod';
 import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
 import { SmartComponentPicker } from './SmartComponentPicker';
+import { ProductComponentPicker } from './ProductComponentPicker';
+import {
+  loadYieldAltUnitsFromProduct,
+  refreshBatchAdditionalUoms,
+  serializeYieldAltUnits,
+} from '../../data/productBatchUom';
+import {
+  createDefaultBatchAdditionalEntry,
+  SubProductBatchAdditionalUoms,
+} from './SubProductBatchUomSection';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 
@@ -96,7 +111,7 @@ type ComponentLinesSectionProps = {
   totalCost: number;
   totalLabel: string;
   availableComponents: ComponentRow[];
-  pickerMode?: 'component' | 'subproduct';
+  includeSubProducts?: boolean;
   availableSubProducts?: Product[];
   onUpdateLine: (key: string, patch: Partial<ProductLine>) => void;
   onComponentSelect: (key: string, component: ComponentRow | null) => void;
@@ -104,6 +119,7 @@ type ComponentLinesSectionProps = {
   onRemoveLine: (key: string) => void;
   onAddLine: () => void;
   onOpenAddComponent: (lineKey: string) => void;
+  onOpenProductionMethod?: () => void;
 };
 
 function ComponentLinesSection({
@@ -113,7 +129,7 @@ function ComponentLinesSection({
   totalCost,
   totalLabel,
   availableComponents,
-  pickerMode = 'component',
+  includeSubProducts = false,
   availableSubProducts = [],
   onUpdateLine,
   onComponentSelect,
@@ -121,15 +137,13 @@ function ComponentLinesSection({
   onRemoveLine,
   onAddLine,
   onOpenAddComponent,
+  onOpenProductionMethod,
 }: ComponentLinesSectionProps) {
-  const isSubProductMode = pickerMode === 'subproduct';
-  const columns = isSubProductMode
+  const columns = includeSubProducts
     ? BOM_LINE_TABLE_COLUMNS.map(column => (
       column.key === 'component'
-        ? { ...column, label: 'Sub-product' }
-        : column.key === 'uom'
-          ? { ...column, label: 'Batch UOM' }
-          : column
+        ? { ...column, label: 'Component' }
+        : column
     ))
     : BOM_LINE_TABLE_COLUMNS;
   const showAddRow = lines.length > 0 && isProductLineFilled(lines[lines.length - 1]);
@@ -152,6 +166,20 @@ function ComponentLinesSection({
     [lines, sortColumn, sortDirection],
   );
 
+  const lineUomOptionsByKey = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof withCurrentProductLineUomOption>>();
+    for (const line of lines) {
+      map.set(
+        line.key,
+        withCurrentProductLineUomOption(
+          resolveProductLineUomOptions(line, availableComponents, availableSubProducts),
+          line,
+        ),
+      );
+    }
+    return map;
+  }, [lines, availableComponents, availableSubProducts]);
+
   const {
     visibleItems: pagedLines,
     hasMore,
@@ -162,9 +190,20 @@ function ComponentLinesSection({
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-3 border-b border-border bg-muted/20">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+      <div className="px-4 py-3 border-b border-border bg-muted/20 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
+        </div>
+        {onOpenProductionMethod ? (
+          <button
+            type="button"
+            onClick={onOpenProductionMethod}
+            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
+          >
+            Production Method
+          </button>
+        ) : null}
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
@@ -181,16 +220,19 @@ function ComponentLinesSection({
           <tbody>
             {pagedLines.map(line => {
               const subtotal = calcLineSubtotal(line.quantity, line.componentUomPrice);
+              const uomOptions = lineUomOptionsByKey.get(line.key) ?? [];
               return (
                 <tr key={line.key}>
                   <td className={tdCls}>
                     <div className="flex gap-1.5 items-center">
                       <div className="flex-1 min-w-0">
-                        {isSubProductMode ? (
-                          <SubProductPicker
-                            products={availableSubProducts}
+                        {includeSubProducts ? (
+                          <ProductComponentPicker
+                            components={availableComponents}
+                            subProducts={availableSubProducts}
                             value={line.componentId}
-                            onChange={product => onSubProductSelect?.(line.key, product)}
+                            onComponentSelect={component => onComponentSelect(line.key, component)}
+                            onSubProductSelect={product => onSubProductSelect?.(line.key, product)}
                           />
                         ) : (
                           <SmartComponentPicker
@@ -200,8 +242,7 @@ function ComponentLinesSection({
                           />
                         )}
                       </div>
-                      {!isSubProductMode ? (
-                        <button
+                      <button
                           type="button"
                           onClick={() => onOpenAddComponent(line.key)}
                           className={addBtnCls}
@@ -209,12 +250,32 @@ function ComponentLinesSection({
                           aria-label="Create new smart component"
                         >
                           <Plus size={14} />
-                        </button>
-                      ) : null}
+                      </button>
                     </div>
                   </td>
                   <td className={tdCls}>
-                    <span className="inline-block min-w-[4rem]">{line.componentUom || '—'}</span>
+                    {uomOptions.length > 1 ? (
+                      <select
+                        value={line.componentUom}
+                        onChange={e => {
+                          const selected = uomOptions.find(option => option.label === e.target.value);
+                          if (!selected) return;
+                          onUpdateLine(line.key, {
+                            componentUom: selected.label,
+                            componentUomPrice: selected.price > 0 ? String(selected.price) : '',
+                          });
+                        }}
+                        className={`${fieldCls} min-w-[6rem] max-w-full`}
+                      >
+                        {uomOptions.map(option => (
+                          <option key={option.label} value={option.label}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="inline-block min-w-[4rem]">{line.componentUom || '—'}</span>
+                    )}
                   </td>
                   <td className={tdCls}>
                     <div className="flex items-center gap-1 min-w-[8rem]">
@@ -292,6 +353,24 @@ function mapProductItemsToLines(items?: Product['items']): ProductLine[] {
   return mapped.length > 0 ? mapped : [blankProductLine()];
 }
 
+function mapProductLinesToComponentItems(lines: ProductLine[]): Product['items'] {
+  return lines
+    .filter(isProductLineFilled)
+    .map((line, index) => {
+      const quantity = parseFloat(line.quantity) || 0;
+      const componentUomPrice = parseFloat(line.componentUomPrice) || 0;
+      return {
+        componentId: line.componentId,
+        componentName: line.componentName,
+        componentUom: line.componentUom,
+        componentUomPrice,
+        quantity,
+        subtotal: calcLineSubtotal(line.quantity, line.componentUomPrice),
+        sortOrder: index + 1,
+      };
+    });
+}
+
 export function ProductsPage({
   selectedCompanyId,
   selectedLocationIds,
@@ -320,6 +399,7 @@ export function ProductsPage({
   const [rrp, setRrp] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('');
   const [yieldUom, setYieldUom] = useState('');
+  const [yieldAltUnits, setYieldAltUnits] = useState<AltUnitEntry[]>([]);
   const [expiryPeriodDays, setExpiryPeriodDays] = useState('');
   const [activationPeriodHours, setActivationPeriodHours] = useState('');
   const [parStock, setParStock] = useState('');
@@ -337,6 +417,7 @@ export function ProductsPage({
   const [isNewGroup, setIsNewGroup] = useState(false);
   const [componentEditorLineKey, setComponentEditorLineKey] = useState<string | null>(null);
   const [componentEditorTarget, setComponentEditorTarget] = useState<'product' | 'packaging'>('product');
+  const [productionMethodOpen, setProductionMethodOpen] = useState(false);
   const [editComponentRow, setEditComponentRow] = useState<ReturnType<typeof ingredientToRow> | null>(null);
   const [isNewComponent, setIsNewComponent] = useState(false);
   const [componentSaveError, setComponentSaveError] = useState<string | null>(null);
@@ -438,6 +519,13 @@ export function ProductsPage({
     [savedProducts, selectedLocationIds],
   );
 
+  const productComponentSubProducts = useMemo(
+    () => availableSubProducts.filter(product =>
+      !selectedProductId || product.id !== Number(selectedProductId),
+    ),
+    [availableSubProducts, selectedProductId],
+  );
+
   const linkedSubProduct = useMemo(
     () => resolveLinkedSubProduct(lines, savedProducts),
     [lines, savedProducts],
@@ -497,7 +585,18 @@ export function ProductsPage({
   );
 
   useEffect(() => {
+    if (!isSubProduct || !yieldUom.trim()) return;
+    setParStockUom(yieldUom);
+  }, [isSubProduct, yieldUom]);
+
+  useEffect(() => {
+    if (!isSubProduct) return;
+    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, parseFloat(yieldQuantity) || 0, yieldUom));
+  }, [isSubProduct, yieldQuantity, yieldUom]);
+
+  useEffect(() => {
     if (parStockUom.trim()) return;
+    if (isSubProduct) return;
     const defaultUom = resolveDefaultProductParStockUom({
       isSubProduct,
       yieldUom,
@@ -538,6 +637,7 @@ export function ProductsPage({
       setB2bEnabled(false);
       setYieldQuantity('');
       setYieldUom('');
+    setYieldAltUnits([]);
       setActivationPeriodHours('');
     }
   }
@@ -554,6 +654,7 @@ export function ProductsPage({
     setRrp('');
     setYieldQuantity('');
     setYieldUom('');
+    setYieldAltUnits([]);
     setExpiryPeriodDays('');
     setActivationPeriodHours('');
     setParStock('');
@@ -579,6 +680,12 @@ export function ProductsPage({
     setRrp(product.rrp > 0 ? String(product.rrp) : '');
     setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : '');
     setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : '');
+    const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+    setYieldAltUnits(refreshBatchAdditionalUoms(
+      loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+      product.yieldQuantity,
+      loadedYieldUom,
+    ));
     setExpiryPeriodDays(product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '');
     setActivationPeriodHours(product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '');
     setParStock((product.parStock ?? 0) > 0 ? String(product.parStock) : '');
@@ -886,8 +993,8 @@ export function ProductsPage({
 
     if (payloadItems.length === 0) {
       showSaveError(b2bEnabled && !isSubProduct
-        ? 'Add at least one sub-product line.'
-        : 'Add at least one smart component line.');
+        ? 'Add at least one component or sub-product line.'
+        : 'Add at least one smart component or sub-product line.');
       return;
     }
     if (payloadItems.some(item => item.quantity <= 0)) {
@@ -941,16 +1048,19 @@ export function ProductsPage({
       rrp: effectiveRrp,
       yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
       yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
+      yieldAltUnitsJson: isSubProduct ? serializeYieldAltUnits(yieldAltUnits) : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
       activationPeriodHours: isSubProduct ? parseInt(activationPeriodHours, 10) || 0 : undefined,
       parStock: parseFloat(parStock) || 0,
       parStockUom: (parseFloat(parStock) || 0) > 0
-        ? serializeProductParStockUom(parStockUom || resolveDefaultProductParStockUom({
-          isSubProduct,
-          yieldUom,
-          b2bEnabled,
-          b2bSalesConfig,
-        }))
+        ? serializeProductParStockUom(isSubProduct
+          ? (yieldUom || parStockUom)
+          : (parStockUom || resolveDefaultProductParStockUom({
+            isSubProduct,
+            yieldUom,
+            b2bEnabled,
+            b2bSalesConfig,
+          })))
         : undefined,
       active: true,
       companyId: selectedCompanyId,
@@ -1237,17 +1347,29 @@ export function ProductsPage({
                   </div>
                   <div className="space-y-1.5">
                     <label className={labelCls} htmlFor="yield-uom">UOM</label>
-                    <select
-                      id="yield-uom"
-                      value={yieldUom}
-                      onChange={e => setYieldUom(e.target.value)}
-                      className={fieldCls}
-                    >
-                      <option value="">Select UOM…</option>
-                      {getKnownRecipeUnits().map(unit => (
-                        <option key={unit} value={unit}>{unit}</option>
-                      ))}
-                    </select>
+                    <div className="flex gap-1.5 items-center">
+                      <select
+                        id="yield-uom"
+                        value={yieldUom}
+                        onChange={e => setYieldUom(e.target.value)}
+                        className={`${fieldCls} flex-1`}
+                      >
+                        <option value="">Select UOM…</option>
+                        {getKnownRecipeUnits().map(unit => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setYieldAltUnits(prev => createDefaultBatchAdditionalEntry(prev, yieldQuantity, yieldUom))}
+                        disabled={!yieldUom}
+                        className={addBtnCls}
+                        title="Add additional UOM"
+                        aria-label="Add additional UOM"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS</p>
@@ -1261,6 +1383,12 @@ export function ProductsPage({
                     </p>
                   </div>
                 </div>
+                <SubProductBatchAdditionalUoms
+                  yieldQuantity={yieldQuantity}
+                  yieldUom={yieldUom}
+                  altUnits={yieldAltUnits}
+                  onAltUnitsChange={setYieldAltUnits}
+                />
               </>
             ) : (
               <>
@@ -1422,6 +1550,28 @@ export function ProductsPage({
               </div>
             ) : null}
 
+            {isSubProduct ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+                <div className="space-y-1.5">
+                  <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
+                  <input
+                    id="par-stock-qty"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={parStock}
+                    onChange={e => setParStock(e.target.value)}
+                    placeholder="0"
+                    className={fieldCls}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={labelCls}>UOM</label>
+                  <p className={fieldCls}>{yieldUom || '—'}</p>
+                  <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+                </div>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
               <div className="space-y-1.5">
                 <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
@@ -1465,6 +1615,7 @@ export function ProductsPage({
                 </p>
               </div>
             </div>
+            )}
 
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
@@ -1513,20 +1664,21 @@ export function ProductsPage({
           <ComponentLinesSection
             title="Product Component"
             description={!isSubProduct && b2bEnabled
-              ? 'Link a sub-product batch. Delivery-unit COGS is calculated from the sub-product yield UOM.'
-              : 'Add smart components and quantities to calculate product cost'}
+              ? 'Add smart components or sub-products. Include at least one sub-product for B2B sales COGS.'
+              : 'Add smart components, sub-products, and quantities to calculate product cost'}
             lines={lines}
             totalCost={totalCost}
             totalLabel="Total cost"
             availableComponents={availableComponents}
-            pickerMode={!isSubProduct && b2bEnabled ? 'subproduct' : 'component'}
-            availableSubProducts={availableSubProducts}
+            includeSubProducts
+            availableSubProducts={productComponentSubProducts}
             onUpdateLine={updateLine}
             onComponentSelect={handleComponentSelect}
             onSubProductSelect={handleSubProductSelect}
             onRemoveLine={removeLine}
             onAddLine={addLine}
             onOpenAddComponent={lineKey => openAddComponent(lineKey, 'product')}
+            onOpenProductionMethod={() => setProductionMethodOpen(true)}
           />
 
           <ComponentLinesSection
@@ -1650,6 +1802,21 @@ export function ProductsPage({
               onSave={updated => void handleSaveComponent(updated)}
             />,
             document.body,
+          ) : null}
+
+          {productionMethodOpen ? (
+            <ProductionMethodModal
+              category={category}
+              group={group}
+              productName={name.trim() || 'Product'}
+              productKey={productKeyFromParts(
+                selectedProductId ? Number(selectedProductId) : null,
+                productId,
+              )}
+              components={mapProductLinesToComponentItems(lines)}
+              yieldQuantity={parseFloat(yieldQuantity) || 1}
+              onClose={() => setProductionMethodOpen(false)}
+            />
           ) : null}
         </>
       )}

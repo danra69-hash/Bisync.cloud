@@ -20,6 +20,7 @@ public class Product
     public decimal? PreviousRrp { get; set; }
     public decimal YieldQuantity { get; set; }
     public string YieldUom { get; set; } = string.Empty;
+    public string YieldAltUnitsJson { get; set; } = "[]";
     public int ExpiryPeriodDays { get; set; }
     public int ActivationPeriodHours { get; set; }
     public decimal ParStock { get; set; }
