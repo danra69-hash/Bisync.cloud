@@ -462,6 +462,170 @@ export interface VendorOrderPortalItem {
   unitPrice: number;
 }
 
+export interface QuoteLineVendorResponse {
+  deliveryUnitText: string;
+  rrp: number;
+  notes?: string;
+}
+
+export interface QuoteRequestLineView {
+  id: number;
+  kind: 'principal' | 'other' | string;
+  sortOrder: number;
+  componentId?: number | null;
+  componentExternalId: string;
+  componentName: string;
+  specification?: string;
+  principalUom: string;
+  requestedQty: number;
+  vendorResponses: Record<string, QuoteLineVendorResponse>;
+}
+
+export interface QuoteRequestVendorView {
+  id: number;
+  vendorId?: number | null;
+  vendorExternalId: string;
+  vendorName: string;
+  contactPerson: string;
+  email: string;
+  mobile: string;
+  isNewVendor: boolean;
+  shareToken: string;
+  status: string;
+  submittedAt?: string | null;
+  submittedBy?: string;
+}
+
+export interface QuoteRequestCompanyView {
+  name: string;
+  brn: string;
+  gstTin: string;
+  phone: string;
+  email: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateProvince: string;
+  postcode: string;
+  countryCode?: string;
+}
+
+export interface QuoteRequestLocationView {
+  name: string;
+  externalId: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateProvince: string;
+  postcode: string;
+}
+
+export interface QuoteRequestDetail {
+  id: number;
+  rfqNumber: string;
+  companyId: number;
+  locationIds: string[];
+  status: string;
+  notes: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  company: QuoteRequestCompanyView | null;
+  locations: QuoteRequestLocationView[];
+  vendors: QuoteRequestVendorView[];
+  lines: QuoteRequestLineView[];
+}
+
+export interface QuoteRequestSummary {
+  id: number;
+  rfqNumber: string;
+  companyId: number;
+  locationIds: string[];
+  status: string;
+  notes: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  vendorCount: number;
+  lineCount: number;
+  submittedCount: number;
+  vendors: {
+    id: number;
+    vendorExternalId: string;
+    vendorName: string;
+    status: string;
+    submittedAt?: string | null;
+    shareToken: string;
+  }[];
+  lines?: {
+    id: number;
+    kind: string;
+    componentName: string;
+    specification?: string;
+    principalUom: string;
+    requestedQty: number;
+    vendorResponses: Record<string, QuoteLineVendorResponse>;
+  }[];
+}
+
+export interface CreateQuoteRequestPayload {
+  companyId: number;
+  locationExternalIds: string[];
+  notes?: string;
+  createdBy?: string;
+  vendors: {
+    vendorId?: number | null;
+    vendorExternalId?: string;
+    vendorName: string;
+    contactPerson: string;
+    email: string;
+    mobile: string;
+    isNewVendor: boolean;
+  }[];
+  lines: {
+    kind: 'principal' | 'other';
+    componentId?: number | null;
+    componentExternalId?: string;
+    componentName: string;
+    specification?: string;
+    principalUom?: string;
+    requestedQty?: number;
+  }[];
+}
+
+export interface VendorRfqPortalLine {
+  id: number;
+  kind: string;
+  componentName: string;
+  specification?: string;
+  deliveryUnitText: string;
+  rrp: number;
+  responseNotes: string;
+}
+
+export interface VendorRfqPortal {
+  rfqId: number;
+  rfqNumber: string;
+  status: string;
+  submittedAt?: string | null;
+  submittedBy?: string;
+  canSubmit: boolean;
+  notes: string;
+  company: QuoteRequestCompanyView | null;
+  locations: QuoteRequestLocationView[];
+  lines: VendorRfqPortalLine[];
+}
+
+export interface SubmitVendorRfqPayload {
+  submittedBy?: string;
+  responses: {
+    lineId: number;
+    deliveryUnitText: string;
+    rrp: number;
+    notes?: string;
+  }[];
+}
+
 export interface VendorOrderPortal {
   id: number;
   poNumber: string;
@@ -1256,6 +1420,14 @@ export const api = {
   vendorOrderPortal: (token: string) => fetchJson<VendorOrderPortal>(`/api/vendor-orders/${token}`),
   acceptVendorOrder: (token: string, acceptedBy?: string) =>
     fetchJsonWithMethod<VendorOrderPortal>(`/api/vendor-orders/${token}/accept`, 'POST', { acceptedBy }),
+  quoteRequests: (companyId?: number) =>
+    fetchJson<QuoteRequestSummary[]>(`/api/quote-requests${companyId ? `?companyId=${companyId}` : ''}`),
+  quoteRequest: (id: number) => fetchJson<QuoteRequestDetail>(`/api/quote-requests/${id}`),
+  createQuoteRequest: (data: CreateQuoteRequestPayload) =>
+    fetchJsonWithMethod<QuoteRequestDetail>('/api/quote-requests', 'POST', data),
+  vendorRfqPortal: (token: string) => fetchJson<VendorRfqPortal>(`/api/vendor-rfq/${token}`),
+  submitVendorRfq: (token: string, data: SubmitVendorRfqPayload) =>
+    fetchJsonWithMethod<VendorRfqPortal>(`/api/vendor-rfq/${token}/submit`, 'POST', data),
   vendorProductPrices: () => fetchJson<VendorProductPriceRow[]>('/api/vendorproducts/prices'),
   vendorProductCatalog: (vendorExternalId?: string) =>
     fetchJson<VendorProductCatalogRow[]>(

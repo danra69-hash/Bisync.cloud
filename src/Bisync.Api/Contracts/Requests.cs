@@ -1051,3 +1051,66 @@ public class UpsertPosCustomerRequest
     public bool Active { get; set; } = true;
 }
 
+
+public class CreateQuoteRequestLineDto
+{
+    [MaxLength(20)]
+    public string Kind { get; set; } = "principal";
+    public int? ComponentId { get; set; }
+    [MaxLength(50)]
+    public string ComponentExternalId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string ComponentName { get; set; } = string.Empty;
+    [MaxLength(2000)]
+    public string Specification { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string PrincipalUom { get; set; } = string.Empty;
+    [Range(0, 999999999)]
+    public decimal RequestedQty { get; set; }
+}
+
+public class CreateQuoteRequestVendorDto
+{
+    public int? VendorId { get; set; }
+    [MaxLength(50)]
+    public string VendorExternalId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string VendorName { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string ContactPerson { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string Mobile { get; set; } = string.Empty;
+    public bool IsNewVendor { get; set; }
+}
+
+public class CreateQuoteRequestDto
+{
+    public int CompanyId { get; set; }
+    public List<string> LocationExternalIds { get; set; } = [];
+    [MaxLength(2000)]
+    public string? Notes { get; set; }
+    [MaxLength(200)]
+    public string? CreatedBy { get; set; }
+    public List<CreateQuoteRequestVendorDto> Vendors { get; set; } = [];
+    public List<CreateQuoteRequestLineDto> Lines { get; set; } = [];
+}
+
+public class QuoteLineVendorResponseDto
+{
+    public int LineId { get; set; }
+    [MaxLength(200)]
+    public string DeliveryUnitText { get; set; } = string.Empty;
+    [Range(0, 999999999)]
+    public decimal Rrp { get; set; }
+    [MaxLength(500)]
+    public string? Notes { get; set; }
+}
+
+public class SubmitQuoteRequestPortalDto
+{
+    [MaxLength(200)]
+    public string? SubmittedBy { get; set; }
+    public List<QuoteLineVendorResponseDto> Responses { get; set; } = [];
+}

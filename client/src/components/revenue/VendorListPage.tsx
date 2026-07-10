@@ -7,7 +7,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
-import { Search, UserPlus } from 'lucide-react';
+import { FileText, PackageOpen, Search, UserPlus } from 'lucide-react';
 import { api, type Company, type EngageVendorContact, type LocationConfig, type Vendor } from '../../api';
 import {
   applyVendorProductOverrides,
@@ -28,6 +28,8 @@ import { VendorEngageModal } from './VendorEngageModal';
 import { VendorCreatePanel } from './VendorCreatePanel';
 import { VendorProductsList } from './VendorProductsList';
 import { VendorProductsPanel } from './VendorProductsPanel';
+import { RequestForQuotePanel } from './RequestForQuotePanel';
+import { RequestForQuoteList } from './RequestForQuoteList';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
 type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'action';
@@ -45,6 +47,7 @@ const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
 const VENDOR_TABS = [
   { id: 'vendors' as const, label: 'Vendors' },
   { id: 'products' as const, label: 'Vendor Products' },
+  { id: 'rfq' as const, label: 'Request for Quote' },
 ] as const;
 
 type VendorTableRow =
@@ -65,7 +68,7 @@ export function VendorListPage({
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 }) {
-  const [tab, setTab] = useState<'vendors' | 'products'>('vendors');
+  const [tab, setTab] = useState<'vendors' | 'products' | 'rfq'>('vendors');
 
   const activeTabLabel = VENDOR_TABS.find(t => t.id === tab)?.label ?? 'Vendors';
   useRevMgmtPageLabel(activeTabLabel);
@@ -83,8 +86,10 @@ export function VendorListPage({
   const [engageError, setEngageError] = useState<string | null>(null);
   const [productsVendor, setProductsVendor] = useState<Vendor | null>(null);
   const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [rfqRefresh, setRfqRefresh] = useState(0);
   const [engaging, setEngaging] = useState(false);
   const [showCreateVendor, setShowCreateVendor] = useState(false);
+  const [showRfqPanel, setShowRfqPanel] = useState(false);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<VendorSortColumn>();
 
   const catalogProducts = useMemo(
@@ -119,9 +124,14 @@ export function VendorListPage({
     return resolveOrgVendorPolicyTags(company, configLocations, selectedLocationIds);
   }, [companies, configLocations, selectedCompanyId, selectedLocationIds]);
 
-  const countryCode = useMemo(
-    () => companies.find(c => c.id === selectedCompanyId)?.countryCode ?? 'MY',
+  const selectedCompany = useMemo(
+    () => companies.find(c => c.id === selectedCompanyId) ?? null,
     [companies, selectedCompanyId],
+  );
+
+  const countryCode = useMemo(
+    () => selectedCompany?.countryCode ?? 'MY',
+    [selectedCompany],
   );
 
   useEffect(() => {
@@ -345,31 +355,49 @@ export function VendorListPage({
         </p>
       )}
 
-      <div className="flex items-center justify-end">
-        <button
-          type="button"
-          onClick={() => setShowCreateVendor(true)}
-          disabled={!selectedCompanyId}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
-        >
-          <UserPlus size={11} />
-          Create Vendor
-        </button>
-      </div>
-
-      <div className="flex gap-1 border-b border-border">
-        {VENDOR_TABS.map(t => (
+      <div className="flex items-end justify-between gap-3 flex-wrap border-b border-border">
+        <div className="flex gap-1">
+          {VENDOR_TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
+                tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 pb-1.5 flex-wrap justify-end">
           <button
-            key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
-              tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
+            onClick={() => setShowCreateVendor(true)}
+            disabled={!selectedCompanyId}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
           >
-            {t.label}
+            <UserPlus size={11} />
+            Create Vendor
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => setShowRfqPanel(true)}
+            disabled={!selectedCompanyId}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            <FileText size={11} />
+            Request For Quote
+          </button>
+          <button
+            type="button"
+            disabled={!selectedCompanyId}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
+          >
+            <PackageOpen size={11} />
+            Request for Sample
+          </button>
+        </div>
       </div>
 
       {tab === 'vendors' ? (
@@ -447,7 +475,7 @@ export function VendorListPage({
         )}
       </div>
       </>
-      ) : (
+      ) : tab === 'products' ? (
       <>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[180px] max-w-xs">
@@ -505,6 +533,8 @@ export function VendorListPage({
         onProductUpdated={() => setCatalogRefresh(key => key + 1)}
       />
       </>
+      ) : (
+        <RequestForQuoteList selectedCompanyId={selectedCompanyId} refreshKey={rfqRefresh} />
       )}
 
       {engageTarget && (
@@ -544,6 +574,27 @@ export function VendorListPage({
           onCreated={vendor => {
             setVendors(prev => sortVendors([...prev, vendor]));
             setShowCreateVendor(false);
+          }}
+        />
+      )}
+
+      {showRfqPanel && selectedCompany && (
+        <RequestForQuotePanel
+          company={selectedCompany}
+          locations={configLocations}
+          selectedLocationIds={selectedLocationIds}
+          vendors={vendors}
+          onClose={() => setShowRfqPanel(false)}
+          onCreated={(rfq, createdVendors) => {
+            if (createdVendors.length > 0) {
+              setVendors(prev => sortVendors([
+                ...prev,
+                ...createdVendors.filter(nv => !prev.some(v => v.externalId === nv.externalId)),
+              ]));
+            }
+            setRfqRefresh(key => key + 1);
+            setTab('rfq');
+            void rfq;
           }}
         />
       )}

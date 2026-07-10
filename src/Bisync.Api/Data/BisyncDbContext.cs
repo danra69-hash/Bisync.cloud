@@ -62,6 +62,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<AccessControlSettings> AccessControlSettings => Set<AccessControlSettings>();
     public DbSet<RevMgmtCompanyConfig> RevMgmtCompanyConfigs => Set<RevMgmtCompanyConfig>();
     public DbSet<VendorProduct> VendorProducts => Set<VendorProduct>();
+    public DbSet<QuoteRequest> QuoteRequests => Set<QuoteRequest>();
+    public DbSet<QuoteRequestVendor> QuoteRequestVendors => Set<QuoteRequestVendor>();
+    public DbSet<QuoteRequestLine> QuoteRequestLines => Set<QuoteRequestLine>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -116,6 +119,22 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .WithOne(i => i.PurchaseOrder)
             .HasForeignKey(i => i.PurchaseOrderId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<QuoteRequest>()
+            .HasMany(q => q.Vendors)
+            .WithOne(v => v.QuoteRequest)
+            .HasForeignKey(v => v.QuoteRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<QuoteRequest>()
+            .HasMany(q => q.Lines)
+            .WithOne(l => l.QuoteRequest)
+            .HasForeignKey(l => l.QuoteRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<QuoteRequestVendor>()
+            .HasIndex(v => v.ShareToken);
+        modelBuilder.Entity<QuoteRequest>()
+            .HasIndex(q => q.RfqNumber);
+
         modelBuilder.Entity<OrderTemplate>()
             .HasMany(t => t.Items)
             .WithOne(i => i.OrderTemplate)
