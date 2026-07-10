@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict OIaZ3rydTL7M80oeYTOSOm8iUFXu4QVk0SpJ15b4fBLCm9YaK6AGaJzW7J5YOaj
+\restrict BQVA1fn9Na9gZyzwulNVl9lHmAJPfGrVJFABakKRutEacWSqPoeIccGPTEamHdL
 
 -- Dumped from database version 17.10
 -- Dumped by pg_dump version 17.10
@@ -215,6 +215,7 @@ COPY public."ArchiveRuns" ("Id", "RanAt", "ArchiveCutoff", "MovementsArchived", 
 39	2026-07-10 01:47:34.925208+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
 40	2026-07-10 03:28:23.219597+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
 41	2026-07-10 03:32:14.217262+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
+42	2026-07-10 10:19:58.390124+08	2024-07-10 08:00:00+08	0	0	0	0	No records to archive.
 \.
 
 
@@ -246,7 +247,7 @@ COPY public."ArchivedProductProductionLogs" ("Id", "OriginalId", "ArchivedAt", "
 -- Name: ArchiveRuns_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."ArchiveRuns_Id_seq"', 41, true);
+SELECT pg_catalog.setval('public."ArchiveRuns_Id_seq"', 42, true);
 
 
 --
@@ -334,5 +335,5 @@ CREATE UNIQUE INDEX "IX_ArchivedProductProductionLogs_OriginalId" ON public."Arc
 -- PostgreSQL database dump complete
 --
 
-\unrestrict OIaZ3rydTL7M80oeYTOSOm8iUFXu4QVk0SpJ15b4fBLCm9YaK6AGaJzW7J5YOaj
+\unrestrict BQVA1fn9Na9gZyzwulNVl9lHmAJPfGrVJFABakKRutEacWSqPoeIccGPTEamHdL
 

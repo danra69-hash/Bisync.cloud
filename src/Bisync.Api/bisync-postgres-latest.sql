@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict P3FDXGsec3OIlBjyasxUMFT6lS78Fp2Z8hmqBkBekkTgNPMK5h4Xh8ggZhS2mYj
+\restrict vfE16e0XmS4taE2QbFL2CzjPWWLrKcuPnRUf9ODTqFdp9mrmQJK16w2BddRAgXc
 
 -- Dumped from database version 17.10
 -- Dumped by pg_dump version 17.10
@@ -3629,8 +3629,8 @@ COPY public."PublicHolidays" ("Id", "Name", "Date", "IsRecognized", "CountryCode
 15	Prophet Muhammad's Birthday	2026-11-23	t	MY	\N	f	f
 16	Deepavali	2026-11-05	t	MY	\N	f	f
 17	Christmas Day	2026-12-25	t	MY	\N	f	f
-200	Company Foundation Day	2026-03-15	t	MY	CUSTOM|MY|03-15|COMPANY FOUNDATION DAY	t	f
 126	New Year's Day	2026-01-01	t	AU	AU|2026-01-01|NEW YEAR'S DAY	f	t
+200	Company Foundation Day	2026-03-15	t	MY	CUSTOM|MY|03-15|COMPANY FOUNDATION DAY	t	f
 157	Adelaide Cup Day	2027-03-08	t	AU	AU|2027-03-08|ADELAIDE CUP DAY	f	t
 188	Deepavali	2026-11-09	t	SG	SG|2026-11-09|DEEPAVALI	f	t
 189	Christmas Day	2026-12-25	t	SG	SG|2026-12-25|CHRISTMAS DAY	f	t
@@ -3798,8 +3798,8 @@ COPY public."RevMgmtCompanyConfigs" ("Id", "CompanyId", "ConfigKey", "StateJson"
 11	2	componentCatalog	{"extraGroups":[],"extraUoms":[],"extraStorages":[]}	2026-07-10 03:32:13.22656+08
 12	3	componentCatalog	{"extraGroups":[],"extraUoms":[],"extraStorages":[]}	2026-07-10 03:32:13.292342+08
 14	4	componentCatalog	{"extraGroups":[],"extraUoms":[],"extraStorages":[]}	2026-07-10 03:32:13.298204+08
-15	5	componentCatalog	{"extraGroups":[],"extraUoms":[],"extraStorages":[]}	2026-07-10 03:32:13.300219+08
 13	1	componentCatalog	{"extraGroups":["Custom Group"],"extraUoms":["Punnet"],"extraStorages":["Cold Room"]}	2026-07-10 03:32:20.354447+08
+15	5	componentCatalog	{"extraGroups":["Pasta"],"extraUoms":[],"extraStorages":[]}	2026-07-10 10:25:03.328939+08
 \.
 
 
@@ -5603,5 +5603,5 @@ ALTER TABLE ONLY public."SocsoBrackets"
 -- PostgreSQL database dump complete
 --
 
-\unrestrict P3FDXGsec3OIlBjyasxUMFT6lS78Fp2Z8hmqBkBekkTgNPMK5h4Xh8ggZhS2mYj
+\unrestrict vfE16e0XmS4taE2QbFL2CzjPWWLrKcuPnRUf9ODTqFdp9mrmQJK16w2BddRAgXc
 
