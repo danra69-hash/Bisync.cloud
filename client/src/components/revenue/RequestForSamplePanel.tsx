@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Copy, MessageCircle, Plus, Trash2, X } from 'lucide-react';
 import {
   api,
@@ -308,7 +309,9 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
     }
   }
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
       <div className={SIDE_PANEL_OVERLAY_CLS} onClick={() => !saving && onClose()} />
       <div className={SIDE_PANEL_SHELL_CREATE_VENDOR_CLS} onClick={e => e.stopPropagation()}>
@@ -790,6 +793,7 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
           ) : null}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

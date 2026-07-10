@@ -396,7 +396,11 @@ export function VendorListPage({
           </button>
           <button
             type="button"
-            onClick={() => setShowSampleQuoteTemplates(true)}
+            onClick={() => {
+              if (!selectedCompanyId) return;
+              setShowSampleQuoteTemplates(false);
+              setShowSamplePanel(true);
+            }}
             disabled={!selectedCompanyId}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
           >
@@ -595,7 +599,8 @@ export function VendorListPage({
           onSelectTemplate={(templateId: SampleQuoteTemplateId) => {
             setShowSampleQuoteTemplates(false);
             if (templateId === 'sample-request-flavours') {
-              setShowSamplePanel(true);
+              // Defer open so the template click does not immediately hit the new panel overlay.
+              window.setTimeout(() => setShowSamplePanel(true), 0);
             }
           }}
         />
@@ -622,7 +627,7 @@ export function VendorListPage({
         />
       )}
 
-      {showSamplePanel && selectedCompany && (
+      {showSamplePanel && selectedCompany ? (
         <RequestForSamplePanel
           company={selectedCompany}
           onClose={() => setShowSamplePanel(false)}
@@ -630,7 +635,25 @@ export function VendorListPage({
             /* Keep panel open so Copy / WhatsApp share actions remain available. */
           }}
         />
-      )}
+      ) : null}
+
+      {showSamplePanel && !selectedCompany && selectedCompanyId ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
+          <div className="max-w-sm rounded-lg border border-border bg-card p-4 space-y-3">
+            <p className="text-sm font-semibold text-foreground">Company not loaded</p>
+            <p className="text-xs text-muted-foreground">
+              Select a company again, then retry Request for Sample.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowSamplePanel(false)}
+              className="px-3 py-1.5 rounded-md text-xs font-bold border border-border hover:bg-muted"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronRight, FileText, X } from 'lucide-react';
 import {
   SAMPLE_QUOTE_TEMPLATES,
@@ -20,7 +21,9 @@ export function SampleQuoteTemplatesPanel({ onClose, onSelectTemplate }: Props) 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
       <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
       <div className={SIDE_PANEL_SHELL_CREATE_VENDOR_CLS} onClick={e => e.stopPropagation()}>
@@ -47,7 +50,11 @@ export function SampleQuoteTemplatesPanel({ onClose, onSelectTemplate }: Props) 
             <button
               key={template.id}
               type="button"
-              onClick={() => onSelectTemplate(template.id)}
+              onClick={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                onSelectTemplate(template.id);
+              }}
               className="w-full text-left rounded-lg border border-border bg-card px-4 py-3 hover:border-primary/50 hover:bg-muted/40 transition-colors group"
             >
               <div className="flex items-start gap-3">
@@ -71,6 +78,7 @@ export function SampleQuoteTemplatesPanel({ onClose, onSelectTemplate }: Props) 
           ))}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
