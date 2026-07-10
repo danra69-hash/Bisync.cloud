@@ -249,7 +249,7 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
       const result = await api.createSampleRequest({
         companyId: company.id,
         dateRequested,
-        contactEmployeeId: contactEmployeeId === '' ? null : contactEmployeeId,
+        contactEmployeeId,
         contactPersonName,
         companyRequested: company.name,
         customerExternalId: customerPick === '__new__' ? undefined : customerPick,
