@@ -1,3 +1,4 @@
+import type { CSSProperties, ReactNode } from 'react';
 import type { SortDirection } from '../../utils/tableSort';
 import {
   tableHeaderCls,
@@ -9,18 +10,23 @@ import {
 export type SortableColumnDef<T extends string> = {
   key: T;
   label: string;
+  /** Optional rich header content; falls back to `label` text. */
+  header?: ReactNode;
   align?: 'left' | 'right' | 'center';
   className?: string;
+  style?: CSSProperties;
   sortable?: boolean;
 };
 
 type SortableTableHeadProps<T extends string> = {
   label: string;
+  header?: ReactNode;
   column: T;
   sortColumn: T | null;
   sortDirection: SortDirection;
   onSort: (column: T) => void;
   className?: string;
+  style?: CSSProperties;
   align?: 'left' | 'right' | 'center';
   sortable?: boolean;
   rowSpan?: number;
@@ -29,11 +35,13 @@ type SortableTableHeadProps<T extends string> = {
 
 export function SortableTableHead<T extends string>({
   label,
+  header,
   column,
   sortColumn,
   sortDirection,
   onSort,
   className = '',
+  style,
   align = 'left',
   sortable = true,
   rowSpan,
@@ -41,15 +49,17 @@ export function SortableTableHead<T extends string>({
 }: SortableTableHeadProps<T>) {
   const active = sortColumn === column;
   const ariaSort = !sortable ? undefined : active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none';
+  const content = header ?? <span className={TABLE_HEADER_LABEL_CLS}>{label}</span>;
 
   if (!sortable) {
     return (
       <th
         rowSpan={rowSpan}
         colSpan={colSpan}
+        style={style}
         className={tableHeaderCls(align, className)}
       >
-        <span className={TABLE_HEADER_LABEL_CLS}>{label}</span>
+        {content}
       </th>
     );
   }
@@ -59,6 +69,7 @@ export function SortableTableHead<T extends string>({
       rowSpan={rowSpan}
       colSpan={colSpan}
       aria-sort={ariaSort}
+      style={style}
       className={tableHeaderCls(align, className)}
     >
       <button
@@ -69,7 +80,11 @@ export function SortableTableHead<T extends string>({
           active ? 'text-foreground' : 'text-muted-foreground'
         } ${align === 'right' ? 'ml-auto text-right' : align === 'center' ? 'mx-auto text-center' : 'text-left'}`}
       >
-        <span className={tableHeaderSortLabelCls}>{label}</span>
+        {header ? (
+          <span className="min-w-0 flex-1">{header}</span>
+        ) : (
+          <span className={tableHeaderSortLabelCls}>{label}</span>
+        )}
         {active ? <span aria-hidden="true" className="shrink-0 leading-none">{sortDirection === 'asc' ? '↑' : '↓'}</span> : null}
       </button>
     </th>
@@ -97,12 +112,14 @@ export function SortableTableHeaderRow<T extends string>({
         <SortableTableHead
           key={column.key}
           label={column.label}
+          header={column.header}
           column={column.key}
           sortColumn={sortColumn}
           sortDirection={sortDirection}
           onSort={onSort}
           align={column.align}
           className={column.className}
+          style={column.style}
           sortable={column.sortable !== false}
         />
       ))}

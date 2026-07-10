@@ -4,7 +4,7 @@ export const TABLE_HEADER_CELL_CLS =
 
 /** Inner label — wraps at words, up to 2 lines, tight leading. */
 export const TABLE_HEADER_LABEL_CLS =
-  'block w-full leading-[1.1] break-words line-clamp-2';
+  'block w-full leading-[1.15] break-words [overflow-wrap:anywhere] line-clamp-2';
 
 export function tableHeaderCls(
   align: 'left' | 'center' | 'right' = 'left',

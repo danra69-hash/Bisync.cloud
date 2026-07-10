@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Tag, UserPlus } from 'lucide-react';
+import { Search, Tag, UserCheck, UserPlus } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
@@ -30,7 +30,9 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
 
-const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0 min-w-0';
+const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0';
+const COMPONENT_COL_WIDTH_PX = 220;
+const VENDOR_COL_WIDTH_PX = 148;
 
 const COMPONENT_SORT_KEY = 'component';
 
@@ -81,9 +83,21 @@ function ComparePriceCellView({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       title="Drag to another component row"
-      className={`space-y-1.5 text-xs leading-snug cursor-grab active:cursor-grabbing ${isBest ? 'text-[#5A7A2A]' : ''}`}
+      className={`relative space-y-1.5 text-xs leading-snug cursor-grab active:cursor-grabbing rounded-md border border-border/70 bg-background/60 p-1.5 ${isBest ? 'text-[#5A7A2A] border-[#5A7A2A]/40' : ''} ${slot.isTagged ? 'ring-1 ring-[#5A7A2A]/25' : ''}`}
     >
-      <p className="font-medium text-foreground line-clamp-2">{product.productName}</p>
+      {slot.isTagged ? (
+        <span
+          className="absolute top-1 right-1 inline-flex items-center justify-center rounded-full bg-[#5A7A2A]/15 text-[#5A7A2A] p-0.5"
+          title="Tagged to this component"
+          aria-label="Tagged product"
+        >
+          <Tag size={10} strokeWidth={2.5} />
+        </span>
+      ) : null}
+
+      <p className={`font-medium text-foreground line-clamp-2 ${slot.isTagged ? 'pr-4' : ''}`}>
+        {product.productName}
+      </p>
       <p className="font-sans text-xs text-muted-foreground">{formatDeliveryPriceLine(product)}</p>
 
       <div className="pt-0.5 border-t border-border/60">
@@ -178,7 +192,10 @@ export function ComparePricePage({
     group: string;
   } | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
+  const syncingScrollRef = useRef(false);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<string>();
 
   const loadData = useCallback(() => {
@@ -241,12 +258,47 @@ export function ComparePricePage({
   }, [components, search, groupFilter]);
 
   const compareTableColumns = useMemo((): SortableColumnDef<string>[] => [
-    { key: COMPONENT_SORT_KEY, label: 'Component', className: 'bg-muted/95 w-[14%]' },
+    {
+      key: COMPONENT_SORT_KEY,
+      label: 'Component',
+      className: 'bg-muted/95 sticky left-0 z-30 shadow-[2px_0_0_0_rgba(0,0,0,0.06)]',
+      style: { width: COMPONENT_COL_WIDTH_PX, minWidth: COMPONENT_COL_WIDTH_PX, maxWidth: COMPONENT_COL_WIDTH_PX },
+    },
     ...filteredVendorColumns.map(vendor => ({
       key: vendorSortKey(vendor.externalId),
       label: vendor.name,
+      header: (
+        <span className="inline-flex items-start gap-1 min-w-0 w-full">
+          {vendor.engaged ? (
+            <UserCheck
+              size={12}
+              className="shrink-0 mt-0.5 text-[#5A7A2A]"
+              aria-label="Engaged vendor"
+            />
+          ) : null}
+          <span className="block min-w-0 leading-[1.15] break-words [overflow-wrap:anywhere] line-clamp-2">
+            {vendor.name}
+          </span>
+        </span>
+      ),
+      className: `align-bottom ${vendor.engaged ? 'bg-[#5A7A2A]/[0.06]' : ''}`,
+      style: { width: VENDOR_COL_WIDTH_PX, minWidth: VENDOR_COL_WIDTH_PX, maxWidth: VENDOR_COL_WIDTH_PX },
     })),
   ], [filteredVendorColumns]);
+
+  const tableMinWidthPx = COMPONENT_COL_WIDTH_PX + filteredVendorColumns.length * VENDOR_COL_WIDTH_PX;
+
+  function syncHorizontalScroll(source: 'top' | 'body') {
+    const top = topScrollRef.current;
+    const body = scrollRootRef.current;
+    if (!top || !body || syncingScrollRef.current) return;
+    syncingScrollRef.current = true;
+    if (source === 'top') body.scrollLeft = top.scrollLeft;
+    else top.scrollLeft = body.scrollLeft;
+    requestAnimationFrame(() => {
+      syncingScrollRef.current = false;
+    });
+  }
 
   const compareSortAccessors = useMemo(() => {
     const accessors: Partial<Record<string, (row: ComponentRow) => string | number | null>> = {
@@ -283,6 +335,31 @@ export function ComparePricePage({
     totalCount,
     visibleCount,
   } = useInfiniteScrollSlice(sortedFilteredComponents, { scrollRootRef });
+
+  useEffect(() => {
+    const table = tableRef.current;
+    const root = scrollRootRef.current;
+    if (!table || !root) {
+      setTableScrollWidth(0);
+      return;
+    }
+
+    const measure = () => {
+      setTableScrollWidth(Math.max(table.scrollWidth, tableMinWidthPx));
+    };
+    measure();
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(measure)
+      : null;
+    observer?.observe(table);
+    observer?.observe(root);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [tableMinWidthPx, pagedFilteredComponents.length, filteredVendorColumns.length]);
 
   const bestByComponent = useMemo(
     () => findBestUomCostByComponent(filteredComponents, slots),
@@ -464,8 +541,31 @@ export function ComparePricePage({
               No food or beverage components found. Add smart components to populate this spreadsheet.
             </p>
           ) : (
-            <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-220px)]">
-                <table ref={tableRef} className="w-full text-xs border-collapse table-fixed">
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <div
+                ref={topScrollRef}
+                className="overflow-x-auto overflow-y-hidden border-b border-border bg-muted/20"
+                onScroll={() => syncHorizontalScroll('top')}
+                aria-label="Compare price horizontal scroll"
+              >
+                <div style={{ width: tableScrollWidth || tableMinWidthPx, height: 12 }} />
+              </div>
+              <TableScrollContainer
+                ref={scrollRootRef}
+                className="max-h-[calc(100vh-240px)] overflow-x-auto overflow-y-auto rounded-none border-0"
+                onScroll={() => syncHorizontalScroll('body')}
+              >
+                <table
+                  ref={tableRef}
+                  className="text-xs border-collapse"
+                  style={{ width: tableMinWidthPx, minWidth: tableMinWidthPx, tableLayout: 'fixed' }}
+                >
+                  <colgroup>
+                    <col style={{ width: COMPONENT_COL_WIDTH_PX }} />
+                    {filteredVendorColumns.map(vendor => (
+                      <col key={vendor.externalId} style={{ width: VENDOR_COL_WIDTH_PX }} />
+                    ))}
+                  </colgroup>
                   <thead className="sticky top-0 z-20 bg-muted/90 backdrop-blur-sm">
                     <SortableTableHeaderRow
                       columns={compareTableColumns}
@@ -481,7 +581,10 @@ export function ComparePricePage({
                       const best = bestByComponent.get(component.id);
                       return (
                         <tr key={component.id} className="hover:bg-muted/15">
-                          <td className={`${tdCls} font-medium`}>
+                          <td
+                            className={`${tdCls} font-medium sticky left-0 z-10 bg-card`}
+                            style={{ width: COMPONENT_COL_WIDTH_PX, minWidth: COMPONENT_COL_WIDTH_PX, maxWidth: COMPONENT_COL_WIDTH_PX }}
+                          >
                             <p className="text-foreground leading-snug">{component.name}</p>
                             <p className="text-xs font-sans text-muted-foreground mt-0.5">
                               {component.componentId || '—'}
@@ -494,7 +597,11 @@ export function ComparePricePage({
                             const slot = slots.get(key);
                             if (!slot) {
                               return (
-                                <td key={vendor.externalId} className={`${tdCls} text-muted-foreground text-center`}>
+                                <td
+                                  key={vendor.externalId}
+                                  className={`${tdCls} text-muted-foreground text-center`}
+                                  style={{ width: VENDOR_COL_WIDTH_PX, minWidth: VENDOR_COL_WIDTH_PX, maxWidth: VENDOR_COL_WIDTH_PX }}
+                                >
                                   —
                                 </td>
                               );
@@ -530,6 +637,7 @@ export function ComparePricePage({
                                   handleDropOnCell(component, vendor.externalId);
                                 }}
                                 className={`${tdCls} ${isBest ? 'bg-[#5A7A2A]/[0.06]' : ''} ${canDropHere ? 'ring-1 ring-primary/40 bg-primary/[0.04]' : ''}`}
+                                style={{ width: VENDOR_COL_WIDTH_PX, minWidth: VENDOR_COL_WIDTH_PX, maxWidth: VENDOR_COL_WIDTH_PX }}
                               >
                                 <ComparePriceCellView
                                   slot={displaySlot}
@@ -556,7 +664,8 @@ export function ComparePricePage({
                     <InfiniteScrollTableSentinel colSpan={compareColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                   </tbody>
                 </table>
-            </TableScrollContainer>
+              </TableScrollContainer>
+            </div>
           )}
 
           {engageVendor && (

@@ -247,23 +247,32 @@ function minVendorCatalogPrice(
   return Math.min(...prices);
 }
 
-/** Engaged vendors first, then unengaged sorted by lowest known price. */
+function compareVendorsByCheapestOffer(
+  a: Vendor,
+  b: Vendor,
+  slots: Map<string, ComparePriceSlot>,
+  catalog: VendorProductCatalogItem[],
+): number {
+  const priceA = minVendorUomCost(a.externalId, slots) ?? minVendorCatalogPrice(a.externalId, catalog);
+  const priceB = minVendorUomCost(b.externalId, slots) ?? minVendorCatalogPrice(b.externalId, catalog);
+  if (priceA !== null && priceB !== null && priceA !== priceB) return priceA - priceB;
+  if (priceA !== null && priceB === null) return -1;
+  if (priceA === null && priceB !== null) return 1;
+  return a.name.localeCompare(b.name);
+}
+
+/** Engaged vendors first (cheapest offer within group), then unengaged by cheapest offer. */
 export function sortComparePriceVendorColumns(
   vendors: Vendor[],
   slots: Map<string, ComparePriceSlot>,
   catalog: VendorProductCatalogItem[],
 ): Vendor[] {
-  const engaged = vendors.filter(v => v.engaged).sort((a, b) => a.name.localeCompare(b.name));
-  const unengaged = vendors.filter(v => !v.engaged);
-
-  unengaged.sort((a, b) => {
-    const priceA = minVendorUomCost(a.externalId, slots) ?? minVendorCatalogPrice(a.externalId, catalog);
-    const priceB = minVendorUomCost(b.externalId, slots) ?? minVendorCatalogPrice(b.externalId, catalog);
-    if (priceA !== null && priceB !== null && priceA !== priceB) return priceA - priceB;
-    if (priceA !== null && priceB === null) return -1;
-    if (priceA === null && priceB !== null) return 1;
-    return a.name.localeCompare(b.name);
-  });
+  const engaged = vendors
+    .filter(v => v.engaged)
+    .sort((a, b) => compareVendorsByCheapestOffer(a, b, slots, catalog));
+  const unengaged = vendors
+    .filter(v => !v.engaged)
+    .sort((a, b) => compareVendorsByCheapestOffer(a, b, slots, catalog));
 
   return [...engaged, ...unengaged];
 }
