@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict VPiRwDE4XcixIu7dhL9a4aMEwgfn1ffuvI4ISf9Rbd6xNSx0adgsddbOIrPIiMu
+\restrict sw3YKaTXpqgeCpkfJTbUpRSEWaecCShKP3NSzaMkhrBid0JFhls92tDLNq1whbR
 
--- Dumped from database version 17.10
--- Dumped by pg_dump version 17.10
+-- Dumped from database version 16.14
+-- Dumped by pg_dump version 18.4
 
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -174,48 +174,50 @@ ALTER TABLE public."ArchivedProductProductionLogs" ALTER COLUMN "Id" ADD GENERAT
 --
 
 COPY public."ArchiveRuns" ("Id", "RanAt", "ArchiveCutoff", "MovementsArchived", "PurchasesArchived", "ProductionLogsArchived", "ConsolidationMovementsCreated", "Notes") FROM stdin;
-1	2026-07-06 13:44:52.433132+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-2	2026-07-06 14:33:07.369471+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-3	2026-07-06 14:45:33.125718+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-4	2026-07-06 16:16:58.095838+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-5	2026-07-06 19:29:19.980767+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-6	2026-07-06 19:54:33.09834+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-7	2026-07-06 20:14:43.51445+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-8	2026-07-06 20:27:44.371688+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-9	2026-07-06 20:53:03.379499+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-10	2026-07-06 21:40:59.442515+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-11	2026-07-06 22:07:19.813715+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-12	2026-07-06 22:55:17.402038+08	2024-07-06 08:00:00+08	0	0	0	0	No records to archive.
-13	2026-07-07 09:56:49.019443+08	2024-07-07 08:00:00+08	0	0	0	0	No records to archive.
-14	2026-07-07 10:27:12.18488+08	2024-07-07 08:00:00+08	0	0	0	0	No records to archive.
-15	2026-07-08 12:46:32.870395+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-16	2026-07-08 12:51:17.771987+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-17	2026-07-08 16:14:43.564135+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-18	2026-07-08 16:15:27.967406+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-19	2026-07-08 16:19:12.544094+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-20	2026-07-08 16:32:12.884952+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-21	2026-07-08 16:32:56.216889+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-22	2026-07-08 16:35:54.59862+08	2024-07-08 08:00:00+08	0	0	0	0	No records to archive.
-23	2026-07-09 09:24:30.600147+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-24	2026-07-09 10:29:57.584999+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-25	2026-07-09 10:59:34.649073+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-26	2026-07-09 11:02:09.986417+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-27	2026-07-09 11:17:48.183553+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-28	2026-07-09 11:25:10.881868+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-29	2026-07-09 11:27:57.488789+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-30	2026-07-09 13:30:55.882346+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-31	2026-07-09 13:35:37.029115+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-32	2026-07-09 14:00:24.7354+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-33	2026-07-09 16:12:14.76807+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-34	2026-07-09 18:24:05.817277+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-35	2026-07-09 18:24:52.811102+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-36	2026-07-09 21:57:47.398844+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-37	2026-07-10 01:17:29.730189+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-38	2026-07-10 01:47:04.109104+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-39	2026-07-10 01:47:34.925208+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-40	2026-07-10 03:28:23.219597+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-41	2026-07-10 03:32:14.217262+08	2024-07-09 08:00:00+08	0	0	0	0	No records to archive.
-42	2026-07-10 10:19:58.390124+08	2024-07-10 08:00:00+08	0	0	0	0	No records to archive.
+1	2026-07-06 05:44:52.433132+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+2	2026-07-06 06:33:07.369471+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+3	2026-07-06 06:45:33.125718+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+4	2026-07-06 08:16:58.095838+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+5	2026-07-06 11:29:19.980767+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+6	2026-07-06 11:54:33.09834+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+7	2026-07-06 12:14:43.51445+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+8	2026-07-06 12:27:44.371688+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+9	2026-07-06 12:53:03.379499+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+10	2026-07-06 13:40:59.442515+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+11	2026-07-06 14:07:19.813715+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+12	2026-07-06 14:55:17.402038+00	2024-07-06 00:00:00+00	0	0	0	0	No records to archive.
+13	2026-07-07 01:56:49.019443+00	2024-07-07 00:00:00+00	0	0	0	0	No records to archive.
+14	2026-07-07 02:27:12.18488+00	2024-07-07 00:00:00+00	0	0	0	0	No records to archive.
+15	2026-07-08 04:46:32.870395+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+16	2026-07-08 04:51:17.771987+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+17	2026-07-08 08:14:43.564135+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+18	2026-07-08 08:15:27.967406+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+19	2026-07-08 08:19:12.544094+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+20	2026-07-08 08:32:12.884952+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+21	2026-07-08 08:32:56.216889+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+22	2026-07-08 08:35:54.59862+00	2024-07-08 00:00:00+00	0	0	0	0	No records to archive.
+23	2026-07-09 01:24:30.600147+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+24	2026-07-09 02:29:57.584999+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+25	2026-07-09 02:59:34.649073+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+26	2026-07-09 03:02:09.986417+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+27	2026-07-09 03:17:48.183553+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+28	2026-07-09 03:25:10.881868+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+29	2026-07-09 03:27:57.488789+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+30	2026-07-09 05:30:55.882346+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+31	2026-07-09 05:35:37.029115+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+32	2026-07-09 06:00:24.7354+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+33	2026-07-09 08:12:14.76807+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+34	2026-07-09 10:24:05.817277+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+35	2026-07-09 10:24:52.811102+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+36	2026-07-09 13:57:47.398844+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+37	2026-07-09 17:17:29.730189+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+38	2026-07-09 17:47:04.109104+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+39	2026-07-09 17:47:34.925208+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+40	2026-07-09 19:28:23.219597+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+41	2026-07-09 19:32:14.217262+00	2024-07-09 00:00:00+00	0	0	0	0	No records to archive.
+42	2026-07-10 02:19:58.390124+00	2024-07-10 00:00:00+00	0	0	0	0	No records to archive.
+43	2026-07-10 04:10:47.075339+00	2024-07-10 00:00:00+00	0	0	0	0	No records to archive.
+44	2026-07-10 06:27:38.474881+00	2024-07-10 00:00:00+00	0	0	0	0	No records to archive.
 \.
 
 
@@ -247,7 +249,7 @@ COPY public."ArchivedProductProductionLogs" ("Id", "OriginalId", "ArchivedAt", "
 -- Name: ArchiveRuns_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."ArchiveRuns_Id_seq"', 42, true);
+SELECT pg_catalog.setval('public."ArchiveRuns_Id_seq"', 44, true);
 
 
 --
@@ -335,5 +337,5 @@ CREATE UNIQUE INDEX "IX_ArchivedProductProductionLogs_OriginalId" ON public."Arc
 -- PostgreSQL database dump complete
 --
 
-\unrestrict VPiRwDE4XcixIu7dhL9a4aMEwgfn1ffuvI4ISf9Rbd6xNSx0adgsddbOIrPIiMu
+\unrestrict sw3YKaTXpqgeCpkfJTbUpRSEWaecCShKP3NSzaMkhrBid0JFhls92tDLNq1whbR
 
