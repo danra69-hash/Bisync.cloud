@@ -695,6 +695,16 @@ public static class SchemaPatcher
             """);
 
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "ShareToken", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "TemplateType", "TEXT NOT NULL DEFAULT 'sample-request-flavours'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "VendorExternalId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "VendorAddress", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "VendorContactPerson", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "VendorContactMobile", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "VendorContactEmail", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "IngredientComponentId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "ProductPolicyTag", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "VendorAcceptedAt", "timestamp with time zone");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SampleRequests", "VendorAcceptedBy", "TEXT NOT NULL DEFAULT ''");
         await TryCreateUniqueIndexAsync(db, "IX_SampleRequests_RequestNumber", "SampleRequests", "RequestNumber");
         await TryCreateIndexAsync(db, "IX_SampleRequests_CompanyId", "SampleRequests", "\"CompanyId\"");
         await TryCreateIndexAsync(db, "IX_SampleRequests_ShareToken", "SampleRequests", "\"ShareToken\"");

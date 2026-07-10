@@ -31,6 +31,7 @@ import { VendorProductsPanel } from './VendorProductsPanel';
 import { RequestForQuotePanel } from './RequestForQuotePanel';
 import { RequestForQuoteList } from './RequestForQuoteList';
 import { RequestForSamplePanel } from './RequestForSamplePanel';
+import { SampleRequestPanel } from './SampleRequestPanel';
 import { SampleQuoteTemplatesPanel } from './SampleQuoteTemplatesPanel';
 import { SampleRequestList } from './SampleRequestList';
 import type { SampleQuoteTemplateId } from '../../data/requestForSample';
@@ -96,6 +97,7 @@ export function VendorListPage({
   const [showCreateVendor, setShowCreateVendor] = useState(false);
   const [showRfqPanel, setShowRfqPanel] = useState(false);
   const [showSamplePanel, setShowSamplePanel] = useState(false);
+  const [showSimpleSamplePanel, setShowSimpleSamplePanel] = useState(false);
   const [showSampleQuoteTemplates, setShowSampleQuoteTemplates] = useState(false);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<VendorSortColumn>();
 
@@ -401,6 +403,7 @@ export function VendorListPage({
             onClick={() => {
               if (!selectedCompanyId) return;
               setShowSampleQuoteTemplates(false);
+              setShowSimpleSamplePanel(false);
               setShowSamplePanel(true);
             }}
             disabled={!selectedCompanyId}
@@ -607,8 +610,9 @@ export function VendorListPage({
           onSelectTemplate={(templateId: SampleQuoteTemplateId) => {
             setShowSampleQuoteTemplates(false);
             if (templateId === 'sample-request-flavours') {
-              // Defer open so the template click does not immediately hit the new panel overlay.
               window.setTimeout(() => setShowSamplePanel(true), 0);
+            } else if (templateId === 'sample-request') {
+              window.setTimeout(() => setShowSimpleSamplePanel(true), 0);
             }
           }}
         />
@@ -646,16 +650,40 @@ export function VendorListPage({
         />
       ) : null}
 
-      {showSamplePanel && !selectedCompany && selectedCompanyId ? (
+      {showSimpleSamplePanel && selectedCompany ? (
+        <SampleRequestPanel
+          company={selectedCompany}
+          vendors={vendors}
+          orgPolicyTags={orgPolicyTags}
+          countryCode={countryCode}
+          nextVendorExternalId={nextVendorExternalId}
+          onClose={() => setShowSimpleSamplePanel(false)}
+          onVendorCreated={vendor => {
+            setVendors(prev => sortVendors([
+              ...prev.filter(v => v.externalId !== vendor.externalId),
+              vendor,
+            ]));
+          }}
+          onCreated={() => {
+            setSampleRefresh(key => key + 1);
+            setTab('rfq');
+          }}
+        />
+      ) : null}
+
+      {(showSamplePanel || showSimpleSamplePanel) && !selectedCompany && selectedCompanyId ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4">
           <div className="max-w-sm rounded-lg border border-border bg-card p-4 space-y-3">
             <p className="text-sm font-semibold text-foreground">Company not loaded</p>
             <p className="text-xs text-muted-foreground">
-              Select a company again, then retry Request for Sample.
+              Select a company again, then retry Sample & Quote.
             </p>
             <button
               type="button"
-              onClick={() => setShowSamplePanel(false)}
+              onClick={() => {
+                setShowSamplePanel(false);
+                setShowSimpleSamplePanel(false);
+              }}
               className="px-3 py-1.5 rounded-md text-xs font-bold border border-border hover:bg-muted"
             >
               Close

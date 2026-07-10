@@ -17,7 +17,7 @@ export const SAMPLE_REQUEST_COUNTRY_OPTIONS = [
   'Mexico',
 ].sort((a, b) => a.localeCompare(b));
 
-export type SampleQuoteTemplateId = 'sample-request-flavours';
+export type SampleQuoteTemplateId = 'sample-request' | 'sample-request-flavours';
 
 export type SampleQuoteTemplate = {
   id: SampleQuoteTemplateId;
@@ -28,11 +28,21 @@ export type SampleQuoteTemplate = {
 /** Templates available under Sample & Quote. */
 export const SAMPLE_QUOTE_TEMPLATES: SampleQuoteTemplate[] = [
   {
+    id: 'sample-request',
+    name: 'Sample Request',
+    description: 'Request a product sample from a vendor with quantity, policy, and a shareable accept link.',
+  },
+  {
     id: 'sample-request-flavours',
     name: 'Sample Request for Flavours',
     description: 'Capture flavour sample requirements, commercial estimates, and specific conditions for vendor or R&D follow-up.',
   },
 ];
+
+export function sampleRequestTemplateTitle(templateType?: string | null): string {
+  if (templateType === 'sample-request') return 'Sample Request';
+  return 'Sample Request for Flavours';
+}
 
 export function previewSampleRequestNumber(dateRequested: string): string {
   const digits = dateRequested.replace(/-/g, '');
@@ -69,25 +79,29 @@ export async function copySampleRequestShareLink(shareToken: string): Promise<vo
 export function buildSampleRequestWhatsAppUrl(
   shareToken: string,
   requestNumber: string,
-  customerName?: string,
+  partyName?: string,
+  templateType?: string | null,
 ): string {
   const url = buildSampleRequestShareUrl(shareToken);
-  const who = customerName?.trim() ? ` for ${customerName.trim()}` : '';
-  const text = `Sample Request for Flavours ${requestNumber}${who}:\n${url}`;
+  const title = sampleRequestTemplateTitle(templateType);
+  const who = partyName?.trim() ? ` for ${partyName.trim()}` : '';
+  const text = `${title} ${requestNumber}${who}:\n${url}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
 export function buildSampleRequestMailtoUrl(
   shareToken: string,
   requestNumber: string,
-  customerName?: string,
+  partyName?: string,
   toEmail?: string,
+  templateType?: string | null,
 ): string {
   const url = buildSampleRequestShareUrl(shareToken);
-  const who = customerName?.trim() ? ` for ${customerName.trim()}` : '';
-  const subject = encodeURIComponent(`Sample Request for Flavours ${requestNumber}`);
+  const title = sampleRequestTemplateTitle(templateType);
+  const who = partyName?.trim() ? ` for ${partyName.trim()}` : '';
+  const subject = encodeURIComponent(`${title} ${requestNumber}`);
   const body = encodeURIComponent(
-    `Please review Sample Request for Flavours ${requestNumber}${who}:\n\n${url}\n\nThank you.`,
+    `Please review ${title} ${requestNumber}${who}:\n\n${url}\n\nThank you.`,
   );
   const to = toEmail?.trim() ?? '';
   return to ? `mailto:${to}?subject=${subject}&body=${body}` : `mailto:?subject=${subject}&body=${body}`;

@@ -4,6 +4,8 @@ public class SampleRequest
 {
     public int Id { get; set; }
     public string RequestNumber { get; set; } = string.Empty;
+    /// <summary>sample-request-flavours | sample-request</summary>
+    public string TemplateType { get; set; } = "sample-request-flavours";
     public int CompanyId { get; set; }
     public DateOnly DateRequested { get; set; }
     public int? ContactEmployeeId { get; set; }
@@ -11,6 +13,16 @@ public class SampleRequest
     public string CompanyRequested { get; set; } = string.Empty;
     public string CustomerExternalId { get; set; } = string.Empty;
     public string CustomerName { get; set; } = string.Empty;
+    public string VendorExternalId { get; set; } = string.Empty;
+    public string VendorAddress { get; set; } = string.Empty;
+    public string VendorContactPerson { get; set; } = string.Empty;
+    public string VendorContactMobile { get; set; } = string.Empty;
+    public string VendorContactEmail { get; set; } = string.Empty;
+    public string IngredientComponentId { get; set; } = string.Empty;
+    /// <summary>halal | muslim-friendly | non-halal</summary>
+    public string ProductPolicyTag { get; set; } = string.Empty;
+    public DateTime? VendorAcceptedAt { get; set; }
+    public string VendorAcceptedBy { get; set; } = string.Empty;
     public bool IsNewCustomer { get; set; }
     public string ProjectScope { get; set; } = "new"; // new | ongoing
     public string RequestType { get; set; } = "new_submission"; // new_submission | repeat | modification

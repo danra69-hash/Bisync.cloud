@@ -11,6 +11,9 @@ namespace Bisync.Api.Controllers;
 [Route("api/sample-requests")]
 public class SampleRequestsController(BisyncDbContext db) : ControllerBase
 {
+    public const string TemplateFlavours = "sample-request-flavours";
+    public const string TemplateSimple = "sample-request";
+
     static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -45,18 +48,36 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
             return BadRequest(new { message = "Company is required." });
         if (string.IsNullOrWhiteSpace(request.ContactPersonName))
             return BadRequest(new { message = "Contact person is required." });
-        if (string.IsNullOrWhiteSpace(request.CustomerName))
-            return BadRequest(new { message = "Customer name is required." });
-        if (string.IsNullOrWhiteSpace(request.ProjectName))
-            return BadRequest(new { message = "Project name is required." });
-        if (request.ProductSamples.Count == 0 || request.ProductSamples.All(s => string.IsNullOrWhiteSpace(s.Name)))
-            return BadRequest(new { message = "Add at least one product sample name." });
-        if (request.RequestType == "modification" && string.IsNullOrWhiteSpace(request.ModificationDetails))
-            return BadRequest(new { message = "Describe the modification required." });
-        if (request.AllergenStatus == "free_from" && string.IsNullOrWhiteSpace(request.AllergenFreeFromDetail))
-            return BadRequest(new { message = "Specify allergen-free details." });
-        if (request.RegulatoryRequirement == "yes" && string.IsNullOrWhiteSpace(request.RegulatoryRequirementDetail))
-            return BadRequest(new { message = "Specify regulatory requirement details." });
+
+        var templateType = NormalizeTemplateType(request.TemplateType);
+        var isSimple = templateType == TemplateSimple;
+
+        if (isSimple)
+        {
+            if (string.IsNullOrWhiteSpace(request.CustomerName) && string.IsNullOrWhiteSpace(request.VendorExternalId))
+                return BadRequest(new { message = "Select or add a vendor." });
+            if (request.ProductSamples.Count == 0 || request.ProductSamples.All(s => string.IsNullOrWhiteSpace(s.Name)))
+                return BadRequest(new { message = "Select a product sample name." });
+            if (request.QuantityRequested <= 0)
+                return BadRequest(new { message = "Requested amount quantity is required." });
+            if (string.IsNullOrWhiteSpace(request.QuantityUom))
+                return BadRequest(new { message = "Principal UOM is required." });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(request.CustomerName))
+                return BadRequest(new { message = "Customer name is required." });
+            if (string.IsNullOrWhiteSpace(request.ProjectName))
+                return BadRequest(new { message = "Project name is required." });
+            if (request.ProductSamples.Count == 0 || request.ProductSamples.All(s => string.IsNullOrWhiteSpace(s.Name)))
+                return BadRequest(new { message = "Add at least one product sample name." });
+            if (request.RequestType == "modification" && string.IsNullOrWhiteSpace(request.ModificationDetails))
+                return BadRequest(new { message = "Describe the modification required." });
+            if (request.AllergenStatus == "free_from" && string.IsNullOrWhiteSpace(request.AllergenFreeFromDetail))
+                return BadRequest(new { message = "Specify allergen-free details." });
+            if (request.RegulatoryRequirement == "yes" && string.IsNullOrWhiteSpace(request.RegulatoryRequirementDetail))
+                return BadRequest(new { message = "Specify regulatory requirement details." });
+        }
 
         var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.CompanyId);
         if (company is null)
@@ -73,9 +94,15 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
             })
             .ToList();
 
+        var productName = samples.FirstOrDefault()?.Name ?? string.Empty;
+        var projectName = string.IsNullOrWhiteSpace(request.ProjectName)
+            ? productName
+            : request.ProjectName.Trim();
+
         var row = new SampleRequest
         {
             RequestNumber = await NextRequestNumberAsync(request.DateRequested),
+            TemplateType = templateType,
             CompanyId = request.CompanyId,
             DateRequested = request.DateRequested,
             ContactEmployeeId = request.ContactEmployeeId,
@@ -83,13 +110,24 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
             CompanyRequested = string.IsNullOrWhiteSpace(request.CompanyRequested)
                 ? company.Name
                 : request.CompanyRequested.Trim(),
-            CustomerExternalId = request.CustomerExternalId?.Trim() ?? string.Empty,
+            CustomerExternalId = request.CustomerExternalId?.Trim()
+                ?? request.VendorExternalId?.Trim()
+                ?? string.Empty,
             CustomerName = request.CustomerName.Trim(),
+            VendorExternalId = request.VendorExternalId?.Trim()
+                ?? request.CustomerExternalId?.Trim()
+                ?? string.Empty,
+            VendorAddress = request.VendorAddress?.Trim() ?? string.Empty,
+            VendorContactPerson = request.VendorContactPerson?.Trim() ?? string.Empty,
+            VendorContactMobile = request.VendorContactMobile?.Trim() ?? string.Empty,
+            VendorContactEmail = request.VendorContactEmail?.Trim() ?? string.Empty,
+            IngredientComponentId = request.IngredientComponentId?.Trim() ?? string.Empty,
+            ProductPolicyTag = NormalizeProductPolicyTag(request.ProductPolicyTag),
             IsNewCustomer = request.IsNewCustomer,
             ProjectScope = NormalizeProjectScope(request.ProjectScope),
             RequestType = NormalizeRequestType(request.RequestType),
             ModificationDetails = request.ModificationDetails?.Trim() ?? string.Empty,
-            ProjectName = request.ProjectName.Trim(),
+            ProjectName = projectName,
             DeliveryUnit = request.DeliveryUnit?.Trim() ?? string.Empty,
             ExpectedQtyPerYear = request.ExpectedQtyPerYear,
             ExpectedPrice = request.ExpectedPrice,
@@ -145,6 +183,33 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         return Ok(MapDetail(row));
     }
 
+    [HttpPost("share/{token}/accept")]
+    public async Task<ActionResult<object>> AcceptByShareToken(string token, [FromBody] AcceptSampleRequestPortalDto? body)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return NotFound(new { message = "Sample request link is invalid or has expired." });
+
+        var normalized = token.Trim();
+        var row = await db.SampleRequests.FirstOrDefaultAsync(s => s.ShareToken == normalized);
+        if (row is null)
+            return NotFound(new { message = "Sample request link is invalid or has expired." });
+
+        if (row.VendorAcceptedAt is not null)
+            return Ok(MapDetail(row));
+
+        var acceptedBy = body?.AcceptedBy?.Trim();
+        if (string.IsNullOrWhiteSpace(acceptedBy))
+            acceptedBy = string.IsNullOrWhiteSpace(row.VendorContactPerson) ? "Vendor" : row.VendorContactPerson;
+
+        row.VendorAcceptedAt = DateTime.UtcNow;
+        row.VendorAcceptedBy = acceptedBy;
+        row.Status = "accepted";
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(MapDetail(row));
+    }
+
     async Task<string> NextRequestNumberAsync(DateOnly dateRequested)
     {
         var datePart = dateRequested.ToString("yyyyMMdd");
@@ -163,6 +228,19 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         }
         return $"{prefix}{next:D4}";
     }
+
+    static string NormalizeTemplateType(string? value) =>
+        string.Equals(value, TemplateSimple, StringComparison.OrdinalIgnoreCase)
+            ? TemplateSimple
+            : TemplateFlavours;
+
+    static string NormalizeProductPolicyTag(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "halal" => "halal",
+        "muslim-friendly" => "muslim-friendly",
+        "non-halal" => "non-halal",
+        _ => string.Empty,
+    };
 
     static string NormalizeProjectScope(string value) =>
         string.Equals(value, "ongoing", StringComparison.OrdinalIgnoreCase) ? "ongoing" : "new";
@@ -204,18 +282,24 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
     {
         row.Id,
         requestNumber = row.RequestNumber,
+        templateType = string.IsNullOrWhiteSpace(row.TemplateType) ? TemplateFlavours : row.TemplateType,
         row.CompanyId,
         dateRequested = row.DateRequested,
         contactPersonName = row.ContactPersonName,
         companyRequested = row.CompanyRequested,
         customerName = row.CustomerName,
+        vendorExternalId = row.VendorExternalId,
         projectName = row.ProjectName,
         projectScope = row.ProjectScope,
         requestType = row.RequestType,
         expectedSalesAmountPerYear = row.ExpectedSalesAmountPerYear,
         productCategory = row.ProductCategory,
         productGroup = row.ProductGroup,
+        productPolicyTag = row.ProductPolicyTag,
+        quantityRequested = row.QuantityRequested,
+        quantityUom = row.QuantityUom,
         shareToken = row.ShareToken,
+        vendorAcceptedAt = row.VendorAcceptedAt,
         row.Status,
         createdAt = row.CreatedAt,
         updatedAt = row.UpdatedAt,
@@ -225,6 +309,7 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
     {
         row.Id,
         requestNumber = row.RequestNumber,
+        templateType = string.IsNullOrWhiteSpace(row.TemplateType) ? TemplateFlavours : row.TemplateType,
         row.CompanyId,
         dateRequested = row.DateRequested,
         contactEmployeeId = row.ContactEmployeeId,
@@ -232,6 +317,15 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         companyRequested = row.CompanyRequested,
         customerExternalId = row.CustomerExternalId,
         customerName = row.CustomerName,
+        vendorExternalId = row.VendorExternalId,
+        vendorAddress = row.VendorAddress,
+        vendorContactPerson = row.VendorContactPerson,
+        vendorContactMobile = row.VendorContactMobile,
+        vendorContactEmail = row.VendorContactEmail,
+        ingredientComponentId = row.IngredientComponentId,
+        productPolicyTag = row.ProductPolicyTag,
+        vendorAcceptedAt = row.VendorAcceptedAt,
+        vendorAcceptedBy = row.VendorAcceptedBy,
         isNewCustomer = row.IsNewCustomer,
         projectScope = row.ProjectScope,
         requestType = row.RequestType,
@@ -265,6 +359,7 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         regulatoryRequirementDetail = row.RegulatoryRequirementDetail,
         customerDeadline = row.CustomerDeadline,
         shareToken = row.ShareToken,
+        canAccept = row.VendorAcceptedAt is null,
         row.Status,
         row.CreatedBy,
         createdAt = row.CreatedAt,

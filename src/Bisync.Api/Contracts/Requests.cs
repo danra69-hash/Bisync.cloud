@@ -1125,6 +1125,8 @@ public class SampleRequestProductSampleDto
 
 public class CreateSampleRequestDto
 {
+    [MaxLength(50)]
+    public string TemplateType { get; set; } = "sample-request-flavours";
     public int CompanyId { get; set; }
     public DateOnly DateRequested { get; set; }
     public int? ContactEmployeeId { get; set; }
@@ -1137,6 +1139,20 @@ public class CreateSampleRequestDto
     [MaxLength(300)]
     public string CustomerName { get; set; } = string.Empty;
     public bool IsNewCustomer { get; set; }
+    [MaxLength(50)]
+    public string? VendorExternalId { get; set; }
+    [MaxLength(1000)]
+    public string? VendorAddress { get; set; }
+    [MaxLength(200)]
+    public string? VendorContactPerson { get; set; }
+    [MaxLength(50)]
+    public string? VendorContactMobile { get; set; }
+    [MaxLength(200)]
+    public string? VendorContactEmail { get; set; }
+    [MaxLength(50)]
+    public string? IngredientComponentId { get; set; }
+    [MaxLength(30)]
+    public string? ProductPolicyTag { get; set; }
     [MaxLength(20)]
     public string ProjectScope { get; set; } = "new";
     [MaxLength(30)]
@@ -1190,4 +1206,10 @@ public class CreateSampleRequestDto
     public DateOnly? CustomerDeadline { get; set; }
     [MaxLength(200)]
     public string? CreatedBy { get; set; }
+}
+
+public class AcceptSampleRequestPortalDto
+{
+    [MaxLength(200)]
+    public string? AcceptedBy { get; set; }
 }

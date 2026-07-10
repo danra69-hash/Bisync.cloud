@@ -630,18 +630,24 @@ export interface SubmitVendorRfqPayload {
 export interface SampleRequestSummary {
   id: number;
   requestNumber: string;
+  templateType?: string;
   companyId: number;
   dateRequested: string;
   contactPersonName: string;
   companyRequested: string;
   customerName: string;
+  vendorExternalId?: string;
   projectName: string;
   projectScope?: string;
   requestType?: string;
   expectedSalesAmountPerYear?: number;
   productCategory?: string;
   productGroup?: string;
+  productPolicyTag?: string;
+  quantityRequested?: number;
+  quantityUom?: string;
   shareToken: string;
+  vendorAcceptedAt?: string | null;
   status: string;
   createdAt: string;
   updatedAt?: string;
@@ -655,6 +661,7 @@ export interface SampleRequestProductSample {
 export interface SampleRequestDetail {
   id: number;
   requestNumber: string;
+  templateType?: string;
   companyId: number;
   dateRequested: string;
   contactEmployeeId?: number | null;
@@ -662,6 +669,16 @@ export interface SampleRequestDetail {
   companyRequested: string;
   customerExternalId: string;
   customerName: string;
+  vendorExternalId?: string;
+  vendorAddress?: string;
+  vendorContactPerson?: string;
+  vendorContactMobile?: string;
+  vendorContactEmail?: string;
+  ingredientComponentId?: string;
+  productPolicyTag?: string;
+  vendorAcceptedAt?: string | null;
+  vendorAcceptedBy?: string;
+  canAccept?: boolean;
   isNewCustomer: boolean;
   projectScope: 'new' | 'ongoing' | string;
   requestType: 'new_submission' | 'repeat' | 'modification' | string;
@@ -702,6 +719,7 @@ export interface SampleRequestDetail {
 }
 
 export interface CreateSampleRequestPayload {
+  templateType?: string;
   companyId: number;
   dateRequested: string;
   contactEmployeeId?: number | null;
@@ -709,35 +727,42 @@ export interface CreateSampleRequestPayload {
   companyRequested: string;
   customerExternalId?: string;
   customerName: string;
-  isNewCustomer: boolean;
-  projectScope: 'new' | 'ongoing';
-  requestType: 'new_submission' | 'repeat' | 'modification';
+  isNewCustomer?: boolean;
+  vendorExternalId?: string;
+  vendorAddress?: string;
+  vendorContactPerson?: string;
+  vendorContactMobile?: string;
+  vendorContactEmail?: string;
+  ingredientComponentId?: string;
+  productPolicyTag?: string;
+  projectScope?: 'new' | 'ongoing';
+  requestType?: 'new_submission' | 'repeat' | 'modification';
   modificationDetails?: string;
-  projectName: string;
-  deliveryUnit: string;
-  expectedQtyPerYear: number;
-  expectedPrice: number;
+  projectName?: string;
+  deliveryUnit?: string;
+  expectedQtyPerYear?: number;
+  expectedPrice?: number;
   productCategory?: string;
   productGroup?: string;
   productSamples: SampleRequestProductSample[];
-  waterSoluble: boolean;
-  oilSoluble: boolean;
-  flavourNatural: boolean;
-  flavourNaturalIdentical: boolean;
-  flavourArtificial: boolean;
-  quantityRequested: number;
+  waterSoluble?: boolean;
+  oilSoluble?: boolean;
+  flavourNatural?: boolean;
+  flavourNaturalIdentical?: boolean;
+  flavourArtificial?: boolean;
+  quantityRequested?: number;
   quantityUom?: string;
   targetProducts?: string;
-  gmoStatus: string;
-  allergenStatus: string;
+  gmoStatus?: string;
+  allergenStatus?: string;
   allergenFreeFromDetail?: string;
   mcpdHvpFreeDetail?: string;
-  halalCertified: boolean;
-  halalCompliantAccepted: boolean;
+  halalCertified?: boolean;
+  halalCompliantAccepted?: boolean;
   countryRdSite?: string;
   countryManufacturing?: string;
   countryInUse?: string;
-  regulatoryRequirement: string;
+  regulatoryRequirement?: string;
   regulatoryRequirementDetail?: string;
   customerDeadline?: string | null;
   createdBy?: string;
@@ -1552,6 +1577,12 @@ export const api = {
     fetchJsonWithMethod<SampleRequestDetail>('/api/sample-requests', 'POST', data),
   sampleRequestByShareToken: (token: string) =>
     fetchJson<SampleRequestDetail>(`/api/sample-requests/share/${encodeURIComponent(token)}`),
+  acceptSampleRequest: (token: string, acceptedBy?: string) =>
+    fetchJsonWithMethod<SampleRequestDetail>(
+      `/api/sample-requests/share/${encodeURIComponent(token)}/accept`,
+      'POST',
+      { acceptedBy },
+    ),
   vendorProductPrices: () => fetchJson<VendorProductPriceRow[]>('/api/vendorproducts/prices'),
   vendorProductCatalog: (vendorExternalId?: string) =>
     fetchJson<VendorProductCatalogRow[]>(

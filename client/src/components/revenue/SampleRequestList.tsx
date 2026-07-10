@@ -9,7 +9,9 @@ import {
   copySampleRequestShareLink,
   formatSampleProjectScope,
   formatSampleRequestType,
+  sampleRequestTemplateTitle,
 } from '../../data/requestForSample';
+import { formatVendorPolicyLabel } from '../../data/vendorPolicyRules';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 
@@ -69,7 +71,7 @@ function SampleRequestDetailPanel({
           <div>
             <p className="text-[10px] font-sans uppercase tracking-widest text-muted-foreground">Sample & Quote</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5">{detail.requestNumber}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Sample Request for Flavours</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{sampleRequestTemplateTitle(detail.templateType)}</p>
           </div>
           <button
             type="button"
@@ -82,6 +84,51 @@ function SampleRequestDetailPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 text-xs">
+          {detail.templateType === 'sample-request' ? (
+            <>
+              <section className="space-y-1.5">
+                <h4 className="text-xs font-semibold text-foreground border-b border-border pb-1">Request</h4>
+                <p><span className="text-muted-foreground">Date:</span> {detail.dateRequested}</p>
+                <p><span className="text-muted-foreground">Contact:</span> {detail.contactPersonName}</p>
+                <p><span className="text-muted-foreground">Company:</span> {detail.companyRequested}</p>
+                <p><span className="text-muted-foreground">Status:</span> {detail.status}</p>
+                {detail.vendorAcceptedAt ? (
+                  <p>
+                    <span className="text-muted-foreground">Accepted:</span>{' '}
+                    {detail.vendorAcceptedBy || 'vendor'} · {new Date(detail.vendorAcceptedAt).toLocaleString()}
+                  </p>
+                ) : null}
+              </section>
+              <section className="space-y-1.5">
+                <h4 className="text-xs font-semibold text-foreground border-b border-border pb-1">Vendor</h4>
+                <p className="font-semibold">{detail.customerName}</p>
+                <p><span className="text-muted-foreground">Address:</span> {labelOrDash(detail.vendorAddress)}</p>
+                <p><span className="text-muted-foreground">Contact:</span> {labelOrDash(detail.vendorContactPerson)}</p>
+                <p><span className="text-muted-foreground">Mobile:</span> {labelOrDash(detail.vendorContactMobile)}</p>
+                <p><span className="text-muted-foreground">Email:</span> {labelOrDash(detail.vendorContactEmail)}</p>
+              </section>
+              <section className="space-y-2">
+                <h4 className="text-xs font-semibold text-foreground border-b border-border pb-1">Product sample</h4>
+                <p>{labelOrDash(detail.productCategory)} · {labelOrDash(detail.productGroup)}</p>
+                {(detail.productSamples ?? []).map((sample, index) => (
+                  <div key={`${sample.name}-${index}`} className="rounded-md border border-border p-3">
+                    <p className="font-semibold text-foreground">{sample.name}</p>
+                    {sample.description ? (
+                      <p className="text-muted-foreground mt-1 whitespace-pre-wrap">{sample.description}</p>
+                    ) : null}
+                  </div>
+                ))}
+                <p>Qty: {detail.quantityRequested} {labelOrDash(detail.quantityUom)}</p>
+                <p>
+                  Policy:{' '}
+                  {detail.productPolicyTag
+                    ? formatVendorPolicyLabel(detail.productPolicyTag as 'halal' | 'muslim-friendly' | 'non-halal')
+                    : '—'}
+                </p>
+              </section>
+            </>
+          ) : (
+            <>
           <section className="space-y-1.5">
             <h4 className="text-xs font-semibold text-foreground border-b border-border pb-1">Request</h4>
             <p><span className="text-muted-foreground">Date:</span> {detail.dateRequested}</p>
@@ -161,6 +208,8 @@ function SampleRequestDetailPanel({
             </p>
             <p><span className="text-muted-foreground">Customer deadline:</span> {labelOrDash(detail.customerDeadline)}</p>
           </section>
+            </>
+          )}
 
           {detail.shareToken ? (
             <section className="rounded-lg border border-border p-3 space-y-2">
@@ -181,14 +230,25 @@ function SampleRequestDetailPanel({
                   {copied ? 'Copied' : 'Copy link'}
                 </button>
                 <a
-                  href={buildSampleRequestMailtoUrl(detail.shareToken, detail.requestNumber, detail.customerName)}
+                  href={buildSampleRequestMailtoUrl(
+                    detail.shareToken,
+                    detail.requestNumber,
+                    detail.customerName,
+                    detail.vendorContactEmail,
+                    detail.templateType,
+                  )}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10"
                 >
                   <Mail size={11} />
                   Email
                 </a>
                 <a
-                  href={buildSampleRequestWhatsAppUrl(detail.shareToken, detail.requestNumber, detail.customerName)}
+                  href={buildSampleRequestWhatsAppUrl(
+                    detail.shareToken,
+                    detail.requestNumber,
+                    detail.customerName,
+                    detail.templateType,
+                  )}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10"
@@ -305,9 +365,9 @@ export function SampleRequestList({ selectedCompanyId, refreshKey = 0 }: Props) 
               <thead className="bg-muted/30 sticky top-0">
                 <tr className="border-b border-border text-left">
                   <th className="px-4 py-2.5 font-semibold">Request #</th>
-                  <th className="px-4 py-2.5 font-semibold">Customer</th>
-                  <th className="px-4 py-2.5 font-semibold">Project</th>
-                  <th className="px-4 py-2.5 font-semibold">Type</th>
+                  <th className="px-4 py-2.5 font-semibold">Template</th>
+                  <th className="px-4 py-2.5 font-semibold">Vendor / Customer</th>
+                  <th className="px-4 py-2.5 font-semibold">Product / Project</th>
                   <th className="px-4 py-2.5 font-semibold">Status</th>
                   <th className="px-4 py-2.5 font-semibold">Created</th>
                 </tr>
@@ -324,11 +384,11 @@ export function SampleRequestList({ selectedCompanyId, refreshKey = 0 }: Props) 
                         {row.requestNumber}
                       </button>
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {sampleRequestTemplateTitle(row.templateType)}
+                    </td>
                     <td className="px-4 py-3 text-foreground">{row.customerName}</td>
                     <td className="px-4 py-3 text-foreground">{row.projectName}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatSampleRequestType(row.requestType ?? '')}
-                    </td>
                     <td className="px-4 py-3 capitalize text-foreground">{row.status}</td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                       {new Date(row.createdAt).toLocaleString()}
