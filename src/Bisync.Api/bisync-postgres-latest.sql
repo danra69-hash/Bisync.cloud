@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict vfE16e0XmS4taE2QbFL2CzjPWWLrKcuPnRUf9ODTqFdp9mrmQJK16w2BddRAgXc
+\restrict SzGEVN6AFYaAYcGyeGn7QJ3fsq7uDIhL7fjLxNobZMev0qHwYnY8TDZ0oJmt1Af
 
 -- Dumped from database version 17.10
 -- Dumped by pg_dump version 17.10
@@ -5603,5 +5603,5 @@ ALTER TABLE ONLY public."SocsoBrackets"
 -- PostgreSQL database dump complete
 --
 
-\unrestrict vfE16e0XmS4taE2QbFL2CzjPWWLrKcuPnRUf9ODTqFdp9mrmQJK16w2BddRAgXc
+\unrestrict SzGEVN6AFYaAYcGyeGn7QJ3fsq7uDIhL7fjLxNobZMev0qHwYnY8TDZ0oJmt1Af
 
