@@ -1114,3 +1114,80 @@ public class SubmitQuoteRequestPortalDto
     public string? SubmittedBy { get; set; }
     public List<QuoteLineVendorResponseDto> Responses { get; set; } = [];
 }
+
+public class SampleRequestProductSampleDto
+{
+    [MaxLength(300)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(4000)]
+    public string Description { get; set; } = string.Empty;
+}
+
+public class CreateSampleRequestDto
+{
+    public int CompanyId { get; set; }
+    public DateOnly DateRequested { get; set; }
+    public int? ContactEmployeeId { get; set; }
+    [MaxLength(200)]
+    public string ContactPersonName { get; set; } = string.Empty;
+    [MaxLength(300)]
+    public string CompanyRequested { get; set; } = string.Empty;
+    [MaxLength(50)]
+    public string? CustomerExternalId { get; set; }
+    [MaxLength(300)]
+    public string CustomerName { get; set; } = string.Empty;
+    public bool IsNewCustomer { get; set; }
+    [MaxLength(20)]
+    public string ProjectScope { get; set; } = "new";
+    [MaxLength(30)]
+    public string RequestType { get; set; } = "new_submission";
+    [MaxLength(4000)]
+    public string? ModificationDetails { get; set; }
+    [MaxLength(300)]
+    public string ProjectName { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string DeliveryUnit { get; set; } = string.Empty;
+    [Range(0, 999999999)]
+    public decimal ExpectedQtyPerYear { get; set; }
+    [Range(0, 999999999)]
+    public decimal ExpectedPrice { get; set; }
+    [MaxLength(100)]
+    public string? ProductCategory { get; set; }
+    [MaxLength(100)]
+    public string? ProductGroup { get; set; }
+    public List<SampleRequestProductSampleDto> ProductSamples { get; set; } = [];
+    public bool WaterSoluble { get; set; }
+    public bool OilSoluble { get; set; }
+    public bool FlavourNatural { get; set; }
+    public bool FlavourNaturalIdentical { get; set; }
+    public bool FlavourArtificial { get; set; }
+    [Range(0, 999999999)]
+    public decimal QuantityRequested { get; set; }
+    [MaxLength(50)]
+    public string? QuantityUom { get; set; }
+    [MaxLength(1000)]
+    public string? TargetProducts { get; set; }
+    [MaxLength(30)]
+    public string GmoStatus { get; set; } = "na";
+    [MaxLength(30)]
+    public string AllergenStatus { get; set; } = "na";
+    [MaxLength(1000)]
+    public string? AllergenFreeFromDetail { get; set; }
+    [MaxLength(1000)]
+    public string? McpdHvpFreeDetail { get; set; }
+    public bool HalalCertified { get; set; }
+    public bool HalalCompliantAccepted { get; set; }
+    [MaxLength(100)]
+    public string? CountryRdSite { get; set; }
+    [MaxLength(100)]
+    public string? CountryManufacturing { get; set; }
+    [MaxLength(100)]
+    public string? CountryInUse { get; set; }
+    [MaxLength(20)]
+    public string RegulatoryRequirement { get; set; } = "na";
+    [MaxLength(4000)]
+    public string? RegulatoryRequirementDetail { get; set; }
+    public DateOnly? CustomerDeadline { get; set; }
+    [MaxLength(200)]
+    public string? CreatedBy { get; set; }
+}

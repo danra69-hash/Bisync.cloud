@@ -74,6 +74,22 @@ if (-not (Test-Path $MainSqlPath)) {
     throw "Missing $MainSqlPath. Run .\scripts\publish-postgres-db.ps1 on the source machine first."
 }
 
+$restoreTool = Join-Path $Root "tools\Bisync.PostgresRestore\Bisync.PostgresRestore.csproj"
+if (Test-Path $restoreTool) {
+    Write-Host "Using Bisync.PostgresRestore (reads API connection settings)..." -ForegroundColor Gray
+    Push-Location (Join-Path $Root "tools\Bisync.PostgresRestore")
+    try {
+        $restoreArgs = @("run", "-c", "Release", "--nologo")
+        if ($SkipArchive) { $restoreArgs += "--skip-archive" }
+        dotnet @restoreArgs
+        if ($LASTEXITCODE -ne 0) { throw "Bisync.PostgresRestore failed." }
+    } finally {
+        Pop-Location
+    }
+    Write-Host "PostgreSQL restore complete." -ForegroundColor Green
+    return
+}
+
 $psql = Resolve-Psql
 Restore-Database -Psql $psql -TargetDatabase $Database -SqlPath $MainSqlPath
 

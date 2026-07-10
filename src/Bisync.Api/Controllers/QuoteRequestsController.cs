@@ -237,6 +237,7 @@ public class QuoteRequestsController(BisyncDbContext db) : ControllerBase
             {
                 l.Id,
                 l.Kind,
+                componentId = l.ComponentId,
                 componentName = l.ComponentName,
                 specification = l.Specification,
                 principalUom = l.PrincipalUom,
@@ -423,27 +424,43 @@ public class VendorRfqPortalController(BisyncDbContext db) : ControllerBase
             line.VendorResponsesJson = JsonSerializer.Serialize(bag, JsonOptions);
         }
 
-        vendorRow.Status = "submitted";
-        vendorRow.SubmittedAt = DateTime.UtcNow;
-        vendorRow.SubmittedBy = string.IsNullOrWhiteSpace(request.SubmittedBy)
-            ? vendorRow.ContactPerson
-            : request.SubmittedBy.Trim();
-        rfq.UpdatedAt = DateTime.UtcNow;
+        if (vendorRow.Status != "submitted")
+        {
+            vendorRow.Status = "submitted";
+            vendorRow.SubmittedAt = DateTime.UtcNow;
+            vendorRow.SubmittedBy = string.IsNullOrWhiteSpace(request.SubmittedBy)
+                ? vendorRow.ContactPerson
+                : request.SubmittedBy.Trim();
+        }
+
+        var now = DateTime.UtcNow;
+        rfq.UpdatedAt = now;
         await db.SaveChangesAsync();
 
-        var allStatuses = await db.QuoteRequestVendors.AsNoTracking()
+        var vendorStatuses = await db.QuoteRequestVendors.AsNoTracking()
             .Where(v => v.QuoteRequestId == rfq.Id)
             .Select(v => v.Status)
             .ToListAsync();
-        rfq.Status = allStatuses.All(s => s == "submitted") ? "completed" : "partial";
-        rfq.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        var rfqStatus = ComputeRfqStatus(vendorStatuses);
+        await db.QuoteRequests
+            .Where(q => q.Id == rfq.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(q => q.Status, rfqStatus)
+                .SetProperty(q => q.UpdatedAt, now));
 
         var refreshedVendor = await LoadVendorByTokenAsync(token, tracking: false);
         var refreshedRfq = await db.QuoteRequests.AsNoTracking()
             .Include(q => q.Lines)
             .FirstOrDefaultAsync(q => q.Id == vendorRow.QuoteRequestId);
         return Ok(await BuildPortalViewAsync(refreshedRfq!, refreshedVendor!));
+    }
+
+    static string ComputeRfqStatus(IReadOnlyList<string> vendorStatuses)
+    {
+        if (vendorStatuses.Count == 0) return "open";
+        if (vendorStatuses.All(s => s == "submitted")) return "completed";
+        if (vendorStatuses.Any(s => s == "submitted")) return "partial";
+        return "open";
     }
 
     async Task<QuoteRequestVendor?> LoadVendorByTokenAsync(string token, bool tracking)

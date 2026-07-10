@@ -65,6 +65,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<QuoteRequest> QuoteRequests => Set<QuoteRequest>();
     public DbSet<QuoteRequestVendor> QuoteRequestVendors => Set<QuoteRequestVendor>();
     public DbSet<QuoteRequestLine> QuoteRequestLines => Set<QuoteRequestLine>();
+    public DbSet<SampleRequest> SampleRequests => Set<SampleRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -134,6 +135,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .HasIndex(v => v.ShareToken);
         modelBuilder.Entity<QuoteRequest>()
             .HasIndex(q => q.RfqNumber);
+
+        modelBuilder.Entity<SampleRequest>()
+            .HasIndex(s => s.RequestNumber);
+        modelBuilder.Entity<SampleRequest>()
+            .HasIndex(s => s.CompanyId);
+        modelBuilder.Entity<SampleRequest>()
+            .HasIndex(s => s.ShareToken);
 
         modelBuilder.Entity<OrderTemplate>()
             .HasMany(t => t.Items)

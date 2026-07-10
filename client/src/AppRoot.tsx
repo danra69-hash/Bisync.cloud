@@ -3,8 +3,10 @@ import { useCurrentUser } from './hooks/useCurrentUser';
 import { LandingPage } from './pages/LandingPage';
 import { VendorOrderPortalPage } from './pages/VendorOrderPortalPage';
 import { VendorRfqPortalPage } from './pages/VendorRfqPortalPage';
+import { SampleRequestPortalPage } from './pages/SampleRequestPortalPage';
 import { parseVendorOrderToken } from './data/vendorOrderShare';
 import { parseVendorRfqToken } from './data/vendorRfqShare';
+import { parseSampleRequestToken } from './data/requestForSample';
 
 function LoadingScreen() {
   return (
@@ -20,6 +22,7 @@ function LoadingScreen() {
 export function AppRoot() {
   const vendorToken = parseVendorOrderToken(window.location.pathname);
   const rfqToken = parseVendorRfqToken(window.location.pathname);
+  const sampleRequestToken = parseSampleRequestToken(window.location.pathname);
   const { isAuthenticated, loading } = useCurrentUser();
 
   if (vendorToken) {
@@ -27,6 +30,9 @@ export function AppRoot() {
   }
   if (rfqToken) {
     return <VendorRfqPortalPage token={rfqToken} />;
+  }
+  if (sampleRequestToken) {
+    return <SampleRequestPortalPage token={sampleRequestToken} />;
   }
   if (loading) {
     return <LoadingScreen />;

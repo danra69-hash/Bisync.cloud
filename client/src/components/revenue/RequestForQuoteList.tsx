@@ -1,40 +1,108 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Copy, ExternalLink, RefreshCw } from 'lucide-react';
-import { api, type QuoteRequestSummary } from '../../api';
+import { api, type QuoteRequestSummary, type Vendor } from '../../api';
 import {
   buildVendorRfqShareUrl,
   copyVendorRfqShareLink,
 } from '../../data/vendorRfqShare';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { QuoteComparisonModal } from './QuoteComparisonModal';
 
 type Props = {
   selectedCompanyId: number | null;
+  vendors: Vendor[];
   refreshKey?: number;
+  onVendorUpdated?: (vendor: Vendor) => void;
 };
 
-export function RequestForQuoteList({ selectedCompanyId, refreshKey = 0 }: Props) {
+function rfqStatusLabel(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'All quotes received';
+    case 'partial':
+      return 'Partially quoted';
+    case 'open':
+      return 'Awaiting quotes';
+    default:
+      return status;
+  }
+}
+
+function rfqStatusClass(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'bg-[#5A7A2A]/15 text-[#5A7A2A] border-[#5A7A2A]/30';
+    case 'partial':
+      return 'bg-amber-500/15 text-amber-700 border-amber-500/30';
+    default:
+      return 'bg-muted text-muted-foreground border-border';
+  }
+}
+
+function vendorStatusClass(status: string): string {
+  return status === 'submitted'
+    ? 'text-[#5A7A2A]'
+    : 'text-muted-foreground';
+}
+
+export function RequestForQuoteList({
+  selectedCompanyId,
+  vendors,
+  refreshKey = 0,
+  onVendorUpdated,
+}: Props) {
   const [rows, setRows] = useState<QuoteRequestSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [compareRfq, setCompareRfq] = useState<QuoteRequestSummary | null>(null);
 
-  useEffect(() => {
+  const loadRows = useCallback(async (silent = false) => {
     if (!selectedCompanyId) {
       setRows([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     setError(null);
-    api.quoteRequests(selectedCompanyId)
-      .then(setRows)
-      .catch(err => {
-        setRows([]);
-        setError(err instanceof Error ? err.message : 'Failed to load requests for quote.');
-      })
-      .finally(() => setLoading(false));
-  }, [selectedCompanyId, refreshKey]);
+    try {
+      const data = await api.quoteRequests(selectedCompanyId);
+      setRows(data);
+    } catch (err) {
+      setRows([]);
+      setError(err instanceof Error ? err.message : 'Failed to load sample & quote requests.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    void loadRows();
+  }, [loadRows, refreshKey]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void loadRows(true);
+      }
+    }, 15000);
+
+    const onFocus = () => void loadRows(true);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [selectedCompanyId, loadRows]);
 
   async function handleCopy(token: string) {
     try {
@@ -49,13 +117,13 @@ export function RequestForQuoteList({ selectedCompanyId, refreshKey = 0 }: Props
   if (!selectedCompanyId) {
     return (
       <p className="text-sm text-muted-foreground border border-dashed border-border rounded-lg px-4 py-6 text-center">
-        Select a company to view requests for quote.
+        Select a company to view sample & quote requests.
       </p>
     );
   }
 
   if (loading) {
-    return <p className="p-8 text-center text-xs text-muted-foreground">Loading requests for quote…</p>;
+    return <p className="p-8 text-center text-xs text-muted-foreground">Loading sample & quote requests…</p>;
   }
 
   if (error) {
@@ -65,13 +133,27 @@ export function RequestForQuoteList({ selectedCompanyId, refreshKey = 0 }: Props
   if (rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground border border-dashed border-border rounded-lg px-4 py-6 text-center">
-        No requests for quote yet. Use <span className="font-semibold">Request For Quote</span> to create one.
+        No sample & quote requests yet. Use <span className="font-semibold">Sample & Quote</span> to create one.
       </p>
     );
   }
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-2 border-b border-border flex items-center justify-between gap-2">
+        <p className="text-[11px] text-muted-foreground">
+          Status updates when vendors submit pricing via their share link.
+        </p>
+        <button
+          type="button"
+          onClick={() => void loadRows(true)}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-[11px] font-semibold hover:bg-muted disabled:opacity-50"
+        >
+          <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
       <TableScrollContainer className="max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full text-xs">
           <thead className="bg-muted/30 sticky top-0">
@@ -99,7 +181,24 @@ export function RequestForQuoteList({ selectedCompanyId, refreshKey = 0 }: Props
                         {row.rfqNumber}
                       </button>
                     </td>
-                    <td className="px-4 py-3 capitalize text-foreground">{row.status}</td>
+                    <td className="px-4 py-3">
+                      {row.status === 'completed' ? (
+                        <button
+                          type="button"
+                          onClick={() => setCompareRfq(row)}
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold uppercase tracking-wide cursor-pointer hover:opacity-80 transition-opacity ${rfqStatusClass(row.status)}`}
+                          title="Compare vendor quotes"
+                        >
+                          {rfqStatusLabel(row.status)}
+                        </button>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold uppercase tracking-wide ${rfqStatusClass(row.status)}`}
+                        >
+                          {rfqStatusLabel(row.status)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-foreground">
                       {row.submittedCount}/{row.vendorCount} submitted
                     </td>
@@ -112,8 +211,8 @@ export function RequestForQuoteList({ selectedCompanyId, refreshKey = 0 }: Props
                         {row.vendors.map(vendor => (
                           <div key={vendor.id} className="flex items-center gap-2 flex-wrap">
                             <span className="text-foreground">{vendor.vendorName}</span>
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {vendor.status}
+                            <span className={`text-[10px] uppercase tracking-wide font-semibold ${vendorStatusClass(vendor.status)}`}>
+                              {vendor.status === 'submitted' ? 'Submitted' : 'Pending'}
                             </span>
                             <button
                               type="button"
@@ -180,8 +279,18 @@ export function RequestForQuoteList({ selectedCompanyId, refreshKey = 0 }: Props
       </TableScrollContainer>
       <div className="px-4 py-2 border-t border-border text-[11px] text-muted-foreground flex items-center gap-1">
         <RefreshCw size={10} />
-        Click an RFQ number to see vendor Delivery Unit and RRP responses.
+        Click an RFQ number to see vendor responses. Click <span className="font-semibold">All quotes received</span> to compare quotes.
       </div>
+
+      {compareRfq ? (
+        <QuoteComparisonModal
+          rfq={compareRfq}
+          vendors={vendors}
+          selectedCompanyId={selectedCompanyId}
+          onClose={() => setCompareRfq(null)}
+          onVendorUpdated={onVendorUpdated}
+        />
+      ) : null}
     </div>
   );
 }

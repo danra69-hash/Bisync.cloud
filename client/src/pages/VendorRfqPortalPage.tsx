@@ -39,7 +39,7 @@ export function VendorRfqPortalPage({ token }: Props) {
       })
       .catch(err => {
         setPortal(null);
-        setError(err instanceof Error ? err.message : 'Unable to load request for quote.');
+        setError(err instanceof Error ? err.message : 'Unable to load sample & quote request.');
       })
       .finally(() => setLoading(false));
   }, [token]);
@@ -84,7 +84,7 @@ export function VendorRfqPortalPage({ token }: Props) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F7F3EE]">
-        <p className="text-sm text-muted-foreground">Loading request for quote…</p>
+        <p className="text-sm text-muted-foreground">Loading sample & quote request…</p>
       </div>
     );
   }
@@ -94,7 +94,7 @@ export function VendorRfqPortalPage({ token }: Props) {
       <div className="min-h-screen flex items-center justify-center bg-[#F7F3EE] px-4">
         <div className="max-w-md rounded-xl border border-border bg-card p-6 text-center space-y-2">
           <h1 className="text-lg font-semibold text-foreground">Link unavailable</h1>
-          <p className="text-sm text-muted-foreground">{error ?? 'This request for quote link is invalid.'}</p>
+          <p className="text-sm text-muted-foreground">{error ?? 'This sample & quote link is invalid.'}</p>
         </div>
       </div>
     );
@@ -107,7 +107,7 @@ export function VendorRfqPortalPage({ token }: Props) {
       <header className="border-b border-border bg-[#2C1A0A] text-white px-4 py-4">
         <div className="max-w-3xl mx-auto">
           <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">pasar.ai · Bisync.cloud</p>
-          <h1 className="text-lg font-semibold mt-1">Request for Quote</h1>
+          <h1 className="text-lg font-semibold mt-1">Sample & Quote</h1>
           <p className="text-sm text-white/80 mt-0.5">{portal.rfqNumber}</p>
         </div>
       </header>

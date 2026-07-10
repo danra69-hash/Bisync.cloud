@@ -26,7 +26,7 @@ export async function copyVendorRfqShareLink(shareToken: string): Promise<void> 
 
 export function buildVendorRfqWhatsAppUrl(shareToken: string, vendorName: string, rfqNumber: string): string {
   const url = buildVendorRfqShareUrl(shareToken);
-  const text = `Hi${vendorName ? ` ${vendorName}` : ''}, please fill in our Request for Quote ${rfqNumber}:\n${url}`;
+  const text = `Hi${vendorName ? ` ${vendorName}` : ''}, please fill in our Sample & Quote ${rfqNumber}:\n${url}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
@@ -37,9 +37,9 @@ export function buildVendorRfqMailtoUrl(
   rfqNumber: string,
 ): string {
   const url = buildVendorRfqShareUrl(shareToken);
-  const subject = encodeURIComponent(`Request for Quote ${rfqNumber}`);
+  const subject = encodeURIComponent(`Sample & Quote ${rfqNumber}`);
   const body = encodeURIComponent(
-    `Hi${vendorName ? ` ${vendorName}` : ''},\n\nPlease fill in our Request for Quote ${rfqNumber} using this link:\n${url}\n\nThank you.`,
+    `Hi${vendorName ? ` ${vendorName}` : ''},\n\nPlease fill in our Sample & Quote ${rfqNumber} using this link:\n${url}\n\nThank you.`,
   );
   const to = email.trim();
   return to ? `mailto:${to}?subject=${subject}&body=${body}` : `mailto:?subject=${subject}&body=${body}`;

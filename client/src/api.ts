@@ -560,6 +560,7 @@ export interface QuoteRequestSummary {
   lines?: {
     id: number;
     kind: string;
+    componentId?: number | null;
     componentName: string;
     specification?: string;
     principalUom: string;
@@ -624,6 +625,102 @@ export interface SubmitVendorRfqPayload {
     rrp: number;
     notes?: string;
   }[];
+}
+
+export interface SampleRequestProductSample {
+  name: string;
+  description: string;
+}
+
+export interface SampleRequestDetail {
+  id: number;
+  requestNumber: string;
+  companyId: number;
+  dateRequested: string;
+  contactEmployeeId?: number | null;
+  contactPersonName: string;
+  companyRequested: string;
+  customerExternalId: string;
+  customerName: string;
+  isNewCustomer: boolean;
+  projectScope: 'new' | 'ongoing' | string;
+  requestType: 'new_submission' | 'repeat' | 'modification' | string;
+  modificationDetails: string;
+  projectName: string;
+  deliveryUnit: string;
+  expectedQtyPerYear: number;
+  expectedPrice: number;
+  expectedSalesAmountPerYear: number;
+  productCategory: string;
+  productGroup: string;
+  productSamples: SampleRequestProductSample[];
+  waterSoluble: boolean;
+  oilSoluble: boolean;
+  flavourNatural: boolean;
+  flavourNaturalIdentical: boolean;
+  flavourArtificial: boolean;
+  quantityRequested: number;
+  quantityUom: string;
+  targetProducts: string;
+  gmoStatus: string;
+  allergenStatus: string;
+  allergenFreeFromDetail: string;
+  mcpdHvpFreeDetail: string;
+  halalCertified: boolean;
+  halalCompliantAccepted: boolean;
+  countryRdSite: string;
+  countryManufacturing: string;
+  countryInUse: string;
+  regulatoryRequirement: string;
+  regulatoryRequirementDetail: string;
+  customerDeadline?: string | null;
+  shareToken: string;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSampleRequestPayload {
+  companyId: number;
+  dateRequested: string;
+  contactEmployeeId?: number | null;
+  contactPersonName: string;
+  companyRequested: string;
+  customerExternalId?: string;
+  customerName: string;
+  isNewCustomer: boolean;
+  projectScope: 'new' | 'ongoing';
+  requestType: 'new_submission' | 'repeat' | 'modification';
+  modificationDetails?: string;
+  projectName: string;
+  deliveryUnit: string;
+  expectedQtyPerYear: number;
+  expectedPrice: number;
+  productCategory?: string;
+  productGroup?: string;
+  productSamples: SampleRequestProductSample[];
+  waterSoluble: boolean;
+  oilSoluble: boolean;
+  flavourNatural: boolean;
+  flavourNaturalIdentical: boolean;
+  flavourArtificial: boolean;
+  quantityRequested: number;
+  quantityUom?: string;
+  targetProducts?: string;
+  gmoStatus: string;
+  allergenStatus: string;
+  allergenFreeFromDetail?: string;
+  mcpdHvpFreeDetail?: string;
+  halalCertified: boolean;
+  halalCompliantAccepted: boolean;
+  countryRdSite?: string;
+  countryManufacturing?: string;
+  countryInUse?: string;
+  regulatoryRequirement: string;
+  regulatoryRequirementDetail?: string;
+  customerDeadline?: string | null;
+  createdBy?: string;
 }
 
 export interface VendorOrderPortal {
@@ -1428,6 +1525,12 @@ export const api = {
   vendorRfqPortal: (token: string) => fetchJson<VendorRfqPortal>(`/api/vendor-rfq/${token}`),
   submitVendorRfq: (token: string, data: SubmitVendorRfqPayload) =>
     fetchJsonWithMethod<VendorRfqPortal>(`/api/vendor-rfq/${token}/submit`, 'POST', data),
+  sampleRequests: (companyId?: number) =>
+    fetchJson<SampleRequestDetail[]>(`/api/sample-requests${companyId ? `?companyId=${companyId}` : ''}`),
+  createSampleRequest: (data: CreateSampleRequestPayload) =>
+    fetchJsonWithMethod<SampleRequestDetail>('/api/sample-requests', 'POST', data),
+  sampleRequestByShareToken: (token: string) =>
+    fetchJson<SampleRequestDetail>(`/api/sample-requests/share/${encodeURIComponent(token)}`),
   vendorProductPrices: () => fetchJson<VendorProductPriceRow[]>('/api/vendorproducts/prices'),
   vendorProductCatalog: (vendorExternalId?: string) =>
     fetchJson<VendorProductCatalogRow[]>(

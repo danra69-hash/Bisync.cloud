@@ -30,6 +30,9 @@ import { VendorProductsList } from './VendorProductsList';
 import { VendorProductsPanel } from './VendorProductsPanel';
 import { RequestForQuotePanel } from './RequestForQuotePanel';
 import { RequestForQuoteList } from './RequestForQuoteList';
+import { RequestForSamplePanel } from './RequestForSamplePanel';
+import { SampleQuoteTemplatesPanel } from './SampleQuoteTemplatesPanel';
+import type { SampleQuoteTemplateId } from '../../data/requestForSample';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
 type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'action';
@@ -47,7 +50,7 @@ const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
 const VENDOR_TABS = [
   { id: 'vendors' as const, label: 'Vendors' },
   { id: 'products' as const, label: 'Vendor Products' },
-  { id: 'rfq' as const, label: 'Request for Quote' },
+  { id: 'rfq' as const, label: 'Sample & Quote' },
 ] as const;
 
 type VendorTableRow =
@@ -90,6 +93,8 @@ export function VendorListPage({
   const [engaging, setEngaging] = useState(false);
   const [showCreateVendor, setShowCreateVendor] = useState(false);
   const [showRfqPanel, setShowRfqPanel] = useState(false);
+  const [showSamplePanel, setShowSamplePanel] = useState(false);
+  const [showSampleQuoteTemplates, setShowSampleQuoteTemplates] = useState(false);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<VendorSortColumn>();
 
   const catalogProducts = useMemo(
@@ -382,15 +387,16 @@ export function VendorListPage({
           </button>
           <button
             type="button"
-            onClick={() => setShowRfqPanel(true)}
+            onClick={() => setShowSampleQuoteTemplates(true)}
             disabled={!selectedCompanyId}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
           >
             <FileText size={11} />
-            Request For Quote
+            Sample & Quote
           </button>
           <button
             type="button"
+            onClick={() => setShowSampleQuoteTemplates(true)}
             disabled={!selectedCompanyId}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10 disabled:opacity-50"
           >
@@ -534,7 +540,12 @@ export function VendorListPage({
       />
       </>
       ) : (
-        <RequestForQuoteList selectedCompanyId={selectedCompanyId} refreshKey={rfqRefresh} />
+        <RequestForQuoteList
+          selectedCompanyId={selectedCompanyId}
+          vendors={vendors}
+          refreshKey={rfqRefresh}
+          onVendorUpdated={handleVendorUpdated}
+        />
       )}
 
       {engageTarget && (
@@ -578,6 +589,18 @@ export function VendorListPage({
         />
       )}
 
+      {showSampleQuoteTemplates && (
+        <SampleQuoteTemplatesPanel
+          onClose={() => setShowSampleQuoteTemplates(false)}
+          onSelectTemplate={(templateId: SampleQuoteTemplateId) => {
+            setShowSampleQuoteTemplates(false);
+            if (templateId === 'sample-request-flavours') {
+              setShowSamplePanel(true);
+            }
+          }}
+        />
+      )}
+
       {showRfqPanel && selectedCompany && (
         <RequestForQuotePanel
           company={selectedCompany}
@@ -595,6 +618,16 @@ export function VendorListPage({
             setRfqRefresh(key => key + 1);
             setTab('rfq');
             void rfq;
+          }}
+        />
+      )}
+
+      {showSamplePanel && selectedCompany && (
+        <RequestForSamplePanel
+          company={selectedCompany}
+          onClose={() => setShowSamplePanel(false)}
+          onCreated={() => {
+            /* Keep panel open so Copy / WhatsApp share actions remain available. */
           }}
         />
       )}

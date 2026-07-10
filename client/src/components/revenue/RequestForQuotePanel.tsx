@@ -255,7 +255,7 @@ export function RequestForQuotePanel({
       setCreated(rfq);
       onCreated(rfq, createdVendors);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create request for quote.');
+      setError(err instanceof Error ? err.message : 'Failed to create sample & quote request.');
     } finally {
       setSaving(false);
     }
@@ -278,7 +278,7 @@ export function RequestForQuotePanel({
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border">
           <div>
             <p className="text-[10px] font-sans uppercase tracking-widest text-muted-foreground">Vendors</p>
-            <h3 className="text-sm font-semibold text-foreground mt-0.5">Request For Quote</h3>
+            <h3 className="text-sm font-semibold text-foreground mt-0.5">Sample & Quote</h3>
           </div>
           <button
             type="button"
