@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy, MessageCircle, Plus, Trash2, X } from 'lucide-react';
+import { Check, Copy, Mail, MessageCircle, Plus, Trash2, X } from 'lucide-react';
 import {
   api,
   type AppUser,
@@ -12,6 +12,7 @@ import {
 } from '../../api';
 import { inputCls, RECIPE_UNITS, selectCls } from '../../data/componentForm';
 import {
+  buildSampleRequestMailtoUrl,
   buildSampleRequestShareUrl,
   buildSampleRequestWhatsAppUrl,
   copySampleRequestShareLink,
@@ -108,6 +109,7 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
 
   const [dateRequested, setDateRequested] = useState(todayIso);
   const [contactEmployeeId, setContactEmployeeId] = useState<number | ''>('');
+  const [contactPersonName, setContactPersonName] = useState('');
   const [customerPick, setCustomerPick] = useState('__new__');
   const [newCustomerName, setNewCustomerName] = useState('');
   const [projectScope, setProjectScope] = useState<'new' | 'ongoing'>('new');
@@ -157,7 +159,8 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
       api.products(company.id),
     ])
       .then(([users, customerRows, ingredientRows, productRows]) => {
-        setCompanyUsers(users.filter(u => u.companyId === company.id && u.employeeId && u.active));
+        const scoped = users.filter(u => u.companyId === company.id && u.active);
+        setCompanyUsers(scoped);
         setCustomers(customerRows.filter(c => c.active));
         setIngredients(ingredientRows);
         setProducts(productRows);
@@ -200,11 +203,6 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
   }, [expectedQtyPerYear, expectedPrice]);
 
   const selectedCustomer = customers.find(c => c.externalId === customerPick);
-  const contactPersonName = useMemo(() => {
-    if (contactEmployeeId === '') return '';
-    const user = companyUsers.find(u => u.employeeId === contactEmployeeId);
-    return user?.fullName ?? '';
-  }, [companyUsers, contactEmployeeId]);
 
   const customerName = customerPick === '__new__'
     ? newCustomerName.trim()
@@ -212,8 +210,12 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
 
   async function handleSubmit() {
     setError(null);
-    if (contactEmployeeId === '') {
-      setError('Select a contact person.');
+    const resolvedContactName = contactPersonName.trim()
+      || (contactEmployeeId === ''
+        ? ''
+        : (companyUsers.find(u => u.id === contactEmployeeId || u.employeeId === contactEmployeeId)?.fullName ?? ''));
+    if (!resolvedContactName) {
+      setError('Enter or select a contact person.');
       return;
     }
     if (!customerName) {
@@ -244,14 +246,15 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
     const qty = parseFloat(expectedQtyPerYear);
     const price = parseFloat(expectedPrice);
     const sampleQty = parseFloat(quantityRequested);
+    const selectedUser = companyUsers.find(u => u.id === contactEmployeeId || u.employeeId === contactEmployeeId);
 
     setSaving(true);
     try {
       const result = await api.createSampleRequest({
         companyId: company.id,
         dateRequested,
-        contactEmployeeId,
-        contactPersonName,
+        contactEmployeeId: selectedUser?.employeeId ?? null,
+        contactPersonName: resolvedContactName,
         companyRequested: company.name,
         customerExternalId: customerPick === '__new__' ? undefined : customerPick,
         customerName,
@@ -352,7 +355,7 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
               <div className="rounded-lg border border-border p-3 space-y-2">
                 <p className="text-xs font-semibold text-foreground">Share link</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Copy or send via WhatsApp so others can open this sample request.
+                  Copy or email this link so others can open the sample request.
                 </p>
                 <input
                   readOnly
@@ -369,6 +372,17 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
                     {copied ? <Check size={11} /> : <Copy size={11} />}
                     {copied ? 'Copied' : 'Copy link'}
                   </button>
+                  <a
+                    href={buildSampleRequestMailtoUrl(
+                      created.shareToken,
+                      created.requestNumber,
+                      created.customerName,
+                    )}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-primary text-primary hover:bg-primary/10"
+                  >
+                    <Mail size={11} />
+                    Email
+                  </a>
                   <a
                     href={buildSampleRequestWhatsAppUrl(
                       created.shareToken,
@@ -410,19 +424,38 @@ export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
                   </div>
                   <div>
                     <FieldLabel>Contact person</FieldLabel>
-                    <select
-                      value={contactEmployeeId}
-                      onChange={e => setContactEmployeeId(e.target.value ? Number(e.target.value) : '')}
-                      className={selectCls}
-                    >
-                      <option value="">Select employee…</option>
-                      {companyUsers.map(user => (
-                        <option key={user.id} value={user.employeeId ?? ''}>
-                          {user.fullName}
-                          {user.employeeCode ? ` (${user.employeeCode})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    {companyUsers.length > 0 ? (
+                      <select
+                        value={contactEmployeeId}
+                        onChange={e => {
+                          const value = e.target.value ? Number(e.target.value) : '';
+                          setContactEmployeeId(value);
+                          if (value === '') {
+                            return;
+                          }
+                          const user = companyUsers.find(u => u.id === value);
+                          if (user) setContactPersonName(user.fullName);
+                        }}
+                        className={selectCls}
+                      >
+                        <option value="">Select employee…</option>
+                        {companyUsers.map(user => (
+                          <option key={user.id} value={user.id}>
+                            {user.fullName}
+                            {user.employeeCode ? ` (${user.employeeCode})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <input
+                      value={contactPersonName}
+                      onChange={e => {
+                        setContactPersonName(e.target.value);
+                        setContactEmployeeId('');
+                      }}
+                      placeholder={companyUsers.length > 0 ? 'Or type contact name…' : 'Contact person name'}
+                      className={`${inputCls} ${companyUsers.length > 0 ? 'mt-2' : ''}`}
+                    />
                   </div>
                   <div>
                     <FieldLabel>Company requested</FieldLabel>

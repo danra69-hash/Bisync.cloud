@@ -210,9 +210,15 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         companyRequested = row.CompanyRequested,
         customerName = row.CustomerName,
         projectName = row.ProjectName,
+        projectScope = row.ProjectScope,
+        requestType = row.RequestType,
+        expectedSalesAmountPerYear = row.ExpectedSalesAmountPerYear,
+        productCategory = row.ProductCategory,
+        productGroup = row.ProductGroup,
         shareToken = row.ShareToken,
         row.Status,
         createdAt = row.CreatedAt,
+        updatedAt = row.UpdatedAt,
     };
 
     static object MapDetail(SampleRequest row) => new

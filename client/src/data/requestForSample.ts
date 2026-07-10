@@ -76,3 +76,36 @@ export function buildSampleRequestWhatsAppUrl(
   const text = `Sample Request for Flavours ${requestNumber}${who}:\n${url}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
+
+export function buildSampleRequestMailtoUrl(
+  shareToken: string,
+  requestNumber: string,
+  customerName?: string,
+  toEmail?: string,
+): string {
+  const url = buildSampleRequestShareUrl(shareToken);
+  const who = customerName?.trim() ? ` for ${customerName.trim()}` : '';
+  const subject = encodeURIComponent(`Sample Request for Flavours ${requestNumber}`);
+  const body = encodeURIComponent(
+    `Please review Sample Request for Flavours ${requestNumber}${who}:\n\n${url}\n\nThank you.`,
+  );
+  const to = toEmail?.trim() ?? '';
+  return to ? `mailto:${to}?subject=${subject}&body=${body}` : `mailto:?subject=${subject}&body=${body}`;
+}
+
+export function formatSampleRequestType(value: string): string {
+  switch (value) {
+    case 'new_submission':
+      return 'New submission';
+    case 'repeat':
+      return 'Repeat';
+    case 'modification':
+      return 'Modification';
+    default:
+      return value || '—';
+  }
+}
+
+export function formatSampleProjectScope(value: string): string {
+  return value === 'ongoing' ? 'Ongoing project' : 'New project';
+}

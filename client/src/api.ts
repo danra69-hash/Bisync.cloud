@@ -627,6 +627,26 @@ export interface SubmitVendorRfqPayload {
   }[];
 }
 
+export interface SampleRequestSummary {
+  id: number;
+  requestNumber: string;
+  companyId: number;
+  dateRequested: string;
+  contactPersonName: string;
+  companyRequested: string;
+  customerName: string;
+  projectName: string;
+  projectScope?: string;
+  requestType?: string;
+  expectedSalesAmountPerYear?: number;
+  productCategory?: string;
+  productGroup?: string;
+  shareToken: string;
+  status: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface SampleRequestProductSample {
   name: string;
   description: string;
@@ -1526,7 +1546,8 @@ export const api = {
   submitVendorRfq: (token: string, data: SubmitVendorRfqPayload) =>
     fetchJsonWithMethod<VendorRfqPortal>(`/api/vendor-rfq/${token}/submit`, 'POST', data),
   sampleRequests: (companyId?: number) =>
-    fetchJson<SampleRequestDetail[]>(`/api/sample-requests${companyId ? `?companyId=${companyId}` : ''}`),
+    fetchJson<SampleRequestSummary[]>(`/api/sample-requests${companyId ? `?companyId=${companyId}` : ''}`),
+  sampleRequest: (id: number) => fetchJson<SampleRequestDetail>(`/api/sample-requests/${id}`),
   createSampleRequest: (data: CreateSampleRequestPayload) =>
     fetchJsonWithMethod<SampleRequestDetail>('/api/sample-requests', 'POST', data),
   sampleRequestByShareToken: (token: string) =>

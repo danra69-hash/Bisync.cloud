@@ -32,6 +32,7 @@ import { RequestForQuotePanel } from './RequestForQuotePanel';
 import { RequestForQuoteList } from './RequestForQuoteList';
 import { RequestForSamplePanel } from './RequestForSamplePanel';
 import { SampleQuoteTemplatesPanel } from './SampleQuoteTemplatesPanel';
+import { SampleRequestList } from './SampleRequestList';
 import type { SampleQuoteTemplateId } from '../../data/requestForSample';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
@@ -90,6 +91,7 @@ export function VendorListPage({
   const [productsVendor, setProductsVendor] = useState<Vendor | null>(null);
   const [catalogRefresh, setCatalogRefresh] = useState(0);
   const [rfqRefresh, setRfqRefresh] = useState(0);
+  const [sampleRefresh, setSampleRefresh] = useState(0);
   const [engaging, setEngaging] = useState(false);
   const [showCreateVendor, setShowCreateVendor] = useState(false);
   const [showRfqPanel, setShowRfqPanel] = useState(false);
@@ -544,12 +546,18 @@ export function VendorListPage({
       />
       </>
       ) : (
-        <RequestForQuoteList
-          selectedCompanyId={selectedCompanyId}
-          vendors={vendors}
-          refreshKey={rfqRefresh}
-          onVendorUpdated={handleVendorUpdated}
-        />
+        <div className="space-y-4">
+          <SampleRequestList selectedCompanyId={selectedCompanyId} refreshKey={sampleRefresh} />
+          <div>
+            <p className="text-[11px] font-semibold text-foreground mb-2 px-0.5">Vendor quote requests</p>
+            <RequestForQuoteList
+              selectedCompanyId={selectedCompanyId}
+              vendors={vendors}
+              refreshKey={rfqRefresh}
+              onVendorUpdated={handleVendorUpdated}
+            />
+          </div>
+        </div>
       )}
 
       {engageTarget && (
@@ -632,7 +640,8 @@ export function VendorListPage({
           company={selectedCompany}
           onClose={() => setShowSamplePanel(false)}
           onCreated={() => {
-            /* Keep panel open so Copy / WhatsApp share actions remain available. */
+            setSampleRefresh(key => key + 1);
+            setTab('rfq');
           }}
         />
       ) : null}
