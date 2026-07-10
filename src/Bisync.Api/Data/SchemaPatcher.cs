@@ -630,7 +630,7 @@ public static class SchemaPatcher
                 "Specification" TEXT NOT NULL DEFAULT '',
                 "PrincipalUom" TEXT NOT NULL DEFAULT '',
                 "RequestedQty" numeric NOT NULL DEFAULT 0,
-                "VendorResponsesJson" TEXT NOT NULL DEFAULT '{}',
+                "VendorResponsesJson" TEXT NOT NULL DEFAULT '{{}}',
                 CONSTRAINT "FK_QuoteRequestLines_QuoteRequests_QuoteRequestId"
                     FOREIGN KEY ("QuoteRequestId") REFERENCES "QuoteRequests" ("Id") ON DELETE CASCADE
             );
