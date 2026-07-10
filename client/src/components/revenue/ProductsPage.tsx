@@ -1171,14 +1171,14 @@ export function ProductsPage({
       }
       if (!b2bDeliveryResolvesToYieldUom(b2bConfigForSave.principal.delivery, linked)) {
         const hint = describeB2bDeliveryYieldResolution(b2bConfigForSave.principal.delivery, linked);
-        showSaveError(hint.message || 'Principal delivery unit must break down to the sub-product batch UOM.');
+        showSaveError(hint.message || 'Principal Delivery Unit must convert to the linked sub-product Delivery Unit.');
         return;
       }
       if (b2bConfigForSave.alternates.some(line => (
         isB2bAlternateLineActive(line)
         && !b2bDeliveryResolvesToYieldUom(line.delivery, linked)
       ))) {
-        showSaveError('Each alternate delivery unit with an RRP must break down to the sub-product batch UOM.');
+        showSaveError('Each alternate Delivery Unit with an RRP must convert to the linked sub-product Delivery Unit.');
         return;
       }
       if (b2bConfigForSave.alternates.some(line => isB2bAlternateLineActive(line) && (parseFloat(line.rrp) || 0) <= 0)) {
@@ -1532,11 +1532,11 @@ export function ProductsPage({
 
           <section className="rounded-lg border border-border bg-card p-4 space-y-4">
             <h3 className="text-sm font-semibold">
-              {isSubProduct ? 'Batch Production & Location' : 'Pricing, Par Stock & Location'}
+              {isSubProduct ? 'Delivery Unit & Location' : 'Pricing, Par Stock & Location'}
             </h3>
             <p className="text-[11px] text-muted-foreground -mt-2">
               {isSubProduct
-                ? 'Sub-products are made or prepped in batches. Enter the yield quantity and UOM to calculate unit COGS.'
+                ? 'Sub-products use the same Delivery Unit model as Vendor Products and B2B Products: Order UOM with optional Primary / Secondary Packaging. Enter yield quantity and UOM (Order UOM) so unit COGS is measurable.'
                 : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
             </p>
 
@@ -1556,7 +1556,7 @@ export function ProductsPage({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className={labelCls} htmlFor="yield-quantity">Quantity</label>
+                    <label className={labelCls} htmlFor="yield-quantity">Order Qty</label>
                     <input
                       id="yield-quantity"
                       type="number"
@@ -1569,7 +1569,7 @@ export function ProductsPage({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className={labelCls} htmlFor="yield-uom">UOM</label>
+                    <label className={labelCls} htmlFor="yield-uom">Order UOM</label>
                     <div className="flex gap-1.5 items-center">
                       <select
                         id="yield-uom"
@@ -1587,8 +1587,8 @@ export function ProductsPage({
                         onClick={() => setYieldAltUnits(prev => createDefaultBatchAdditionalEntry(prev, yieldQuantity, yieldUom))}
                         disabled={!yieldUom}
                         className={addBtnCls}
-                        title="Add additional UOM"
-                        aria-label="Add additional UOM"
+                        title="Add packaging / alternate UOM"
+                        aria-label="Add packaging / alternate UOM"
                       >
                         <Plus size={14} />
                       </button>
@@ -1809,7 +1809,7 @@ export function ProductsPage({
                 <div className="space-y-1.5">
                   <label className={labelCls}>UOM</label>
                   <p className={fieldCls}>{yieldUom || '—'}</p>
-                  <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+                  <p className="text-[10px] text-muted-foreground">Follows Delivery Unit.</p>
                 </div>
               </div>
             ) : (

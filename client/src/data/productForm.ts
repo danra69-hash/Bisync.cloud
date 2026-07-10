@@ -118,7 +118,7 @@ export function calcSubProductUnitCost(productCogs: number, yieldQuantity: strin
   return productCogs / qty;
 }
 
-/** Batch package label from sub-product yield, e.g. "10 pcs". */
+/** Delivery Unit label from sub-product yield, e.g. "1kg" or "10each". */
 export function formatSubProductBatchPackageUnit(product: {
   yieldQuantity: number;
   yieldUom: string;
@@ -126,9 +126,9 @@ export function formatSubProductBatchPackageUnit(product: {
   if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
   const uom = fromApiUom(product.yieldUom);
   const qty = Number.isInteger(product.yieldQuantity)
-    ? String(product.yieldQuantity)
-    : product.yieldQuantity.toFixed(2).replace(/\.?0+$/, '');
-  return `${qty} ${uom}`;
+    ? product.yieldQuantity
+    : Number(product.yieldQuantity.toFixed(2).replace(/\.?0+$/, ''));
+  return `${qty}${uom.toLowerCase()}`;
 }
 
 export function getSubProductBatchSize(product: { yieldQuantity: number }): number {

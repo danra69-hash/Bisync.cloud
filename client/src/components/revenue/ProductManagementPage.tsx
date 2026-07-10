@@ -86,7 +86,7 @@ type BatchSortColumn =
 const BATCH_TABLE_COLUMNS: SortableColumnDef<BatchSortColumn>[] = [
   { key: 'name', label: 'Product Name / Product ID' },
   { key: 'categoryGroup', label: 'Category / Group' },
-  { key: 'batchUnit', label: 'Batch Unit', sortable: false },
+  { key: 'batchUnit', label: 'Delivery Unit', sortable: false },
   { key: 'onHand', label: 'QTY On Hand / Batch Date / Expiry Date' },
   { key: 'onOrder', label: 'QTY On Order / Lock expiry', sortable: false },
   { key: 'incubation', label: 'QTY in incubation / Time left', sortable: false },

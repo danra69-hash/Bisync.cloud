@@ -221,20 +221,20 @@ export function describeB2bDeliveryYieldResolution(
   subProduct: Pick<Product, 'yieldQuantity' | 'yieldUom'> | null,
 ): { ok: boolean; message: string } {
   if (!subProduct?.yieldUom?.trim()) {
-    return { ok: false, message: 'Link a sub-product to resolve batch UOM.' };
+    return { ok: false, message: 'Link a sub-product to resolve its Delivery Unit.' };
   }
   const batchLabel = formatSubProductBatchPackageUnit(subProduct);
   const resolved = resolveB2bSalesDeliveryToYieldUom(delivery, subProduct);
   if (resolved.qty === null || resolved.qty <= 0) {
     return {
       ok: false,
-      message: `Use Pack and Unit rows to break down batch UOM (${batchLabel}) into smaller sellable units.`,
+      message: `Use Primary / Secondary Packaging to break down Delivery Unit (${batchLabel}) into smaller sellable units that convert to the sub-product Order UOM.`,
     };
   }
   const yieldU = fromApiUom(subProduct.yieldUom) || subProduct.yieldUom;
   return {
     ok: true,
-    message: `Resolves to ${resolved.qty} ${yieldU} per delivery unit.`,
+    message: `Resolves to ${resolved.qty} ${yieldU} per Delivery Unit.`,
   };
 }
 

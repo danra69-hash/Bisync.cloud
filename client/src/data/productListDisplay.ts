@@ -1,6 +1,13 @@
 import type { Product } from '../api';
 import { formatRm } from './createOrder';
-import { calcProductCogs, calcCogsPercentValue, calcSubProductUnitCost } from './productForm';
+import { fromApiUom } from './componentForm';
+import {
+  calcProductCogs,
+  calcCogsPercentValue,
+  calcSubProductUnitCost,
+  formatCogsPercent,
+  formatSubProductBatchPackageUnit,
+} from './productForm';
 import {
   isB2bAlternateLineActive,
   isB2bPrincipalLineActive,
@@ -12,13 +19,17 @@ import {
   type B2bSalesConfig,
 } from './productB2bSales';
 import { formatCountryPercent } from '../utils/numberFormat';
+import { formatDeliveryUnitPath } from './vendorProductCatalog';
 
 export type ProductListRrpPoint = {
   key: string;
   label: string;
+  /** Delivery Unit path (B2B) or Product UOM (B2C / sub-product). */
+  deliveryUnit: string;
   rrp: number;
   unitCogs: number | null;
   cogsPercent: number | null;
+  cogsPercentLabel: string;
 };
 
 function productComponentLines(product: Product) {
@@ -34,16 +45,20 @@ function pushRrpPoint(
   points: ProductListRrpPoint[],
   key: string,
   label: string,
+  deliveryUnit: string,
   rrp: number,
   unitCogs: number | null,
 ) {
-  if (rrp <= 0) return;
+  if (rrp <= 0 && unitCogs == null && !deliveryUnit.trim()) return;
+  const cogsPercent = unitCogs != null && rrp > 0 ? calcCogsPercentValue(unitCogs, rrp) : null;
   points.push({
     key,
     label,
+    deliveryUnit: deliveryUnit.trim() || '—',
     rrp,
     unitCogs,
-    cogsPercent: unitCogs != null ? calcCogsPercentValue(unitCogs, rrp) : null,
+    cogsPercent,
+    cogsPercentLabel: unitCogs != null && rrp > 0 ? formatCogsPercent(unitCogs, rrp) : '—',
   });
 }
 
@@ -52,22 +67,23 @@ function addB2bConfigRrpPoints(
   config: B2bSalesConfig,
   keyPrefix: string,
   labelPrefix: string,
-  linkedSubProduct: Product,
+  linkedSubProduct: Product | null,
   batchCogs: number | null,
 ) {
-  const principal = summarizeB2bSalesUnit(
-    config.principal,
-    linkedSubProduct,
-    0,
-    batchCogs,
-  );
   if (isB2bPrincipalLineActive(config.principal)) {
+    const principal = summarizeB2bSalesUnit(
+      config.principal,
+      linkedSubProduct,
+      0,
+      batchCogs,
+    );
     pushRrpPoint(
       points,
       `${keyPrefix}-principal`,
       labelPrefix,
+      principal.detailPath,
       principal.rrp,
-      principal.cogs,
+      linkedSubProduct ? principal.cogs : null,
     );
   }
 
@@ -83,25 +99,45 @@ function addB2bConfigRrpPoints(
       points,
       `${keyPrefix}-alt-${index}`,
       `${labelPrefix} Alt ${index + 1}`,
+      summary.detailPath,
       summary.rrp,
-      summary.cogs,
+      linkedSubProduct ? summary.cogs : null,
     );
   });
 }
 
+/** Flatten principal + alternate (+ alias) Delivery Units for Product List columns. */
 export function collectProductListRrpPoints(
   product: Product,
   allProducts: Product[],
 ): ProductListRrpPoint[] {
-  if (product.isSubProduct) return [];
+  if (product.isSubProduct) {
+    const productCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
+    const deliveryUnit = formatSubProductBatchPackageUnit(product);
+    const unitCost = product.yieldQuantity > 0
+      ? calcSubProductUnitCost(productCogs, String(product.yieldQuantity))
+      : null;
+    return [{
+      key: 'sub-product',
+      label: 'Sub-Product',
+      deliveryUnit,
+      rrp: 0,
+      unitCogs: unitCost,
+      cogsPercent: null,
+      cogsPercentLabel: '—',
+    }];
+  }
 
   const points: ProductListRrpPoint[] = [];
   const lines = productComponentLines(product);
   const linkedSubProduct = resolveLinkedSubProduct(lines, allProducts);
   const batchCogs = resolveLinkedSubProductBatchCogs(lines, allProducts);
   const productCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
+  const b2cUom = product.yieldUom
+    ? fromApiUom(product.yieldUom)
+    : (product.b2bPackageUnit?.trim() || 'Each');
 
-  if (product.b2bEnabled && linkedSubProduct) {
+  if (product.b2bEnabled) {
     const principalConfig = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
     addB2bConfigRrpPoints(
       points,
@@ -128,51 +164,26 @@ export function collectProductListRrpPoints(
         batchCogs,
       );
     }
-  } else if (product.b2bEnabled) {
-    const principalConfig = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
-    if (isB2bPrincipalLineActive(principalConfig.principal)) {
-      const principalRrp = parseFloat(principalConfig.principal.rrp) || product.rrp;
-      pushRrpPoint(points, 'principal', 'Principal', principalRrp, null);
-    }
+  }
 
-    principalConfig.alternates.forEach((alternate, index) => {
-      if (!isB2bAlternateLineActive(alternate)) return;
-      const rrp = parseFloat(alternate.rrp) || 0;
-      pushRrpPoint(points, `alt-${index}`, `Alt ${index + 1}`, rrp, null);
-    });
-
-    for (const alias of product.aliases ?? []) {
-      const aliasConfig = seedAliasB2bSalesConfig(
-        parseB2bSalesConfigJson(alias.b2bSalesConfigJson),
-        principalConfig,
-        alias.rrp,
-      );
-      const aliasLabel = alias.name.trim() || `Alias ${alias.id}`;
-      if (isB2bPrincipalLineActive(aliasConfig.principal)) {
-        const aliasRrp = parseFloat(aliasConfig.principal.rrp) || alias.rrp;
-        pushRrpPoint(points, `alias-${alias.id}`, aliasLabel, aliasRrp, null);
-      }
-    }
-  } else {
-    pushRrpPoint(points, 'principal', 'Principal', product.rrp, productCogs);
-    for (const alias of product.aliases ?? []) {
+  if (product.b2cEnabled) {
+    const alreadyListed = points.some(
+      point => point.rrp === product.rrp && point.unitCogs === productCogs,
+    );
+    if (product.rrp > 0 && !alreadyListed) {
       pushRrpPoint(
         points,
-        `alias-${alias.id}`,
-        alias.name.trim() || `Alias ${alias.id}`,
-        alias.rrp,
+        'b2c',
+        'B2C',
+        b2cUom,
+        product.rrp,
         productCogs,
       );
     }
   }
 
-  if (product.b2cEnabled && product.b2bEnabled) {
-    const alreadyListed = points.some(
-      point => point.rrp === product.rrp && point.unitCogs === productCogs,
-    );
-    if (product.rrp > 0 && !alreadyListed) {
-      pushRrpPoint(points, 'b2c', 'B2C', product.rrp, productCogs);
-    }
+  if (!product.b2bEnabled && !product.b2cEnabled && product.rrp > 0) {
+    pushRrpPoint(points, 'principal', 'Principal', b2cUom, product.rrp, productCogs);
   }
 
   return points;
@@ -230,3 +241,25 @@ export function resolveProductListRrpSortValue(
   if (rrps.length === 0) return -1;
   return Math.min(...rrps);
 }
+
+export function resolveProductListDeliveryUnitSortValue(
+  product: Product,
+  allProducts: Product[],
+): string {
+  const points = collectProductListRrpPoints(product, allProducts);
+  return points[0]?.deliveryUnit ?? '';
+}
+
+export function resolveProductListVariationCogsSortValue(
+  product: Product,
+  allProducts: Product[],
+): number {
+  const cogsValues = collectProductListRrpPoints(product, allProducts)
+    .map(point => point.unitCogs)
+    .filter((value): value is number => value != null);
+  if (cogsValues.length === 0) return -1;
+  return Math.min(...cogsValues);
+}
+
+/** Re-export for callers that format a single path. */
+export { formatDeliveryUnitPath };

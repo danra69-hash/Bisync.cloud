@@ -10,16 +10,16 @@ import { filterSelectCls } from '../layout/formControls';
 import { Plus, RefreshCw, ArrowDown, ArrowUp } from 'lucide-react';
 import { api, type PosDeliveryUnitSelection, type Product } from '../../api';
 import { formatRm } from '../../data/createOrder';
-import { calcProductCogs, calcSubProductUnitCost, resolveCogsPercentTrend } from '../../data/productForm';
+import { resolveCogsPercentTrend } from '../../data/productForm';
 import {
   collectProductListRrpPoints,
-  formatProductListCogsPercentRange,
-  formatProductListRrpLines,
   resolveProductListCogsPercentSortValue,
+  resolveProductListDeliveryUnitSortValue,
   resolveProductListRrpSortValue,
+  resolveProductListVariationCogsSortValue,
+  type ProductListRrpPoint,
 } from '../../data/productListDisplay';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
-import { fromApiUom } from '../../data/componentForm';
 import { siCategories, siGroups } from '../../data/revenueManagement';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 import { ProductDetailPanel } from './ProductDetailPanel';
@@ -40,9 +40,10 @@ const filterCls = filterSelectCls;
 type ProductListSortColumn =
   | 'name'
   | 'type'
+  | 'deliveryUnit'
+  | 'rrp'
   | 'cogs'
   | 'cogsPercent'
-  | 'rrp'
   | 'channel'
   | 'pos'
   | 'activate';
@@ -50,9 +51,10 @@ type ProductListSortColumn =
 const PRODUCT_LIST_TABLE_COLUMNS: SortableColumnDef<ProductListSortColumn>[] = [
   { key: 'name', label: 'Product Name' },
   { key: 'type', label: 'Type' },
-  { key: 'cogs', label: 'Cogs' },
-  { key: 'cogsPercent', label: 'COGS %' },
+  { key: 'deliveryUnit', label: 'Delivery Unit' },
   { key: 'rrp', label: 'RRP' },
+  { key: 'cogs', label: 'COGS' },
+  { key: 'cogsPercent', label: 'COGS %' },
   { key: 'channel', label: 'Channel' },
   { key: 'pos', label: 'POS', align: 'center', sortable: false },
   { key: 'activate', label: 'Activate', align: 'center', sortable: false },
@@ -65,18 +67,26 @@ function productMatchesLocations(product: Product, locationIds: string[]): boole
   return locationIds.some(id => productLocs.includes(id));
 }
 
-function productCogsDisplay(product: Product, countryCode: string): string {
-  return formatRm(calcProductCogs(product.totalCost, product.packagingCost ?? 0, product), countryCode);
-}
-
-function productCogsPercentDisplay(
-  product: Product,
-  allProducts: Product[],
-  countryCode: string,
-): string {
-  if (product.isSubProduct) return '—';
-  const points = collectProductListRrpPoints(product, allProducts);
-  return formatProductListCogsPercentRange(points, countryCode);
+function VariationStack({
+  points,
+  render,
+  empty = '—',
+}: {
+  points: ProductListRrpPoint[];
+  render: (point: ProductListRrpPoint) => React.ReactNode;
+  empty?: string;
+}) {
+  if (points.length === 0) return <>{empty}</>;
+  if (points.length === 1) return <>{render(points[0])}</>;
+  return (
+    <div className="inline-flex flex-col gap-0.5 rounded border border-border/80 bg-muted/10 px-1.5 py-1 min-w-0">
+      {points.map(point => (
+        <span key={point.key} className="whitespace-nowrap truncate" title={point.label}>
+          {render(point)}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function CogsPercentTrendIcon({ product }: { product: Product }) {
@@ -90,31 +100,6 @@ function CogsPercentTrendIcon({ product }: { product: Product }) {
     >
       {isUp ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
     </span>
-  );
-}
-
-function rrpDisplay(product: Product, allProducts: Product[], countryCode: string) {
-  if (product.isSubProduct) {
-    const productCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
-    if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
-    const unitCost = calcSubProductUnitCost(productCogs, String(product.yieldQuantity));
-    const uom = fromApiUom(product.yieldUom);
-    return `${formatRm(unitCost, countryCode)} / ${uom}`;
-  }
-
-  const points = collectProductListRrpPoints(product, allProducts);
-  const lines = formatProductListRrpLines(points, countryCode);
-  if (lines.length === 0) return '—';
-  if (lines.length === 1) return lines[0];
-
-  return (
-    <div className="inline-flex flex-col gap-0.5 rounded border border-border/80 bg-muted/10 px-1.5 py-1">
-      {points
-        .filter(point => point.rrp > 0)
-        .map(point => (
-          <span key={point.key}>{formatRm(point.rrp, countryCode)}</span>
-        ))}
-    </div>
   );
 }
 
@@ -245,9 +230,10 @@ export function ProductListPage({
         {
           name: p => p.name,
           type: p => (p.isSubProduct ? 'Sub-Product' : 'Product'),
-          cogs: p => calcProductCogs(p.totalCost, p.packagingCost ?? 0, p),
-          cogsPercent: p => resolveProductListCogsPercentSortValue(p, products),
+          deliveryUnit: p => resolveProductListDeliveryUnitSortValue(p, products),
           rrp: p => resolveProductListRrpSortValue(p, products),
+          cogs: p => resolveProductListVariationCogsSortValue(p, products),
+          cogsPercent: p => resolveProductListCogsPercentSortValue(p, products),
           channel: p => channelLabel(p),
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
@@ -442,13 +428,13 @@ export function ProductListPage({
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-xs text-muted-foreground">
+                    <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">
                       Loading products…
                     </td>
                   </tr>
                 ) : visibleProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-xs text-muted-foreground">
+                    <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">
                       {hasActiveFilters
                         ? 'No products match your filters.'
                         : 'No products saved yet. Create one from the Products tab.'}
@@ -457,6 +443,7 @@ export function ProductListPage({
                 ) : (
                   pagedVisibleProducts.map(product => {
                     const rowBusy = savingId === product.id;
+                    const variationPoints = collectProductListRrpPoints(product, products);
                     return (
                       <tr key={product.id} className={`hover:bg-muted/20 ${!product.active ? 'opacity-60' : ''}`}>
                         <td className={tdCls}>
@@ -470,14 +457,37 @@ export function ProductListPage({
                           <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{product.productId}</p>
                         </td>
                         <td className={tdCls}>{product.isSubProduct ? 'Sub-Product' : 'Product'}</td>
-                        <td className={tdCls}>{productCogsDisplay(product, countryCode)}</td>
                         <td className={tdCls}>
-                          <span className="inline-flex items-center font-sans">
-                            {productCogsPercentDisplay(product, products, countryCode)}
-                            <CogsPercentTrendIcon product={product} />
+                          <VariationStack
+                            points={variationPoints}
+                            render={point => point.deliveryUnit}
+                          />
+                        </td>
+                        <td className={tdCls}>
+                          <VariationStack
+                            points={variationPoints}
+                            render={point => (
+                              point.rrp > 0 ? formatRm(point.rrp, countryCode) : '—'
+                            )}
+                          />
+                        </td>
+                        <td className={tdCls}>
+                          <VariationStack
+                            points={variationPoints}
+                            render={point => (
+                              point.unitCogs != null ? formatRm(point.unitCogs, countryCode) : '—'
+                            )}
+                          />
+                        </td>
+                        <td className={tdCls}>
+                          <span className="inline-flex items-center gap-1 font-sans">
+                            <VariationStack
+                              points={variationPoints}
+                              render={point => point.cogsPercentLabel}
+                            />
+                            {!product.isSubProduct ? <CogsPercentTrendIcon product={product} /> : null}
                           </span>
                         </td>
-                        <td className={tdCls}>{rrpDisplay(product, products, countryCode)}</td>
                         <td className={tdCls}>{channelLabel(product)}</td>
                         <td
                           className={`${tdCls} text-center`}
@@ -522,7 +532,7 @@ export function ProductListPage({
                     );
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>

@@ -8,6 +8,7 @@ import type { DropdownLocation } from '../../utils/orgFilters';
 
 import { LocationDropdown } from '../overview/LocationDropdown';
 import { LanguageSelector } from './LanguageSelector';
+import { BrandEngineLockup } from './BrandEngineLockup';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 const optionStyle = { color: '#1a1a1a', background: '#ffffff' };
@@ -44,7 +45,7 @@ export function Header({
         <button onClick={onToggleSidebar} className="p-2 rounded-md hover:bg-white/10">
           <Menu size={16} className="text-white" />
         </button>
-        <span className="text-white font-bold text-sm hidden sm:inline">Bisync.cloud</span>
+        <BrandEngineLockup className="hidden sm:inline-flex" />
       </div>
 
       <div className="w-px h-5 mx-1 hidden sm:block" style={{ background: 'rgba(255,255,255,0.15)' }} />

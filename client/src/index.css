@@ -161,4 +161,40 @@
     @apply bg-card border-2 border-border rounded px-1.5 py-0.5 min-h-7 w-full max-w-[4.5rem] text-sm font-semibold tabular-nums text-foreground shadow-sm;
     @apply focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
   }
+
+  /* Bisync ↔ Pasar shared-engine sync animation */
+  .brand-sync-dot {
+    position: absolute;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 9999px;
+    background: #00B09B;
+    box-shadow: 0 0 6px rgba(0, 176, 155, 0.85);
+    pointer-events: none;
+  }
+
+  .brand-sync-dot-fwd {
+    margin-top: -5px;
+    animation: brand-sync-fwd 1.6s ease-in-out infinite;
+  }
+
+  .brand-sync-dot-back {
+    margin-top: 3px;
+    animation: brand-sync-back 1.6s ease-in-out infinite;
+  }
+
+  @keyframes brand-sync-fwd {
+    0% { left: 2px; opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { left: calc(100% - 6px); opacity: 0; }
+  }
+
+  @keyframes brand-sync-back {
+    0% { left: calc(100% - 6px); opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { left: 2px; opacity: 0; }
+  }
 }

@@ -12,7 +12,11 @@ import {
   type B2bSalesUnitLine,
 } from '../../data/productB2bSales';
 import { formatSubProductBatchPackageUnit } from '../../data/productForm';
-import type { DeliveryUnitBreakdown } from '../../data/vendorProductCatalog';
+import {
+  DELIVERY_UNIT_LEVEL_LABELS,
+  formatDeliveryUnitPath,
+  type DeliveryUnitBreakdown,
+} from '../../data/vendorProductCatalog';
 
 type Props = {
   config: B2bSalesConfig;
@@ -100,13 +104,18 @@ function DeliveryUnitEditor({
     <div className="space-y-2 min-w-0">
       {batchLabel && batchLabel !== '—' ? (
         <p className="text-[11px] text-muted-foreground">
-          Batch UOM: <span className="font-medium text-foreground">{batchLabel}</span>
-          {' '}· break down via Pack and Unit into smaller sellable units.
+          Sub-product delivery unit: <span className="font-medium text-foreground">{batchLabel}</span>
+          {' '}· break down via Primary / Secondary Packaging into smaller sellable units.
         </p>
       ) : null}
 
+      <div className="rounded-md border border-border bg-background px-2.5 py-1.5">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Delivery Unit</p>
+        <p className="text-xs font-medium text-foreground mt-0.5">{formatDeliveryUnitPath(delivery)}</p>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground w-16 shrink-0">Order</span>
+        <span className="text-xs text-muted-foreground w-36 shrink-0">{DELIVERY_UNIT_LEVEL_LABELS.order}</span>
         {qtyInput(delivery.orderQty, orderQty => patch({ orderQty }), disabled)}
         <UnitSelect
           value={delivery.orderUnit}
@@ -117,7 +126,7 @@ function DeliveryUnitEditor({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground w-16 shrink-0">Pack</span>
+        <span className="text-xs text-muted-foreground w-36 shrink-0">{DELIVERY_UNIT_LEVEL_LABELS.primary}</span>
         {qtyInput(delivery.packQty, packQty => patch({ packQty }), disabled)}
         <UnitSelect
           value={delivery.packUnit}
@@ -128,7 +137,7 @@ function DeliveryUnitEditor({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground w-16 shrink-0">Unit</span>
+        <span className="text-xs text-muted-foreground w-36 shrink-0">{DELIVERY_UNIT_LEVEL_LABELS.secondary}</span>
         {qtyInput(delivery.unitQty, unitQty => patch({ unitQty }), disabled)}
         <UnitSelect
           value={delivery.unitUnit}
@@ -259,12 +268,13 @@ export function B2bSalesBox({
       <div>
         <h3 className="text-sm font-semibold">B2B Sales</h3>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          Define principal and alternate delivery units for wholesale sales. Each unit must break down from the sub-product batch UOM into smaller sellable units.
+          Define principal and alternate Delivery Units for wholesale sales. Each Delivery Unit uses Order UOM,
+          Primary Packaging, and Secondary Packaging — same meaning as Vendor Product Delivery Units.
         </p>
         {linkedSubProduct ? (
           <p className="text-[11px] text-muted-foreground mt-1">
             Linked sub-product: <span className="font-medium text-foreground">{linkedSubProduct.name}</span>
-            {' '}({linkedSubProduct.productId}) · {formatSubProductBatchPackageUnit(linkedSubProduct)} per batch
+            {' '}({linkedSubProduct.productId}) · Delivery Unit {formatSubProductBatchPackageUnit(linkedSubProduct)}
           </p>
         ) : (
           <p className="text-[11px] text-amber-600 mt-1">

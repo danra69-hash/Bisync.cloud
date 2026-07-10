@@ -4,10 +4,9 @@ import { api } from '../../api';
 import { inputCls } from '../../data/componentForm';
 import {
   DELIVERY_ORDER_UNITS,
+  DELIVERY_UNIT_LEVEL_LABELS,
   downloadVendorProductTemplateCsv,
   formatDeliveryUnitDetailPath,
-  hasSmallestDeliveryBreakdown,
-  resolveDeliveryUnitLevels,
   type DeliveryUnitBreakdown,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
@@ -121,9 +120,6 @@ export function VendorProductDetailPanel({
   }, [selectedCompanyId]);
 
   const detailPath = useMemo(() => formatDeliveryUnitDetailPath(delivery), [delivery]);
-  const levels = useMemo(() => resolveDeliveryUnitLevels(delivery), [delivery]);
-  const hasPackLevel = delivery.packUnit !== delivery.orderUnit || delivery.packQty !== 1;
-  const needsSecondLevel = hasSmallestDeliveryBreakdown(delivery);
 
   const scopedLocations = useMemo(() => {
     if (selectedLocationIds.length === 0) return companyLocations;
@@ -166,6 +162,10 @@ export function VendorProductDetailPanel({
     }
     if (isPrivate && privateLocationIds.length === 0) {
       setSaveError('Assign at least one location for a private vendor product.');
+      return;
+    }
+    if (!delivery.orderUnit.trim() || !(delivery.orderQty > 0)) {
+      setSaveError('Order UOM and quantity are required for Delivery Unit.');
       return;
     }
     setSaveError(null);
@@ -241,32 +241,32 @@ export function VendorProductDetailPanel({
               <p className="text-sm font-sans font-medium text-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
                 {detailPath}
               </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Define Order UOM (required). Add Primary and Secondary Packaging when the order breaks into smaller packs.
+                Result must convert to your component Principal / Inventory UOM.
+              </p>
             </Field>
 
             <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
               <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">Breakdown</p>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground w-16 shrink-0">Order</span>
+                <span className="text-xs text-muted-foreground w-36 shrink-0">{DELIVERY_UNIT_LEVEL_LABELS.order}</span>
                 {qtyInput(delivery.orderQty, orderQty => patchDelivery({ orderQty }))}
                 {unitInput(delivery.orderUnit, DELIVERY_ORDER_UNITS, orderUnit => patchDelivery({ orderUnit }), 'vp-order-units')}
               </div>
 
-              {(hasPackLevel || levels.firstBreakdown) && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-16 shrink-0">Pack</span>
-                  {qtyInput(delivery.packQty, packQty => patchDelivery({ packQty }))}
-                  {unitInput(delivery.packUnit, DELIVERY_ORDER_UNITS, packUnit => patchDelivery({ packUnit }), 'vp-pack-units')}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground w-36 shrink-0">{DELIVERY_UNIT_LEVEL_LABELS.primary}</span>
+                {qtyInput(delivery.packQty, packQty => patchDelivery({ packQty }))}
+                {unitInput(delivery.packUnit, DELIVERY_ORDER_UNITS, packUnit => patchDelivery({ packUnit }), 'vp-pack-units')}
+              </div>
 
-              {needsSecondLevel && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-16 shrink-0">Unit</span>
-                  {qtyInput(delivery.unitQty, unitQty => patchDelivery({ unitQty }))}
-                  {unitInput(delivery.unitUnit, DELIVERY_ORDER_UNITS, unitUnit => patchDelivery({ unitUnit }), 'vp-unit-units')}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground w-36 shrink-0">{DELIVERY_UNIT_LEVEL_LABELS.secondary}</span>
+                {qtyInput(delivery.unitQty, unitQty => patchDelivery({ unitQty }))}
+                {unitInput(delivery.unitUnit, DELIVERY_ORDER_UNITS, unitUnit => patchDelivery({ unitUnit }), 'vp-unit-units')}
+              </div>
             </div>
           </div>
 

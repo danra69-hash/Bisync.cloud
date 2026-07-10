@@ -7,13 +7,23 @@ import type { Vendor } from '../api';
 import type { VendorProductPolicyTag } from './vendorPolicyRules';
 
 export type DeliveryUnitBreakdown = {
+  /** Order UOM — how the customer orders. */
   orderUnit: string;
   orderQty: number;
+  /** Primary Packaging — packs inside the order unit. */
   packUnit: string;
   packQty: number;
+  /** Secondary Packaging — smallest pack inside primary. */
   unitUnit: string;
   unitQty: number;
 };
+
+/** Shared UI labels for the three delivery-unit packaging levels. */
+export const DELIVERY_UNIT_LEVEL_LABELS = {
+  order: 'Order UOM',
+  primary: 'Primary Packaging',
+  secondary: 'Secondary Packaging',
+} as const;
 
 export type DeliveryUnitLevels = {
   orderUnit: string;
@@ -798,31 +808,39 @@ export function getVendorCatalogProducts(
     : filterVendorProductsByLocationVisibility(products, options?.locationIds ?? []);
   return scoped.sort((a, b) => a.group.localeCompare(b.group) || a.productName.localeCompare(b.productName));
 }
-function formatUnitSegment(qty: number, unit: string, lowercaseUnit = false): string {
-  const u = lowercaseUnit ? unit.toLowerCase() : unit;
-  if (qty === 1) return u;
-  return `${qty}${u.toLowerCase()}`;
+/** Segment for display paths, e.g. 1box, 24tin, 200gr (qty always included). */
+function formatUnitSegment(qty: number, unit: string): string {
+  const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
+  const u = (unit || '').trim().toLowerCase() || 'each';
+  return `${safeQty}${u}`;
 }
 
-/** Slash-separated delivery path, e.g. Box/12tin/400gr */
+/**
+ * Slash-separated delivery path for Vendor Products, B2B Products, and Sub-Products.
+ * Examples: 1box/24tin/200gr · 1kg · 1tin/400gr
+ */
 export function formatDeliveryUnitPath(d: DeliveryUnitBreakdown): string {
-  const hasPackLevel = d.packUnit !== d.orderUnit || d.packQty !== 1;
-  const needsSecondLevel = hasSmallestDeliveryBreakdown(d);
+  const orderUnit = (d.orderUnit || '').trim();
+  if (!orderUnit) return '—';
+
+  const hasPackLevel = Boolean(d.packUnit?.trim())
+    && (d.packUnit.trim().toLowerCase() !== orderUnit.toLowerCase() || d.packQty !== 1);
+  const needsSecondLevel = hasSmallestDeliveryBreakdown({
+    ...d,
+    packUnit: hasPackLevel ? d.packUnit : d.orderUnit,
+    packQty: hasPackLevel ? d.packQty : 1,
+  }) && Boolean(d.unitUnit?.trim());
 
   if (!hasPackLevel && !needsSecondLevel) {
-    if (d.orderQty === 1 && d.packQty === 1 && d.unitQty === 1
-        && d.orderUnit === d.packUnit && d.packUnit === d.unitUnit) {
-      return d.orderUnit;
-    }
-    return formatUnitSegment(d.orderQty, d.orderUnit);
+    return formatUnitSegment(d.orderQty, orderUnit);
   }
 
-  const parts: string[] = [formatUnitSegment(d.orderQty, d.orderUnit)];
+  const parts: string[] = [formatUnitSegment(d.orderQty, orderUnit)];
   if (hasPackLevel) {
-    parts.push(formatUnitSegment(d.packQty, d.packUnit, true));
+    parts.push(formatUnitSegment(d.packQty, d.packUnit));
   }
   if (needsSecondLevel) {
-    parts.push(formatUnitSegment(d.unitQty, d.unitUnit, true));
+    parts.push(formatUnitSegment(d.unitQty, d.unitUnit));
   }
   return parts.join('/');
 }
@@ -831,9 +849,24 @@ export function formatDeliveryBreakdown(d: DeliveryUnitBreakdown): string {
   return formatDeliveryUnitPath(d);
 }
 
-/** Double-slash delivery path for vendor product detail, e.g. Box//12tin//400gr */
+/** Same as formatDeliveryUnitPath — kept for call sites that previously used //. */
 export function formatDeliveryUnitDetailPath(d: DeliveryUnitBreakdown): string {
-  return formatDeliveryUnitPath(d).replace(/\//g, '//');
+  return formatDeliveryUnitPath(d);
+}
+
+/** True when Order UOM (+ optional packaging levels) can convert to a target UOM. */
+export function deliveryUnitIsMeasurable(
+  delivery: DeliveryUnitBreakdown,
+  targetUom?: string,
+): boolean {
+  const orderUnit = delivery.orderUnit?.trim();
+  if (!orderUnit || !(delivery.orderQty > 0)) return false;
+  if (delivery.packUnit?.trim() && !(delivery.packQty > 0)) return false;
+  if (delivery.unitUnit?.trim() && !(delivery.unitQty > 0)) return false;
+  if (!targetUom?.trim()) return true;
+  return resolvePrincipalQty(delivery, targetUom).qty !== null
+    || unitConvertsToPrincipalComponentUom(orderUnit)
+    || unitConvertsToPrincipalComponentUom(delivery.unitUnit || delivery.packUnit || orderUnit);
 }
 
 export function totalSmallestMeasure(d: DeliveryUnitBreakdown): number {

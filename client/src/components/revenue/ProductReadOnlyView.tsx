@@ -445,7 +445,7 @@ export function ProductReadOnlyView({
             <div className="space-y-1.5">
               <p className={labelCls}>UOM</p>
               <p className={fieldCls}>{yieldUomLabel || parStockUomLabel || '—'}</p>
-              <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
+              <p className="text-[10px] text-muted-foreground">Follows Delivery Unit.</p>
             </div>
           </div>
         ) : (

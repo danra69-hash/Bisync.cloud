@@ -5,6 +5,7 @@ import type { AccessModule } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { userInitials } from '../../context/currentUserContext';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import { BrandEngineLockup } from './BrandEngineLockup';
 
 type Props = {
   open: boolean;
@@ -27,9 +28,9 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
         className={`fixed top-0 left-0 h-full w-56 z-50 transition-transform duration-200 flex flex-col ${open ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ background: '#2C1A0A' }}
       >
-        <div className="px-5 py-4 flex items-center justify-between border-b border-white/10">
-          <span className="text-white font-bold text-sm tracking-tight">Bisync.cloud</span>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-white/10">
+        <div className="px-4 py-4 flex items-center justify-between gap-2 border-b border-white/10">
+          <BrandEngineLockup className="min-w-0" />
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-white/10 shrink-0">
             <X size={14} className="text-white/60" />
           </button>
         </div>

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { LoginModal } from '../components/auth/LoginModal';
 import { LanguageSelector } from '../components/layout/LanguageSelector';
+import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { useAppTranslation } from '../i18n/useAppTranslation';
 
 const CAPABILITY_KEYS = [
@@ -37,15 +38,12 @@ const ORB_KEYS = ['procurement', 'inventory', 'recipes', 'vendors'] as const;
 
 function BisyncLogo({ className = '' }: { className?: string }) {
   return (
-    <div className={`flex items-center gap-2.5 ${className}`}>
-      <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-herme-ink text-white">
+    <div className={`flex items-center gap-2.5 min-w-0 ${className}`}>
+      <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-herme-ink text-white shrink-0">
         <Link2 size={20} strokeWidth={2.25} />
         <div className="absolute inset-0 bg-gradient-to-tr from-herme/40 to-transparent" />
       </div>
-      <div className="leading-none">
-        <span className="text-xl font-bold tracking-tight text-herme-ink">bisync</span>
-        <span className="text-xl font-bold tracking-tight text-herme">.cloud</span>
-      </div>
+      <BrandEngineLockup size="md" />
     </div>
   );
 }
@@ -112,7 +110,7 @@ export function LandingPage() {
     <div className="min-h-screen bg-herme-ink text-white font-sans">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-herme-ink/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <BisyncLogo className="[&_span:first-of-type]:text-white" />
+          <BisyncLogo />
           <div className="flex items-center gap-2">
             <LanguageSelector />
             <button
