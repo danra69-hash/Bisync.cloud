@@ -132,7 +132,7 @@ $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
     --cpu 1 `
     --min-instances 1 `
     --max-instances 2 `
-    --timeout 300 `
+    --timeout 600 `
     --cpu-boost `
     --add-cloudsql-instances $InstanceConnectionName `
     --set-secrets "DB_PASSWORD=bisync-db-password:latest" `

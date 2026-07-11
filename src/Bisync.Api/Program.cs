@@ -42,6 +42,11 @@ builder.Services.AddSingleton<IndependentCogsAuditHistoryStore>();
 builder.Services.AddSingleton<IndependentCogsAuditService>();
 builder.Services.AddSingleton<SystemCogsAuditHistoryStore>();
 builder.Services.AddScoped<SystemCogsAuditSnapshotService>();
+builder.Services.AddHttpClient(CloudShareFileDownloader.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(10);
+});
+builder.Services.AddScoped<CloudShareFileDownloader>();
 builder.Services.AddScoped<SalesDataService>();
 builder.Services.AddScoped<B2bSalesOrderService>();
 builder.Services.AddScoped<InventoryCountService>();

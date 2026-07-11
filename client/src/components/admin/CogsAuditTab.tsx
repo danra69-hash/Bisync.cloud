@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, FileUp, History, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, FileUp, History, Link2, Search, Trash2, X } from 'lucide-react';
 import {
   api,
   type CogsAuditDetailResult,
@@ -70,10 +70,9 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
   const [savedToHistory, setSavedToHistory] = useState(false);
   const [systemViewLabel, setSystemViewLabel] = useState<string | null>(null);
   const [independentPeriod, setIndependentPeriod] = useState(currentStockCardMonth);
-  const [independentFile, setIndependentFile] = useState<File | null>(null);
+  const [independentShareUrl, setIndependentShareUrl] = useState('');
   const [independentUploading, setIndependentUploading] = useState(false);
   const [independentError, setIndependentError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const periods = useMemo(() => last24MonthOptions(), []);
   const isIndependent = Boolean(independentSessionId);
@@ -150,9 +149,8 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
     setIndependentOpen(true);
     setHistoryOpen(false);
     setIndependentError(null);
-    setIndependentFile(null);
+    setIndependentShareUrl('');
     setIndependentPeriod(period);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   async function openHistoryPanel() {
@@ -240,19 +238,19 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
   function closeIndependentPanel() {
     setIndependentOpen(false);
     setIndependentError(null);
-    setIndependentFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    setIndependentShareUrl('');
   }
 
   async function runIndependentAudit() {
-    if (!independentFile) {
-      setIndependentError('CSV file is required. Choose a ledger export to continue.');
+    const url = independentShareUrl.trim();
+    if (!url) {
+      setIndependentError('Paste a Google Drive or OneDrive / SharePoint share link to continue.');
       return;
     }
     setIndependentUploading(true);
     setIndependentError(null);
     try {
-      const result = await api.cogsAuditIndependentUpload(independentFile, independentPeriod);
+      const result = await api.cogsAuditIndependentFromLink(url, independentPeriod);
       setIndependentSessionId(result.sessionId);
       setIndependentFileName(result.fileName);
       setIndependentConvention(result.debitCreditConvention);
@@ -262,12 +260,11 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
       setScreen('summary');
       setDetail(null);
       setIndependentOpen(false);
-      setIndependentFile(null);
+      setIndependentShareUrl('');
     } catch (err) {
       setIndependentError(err instanceof Error ? err.message : 'Independent audit failed.');
     } finally {
       setIndependentUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -332,16 +329,16 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
           {historyButton}
         </div>
         <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-          Select a company and at least one location for live COGS Audit, or run an Independent Audit from a CSV upload.
+          Select a company and at least one location for live COGS Audit, or run an Independent Audit from a Google Drive
+          or OneDrive share link.
         </div>
         {independentOpen && (
           <IndependentUploadPanel
             periods={periods}
             period={independentPeriod}
             onPeriodChange={setIndependentPeriod}
-            file={independentFile}
-            onFileChange={setIndependentFile}
-            fileInputRef={fileInputRef}
+            shareUrl={independentShareUrl}
+            onShareUrlChange={setIndependentShareUrl}
             uploading={independentUploading}
             error={independentError}
             onClose={closeIndependentPanel}
@@ -539,7 +536,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
       {!isIndependent && (
         <p className="text-xs text-muted-foreground">
           FIFO period audit for smart components (last 24 months). Debit = stock in (+), Credit = stock out (âˆ’). Click an
-          Id to open the dated ledger. Use Independent Audit to upload an external CSV ledger. History keeps past
+          Id to open the dated ledger. Use Independent Audit with a Google Drive or OneDrive share link. History keeps past
           independent runs.
         </p>
       )}
@@ -549,9 +546,8 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
           periods={periods}
           period={independentPeriod}
           onPeriodChange={setIndependentPeriod}
-          file={independentFile}
-          onFileChange={setIndependentFile}
-          fileInputRef={fileInputRef}
+          shareUrl={independentShareUrl}
+          onShareUrlChange={setIndependentShareUrl}
           uploading={independentUploading}
           error={independentError}
           onClose={closeIndependentPanel}
@@ -833,9 +829,8 @@ function IndependentUploadPanel({
   periods,
   period,
   onPeriodChange,
-  file,
-  onFileChange,
-  fileInputRef,
+  shareUrl,
+  onShareUrlChange,
   uploading,
   error,
   onClose,
@@ -844,9 +839,8 @@ function IndependentUploadPanel({
   periods: string[];
   period: string;
   onPeriodChange: (v: string) => void;
-  file: File | null;
-  onFileChange: (f: File | null) => void;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  shareUrl: string;
+  onShareUrlChange: (v: string) => void;
   uploading: boolean;
   error: string | null;
   onClose: () => void;
@@ -858,9 +852,9 @@ function IndependentUploadPanel({
         <div>
           <h3 className="text-sm font-semibold">Independent Audit</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Upload an ingredient stock-ledger CSV (or .csv.gz). Files over ~28 MB are compressed automatically before
-            upload (Cloud Run ~32 MB limit). Before analysis, Debit/Credit signs are checked against Open/Close balance
-            and normalized. Select the audit month (last 24 months), then run.
+            Upload the ledger CSV to Google Drive or OneDrive / SharePoint, set sharing to Anyone with the link (Viewer),
+            then paste that link here. Bisync downloads the file on the server (works for large files on cloud). Debit/Credit
+            signs are checked against Open/Close and normalized before FIFO analysis.
           </p>
         </div>
         <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close">
@@ -886,24 +880,21 @@ function IndependentUploadPanel({
         </div>
         <div className="flex flex-col gap-1 min-w-[220px] flex-1">
           <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-            CSV file <span className="text-destructive">*</span>
+            Google Drive / OneDrive link <span className="text-destructive">*</span>
           </label>
           <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.csv.gz,text/csv,application/gzip"
+            type="url"
+            value={shareUrl}
+            onChange={e => onShareUrlChange(e.target.value)}
             disabled={uploading}
-            className={`${inputCls} file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs`}
-            onChange={e => onFileChange(e.target.files?.[0] ?? null)}
+            placeholder="https://drive.google.com/... or https://1drv.ms/..."
+            className={inputCls}
+            autoComplete="off"
+            spellCheck={false}
           />
-          {!file && (
-            <p className="text-[11px] text-muted-foreground">Required — choose a .csv or .csv.gz ledger export.</p>
-          )}
-          {file && (
-            <p className="text-[11px] text-foreground">
-              Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(1)} MB)
-            </p>
-          )}
+          <p className="text-[11px] text-muted-foreground">
+            Required — Share → Anyone with the link → Copy link. Google Sheets links export as CSV automatically.
+          </p>
         </div>
       </div>
 
@@ -912,12 +903,12 @@ function IndependentUploadPanel({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={!file || uploading}
+          disabled={!shareUrl.trim() || uploading}
           onClick={onRun}
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <FileUp className="h-3.5 w-3.5" />
-          {uploading ? 'Compressing / running…' : 'Run Independent Audit'}
+          <Link2 className="h-3.5 w-3.5" />
+          {uploading ? 'Downloading / running…' : 'Run Independent Audit'}
         </button>
         <button
           type="button"

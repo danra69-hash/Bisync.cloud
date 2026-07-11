@@ -1982,16 +1982,34 @@ export const api = {
       `/api/cogs-audit/detail/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}?${params.toString()}`,
     );
   },
+  cogsAuditIndependentFromLink: async (url: string, period: string) => {
+    const res = await fetch(`${API_BASE}/api/cogs-audit/independent/from-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, period }),
+    });
+    if (!res.ok) {
+      let message = `API error ${res.status}: /api/cogs-audit/independent/from-link`;
+      try {
+        const body = await res.json() as { message?: string };
+        if (body.message) message = body.message;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    return res.json() as Promise<IndependentAuditUploadResult>;
+  },
   cogsAuditIndependentUpload: async (file: File, period: string) => {
     const CLOUD_RUN_SAFE_BYTES = 28 * 1024 * 1024;
     let upload = file;
 
-    // Cloud Run rejects bodies over ~32 MiB. Auto-gzip large CSVs (June ledger ~37 MB → ~3 MB).
+    // Cloud Run rejects bodies over ~32 MiB. Prefer share-link Independent Audit for large files.
     const alreadyGzip = /\.gz$/i.test(file.name) || file.type === 'application/gzip' || file.type === 'application/x-gzip';
     if (!alreadyGzip && file.size > CLOUD_RUN_SAFE_BYTES) {
       if (typeof CompressionStream === 'undefined') {
         throw new Error(
-          'File is over 28 MB and this browser cannot compress it. Save as .csv.gz (gzip) and upload again.',
+          'File is over 28 MB. Upload it to Google Drive or OneDrive, share as Anyone with the link, and paste that URL instead.',
         );
       }
       const stream = file.stream().pipeThrough(new CompressionStream('gzip'));
@@ -1999,12 +2017,12 @@ export const api = {
       upload = new File([blob], `${file.name}.gz`, { type: 'application/gzip' });
       if (upload.size > CLOUD_RUN_SAFE_BYTES) {
         throw new Error(
-          `Compressed upload is still ${(upload.size / (1024 * 1024)).toFixed(1)} MB. Cloud Run max is ~32 MB — split the file or upload a smaller month extract.`,
+          'File is too large for direct upload. Put it on Google Drive or OneDrive (Anyone with the link) and paste the share URL.',
         );
       }
     } else if (file.size > CLOUD_RUN_SAFE_BYTES) {
       throw new Error(
-        `Upload is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Cloud Run max is ~32 MB — use a smaller .csv.gz.`,
+        'File is too large for direct upload. Put it on Google Drive or OneDrive (Anyone with the link) and paste the share URL.',
       );
     }
 
@@ -2019,7 +2037,7 @@ export const api = {
       let message = `API error ${res.status}: /api/cogs-audit/independent`;
       if (res.status === 413) {
         message =
-          'Upload too large for Cloud Run (~32 MB limit). The app normally auto-compresses CSV — try again or upload a .csv.gz.';
+          'Upload too large for Cloud Run. Use a Google Drive or OneDrive share link instead.';
       }
       try {
         const body = await res.json() as { message?: string };
