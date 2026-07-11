@@ -147,10 +147,11 @@ export const en = {
   systemConfig: {
     title: 'System Configuration',
     platformConfig: 'Platform Config',
-    description: 'Manage companies, locations, and platform access control. Employee, pay, org, and holiday settings live under Human Resources.',
+    description: 'Manage companies, locations, platform access control, and COGS / FIFO audit. Employee, pay, org, and holiday settings live under Human Resources.',
     companies: 'Companies',
     locations: 'Locations',
     accessControl: 'Access Control',
+    cogsAudit: 'COGS Audit',
     addCompany: 'Add Company',
     addLocation: 'Add Location',
     registeredCompanies: '{{count}} registered companies',

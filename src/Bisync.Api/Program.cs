@@ -37,6 +37,11 @@ builder.Services.AddScoped<ComponentStockService>();
 builder.Services.AddScoped<ProductSaleInventoryService>();
 builder.Services.AddScoped<ProductionInventoryService>();
 builder.Services.AddScoped<StockCardService>();
+builder.Services.AddScoped<CogsAuditService>();
+builder.Services.AddSingleton<IndependentCogsAuditHistoryStore>();
+builder.Services.AddSingleton<IndependentCogsAuditService>();
+builder.Services.AddSingleton<SystemCogsAuditHistoryStore>();
+builder.Services.AddScoped<SystemCogsAuditSnapshotService>();
 builder.Services.AddScoped<SalesDataService>();
 builder.Services.AddScoped<B2bSalesOrderService>();
 builder.Services.AddScoped<InventoryCountService>();
@@ -55,6 +60,15 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173")
               .AllowAnyHeader()
               .AllowAnyMethod());
+});
+
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 512L * 1024 * 1024;
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 512L * 1024 * 1024;
 });
 
 builder.Services.AddControllers()
@@ -112,12 +126,15 @@ app.Use(async (context, next) =>
         context.Response.ContentType = "application/json";
         var message = pg.SqlState switch
         {
-            "23505" => pg.ConstraintName switch
-            {
-                "PK_Products" => "Could not create product because the database ID sequence is out of sync. Restart the API to apply the latest schema patch.",
-                "IX_Products_ProductId" => "Product ID already exists. Refresh and choose a different name.",
-                _ => "A record with the same identifier already exists. Please refresh and try again.",
-            },
+                "23505" => pg.ConstraintName switch
+                {
+                    "PK_Products" => "Could not create product because the database ID sequence is out of sync. Restart the API to apply the latest schema patch.",
+                    "PK_Employees" => "Could not create employee because the Employees ID sequence is out of sync. Restart the API to apply the latest schema patch.",
+                    "IX_Products_ProductId" => "Product ID already exists. Refresh and choose a different name.",
+                    "IX_Employees_Email" => "An employee with this email already exists.",
+                    "IX_Employees_EmployeeCode" => "Employee code already exists. Refresh and try again.",
+                    _ => "A record with the same identifier already exists. Please refresh and try again.",
+                },
             "23503" => "This action references missing data. Please refresh and try again.",
             _ => "Could not save changes. Please try again.",
         };

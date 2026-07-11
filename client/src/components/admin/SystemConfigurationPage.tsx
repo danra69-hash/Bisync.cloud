@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CompaniesTab } from './CompaniesTab';
 import { AccessControlTab } from './AccessControlTab';
+import { CogsAuditTab } from './CogsAuditTab';
 import { HrConfigTabBar } from './HrConfigTabBar';
 import { LocationsConfigTab } from './LocationsConfigTab';
 import { SYSTEM_HR_CONFIG_TABS, type SystemHrConfigTabId } from './hrConfigTabs';
@@ -9,10 +10,15 @@ import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 type Props = {
   selectedCompanyId: number | null;
+  selectedLocationIds: string[];
   onOrgDataChanged?: () => void;
 };
 
-export function SystemConfigurationPage({ selectedCompanyId, onOrgDataChanged }: Props) {
+export function SystemConfigurationPage({
+  selectedCompanyId,
+  selectedLocationIds,
+  onOrgDataChanged,
+}: Props) {
   const [tab, setTab] = useState<SystemHrConfigTabId>('companies');
   const { t, hrConfigTab } = useAppTranslation();
   const tabs = useMemo(
@@ -37,6 +43,9 @@ export function SystemConfigurationPage({ selectedCompanyId, onOrgDataChanged }:
         <LocationsConfigTab selectedCompanyId={selectedCompanyId} onOrgDataChanged={onOrgDataChanged} />
       )}
       {tab === 'accessControl' && <AccessControlTab />}
+      {tab === 'cogsAudit' && (
+        <CogsAuditTab selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />
+      )}
     </div>
   );
 }

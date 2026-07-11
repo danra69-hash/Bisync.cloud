@@ -153,6 +153,7 @@ export const th = {
     companies: 'บริษัท',
     locations: 'สาขา',
     accessControl: 'การควบคุมการเข้าถึง',
+    cogsAudit: 'COGS Audit',
     addCompany: 'เพิ่มบริษัท',
     addLocation: 'เพิ่มสาขา',
     registeredCompanies: 'บริษัทที่ลงทะเบียน {{count}} แห่ง',

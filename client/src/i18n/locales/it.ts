@@ -153,6 +153,7 @@ export const it = {
     companies: 'Aziende',
     locations: 'Sedi',
     accessControl: 'Controllo accessi',
+    cogsAudit: 'COGS Audit',
     addCompany: 'Aggiungi azienda',
     addLocation: 'Aggiungi sede',
     registeredCompanies: '{{count}} aziende registrate',

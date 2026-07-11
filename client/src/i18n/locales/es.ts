@@ -153,6 +153,7 @@ export const es = {
     companies: 'Empresas',
     locations: 'Ubicaciones',
     accessControl: 'Control de acceso',
+    cogsAudit: 'COGS Audit',
     addCompany: 'Añadir empresa',
     addLocation: 'Añadir ubicación',
     registeredCompanies: '{{count}} empresas registradas',

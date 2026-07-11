@@ -1,13 +1,15 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Bisync.Api.Services;
 
 public class StockCardService(
     BisyncDbContext db,
     ComponentStockService componentStock,
-    ComponentFifoCostingService fifoCosting)
+    ComponentFifoCostingService fifoCosting,
+    IServiceScopeFactory scopeFactory)
 {
     public async Task<IReadOnlyList<StockCardListRow>> ListAsync(
         int? companyId,
@@ -484,6 +486,8 @@ public class StockCardService(
             }
 
             await db.SaveChangesAsync(cancellationToken);
+            await TryRevisedCogsAuditAfterAdjustmentAsync(
+                companyId, locationExternalId, adjustmentDate, uomMode, trimmedReason, cancellationToken);
             return StockCardAdjustmentResult.Ok();
         }
 
@@ -537,7 +541,36 @@ public class StockCardService(
 
         await ApplyProductLocationStockDeltaAsync(product.Id, locationExternalId, signedQty, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+        await TryRevisedCogsAuditAfterAdjustmentAsync(
+            companyId, locationExternalId, adjustmentDate, uomMode, trimmedReason, cancellationToken);
         return StockCardAdjustmentResult.Ok();
+    }
+
+    async Task TryRevisedCogsAuditAfterAdjustmentAsync(
+        int? companyId,
+        string locationExternalId,
+        DateOnly adjustmentDate,
+        string uomMode,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // New scope avoids circular DI with CogsAuditService → StockCardService.
+            using var scope = scopeFactory.CreateScope();
+            var snapshots = scope.ServiceProvider.GetRequiredService<SystemCogsAuditSnapshotService>();
+            await snapshots.SnapshotRevisedAfterAdjustmentAsync(
+                companyId,
+                locationExternalId,
+                adjustmentDate,
+                uomMode,
+                reason,
+                cancellationToken);
+        }
+        catch
+        {
+            // Adjustment already committed — revised audit is best-effort.
+        }
     }
 
     async Task ApplyProductLocationStockDeltaAsync(

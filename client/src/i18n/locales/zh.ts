@@ -153,6 +153,7 @@ export const zh = {
     companies: '公司',
     locations: '门店',
     accessControl: '访问控制',
+    cogsAudit: 'COGS Audit',
     addCompany: '添加公司',
     addLocation: '添加门店',
     registeredCompanies: '已注册 {{count}} 家公司',

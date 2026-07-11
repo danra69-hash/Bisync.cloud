@@ -70,6 +70,7 @@ export const HR_CONFIG_TAB_I18N: Record<string, string> = {
   Companies: 'systemConfig.companies',
   Locations: 'systemConfig.locations',
   'Access Control': 'systemConfig.accessControl',
+  'COGS Audit': 'systemConfig.cogsAudit',
 };
 
 export const MODULE_I18N: Record<string, string> = {

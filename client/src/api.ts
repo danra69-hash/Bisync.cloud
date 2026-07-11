@@ -85,6 +85,146 @@ export interface AccessControlSettings {
   matrixJson: string;
 }
 
+export interface CogsAuditIngredientRow {
+  itemType: string;
+  itemKey: string;
+  code: string;
+  name: string;
+  group: string;
+  uom: string;
+  openQty: number;
+  openVal: number;
+  debitQty: number;
+  debitVal: number;
+  creditQty: number;
+  creditCogs: number;
+  beforeInvQty: number;
+  beforeInvVal: number;
+  meDebitQty: number;
+  meDebitVal: number;
+  meCreditQty: number;
+  meCreditCogs: number;
+  closeQty: number;
+  closeVal: number;
+  shortageQty: number;
+  shortageVal: number;
+  shortageUomPrice: number;
+  averageCogs: number;
+  onHandAverageCogs: number;
+}
+
+export interface CogsAuditSummaryResult {
+  periodMonth: string;
+  debitSign: string;
+  creditSign: string;
+  policy: string;
+  ingredientCount: number;
+  openingValue: number;
+  beforeInventoryValue: number;
+  creditCogsBeforeInventory: number;
+  closingValue: number;
+  shortageQty: number;
+  shortageValue: number;
+  rows: CogsAuditIngredientRow[];
+}
+
+export interface CogsAuditLedgerLine {
+  seq: number;
+  occurredAt: string;
+  lineType: string;
+  entryType: string;
+  refId: string;
+  remark: string;
+  debitQty: number;
+  creditQty: number;
+  unitPrice: number;
+  fifoValue: number;
+  runningQty: number;
+  runningValue: number;
+  fifoDetail: string;
+  fifoPolicy: string;
+}
+
+export interface CogsAuditDetailResult {
+  itemType: string;
+  itemKey: string;
+  code: string;
+  name: string;
+  group: string;
+  uom: string;
+  periodMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  isCurrentMonth: boolean;
+  fifoPolicy: string;
+  canvasLineCount: number;
+  summary: CogsAuditIngredientRow;
+  lines: CogsAuditLedgerLine[];
+}
+
+export interface IndependentAuditUploadResult {
+  sessionId: string;
+  fileName: string;
+  periodMonth: string;
+  debitCreditMode: string;
+  debitCreditConvention: string;
+  debitMeans: string;
+  creditMeans: string;
+  conventionSampleCount: number;
+  conventionMatchCount: number;
+  conventionConfidence: number;
+  columnsSwapped: boolean;
+  savedToHistory?: boolean;
+  historyPath?: string | null;
+  summary: CogsAuditSummaryResult;
+}
+
+export interface IndependentAuditHistoryEntry {
+  sessionId: string;
+  fileName: string;
+  periodMonth: string;
+  createdAtUtc: string;
+  ingredientCount: number;
+  openingValue: number;
+  closingValue: number;
+  shortageQty: number;
+  shortageValue: number;
+  debitCreditMode: string;
+  debitCreditConvention: string;
+  debitMeans: string;
+  creditMeans: string;
+  conventionSampleCount: number;
+  conventionMatchCount: number;
+  conventionConfidence: number;
+  columnsSwapped: boolean;
+}
+
+export interface SystemCogsAuditHistoryEntry {
+  runId: string;
+  companyId: number | null;
+  companyName: string;
+  locationExternalId: string;
+  locationName: string;
+  periodMonth: string;
+  monthName: string;
+  year: number;
+  uomMode: string;
+  isRevised: boolean;
+  createdAtUtc: string;
+  revisedAtUtc: string | null;
+  trigger: string;
+  relativePath: string;
+  ingredientCount: number;
+  openingValue: number;
+  closingValue: number;
+  shortageValue: number;
+}
+
+export interface SystemCogsAuditHistoryFile {
+  entry: SystemCogsAuditHistoryEntry;
+  summary: CogsAuditSummaryResult;
+}
+
 export interface AppUser {
   id: number;
   employeeId?: number | null;
@@ -1807,6 +1947,85 @@ export const api = {
   accessControl: () => fetchJson<AccessControlSettings>('/api/access-control'),
   updateAccessControl: (data: AccessControlSettings) =>
     fetchJsonWithMethod<AccessControlSettings>('/api/access-control', 'PUT', data),
+  cogsAuditPeriods: (companyId?: number) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    const query = params.toString();
+    return fetchJson<string[]>(`/api/cogs-audit/periods${query ? `?${query}` : ''}`);
+  },
+  cogsAuditSummary: (
+    companyId: number | undefined,
+    locationIds: string[],
+    options?: { period?: string; uomMode?: 'inventory' | 'recipe'; itemType?: string },
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (options?.period) params.set('period', options.period);
+    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    if (options?.itemType) params.set('itemType', options.itemType);
+    return fetchJson<CogsAuditSummaryResult>(`/api/cogs-audit/summary?${params.toString()}`);
+  },
+  cogsAuditDetail: (
+    itemType: string,
+    itemKey: string,
+    companyId: number | undefined,
+    locationIds: string[],
+    options?: { period?: string; uomMode?: 'inventory' | 'recipe' },
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (options?.period) params.set('period', options.period);
+    if (options?.uomMode) params.set('uomMode', options.uomMode);
+    return fetchJson<CogsAuditDetailResult>(
+      `/api/cogs-audit/detail/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}?${params.toString()}`,
+    );
+  },
+  cogsAuditIndependentUpload: async (file: File, period: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('period', period);
+    const res = await fetch(`${API_BASE}/api/cogs-audit/independent`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) {
+      let message = `API error ${res.status}: /api/cogs-audit/independent`;
+      try {
+        const body = await res.json() as { message?: string };
+        if (body.message) message = body.message;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(message);
+    }
+    return res.json() as Promise<IndependentAuditUploadResult>;
+  },
+  cogsAuditIndependentDetail: (sessionId: string, ingredientId: string) =>
+    fetchJson<CogsAuditDetailResult>(
+      `/api/cogs-audit/independent/${encodeURIComponent(sessionId)}/detail/${encodeURIComponent(ingredientId)}`,
+    ),
+  cogsAuditIndependentHistory: (take = 50) =>
+    fetchJson<IndependentAuditHistoryEntry[]>(`/api/cogs-audit/independent/history?take=${take}`),
+  cogsAuditSystemHistory: (take = 100) =>
+    fetchJson<SystemCogsAuditHistoryEntry[]>(`/api/cogs-audit/system/history?take=${take}`),
+  cogsAuditSystemHistoryOpen: (runId: string) =>
+    fetchJson<SystemCogsAuditHistoryFile>(`/api/cogs-audit/system/history/${encodeURIComponent(runId)}`),
+  cogsAuditIndependentHistoryOpen: (sessionId: string) =>
+    fetchJsonWithMethod<IndependentAuditUploadResult>(
+      `/api/cogs-audit/independent/history/${encodeURIComponent(sessionId)}/open`,
+      'POST',
+    ),
+  cogsAuditIndependentHistoryDelete: async (sessionId: string) => {
+    const res = await fetch(
+      `${API_BASE}/api/cogs-audit/independent/history/${encodeURIComponent(sessionId)}`,
+      { method: 'DELETE' },
+    );
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`API error ${res.status}: delete independent history`);
+    }
+  },
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),
 };
