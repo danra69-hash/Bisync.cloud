@@ -858,9 +858,9 @@ function IndependentUploadPanel({
         <div>
           <h3 className="text-sm font-semibold">Independent Audit</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Upload an ingredient stock-ledger CSV. A CSV file is required. Before analysis, Debit/Credit signs are
-            checked against Open/Close balance (Debit=+ in vs Credit=âˆ’ out, or swapped) and normalized. Select the audit
-            month (last 24 months), then run.
+            Upload an ingredient stock-ledger CSV (or .csv.gz). Files over ~28 MB are compressed automatically before
+            upload (Cloud Run ~32 MB limit). Before analysis, Debit/Credit signs are checked against Open/Close balance
+            and normalized. Select the audit month (last 24 months), then run.
           </p>
         </div>
         <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close">
@@ -891,13 +891,13 @@ function IndependentUploadPanel({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.csv.gz,text/csv,application/gzip"
             disabled={uploading}
             className={`${inputCls} file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs`}
             onChange={e => onFileChange(e.target.files?.[0] ?? null)}
           />
           {!file && (
-            <p className="text-[11px] text-muted-foreground">Required â€” choose a .csv ledger export to continue.</p>
+            <p className="text-[11px] text-muted-foreground">Required — choose a .csv or .csv.gz ledger export.</p>
           )}
           {file && (
             <p className="text-[11px] text-foreground">
@@ -917,7 +917,7 @@ function IndependentUploadPanel({
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <FileUp className="h-3.5 w-3.5" />
-          {uploading ? 'Running auditâ€¦' : 'Run Independent Audit'}
+          {uploading ? 'Compressing / running…' : 'Run Independent Audit'}
         </button>
         <button
           type="button"

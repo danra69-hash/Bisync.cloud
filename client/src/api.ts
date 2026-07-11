@@ -1983,8 +1983,33 @@ export const api = {
     );
   },
   cogsAuditIndependentUpload: async (file: File, period: string) => {
+    const CLOUD_RUN_SAFE_BYTES = 28 * 1024 * 1024;
+    let upload = file;
+
+    // Cloud Run rejects bodies over ~32 MiB. Auto-gzip large CSVs (June ledger ~37 MB → ~3 MB).
+    const alreadyGzip = /\.gz$/i.test(file.name) || file.type === 'application/gzip' || file.type === 'application/x-gzip';
+    if (!alreadyGzip && file.size > CLOUD_RUN_SAFE_BYTES) {
+      if (typeof CompressionStream === 'undefined') {
+        throw new Error(
+          'File is over 28 MB and this browser cannot compress it. Save as .csv.gz (gzip) and upload again.',
+        );
+      }
+      const stream = file.stream().pipeThrough(new CompressionStream('gzip'));
+      const blob = await new Response(stream).blob();
+      upload = new File([blob], `${file.name}.gz`, { type: 'application/gzip' });
+      if (upload.size > CLOUD_RUN_SAFE_BYTES) {
+        throw new Error(
+          `Compressed upload is still ${(upload.size / (1024 * 1024)).toFixed(1)} MB. Cloud Run max is ~32 MB — split the file or upload a smaller month extract.`,
+        );
+      }
+    } else if (file.size > CLOUD_RUN_SAFE_BYTES) {
+      throw new Error(
+        `Upload is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Cloud Run max is ~32 MB — use a smaller .csv.gz.`,
+      );
+    }
+
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', upload);
     form.append('period', period);
     const res = await fetch(`${API_BASE}/api/cogs-audit/independent`, {
       method: 'POST',
@@ -1992,11 +2017,15 @@ export const api = {
     });
     if (!res.ok) {
       let message = `API error ${res.status}: /api/cogs-audit/independent`;
+      if (res.status === 413) {
+        message =
+          'Upload too large for Cloud Run (~32 MB limit). The app normally auto-compresses CSV — try again or upload a .csv.gz.';
+      }
       try {
         const body = await res.json() as { message?: string };
         if (body.message) message = body.message;
       } catch {
-        /* ignore */
+        /* ignore non-JSON (Cloud Run 413 HTML) */
       }
       throw new Error(message);
     }

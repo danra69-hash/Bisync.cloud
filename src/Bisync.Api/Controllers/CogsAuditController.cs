@@ -1,5 +1,6 @@
 using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.IO.Compression;
 
 namespace Bisync.Api.Controllers;
 
@@ -85,21 +86,58 @@ public class CogsAuditController(
             return BadRequest(new { message = "CSV file is required for Independent Audit." });
 
         var name = file.FileName ?? "";
-        if (!name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(file.ContentType, "text/csv", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(file.ContentType, "application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase))
-        {
-            return BadRequest(new { message = "Upload a .csv file." });
-        }
+        var isGzip = name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(file.ContentType, "application/gzip", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(file.ContentType, "application/x-gzip", StringComparison.OrdinalIgnoreCase);
+        var isCsv = name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".csv.gz", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(file.ContentType, "text/csv", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(file.ContentType, "application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase);
+
+        if (!isCsv && !isGzip)
+            return BadRequest(new { message = "Upload a .csv or .csv.gz file." });
 
         if (string.IsNullOrWhiteSpace(period))
             return BadRequest(new { message = "Month (period yyyy-MM) is required." });
 
+        // Cloud Run rejects HTTP bodies over ~32 MiB before ASP.NET runs.
+        const long cloudRunSoftLimit = 30L * 1024 * 1024;
+        if (file.Length > cloudRunSoftLimit)
+        {
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new
+            {
+                message =
+                    "Upload exceeds Cloud Run's ~32 MB request limit. Use a .csv.gz (gzip) file, or let the app auto-compress before upload.",
+            });
+        }
+
         try
         {
-            await using var stream = file.OpenReadStream();
-            var result = await independentAudit.RunFromCsvAsync(stream, name, period.Trim(), cancellationToken);
-            return Ok(result);
+            await using var upload = file.OpenReadStream();
+            Stream csvStream = upload;
+            GZipStream? gzip = null;
+            if (isGzip || name.EndsWith(".csv.gz", StringComparison.OrdinalIgnoreCase))
+            {
+                gzip = new GZipStream(upload, CompressionMode.Decompress, leaveOpen: true);
+                csvStream = gzip;
+            }
+
+            await using (gzip)
+            {
+                var displayName = name.EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
+                    ? name[..^3]
+                    : name;
+                var result = await independentAudit.RunFromCsvAsync(
+                    csvStream,
+                    displayName,
+                    period.Trim(),
+                    cancellationToken);
+                return Ok(result);
+            }
+        }
+        catch (InvalidDataException)
+        {
+            return BadRequest(new { message = "Could not decompress .gz file. Re-save as gzip or upload plain .csv under 30 MB." });
         }
         catch (InvalidOperationException ex)
         {
