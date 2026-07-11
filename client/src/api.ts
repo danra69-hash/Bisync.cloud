@@ -162,43 +162,6 @@ export interface CogsAuditDetailResult {
   lines: CogsAuditLedgerLine[];
 }
 
-export interface IndependentAuditUploadResult {
-  sessionId: string;
-  fileName: string;
-  periodMonth: string;
-  debitCreditMode: string;
-  debitCreditConvention: string;
-  debitMeans: string;
-  creditMeans: string;
-  conventionSampleCount: number;
-  conventionMatchCount: number;
-  conventionConfidence: number;
-  columnsSwapped: boolean;
-  savedToHistory?: boolean;
-  historyPath?: string | null;
-  summary: CogsAuditSummaryResult;
-}
-
-export interface IndependentAuditHistoryEntry {
-  sessionId: string;
-  fileName: string;
-  periodMonth: string;
-  createdAtUtc: string;
-  ingredientCount: number;
-  openingValue: number;
-  closingValue: number;
-  shortageQty: number;
-  shortageValue: number;
-  debitCreditMode: string;
-  debitCreditConvention: string;
-  debitMeans: string;
-  creditMeans: string;
-  conventionSampleCount: number;
-  conventionMatchCount: number;
-  conventionConfidence: number;
-  columnsSwapped: boolean;
-}
-
 export interface SystemCogsAuditHistoryEntry {
   runId: string;
   companyId: number | null;
@@ -1982,97 +1945,10 @@ export const api = {
       `/api/cogs-audit/detail/${encodeURIComponent(itemType)}/${encodeURIComponent(itemKey)}?${params.toString()}`,
     );
   },
-  cogsAuditIndependentFromLink: async (url: string, period: string) => {
-    const res = await fetch(`${API_BASE}/api/cogs-audit/independent/from-link`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, period }),
-    });
-    if (!res.ok) {
-      let message = `API error ${res.status}: /api/cogs-audit/independent/from-link`;
-      try {
-        const body = await res.json() as { message?: string };
-        if (body.message) message = body.message;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(message);
-    }
-    return res.json() as Promise<IndependentAuditUploadResult>;
-  },
-  cogsAuditIndependentUpload: async (file: File, period: string) => {
-    const CLOUD_RUN_SAFE_BYTES = 28 * 1024 * 1024;
-    let upload = file;
-
-    // Cloud Run rejects bodies over ~32 MiB. Prefer share-link Independent Audit for large files.
-    const alreadyGzip = /\.gz$/i.test(file.name) || file.type === 'application/gzip' || file.type === 'application/x-gzip';
-    if (!alreadyGzip && file.size > CLOUD_RUN_SAFE_BYTES) {
-      if (typeof CompressionStream === 'undefined') {
-        throw new Error(
-          'File is over 28 MB. Upload it to Google Drive or OneDrive, share as Anyone with the link, and paste that URL instead.',
-        );
-      }
-      const stream = file.stream().pipeThrough(new CompressionStream('gzip'));
-      const blob = await new Response(stream).blob();
-      upload = new File([blob], `${file.name}.gz`, { type: 'application/gzip' });
-      if (upload.size > CLOUD_RUN_SAFE_BYTES) {
-        throw new Error(
-          'File is too large for direct upload. Put it on Google Drive or OneDrive (Anyone with the link) and paste the share URL.',
-        );
-      }
-    } else if (file.size > CLOUD_RUN_SAFE_BYTES) {
-      throw new Error(
-        'File is too large for direct upload. Put it on Google Drive or OneDrive (Anyone with the link) and paste the share URL.',
-      );
-    }
-
-    const form = new FormData();
-    form.append('file', upload);
-    form.append('period', period);
-    const res = await fetch(`${API_BASE}/api/cogs-audit/independent`, {
-      method: 'POST',
-      body: form,
-    });
-    if (!res.ok) {
-      let message = `API error ${res.status}: /api/cogs-audit/independent`;
-      if (res.status === 413) {
-        message =
-          'Upload too large for Cloud Run. Use a Google Drive or OneDrive share link instead.';
-      }
-      try {
-        const body = await res.json() as { message?: string };
-        if (body.message) message = body.message;
-      } catch {
-        /* ignore non-JSON (Cloud Run 413 HTML) */
-      }
-      throw new Error(message);
-    }
-    return res.json() as Promise<IndependentAuditUploadResult>;
-  },
-  cogsAuditIndependentDetail: (sessionId: string, ingredientId: string) =>
-    fetchJson<CogsAuditDetailResult>(
-      `/api/cogs-audit/independent/${encodeURIComponent(sessionId)}/detail/${encodeURIComponent(ingredientId)}`,
-    ),
-  cogsAuditIndependentHistory: (take = 50) =>
-    fetchJson<IndependentAuditHistoryEntry[]>(`/api/cogs-audit/independent/history?take=${take}`),
   cogsAuditSystemHistory: (take = 100) =>
     fetchJson<SystemCogsAuditHistoryEntry[]>(`/api/cogs-audit/system/history?take=${take}`),
   cogsAuditSystemHistoryOpen: (runId: string) =>
     fetchJson<SystemCogsAuditHistoryFile>(`/api/cogs-audit/system/history/${encodeURIComponent(runId)}`),
-  cogsAuditIndependentHistoryOpen: (sessionId: string) =>
-    fetchJsonWithMethod<IndependentAuditUploadResult>(
-      `/api/cogs-audit/independent/history/${encodeURIComponent(sessionId)}/open`,
-      'POST',
-    ),
-  cogsAuditIndependentHistoryDelete: async (sessionId: string) => {
-    const res = await fetch(
-      `${API_BASE}/api/cogs-audit/independent/history/${encodeURIComponent(sessionId)}`,
-      { method: 'DELETE' },
-    );
-    if (!res.ok && res.status !== 204) {
-      throw new Error(`API error ${res.status}: delete independent history`);
-    }
-  },
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),
 };
