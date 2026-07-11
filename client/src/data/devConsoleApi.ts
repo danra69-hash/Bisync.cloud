@@ -1,0 +1,95 @@
+export type DevUsageResponse = {
+  generatedAt: string;
+  source: string;
+  sourceNote: string;
+  overall: {
+    companies: number;
+    activeCompanies: number;
+    locations: number;
+    products: number;
+    components: number;
+    purchaseOrders: number;
+    salesOrders: number;
+    inventoryMovements: number;
+    activeUsers: number;
+    apiCalls30d: number;
+  };
+  trend14d: { date: string; apiCalls: number }[];
+  byCompany: {
+    companyId: number;
+    companyName: string;
+    active: boolean;
+    locations: number;
+    apiCalls30d: number;
+    activeUsers: number;
+  }[];
+  byLocation: {
+    locationExternalId: string;
+    locationName: string;
+    companyId: number | null;
+    companyName: string;
+    apiCalls30d: number;
+  }[];
+};
+
+export type DevQaHistoryRow = {
+  id: number;
+  startedAt: string;
+  finishedAt: string | null;
+  status: string;
+  triggeredBy: string;
+  summary: string;
+  resultsJson: string;
+};
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...init?.headers,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `API error ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const devConsoleApi = {
+  status: () => fetchJson<{ enabled: boolean; usageSource: string; environment: string }>('/api/dev-console/status'),
+  usage: () => fetchJson<DevUsageResponse>('/api/dev-console/usage'),
+  qaHistory: (take = 30) => fetchJson<DevQaHistoryRow[]>(`/api/dev-console/qa/history?take=${take}`),
+  startQaRun: (payload: { triggeredBy: string; status?: string; summary?: string; resultsJson?: string }) =>
+    fetchJson<{ id: number; startedAt: string; status: string }>('/api/dev-console/qa/runs', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  completeQaRun: (id: number, payload: { status: string; summary?: string; resultsJson?: string }) =>
+    fetchJson<{ id: number; status: string; finishedAt: string; summary: string }>(`/api/dev-console/qa/runs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  purgeQaData: (payload: { companyIds?: number[]; purgeAllQaPower?: boolean } = {}) =>
+    fetchJson<QaPurgeResult>('/api/dev-console/qa/cleanup', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+};
+
+export type QaPurgeResult = {
+  companiesDeleted: number;
+  companyNames: string[];
+  deletedCounts: Record<string, number>;
+  historyRowsKept: number;
+  note: string;
+};
+
+export async function purgeQaOperationalData(
+  payload: { companyIds?: number[]; purgeAllQaPower?: boolean } = {},
+): Promise<QaPurgeResult> {
+  return devConsoleApi.purgeQaData(payload);
+}

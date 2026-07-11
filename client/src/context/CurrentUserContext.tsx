@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, type AppUser } from '../api';
+import { REQUIRE_PLATFORM_LOGIN } from '../config/platformAuth';
 import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
 import {
   CurrentUserContext,
@@ -34,7 +35,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [currentUserId, setCurrentUserIdState] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(
-    () => localStorage.getItem(AUTH_KEY) === 'true',
+    () => !REQUIRE_PLATFORM_LOGIN || localStorage.getItem(AUTH_KEY) === 'true',
   );
 
   useEffect(() => {
@@ -43,7 +44,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         const active = list.filter(user => user.active);
         setUsers(active);
 
-        const authenticated = localStorage.getItem(AUTH_KEY) === 'true';
+        const authenticated = !REQUIRE_PLATFORM_LOGIN || localStorage.getItem(AUTH_KEY) === 'true';
         if (!authenticated) {
           setIsAuthenticated(false);
           setCurrentUserIdState(null);
@@ -54,7 +55,9 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         if (defaultId) {
           setCurrentUserIdState(defaultId);
           localStorage.setItem(STORAGE_KEY, String(defaultId));
+          if (!REQUIRE_PLATFORM_LOGIN) localStorage.setItem(AUTH_KEY, 'true');
           setIsAuthenticated(true);
+          markUserActivity();
         } else {
           localStorage.removeItem(AUTH_KEY);
           setIsAuthenticated(false);
@@ -87,13 +90,25 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    if (!REQUIRE_PLATFORM_LOGIN) {
+      // Auth paused — stay in-app on the default user instead of bouncing to landing.
+      const defaultId = resolveDefaultUserId(users);
+      if (defaultId) {
+        setCurrentUserIdState(defaultId);
+        localStorage.setItem(STORAGE_KEY, String(defaultId));
+        localStorage.setItem(AUTH_KEY, 'true');
+        setIsAuthenticated(true);
+        markUserActivity();
+        return;
+      }
+    }
     localStorage.removeItem(AUTH_KEY);
     clearUserActivity();
     setIsAuthenticated(false);
     setCurrentUserIdState(null);
-  }, []);
+  }, [users]);
 
-  useIdleLogout(isAuthenticated, logout);
+  useIdleLogout(REQUIRE_PLATFORM_LOGIN && isAuthenticated, logout);
 
   const currentUser = users.find(user => user.id === currentUserId) ?? null;
 

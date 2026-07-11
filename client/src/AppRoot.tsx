@@ -4,9 +4,12 @@ import { LandingPage } from './pages/LandingPage';
 import { VendorOrderPortalPage } from './pages/VendorOrderPortalPage';
 import { VendorRfqPortalPage } from './pages/VendorRfqPortalPage';
 import { SampleRequestPortalPage } from './pages/SampleRequestPortalPage';
+import { DevConsolePage } from './pages/DevConsolePage';
 import { parseVendorOrderToken } from './data/vendorOrderShare';
 import { parseVendorRfqToken } from './data/vendorRfqShare';
 import { parseSampleRequestToken } from './data/requestForSample';
+import { matchDevConsolePath } from './config/devConsole';
+import { REQUIRE_PLATFORM_LOGIN } from './config/platformAuth';
 
 function LoadingScreen() {
   return (
@@ -23,6 +26,7 @@ export function AppRoot() {
   const vendorToken = parseVendorOrderToken(window.location.pathname);
   const rfqToken = parseVendorRfqToken(window.location.pathname);
   const sampleRequestToken = parseSampleRequestToken(window.location.pathname);
+  const isDevConsole = matchDevConsolePath(window.location.pathname);
   const { isAuthenticated, loading } = useCurrentUser();
 
   if (vendorToken) {
@@ -34,10 +38,13 @@ export function AppRoot() {
   if (sampleRequestToken) {
     return <SampleRequestPortalPage token={sampleRequestToken} />;
   }
+  if (isDevConsole) {
+    return <DevConsolePage />;
+  }
   if (loading) {
     return <LoadingScreen />;
   }
-  if (!isAuthenticated) {
+  if (REQUIRE_PLATFORM_LOGIN && !isAuthenticated) {
     return <LandingPage />;
   }
   return <App />;

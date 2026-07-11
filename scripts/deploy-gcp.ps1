@@ -9,7 +9,10 @@ param(
     [string]$ServiceName = "bisync-cloud",
     [string]$RepoName = "bisync",
     [string]$SqlInstance = "bisync-pg",
-    [string]$DbUser = "postgres"
+    [string]$DbUser = "postgres",
+
+    # Hidden Dev Team console path baked into the SPA (e.g. /dev/ops-a7f3c9). Empty disables it.
+    [string]$DevConsolePath = ""
 )
 
 # gcloud writes progress/info to stderr; with "Stop" that aborts the script mid-deploy.
@@ -77,7 +80,27 @@ $Image = "${Region}-docker.pkg.dev/${ProjectId}/${RepoName}/${ServiceName}:lates
 
 Step "6" "Building container image with Cloud Build (5-10 min first time)"
 Write-Host "Image: $Image" -ForegroundColor Gray
-& $Gcloud builds submit --tag $Image .
+if ($DevConsolePath) {
+    Write-Host "Dev console path: $DevConsolePath" -ForegroundColor Gray
+} else {
+    Write-Host "Dev console path: (disabled)" -ForegroundColor Gray
+}
+$CloudbuildYaml = @"
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+    - 'build'
+    - '--build-arg'
+    - 'VITE_DEV_CONSOLE_PATH=$DevConsolePath'
+    - '-t'
+    - '$Image'
+    - '.'
+images:
+- '$Image'
+"@
+$Tmp = Join-Path $env:TEMP "bisync-cloudbuild-devconsole.yaml"
+Set-Content -Path $Tmp -Value $CloudbuildYaml -Encoding UTF8
+& $Gcloud builds submit --config $Tmp .
 if ($LASTEXITCODE -ne 0) { throw "Cloud Build failed." }
 Write-Host "Image built and pushed." -ForegroundColor Green
 
@@ -97,6 +120,8 @@ Step "8" "Deploying to Cloud Run service '$ServiceName'"
 $DefaultConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync;Username=${DbUser}"
 $ArchiveConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_archive;Username=${DbUser}"
 
+$DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
+
 & $Gcloud run deploy $ServiceName `
     --image $Image `
     --region $Region `
@@ -113,7 +138,8 @@ $ArchiveConn = "Host=/cloudsql/${InstanceConnectionName};Database=bisync_archive
     --set-secrets "DB_PASSWORD=bisync-db-password:latest" `
     --set-env-vars "ASPNETCORE_ENVIRONMENT=Production" `
     --set-env-vars "ConnectionStrings__DefaultConnection=$DefaultConn" `
-    --set-env-vars "ConnectionStrings__ArchiveConnection=$ArchiveConn"
+    --set-env-vars "ConnectionStrings__ArchiveConnection=$ArchiveConn" `
+    --set-env-vars "DEV_CONSOLE_ENABLED=$DevConsoleEnabled"
 if ($LASTEXITCODE -ne 0) { throw "Cloud Run deploy failed." }
 
 Step "9" "Deployment complete"
@@ -121,9 +147,13 @@ $Url = & $Gcloud run services describe $ServiceName --region $Region --format="v
 Write-Host ""
 Write-Host "  Live URL:  $Url" -ForegroundColor Green
 Write-Host "  Health:    $Url/api/health" -ForegroundColor Green
+if ($DevConsolePath) {
+    Write-Host "  Dev console: $Url$DevConsolePath" -ForegroundColor Green
+    Write-Host "  (Dev Team / Super Admin login required; not linked in the app nav)" -ForegroundColor Yellow
+}
 Write-Host ""
 Write-Host "Notes:" -ForegroundColor Yellow
 Write-Host "  - Backed by Cloud SQL PostgreSQL instance '$SqlInstance' ($InstanceConnectionName)."
 Write-Host "  - DB password is stored in Secret Manager secret 'bisync-db-password'."
-Write-Host "  - Redeploy: .\scripts\deploy-gcp.ps1 -ProjectId $ProjectId"
+Write-Host "  - Redeploy: .\scripts\deploy-gcp.ps1 -ProjectId $ProjectId [-DevConsolePath '/dev/ops-secret']"
 Write-Host ""

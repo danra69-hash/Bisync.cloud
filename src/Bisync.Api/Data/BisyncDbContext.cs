@@ -66,6 +66,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<QuoteRequestVendor> QuoteRequestVendors => Set<QuoteRequestVendor>();
     public DbSet<QuoteRequestLine> QuoteRequestLines => Set<QuoteRequestLine>();
     public DbSet<SampleRequest> SampleRequests => Set<SampleRequest>();
+    public DbSet<DevQaRun> DevQaRuns => Set<DevQaRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
