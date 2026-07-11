@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, FileUp, History, Search, Trash2, X } from 'lucide-react';
 import {
   api,
@@ -370,28 +370,28 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
           </button>
           {detail && (
             <p className="text-sm font-medium">
-              {detail.name} · {detail.itemKey} · {detail.uom}
+              {detail.name} Â· {detail.itemKey} Â· {detail.uom}
             </p>
           )}
         </div>
 
-        {detailLoading && <p className="text-xs text-muted-foreground">Loading dated FIFO ledger…</p>}
+        {detailLoading && <p className="text-xs text-muted-foreground">Loading dated FIFO ledgerâ€¦</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}
 
         {detail && !detailLoading && (
           <>
             <p className="text-xs text-muted-foreground">
-              {formatStockCardMonthLabel(detail.periodMonth, detail.isCurrentMonth)} · {detail.fifoPolicy} · Debit=+ ·
-              Credit=− · {detail.canvasLineCount} lines
-              {isIndependent ? ' · Independent CSV audit' : ''}
+              {formatStockCardMonthLabel(detail.periodMonth, detail.isCurrentMonth)} Â· {detail.fifoPolicy} Â· Debit=+ Â·
+              Credit=âˆ’ Â· {detail.canvasLineCount} lines
+              {isIndependent ? ' Â· Independent CSV audit' : ''}
             </p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Metric label="Open qty" value={fmt2(detail.summary.openQty, countryCode)} />
               <Metric label="Debit qty (+)" value={fmt2(detail.summary.debitQty, countryCode)} />
-              <Metric label="Credit qty (−)" value={fmt2(detail.summary.creditQty, countryCode)} />
+              <Metric label="Credit qty (âˆ’)" value={fmt2(detail.summary.creditQty, countryCode)} />
               <Metric label="Close qty" value={fmt2(detail.summary.closeQty, countryCode)} />
               <Metric label="ME Debit (+)" value={fmt2(detail.summary.meDebitQty, countryCode)} />
-              <Metric label="ME Credit (−)" value={fmt2(detail.summary.meCreditQty, countryCode)} />
+              <Metric label="ME Credit (âˆ’)" value={fmt2(detail.summary.meCreditQty, countryCode)} />
               <Metric label="Shortage qty" value={fmt2(detail.summary.shortageQty, countryCode)} />
               <Metric label="Shortage value" value={fmt2(detail.summary.shortageVal, countryCode)} />
             </div>
@@ -406,7 +406,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
                     <th className="px-2 py-2 font-medium">Ref</th>
                     <th className="px-2 py-2 font-medium">Remark</th>
                     <th className="px-2 py-2 font-medium text-right">Debit (+)</th>
-                    <th className="px-2 py-2 font-medium text-right">Credit (−)</th>
+                    <th className="px-2 py-2 font-medium text-right">Credit (âˆ’)</th>
                     <th className="px-2 py-2 font-medium text-right">UnitPrice</th>
                     <th className="px-2 py-2 font-medium text-right">FIFO value</th>
                     <th className="px-2 py-2 font-medium text-right">Running qty</th>
@@ -478,7 +478,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search code, id, name…"
+            placeholder="Search code, id, nameâ€¦"
             className={`${inputCls} w-full pl-8`}
           />
         </div>
@@ -513,8 +513,8 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
 
       {isSystemHistoryView && (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          System history · <span className="font-medium text-foreground">{systemViewLabel}</span>
-          {' · '}Company / Location / Month / Year snapshot (read-only).
+          System history Â· <span className="font-medium text-foreground">{systemViewLabel}</span>
+          {' Â· '}Company / Location / Month / Year snapshot (read-only).
         </p>
       )}
 
@@ -522,7 +522,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
         <div className="space-y-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           <p>
             Independent audit from <span className="font-medium text-foreground">{independentFileName}</span>
-            {' · '}Month {period}. Click an Id for the dated FIFO ledger.
+            {' Â· '}Month {period}. Click an Id for the dated FIFO ledger.
           </p>
           {independentConvention && (
             <p className="text-foreground">
@@ -530,15 +530,15 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
             </p>
           )}
           <p>
-            Analysis uses Debit = stock in (+), Credit = stock out (−) after normalization.
-            {savedToHistory ? ' · Saved to History.' : ' · Not saved to History.'}
+            Analysis uses Debit = stock in (+), Credit = stock out (âˆ’) after normalization.
+            {savedToHistory ? ' Â· Saved to History.' : ' Â· Not saved to History.'}
           </p>
         </div>
       )}
 
       {!isIndependent && (
         <p className="text-xs text-muted-foreground">
-          FIFO period audit for smart components (last 24 months). Debit = stock in (+), Credit = stock out (−). Click an
+          FIFO period audit for smart components (last 24 months). Debit = stock in (+), Credit = stock out (âˆ’). Click an
           Id to open the dated ledger. Use Independent Audit to upload an external CSV ledger. History keeps past
           independent runs.
         </p>
@@ -560,7 +560,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
       )}
       {historyPanel}
 
-      {loading && <p className="text-xs text-muted-foreground">Loading summary…</p>}
+      {loading && <p className="text-xs text-muted-foreground">Loading summaryâ€¦</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       {summary && !loading && (
@@ -568,7 +568,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Metric label="Opening value" value={fmt2(summary.openingValue, countryCode)} />
             <Metric label="Before inventory value" value={fmt2(summary.beforeInventoryValue, countryCode)} />
-            <Metric label="Credit COGS (−)" value={fmt2(summary.creditCogsBeforeInventory, countryCode)} />
+            <Metric label="Credit COGS (âˆ’)" value={fmt2(summary.creditCogsBeforeInventory, countryCode)} />
             <Metric label="Closing value" value={fmt2(summary.closingValue, countryCode)} />
             <Metric label="Shortage qty" value={fmt2(summary.shortageQty, countryCode)} />
             <Metric label="Shortage value" value={fmt2(summary.shortageValue, countryCode)} />
@@ -577,7 +577,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Showing {visibleCount} of {totalCount} · signed summary (Debit +, Credit −)
+            Showing {visibleCount} of {totalCount} Â· signed summary (Debit +, Credit âˆ’)
           </p>
 
           <TableScrollContainer ref={scrollRootRef} className="max-h-[min(70vh,640px)]">
@@ -592,11 +592,11 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
                   <th className="px-2 py-2 font-medium text-right">Open val</th>
                   <th className="px-2 py-2 font-medium text-right">Debit qty (+)</th>
                   <th className="px-2 py-2 font-medium text-right">Debit val (+)</th>
-                  <th className="px-2 py-2 font-medium text-right">Credit qty (−)</th>
-                  <th className="px-2 py-2 font-medium text-right">Credit COGS (−)</th>
+                  <th className="px-2 py-2 font-medium text-right">Credit qty (âˆ’)</th>
+                  <th className="px-2 py-2 font-medium text-right">Credit COGS (âˆ’)</th>
                   <th className="px-2 py-2 font-medium text-right">Before inv qty</th>
                   <th className="px-2 py-2 font-medium text-right">ME Debit (+)</th>
-                  <th className="px-2 py-2 font-medium text-right">ME Credit (−)</th>
+                  <th className="px-2 py-2 font-medium text-right">ME Credit (âˆ’)</th>
                   <th className="px-2 py-2 font-medium text-right">Close qty</th>
                   <th className="px-2 py-2 font-medium text-right">Shortage qty</th>
                   <th className="px-2 py-2 font-medium text-right">Shortage val</th>
@@ -635,7 +635,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
                 ))}
               </tbody>
             </table>
-            <InfiniteScrollTableSentinel ref={sentinelRef} hasMore={hasMore} />
+            <InfiniteScrollTableSentinel colSpan={16} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </TableScrollContainer>
         </>
       )}
@@ -709,7 +709,7 @@ function HistoryPanel({
         </button>
       </div>
 
-      {loading && <p className="text-xs text-muted-foreground">Loading history…</p>}
+      {loading && <p className="text-xs text-muted-foreground">Loading historyâ€¦</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       {tab === 'system' && !loading && systemRows.length === 0 && (
@@ -859,7 +859,7 @@ function IndependentUploadPanel({
           <h3 className="text-sm font-semibold">Independent Audit</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             Upload an ingredient stock-ledger CSV. A CSV file is required. Before analysis, Debit/Credit signs are
-            checked against Open/Close balance (Debit=+ in vs Credit=− out, or swapped) and normalized. Select the audit
+            checked against Open/Close balance (Debit=+ in vs Credit=âˆ’ out, or swapped) and normalized. Select the audit
             month (last 24 months), then run.
           </p>
         </div>
@@ -897,7 +897,7 @@ function IndependentUploadPanel({
             onChange={e => onFileChange(e.target.files?.[0] ?? null)}
           />
           {!file && (
-            <p className="text-[11px] text-muted-foreground">Required — choose a .csv ledger export to continue.</p>
+            <p className="text-[11px] text-muted-foreground">Required â€” choose a .csv ledger export to continue.</p>
           )}
           {file && (
             <p className="text-[11px] text-foreground">
@@ -917,7 +917,7 @@ function IndependentUploadPanel({
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <FileUp className="h-3.5 w-3.5" />
-          {uploading ? 'Running audit…' : 'Run Independent Audit'}
+          {uploading ? 'Running auditâ€¦' : 'Run Independent Audit'}
         </button>
         <button
           type="button"
