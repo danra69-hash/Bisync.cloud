@@ -516,6 +516,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   <th className="text-left px-2 py-1.5 w-16">UOM</th>
                   <th className="text-right px-2 py-1.5 w-24">Unit price</th>
                   <th className="text-right px-2 py-1.5 w-24">Total value</th>
+                  <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
                   <th className="text-right px-2 py-1.5 w-44">Action</th>
                 </tr>
               </thead>
@@ -538,6 +539,9 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                     <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(row.unitPrice)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
                       {formatMoney(row.totalValue ?? (row.unitPrice ?? 0) * row.quantity)}
+                    </td>
+                    <td className="px-2 py-1.5 truncate" title={row.initiatedBy || undefined}>
+                      {row.initiatedBy?.trim() || '—'}
                     </td>
                     <td className="px-2 py-1.5 text-right">
                       <div className="inline-flex items-center gap-1.5">
@@ -732,18 +736,20 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                 <th className="text-left px-2 py-1.5 w-14">UOM</th>
                 <th className="text-right px-2 py-1.5 w-24">Unit price</th>
                 <th className="text-right px-2 py-1.5 w-24">Total value</th>
+                <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
+                <th className="text-left px-2 py-1.5 w-28">Received by</th>
                 <th className="text-left px-2 py-1.5 w-28">Status</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
+                  <td colSpan={12} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
                 </tr>
               )}
               {!loading && visibleItems.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground text-xs">
+                  <td colSpan={12} className="px-3 py-6 text-center text-muted-foreground text-xs">
                     No transfers in this month.
                   </td>
                 </tr>
@@ -767,6 +773,12 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   <td className="px-2 py-1.5">{row.uom}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(unitPrice)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums font-medium">{formatMoney(total)}</td>
+                  <td className="px-2 py-1.5 truncate" title={row.initiatedBy || undefined}>
+                    {row.initiatedBy?.trim() || '—'}
+                  </td>
+                  <td className="px-2 py-1.5 truncate" title={row.receivedBy || undefined}>
+                    {row.receivedBy?.trim() || '—'}
+                  </td>
                   <td className="px-2 py-1.5 text-xs">
                     <span
                       className={
