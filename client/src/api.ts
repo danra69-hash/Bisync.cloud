@@ -1060,6 +1060,45 @@ export interface CreateCashPurchaseResult {
   inventoryPurchase: InventoryPurchase;
 }
 
+export interface WastageEntry {
+  id: number;
+  companyId?: number | null;
+  locationExternalId: string;
+  source: 'manual' | 'pos' | string;
+  itemType: 'component' | 'product' | 'sub-product' | string;
+  itemKey: string;
+  itemName: string;
+  quantity: number;
+  uom: string;
+  wastedDate: string;
+  reason: string;
+  posCheckNo?: string | null;
+  isPos: boolean;
+  createdAt: string;
+}
+
+export interface CreateWastagePayload {
+  companyId?: number | null;
+  locationExternalId: string;
+  itemType: 'component' | 'product' | 'sub-product';
+  itemKey: string;
+  itemName?: string;
+  quantity: number;
+  uom: string;
+  wastedDate: string;
+  reason: string;
+}
+
+export interface CreatePosWastagePayload {
+  companyId?: number | null;
+  locationExternalId: string;
+  productId: number;
+  quantity: number;
+  checkNo?: string;
+  reason?: string;
+  wastedDate?: string;
+}
+
 export interface OrderTemplateItem {
   id?: number;
   componentId: string;
@@ -1758,6 +1797,25 @@ export const api = {
     fetchJson<CashPurchase[]>(`/api/cashpurchases${companyId ? `?companyId=${companyId}` : ''}`),
   createCashPurchase: (payload: CreateCashPurchasePayload) =>
     fetchJsonWithMethod<CreateCashPurchaseResult>('/api/cashpurchases', 'POST', payload),
+  wastageEntries: (companyId: number | undefined, locationIds: string[], month?: string) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (month) params.set('month', month);
+    const query = params.toString();
+    return fetchJson<WastageEntry[]>(`/api/wastage${query ? `?${query}` : ''}`);
+  },
+  wastageReasons: (companyId?: number, q?: string) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (q?.trim()) params.set('q', q.trim());
+    const query = params.toString();
+    return fetchJson<string[]>(`/api/wastage/reasons${query ? `?${query}` : ''}`);
+  },
+  createWastage: (payload: CreateWastagePayload) =>
+    fetchJsonWithMethod<WastageEntry>('/api/wastage', 'POST', payload),
+  createPosWastage: (payload: CreatePosWastagePayload) =>
+    fetchJsonWithMethod<WastageEntry>('/api/wastage/pos', 'POST', payload),
   orderTemplates: (companyId?: number) =>
     fetchJson<OrderTemplate[]>(`/api/ordertemplates${companyId ? `?companyId=${companyId}` : ''}`),
   orderTemplate: (id: number) => fetchJson<OrderTemplate>(`/api/ordertemplates/${id}`),

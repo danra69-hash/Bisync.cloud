@@ -137,7 +137,7 @@ export function DevConsolePage() {
       <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <BrandEngineLockup size="sm" />
+            <BrandEngineLockup size="sm" tone="onLight" />
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-sans">
                 Hidden · Dev Team{!REQUIRE_DEV_CONSOLE_LOGIN ? ' · auth paused' : ''}

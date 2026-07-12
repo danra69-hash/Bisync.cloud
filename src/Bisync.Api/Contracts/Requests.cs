@@ -1214,3 +1214,42 @@ public class AcceptSampleRequestPortalDto
     [MaxLength(200)]
     public string? AcceptedBy { get; set; }
 }
+
+public class CreateWastageRequest
+{
+    public int? CompanyId { get; set; }
+    [Required, MaxLength(100)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    /// <summary>component | product | sub-product</summary>
+    [Required, MaxLength(30)]
+    public string ItemType { get; set; } = "component";
+    [Required, MaxLength(80)]
+    public string ItemKey { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ItemName { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    [Required, MaxLength(50)]
+    public string Uom { get; set; } = string.Empty;
+    [Required, MaxLength(20)]
+    public string WastedDate { get; set; } = string.Empty;
+    [Required, MaxLength(300)]
+    public string Reason { get; set; } = string.Empty;
+}
+
+public class CreatePosWastageRequest
+{
+    public int? CompanyId { get; set; }
+    [Required, MaxLength(100)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    [MaxLength(80)]
+    public string? CheckNo { get; set; }
+    [MaxLength(300)]
+    public string? Reason { get; set; }
+    [MaxLength(20)]
+    public string? WastedDate { get; set; }
+}

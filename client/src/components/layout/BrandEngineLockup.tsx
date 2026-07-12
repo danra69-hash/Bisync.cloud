@@ -1,28 +1,54 @@
 /** Shared Bisync.cloud ↔ Pasar.ai lockup — same engine, cross-platform. */
 
+const HERME = '#F37021';
+
+type Tone = 'onDark' | 'onLight';
+
 type Props = {
   className?: string;
   /** Compact for app chrome; roomier for landing. */
   size?: 'sm' | 'md';
   showBisyncWordmark?: boolean;
+  /**
+   * onDark — white wordmark (Header / Sidebar #2C1A0A).
+   * onLight — near-black wordmark (Dev Console / light cards).
+   */
+  tone?: Tone;
 };
 
-/** White + teal wordmark — best contrast on Bisync dark chrome (#2C1A0A). */
-export function PasarAiLogo({ className = '', size = 'sm' }: { className?: string; size?: 'sm' | 'md' }) {
+function wordmarkClass(tone: Tone) {
+  return tone === 'onLight' ? 'text-[#2C1A0A]' : 'text-white';
+}
+
+function mutedStrokeClass(tone: Tone) {
+  return tone === 'onLight' ? 'text-[#2C1A0A]/55' : 'text-white/55';
+}
+
+/** Hermes-accented .ai + contrast-aware "pasar" wordmark. */
+export function PasarAiLogo({
+  className = '',
+  size = 'sm',
+  tone = 'onDark',
+}: {
+  className?: string;
+  size?: 'sm' | 'md';
+  tone?: Tone;
+}) {
   const textCls = size === 'sm' ? 'text-sm' : 'text-xl';
   return (
     <span
       className={`inline-flex items-baseline font-bold tracking-tight leading-none ${textCls} ${className}`}
       aria-label="Pasar.ai"
     >
-      <span className="text-white">pasar</span>
-      <span style={{ color: '#00B09B' }}>.ai</span>
+      <span className={wordmarkClass(tone)}>pasar</span>
+      <span style={{ color: HERME }}>.ai</span>
     </span>
   );
 }
 
-function SyncArrow({ size = 'sm' }: { size?: 'sm' | 'md' }) {
+function SyncArrow({ size = 'sm', tone = 'onDark' }: { size?: 'sm' | 'md'; tone?: Tone }) {
   const dim = size === 'sm' ? 18 : 28;
+  const muted = mutedStrokeClass(tone);
   return (
     <span
       className="relative inline-flex items-center justify-center shrink-0"
@@ -42,7 +68,7 @@ function SyncArrow({ size = 'sm' }: { size?: 'sm' | 'md' }) {
           stroke="currentColor"
           strokeWidth="1.6"
           strokeLinecap="round"
-          className="text-white/55"
+          className={muted}
         />
         <path
           d="M19 1.5 L23.5 4.5 L19 7.5"
@@ -51,7 +77,7 @@ function SyncArrow({ size = 'sm' }: { size?: 'sm' | 'md' }) {
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
-          className="text-[#00B09B]"
+          className="text-herme"
         />
         {/* Bottom: Pasar → Bisync */}
         <path
@@ -59,7 +85,7 @@ function SyncArrow({ size = 'sm' }: { size?: 'sm' | 'md' }) {
           stroke="currentColor"
           strokeWidth="1.6"
           strokeLinecap="round"
-          className="text-white/55"
+          className={muted}
         />
         <path
           d="M9 6.5 L4.5 9.5 L9 12.5"
@@ -68,7 +94,7 @@ function SyncArrow({ size = 'sm' }: { size?: 'sm' | 'md' }) {
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
-          className="text-[#00B09B]"
+          className="text-herme"
         />
       </svg>
       {/* Traveling pulse dots */}
@@ -80,12 +106,13 @@ function SyncArrow({ size = 'sm' }: { size?: 'sm' | 'md' }) {
 
 /**
  * Bisync.cloud ↔ Pasar.ai — continuous sync animation.
- * Place after the Bisync wordmark in dark chrome headers.
+ * "cloud" and ".ai" use Hermes orange; use tone="onLight" on light backgrounds.
  */
 export function BrandEngineLockup({
   className = '',
   size = 'sm',
   showBisyncWordmark = true,
+  tone = 'onDark',
 }: Props) {
   const bisyncCls = size === 'sm' ? 'text-sm' : 'text-xl';
   return (
@@ -94,12 +121,12 @@ export function BrandEngineLockup({
       title="Bisync.cloud and Pasar.ai share the same engine"
     >
       {showBisyncWordmark ? (
-        <span className={`text-white font-bold tracking-tight leading-none ${bisyncCls} shrink-0`}>
-          Bisync.cloud
+        <span className={`${wordmarkClass(tone)} font-bold tracking-tight leading-none ${bisyncCls} shrink-0`}>
+          Bisync.<span style={{ color: HERME }}>cloud</span>
         </span>
       ) : null}
-      <SyncArrow size={size} />
-      <PasarAiLogo size={size} className="shrink-0" />
+      <SyncArrow size={size} tone={tone} />
+      <PasarAiLogo size={size} tone={tone} className="shrink-0" />
     </div>
   );
 }

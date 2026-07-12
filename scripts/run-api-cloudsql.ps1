@@ -17,7 +17,28 @@ if (-not (Test-Path $Gcloud)) {
 $Root = Split-Path $PSScriptRoot -Parent
 
 Write-Host "Authorizing current public IP for Cloud SQL access..." -ForegroundColor Cyan
-$publicIp = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
+$publicIp = $null
+foreach ($url in @(
+    "https://checkip.amazonaws.com",
+    "https://api.ipify.org",
+    "https://ifconfig.me/ip",
+    "https://icanhazip.com"
+)) {
+    try {
+        $candidate = (Invoke-RestMethod -Uri $url -TimeoutSec 10).ToString().Trim()
+        # Prefer IPv4 — Cloud SQL authorized-networks expects IPv4 CIDR
+        if ($candidate -match '^\d{1,3}(\.\d{1,3}){3}$') {
+            $publicIp = $candidate
+            break
+        }
+    } catch {
+        # try next provider
+    }
+}
+if (-not $publicIp) {
+    throw "Could not detect public IPv4. Check internet access, then re-run this script."
+}
+Write-Host "Public IP: $publicIp" -ForegroundColor Gray
 & $Gcloud sql instances patch $SqlInstance --authorized-networks="$publicIp/32" --quiet
 if ($LASTEXITCODE -ne 0) { throw "Failed to authorize network on Cloud SQL." }
 

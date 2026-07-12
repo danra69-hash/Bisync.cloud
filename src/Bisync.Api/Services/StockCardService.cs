@@ -907,7 +907,7 @@ public class StockCardService(
             .Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             .Sum(l => l.Quantity);
         var outbound = monthLogs
-            .Where(l => IsProductSaleEntryType(l.EntryType))
+            .Where(l => IsProductSaleEntryType(l.EntryType) || IsProductWastageEntryType(l.EntryType))
             .Sum(l => l.Quantity);
         var adjustment = monthLogs
             .Where(l => IsProductAdjustmentEntryType(l.EntryType))
@@ -993,7 +993,7 @@ public class StockCardService(
                 continue;
             }
 
-            if (IsProductSaleEntryType(log.EntryType))
+            if (IsProductSaleEntryType(log.EntryType) || IsProductWastageEntryType(log.EntryType))
             {
                 var entryType = log.EntryType.Trim().ToLowerInvariant();
                 events.Add(new FifoEvent
@@ -1203,6 +1203,12 @@ public class StockCardService(
         return normalized is "pos_sale" or "online_order" or "offline_order";
     }
 
+    static bool IsProductWastageEntryType(string entryType)
+    {
+        var normalized = entryType.Trim().ToLowerInvariant();
+        return normalized is "wastage";
+    }
+
     static bool IsProductAdjustmentEntryType(string entryType)
     {
         var normalized = entryType.Trim().ToLowerInvariant();
@@ -1215,6 +1221,7 @@ public class StockCardService(
         {
             "online_order" => $"Online order — {productName}",
             "offline_order" => $"Offline order — {productName}",
+            "wastage" => $"Wastage — {productName}",
             _ => $"POS sales — {productName}",
         };
     }

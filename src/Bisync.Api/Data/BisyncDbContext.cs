@@ -68,6 +68,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<SampleRequest> SampleRequests => Set<SampleRequest>();
     public DbSet<DevQaRun> DevQaRuns => Set<DevQaRun>();
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
+    public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -126,6 +127,20 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.CompanyId).IsUnique();
             e.Property(x => x.DatabaseName).HasMaxLength(128);
             e.Property(x => x.ConnectionString).HasMaxLength(2000);
+        });
+        modelBuilder.Entity<WastageEntry>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.WastedDate });
+            e.HasIndex(x => x.LocationExternalId);
+            e.Property(x => x.Source).HasMaxLength(20);
+            e.Property(x => x.ItemType).HasMaxLength(30);
+            e.Property(x => x.ItemKey).HasMaxLength(80);
+            e.Property(x => x.ItemName).HasMaxLength(200);
+            e.Property(x => x.Uom).HasMaxLength(50);
+            e.Property(x => x.Reason).HasMaxLength(300);
+            e.Property(x => x.PosCheckNo).HasMaxLength(80);
+            e.Property(x => x.LocationExternalId).HasMaxLength(100);
         });
         modelBuilder.Entity<PurchaseOrder>().HasIndex(p => p.PoNumber).IsUnique();
         modelBuilder.Entity<PurchaseOrder>()
