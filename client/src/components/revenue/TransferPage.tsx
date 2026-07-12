@@ -119,6 +119,7 @@ function statusLabel(status: string) {
   const s = (status || '').toLowerCase();
   if (s === 'pending') return 'Pending receive';
   if (s === 'received') return 'Received';
+  if (s === 'rejected') return 'Rejected';
   if (s === 'cancelled') return 'Cancelled';
   return status || '—';
 }
@@ -139,6 +140,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
   const [info, setInfo] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [receivingId, setReceivingId] = useState<number | null>(null);
+  const [receiveTarget, setReceiveTarget] = useState<TransferEntry | null>(null);
+  const [receiveQty, setReceiveQty] = useState('');
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -361,6 +364,10 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!currentUser?.fullName?.trim()) {
+      setError('Log in to initiate a transfer. Initiated by is set from your logged-in account.');
+      return;
+    }
     if (!selectedCompanyId || !fromLocationId || !toLocationId || !selected) {
       setError('Select company, from/to locations, and an item.');
       return;
@@ -397,14 +404,14 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         quantity: qty,
         uom: uom.trim(),
         transferDate,
-        initiatedBy: currentUser?.fullName,
+        initiatedBy: currentUser.fullName.trim(),
       });
       setQuantity('');
       setSelected(null);
       setItemSearch('');
       setCatalogOpen(false);
       setInfo(
-        `Transfer XFR-${entry.id} initiated. ${locationNameById.get(toLocationId) ?? toLocationId} has been alerted to confirm receive.`,
+        `Transfer XFR-${entry.id} initiated by ${currentUser.fullName.trim()}. ${locationNameById.get(toLocationId) ?? toLocationId} has been alerted to confirm receive.`,
       );
       await loadRows();
     } catch (err) {
@@ -414,21 +421,49 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
     }
   }
 
-  async function confirmReceive(row: TransferEntry) {
-    if (!selectedCompanyId) return;
-    setReceivingId(row.id);
+  function openReceive(row: TransferEntry) {
+    if (row.status !== 'pending') return;
+    setReceiveTarget(row);
+    setReceiveQty(String(row.quantity));
+    setError(null);
+    setInfo(null);
+  }
+
+  function closeReceive() {
+    setReceiveTarget(null);
+    setReceiveQty('');
+  }
+
+  async function confirmReceive() {
+    if (!selectedCompanyId || !receiveTarget) return;
+    if (!currentUser?.fullName?.trim()) {
+      setError('Log in to confirm receive. Received by is set from your logged-in account.');
+      return;
+    }
+    const qty = Number(receiveQty);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError('Enter a received quantity greater than zero.');
+      return;
+    }
+    if (qty > receiveTarget.quantity) {
+      setError(`Received quantity cannot exceed initiated (${receiveTarget.quantity} ${receiveTarget.uom}).`);
+      return;
+    }
+
+    setReceivingId(receiveTarget.id);
     setError(null);
     setInfo(null);
     try {
-      await api.receiveTransfer(row.id, {
+      await api.receiveTransfer(receiveTarget.id, {
         companyId: selectedCompanyId,
-        receivedBy: currentUser?.fullName,
-        receivedQuantity: row.quantity,
+        receivedBy: currentUser.fullName.trim(),
+        receivedQuantity: qty,
         receivedDate: toDateInputValue(new Date()),
       });
       setInfo(
-        `Received XFR-${row.id}: ${row.quantity} ${row.uom} ${row.itemName} reconciled into inbound at ${locationNameById.get(row.toLocationExternalId) ?? row.toLocationExternalId}. Source stock depleted.`,
+        `Received XFR-${receiveTarget.id}: ${qty} ${receiveTarget.uom} ${receiveTarget.itemName} by ${currentUser.fullName.trim()}. Source stock depleted; inbound reconciled.`,
       );
+      closeReceive();
       await loadRows();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to confirm receive.');
@@ -437,16 +472,28 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
     }
   }
 
-  async function cancelPending(row: TransferEntry) {
-    if (!selectedCompanyId) return;
-    setReceivingId(row.id);
+  async function rejectPending() {
+    if (!selectedCompanyId || !receiveTarget) return;
+    if (!currentUser?.fullName?.trim()) {
+      setError('Log in to reject a transfer. Rejected by is set from your logged-in account.');
+      return;
+    }
+
+    setReceivingId(receiveTarget.id);
     setError(null);
+    setInfo(null);
     try {
-      await api.cancelTransfer(row.id, selectedCompanyId);
-      setInfo(`Cancelled XFR-${row.id}.`);
+      await api.rejectTransfer(receiveTarget.id, {
+        companyId: selectedCompanyId,
+        rejectedBy: currentUser.fullName.trim(),
+      });
+      setInfo(
+        `Rejected XFR-${receiveTarget.id} by ${currentUser.fullName.trim()}. Stock remains available at ${locationNameById.get(receiveTarget.fromLocationExternalId) ?? receiveTarget.fromLocationExternalId}.`,
+      );
+      closeReceive();
       await loadRows();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel transfer.');
+      setError(err instanceof Error ? err.message : 'Failed to reject transfer.');
     } finally {
       setReceivingId(null);
     }
@@ -466,7 +513,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         <div>
           <h2 className="text-base font-semibold">Transfer</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Initiate outbound transfer · receiving location confirms and reconciles inbound · 2-year live history
+            Initiate as your logged-in user · receiving user confirms (adjust qty) · FIFO/recipe cost · 2-year live history
           </p>
         </div>
         <label className="text-xs">
@@ -496,10 +543,78 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         </div>
       )}
 
+      {receiveTarget && (
+        <div className="rounded-lg border border-primary/40 bg-primary/5 p-3 sm:p-4 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold">Confirm receive · XFR-{receiveTarget.id}</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {receiveTarget.itemName} · initiated {receiveTarget.quantity} {receiveTarget.uom} from{' '}
+                {locationNameById.get(receiveTarget.fromLocationExternalId) ?? receiveTarget.fromLocationExternalId}
+                {' → '}
+                {locationNameById.get(receiveTarget.toLocationExternalId) ?? receiveTarget.toLocationExternalId}
+                {receiveTarget.initiatedBy?.trim() ? ` · by ${receiveTarget.initiatedBy.trim()}` : ''}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Received by will be recorded as {currentUser?.fullName?.trim() || '(log in required)'}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeReceive}
+              className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/50"
+            >
+              Close
+            </button>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs min-w-[8rem]">
+              <span className={labelCls}>Received qty ({receiveTarget.uom})</span>
+              <input
+                type="number"
+                min="0.0001"
+                max={receiveTarget.quantity}
+                step="any"
+                className={fieldCls}
+                value={receiveQty}
+                onChange={e => setReceiveQty(e.target.value)}
+                autoFocus
+              />
+            </label>
+            <div className="text-xs text-muted-foreground pb-2">
+              Max {receiveTarget.quantity} {receiveTarget.uom}
+              {receiveTarget.unitPrice != null && receiveTarget.unitPrice > 0 && (
+                <> · est. value {formatMoney((Number(receiveQty) || 0) * receiveTarget.unitPrice)}</>
+              )}
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                disabled={receivingId === receiveTarget.id || !currentUser?.fullName?.trim()}
+                onClick={() => void rejectPending()}
+                className="inline-flex items-center gap-1 rounded-md border border-destructive/40 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
+              >
+                <X size={14} />
+                {receivingId === receiveTarget.id ? '…' : 'Reject'}
+              </button>
+              <button
+                type="button"
+                disabled={receivingId === receiveTarget.id || !currentUser?.fullName?.trim()}
+                onClick={() => void confirmReceive()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              >
+                <Check size={14} />
+                {receivingId === receiveTarget.id ? 'Receiving…' : 'Confirm receive'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pendingInbound.length > 0 && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 overflow-hidden">
           <div className="px-3 py-2 border-b border-amber-500/20 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">Pending inbound · confirm receive</h3>
+            <h3 className="text-sm font-semibold">Pending inbound · click a line to adjust qty and confirm</h3>
             <span className="text-[11px] text-muted-foreground">
               {pendingInbound.length} awaiting
             </span>
@@ -517,12 +632,17 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   <th className="text-right px-2 py-1.5 w-24">Unit price</th>
                   <th className="text-right px-2 py-1.5 w-24">Total value</th>
                   <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
-                  <th className="text-right px-2 py-1.5 w-44">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {pendingInbound.map(row => (
-                  <tr key={row.id} className="border-b border-border/40">
+                  <tr
+                    key={row.id}
+                    className={`border-b border-border/40 cursor-pointer ${
+                      receiveTarget?.id === row.id ? 'bg-primary/10' : 'hover:bg-amber-500/10'
+                    }`}
+                    onClick={() => openReceive(row)}
+                  >
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatTransferDate(row.transferDate)}</td>
                     <td className="px-2 py-1.5 truncate">
                       {locationNameById.get(row.fromLocationExternalId) ?? row.fromLocationExternalId}
@@ -542,28 +662,6 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                     </td>
                     <td className="px-2 py-1.5 truncate" title={row.initiatedBy || undefined}>
                       {row.initiatedBy?.trim() || '—'}
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          disabled={receivingId === row.id}
-                          onClick={() => void confirmReceive(row)}
-                          className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
-                        >
-                          <Check size={12} />
-                          {receivingId === row.id ? '…' : 'Confirm receive'}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={receivingId === row.id}
-                          onClick={() => void cancelPending(row)}
-                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/50 disabled:opacity-50"
-                          title="Cancel pending transfer"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))}
@@ -737,7 +835,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                 <th className="text-right px-2 py-1.5 w-24">Unit price</th>
                 <th className="text-right px-2 py-1.5 w-24">Total value</th>
                 <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
-                <th className="text-left px-2 py-1.5 w-28">Received by</th>
+                <th className="text-left px-2 py-1.5 w-28">Received / Rejected by</th>
                 <th className="text-left px-2 py-1.5 w-28">Status</th>
               </tr>
             </thead>
@@ -758,8 +856,25 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                 const qty = row.receivedQuantity ?? row.quantity;
                 const unitPrice = row.unitPrice ?? 0;
                 const total = row.totalValue ?? unitPrice * qty;
+                const isPending = row.status === 'pending';
+                const actedBy = row.status === 'rejected'
+                  ? (row.rejectedBy?.trim() || '—')
+                  : (row.receivedBy?.trim() || '—');
                 return (
-                <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
+                <tr
+                  key={row.id}
+                  className={`border-b border-border/60 ${
+                    isPending
+                      ? receiveTarget?.id === row.id
+                        ? 'bg-primary/10 cursor-pointer'
+                        : 'hover:bg-amber-500/10 cursor-pointer'
+                      : 'hover:bg-muted/30'
+                  }`}
+                  onClick={() => {
+                    if (isPending) openReceive(row);
+                  }}
+                  title={isPending ? 'Click to adjust qty and confirm or reject' : undefined}
+                >
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatTransferDate(row.transferDate)}</td>
                   <td className="px-2 py-1.5 truncate" title={row.fromLocationExternalId}>
                     {locationNameById.get(row.fromLocationExternalId) ?? row.fromLocationExternalId}
@@ -776,16 +891,16 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   <td className="px-2 py-1.5 truncate" title={row.initiatedBy || undefined}>
                     {row.initiatedBy?.trim() || '—'}
                   </td>
-                  <td className="px-2 py-1.5 truncate" title={row.receivedBy || undefined}>
-                    {row.receivedBy?.trim() || '—'}
+                  <td className="px-2 py-1.5 truncate" title={actedBy !== '—' ? actedBy : undefined}>
+                    {actedBy}
                   </td>
                   <td className="px-2 py-1.5 text-xs">
                     <span
                       className={
                         row.status === 'pending'
                           ? 'text-amber-700 dark:text-amber-400'
-                          : row.status === 'cancelled'
-                            ? 'text-muted-foreground'
+                          : row.status === 'rejected' || row.status === 'cancelled'
+                            ? 'text-destructive'
                             : 'text-foreground'
                       }
                     >

@@ -157,6 +157,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Status).HasMaxLength(20);
             e.Property(x => x.InitiatedBy).HasMaxLength(200);
             e.Property(x => x.ReceivedBy).HasMaxLength(200);
+            e.Property(x => x.RejectedBy).HasMaxLength(200);
             e.Property(x => x.FromLocationExternalId).HasMaxLength(100);
             e.Property(x => x.ToLocationExternalId).HasMaxLength(100);
         });

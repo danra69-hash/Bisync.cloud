@@ -170,9 +170,15 @@ public class TransferService(
         return entry;
     }
 
-    public async Task<TransferEntry> CancelAsync(
+    /// <summary>
+    /// Receiving party rejects the pending transfer.
+    /// Stock was never moved at initiate — rejecting releases the outbound reservation
+    /// so full quantity is available again at the source location.
+    /// </summary>
+    public async Task<TransferEntry> RejectAsync(
         int transferId,
         int companyId,
+        string? rejectedBy = null,
         CancellationToken cancellationToken = default)
     {
         var entry = await db.TransferEntries
@@ -180,11 +186,142 @@ public class TransferService(
             ?? throw new InvalidOperationException("Transfer not found.");
 
         if (!string.Equals(entry.Status, TransferEntry.StatusPending, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Only pending transfers can be cancelled (current: {entry.Status}).");
+            throw new InvalidOperationException($"Only pending transfers can be rejected (current: {entry.Status}).");
 
-        entry.Status = TransferEntry.StatusCancelled;
+        // Defensive: if stock movements somehow exist for this transfer, reverse them to source.
+        await ReverseAnyMovedStockAsync(entry, companyId, cancellationToken);
+
+        entry.Status = TransferEntry.StatusRejected;
+        entry.RejectedBy = (rejectedBy ?? string.Empty).Trim();
+        entry.RejectedAt = DateTime.UtcNow;
+
         await db.SaveChangesAsync(cancellationToken);
+        await UserNotificationService.NotifyTransferRejectedAsync(db, entry);
         return entry;
+    }
+
+    /// <summary>Legacy alias — prefer <see cref="RejectAsync"/>.</summary>
+    public Task<TransferEntry> CancelAsync(
+        int transferId,
+        int companyId,
+        CancellationToken cancellationToken = default)
+        => RejectAsync(transferId, companyId, rejectedBy: null, cancellationToken);
+
+    /// <summary>
+    /// Reverse transfer_out / transfer_in for this XFR if present (returns stock to source).
+    /// No-op when initiate-only pending (normal path — stock never left source).
+    /// </summary>
+    async Task ReverseAnyMovedStockAsync(
+        TransferEntry entry,
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var type = NormalizeItemType(entry.ItemType);
+        var reason = $"Transfer rejected — returned to {entry.FromLocationExternalId} (XFR-{entry.Id})";
+        var occurredAt = DateTime.UtcNow;
+
+        if (type == "component")
+        {
+            var outs = await db.InventoryMovements
+                .Where(m => m.ReferenceType == RefTransferOut && m.ReferenceId == entry.Id)
+                .ToListAsync(cancellationToken);
+            var ins = await db.InventoryMovements
+                .Where(m => m.ReferenceType == RefTransferIn && m.ReferenceId == entry.Id)
+                .ToListAsync(cancellationToken);
+            if (outs.Count == 0 && ins.Count == 0)
+                return;
+
+            foreach (var moveOut in outs)
+            {
+                var qty = Math.Abs(moveOut.QtyDelta);
+                if (qty <= 0) continue;
+                componentStock.RecordAddition(
+                    moveOut.ComponentId,
+                    moveOut.ComponentName,
+                    entry.FromLocationExternalId,
+                    qty,
+                    moveOut.Uom,
+                    reason,
+                    "transfer_reject_return",
+                    entry.Id,
+                    companyId,
+                    createdAt: occurredAt,
+                    unitPrice: moveOut.UnitPrice);
+            }
+
+            foreach (var moveIn in ins)
+            {
+                var qty = Math.Abs(moveIn.QtyDelta);
+                if (qty <= 0) continue;
+                await componentStock.RecordDeductionAsync(
+                    moveIn.ComponentId,
+                    moveIn.ComponentName,
+                    entry.ToLocationExternalId,
+                    qty,
+                    moveIn.Uom,
+                    reason,
+                    "transfer_reject_return",
+                    entry.Id,
+                    companyId,
+                    cancellationToken,
+                    createdAt: occurredAt,
+                    unitPriceOverride: moveIn.UnitPrice);
+            }
+
+            return;
+        }
+
+        if (!int.TryParse(entry.ItemKey, out var productId))
+            return;
+
+        var logs = await db.ProductProductionLogs
+            .Where(l => l.ProductId == productId && l.BatchNumber == $"XFR-{entry.Id}")
+            .ToListAsync(cancellationToken);
+        if (logs.Count == 0)
+            return;
+
+        var outQty = logs.Where(l => l.EntryType == RefTransferOut).Sum(l => l.Quantity);
+        var inQty = logs.Where(l => l.EntryType == RefTransferIn).Sum(l => l.Quantity);
+        var unitCost = logs.FirstOrDefault(l => l.UnitPrice > 0)?.UnitPrice
+            ?? entry.UnitPrice;
+
+        if (outQty > 0)
+        {
+            var fromStock = await EnsureStockRowAsync(productId, entry.FromLocationExternalId, cancellationToken);
+            fromStock.InStock += outQty;
+            fromStock.UpdatedAt = DateTime.UtcNow;
+            db.ProductProductionLogs.Add(new ProductProductionLog
+            {
+                ProductId = productId,
+                EntryType = RefTransferIn,
+                Quantity = outQty,
+                ProductionDate = DateOnly.FromDateTime(occurredAt).ToString("yyyy-MM-dd"),
+                BatchNumber = $"XFR-{entry.Id}-REJECT",
+                LocationIdsJson = JsonSerializer.Serialize(new[] { entry.FromLocationExternalId }),
+                CompanyId = companyId,
+                UnitPrice = unitCost,
+                CreatedAt = occurredAt,
+            });
+        }
+
+        if (inQty > 0)
+        {
+            var toStock = await EnsureStockRowAsync(productId, entry.ToLocationExternalId, cancellationToken);
+            toStock.InStock = Math.Max(0, toStock.InStock - inQty);
+            toStock.UpdatedAt = DateTime.UtcNow;
+            db.ProductProductionLogs.Add(new ProductProductionLog
+            {
+                ProductId = productId,
+                EntryType = RefTransferOut,
+                Quantity = inQty,
+                ProductionDate = DateOnly.FromDateTime(occurredAt).ToString("yyyy-MM-dd"),
+                BatchNumber = $"XFR-{entry.Id}-REJECT",
+                LocationIdsJson = JsonSerializer.Serialize(new[] { entry.ToLocationExternalId }),
+                CompanyId = companyId,
+                UnitPrice = unitCost,
+                CreatedAt = occurredAt,
+            });
+        }
     }
 
     public async Task<decimal> GetAvailableAsync(

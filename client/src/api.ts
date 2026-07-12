@@ -1113,11 +1113,13 @@ export interface TransferEntry {
   unitPrice?: number;
   totalValue?: number;
   transferDate: string;
-  status: 'pending' | 'received' | 'cancelled' | string;
+  status: 'pending' | 'received' | 'rejected' | 'cancelled' | string;
   initiatedBy?: string;
   receivedBy?: string;
   receivedAt?: string | null;
   receivedQuantity?: number | null;
+  rejectedBy?: string;
+  rejectedAt?: string | null;
   createdAt: string;
 }
 
@@ -1139,6 +1141,11 @@ export interface ReceiveTransferPayload {
   receivedBy?: string;
   receivedQuantity?: number;
   receivedDate?: string;
+}
+
+export interface RejectTransferPayload {
+  companyId?: number | null;
+  rejectedBy?: string;
 }
 
 export interface TransferAvailableQty {
@@ -1897,8 +1904,10 @@ export const api = {
     fetchJsonWithMethod<TransferEntry>('/api/transfers', 'POST', payload),
   receiveTransfer: (id: number, payload: ReceiveTransferPayload) =>
     fetchJsonWithMethod<TransferEntry>(`/api/transfers/${id}/receive`, 'POST', payload),
-  cancelTransfer: (id: number, companyId: number) =>
-    fetchJsonWithMethod<TransferEntry>(`/api/transfers/${id}/cancel?companyId=${companyId}`, 'POST'),
+  rejectTransfer: (id: number, payload: RejectTransferPayload) =>
+    fetchJsonWithMethod<TransferEntry>(`/api/transfers/${id}/reject`, 'POST', payload),
+  cancelTransfer: (id: number, companyId: number, rejectedBy?: string) =>
+    fetchJsonWithMethod<TransferEntry>(`/api/transfers/${id}/cancel`, 'POST', { companyId, rejectedBy }),
   orderTemplates: (companyId?: number) =>
     fetchJson<OrderTemplate[]>(`/api/ordertemplates${companyId ? `?companyId=${companyId}` : ''}`),
   orderTemplate: (id: number) => fetchJson<OrderTemplate>(`/api/ordertemplates/${id}`),

@@ -10,6 +10,7 @@ public static class UserNotificationService
     public const string TypePurchaseOrderAccepted = "purchase_order_accepted";
     public const string TypeTransferInitiated = "transfer_initiated";
     public const string TypeTransferReceived = "transfer_received";
+    public const string TypeTransferRejected = "transfer_rejected";
 
     public static async Task NotifyPurchaseRequestApprovedAsync(
         BisyncDbContext db,
@@ -124,6 +125,34 @@ public static class UserNotificationService
             Type = TypeTransferReceived,
             Title = $"Transfer received · XFR-{transfer.Id}",
             Body = $"{qty} {transfer.Uom} {transfer.ItemName} confirmed at {transfer.ToLocationExternalId}.",
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    public static async Task NotifyTransferRejectedAsync(BisyncDbContext db, TransferEntry transfer)
+    {
+        if (string.IsNullOrWhiteSpace(transfer.InitiatedBy))
+            return;
+
+        var user = await db.AppUsers
+            .AsNoTracking()
+            .Where(u => u.Active)
+            .FirstOrDefaultAsync(u => u.FullName.ToLower() == transfer.InitiatedBy.ToLower());
+
+        var rejectedBy = string.IsNullOrWhiteSpace(transfer.RejectedBy)
+            ? "receiving location"
+            : transfer.RejectedBy.Trim();
+
+        db.UserNotifications.Add(new UserNotification
+        {
+            UserId = user?.Id,
+            RecipientName = transfer.InitiatedBy.Trim(),
+            TransferId = transfer.Id,
+            Type = TypeTransferRejected,
+            Title = $"Transfer rejected · XFR-{transfer.Id}",
+            Body = $"{transfer.Quantity} {transfer.Uom} {transfer.ItemName} rejected by {rejectedBy}. Stock remains available at {transfer.FromLocationExternalId}.",
             CreatedAt = DateTime.UtcNow,
         });
 

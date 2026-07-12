@@ -1288,3 +1288,10 @@ public class ReceiveTransferRequest
     [MaxLength(20)]
     public string? ReceivedDate { get; set; }
 }
+
+public class RejectTransferRequest
+{
+    public int? CompanyId { get; set; }
+    [MaxLength(200)]
+    public string? RejectedBy { get; set; }
+}

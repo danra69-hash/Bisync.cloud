@@ -20,15 +20,18 @@ public class TransferEntry
     /// <summary>FIFO/recipe unit cost used for the transfer (set at initiate estimate, finalized on receive).</summary>
     public decimal UnitPrice { get; set; }
     public DateOnly TransferDate { get; set; }
-    /// <summary>pending | received | cancelled</summary>
+    /// <summary>pending | received | rejected | cancelled</summary>
     public string Status { get; set; } = StatusPending;
     public string InitiatedBy { get; set; } = string.Empty;
     public string ReceivedBy { get; set; } = string.Empty;
     public DateTime? ReceivedAt { get; set; }
     public decimal? ReceivedQuantity { get; set; }
+    public string RejectedBy { get; set; } = string.Empty;
+    public DateTime? RejectedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public const string StatusPending = "pending";
     public const string StatusReceived = "received";
+    public const string StatusRejected = "rejected";
     public const string StatusCancelled = "cancelled";
 }

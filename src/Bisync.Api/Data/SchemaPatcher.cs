@@ -258,6 +258,8 @@ public static class SchemaPatcher
                 "ReceivedAt" TIMESTAMP,
                 "ReceivedQuantity" REAL,
                 "UnitPrice" REAL NOT NULL DEFAULT 0,
+                "RejectedBy" TEXT NOT NULL DEFAULT '',
+                "RejectedAt" TIMESTAMP,
                 "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
             );
             """);
@@ -271,6 +273,8 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedAt", "TIMESTAMP");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedQuantity", "REAL");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "UnitPrice", "REAL NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "RejectedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "RejectedAt", "TIMESTAMP");
         // Backfill unit cost from stock movements for received transfers that predate the column.
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "TransferEntries" t

@@ -190,16 +190,34 @@ public class TransfersController(
         }
     }
 
-    [HttpPost("{id:int}/cancel")]
-    public async Task<ActionResult<object>> Cancel(int id, [FromQuery] int? companyId = null)
+    [HttpPost("{id:int}/reject")]
+    public async Task<ActionResult<object>> Reject(int id, [FromBody] RejectTransferRequest? request)
     {
-        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var companyId = TenantQuery.ResolveCompanyId(tenant, request?.CompanyId);
+        if (companyId is null)
+            return BadRequest(new { message = "Company is required." });
+
+        try
+        {
+            var entry = await transfers.RejectAsync(id, companyId.Value, request?.RejectedBy);
+            return Ok(Map(entry));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/cancel")]
+    public async Task<ActionResult<object>> Cancel(int id, [FromBody] RejectTransferRequest? request, [FromQuery] int? companyId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, request?.CompanyId ?? companyId);
         if (cid is null)
             return BadRequest(new { message = "Company is required." });
 
         try
         {
-            var entry = await transfers.CancelAsync(id, cid.Value);
+            var entry = await transfers.RejectAsync(id, cid.Value, request?.RejectedBy);
             return Ok(Map(entry));
         }
         catch (InvalidOperationException ex)
@@ -231,6 +249,8 @@ public class TransfersController(
             receivedBy = t.ReceivedBy,
             receivedAt = t.ReceivedAt,
             receivedQuantity = t.ReceivedQuantity,
+            rejectedBy = t.RejectedBy,
+            rejectedAt = t.RejectedAt,
             createdAt = t.CreatedAt,
         };
     }
