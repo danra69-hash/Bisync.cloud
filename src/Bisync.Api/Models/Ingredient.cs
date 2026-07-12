@@ -3,6 +3,8 @@ namespace Bisync.Api.Models;
 public class Ingredient
 {
     public int Id { get; set; }
+    /// <summary>Owning company. Required after Phase 0 tenancy hardening.</summary>
+    public int? CompanyId { get; set; }
     public string ComponentId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;

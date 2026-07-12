@@ -3,6 +3,8 @@ namespace Bisync.Api.Models;
 public class Vendor
 {
     public int Id { get; set; }
+    /// <summary>Owning company. Required after Phase 0 tenancy hardening.</summary>
+    public int? CompanyId { get; set; }
     public string ExternalId { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Type { get; set; } = "offline";

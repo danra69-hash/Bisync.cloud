@@ -2,6 +2,7 @@ using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -237,16 +238,24 @@ public class MenuController(BisyncDbContext db) : ControllerBase
 
 [ApiController]
 [Route("api/[controller]")]
-public class VendorsController(BisyncDbContext db) : ControllerBase
+public class VendorsController(BisyncDbContext db, ITenantContext tenant) : ControllerBase
 {
     static readonly JsonSerializerOptions ContactJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Vendor>>> GetAll([FromQuery] bool? engaged = null)
+    public async Task<ActionResult<IEnumerable<Vendor>>> GetAll(
+        [FromQuery] bool? engaged = null,
+        [FromQuery] int? companyId = null)
     {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
         var q = db.Vendors.AsQueryable();
+        if (cid is int id)
+            q = q.Where(v => v.CompanyId == id);
+        else if (!TenantQuery.AllowsAllCompanies(tenant, cid))
+            return Ok(Array.Empty<Vendor>());
+
         if (engaged.HasValue)
             q = q.Where(v => v.Engaged == engaged.Value);
         return Ok(await q.OrderByDescending(v => v.Engaged).ThenBy(v => v.Name).ToListAsync());
@@ -255,6 +264,10 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Vendor>> Create([FromBody] CreateVendorRequest request)
     {
+        var companyId = TenantQuery.ResolveCompanyId(tenant, request.CompanyId);
+        if (companyId is null)
+            return BadRequest(new { message = "Company is required." });
+
         var externalId = request.ExternalId.Trim().ToUpperInvariant();
         var name = request.Name.Trim();
         if (string.IsNullOrWhiteSpace(externalId))
@@ -262,11 +275,13 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest(new { message = "Vendor name is required." });
 
-        var idTaken = await db.Vendors.AnyAsync(v => v.ExternalId.ToLower() == externalId.ToLower());
+        var idTaken = await db.Vendors.AnyAsync(v =>
+            v.CompanyId == companyId && v.ExternalId.ToLower() == externalId.ToLower());
         if (idTaken)
             return Conflict(new { message = "Vendor ID already exists." });
 
-        var nameTaken = await db.Vendors.AnyAsync(v => v.Name.ToLower() == name.ToLower());
+        var nameTaken = await db.Vendors.AnyAsync(v =>
+            v.CompanyId == companyId && v.Name.ToLower() == name.ToLower());
         if (nameTaken)
             return Conflict(new { message = "Vendor name already exists." });
 
@@ -276,6 +291,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
 
         var vendor = new Vendor
         {
+            CompanyId = companyId,
             ExternalId = externalId,
             Name = name,
             Type = string.IsNullOrWhiteSpace(request.Type) ? "offline" : request.Type.Trim().ToLowerInvariant(),
@@ -309,16 +325,26 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
     }
 
     [HttpPut("{externalId}")]
-    public async Task<ActionResult<Vendor>> Update(string externalId, [FromBody] UpdateVendorRequest request)
+    public async Task<ActionResult<Vendor>> Update(
+        string externalId,
+        [FromBody] UpdateVendorRequest request,
+        [FromQuery] int? companyId = null)
     {
-        var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var vendorQuery = db.Vendors.Where(v => v.ExternalId == externalId);
+        if (cid is int id)
+            vendorQuery = vendorQuery.Where(v => v.CompanyId == id);
+        var vendor = await vendorQuery.FirstOrDefaultAsync();
         if (vendor is null) return NotFound();
 
         var name = request.Name.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest(new { message = "Vendor name is required." });
 
-        var nameTaken = await db.Vendors.AnyAsync(v => v.Id != vendor.Id && v.Name.ToLower() == name.ToLower());
+        var nameTaken = await db.Vendors.AnyAsync(v =>
+            v.Id != vendor.Id
+            && v.CompanyId == vendor.CompanyId
+            && v.Name.ToLower() == name.ToLower());
         if (nameTaken)
             return Conflict(new { message = "Vendor name already exists." });
 
@@ -448,11 +474,20 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
 
 [ApiController]
 [Route("api/[controller]")]
-public class IngredientsController(BisyncDbContext db) : ControllerBase
+public class IngredientsController(BisyncDbContext db, ITenantContext tenant) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Ingredient>>> GetAll() =>
-        Ok(await db.Ingredients.OrderBy(i => i.Name).ToListAsync());
+    public async Task<ActionResult<IEnumerable<Ingredient>>> GetAll([FromQuery] int? companyId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var q = db.Ingredients.AsQueryable();
+        if (cid is int id)
+            q = q.Where(i => i.CompanyId == id);
+        else if (!TenantQuery.AllowsAllCompanies(tenant, cid))
+            return Ok(Array.Empty<Ingredient>());
+
+        return Ok(await q.OrderBy(i => i.Name).ToListAsync());
+    }
 
     [HttpPut("{id:int}")]
     public async Task<ActionResult<Ingredient>> Update(int id, [FromBody] Ingredient updated)
@@ -465,7 +500,9 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
             return BadRequest(new { message = "Component name is required." });
 
         var nameTaken = await db.Ingredients.AnyAsync(i =>
-            i.Id != id && i.Name.ToLower() == name.ToLower());
+            i.Id != id
+            && i.CompanyId == item.CompanyId
+            && i.Name.ToLower() == name.ToLower());
         if (nameTaken)
             return Conflict(new { message = "A component with this name already exists." });
 
@@ -486,9 +523,11 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
         item.AttachedVendors = updated.AttachedVendors;
         item.LocationsJson = updated.LocationsJson;
         item.UpdatedAt = DateTime.UtcNow;
+        if (updated.CompanyId is > 0)
+            item.CompanyId = updated.CompanyId;
 
         if (string.IsNullOrWhiteSpace(item.ComponentId))
-            item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, item.Name, item.Id);
+            item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, item.Name, item.Id, item.CompanyId);
 
         await db.SaveChangesAsync();
         await ProductCostRecalculator.RecalculateForComponentAsync(db, item.ComponentId);
@@ -498,22 +537,29 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Ingredient>> Create([FromBody] Ingredient ingredient)
     {
+        var companyId = TenantQuery.ResolveCompanyId(tenant, ingredient.CompanyId);
+        if (companyId is null)
+            return BadRequest(new { message = "Company is required." });
+
         var name = ingredient.Name.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest(new { message = "Component name is required." });
 
-        var nameTaken = await db.Ingredients.AnyAsync(i => i.Name.ToLower() == name.ToLower());
+        var nameTaken = await db.Ingredients.AnyAsync(i =>
+            i.CompanyId == companyId && i.Name.ToLower() == name.ToLower());
         if (nameTaken)
             return Conflict(new { message = "A component with this name already exists." });
 
+        ingredient.CompanyId = companyId;
         ingredient.Name = name;
         ingredient.ComponentId = string.IsNullOrWhiteSpace(ingredient.ComponentId)
-            ? await ComponentIdGenerator.GenerateAsync(db, name)
+            ? await ComponentIdGenerator.GenerateAsync(db, name, companyId: companyId)
             : ingredient.ComponentId.Trim();
 
-        var idTaken = await db.Ingredients.AnyAsync(i => i.ComponentId == ingredient.ComponentId);
+        var idTaken = await db.Ingredients.AnyAsync(i =>
+            i.CompanyId == companyId && i.ComponentId == ingredient.ComponentId);
         if (idTaken)
-            ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, name);
+            ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, name, companyId: companyId);
 
         ingredient.DetailConfigJson = string.IsNullOrWhiteSpace(ingredient.DetailConfigJson) ? "{}" : ingredient.DetailConfigJson;
         ingredient.CreatedAt = DateTime.UtcNow;
@@ -543,7 +589,7 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
             .Where(p => p.Status != PurchaseOrderWorkflow.StatusReconciled);
 
         if (companyId is int id)
-            query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
+            query = query.Where(p => p.CompanyId == id);
 
         var orderIds = await query.Select(p => p.Id).ToListAsync();
         await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, orderIds);
@@ -881,7 +927,7 @@ public class InventoryController(BisyncDbContext db) : ControllerBase
     {
         IQueryable<InventoryPurchase> query = db.InventoryPurchases.AsNoTracking();
         if (companyId is int id)
-            query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
+            query = query.Where(p => p.CompanyId == id);
 
         var rows = await query
             .OrderByDescending(p => p.DateCreatedInStock)

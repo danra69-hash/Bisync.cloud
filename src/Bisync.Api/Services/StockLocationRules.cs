@@ -16,6 +16,7 @@ public static class StockLocationRules
     public static bool PurchaseMatchesLocation(string locationIdsJson, string locationExternalId)
     {
         var ids = PurchaseOrderWorkflow.DeserializeLocationIds(locationIdsJson);
-        return ids.Count == 0 || ids.Contains(locationExternalId);
+        // Phase 0: empty location list no longer matches all locations (fail closed).
+        return ids.Count > 0 && ids.Contains(locationExternalId);
     }
 }

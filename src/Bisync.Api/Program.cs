@@ -43,6 +43,10 @@ builder.Services.AddScoped<SystemCogsAuditSnapshotService>();
 builder.Services.AddScoped<SalesDataService>();
 builder.Services.AddScoped<B2bSalesOrderService>();
 builder.Services.AddScoped<InventoryCountService>();
+builder.Services.AddScoped<LocationPartitionService>();
+builder.Services.AddScoped<Bisync.Api.Tenancy.TenantContext>();
+builder.Services.AddScoped<Bisync.Api.Tenancy.ITenantContext>(sp =>
+    sp.GetRequiredService<Bisync.Api.Tenancy.TenantContext>());
 builder.Services.Configure<StockCardArchiveOptions>(
     builder.Configuration.GetSection(StockCardArchiveOptions.SectionName));
 builder.Services.AddDbContext<StockCardArchiveDbContext>(options =>
@@ -90,8 +94,14 @@ using (var scope = app.Services.CreateScope())
     await ConfigurationSeeder.SeedAsync(db);
     await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
     await ConfigurationSeeder.PatchSuperAdminPasswordAsync(db);
+    // Catalogs + tenant registry need companies from ConfigurationSeeder (first boot).
+    await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
+    await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
+    await SchemaPatcher.EnsureTenantRegistryAsync(db);
     await HrStartup.InitializeAsync(db);
     await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
+    var partitions = scope.ServiceProvider.GetRequiredService<LocationPartitionService>();
+    await partitions.EnsurePartitionsForAllLocationsAsync();
 }
 
 if (app.Environment.IsDevelopment())
@@ -106,6 +116,7 @@ else
 }
 
 app.UseHttpsRedirection();
+app.UseMiddleware<Bisync.Api.Tenancy.TenantContextMiddleware>();
 
 app.Use(async (context, next) =>
 {

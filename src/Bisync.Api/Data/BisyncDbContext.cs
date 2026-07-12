@@ -67,6 +67,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<QuoteRequestLine> QuoteRequestLines => Set<QuoteRequestLine>();
     public DbSet<SampleRequest> SampleRequests => Set<SampleRequest>();
     public DbSet<DevQaRun> DevQaRuns => Set<DevQaRun>();
+    public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -95,7 +96,11 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(u => u.EmployeeId).IsUnique();
         });
         HrModelConfiguration.Configure(modelBuilder);
-        modelBuilder.Entity<Vendor>().HasIndex(v => v.ExternalId).IsUnique();
+        modelBuilder.Entity<Vendor>(e =>
+        {
+            e.HasIndex(v => new { v.CompanyId, v.ExternalId }).IsUnique();
+            e.HasIndex(v => v.CompanyId);
+        });
         modelBuilder.Entity<B2bCustomer>(e =>
         {
             e.HasIndex(x => x.ExternalId).IsUnique();
@@ -112,8 +117,15 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.Property(x => x.ComponentId).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(200);
-            e.HasIndex(x => x.ComponentId).IsUnique();
-            e.HasIndex(x => x.Name).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.ComponentId }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+        });
+        modelBuilder.Entity<TenantConnection>(e =>
+        {
+            e.HasIndex(x => x.CompanyId).IsUnique();
+            e.Property(x => x.DatabaseName).HasMaxLength(128);
+            e.Property(x => x.ConnectionString).HasMaxLength(2000);
         });
         modelBuilder.Entity<PurchaseOrder>().HasIndex(p => p.PoNumber).IsUnique();
         modelBuilder.Entity<PurchaseOrder>()

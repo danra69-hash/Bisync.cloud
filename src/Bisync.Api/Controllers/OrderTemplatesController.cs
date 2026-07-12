@@ -22,7 +22,7 @@ public class OrderTemplatesController(BisyncDbContext db) : ControllerBase
             .Include(t => t.Items);
 
         if (companyId is int id)
-            query = query.Where(t => t.CompanyId == null || t.CompanyId == id);
+            query = query.Where(t => t.CompanyId == id);
 
         var rows = await query
             .OrderByDescending(t => t.UpdatedAt)

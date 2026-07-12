@@ -1,7 +1,34 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
+const TENANT_COMPANY_KEY = 'bisync.selectedCompanyId';
+const TENANT_USER_KEY = 'bisync.currentUserId';
+
+/** Persist UI-selected company so API calls send X-Bisync-Company-Id. */
+export function setApiTenantCompanyId(companyId: number | null | undefined) {
+  if (companyId == null || companyId <= 0) {
+    localStorage.removeItem(TENANT_COMPANY_KEY);
+    return;
+  }
+  localStorage.setItem(TENANT_COMPANY_KEY, String(companyId));
+}
+
+function tenantHeaders(extra?: HeadersInit): HeadersInit {
+  const headers: Record<string, string> = {};
+  const companyId = localStorage.getItem(TENANT_COMPANY_KEY);
+  const userId = localStorage.getItem(TENANT_USER_KEY);
+  if (companyId) headers['X-Bisync-Company-Id'] = companyId;
+  if (userId) headers['X-Bisync-User-Id'] = userId;
+  if (extra) {
+    const e = new Headers(extra);
+    e.forEach((v, k) => {
+      headers[k] = v;
+    });
+  }
+  return headers;
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await fetch(`${API_BASE}${path}`, { headers: tenantHeaders() });
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
   return res.json();
 }
@@ -260,6 +287,7 @@ export interface EngageVendorPayload {
 
 export interface Vendor {
   id: number;
+  companyId?: number | null;
   externalId: string;
   name: string;
   type: string;
@@ -280,6 +308,7 @@ export interface Vendor {
 export type VendorProductPolicyTag = 'halal' | 'muslim-friendly' | 'non-halal';
 
 export interface VendorCreatePayload {
+  companyId?: number;
   externalId: string;
   name: string;
   type: string;
@@ -1303,6 +1332,7 @@ export interface RevenuePoint {
 
 export interface Ingredient {
   id: number;
+  companyId?: number | null;
   componentId: string;
   name: string;
   category: string;
@@ -1565,7 +1595,7 @@ function parseApiErrorText(text: string, fallback: string): string {
 async function fetchJsonWithMethod<T>(path: string, method: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: tenantHeaders(body ? { 'Content-Type': 'application/json' } : undefined),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -1596,7 +1626,15 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
     }
     throw new Error(message);
   }
-  return res.json();
+  // 204 / empty bodies (e.g. record-sale) must not call res.json()
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+  const text = await res.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }
 
 export const api = {
@@ -1617,7 +1655,13 @@ export const api = {
   createUser: (data: UserUpsert) => fetchJsonWithMethod<AppUser>('/api/users', 'POST', data),
   updateUser: (id: number, data: UserUpsert) => fetchJsonWithMethod<AppUser>(`/api/users/${id}`, 'PUT', data),
   menu: (category?: string) => fetchJson<MenuItem[]>(`/api/menu${category ? `?category=${category}` : ''}`),
-  vendors: (engaged?: boolean) => fetchJson<Vendor[]>(`/api/vendors${engaged !== undefined ? `?engaged=${engaged}` : ''}`),
+  vendors: (engaged?: boolean, companyId?: number) => {
+    const params = new URLSearchParams();
+    if (engaged !== undefined) params.set('engaged', String(engaged));
+    if (companyId) params.set('companyId', String(companyId));
+    const query = params.toString();
+    return fetchJson<Vendor[]>(`/api/vendors${query ? `?${query}` : ''}`);
+  },
   createVendor: (data: VendorCreatePayload) => fetchJsonWithMethod<Vendor>('/api/vendors', 'POST', data),
   updateVendor: (externalId: string, data: VendorUpdatePayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}`, 'PUT', data),
@@ -1635,7 +1679,8 @@ export const api = {
     fetchJsonWithMethod<PosCustomer>(`/api/pos-customers/${externalId}`, 'PUT', data),
   engageVendor: (externalId: string, data: EngageVendorPayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}/engage`, 'POST', data),
-  ingredients: () => fetchJson<Ingredient[]>('/api/ingredients'),
+  ingredients: (companyId?: number) =>
+    fetchJson<Ingredient[]>(`/api/ingredients${companyId ? `?companyId=${companyId}` : ''}`),
   createIngredient: (data: Omit<Ingredient, 'id'>) => fetchJsonWithMethod<Ingredient>('/api/ingredients', 'POST', data),
   updateIngredient: (id: number, data: Ingredient) => fetchJsonWithMethod<Ingredient>(`/api/ingredients/${id}`, 'PUT', data),
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),

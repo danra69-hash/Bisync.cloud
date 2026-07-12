@@ -11,12 +11,20 @@ public static class ComponentIdGenerator
         return alpha.Length <= 6 ? alpha : alpha[..6];
     }
 
-    public static async Task<string> GenerateAsync(BisyncDbContext db, string name, int? excludeId = null)
+    public static async Task<string> GenerateAsync(
+        BisyncDbContext db,
+        string name,
+        int? excludeId = null,
+        int? companyId = null)
     {
         var prefix = BuildPrefix(name);
         var baseId = $"CMP-{prefix}";
-        var existing = await db.Ingredients
-            .Where(i => i.ComponentId.StartsWith(baseId) && (excludeId == null || i.Id != excludeId))
+        var existingQuery = db.Ingredients
+            .Where(i => i.ComponentId.StartsWith(baseId) && (excludeId == null || i.Id != excludeId));
+        if (companyId is int cid)
+            existingQuery = existingQuery.Where(i => i.CompanyId == cid);
+
+        var existing = await existingQuery
             .Select(i => i.ComponentId)
             .ToListAsync();
 

@@ -106,7 +106,7 @@ public class StockCardService(
 
         IQueryable<Product> productQuery = db.Products.AsNoTracking().Where(p => p.Active);
         if (companyId is int cid)
-            productQuery = productQuery.Where(p => p.CompanyId == null || p.CompanyId == cid);
+            productQuery = productQuery.Where(p => p.CompanyId == cid);
 
         var products = await productQuery
             .OrderBy(p => p.Group)

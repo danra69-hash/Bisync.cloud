@@ -9,7 +9,7 @@ import {
   TrendingUp, Users, ShoppingBag, AlertTriangle,
   ArrowUpRight, ArrowDownRight, Package, FileText
 } from 'lucide-react';
-import { api, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
+import { api, setApiTenantCompanyId, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { RevenueSection } from './components/revenue/RevenueSection';
@@ -141,6 +141,10 @@ export default function App() {
     }
     load();
   }, []);
+
+  useEffect(() => {
+    setApiTenantCompanyId(selectedCompanyId);
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     if (selectedCompanyId && !companies.some(c => c.id === selectedCompanyId)) {

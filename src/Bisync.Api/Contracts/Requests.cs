@@ -552,6 +552,7 @@ public class EngageVendorRequest
 
 public class CreateVendorRequest
 {
+    public int? CompanyId { get; set; }
     [Required, MaxLength(50)]
     public string ExternalId { get; set; } = string.Empty;
     [Required, MaxLength(200)]

@@ -27,7 +27,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             .Include(p => p.Aliases);
 
         if (companyId is int id)
-            query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
+            query = query.Where(p => p.CompanyId == id);
 
         var rows = await query
             .OrderByDescending(p => p.UpdatedAt)

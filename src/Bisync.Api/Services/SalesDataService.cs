@@ -41,7 +41,7 @@ public sealed class SalesDataService(BisyncDbContext db)
 
         IQueryable<Product> productQuery = db.Products.AsNoTracking().Where(p => p.Active);
         if (companyId is int id)
-            productQuery = productQuery.Where(p => p.CompanyId == null || p.CompanyId == id);
+            productQuery = productQuery.Where(p => p.CompanyId == id);
 
         var products = await productQuery.ToListAsync(cancellationToken);
         var productByName = products

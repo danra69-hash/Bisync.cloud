@@ -1,3 +1,4 @@
+using Bisync.Api.Models;
 using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -109,11 +110,15 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "DetailConfigJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CreatedAt", "TIMESTAMP NOT NULL DEFAULT NOW()");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "UpdatedAt", "TIMESTAMP NOT NULL DEFAULT NOW()");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CompanyId", "INTEGER");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");
         await BackfillIngredientComponentIdsAsync(db);
-        await TryCreateUniqueIndexAsync(db, "IX_Ingredients_ComponentId", "Ingredients", "ComponentId");
-        await TryCreateUniqueIndexAsync(db, "IX_Ingredients_Name", "Ingredients", "Name");
+        await BackfillCatalogCompanyIdsAsync(db);
+        await EnsureCompanyScopedCatalogIndexesAsync(db);
+        await EnsureTenantConnectionsTableAsync(db);
+        await BackfillTenantConnectionsAsync(db);
 
         // Resync identity sequences before seeders — SQLite→PostgreSQL migrations often leave sequences behind MAX(Id).
         await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);
@@ -768,6 +773,123 @@ public static class SchemaPatcher
         if (needsId.Count > 0)
             await db.SaveChangesAsync();
     }
+
+    /// <summary>
+    /// Phase 0: assign legacy global catalog rows to the first company, then tighten uniqueness.
+    /// </summary>
+    static async Task BackfillCatalogCompanyIdsAsync(BisyncDbContext db)
+    {
+        var defaultCompanyId = await db.Companies.AsNoTracking()
+            .OrderBy(c => c.Id)
+            .Select(c => (int?)c.Id)
+            .FirstOrDefaultAsync();
+        if (defaultCompanyId is null)
+            return;
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "Ingredients" SET "CompanyId" = {defaultCompanyId.Value} WHERE "CompanyId" IS NULL;
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "Vendors" SET "CompanyId" = {defaultCompanyId.Value} WHERE "CompanyId" IS NULL;
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "Products" SET "CompanyId" = {defaultCompanyId.Value} WHERE "CompanyId" IS NULL;
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "PurchaseOrders" SET "CompanyId" = {defaultCompanyId.Value} WHERE "CompanyId" IS NULL;
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "InventoryPurchases" SET "CompanyId" = {defaultCompanyId.Value} WHERE "CompanyId" IS NULL;
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "InventoryMovements" SET "CompanyId" = {defaultCompanyId.Value} WHERE "CompanyId" IS NULL;
+            """);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "ProductProductionLogs" SET "CompanyId" = {defaultCompanyId.Value} WHERE "CompanyId" IS NULL;
+            """);
+    }
+
+    static async Task EnsureCompanyScopedCatalogIndexesAsync(BisyncDbContext db)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""DROP INDEX IF EXISTS "IX_Ingredients_ComponentId";""");
+            await db.Database.ExecuteSqlRawAsync("""DROP INDEX IF EXISTS "IX_Ingredients_Name";""");
+            await db.Database.ExecuteSqlRawAsync("""DROP INDEX IF EXISTS "IX_Vendors_ExternalId";""");
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_Ingredients_CompanyId_ComponentId"
+                ON "Ingredients" ("CompanyId", "ComponentId");
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_Ingredients_CompanyId_Name"
+                ON "Ingredients" ("CompanyId", "Name");
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_Vendors_CompanyId_ExternalId"
+                ON "Vendors" ("CompanyId", "ExternalId");
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE INDEX IF NOT EXISTS "IX_Ingredients_CompanyId" ON "Ingredients" ("CompanyId");
+                """);
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE INDEX IF NOT EXISTS "IX_Vendors_CompanyId" ON "Vendors" ("CompanyId");
+                """);
+        }
+        catch
+        {
+            // Index swap may race on first boot; next startup retries.
+        }
+    }
+
+    static async Task EnsureTenantConnectionsTableAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "TenantConnections" (
+                "Id" INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                "CompanyId" INTEGER NOT NULL,
+                "DatabaseName" TEXT NOT NULL DEFAULT '',
+                "ConnectionString" TEXT NOT NULL DEFAULT '',
+                "IsActive" BOOLEAN NOT NULL DEFAULT TRUE,
+                "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+                "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_TenantConnections_CompanyId"
+            ON "TenantConnections" ("CompanyId");
+            """);
+    }
+
+    static async Task BackfillTenantConnectionsAsync(BisyncDbContext db)
+    {
+        var companies = await db.Companies.AsNoTracking().Select(c => c.Id).ToListAsync();
+        var existing = await db.TenantConnections.AsNoTracking()
+            .Select(t => t.CompanyId)
+            .ToListAsync();
+        var have = new HashSet<int>(existing);
+        var added = false;
+        foreach (var companyId in companies)
+        {
+            if (have.Contains(companyId))
+                continue;
+            db.TenantConnections.Add(new TenantConnection
+            {
+                CompanyId = companyId,
+                DatabaseName = $"bisync_c_{companyId}",
+                ConnectionString = string.Empty, // empty = shared default connection (Phase 2/3)
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+            added = true;
+        }
+        if (added)
+            await db.SaveChangesAsync();
+    }
+
+    /// <summary>Public hook so Program can refresh registry after companies are seeded.</summary>
+    public static Task EnsureTenantRegistryAsync(BisyncDbContext db) =>
+        BackfillTenantConnectionsAsync(db);
 
     static async Task TryCreateUniqueIndexAsync(BisyncDbContext db, string indexName, string table, string column)
     {

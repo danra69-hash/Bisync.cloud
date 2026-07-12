@@ -35,7 +35,7 @@ public class ProductManagementController(
                 : !p.IsSubProduct && p.B2bEnabled));
 
         if (companyId is int id)
-            productQuery = productQuery.Where(p => p.CompanyId == null || p.CompanyId == id);
+            productQuery = productQuery.Where(p => p.CompanyId == id);
 
         var products = await productQuery
             .OrderByDescending(p => p.UpdatedAt)

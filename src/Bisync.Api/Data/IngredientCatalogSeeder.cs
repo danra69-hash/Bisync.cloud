@@ -47,7 +47,15 @@ public static class IngredientCatalogSeeder
 
     public static async Task EnsureCatalogIngredientsAsync(BisyncDbContext db)
     {
+        var defaultCompanyId = await db.Companies.AsNoTracking()
+            .OrderBy(c => c.Id)
+            .Select(c => (int?)c.Id)
+            .FirstOrDefaultAsync();
+        if (defaultCompanyId is null)
+            return;
+
         var existingNames = await db.Ingredients
+            .Where(i => i.CompanyId == defaultCompanyId)
             .Select(i => i.Name.ToLower())
             .ToListAsync();
 
@@ -59,8 +67,8 @@ public static class IngredientCatalogSeeder
             if (existing.Contains(seed.Name.ToLower()))
                 continue;
 
-            var componentId = await ComponentIdGenerator.GenerateAsync(db, seed.Name);
-            db.Ingredients.Add(seed.ToIngredient(componentId));
+            var componentId = await ComponentIdGenerator.GenerateAsync(db, seed.Name, companyId: defaultCompanyId);
+            db.Ingredients.Add(seed.ToIngredient(componentId, defaultCompanyId.Value));
             added = true;
         }
 
@@ -80,8 +88,9 @@ public static class IngredientCatalogSeeder
         decimal DailyUsage,
         int OrderFreqDays)
     {
-        public Ingredient ToIngredient(string componentId) => new()
+        public Ingredient ToIngredient(string componentId, int companyId) => new()
         {
+            CompanyId = companyId,
             ComponentId = componentId,
             Name = Name,
             Category = Category,

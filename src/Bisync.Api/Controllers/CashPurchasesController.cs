@@ -16,7 +16,7 @@ public class CashPurchasesController(BisyncDbContext db) : ControllerBase
     {
         IQueryable<CashPurchase> query = db.CashPurchases.AsNoTracking();
         if (companyId is int id)
-            query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
+            query = query.Where(p => p.CompanyId == id);
 
         var rows = await query
             .OrderByDescending(p => p.DatePurchased)
