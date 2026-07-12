@@ -84,6 +84,19 @@
   margin-inline: auto;
 }
 
+/* Vertical column lines across all tables (with existing row borders). */
+#root table {
+  border-collapse: collapse;
+}
+#root table th,
+#root table td {
+  border-right: 1px solid var(--border);
+}
+#root table th:first-child,
+#root table td:first-child {
+  border-left: 1px solid var(--border);
+}
+
 @layer components {
   [data-table-scroll] table {
     width: 100%;
