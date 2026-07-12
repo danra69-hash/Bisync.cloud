@@ -1099,6 +1099,37 @@ export interface CreatePosWastagePayload {
   wastedDate?: string;
 }
 
+export interface TransferEntry {
+  id: number;
+  companyId?: number | null;
+  fromLocationExternalId: string;
+  toLocationExternalId: string;
+  itemType: 'component' | 'product' | 'sub-product' | string;
+  itemKey: string;
+  itemName: string;
+  quantity: number;
+  uom: string;
+  transferDate: string;
+  createdAt: string;
+}
+
+export interface CreateTransferPayload {
+  companyId?: number | null;
+  fromLocationExternalId: string;
+  toLocationExternalId: string;
+  itemType: 'component' | 'product' | 'sub-product';
+  itemKey: string;
+  itemName?: string;
+  quantity: number;
+  uom: string;
+  transferDate: string;
+}
+
+export interface TransferAvailableQty {
+  availableQty: number;
+  uom: string;
+}
+
 export interface OrderTemplateItem {
   id?: number;
   componentId: string;
@@ -1816,6 +1847,31 @@ export const api = {
     fetchJsonWithMethod<WastageEntry>('/api/wastage', 'POST', payload),
   createPosWastage: (payload: CreatePosWastagePayload) =>
     fetchJsonWithMethod<WastageEntry>('/api/wastage/pos', 'POST', payload),
+  transfers: (companyId: number | undefined, locationIds: string[], month?: string) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    if (month) params.set('month', month);
+    const query = params.toString();
+    return fetchJson<TransferEntry[]>(`/api/transfers${query ? `?${query}` : ''}`);
+  },
+  transferAvailable: (
+    companyId: number | undefined,
+    itemType: string,
+    itemKey: string,
+    locationExternalId: string,
+    uom: string,
+  ) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    params.set('itemType', itemType);
+    params.set('itemKey', itemKey);
+    params.set('locationExternalId', locationExternalId);
+    params.set('uom', uom);
+    return fetchJson<TransferAvailableQty>(`/api/transfers/available?${params.toString()}`);
+  },
+  createTransfer: (payload: CreateTransferPayload) =>
+    fetchJsonWithMethod<TransferEntry>('/api/transfers', 'POST', payload),
   orderTemplates: (companyId?: number) =>
     fetchJson<OrderTemplate[]>(`/api/ordertemplates${companyId ? `?companyId=${companyId}` : ''}`),
   orderTemplate: (id: number) => fetchJson<OrderTemplate>(`/api/ordertemplates/${id}`),

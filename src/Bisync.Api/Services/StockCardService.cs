@@ -904,10 +904,13 @@ public class StockCardService(
         }).ToList();
 
         var inbound = monthLogs
-            .Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
+            .Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase)
+                || IsProductTransferInEntryType(l.EntryType))
             .Sum(l => l.Quantity);
         var outbound = monthLogs
-            .Where(l => IsProductSaleEntryType(l.EntryType) || IsProductWastageEntryType(l.EntryType))
+            .Where(l => IsProductSaleEntryType(l.EntryType)
+                || IsProductWastageEntryType(l.EntryType)
+                || IsProductTransferOutEntryType(l.EntryType))
             .Sum(l => l.Quantity);
         var adjustment = monthLogs
             .Where(l => IsProductAdjustmentEntryType(l.EntryType))
@@ -993,7 +996,8 @@ public class StockCardService(
                 continue;
             }
 
-            if (IsProductSaleEntryType(log.EntryType) || IsProductWastageEntryType(log.EntryType))
+            if (IsProductSaleEntryType(log.EntryType) || IsProductWastageEntryType(log.EntryType)
+                || IsProductTransferOutEntryType(log.EntryType))
             {
                 var entryType = log.EntryType.Trim().ToLowerInvariant();
                 events.Add(new FifoEvent
@@ -1008,6 +1012,24 @@ public class StockCardService(
                     Reason = FormatProductSaleReason(entryType, product.Name),
                     ReferenceNumber = log.BatchNumber ?? string.Empty,
                     SourceLabel = entryType,
+                });
+                continue;
+            }
+
+            if (IsProductTransferInEntryType(log.EntryType))
+            {
+                events.Add(new FifoEvent
+                {
+                    Id = log.Id,
+                    OccurredAt = occurredAt,
+                    EntryType = "transfer_in",
+                    Quantity = log.Quantity,
+                    SignedQty = log.Quantity,
+                    Uom = uom,
+                    UnitPrice = productionUnitPrice,
+                    Reason = $"Transfer in — {product.Name}",
+                    ReferenceNumber = log.BatchNumber ?? string.Empty,
+                    SourceLabel = "transfer_in",
                 });
                 continue;
             }
@@ -1209,6 +1231,18 @@ public class StockCardService(
         return normalized is "wastage";
     }
 
+    static bool IsProductTransferOutEntryType(string entryType)
+    {
+        var normalized = entryType.Trim().ToLowerInvariant();
+        return normalized is "transfer_out";
+    }
+
+    static bool IsProductTransferInEntryType(string entryType)
+    {
+        var normalized = entryType.Trim().ToLowerInvariant();
+        return normalized is "transfer_in";
+    }
+
     static bool IsProductAdjustmentEntryType(string entryType)
     {
         var normalized = entryType.Trim().ToLowerInvariant();
@@ -1222,6 +1256,8 @@ public class StockCardService(
             "online_order" => $"Online order — {productName}",
             "offline_order" => $"Offline order — {productName}",
             "wastage" => $"Wastage — {productName}",
+            "transfer_out" => $"Transfer out — {productName}",
+            "transfer_in" => $"Transfer in — {productName}",
             _ => $"POS sales — {productName}",
         };
     }

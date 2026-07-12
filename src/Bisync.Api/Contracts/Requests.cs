@@ -1253,3 +1253,25 @@ public class CreatePosWastageRequest
     [MaxLength(20)]
     public string? WastedDate { get; set; }
 }
+
+public class CreateTransferRequest
+{
+    public int? CompanyId { get; set; }
+    [Required, MaxLength(100)]
+    public string FromLocationExternalId { get; set; } = string.Empty;
+    [Required, MaxLength(100)]
+    public string ToLocationExternalId { get; set; } = string.Empty;
+    /// <summary>component | product | sub-product</summary>
+    [Required, MaxLength(30)]
+    public string ItemType { get; set; } = "component";
+    [Required, MaxLength(80)]
+    public string ItemKey { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ItemName { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+    [Required, MaxLength(50)]
+    public string Uom { get; set; } = string.Empty;
+    [Required, MaxLength(20)]
+    public string TransferDate { get; set; } = string.Empty;
+}

@@ -15,6 +15,7 @@ import { ProductionSection } from './ProductionSection';
 import { StockCardPage } from './StockCardPage';
 import { InventoryPage } from './InventoryPage';
 import { WastagePage } from './WastagePage';
+import { TransferPage } from './TransferPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
@@ -143,6 +144,13 @@ function renderRevMgmtContent(
     case 'Wastage':
       return (
         <WastagePage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Transfer':
+      return (
+        <TransferPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />
