@@ -579,6 +579,7 @@ export interface UserNotification {
   userId?: number | null;
   recipientName: string;
   purchaseOrderId?: number | null;
+  transferId?: number | null;
   type: string;
   title: string;
   body: string;
@@ -1110,6 +1111,11 @@ export interface TransferEntry {
   quantity: number;
   uom: string;
   transferDate: string;
+  status: 'pending' | 'received' | 'cancelled' | string;
+  initiatedBy?: string;
+  receivedBy?: string;
+  receivedAt?: string | null;
+  receivedQuantity?: number | null;
   createdAt: string;
 }
 
@@ -1123,6 +1129,14 @@ export interface CreateTransferPayload {
   quantity: number;
   uom: string;
   transferDate: string;
+  initiatedBy?: string;
+}
+
+export interface ReceiveTransferPayload {
+  companyId?: number | null;
+  receivedBy?: string;
+  receivedQuantity?: number;
+  receivedDate?: string;
 }
 
 export interface TransferAvailableQty {
@@ -1855,6 +1869,13 @@ export const api = {
     const query = params.toString();
     return fetchJson<TransferEntry[]>(`/api/transfers${query ? `?${query}` : ''}`);
   },
+  pendingInboundTransfers: (companyId: number | undefined, locationIds: string[]) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    const query = params.toString();
+    return fetchJson<TransferEntry[]>(`/api/transfers/pending-inbound${query ? `?${query}` : ''}`);
+  },
   transferAvailable: (
     companyId: number | undefined,
     itemType: string,
@@ -1872,6 +1893,10 @@ export const api = {
   },
   createTransfer: (payload: CreateTransferPayload) =>
     fetchJsonWithMethod<TransferEntry>('/api/transfers', 'POST', payload),
+  receiveTransfer: (id: number, payload: ReceiveTransferPayload) =>
+    fetchJsonWithMethod<TransferEntry>(`/api/transfers/${id}/receive`, 'POST', payload),
+  cancelTransfer: (id: number, companyId: number) =>
+    fetchJsonWithMethod<TransferEntry>(`/api/transfers/${id}/cancel?companyId=${companyId}`, 'POST'),
   orderTemplates: (companyId?: number) =>
     fetchJson<OrderTemplate[]>(`/api/ordertemplates${companyId ? `?companyId=${companyId}` : ''}`),
   orderTemplate: (id: number) => fetchJson<OrderTemplate>(`/api/ordertemplates/${id}`),

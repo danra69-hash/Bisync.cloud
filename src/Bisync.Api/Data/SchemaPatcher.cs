@@ -252,12 +252,47 @@ public static class SchemaPatcher
                 "Quantity" REAL NOT NULL DEFAULT 0,
                 "Uom" TEXT NOT NULL DEFAULT '',
                 "TransferDate" date NOT NULL,
+                "Status" TEXT NOT NULL DEFAULT 'pending',
+                "InitiatedBy" TEXT NOT NULL DEFAULT '',
+                "ReceivedBy" TEXT NOT NULL DEFAULT '',
+                "ReceivedAt" TIMESTAMP,
+                "ReceivedQuantity" REAL,
                 "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
             );
             """);
         await db.Database.ExecuteSqlRawAsync("""
             CREATE INDEX IF NOT EXISTS "IX_TransferEntries_CompanyId_TransferDate"
             ON "TransferEntries" ("CompanyId", "TransferDate");
+            """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "Status", "TEXT NOT NULL DEFAULT 'pending'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "InitiatedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedAt", "TIMESTAMP");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedQuantity", "REAL");
+        // Legacy rows were completed immediately; treat those with stock movements as received.
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "TransferEntries" t
+            SET "Status" = 'received',
+                "ReceivedQuantity" = COALESCE(t."ReceivedQuantity", t."Quantity"),
+                "ReceivedAt" = COALESCE(t."ReceivedAt", t."CreatedAt")
+            WHERE (t."Status" IS NULL OR TRIM(t."Status") = '' OR t."Status" = 'pending')
+              AND (
+                EXISTS (
+                  SELECT 1 FROM "InventoryMovements" m
+                  WHERE m."ReferenceType" IN ('transfer_out', 'transfer_in')
+                    AND m."ReferenceId" = t."Id"
+                )
+                OR EXISTS (
+                  SELECT 1 FROM "ProductProductionLogs" p
+                  WHERE p."EntryType" IN ('transfer_out', 'transfer_in')
+                    AND p."BatchNumber" = ('XFR-' || t."Id"::text)
+                )
+              );
+            """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "UserNotifications", "TransferId", "INTEGER");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_TransferEntries_Status_ToLocation"
+            ON "TransferEntries" ("Status", "ToLocationExternalId");
             """);
 
         await db.Database.ExecuteSqlRawAsync("""

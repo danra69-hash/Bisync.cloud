@@ -34,9 +34,16 @@ function renderRevMgmtContent(
   selectedItem: string | null,
   selectedCompanyId: number | null,
   selectedLocationIds: string[],
+  onSelectItem?: (id: string | null) => void,
 ) {
   if (!selectedItem) {
-    return <RevMgmtLandingPage selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />;
+    return (
+      <RevMgmtLandingPage
+        selectedCompanyId={selectedCompanyId}
+        selectedLocationIds={selectedLocationIds}
+        onOpenTransfer={() => onSelectItem?.('Operation||Inventory||Transfer')}
+      />
+    );
   }
 
   const [section, subtitle, label] = selectedItem.split('||');
@@ -194,7 +201,7 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
     <RevMgmtTitleProvider revItem={revItem}>
       <RevMgmtBar selectedItem={revItem} onSelectItem={setRevItem} />
       {revItem && <RevMgmtPageTitle revItem={revItem} />}
-      {renderRevMgmtContent(revItem, selectedCompanyId, selectedLocationIds)}
+      {renderRevMgmtContent(revItem, selectedCompanyId, selectedLocationIds, setRevItem)}
     </RevMgmtTitleProvider>
   );
 }

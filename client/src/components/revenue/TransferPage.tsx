@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRightLeft, Plus, Search } from 'lucide-react';
+import { ArrowRightLeft, Check, Plus, Search, X } from 'lucide-react';
 import {
   api,
   type Ingredient,
@@ -18,6 +18,7 @@ import {
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
 import { fromApiUom } from '../../data/componentForm';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -109,18 +110,30 @@ function formatTransferDate(iso: string) {
   });
 }
 
+function statusLabel(status: string) {
+  const s = (status || '').toLowerCase();
+  if (s === 'pending') return 'Pending receive';
+  if (s === 'received') return 'Received';
+  if (s === 'cancelled') return 'Cancelled';
+  return status || '—';
+}
+
 const fieldCls =
   'w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary/40';
 const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted-foreground mb-1';
 
 export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const { currentUser } = useCurrentUser();
   const orgReady = !!selectedCompanyId;
 
   const [month, setMonth] = useState(currentStockCardMonth);
   const [rows, setRows] = useState<TransferEntry[]>([]);
+  const [pendingInbound, setPendingInbound] = useState<TransferEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [receivingId, setReceivingId] = useState<number | null>(null);
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -170,16 +183,22 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
   const loadRows = useCallback(async () => {
     if (!orgReady || !selectedCompanyId) {
       setRows([]);
+      setPendingInbound([]);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const data = await api.transfers(selectedCompanyId, selectedLocationIds, month);
-      setRows(data);
+      const [history, inbound] = await Promise.all([
+        api.transfers(selectedCompanyId, selectedLocationIds, month),
+        api.pendingInboundTransfers(selectedCompanyId, selectedLocationIds),
+      ]);
+      setRows(history);
+      setPendingInbound(inbound);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load transfers.');
       setRows([]);
+      setPendingInbound([]);
     } finally {
       setLoading(false);
     }
@@ -255,7 +274,6 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         continue;
       }
 
-      // Finished goods: B2B only
       if (!p.b2bEnabled) continue;
       const uoms = productUoms(p);
       items.push({
@@ -306,7 +324,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
     return () => {
       cancelled = true;
     };
-  }, [selectedCompanyId, selected, fromLocationId, uom]);
+  }, [selectedCompanyId, selected, fromLocationId, uom, pendingInbound.length]);
 
   const historyScrollRef = useRef<HTMLDivElement | null>(null);
   const { visibleItems, sentinelRef, hasMore } = useInfiniteScrollSlice(rows, {
@@ -340,8 +358,9 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
 
     setSaving(true);
     setError(null);
+    setInfo(null);
     try {
-      await api.createTransfer({
+      const entry = await api.createTransfer({
         companyId: selectedCompanyId,
         fromLocationExternalId: fromLocationId,
         toLocationExternalId: toLocationId,
@@ -351,15 +370,57 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         quantity: qty,
         uom: uom.trim(),
         transferDate,
+        initiatedBy: currentUser?.fullName,
       });
       setQuantity('');
       setSelected(null);
       setItemSearch('');
+      setInfo(
+        `Transfer XFR-${entry.id} initiated. ${locationNameById.get(toLocationId) ?? toLocationId} has been alerted to confirm receive.`,
+      );
       await loadRows();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save transfer.');
+      setError(err instanceof Error ? err.message : 'Failed to initiate transfer.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function confirmReceive(row: TransferEntry) {
+    if (!selectedCompanyId) return;
+    setReceivingId(row.id);
+    setError(null);
+    setInfo(null);
+    try {
+      await api.receiveTransfer(row.id, {
+        companyId: selectedCompanyId,
+        receivedBy: currentUser?.fullName,
+        receivedQuantity: row.quantity,
+        receivedDate: toDateInputValue(new Date()),
+      });
+      setInfo(
+        `Received XFR-${row.id}: ${row.quantity} ${row.uom} ${row.itemName} reconciled into inbound at ${locationNameById.get(row.toLocationExternalId) ?? row.toLocationExternalId}. Source stock depleted.`,
+      );
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm receive.');
+    } finally {
+      setReceivingId(null);
+    }
+  }
+
+  async function cancelPending(row: TransferEntry) {
+    if (!selectedCompanyId) return;
+    setReceivingId(row.id);
+    setError(null);
+    try {
+      await api.cancelTransfer(row.id, selectedCompanyId);
+      setInfo(`Cancelled XFR-${row.id}.`);
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel transfer.');
+    } finally {
+      setReceivingId(null);
     }
   }
 
@@ -377,7 +438,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         <div>
           <h2 className="text-base font-semibold">Transfer</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Move B2B product, sub-product, or smart component stock between locations · 2-year live history
+            Initiate outbound transfer · receiving location confirms and reconciles inbound · 2-year live history
           </p>
         </div>
         <label className="text-xs">
@@ -399,6 +460,78 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}
+        </div>
+      )}
+      {info && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+          {info}
+        </div>
+      )}
+
+      {pendingInbound.length > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 overflow-hidden">
+          <div className="px-3 py-2 border-b border-amber-500/20 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Pending inbound · confirm receive</h3>
+            <span className="text-[11px] text-muted-foreground">
+              {pendingInbound.length} awaiting
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="text-left px-2 py-1.5 w-24">Date</th>
+                  <th className="text-left px-2 py-1.5 w-28">From</th>
+                  <th className="text-left px-2 py-1.5 w-28">To</th>
+                  <th className="text-left px-2 py-1.5">Item</th>
+                  <th className="text-right px-2 py-1.5 w-20">Qty</th>
+                  <th className="text-left px-2 py-1.5 w-16">UOM</th>
+                  <th className="text-right px-2 py-1.5 w-44">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingInbound.map(row => (
+                  <tr key={row.id} className="border-b border-border/40">
+                    <td className="px-2 py-1.5 whitespace-nowrap">{formatTransferDate(row.transferDate)}</td>
+                    <td className="px-2 py-1.5 truncate">
+                      {locationNameById.get(row.fromLocationExternalId) ?? row.fromLocationExternalId}
+                    </td>
+                    <td className="px-2 py-1.5 truncate">
+                      {locationNameById.get(row.toLocationExternalId) ?? row.toLocationExternalId}
+                    </td>
+                    <td className="px-2 py-1.5 truncate" title={row.itemName}>
+                      {row.itemName}
+                      <span className="ml-1 text-[10px] uppercase text-muted-foreground">{row.itemType}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{row.quantity}</td>
+                    <td className="px-2 py-1.5">{row.uom}</td>
+                    <td className="px-2 py-1.5 text-right">
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={receivingId === row.id}
+                          onClick={() => void confirmReceive(row)}
+                          className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                        >
+                          <Check size={12} />
+                          {receivingId === row.id ? '…' : 'Confirm receive'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={receivingId === row.id}
+                          onClick={() => void cancelPending(row)}
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/50 disabled:opacity-50"
+                          title="Cancel pending transfer"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -533,7 +666,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
             <Plus size={14} />
-            {saving ? 'Saving…' : 'Add transfer'}
+            {saving ? 'Initiating…' : 'Initiate'}
           </button>
         </div>
       </form>
@@ -554,23 +687,24 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             <thead className="sticky top-0 bg-card z-10">
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-2 py-1.5 w-24">Date</th>
-                <th className="text-left px-2 py-1.5 w-32">From</th>
-                <th className="text-left px-2 py-1.5 w-32">To</th>
+                <th className="text-left px-2 py-1.5 w-28">From</th>
+                <th className="text-left px-2 py-1.5 w-28">To</th>
                 <th className="text-left px-2 py-1.5">Item</th>
                 <th className="text-left px-2 py-1.5 w-24">Type</th>
-                <th className="text-right px-2 py-1.5 w-20">Qty</th>
-                <th className="text-left px-2 py-1.5 w-16">UOM</th>
+                <th className="text-right px-2 py-1.5 w-16">Qty</th>
+                <th className="text-left px-2 py-1.5 w-14">UOM</th>
+                <th className="text-left px-2 py-1.5 w-28">Status</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
+                  <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
                 </tr>
               )}
               {!loading && visibleItems.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground text-xs">
+                  <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground text-xs">
                     No transfers in this month.
                   </td>
                 </tr>
@@ -586,8 +720,23 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   </td>
                   <td className="px-2 py-1.5 truncate" title={row.itemName}>{row.itemName}</td>
                   <td className="px-2 py-1.5 capitalize text-xs text-muted-foreground">{row.itemType}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{row.quantity}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">
+                    {row.receivedQuantity ?? row.quantity}
+                  </td>
                   <td className="px-2 py-1.5">{row.uom}</td>
+                  <td className="px-2 py-1.5 text-xs">
+                    <span
+                      className={
+                        row.status === 'pending'
+                          ? 'text-amber-700 dark:text-amber-400'
+                          : row.status === 'cancelled'
+                            ? 'text-muted-foreground'
+                            : 'text-foreground'
+                      }
+                    >
+                      {statusLabel(row.status)}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

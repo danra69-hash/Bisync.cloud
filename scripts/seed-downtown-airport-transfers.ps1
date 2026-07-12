@@ -164,8 +164,32 @@ foreach ($t in $transfers) {
     continue
   }
   try {
-    $r = Invoke-Api -Method POST -Path '/api/transfers' -Body $t
-    Write-Host ("Transfer #$($r.id): $($r.itemName) $($r.quantity) $($r.uom) $($r.fromLocationExternalId)->$($r.toLocationExternalId)")
+    $body = @{
+      companyId = $t.companyId
+      fromLocationExternalId = $t.fromLocationExternalId
+      toLocationExternalId = $t.toLocationExternalId
+      itemType = $t.itemType
+      itemKey = $t.itemKey
+      itemName = $t.itemName
+      quantity = $t.quantity
+      uom = $t.uom
+      transferDate = $t.transferDate
+      initiatedBy = 'Seed Script'
+    }
+    $r = Invoke-Api -Method POST -Path '/api/transfers' -Body $body
+    Write-Host ("Initiated #$($r.id) status=$($r.status): $($r.itemName) $($r.quantity) $($r.uom) $($r.fromLocationExternalId)->$($r.toLocationExternalId)")
+    # Leave first transfer pending so receive UI can be exercised; confirm the rest.
+    if ($t.itemType -ne 'component') {
+      $recv = Invoke-Api -Method POST -Path "/api/transfers/$($r.id)/receive" -Body @{
+        companyId = 1
+        receivedBy = 'Seed Receiver'
+        receivedQuantity = $t.quantity
+        receivedDate = $t.transferDate
+      }
+      Write-Host ("  Received #$($recv.id) status=$($recv.status)")
+    } else {
+      Write-Host '  Left pending for Confirm receive smoke test'
+    }
   } catch {
     Write-Host "Transfer FAILED $($t.itemName): $($_.Exception.Message)"
     if ($_.ErrorDetails.Message) { Write-Host $_.ErrorDetails.Message }
@@ -176,8 +200,11 @@ $month = (Get-Date).ToString('yyyy-MM')
 $list = Get-ApiList -Path "/api/transfers?companyId=1&locationIds=downtown,airport&month=$month"
 Write-Host ("History rows: " + $list.Count)
 foreach ($row in $list) {
-  Write-Host ("  $($row.transferDate) $($row.itemName) x$($row.quantity) $($row.fromLocationExternalId)->$($row.toLocationExternalId)")
+  Write-Host ("  $($row.transferDate) [$($row.status)] $($row.itemName) x$($row.quantity) $($row.fromLocationExternalId)->$($row.toLocationExternalId)")
 }
+
+$pending = Get-ApiList -Path '/api/transfers/pending-inbound?companyId=1&locationIds=downtown,airport'
+Write-Host ("Pending inbound: " + $pending.Count)
 
 Write-Host '--- Stock cards ---'
 foreach ($check in @(

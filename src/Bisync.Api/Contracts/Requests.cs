@@ -1274,4 +1274,17 @@ public class CreateTransferRequest
     public string Uom { get; set; } = string.Empty;
     [Required, MaxLength(20)]
     public string TransferDate { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? InitiatedBy { get; set; }
+}
+
+public class ReceiveTransferRequest
+{
+    public int? CompanyId { get; set; }
+    [MaxLength(200)]
+    public string? ReceivedBy { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal? ReceivedQuantity { get; set; }
+    [MaxLength(20)]
+    public string? ReceivedDate { get; set; }
 }

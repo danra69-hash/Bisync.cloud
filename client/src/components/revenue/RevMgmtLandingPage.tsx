@@ -23,6 +23,7 @@ import { ActivePurchasePanel } from './ActivePurchasePanel';
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  onOpenTransfer?: () => void;
 };
 
 type ActivityItem = {
@@ -125,7 +126,7 @@ function toneClasses(tone: ActivityItem['tone']) {
   }
 }
 
-export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: Props) {
+export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds, onOpenTransfer }: Props) {
   const { currentUser } = useCurrentUser();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -264,6 +265,15 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds }: P
 
     if (notification.purchaseOrderId) {
       await openOrder(notification.purchaseOrderId);
+      return;
+    }
+
+    if (
+      notification.transferId
+      || notification.type === 'transfer_initiated'
+      || notification.type === 'transfer_received'
+    ) {
+      onOpenTransfer?.();
     }
   }
 

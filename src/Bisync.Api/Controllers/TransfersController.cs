@@ -12,14 +12,14 @@ namespace Bisync.Api.Controllers;
 public class TransfersController(
     BisyncDbContext db,
     TransferService transfers,
-    ComponentStockService componentStock,
     ITenantContext tenant) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List(
         [FromQuery] int? companyId = null,
         [FromQuery] string? locationIds = null,
-        [FromQuery] string? month = null)
+        [FromQuery] string? month = null,
+        [FromQuery] string? status = null)
     {
         var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
         if (cid is null && !TenantQuery.AllowsAllCompanies(tenant, cid))
@@ -36,6 +36,12 @@ public class TransfersController(
         {
             query = query.Where(t =>
                 locs.Contains(t.FromLocationExternalId) || locs.Contains(t.ToLocationExternalId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var st = status.Trim().ToLowerInvariant();
+            query = query.Where(t => t.Status == st);
         }
 
         if (!string.IsNullOrWhiteSpace(month)
@@ -58,6 +64,34 @@ public class TransfersController(
         return Ok(rows.Select(Map));
     }
 
+    [HttpGet("pending-inbound")]
+    public async Task<ActionResult<IEnumerable<object>>> PendingInbound(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationIds = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        if (cid is null && !TenantQuery.AllowsAllCompanies(tenant, cid))
+            return Ok(Array.Empty<object>());
+
+        var locs = (locationIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        IQueryable<Models.TransferEntry> query = db.TransferEntries.AsNoTracking()
+            .Where(t => t.Status == Models.TransferEntry.StatusPending);
+        if (cid is int id)
+            query = query.Where(t => t.CompanyId == id);
+        if (locs.Count > 0)
+            query = query.Where(t => locs.Contains(t.ToLocationExternalId));
+
+        var rows = await query
+            .OrderBy(t => t.TransferDate)
+            .ThenBy(t => t.Id)
+            .ToListAsync();
+
+        return Ok(rows.Select(Map));
+    }
+
     [HttpGet("available")]
     public async Task<ActionResult<object>> Available(
         [FromQuery] string itemType,
@@ -70,48 +104,22 @@ public class TransfersController(
         if (string.IsNullOrWhiteSpace(itemKey) || string.IsNullOrWhiteSpace(locationExternalId))
             return BadRequest(new { message = "Item and location are required." });
 
-        var type = (itemType ?? "component").Trim().ToLowerInvariant();
-        if (type is "product" or "sub-product" or "subproduct" or "sub_product")
-        {
-            if (!int.TryParse(itemKey, out var productId))
-                return BadRequest(new { message = "Invalid product id." });
-
-            var stock = await db.ProductB2bLocationStocks.AsNoTracking()
-                .FirstOrDefaultAsync(s =>
-                    s.ProductId == productId
-                    && s.LocationExternalId == locationExternalId.Trim());
-            return Ok(new
-            {
-                availableQty = stock?.InStock ?? 0m,
-                uom = uom ?? "pcs",
-            });
-        }
-
-        var ingredient = await db.Ingredients.AsNoTracking()
-            .FirstOrDefaultAsync(i => i.ComponentId == itemKey && (cid == null || i.CompanyId == cid))
-            ?? await db.Ingredients.AsNoTracking()
-                .FirstOrDefaultAsync(i => i.ComponentId == itemKey);
-
-        var moveUom = uom ?? string.Empty;
-        if (ingredient is not null)
-        {
-            (_, moveUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, 1, moveUom);
-        }
-
-        var onHand = await componentStock.GetOnHandAsync(
-            itemKey.Trim(),
-            locationExternalId.Trim(),
-            string.IsNullOrWhiteSpace(moveUom) ? (uom ?? "") : moveUom);
+        var available = await transfers.GetAvailableAsync(
+            cid,
+            itemType,
+            itemKey,
+            locationExternalId,
+            uom ?? string.Empty);
 
         return Ok(new
         {
-            availableQty = onHand,
-            uom = string.IsNullOrWhiteSpace(moveUom) ? uom : moveUom,
+            availableQty = available,
+            uom = uom ?? string.Empty,
         });
     }
 
     [HttpPost]
-    public async Task<ActionResult<object>> Create([FromBody] CreateTransferRequest request)
+    public async Task<ActionResult<object>> Initiate([FromBody] CreateTransferRequest request)
     {
         var companyId = TenantQuery.ResolveCompanyId(tenant, request.CompanyId);
         if (companyId is null)
@@ -132,7 +140,7 @@ public class TransfersController(
 
         try
         {
-            var entry = await transfers.CreateAsync(
+            var entry = await transfers.InitiateAsync(
                 companyId.Value,
                 request.FromLocationExternalId,
                 request.ToLocationExternalId,
@@ -141,7 +149,57 @@ public class TransfersController(
                 request.ItemName ?? string.Empty,
                 request.Quantity,
                 request.Uom ?? string.Empty,
-                transferDate);
+                transferDate,
+                request.InitiatedBy);
+            return Ok(Map(entry));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/receive")]
+    public async Task<ActionResult<object>> Receive(int id, [FromBody] ReceiveTransferRequest? request)
+    {
+        var companyId = TenantQuery.ResolveCompanyId(tenant, request?.CompanyId);
+        if (companyId is null)
+            return BadRequest(new { message = "Company is required." });
+
+        DateOnly? receivedDate = null;
+        if (!string.IsNullOrWhiteSpace(request?.ReceivedDate))
+        {
+            if (!DateOnly.TryParse(request.ReceivedDate, out var parsed))
+                return BadRequest(new { message = "Invalid received date." });
+            receivedDate = parsed;
+        }
+
+        try
+        {
+            var entry = await transfers.ConfirmReceiveAsync(
+                id,
+                companyId.Value,
+                request?.ReceivedBy,
+                request?.ReceivedQuantity,
+                receivedDate);
+            return Ok(Map(entry));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/cancel")]
+    public async Task<ActionResult<object>> Cancel(int id, [FromQuery] int? companyId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        if (cid is null)
+            return BadRequest(new { message = "Company is required." });
+
+        try
+        {
+            var entry = await transfers.CancelAsync(id, cid.Value);
             return Ok(Map(entry));
         }
         catch (InvalidOperationException ex)
@@ -162,6 +220,11 @@ public class TransfersController(
         quantity = t.Quantity,
         uom = t.Uom,
         transferDate = t.TransferDate.ToString("yyyy-MM-dd"),
+        status = t.Status,
+        initiatedBy = t.InitiatedBy,
+        receivedBy = t.ReceivedBy,
+        receivedAt = t.ReceivedAt,
+        receivedQuantity = t.ReceivedQuantity,
         createdAt = t.CreatedAt,
     };
 }
