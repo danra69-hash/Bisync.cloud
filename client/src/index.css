@@ -74,6 +74,16 @@
   }
 }
 
+/* Column titles centered across all tables (beats per-cell text-left/text-right utilities). */
+#root table thead th {
+  text-align: center !important;
+}
+#root table thead th button {
+  justify-content: center !important;
+  text-align: center !important;
+  margin-inline: auto;
+}
+
 @layer components {
   [data-table-scroll] table {
     width: 100%;
