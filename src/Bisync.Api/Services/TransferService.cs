@@ -353,6 +353,7 @@ public class TransferService(
         toStock.UpdatedAt = DateTime.UtcNow;
 
         var productionDate = entry.TransferDate.ToString("yyyy-MM-dd");
+        var unitCost = ResolveProductTransferUnitCost(product);
         db.ProductProductionLogs.Add(new ProductProductionLog
         {
             ProductId = productId,
@@ -362,6 +363,7 @@ public class TransferService(
             BatchNumber = $"XFR-{entry.Id}",
             LocationIdsJson = JsonSerializer.Serialize(new[] { entry.FromLocationExternalId }),
             CompanyId = companyId,
+            UnitPrice = unitCost,
             CreatedAt = occurredAt,
         });
         db.ProductProductionLogs.Add(new ProductProductionLog
@@ -373,10 +375,19 @@ public class TransferService(
             BatchNumber = $"XFR-{entry.Id}",
             LocationIdsJson = JsonSerializer.Serialize(new[] { entry.ToLocationExternalId }),
             CompanyId = companyId,
+            UnitPrice = unitCost,
             CreatedAt = occurredAt,
         });
 
         product.UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Inter-outlet transfers move stock at recipe cost, never RRP.</summary>
+    static decimal ResolveProductTransferUnitCost(Product product)
+    {
+        if (product.IsSubProduct && product.YieldQuantity > 0)
+            return Math.Round(product.TotalCost / product.YieldQuantity, 4, MidpointRounding.AwayFromZero);
+        return Math.Round(product.TotalCost, 4, MidpointRounding.AwayFromZero);
     }
 
     async Task<ProductB2bLocationStock> EnsureStockRowAsync(

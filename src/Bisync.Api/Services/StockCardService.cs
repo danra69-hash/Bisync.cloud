@@ -1018,6 +1018,7 @@ public class StockCardService(
 
             if (IsProductTransferInEntryType(log.EntryType))
             {
+                var transferUnitPrice = log.UnitPrice > 0 ? log.UnitPrice : productionUnitPrice;
                 events.Add(new FifoEvent
                 {
                     Id = log.Id,
@@ -1026,7 +1027,7 @@ public class StockCardService(
                     Quantity = log.Quantity,
                     SignedQty = log.Quantity,
                     Uom = uom,
-                    UnitPrice = productionUnitPrice,
+                    UnitPrice = transferUnitPrice,
                     Reason = $"Transfer in — {product.Name}",
                     ReferenceNumber = log.BatchNumber ?? string.Empty,
                     SourceLabel = "transfer_in",
@@ -1060,13 +1061,14 @@ public class StockCardService(
 
     static decimal ResolveProductUnitPrice(Product product)
     {
+        // Stock valuation (production + inter-outlet transfer inbound) must use cost, never RRP.
         if (product.IsSubProduct && product.YieldQuantity > 0)
             return StockCardFifoEngine.RoundUnitPrice(product.TotalCost / product.YieldQuantity);
 
-        if (product.Rrp > 0)
-            return StockCardFifoEngine.RoundUnitPrice(product.Rrp);
+        if (product.TotalCost > 0)
+            return StockCardFifoEngine.RoundUnitPrice(product.TotalCost);
 
-        return StockCardFifoEngine.RoundUnitPrice(product.TotalCost);
+        return StockCardFifoEngine.RoundUnitPrice(product.Rrp);
     }
 
     async Task<FifoSimulationResult> BuildComponentFifoResultAsync(
