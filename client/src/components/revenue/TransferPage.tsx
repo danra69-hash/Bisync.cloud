@@ -143,6 +143,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
   const [toLocationId, setToLocationId] = useState('');
   const [itemSearch, setItemSearch] = useState('');
   const [selected, setSelected] = useState<CatalogItem | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const catalogPickerRef = useRef<HTMLDivElement | null>(null);
   const [quantity, setQuantity] = useState('');
   const [uom, setUom] = useState('');
   const [availableQty, setAvailableQty] = useState<number | null>(null);
@@ -207,6 +209,26 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
+
+  useEffect(() => {
+    if (!catalogOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (!catalogPickerRef.current?.contains(event.target as Node)) {
+        setCatalogOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setCatalogOpen(false);
+      }
+    }
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [catalogOpen]);
 
   useEffect(() => {
     if (!selectedCompanyId) {
@@ -375,6 +397,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
       setQuantity('');
       setSelected(null);
       setItemSearch('');
+      setCatalogOpen(false);
       setInfo(
         `Transfer XFR-${entry.id} initiated. ${locationNameById.get(toLocationId) ?? toLocationId} has been alerted to confirm receive.`,
       );
@@ -567,7 +590,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
           </select>
         </div>
 
-        <div className="lg:col-span-3 relative">
+        <div className="lg:col-span-3 relative" ref={catalogPickerRef}>
           <label className={labelCls}>Product (B2B) / Sub-product / Component</label>
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -578,16 +601,18 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
               onChange={e => {
                 setSelected(null);
                 setItemSearch(e.target.value);
+                setCatalogOpen(true);
               }}
               onFocus={() => {
                 if (selected) {
                   setItemSearch(selected.name);
                   setSelected(null);
                 }
+                setCatalogOpen(true);
               }}
             />
           </div>
-          {!selected && (itemSearch.trim() || filteredCatalog.length > 0) && (
+          {catalogOpen && !selected && (
             <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-card shadow-lg">
               {filteredCatalog.map(item => (
                 <li key={`${item.kind}:${item.key}`}>
@@ -597,6 +622,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                     onClick={() => {
                       setSelected(item);
                       setItemSearch('');
+                      setCatalogOpen(false);
                     }}
                   >
                     <span className="truncate">{item.name}</span>
