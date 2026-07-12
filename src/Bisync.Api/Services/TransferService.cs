@@ -291,12 +291,19 @@ public class TransferService(
         DateTime occurredAt,
         CancellationToken cancellationToken)
     {
-        var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsync(
+        // Smart-component transfers must move at FIFO stock cost as of the transfer date
+        // (oldest on-hand tranche first) — never catalog/LastPrice or RRP.
+        var asOfEnd = DateTime.SpecifyKind(
+            occurredAt.Date.AddDays(1).AddTicks(-1),
+            occurredAt.Kind == DateTimeKind.Unspecified ? DateTimeKind.Utc : occurredAt.Kind);
+
+        var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
             entry.ItemKey,
             entry.FromLocationExternalId,
             uom,
             qty,
             companyId,
+            asOfEnd,
             cancellationToken);
 
         await componentStock.RecordDeductionAsync(

@@ -52,10 +52,25 @@ public class ComponentFifoCostingService(BisyncDbContext db)
             events = events.Where(e => e.OccurredAt <= cutoff).ToList();
 
         var simulation = StockCardFifoEngine.Simulate(events);
-        var layers = simulation.RemainingLayers.ToList();
+        var layersBefore = simulation.RemainingLayers.ToList();
+        var averageBefore = StockCardFifoEngine.ComputeAverageCogs(layersBefore);
+        var layers = layersBefore.Select(CloneLayer).ToList();
         var consumed = StockCardFifoEngine.Consume(ref layers, quantity);
-        return consumed.UnitPrice;
+
+        // Prefer weighted FIFO consume price; if layers were unpriced, fall back to on-hand avg COGS.
+        if (consumed.UnitPrice > 0)
+            return consumed.UnitPrice;
+        return averageBefore;
     }
+
+    static FifoLayer CloneLayer(FifoLayer layer) => new()
+    {
+        ReceivedAt = layer.ReceivedAt,
+        SourceId = layer.SourceId,
+        Quantity = layer.Quantity,
+        UnitPrice = layer.UnitPrice,
+        SourceLabel = layer.SourceLabel,
+    };
 
     async Task<List<FifoEvent>> LoadInboundEventsAsync(
         string componentId,

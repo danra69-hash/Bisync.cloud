@@ -1207,11 +1207,7 @@ public class StockCardService(
                 Quantity = qty,
                 SignedQty = movement.QtyDelta,
                 Uom = movement.Uom,
-                UnitPrice = entryType is "adjustment_in" or "adjustment_out"
-                    ? 0
-                    : movement.UnitPrice > 0
-                        ? movement.UnitPrice
-                        : ResolveComponentFallbackPrice(ingredient, displayUom),
+                UnitPrice = ResolveComponentMovementUnitPrice(entryType, movement, movements, ingredient, displayUom),
                 Reason = FormatMovementReason(movement, productionProduct),
                 ReferenceNumber = ResolveMovementReferenceNumber(movement, productionProduct),
                 SourceLabel = entryType,
@@ -1219,6 +1215,46 @@ public class StockCardService(
         }
 
         return events;
+    }
+
+    /// <summary>
+    /// Transfer lines use FIFO stock cost only — never ingredient LastPrice/catalog fallback.
+    /// Outbound is priced by the FIFO engine; inbound carries the paired transfer-out cost.
+    /// </summary>
+    static decimal ResolveComponentMovementUnitPrice(
+        string entryType,
+        InventoryMovement movement,
+        IReadOnlyList<InventoryMovement> allMovements,
+        Ingredient ingredient,
+        string displayUom)
+    {
+        if (entryType is "adjustment_in" or "adjustment_out")
+            return 0;
+
+        if (entryType is "transfer_out")
+            return 0;
+
+        if (entryType is "transfer_in")
+        {
+            if (movement.UnitPrice > 0)
+                return StockCardFifoEngine.RoundUnitPrice(movement.UnitPrice);
+
+            if (movement.ReferenceId > 0)
+            {
+                var pairedOut = allMovements.FirstOrDefault(m =>
+                    m.ReferenceId == movement.ReferenceId
+                    && m.ReferenceType.Equals("transfer_out", StringComparison.OrdinalIgnoreCase)
+                    && m.UnitPrice > 0);
+                if (pairedOut is not null)
+                    return StockCardFifoEngine.RoundUnitPrice(pairedOut.UnitPrice);
+            }
+
+            return 0;
+        }
+
+        return movement.UnitPrice > 0
+            ? movement.UnitPrice
+            : ResolveComponentFallbackPrice(ingredient, displayUom);
     }
 
     static bool IsProductSaleEntryType(string entryType)
