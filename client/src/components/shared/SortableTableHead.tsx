@@ -42,7 +42,7 @@ export function SortableTableHead<T extends string>({
   onSort,
   className = '',
   style,
-  align = 'center',
+  align: _align = 'center',
   sortable = true,
   rowSpan,
   colSpan,
