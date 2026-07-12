@@ -110,6 +110,11 @@ function formatTransferDate(iso: string) {
   });
 }
 
+function formatMoney(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function statusLabel(status: string) {
   const s = (status || '').toLowerCase();
   if (s === 'pending') return 'Pending receive';
@@ -509,6 +514,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   <th className="text-left px-2 py-1.5">Item</th>
                   <th className="text-right px-2 py-1.5 w-20">Qty</th>
                   <th className="text-left px-2 py-1.5 w-16">UOM</th>
+                  <th className="text-right px-2 py-1.5 w-24">Unit price</th>
+                  <th className="text-right px-2 py-1.5 w-24">Total value</th>
                   <th className="text-right px-2 py-1.5 w-44">Action</th>
                 </tr>
               </thead>
@@ -528,6 +535,10 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{row.quantity}</td>
                     <td className="px-2 py-1.5">{row.uom}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(row.unitPrice)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">
+                      {formatMoney(row.totalValue ?? (row.unitPrice ?? 0) * row.quantity)}
+                    </td>
                     <td className="px-2 py-1.5 text-right">
                       <div className="inline-flex items-center gap-1.5">
                         <button
@@ -719,23 +730,29 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                 <th className="text-left px-2 py-1.5 w-24">Type</th>
                 <th className="text-right px-2 py-1.5 w-16">Qty</th>
                 <th className="text-left px-2 py-1.5 w-14">UOM</th>
+                <th className="text-right px-2 py-1.5 w-24">Unit price</th>
+                <th className="text-right px-2 py-1.5 w-24">Total value</th>
                 <th className="text-left px-2 py-1.5 w-28">Status</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
+                  <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
                 </tr>
               )}
               {!loading && visibleItems.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground text-xs">
+                  <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground text-xs">
                     No transfers in this month.
                   </td>
                 </tr>
               )}
-              {visibleItems.map(row => (
+              {visibleItems.map(row => {
+                const qty = row.receivedQuantity ?? row.quantity;
+                const unitPrice = row.unitPrice ?? 0;
+                const total = row.totalValue ?? unitPrice * qty;
+                return (
                 <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatTransferDate(row.transferDate)}</td>
                   <td className="px-2 py-1.5 truncate" title={row.fromLocationExternalId}>
@@ -746,10 +763,10 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   </td>
                   <td className="px-2 py-1.5 truncate" title={row.itemName}>{row.itemName}</td>
                   <td className="px-2 py-1.5 capitalize text-xs text-muted-foreground">{row.itemType}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    {row.receivedQuantity ?? row.quantity}
-                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{qty}</td>
                   <td className="px-2 py-1.5">{row.uom}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(unitPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">{formatMoney(total)}</td>
                   <td className="px-2 py-1.5 text-xs">
                     <span
                       className={
@@ -764,7 +781,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                     </span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           <InfiniteScrollDivSentinel hasMore={hasMore} sentinelRef={sentinelRef} />

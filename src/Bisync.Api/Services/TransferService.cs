@@ -68,6 +68,9 @@ public class TransferService(
 
         await EnsureAvailableAsync(companyId, type, key, fromLoc, moveQty, moveUom, excludeTransferId: null, cancellationToken);
 
+        var estimatedUnitPrice = await EstimateUnitPriceAsync(
+            companyId, type, key, fromLoc, moveQty, moveUom, transferDate, cancellationToken);
+
         var entry = new TransferEntry
         {
             CompanyId = companyId,
@@ -79,6 +82,7 @@ public class TransferService(
             // Persist inventory-preferred qty/uom for components so reservations match stock cards.
             Quantity = moveQty,
             Uom = moveUom,
+            UnitPrice = estimatedUnitPrice,
             TransferDate = transferDate,
             Status = TransferEntry.StatusPending,
             InitiatedBy = (initiatedBy ?? string.Empty).Trim(),
@@ -144,13 +148,15 @@ public class TransferService(
 
         if (type == "component")
         {
-            await MoveComponentAsync(entry, companyId, moveQty, moveUom, reasonOut, reasonIn, occurredAt, cancellationToken);
+            entry.UnitPrice = await MoveComponentAsync(
+                entry, companyId, moveQty, moveUom, reasonOut, reasonIn, occurredAt, cancellationToken);
         }
         else
         {
             if (!int.TryParse(entry.ItemKey, out var productId))
                 throw new InvalidOperationException("Invalid product id.");
-            await MoveProductAsync(entry, productId, companyId, receiveQty, reasonOut, reasonIn, occurredAt, cancellationToken);
+            entry.UnitPrice = await MoveProductAsync(
+                entry, productId, companyId, receiveQty, reasonOut, reasonIn, occurredAt, cancellationToken);
         }
 
         entry.Status = TransferEntry.StatusReceived;
@@ -281,7 +287,32 @@ public class TransferService(
         return await query.SumAsync(t => t.Quantity, cancellationToken);
     }
 
-    async Task MoveComponentAsync(
+    async Task<decimal> EstimateUnitPriceAsync(
+        int companyId,
+        string type,
+        string key,
+        string fromLoc,
+        decimal qty,
+        string uom,
+        DateOnly transferDate,
+        CancellationToken cancellationToken)
+    {
+        if (type == "component")
+        {
+            var asOfEnd = transferDate.ToDateTime(new TimeOnly(23, 59, 59), DateTimeKind.Utc);
+            return await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
+                key, fromLoc, uom, qty, companyId, asOfEnd, cancellationToken);
+        }
+
+        if (!int.TryParse(key, out var productId))
+            return 0;
+
+        var product = await db.Products.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId, cancellationToken);
+        return product is null ? 0 : ResolveProductTransferUnitCost(product);
+    }
+
+    async Task<decimal> MoveComponentAsync(
         TransferEntry entry,
         int companyId,
         decimal qty,
@@ -332,9 +363,11 @@ public class TransferService(
             companyId,
             createdAt: occurredAt,
             unitPrice: unitPrice);
+
+        return unitPrice;
     }
 
-    async Task MoveProductAsync(
+    async Task<decimal> MoveProductAsync(
         TransferEntry entry,
         int productId,
         int companyId,
@@ -387,6 +420,7 @@ public class TransferService(
         });
 
         product.UpdatedAt = DateTime.UtcNow;
+        return unitCost;
     }
 
     /// <summary>Inter-outlet transfers move stock at recipe cost, never RRP.</summary>

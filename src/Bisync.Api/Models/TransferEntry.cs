@@ -17,6 +17,8 @@ public class TransferEntry
     public string ItemName { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public string Uom { get; set; } = string.Empty;
+    /// <summary>FIFO/recipe unit cost used for the transfer (set at initiate estimate, finalized on receive).</summary>
+    public decimal UnitPrice { get; set; }
     public DateOnly TransferDate { get; set; }
     /// <summary>pending | received | cancelled</summary>
     public string Status { get; set; } = StatusPending;

@@ -208,23 +208,30 @@ public class TransfersController(
         }
     }
 
-    static object Map(Models.TransferEntry t) => new
+    static object Map(Models.TransferEntry t)
     {
-        t.Id,
-        companyId = t.CompanyId,
-        fromLocationExternalId = t.FromLocationExternalId,
-        toLocationExternalId = t.ToLocationExternalId,
-        itemType = t.ItemType,
-        itemKey = t.ItemKey,
-        itemName = t.ItemName,
-        quantity = t.Quantity,
-        uom = t.Uom,
-        transferDate = t.TransferDate.ToString("yyyy-MM-dd"),
-        status = t.Status,
-        initiatedBy = t.InitiatedBy,
-        receivedBy = t.ReceivedBy,
-        receivedAt = t.ReceivedAt,
-        receivedQuantity = t.ReceivedQuantity,
-        createdAt = t.CreatedAt,
-    };
+        var qty = t.ReceivedQuantity ?? t.Quantity;
+        var unitPrice = t.UnitPrice;
+        return new
+        {
+            t.Id,
+            companyId = t.CompanyId,
+            fromLocationExternalId = t.FromLocationExternalId,
+            toLocationExternalId = t.ToLocationExternalId,
+            itemType = t.ItemType,
+            itemKey = t.ItemKey,
+            itemName = t.ItemName,
+            quantity = t.Quantity,
+            uom = t.Uom,
+            unitPrice,
+            totalValue = Math.Round(unitPrice * qty, 2, MidpointRounding.AwayFromZero),
+            transferDate = t.TransferDate.ToString("yyyy-MM-dd"),
+            status = t.Status,
+            initiatedBy = t.InitiatedBy,
+            receivedBy = t.ReceivedBy,
+            receivedAt = t.ReceivedAt,
+            receivedQuantity = t.ReceivedQuantity,
+            createdAt = t.CreatedAt,
+        };
+    }
 }

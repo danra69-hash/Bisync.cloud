@@ -257,6 +257,7 @@ public static class SchemaPatcher
                 "ReceivedBy" TEXT NOT NULL DEFAULT '',
                 "ReceivedAt" TIMESTAMP,
                 "ReceivedQuantity" REAL,
+                "UnitPrice" REAL NOT NULL DEFAULT 0,
                 "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
             );
             """);
@@ -269,6 +270,26 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedBy", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedAt", "TIMESTAMP");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "ReceivedQuantity", "REAL");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TransferEntries", "UnitPrice", "REAL NOT NULL DEFAULT 0");
+        // Backfill unit cost from stock movements for received transfers that predate the column.
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "TransferEntries" t
+            SET "UnitPrice" = m."UnitPrice"
+            FROM "InventoryMovements" m
+            WHERE COALESCE(t."UnitPrice", 0) = 0
+              AND m."ReferenceType" = 'transfer_out'
+              AND m."ReferenceId" = t."Id"
+              AND m."UnitPrice" > 0;
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "TransferEntries" t
+            SET "UnitPrice" = p."UnitPrice"
+            FROM "ProductProductionLogs" p
+            WHERE COALESCE(t."UnitPrice", 0) = 0
+              AND p."EntryType" = 'transfer_out'
+              AND p."BatchNumber" = ('XFR-' || t."Id"::text)
+              AND p."UnitPrice" > 0;
+            """);
         // Legacy rows were completed immediately; treat those with stock movements as received.
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "TransferEntries" t

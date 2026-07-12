@@ -1110,6 +1110,8 @@ export interface TransferEntry {
   itemName: string;
   quantity: number;
   uom: string;
+  unitPrice?: number;
+  totalValue?: number;
   transferDate: string;
   status: 'pending' | 'received' | 'cancelled' | string;
   initiatedBy?: string;
