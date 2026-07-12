@@ -56,12 +56,28 @@ public class WastageService(
 
         if (type == "component")
         {
+            var ingredient = await db.Ingredients
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ComponentId == entry.ItemKey && i.CompanyId == companyId, cancellationToken)
+                ?? await db.Ingredients
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(i => i.ComponentId == entry.ItemKey, cancellationToken);
+
+            var deductQty = entry.Quantity;
+            var deductUom = entry.Uom;
+            if (ingredient is not null)
+            {
+                (deductQty, deductUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, deductQty, deductUom);
+                if (string.IsNullOrWhiteSpace(entry.ItemName))
+                    entry.ItemName = ingredient.Name;
+            }
+
             await componentStock.RecordDeductionAsync(
                 entry.ItemKey,
                 entry.ItemName,
                 entry.LocationExternalId,
-                entry.Quantity,
-                entry.Uom,
+                deductQty,
+                deductUom,
                 reasonLabel,
                 ReferenceType,
                 entry.Id,
@@ -223,12 +239,19 @@ public class WastageService(
             var qty = line.Quantity * quantity;
             if (qty <= 0) continue;
 
+            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+                line.ComponentId,
+                companyId,
+                qty,
+                line.ComponentUom,
+                cancellationToken);
+
             await componentStock.RecordDeductionAsync(
                 line.ComponentId,
                 line.ComponentName,
                 locationExternalId,
-                qty,
-                line.ComponentUom,
+                deductQty,
+                deductUom,
                 reasonLabel,
                 ReferenceType,
                 wastageId,
@@ -244,12 +267,19 @@ public class WastageService(
             var qty = pack.Quantity * quantity;
             if (qty <= 0) continue;
 
+            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+                pack.ComponentId,
+                companyId,
+                qty,
+                pack.ComponentUom,
+                cancellationToken);
+
             await componentStock.RecordDeductionAsync(
                 pack.ComponentId,
                 pack.ComponentName,
                 locationExternalId,
-                qty,
-                pack.ComponentUom,
+                deductQty,
+                deductUom,
                 reasonLabel,
                 ReferenceType,
                 wastageId,
@@ -334,12 +364,20 @@ public class WastageService(
                 continue;
             var qty = line.Quantity * shortfall;
             if (qty <= 0) continue;
+
+            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+                line.ComponentId,
+                companyId,
+                qty,
+                line.ComponentUom,
+                cancellationToken);
+
             await componentStock.RecordDeductionAsync(
                 line.ComponentId,
                 line.ComponentName,
                 locationExternalId,
-                qty,
-                line.ComponentUom,
+                deductQty,
+                deductUom,
                 reasonLabel,
                 ReferenceType,
                 wastageId,
@@ -354,12 +392,20 @@ public class WastageService(
                 continue;
             var qty = pack.Quantity * shortfall;
             if (qty <= 0) continue;
+
+            var (deductQty, deductUom) = await ToInventoryDeductionAsync(
+                pack.ComponentId,
+                companyId,
+                qty,
+                pack.ComponentUom,
+                cancellationToken);
+
             await componentStock.RecordDeductionAsync(
                 pack.ComponentId,
                 pack.ComponentName,
                 locationExternalId,
-                qty,
-                pack.ComponentUom,
+                deductQty,
+                deductUom,
                 reasonLabel,
                 ReferenceType,
                 wastageId,
@@ -367,6 +413,26 @@ public class WastageService(
                 cancellationToken,
                 createdAt: occurredAt);
         }
+    }
+
+    async Task<(decimal Quantity, string Uom)> ToInventoryDeductionAsync(
+        string componentId,
+        int companyId,
+        decimal quantity,
+        string uom,
+        CancellationToken cancellationToken)
+    {
+        var ingredient = await db.Ingredients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.ComponentId == componentId && i.CompanyId == companyId, cancellationToken)
+            ?? await db.Ingredients
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ComponentId == componentId, cancellationToken);
+
+        if (ingredient is null)
+            return (quantity, uom);
+
+        return IngredientUomBridge.ToInventoryPreferred(ingredient, quantity, uom);
     }
 
     static string NormalizeItemType(string itemType)

@@ -93,9 +93,10 @@ function productUoms(p: Product): string[] {
 }
 
 function componentUoms(ing: Ingredient): string[] {
-  const recipe = fromApiUom(ing.recipeUom || '');
   const inventory = fromApiUom(ing.inventoryUom || '');
-  return uniqueUoms([recipe], [inventory]);
+  const recipe = fromApiUom(ing.recipeUom || '');
+  // Prefer inventory UOM first — stock cards default to inventory units.
+  return uniqueUoms([inventory], [recipe]);
 }
 
 function formatWastedDate(iso: string) {
