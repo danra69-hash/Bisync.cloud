@@ -139,7 +139,8 @@ $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
     --set-env-vars "ASPNETCORE_ENVIRONMENT=Production" `
     --set-env-vars "ConnectionStrings__DefaultConnection=$DefaultConn" `
     --set-env-vars "ConnectionStrings__ArchiveConnection=$ArchiveConn" `
-    --set-env-vars "DEV_CONSOLE_ENABLED=$DevConsoleEnabled"
+    --set-env-vars "DEV_CONSOLE_ENABLED=$DevConsoleEnabled" `
+    --set-env-vars "App__PublicBaseUrl=https://bisync-cloud-389272498937.asia-southeast1.run.app"
 if ($LASTEXITCODE -ne 0) { throw "Cloud Run deploy failed." }
 
 Step "9" "Deployment complete"

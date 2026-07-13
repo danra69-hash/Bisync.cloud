@@ -74,8 +74,10 @@ public class AuthController(
             .Include(u => u.Employee)
             .FirstOrDefaultAsync(u => u.Email.ToLower() == normalized);
 
-        if (user is null || !user.Active)
+        if (user is null)
             return StatusCode(401, new { message = "Invalid email or password." });
+        if (!user.Active)
+            return StatusCode(401, new { message = "Account not activated. Open the confirmation link from registration, then try again." });
 
         var passwordValid = AppPasswordHasher.Verify(request.Password, user.PasswordHash);
         if (!passwordValid && string.IsNullOrWhiteSpace(user.PasswordHash))
@@ -361,11 +363,21 @@ public class AuthController(
         var request = httpContextAccessor.HttpContext?.Request;
         if (request is not null)
         {
-            var origin = $"{request.Scheme}://{request.Host.Value}".TrimEnd('/');
             // Local API is :5299; browser UI is usually Vite :5173 — prefer Origin header when present.
             var headerOrigin = request.Headers.Origin.FirstOrDefault()?.Trim().TrimEnd('/');
             if (!string.IsNullOrWhiteSpace(headerOrigin))
                 return $"{headerOrigin}/activate/{token}";
+
+            // Cloud Run / proxies often report http even when the public URL is https.
+            var forwardedProto = request.Headers["X-Forwarded-Proto"].FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim();
+            var scheme = !string.IsNullOrWhiteSpace(forwardedProto)
+                ? forwardedProto
+                : request.Scheme;
+            var host = request.Host.Value ?? string.Empty;
+            if (host.Contains("run.app", StringComparison.OrdinalIgnoreCase))
+                scheme = "https";
+
+            var origin = $"{scheme}://{host}".TrimEnd('/');
             return $"{origin}/activate/{token}";
         }
 
