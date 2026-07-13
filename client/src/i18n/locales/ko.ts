@@ -79,6 +79,10 @@ export const ko = {
     editLayout: '레이아웃 편집',
     editing: '편집 중',
     notifications: '알림',
+    unreadCount: '읽지 않음 {{count}}개',
+    allCaughtUp: '모두 확인했습니다',
+    signInForNotifications: '알림을 보려면 로그인하세요.',
+    new: '새 알림',
   },
   nav: {
     overview: '개요',

@@ -79,6 +79,10 @@ export const ja = {
     editLayout: 'レイアウトを編集',
     editing: '編集中',
     notifications: '通知',
+    unreadCount: '未読 {{count}} 件',
+    allCaughtUp: 'すべて確認済みです',
+    signInForNotifications: '通知を表示するにはサインインしてください。',
+    new: '新着',
   },
   nav: {
     overview: '概要',

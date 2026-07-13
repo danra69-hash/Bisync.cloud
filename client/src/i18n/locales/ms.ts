@@ -79,6 +79,10 @@ export const ms = {
     editLayout: 'Edit Susun Atur',
     editing: 'Mengedit',
     notifications: 'Pemberitahuan',
+    unreadCount: '{{count}} belum dibaca',
+    allCaughtUp: 'Semua telah dibaca',
+    signInForNotifications: 'Log masuk untuk melihat pemberitahuan anda.',
+    new: 'Baharu',
   },
   nav: {
     overview: 'Gambaran Keseluruhan',

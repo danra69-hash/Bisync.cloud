@@ -79,6 +79,10 @@ export const id = {
     editLayout: 'Edit Tata Letak',
     editing: 'Mengedit',
     notifications: 'Notifikasi',
+    unreadCount: '{{count}} belum dibaca',
+    allCaughtUp: 'Semua sudah dibaca',
+    signInForNotifications: 'Masuk untuk melihat notifikasi Anda.',
+    new: 'Baru',
   },
   nav: {
     overview: 'Ikhtisar',

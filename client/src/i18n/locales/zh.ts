@@ -79,6 +79,10 @@ export const zh = {
     editLayout: '编辑布局',
     editing: '编辑中',
     notifications: '通知',
+    unreadCount: '{{count}} 条未读',
+    allCaughtUp: '全部已读',
+    signInForNotifications: '请登录以查看通知。',
+    new: '新',
   },
   nav: {
     overview: '概览',

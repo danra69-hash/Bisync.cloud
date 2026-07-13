@@ -79,6 +79,10 @@ export const th = {
     editLayout: 'แก้ไขเลย์เอาต์',
     editing: 'กำลังแก้ไข',
     notifications: 'การแจ้งเตือน',
+    unreadCount: 'ยังไม่อ่าน {{count}} รายการ',
+    allCaughtUp: 'อ่านครบแล้ว',
+    signInForNotifications: 'เข้าสู่ระบบเพื่อดูการแจ้งเตือน',
+    new: 'ใหม่',
   },
   nav: {
     overview: 'ภาพรวม',

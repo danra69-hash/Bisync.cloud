@@ -79,6 +79,10 @@ export const es = {
     editLayout: 'Editar diseño',
     editing: 'Editando',
     notifications: 'Notificaciones',
+    unreadCount: '{{count}} sin leer',
+    allCaughtUp: 'Estás al día',
+    signInForNotifications: 'Inicia sesión para ver tus notificaciones.',
+    new: 'Nuevo',
   },
   nav: {
     overview: 'Resumen',

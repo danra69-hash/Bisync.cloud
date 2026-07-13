@@ -79,6 +79,10 @@ export const it = {
     editLayout: 'Modifica layout',
     editing: 'Modifica in corso',
     notifications: 'Notifiche',
+    unreadCount: '{{count}} non lette',
+    allCaughtUp: 'Sei in pari',
+    signInForNotifications: 'Accedi per vedere le tue notifiche.',
+    new: 'Nuovo',
   },
   nav: {
     overview: 'Panoramica',
