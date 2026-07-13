@@ -79,9 +79,27 @@ public class AuthController(
         if (!string.Equals(password, confirm, StringComparison.Ordinal))
             return BadRequest(new { message = "Password and confirmation do not match." });
 
-        var exists = await db.AppUsers.AnyAsync(u => u.Email.ToLower() == email);
-        if (exists)
-            return Conflict(new { message = "An account with this email already exists." });
+        var mobileDigits = NormalizePhoneDigits(mobile);
+        if (mobileDigits.Length < 8)
+            return BadRequest(new { message = "Enter a valid mobile number." });
+
+        var candidates = await db.AppUsers
+            .AsNoTracking()
+            .Select(u => new { u.Email, u.Phone })
+            .ToListAsync();
+
+        var emailTaken = candidates.Any(u =>
+            string.Equals((u.Email ?? string.Empty).Trim(), email, StringComparison.OrdinalIgnoreCase));
+        var mobileTaken = candidates.Any(u =>
+            NormalizePhoneDigits(u.Phone) == mobileDigits
+            && NormalizePhoneDigits(u.Phone).Length >= 8);
+
+        if (emailTaken && mobileTaken)
+            return Conflict(new { message = "This email address and mobile number are already registered." });
+        if (emailTaken)
+            return Conflict(new { message = "This email address is already registered." });
+        if (mobileTaken)
+            return Conflict(new { message = "This mobile number is already registered." });
 
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var user = new AppUser
@@ -180,6 +198,12 @@ public class AuthController(
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
         var locations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
         return Ok(MapUser(user, companies, locations));
+    }
+
+    static string NormalizePhoneDigits(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return string.Empty;
+        return new string(phone.Where(char.IsDigit).ToArray());
     }
 
     string BuildActivationUrl(string token)
