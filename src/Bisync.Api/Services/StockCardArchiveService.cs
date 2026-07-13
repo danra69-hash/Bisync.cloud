@@ -1,5 +1,6 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -8,6 +9,8 @@ namespace Bisync.Api.Services;
 public class StockCardArchiveService(
     BisyncDbContext db,
     StockCardArchiveDbContext archiveDb,
+    ITenantConnectionResolver resolver,
+    ITenantContext tenantContext,
     IOptions<StockCardArchiveOptions> options,
     ILogger<StockCardArchiveService> logger)
 {
@@ -25,20 +28,71 @@ public class StockCardArchiveService(
             .Take(Math.Max(1, take))
             .ToListAsync(cancellationToken);
 
-    public async Task<StockCardArchiveRun> ArchiveExpiredRecordsAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Archives expired rows for the current scoped operational DB into the matching archive DB.
+    /// Shared tenants use the shared archive; provisioned companies use their archive connection.
+    /// </summary>
+    public Task<StockCardArchiveRun> ArchiveExpiredRecordsAsync(CancellationToken cancellationToken = default)
+        => ArchiveWithContextsAsync(db, archiveDb, tenantContext.CompanyId, cancellationToken);
+
+    /// <summary>
+    /// Hosted job entry: archive shared DB, then each provisioned company operational DB.
+    /// </summary>
+    public async Task ArchiveAllTenantsAsync(CancellationToken cancellationToken = default)
+    {
+        await ArchiveSharedAsync(cancellationToken);
+
+        await using var control = CreateDb(resolver.DefaultOperationalConnection);
+        var provisioned = await control.TenantConnections.AsNoTracking()
+            .Where(t => t.IsActive && t.ConnectionString != null && t.ConnectionString != "")
+            .Select(t => new { t.CompanyId, t.ConnectionString, t.ArchiveConnectionString, t.DatabaseName, t.ArchiveDatabaseName })
+            .ToListAsync(cancellationToken);
+
+        foreach (var tenant in provisioned)
+        {
+            try
+            {
+                var archiveCs = !string.IsNullOrWhiteSpace(tenant.ArchiveConnectionString)
+                    ? tenant.ArchiveConnectionString
+                    : resolver.ResolveArchiveConnection(tenant.CompanyId);
+                await using var operational = CreateDb(tenant.ConnectionString);
+                await using var archive = CreateArchiveDb(archiveCs);
+                await archive.Database.EnsureCreatedAsync(cancellationToken);
+                await ArchiveWithContextsAsync(operational, archive, tenant.CompanyId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Stock card archive failed for company {CompanyId}", tenant.CompanyId);
+            }
+        }
+    }
+
+    async Task ArchiveSharedAsync(CancellationToken cancellationToken)
+    {
+        await using var operational = CreateDb(resolver.DefaultOperationalConnection);
+        await using var archive = CreateArchiveDb(resolver.DefaultArchiveConnection);
+        await archive.Database.EnsureCreatedAsync(cancellationToken);
+        await ArchiveWithContextsAsync(operational, archive, companyId: null, cancellationToken);
+    }
+
+    async Task<StockCardArchiveRun> ArchiveWithContextsAsync(
+        BisyncDbContext operationalDb,
+        StockCardArchiveDbContext archiveContext,
+        int? companyId,
+        CancellationToken cancellationToken)
     {
         var cutoff = ResolveArchiveCutoffUtc();
         var archivedAt = DateTime.UtcNow;
         var consolidationTotals = new Dictionary<ConsolidationKey, decimal>();
         var consolidationPrices = new Dictionary<ConsolidationKey, decimal>();
 
-        var archivedMovementIds = await archiveDb.ArchivedInventoryMovements
+        var archivedMovementIds = await archiveContext.ArchivedInventoryMovements
             .Select(m => m.OriginalId)
             .ToListAsync(cancellationToken);
-        var archivedPurchaseIds = await archiveDb.ArchivedInventoryPurchases
+        var archivedPurchaseIds = await archiveContext.ArchivedInventoryPurchases
             .Select(p => p.OriginalId)
             .ToListAsync(cancellationToken);
-        var archivedLogIds = await archiveDb.ArchivedProductProductionLogs
+        var archivedLogIds = await archiveContext.ArchivedProductProductionLogs
             .Select(l => l.OriginalId)
             .ToListAsync(cancellationToken);
 
@@ -46,7 +100,7 @@ public class StockCardArchiveService(
         var archivedPurchaseIdSet = archivedPurchaseIds.ToHashSet();
         var archivedLogIdSet = archivedLogIds.ToHashSet();
 
-        var expiredMovements = (await db.InventoryMovements
+        var expiredMovements = (await operationalDb.InventoryMovements
             .Where(m => m.CreatedAt < cutoff)
             .Where(m => m.ReferenceType != "stock_card_archive_opening")
             .OrderBy(m => m.Id)
@@ -54,14 +108,14 @@ public class StockCardArchiveService(
             .Where(m => !archivedMovementIdSet.Contains(m.Id))
             .ToList();
 
-        var expiredPurchases = (await db.InventoryPurchases
+        var expiredPurchases = (await operationalDb.InventoryPurchases
             .Where(p => p.DateCreatedInStock < cutoff)
             .OrderBy(p => p.Id)
             .ToListAsync(cancellationToken))
             .Where(p => !archivedPurchaseIdSet.Contains(p.Id))
             .ToList();
 
-        var expiredLogs = (await db.ProductProductionLogs
+        var expiredLogs = (await operationalDb.ProductProductionLogs
             .Where(l => l.CreatedAt < cutoff)
             .OrderBy(l => l.Id)
             .ToListAsync(cancellationToken))
@@ -70,13 +124,17 @@ public class StockCardArchiveService(
 
         if (expiredMovements.Count == 0 && expiredPurchases.Count == 0 && expiredLogs.Count == 0)
         {
-            logger.LogInformation("Stock card archive: no records older than {Cutoff:u}", cutoff);
-            return await RecordRunAsync(cutoff, archivedAt, 0, 0, 0, 0, "No records to archive.", cancellationToken);
+            logger.LogInformation(
+                "Stock card archive ({Company}): no records older than {Cutoff:u}",
+                companyId?.ToString() ?? "shared",
+                cutoff);
+            return await RecordRunAsync(
+                archiveContext, cutoff, archivedAt, 0, 0, 0, 0, "No records to archive.", cancellationToken);
         }
 
         foreach (var movement in expiredMovements)
         {
-            archiveDb.ArchivedInventoryMovements.Add(MapMovement(movement, archivedAt));
+            archiveContext.ArchivedInventoryMovements.Add(MapMovement(movement, archivedAt));
             AddConsolidation(
                 consolidationTotals,
                 consolidationPrices,
@@ -91,7 +149,7 @@ public class StockCardArchiveService(
 
         foreach (var purchase in expiredPurchases)
         {
-            archiveDb.ArchivedInventoryPurchases.Add(MapPurchase(purchase, archivedAt));
+            archiveContext.ArchivedInventoryPurchases.Add(MapPurchase(purchase, archivedAt));
 
             var locations = PurchaseOrderWorkflow.DeserializeLocationIds(purchase.LocationIdsJson);
             if (locations.Count == 0)
@@ -126,31 +184,34 @@ public class StockCardArchiveService(
         }
 
         foreach (var log in expiredLogs)
-            archiveDb.ArchivedProductProductionLogs.Add(MapProductionLog(log, archivedAt));
+            archiveContext.ArchivedProductProductionLogs.Add(MapProductionLog(log, archivedAt));
 
-        await archiveDb.SaveChangesAsync(cancellationToken);
+        await archiveContext.SaveChangesAsync(cancellationToken);
 
         var consolidationCount = await InsertConsolidationMovementsAsync(
+            operationalDb,
             consolidationTotals,
             consolidationPrices,
             cutoff,
             cancellationToken);
 
-        db.InventoryMovements.RemoveRange(expiredMovements);
-        db.InventoryPurchases.RemoveRange(expiredPurchases);
-        db.ProductProductionLogs.RemoveRange(expiredLogs);
-        await db.SaveChangesAsync(cancellationToken);
+        operationalDb.InventoryMovements.RemoveRange(expiredMovements);
+        operationalDb.InventoryPurchases.RemoveRange(expiredPurchases);
+        operationalDb.ProductProductionLogs.RemoveRange(expiredLogs);
+        await operationalDb.SaveChangesAsync(cancellationToken);
 
-        var notes =
-            $"Archived to PostgreSQL archive database. Cutoff {cutoff:yyyy-MM-dd}.";
+        var target = companyId is > 0 ? $"company {companyId}" : "shared archive";
+        var notes = $"Archived to PostgreSQL ({target}). Cutoff {cutoff:yyyy-MM-dd}.";
         logger.LogInformation(
-            "Stock card archive complete: {Movements} movements, {Purchases} purchases, {Logs} production logs, {Consolidations} consolidation movements.",
+            "Stock card archive complete ({Target}): {Movements} movements, {Purchases} purchases, {Logs} production logs, {Consolidations} consolidation movements.",
+            target,
             expiredMovements.Count,
             expiredPurchases.Count,
             expiredLogs.Count,
             consolidationCount);
 
         return await RecordRunAsync(
+            archiveContext,
             cutoff,
             archivedAt,
             expiredMovements.Count,
@@ -162,6 +223,7 @@ public class StockCardArchiveService(
     }
 
     async Task<int> InsertConsolidationMovementsAsync(
+        BisyncDbContext operationalDb,
         Dictionary<ConsolidationKey, decimal> totals,
         Dictionary<ConsolidationKey, decimal> prices,
         DateTime cutoff,
@@ -174,7 +236,7 @@ public class StockCardArchiveService(
             if (qtyDelta == 0)
                 continue;
 
-            var alreadyExists = await db.InventoryMovements.AnyAsync(
+            var alreadyExists = await operationalDb.InventoryMovements.AnyAsync(
                 m => m.ReferenceType == "stock_card_archive_opening"
                      && m.ComponentId == key.ComponentId
                      && m.LocationExternalId == key.LocationExternalId
@@ -185,7 +247,7 @@ public class StockCardArchiveService(
                 continue;
 
             prices.TryGetValue(key, out var unitPrice);
-            db.InventoryMovements.Add(new InventoryMovement
+            operationalDb.InventoryMovements.Add(new InventoryMovement
             {
                 ComponentId = key.ComponentId,
                 ComponentName = key.ComponentName,
@@ -203,12 +265,13 @@ public class StockCardArchiveService(
         }
 
         if (created > 0)
-            await db.SaveChangesAsync(cancellationToken);
+            await operationalDb.SaveChangesAsync(cancellationToken);
 
         return created;
     }
 
-    async Task<StockCardArchiveRun> RecordRunAsync(
+    static async Task<StockCardArchiveRun> RecordRunAsync(
+        StockCardArchiveDbContext archiveContext,
         DateTime cutoff,
         DateTime archivedAt,
         int movements,
@@ -228,9 +291,25 @@ public class StockCardArchiveService(
             ConsolidationMovementsCreated = consolidations,
             Notes = notes,
         };
-        archiveDb.ArchiveRuns.Add(run);
-        await archiveDb.SaveChangesAsync(cancellationToken);
+        archiveContext.ArchiveRuns.Add(run);
+        await archiveContext.SaveChangesAsync(cancellationToken);
         return run;
+    }
+
+    static BisyncDbContext CreateDb(string connectionString)
+    {
+        var options = new DbContextOptionsBuilder<BisyncDbContext>()
+            .UseNpgsql(connectionString)
+            .Options;
+        return new BisyncDbContext(options);
+    }
+
+    static StockCardArchiveDbContext CreateArchiveDb(string connectionString)
+    {
+        var options = new DbContextOptionsBuilder<StockCardArchiveDbContext>()
+            .UseNpgsql(connectionString)
+            .Options;
+        return new StockCardArchiveDbContext(options);
     }
 
     static void AddConsolidation(

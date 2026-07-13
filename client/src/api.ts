@@ -1871,6 +1871,19 @@ export const api = {
       userId,
       location,
     }),
+  provisionCompanyDb: (userIdOrCompany: { userId?: number; companyId?: number }) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      alreadyProvisioned: boolean;
+      provisioned: boolean;
+      skippedByFeatureFlag: boolean;
+      databaseName: string;
+      archiveDatabaseName: string;
+      message: string;
+    }>('/api/auth/provision-company-db', 'POST', {
+      userId: userIdOrCompany.userId,
+      companyId: userIdOrCompany.companyId,
+    }),
   availableEmployees: () => fetchJson<AvailableEmployee[]>('/api/users/available-employees'),
   createUser: (data: UserUpsert) => fetchJsonWithMethod<AppUser>('/api/users', 'POST', data),
   updateUser: (id: number, data: UserUpsert) => fetchJsonWithMethod<AppUser>(`/api/users/${id}`, 'PUT', data),

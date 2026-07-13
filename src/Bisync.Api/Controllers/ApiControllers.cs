@@ -12,7 +12,7 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class LocationsController(BisyncDbContext db) : ControllerBase
+public class LocationsController(BisyncDbContext db, LocationPartitionService locationPartitions) : ControllerBase
 {
     static object MapLocationConfig(Location l) => new
     {
@@ -141,6 +141,14 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
 
         db.Locations.Add(loc);
         await db.SaveChangesAsync();
+        try
+        {
+            await locationPartitions.EnsurePartitionsForLocationAsync(loc.ExternalId);
+        }
+        catch
+        {
+            // Best-effort; startup EnsurePartitionsForAllLocationsAsync retries.
+        }
         var saved = await LoadLocationConfigAsync(loc.Id);
         return saved is null ? Ok(new { loc.Id, loc.ExternalId, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
     }

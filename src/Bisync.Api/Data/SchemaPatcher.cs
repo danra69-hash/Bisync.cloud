@@ -174,6 +174,7 @@ public static class SchemaPatcher
                 "LocationIdsJson" TEXT NOT NULL DEFAULT '[]'
             );
             """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "LocationExternalId", "TEXT NOT NULL DEFAULT ''");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "VendorProductPrices" (
@@ -466,6 +467,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "ExpiryDate", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "BatchNumber", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "UnitPrice", "REAL NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "LocationExternalId", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ProductB2bLocationStocks_ProductId_LocationExternalId"
             ON "ProductB2bLocationStocks" ("ProductId", "LocationExternalId");
@@ -959,14 +961,24 @@ public static class SchemaPatcher
                 "CompanyId" INTEGER NOT NULL,
                 "DatabaseName" TEXT NOT NULL DEFAULT '',
                 "ConnectionString" TEXT NOT NULL DEFAULT '',
+                "ArchiveDatabaseName" TEXT NOT NULL DEFAULT '',
+                "ArchiveConnectionString" TEXT NOT NULL DEFAULT '',
                 "IsActive" BOOLEAN NOT NULL DEFAULT TRUE,
                 "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
                 "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
             );
             """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TenantConnections", "ArchiveDatabaseName", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "TenantConnections", "ArchiveConnectionString", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_TenantConnections_CompanyId"
             ON "TenantConnections" ("CompanyId");
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "TenantConnections"
+            SET "ArchiveDatabaseName" = "DatabaseName" || '_archive'
+            WHERE ("ArchiveDatabaseName" IS NULL OR BTRIM("ArchiveDatabaseName") = '')
+              AND "DatabaseName" IS NOT NULL AND BTRIM("DatabaseName") <> '';
             """);
     }
 
@@ -986,7 +998,9 @@ public static class SchemaPatcher
             {
                 CompanyId = companyId,
                 DatabaseName = $"bisync_c_{companyId}",
-                ConnectionString = string.Empty, // empty = shared default connection (Phase 2/3)
+                ArchiveDatabaseName = $"bisync_c_{companyId}_archive",
+                ConnectionString = string.Empty, // empty = shared default connection
+                ArchiveConnectionString = string.Empty,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,

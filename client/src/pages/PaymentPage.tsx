@@ -201,6 +201,16 @@ export function PaymentPage({ onContinue }: Props) {
 
       clearAwaitingPayment();
       clearExtraPaymentCompanyIds();
+
+      // Provision dedicated operational + archive DBs after profiles are saved (idempotent).
+      for (const draft of companies) {
+        try {
+          await api.provisionCompanyDb({ companyId: draft.id, userId: currentUser.id });
+        } catch {
+          // Non-fatal: shared DB remains usable; operator can retry provision later.
+        }
+      }
+
       onContinue();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.paymentSaveFailed'));

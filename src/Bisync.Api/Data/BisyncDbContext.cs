@@ -128,6 +128,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.CompanyId).IsUnique();
             e.Property(x => x.DatabaseName).HasMaxLength(128);
             e.Property(x => x.ConnectionString).HasMaxLength(2000);
+            e.Property(x => x.ArchiveDatabaseName).HasMaxLength(128);
+            e.Property(x => x.ArchiveConnectionString).HasMaxLength(2000);
         });
         modelBuilder.Entity<WastageEntry>(e =>
         {

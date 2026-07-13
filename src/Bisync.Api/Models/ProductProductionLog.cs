@@ -12,6 +12,8 @@ public class ProductProductionLog
     public string BatchNumber { get; set; } = string.Empty;
     public decimal UnitPrice { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
+    /// <summary>Partition key (first LocationIdsJson element, or empty).</summary>
+    public string LocationExternalId { get; set; } = string.Empty;
     public int? CompanyId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -14,4 +14,6 @@ public class InventoryPurchase
     public int PurchaseOrderItemId { get; set; }
     public int? CompanyId { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
+    /// <summary>Partition key (first LocationIdsJson element, or empty).</summary>
+    public string LocationExternalId { get; set; } = string.Empty;
 }

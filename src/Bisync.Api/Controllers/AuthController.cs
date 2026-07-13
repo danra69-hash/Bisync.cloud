@@ -14,7 +14,9 @@ public class AuthController(
     BisyncDbContext db,
     IEmailSender emailSender,
     IConfiguration configuration,
-    IHttpContextAccessor httpContextAccessor) : ControllerBase
+    IHttpContextAccessor httpContextAccessor,
+    LocationPartitionService locationPartitions,
+    CompanyOperationalDbProvisioner companyDbProvisioner) : ControllerBase
 {
     public record LoginRequest(string Email, string Password);
 
@@ -31,6 +33,8 @@ public class AuthController(
     public record CompleteCompanyOnboardingRequest(int UserId, CompanyOnboardingDto Company);
 
     public record CompleteLocationOnboardingRequest(int UserId, LocationOnboardingDto Location);
+
+    public record ProvisionCompanyDbRequest(int? UserId, int? CompanyId);
 
     public class CompanyOnboardingDto
     {
@@ -328,9 +332,71 @@ public class AuthController(
         user.LocationIdsJson = JsonSerializer.Serialize(assignedIds);
         await db.SaveChangesAsync();
 
+        try
+        {
+            await locationPartitions.EnsurePartitionsForLocationAsync(loc.ExternalId);
+        }
+        catch
+        {
+            // Partition ensure is best-effort; startup retries.
+        }
+
+        try
+        {
+            await companyDbProvisioner.ProvisionAsync(company.Id);
+        }
+        catch
+        {
+            // Provision may be deferred to payment Continue; do not fail onboarding.
+        }
+
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
         var locationsMap = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
         return Ok(MapUser(user, companies, locationsMap));
+    }
+
+    /// <summary>
+    /// Idempotent: creates bisync_c_{companyId} (+ archive) when Tenancy:ProvisionCompanyDatabases is enabled
+    /// and TenantConnection.ConnectionString is still empty.
+    /// </summary>
+    [HttpPost("provision-company-db")]
+    public async Task<ActionResult<object>> ProvisionCompanyDb([FromBody] ProvisionCompanyDbRequest request)
+    {
+        int? companyId = request.CompanyId;
+        if (companyId is null or <= 0)
+        {
+            if (request.UserId is null or <= 0)
+                return BadRequest(new { message = "UserId or CompanyId is required." });
+            var user = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.UserId.Value);
+            if (user is null)
+                return NotFound(new { message = "User not found." });
+            companyId = user.CompanyId;
+        }
+
+        if (companyId is null or <= 0)
+            return BadRequest(new { message = "User has no company to provision." });
+
+        try
+        {
+            var result = await companyDbProvisioner.ProvisionAsync(companyId.Value);
+            return Ok(new
+            {
+                companyId = companyId.Value,
+                result.AlreadyProvisioned,
+                result.Provisioned,
+                result.SkippedByFeatureFlag,
+                result.DatabaseName,
+                result.ArchiveDatabaseName,
+                result.Message,
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                message = $"Could not provision company database: {ex.Message}",
+            });
+        }
     }
 
     async Task<string> GenerateUniqueLocationExternalIdAsync(string name)

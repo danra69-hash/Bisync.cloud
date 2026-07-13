@@ -1,33 +1,57 @@
 using Bisync.Api.Data;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// The DB password is injected separately (Secret Manager -> DB_PASSWORD) so it never
-// appears in plain configuration. Append it to the connection strings when present.
-static string ApplyDbPassword(string? connectionString, string? password)
+static string ResolveOperationalConnection(IServiceProvider sp)
 {
-    if (string.IsNullOrWhiteSpace(connectionString))
-        return connectionString ?? string.Empty;
-    if (string.IsNullOrEmpty(password) || connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
-        return connectionString;
-    var separator = connectionString.TrimEnd().EndsWith(';') ? string.Empty : ";";
-    return $"{connectionString}{separator}Password={password}";
+    var resolver = sp.GetRequiredService<ITenantConnectionResolver>();
+    var http = sp.GetService<IHttpContextAccessor>()?.HttpContext;
+    if (http is null)
+        return resolver.DefaultOperationalConnection;
+
+    var path = http.Request.Path.Value ?? string.Empty;
+    // Auth + health always use the control-plane (shared) database.
+    if (path.StartsWith("/api/auth", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/health", StringComparison.OrdinalIgnoreCase))
+        return resolver.DefaultOperationalConnection;
+
+    int? companyId = null;
+    if (int.TryParse(http.Request.Headers[TenantContextMiddleware.CompanyHeader].FirstOrDefault(), out var headerCompany)
+        && headerCompany > 0)
+        companyId = headerCompany;
+    else
+        companyId = sp.GetService<ITenantContext>()?.CompanyId;
+
+    return resolver.ResolveOperationalConnection(companyId);
 }
 
-var dbPassword = builder.Configuration["DB_PASSWORD"];
-var defaultConnection = ApplyDbPassword(
-    builder.Configuration.GetConnectionString("DefaultConnection"), dbPassword);
-var archiveConnection = ApplyDbPassword(
-    builder.Configuration.GetConnectionString("ArchiveConnection"), dbPassword);
+static string ResolveArchiveConnection(IServiceProvider sp)
+{
+    var resolver = sp.GetRequiredService<ITenantConnectionResolver>();
+    var http = sp.GetService<IHttpContextAccessor>()?.HttpContext;
+    int? companyId = null;
+    if (http is not null
+        && int.TryParse(http.Request.Headers[TenantContextMiddleware.CompanyHeader].FirstOrDefault(), out var headerCompany)
+        && headerCompany > 0)
+        companyId = headerCompany;
+    else
+        companyId = sp.GetService<ITenantContext>()?.CompanyId;
 
+    return resolver.ResolveArchiveConnection(companyId);
+}
+
+builder.Services.Configure<TenancyOptions>(builder.Configuration.GetSection(TenancyOptions.SectionName));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
-builder.Services.AddDbContext<BisyncDbContext>(options =>
-    options.UseNpgsql(defaultConnection));
+builder.Services.AddSingleton<ITenantConnectionResolver, TenantConnectionResolver>();
+
+builder.Services.AddDbContext<BisyncDbContext>((sp, options) =>
+    options.UseNpgsql(ResolveOperationalConnection(sp)));
 
 builder.Services.AddHttpClient<PublicHolidayCatalogService>();
 builder.Services.AddScoped<PublicHolidaySyncService>();
@@ -48,13 +72,14 @@ builder.Services.AddScoped<InventoryCountService>();
 builder.Services.AddScoped<WastageService>();
 builder.Services.AddScoped<TransferService>();
 builder.Services.AddScoped<LocationPartitionService>();
+builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.TenantContext>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.ITenantContext>(sp =>
     sp.GetRequiredService<Bisync.Api.Tenancy.TenantContext>());
 builder.Services.Configure<StockCardArchiveOptions>(
     builder.Configuration.GetSection(StockCardArchiveOptions.SectionName));
-builder.Services.AddDbContext<StockCardArchiveDbContext>(options =>
-    options.UseNpgsql(archiveConnection));
+builder.Services.AddDbContext<StockCardArchiveDbContext>((sp, options) =>
+    options.UseNpgsql(ResolveArchiveConnection(sp)));
 builder.Services.AddScoped<StockCardArchiveService>();
 builder.Services.AddHostedService<StockCardArchiveHostedService>();
 builder.Services.AddHostedService<InventoryCountAutoConfirmHostedService>();
@@ -90,7 +115,12 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<BisyncDbContext>();
+    // Startup always patches the shared control-plane database.
+    var resolver = scope.ServiceProvider.GetRequiredService<ITenantConnectionResolver>();
+    var controlOptions = new DbContextOptionsBuilder<BisyncDbContext>()
+        .UseNpgsql(resolver.DefaultOperationalConnection)
+        .Options;
+    await using var db = new BisyncDbContext(controlOptions);
     await db.Database.EnsureCreatedAsync();
     await SchemaPatcher.ApplyAsync(db);
     await RevMgmtStartup.InitializeAsync(db);
@@ -98,13 +128,14 @@ using (var scope = app.Services.CreateScope())
     await ConfigurationSeeder.SeedAsync(db);
     await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
     await ConfigurationSeeder.PatchSuperAdminPasswordAsync(db);
-    // Catalogs + tenant registry need companies from ConfigurationSeeder (first boot).
     await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
     await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
     await SchemaPatcher.EnsureTenantRegistryAsync(db);
     await HrStartup.InitializeAsync(db);
     await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
+
     var partitions = scope.ServiceProvider.GetRequiredService<LocationPartitionService>();
+    await partitions.EnsureLocationListPartitionsAsync();
     await partitions.EnsurePartitionsForAllLocationsAsync();
 }
 

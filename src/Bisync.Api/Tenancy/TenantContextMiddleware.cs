@@ -8,17 +8,27 @@ namespace Bisync.Api.Tenancy;
 /// 1. X-Bisync-Company-Id / X-Bisync-User-Id headers (preferred)
 /// 2. companyId query string (legacy UI)
 /// Platform Super Admin / Dev Team users may omit company (cross-tenant reads).
+/// Identity is always read from the shared control-plane connection.
 /// </summary>
 public sealed class TenantContextMiddleware(RequestDelegate next)
 {
     public const string CompanyHeader = "X-Bisync-Company-Id";
     public const string UserHeader = "X-Bisync-User-Id";
 
-    public async Task InvokeAsync(HttpContext http, TenantContext tenant, BisyncDbContext db)
+    public async Task InvokeAsync(
+        HttpContext http,
+        TenantContext tenant,
+        ITenantConnectionResolver resolver)
     {
         if (TryParsePositiveInt(http.Request.Headers[UserHeader].FirstOrDefault(), out var userId))
         {
             tenant.UserId = userId;
+
+            var options = new DbContextOptionsBuilder<BisyncDbContext>()
+                .UseNpgsql(resolver.DefaultOperationalConnection)
+                .Options;
+            await using var db = new BisyncDbContext(options);
+
             var user = await db.AppUsers.AsNoTracking()
                 .FirstOrDefaultAsync(u => u.Id == userId);
             if (user is not null)
