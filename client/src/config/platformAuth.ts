@@ -1,5 +1,5 @@
 /**
  * Platform login gate.
- * Set to `true` when reactivating the landing/login page.
+ * Set to `false` only to bypass landing/login during local UI work.
  */
-export const REQUIRE_PLATFORM_LOGIN = false;
+export const REQUIRE_PLATFORM_LOGIN = true;
