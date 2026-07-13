@@ -9,7 +9,7 @@ public class B2bSalesOrder
     public string CustomerName { get; set; } = string.Empty;
     /// <summary>sales_order | online_order (future)</summary>
     public string Source { get; set; } = "sales_order";
-    /// <summary>draft | issued | fulfilled | expired | cancelled</summary>
+    /// <summary>draft | issued | confirmed | fulfilled | expired | cancelled</summary>
     public string Status { get; set; } = "draft";
     public int LockPeriodDays { get; set; }
     public string IssuedDate { get; set; } = string.Empty;
@@ -17,6 +17,10 @@ public class B2bSalesOrder
     public bool DeliveryOrderIssued { get; set; }
     public bool InvoiceIssued { get; set; }
     public string FulfilledDate { get; set; } = string.Empty;
+    /// <summary>Public share token for customer link / WhatsApp.</summary>
+    public string ShareToken { get; set; } = string.Empty;
+    public DateTime? CustomerAcceptedAt { get; set; }
+    public string CustomerAcceptedBy { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public List<B2bSalesOrderLine> Lines { get; set; } = [];
@@ -35,6 +39,6 @@ public class B2bSalesOrderLine
     public decimal QuantityLocked { get; set; }
     public string Uom { get; set; } = string.Empty;
     public decimal Rrp { get; set; }
-    /// <summary>open | locked | fulfilled | released</summary>
+    /// <summary>open | locked | ready_to_ship | fulfilled | released</summary>
     public string Status { get; set; } = "open";
 }

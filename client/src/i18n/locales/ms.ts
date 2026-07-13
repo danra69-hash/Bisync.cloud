@@ -120,6 +120,8 @@ export const ms = {
       comparePrice: 'Banding Harga',
       products: 'Produk',
       externalPosMapping: 'Pemetaan POS Luaran',
+      activeSalesOrder: 'Active Sales Order',
+
       customerList: 'Senarai Pelanggan',
       customerGroup: 'Kumpulan Pelanggan',
       customerManagement: 'Pengurusan Pelanggan',

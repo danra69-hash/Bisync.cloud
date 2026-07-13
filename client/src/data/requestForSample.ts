@@ -1,4 +1,5 @@
 import { COUNTRIES } from './countries';
+import { buildShareMessageWithLink, buildWhatsAppShareHref, resolveShareAppOrigin } from './shareLinks';
 
 export const SAMPLE_REQUEST_COUNTRY_OPTIONS = [
   ...COUNTRIES.map(c => c.name),
@@ -51,8 +52,7 @@ export function previewSampleRequestNumber(dateRequested: string): string {
 }
 
 export function buildSampleRequestShareUrl(shareToken: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/sample-request/${shareToken}`;
+  return `${resolveShareAppOrigin()}/sample-request/${shareToken}`;
 }
 
 export function parseSampleRequestToken(pathname: string): string | null {
@@ -85,8 +85,8 @@ export function buildSampleRequestWhatsAppUrl(
   const url = buildSampleRequestShareUrl(shareToken);
   const title = sampleRequestTemplateTitle(templateType);
   const who = partyName?.trim() ? ` for ${partyName.trim()}` : '';
-  const text = `${title} ${requestNumber}${who}:\n${url}`;
-  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  const text = buildShareMessageWithLink(`${title} ${requestNumber}${who}:`, url);
+  return buildWhatsAppShareHref(text);
 }
 
 export function buildSampleRequestMailtoUrl(

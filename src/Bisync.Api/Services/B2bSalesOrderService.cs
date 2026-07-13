@@ -48,12 +48,16 @@ public class B2bSalesOrderService(BisyncDbContext db)
             stock.UpdatedAt = DateTime.UtcNow;
             line.QuantityLocked = toLock;
             line.Status = "locked";
-            line.ProductName = product.Name;
+            if (string.IsNullOrWhiteSpace(line.ProductName))
+                line.ProductName = product.Name;
             if (line.Rrp <= 0)
                 line.Rrp = product.Rrp;
             if (string.IsNullOrWhiteSpace(line.Uom))
                 line.Uom = ResolveProductUom(product);
         }
+
+        if (string.IsNullOrWhiteSpace(order.ShareToken))
+            order.ShareToken = Guid.NewGuid().ToString("N");
 
         await db.SaveChangesAsync(cancellationToken);
         return order;
@@ -69,8 +73,9 @@ public class B2bSalesOrderService(BisyncDbContext db)
             throw new InvalidOperationException("Both delivery order (DO) and invoice must be issued to fulfill the sales order.");
 
         var order = await LoadOrderAsync(orderId, cancellationToken);
-        if (!string.Equals(order.Status, "issued", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Only issued sales orders can be fulfilled.");
+        if (!string.Equals(order.Status, "issued", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(order.Status, "confirmed", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only issued or confirmed sales orders can be fulfilled.");
 
         order.DeliveryOrderIssued = true;
         order.InvoiceIssued = true;

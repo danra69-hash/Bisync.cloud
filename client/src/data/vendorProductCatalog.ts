@@ -384,6 +384,10 @@ export function unitConvertsToPrincipalComponentUom(unit: string): boolean {
 
 /** Third delivery breakdown level (e.g. 400gr per tin in Box/12tin/400gr). */
 export function hasSmallestDeliveryBreakdown(delivery: DeliveryUnitBreakdown): boolean {
+  // Blank / unconfigured delivery must not count as a real breakdown.
+  if (!delivery.orderUnit?.trim() && delivery.orderQty <= 0 && !delivery.packUnit?.trim()) {
+    return false;
+  }
   const hasPackLevel = delivery.packUnit !== delivery.orderUnit || delivery.packQty !== 1;
   return hasPackLevel && (delivery.unitQty !== 1 || delivery.unitUnit !== delivery.packUnit);
 }

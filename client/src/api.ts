@@ -402,6 +402,89 @@ export interface UpsertB2bCustomerPayload {
   active: boolean;
 }
 
+export interface B2bSalesOrderLine {
+  id: number;
+  productId: number;
+  productAliasId?: number | null;
+  productName: string;
+  locationExternalId: string;
+  quantityOrdered: number;
+  quantityLocked?: number;
+  uom: string;
+  rrp: number;
+  status: string;
+}
+
+export interface B2bSalesOrder {
+  id: number;
+  companyId: number;
+  orderNumber: string;
+  customerExternalId: string;
+  customerName: string;
+  source: string;
+  status: string;
+  lockPeriodDays: number;
+  issuedDate?: string | null;
+  lockExpiryDate?: string | null;
+  fulfilledDate?: string | null;
+  deliveryOrderIssued?: boolean;
+  invoiceIssued?: boolean;
+  shareToken?: string | null;
+  customerAcceptedAt?: string | null;
+  customerAcceptedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: B2bSalesOrderLine[];
+}
+
+export interface B2bSalesOrderSharePayload {
+  order: B2bSalesOrder;
+  canAccept?: boolean;
+  customerAcceptedAt?: string | null;
+  customerAcceptedBy?: string | null;
+  company: {
+    id: number;
+    name: string;
+    brn: string;
+    gstTin: string;
+    countryCode: string;
+    addressLine1: string;
+    addressLine2: string;
+    city: string;
+    stateProvince: string;
+    postcode: string;
+    phone: string;
+    email: string;
+  } | null;
+  customer: {
+    companyName: string;
+    brn: string;
+    address: string;
+    city: string;
+    state: string;
+    postcode: string;
+    phone: string;
+    email: string;
+    contactsJson: string;
+  } | null;
+}
+
+export interface CreateB2bSalesOrderPayload {
+  companyId: number;
+  customerExternalId: string;
+  customerName: string;
+  source?: string;
+  lockPeriodDays: number;
+  lines: {
+    productId: number;
+    productAliasId?: number | null;
+    locationExternalId: string;
+    quantityOrdered: number;
+    uom?: string;
+    rrp?: number;
+  }[];
+}
+
 export interface TaggedB2bProductUnit {
   productId: number;
   aliasId: number | null;
@@ -1237,6 +1320,7 @@ export interface Product {
   yieldAltUnitsJson?: string;
   expiryPeriodDays: number;
   activationPeriodHours: number;
+  orderLockPeriodDays?: number;
   parStock: number;
   parStockUom: string;
   posEnabled: boolean;
@@ -1274,6 +1358,7 @@ export interface UpsertProductPayload {
   yieldAltUnitsJson?: string;
   expiryPeriodDays?: number;
   activationPeriodHours?: number;
+  orderLockPeriodDays?: number;
   parStock?: number;
   parStockUom?: string;
   posEnabled?: boolean;
@@ -1304,7 +1389,9 @@ export interface ProductManagementSummary {
   isSubProduct?: boolean;
   inStock: number;
   onOrderQty?: number;
+  orderLockPeriodDays?: number;
   lockExpiryDate?: string | null;
+  onOrderLocks?: { quantity: number; lockExpiryDate: string }[];
   salesPerDay: number;
   toProduceQty: number;
   producedQty: number;
@@ -1403,6 +1490,7 @@ export interface PatchProductManagementPayload {
   packageUnit?: string;
   inStock?: number;
   salesPerDay?: number;
+  orderLockPeriodDays?: number;
   locationExternalIds: string[];
 }
 
@@ -1803,6 +1891,29 @@ export const api = {
     fetchJsonWithMethod<B2bCustomer>('/api/b2b-customers', 'POST', data),
   updateB2bCustomer: (externalId: string, data: UpsertB2bCustomerPayload) =>
     fetchJsonWithMethod<B2bCustomer>(`/api/b2b-customers/${externalId}`, 'PUT', data),
+  b2bSalesOrders: (companyId?: number) =>
+    fetchJson<B2bSalesOrder[]>(`/api/b2b-sales-orders${companyId ? `?companyId=${companyId}` : ''}`),
+  b2bSalesOrder: (id: number) =>
+    fetchJson<B2bSalesOrder>(`/api/b2b-sales-orders/${id}`),
+  b2bSalesOrderByShareToken: (token: string) =>
+    fetchJson<B2bSalesOrderSharePayload>(`/api/b2b-sales-orders/share/${encodeURIComponent(token)}`),
+  acceptB2bSalesOrderByShareToken: (token: string, acceptedBy?: string) =>
+    fetchJsonWithMethod<B2bSalesOrderSharePayload>(
+      `/api/b2b-sales-orders/share/${encodeURIComponent(token)}/accept`,
+      'POST',
+      { acceptedBy },
+    ),
+  createB2bSalesOrder: (data: CreateB2bSalesOrderPayload) =>
+    fetchJsonWithMethod<B2bSalesOrder>('/api/b2b-sales-orders', 'POST', data),
+  issueB2bSalesOrder: (id: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/issue`, 'POST'),
+  markB2bSalesOrderLineReadyToShip: (orderId: number, lineId: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(
+      `/api/b2b-sales-orders/${orderId}/lines/${lineId}/ready-to-ship`,
+      'POST',
+    ),
+  ensureB2bSalesOrderShareToken: (id: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/ensure-share-token`, 'POST'),
   posCustomers: (companyId?: number) =>
     fetchJson<PosCustomer[]>(`/api/pos-customers${companyId ? `?companyId=${companyId}` : ''}`),
   createPosCustomer: (data: UpsertPosCustomerPayload) =>

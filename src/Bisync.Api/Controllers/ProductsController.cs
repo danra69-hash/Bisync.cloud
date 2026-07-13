@@ -89,6 +89,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
                 : "[]",
             ExpiryPeriodDays = ResolveExpiryPeriodDays(request),
             ActivationPeriodHours = ResolveActivationPeriodHours(request),
+            OrderLockPeriodDays = ResolveOrderLockPeriodDays(request),
             ParStock = request.ParStock ?? 0,
             ParStockUom = request.ParStockUom?.Trim() ?? string.Empty,
             PosEnabled = request.PosEnabled ?? false,
@@ -187,6 +188,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         }
         product.ExpiryPeriodDays = ResolveExpiryPeriodDays(request);
         product.ActivationPeriodHours = ResolveActivationPeriodHours(request);
+        product.OrderLockPeriodDays = ResolveOrderLockPeriodDays(request);
         if (request.ParStock.HasValue) product.ParStock = request.ParStock.Value;
         if (request.ParStockUom is not null) product.ParStockUom = request.ParStockUom.Trim();
         if (request.PosEnabled.HasValue) product.PosEnabled = request.PosEnabled.Value;
@@ -354,6 +356,14 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         return Math.Max(0, request.ActivationPeriodHours ?? 0);
     }
 
+    static int ResolveOrderLockPeriodDays(UpsertProductRequest request)
+    {
+        if (request.IsSubProduct || !request.B2bEnabled)
+            return 7;
+        var days = request.OrderLockPeriodDays ?? 7;
+        return Math.Clamp(days, 1, 365);
+    }
+
     static List<ProductComponentItem> MapItems(List<UpsertProductComponentItemRequest> items)
         => items.Select((item, index) =>
         {
@@ -425,6 +435,7 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         yieldAltUnitsJson = product.YieldAltUnitsJson,
         expiryPeriodDays = product.ExpiryPeriodDays,
         activationPeriodHours = product.ActivationPeriodHours,
+        orderLockPeriodDays = product.OrderLockPeriodDays > 0 ? product.OrderLockPeriodDays : 7,
         parStock = product.ParStock,
         parStockUom = product.ParStockUom,
         posEnabled = product.PosEnabled,

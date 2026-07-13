@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict j9WS3CEHCRJALDBgZpk4AjmIz2eLAaVr5cBRE86OdgmebtlJGq1Pfky0KEOaPQ5
+\restrict dQP7QAeqzDaR9CyBt73Y00oDUdCkXiB96V0m3jgEws25ywJT7KGrWfrhgLnl9gV
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.4
@@ -56,8 +56,13 @@ ALTER TABLE IF EXISTS ONLY public."B2bSalesOrderLines" DROP CONSTRAINT IF EXISTS
 ALTER TABLE IF EXISTS ONLY public."AttendanceRecords" DROP CONSTRAINT IF EXISTS "FK_AttendanceRecords_Employees_EmployeeId";
 ALTER TABLE IF EXISTS ONLY public."AppUsers" DROP CONSTRAINT IF EXISTS "FK_AppUsers_Employees_EmployeeId";
 ALTER TABLE IF EXISTS ONLY public."AppUsers" DROP CONSTRAINT IF EXISTS "FK_AppUsers_Companies_CompanyId";
-DROP INDEX IF EXISTS public."IX_Vendors_ExternalId";
+DROP INDEX IF EXISTS public."IX_WastageEntries_CompanyId_WastedDate";
+DROP INDEX IF EXISTS public."IX_Vendors_CompanyId_ExternalId";
+DROP INDEX IF EXISTS public."IX_Vendors_CompanyId";
 DROP INDEX IF EXISTS public."IX_VendorProducts_VendorExternalId";
+DROP INDEX IF EXISTS public."IX_TransferEntries_Status_ToLocation";
+DROP INDEX IF EXISTS public."IX_TransferEntries_CompanyId_TransferDate";
+DROP INDEX IF EXISTS public."IX_TenantConnections_CompanyId";
 DROP INDEX IF EXISTS public."IX_SocsoBrackets_PayStructureId";
 DROP INDEX IF EXISTS public."IX_ShiftSchedules_EmployeeId_Date";
 DROP INDEX IF EXISTS public."IX_SampleRequests_ShareToken";
@@ -98,8 +103,9 @@ DROP INDEX IF EXISTS public."IX_InventoryMovements_ComponentId_LocationExternalI
 DROP INDEX IF EXISTS public."IX_InventoryCountSessions_Company_Type_Period";
 DROP INDEX IF EXISTS public."IX_InventoryCountSessions_CompanyId_SessionType_PeriodMonth_St~";
 DROP INDEX IF EXISTS public."IX_InventoryCountSessionLines_SessionId";
-DROP INDEX IF EXISTS public."IX_Ingredients_Name";
-DROP INDEX IF EXISTS public."IX_Ingredients_ComponentId";
+DROP INDEX IF EXISTS public."IX_Ingredients_CompanyId_Name";
+DROP INDEX IF EXISTS public."IX_Ingredients_CompanyId_ComponentId";
+DROP INDEX IF EXISTS public."IX_Ingredients_CompanyId";
 DROP INDEX IF EXISTS public."IX_IncomeTaxYears_CompanyId_Year";
 DROP INDEX IF EXISTS public."IX_IncomeTaxReliefs_IncomeTaxYearId";
 DROP INDEX IF EXISTS public."IX_IncomeTaxRebates_IncomeTaxYearId";
@@ -114,17 +120,22 @@ DROP INDEX IF EXISTS public."IX_EmployeeMovements_EmployeeId";
 DROP INDEX IF EXISTS public."IX_EmployeeLevels_LevelName";
 DROP INDEX IF EXISTS public."IX_EducationRecords_EmployeeId";
 DROP INDEX IF EXISTS public."IX_Divisions_Name";
+DROP INDEX IF EXISTS public."IX_DevQaRuns_StartedAt";
 DROP INDEX IF EXISTS public."IX_Departments_DivisionId_Name";
+DROP INDEX IF EXISTS public."IX_B2bSalesOrders_ShareToken";
 DROP INDEX IF EXISTS public."IX_B2bSalesOrders_CompanyId_Status";
 DROP INDEX IF EXISTS public."IX_B2bCustomers_ExternalId";
 DROP INDEX IF EXISTS public."IX_B2bCustomers_CompanyId";
 DROP INDEX IF EXISTS public."IX_AttendanceRecords_EmployeeId_Date";
 DROP INDEX IF EXISTS public."IX_AppUsers_EmployeeId";
 DROP INDEX IF EXISTS public."IX_AppUsers_CompanyId";
+ALTER TABLE IF EXISTS ONLY public."TenantConnections" DROP CONSTRAINT IF EXISTS "TenantConnections_pkey";
+ALTER TABLE IF EXISTS ONLY public."WastageEntries" DROP CONSTRAINT IF EXISTS "PK_WastageEntries";
 ALTER TABLE IF EXISTS ONLY public."Vendors" DROP CONSTRAINT IF EXISTS "PK_Vendors";
 ALTER TABLE IF EXISTS ONLY public."VendorProducts" DROP CONSTRAINT IF EXISTS "PK_VendorProducts";
 ALTER TABLE IF EXISTS ONLY public."VendorProductPrices" DROP CONSTRAINT IF EXISTS "PK_VendorProductPrices";
 ALTER TABLE IF EXISTS ONLY public."UserNotifications" DROP CONSTRAINT IF EXISTS "PK_UserNotifications";
+ALTER TABLE IF EXISTS ONLY public."TransferEntries" DROP CONSTRAINT IF EXISTS "PK_TransferEntries";
 ALTER TABLE IF EXISTS ONLY public."SocsoBrackets" DROP CONSTRAINT IF EXISTS "PK_SocsoBrackets";
 ALTER TABLE IF EXISTS ONLY public."ShiftSchedules" DROP CONSTRAINT IF EXISTS "PK_ShiftSchedules";
 ALTER TABLE IF EXISTS ONLY public."SampleRequests" DROP CONSTRAINT IF EXISTS "PK_SampleRequests";
@@ -172,6 +183,7 @@ ALTER TABLE IF EXISTS ONLY public."EmployeeLevels" DROP CONSTRAINT IF EXISTS "PK
 ALTER TABLE IF EXISTS ONLY public."EducationRecords" DROP CONSTRAINT IF EXISTS "PK_EducationRecords";
 ALTER TABLE IF EXISTS ONLY public."Divisions" DROP CONSTRAINT IF EXISTS "PK_Divisions";
 ALTER TABLE IF EXISTS ONLY public."DevelopmentMilestones" DROP CONSTRAINT IF EXISTS "PK_DevelopmentMilestones";
+ALTER TABLE IF EXISTS ONLY public."DevQaRuns" DROP CONSTRAINT IF EXISTS "PK_DevQaRuns";
 ALTER TABLE IF EXISTS ONLY public."Departments" DROP CONSTRAINT IF EXISTS "PK_Departments";
 ALTER TABLE IF EXISTS ONLY public."CompanySettings" DROP CONSTRAINT IF EXISTS "PK_CompanySettings";
 ALTER TABLE IF EXISTS ONLY public."Companies" DROP CONSTRAINT IF EXISTS "PK_Companies";
@@ -182,10 +194,13 @@ ALTER TABLE IF EXISTS ONLY public."B2bCustomers" DROP CONSTRAINT IF EXISTS "PK_B
 ALTER TABLE IF EXISTS ONLY public."AttendanceRecords" DROP CONSTRAINT IF EXISTS "PK_AttendanceRecords";
 ALTER TABLE IF EXISTS ONLY public."AppUsers" DROP CONSTRAINT IF EXISTS "PK_AppUsers";
 ALTER TABLE IF EXISTS ONLY public."AccessControlSettings" DROP CONSTRAINT IF EXISTS "PK_AccessControlSettings";
+DROP TABLE IF EXISTS public."WastageEntries";
 DROP TABLE IF EXISTS public."Vendors";
 DROP TABLE IF EXISTS public."VendorProducts";
 DROP TABLE IF EXISTS public."VendorProductPrices";
 DROP TABLE IF EXISTS public."UserNotifications";
+DROP TABLE IF EXISTS public."TransferEntries";
+DROP TABLE IF EXISTS public."TenantConnections";
 DROP TABLE IF EXISTS public."SocsoBrackets";
 DROP TABLE IF EXISTS public."ShiftSchedules";
 DROP TABLE IF EXISTS public."SampleRequests";
@@ -233,6 +248,7 @@ DROP TABLE IF EXISTS public."EmployeeLevels";
 DROP TABLE IF EXISTS public."EducationRecords";
 DROP TABLE IF EXISTS public."Divisions";
 DROP TABLE IF EXISTS public."DevelopmentMilestones";
+DROP TABLE IF EXISTS public."DevQaRuns";
 DROP TABLE IF EXISTS public."Departments";
 DROP TABLE IF EXISTS public."CompanySettings";
 DROP TABLE IF EXISTS public."Companies";
@@ -414,7 +430,10 @@ CREATE TABLE public."B2bSalesOrders" (
     "InvoiceIssued" boolean DEFAULT false NOT NULL,
     "FulfilledDate" text DEFAULT ''::text NOT NULL,
     "CreatedAt" timestamp with time zone NOT NULL,
-    "UpdatedAt" timestamp with time zone NOT NULL
+    "UpdatedAt" timestamp with time zone NOT NULL,
+    "ShareToken" text DEFAULT ''::text NOT NULL,
+    "CustomerAcceptedBy" text DEFAULT ''::text NOT NULL,
+    "CustomerAcceptedAt" timestamp with time zone
 );
 
 
@@ -557,6 +576,35 @@ CREATE TABLE public."Departments" (
 
 ALTER TABLE public."Departments" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME public."Departments_Id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: DevQaRuns; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public."DevQaRuns" (
+    "Id" integer NOT NULL,
+    "StartedAt" timestamp with time zone NOT NULL,
+    "FinishedAt" timestamp with time zone,
+    "Status" text DEFAULT 'running'::text NOT NULL,
+    "TriggeredBy" text DEFAULT ''::text NOT NULL,
+    "Summary" text DEFAULT ''::text NOT NULL,
+    "ResultsJson" text DEFAULT '[]'::text NOT NULL
+);
+
+
+--
+-- Name: DevQaRuns_Id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public."DevQaRuns" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public."DevQaRuns_Id_seq"
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -926,7 +974,8 @@ CREATE TABLE public."Ingredients" (
     "Active" boolean NOT NULL,
     "LocationsJson" text NOT NULL,
     "CreatedAt" timestamp without time zone DEFAULT now() NOT NULL,
-    "UpdatedAt" timestamp without time zone DEFAULT now() NOT NULL
+    "UpdatedAt" timestamp without time zone DEFAULT now() NOT NULL,
+    "CompanyId" integer
 );
 
 
@@ -1742,7 +1791,8 @@ CREATE TABLE public."Products" (
     "ParStock" numeric DEFAULT 0 NOT NULL,
     "ParStockUom" text DEFAULT ''::text NOT NULL,
     "YieldAltUnitsJson" text DEFAULT '[]'::text NOT NULL,
-    "PosDeliveryUnitsJson" text DEFAULT '[]'::text NOT NULL
+    "PosDeliveryUnitsJson" text DEFAULT '[]'::text NOT NULL,
+    "OrderLockPeriodDays" integer DEFAULT 7 NOT NULL
 );
 
 
@@ -2193,6 +2243,76 @@ ALTER TABLE public."SocsoBrackets" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS
 
 
 --
+-- Name: TenantConnections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public."TenantConnections" (
+    "Id" integer NOT NULL,
+    "CompanyId" integer NOT NULL,
+    "DatabaseName" text DEFAULT ''::text NOT NULL,
+    "ConnectionString" text DEFAULT ''::text NOT NULL,
+    "IsActive" boolean DEFAULT true NOT NULL,
+    "CreatedAt" timestamp without time zone DEFAULT now() NOT NULL,
+    "UpdatedAt" timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: TenantConnections_Id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public."TenantConnections" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public."TenantConnections_Id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: TransferEntries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public."TransferEntries" (
+    "Id" integer NOT NULL,
+    "CompanyId" integer,
+    "FromLocationExternalId" text DEFAULT ''::text NOT NULL,
+    "ToLocationExternalId" text DEFAULT ''::text NOT NULL,
+    "ItemType" text DEFAULT 'component'::text NOT NULL,
+    "ItemKey" text DEFAULT ''::text NOT NULL,
+    "ItemName" text DEFAULT ''::text NOT NULL,
+    "Quantity" numeric DEFAULT 0 NOT NULL,
+    "Uom" text DEFAULT ''::text NOT NULL,
+    "TransferDate" date NOT NULL,
+    "CreatedAt" timestamp without time zone DEFAULT now() NOT NULL,
+    "Status" text DEFAULT 'pending'::text NOT NULL,
+    "InitiatedBy" text DEFAULT ''::text NOT NULL,
+    "ReceivedBy" text DEFAULT ''::text NOT NULL,
+    "ReceivedAt" timestamp without time zone,
+    "ReceivedQuantity" numeric,
+    "UnitPrice" numeric DEFAULT 0 NOT NULL,
+    "RejectedBy" text DEFAULT ''::text NOT NULL,
+    "RejectedAt" timestamp without time zone
+);
+
+
+--
+-- Name: TransferEntries_Id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public."TransferEntries" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public."TransferEntries_Id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: UserNotifications; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2205,7 +2325,8 @@ CREATE TABLE public."UserNotifications" (
     "Title" text NOT NULL,
     "Body" text NOT NULL,
     "CreatedAt" timestamp with time zone NOT NULL,
-    "ReadAt" timestamp with time zone
+    "ReadAt" timestamp with time zone,
+    "TransferId" integer
 );
 
 
@@ -2277,7 +2398,8 @@ CREATE TABLE public."Vendors" (
     "Address" text NOT NULL,
     "ContactsJson" text NOT NULL,
     "Engaged" boolean NOT NULL,
-    "ProductPolicyTag" text DEFAULT 'non-halal'::text NOT NULL
+    "ProductPolicyTag" text DEFAULT 'non-halal'::text NOT NULL,
+    "CompanyId" integer
 );
 
 
@@ -2287,6 +2409,41 @@ CREATE TABLE public."Vendors" (
 
 ALTER TABLE public."Vendors" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME public."Vendors_Id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: WastageEntries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public."WastageEntries" (
+    "Id" integer NOT NULL,
+    "CompanyId" integer,
+    "LocationExternalId" text DEFAULT ''::text NOT NULL,
+    "Source" text DEFAULT 'manual'::text NOT NULL,
+    "ItemType" text DEFAULT 'component'::text NOT NULL,
+    "ItemKey" text DEFAULT ''::text NOT NULL,
+    "ItemName" text DEFAULT ''::text NOT NULL,
+    "Quantity" numeric DEFAULT 0 NOT NULL,
+    "Uom" text DEFAULT ''::text NOT NULL,
+    "WastedDate" date NOT NULL,
+    "Reason" text DEFAULT ''::text NOT NULL,
+    "PosCheckNo" text DEFAULT ''::text NOT NULL,
+    "CreatedAt" timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: WastageEntries_Id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public."WastageEntries" ALTER COLUMN "Id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public."WastageEntries_Id_seq"
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2343,7 +2500,7 @@ COPY public."AppUsers" ("Id", "EmployeeId", "FullName", "Email", "Role", "Phone"
 32	33	Tan Boon Kiat	boon.kiat@bisync.cloud	Grill Cook	+60 12-602 2007	t	{"modules":[]}	1	[2,3]	\N
 33	34	Ravi Chandran	ravi.chandran@bisync.cloud	Kitchen Steward	+60 12-602 2008	t	{"modules":[]}	1	[1]	\N
 34	36	Test Persist User	test.persist@bisync.cloud	Operations Coordinator	+60 12-999 8877	f	{"modules":[]}	1	[]	\N
-35	\N	DRA Super Admin	dra@cubevalue.com	Super Admin	+60 3-0000 0000	t	{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}	1	[1,2,5,6,7,8,3,4,9,10]	v1:GfCd13X7ckAocLu1Ar1Qpg==:rFjy5Hqt+e01u9R2/73lf2ZAtQNeLvbypvG5xrzUohQ=
+35	\N	DRA Super Admin	dra@cubevalue.com	Super Admin	+60 3-0000 0000	t	{"modules":["RMS","POS","HRM","Accounting"],"rms":{"enabled":true,"tasks":{"viewOrder":true,"createEditOrder":true,"approveOrder":true,"receiveOrder":true,"consolidateOrder":true,"cashPurchase":true,"orderTemplate":true,"productManagement":true,"offlineSales":true,"batchStockAdjustment":true,"inventoryPost":true,"inventoryConfirmation":true,"inventoryAdjustment":true,"creditNote":true,"wastage":true,"transfer":true,"inventoryConfiguration":true,"createEdit":true,"activateDeactivateVendorProducts":true,"createEditComponentGroup":true,"createEditStorageAssignment":true,"accountMapping":true,"viewVendorList":true,"viewVendorProducts":true,"activateDeactivateVendor":true,"viewProductSubProduct":true,"manageProductSubProduct":true,"manageCustomers":true,"customerGroup":true,"manageSalesOrder":true,"approveSalesOrder":true,"manageInvoice":true,"promotionScheduler":true,"viewReports":true}},"superAdmin":true}	1	[1,2,5,6,7,8,3,4,9,10]	v1:GfCd13X7ckAocLu1Ar1Qpg==:rFjy5Hqt+e01u9R2/73lf2ZAtQNeLvbypvG5xrzUohQ=
 \.
 
 
@@ -2474,6 +2631,11 @@ COPY public."B2bCustomers" ("Id", "CompanyId", "ExternalId", "CompanyName", "Brn
 2	2	B2BC-002	Green Leaf Cafés Group	202003456789	88 Jalan Bukit Bintang	Kuala Lumpur	Wilayah Persekutuan	55100	+60 3-2145 9900		orders@greenleaf.my	[{"id":"c3","name":"David Tan","position":"Operations Director","mobile":"\\u002B60 19-876 5432","fax":"","isDefault":true}]	[]	[]	1	[]	[]
 3	1	B2BC-TEST-999	Test Create Co								test@example.com	[{"id":"c-test","name":"John Doe","position":"","mobile":"","fax":"","isDefault":true}]	[]	[]	1	[]	[]
 4	5	B2BC-003	DRA Trading	90237493	1 Jalan Wan Kadir	Kuala Lumpur	Wilayah Persekutuan	60000	+60 3-9827 349283		admin@test.com	[{"id":"c-mrdnjm8t-aygt","name":"D Ra","position":"Ops Manager","mobile":"\\u002B60 12-623 3503","fax":"","isDefault":true}]	[]	[]	1	[]	[]
+5	1	B2BC-004	Alpha Catering Sdn Bhd	202101004001	12 Jalan Ampang	Kuala Lumpur	Wilayah Persekutuan	50450	+60 3-2100 4001		orders@alphacatering.my	[{"id":"c-004","name":"Ali Hassan","position":"Purchasing Manager","mobile":"\\u002B60 12-400 0001","email":"ali@alphacatering.my","isDefault":true}]	[]	[]	1	[]	[]
+6	1	B2BC-005	Bravo Hotels Supply	202101005002	88 Persiaran KLCC	Kuala Lumpur	Wilayah Persekutuan	50088	+60 3-2100 5002		procurement@bravohotels.my	[{"id":"c-005","name":"Betty Lim","position":"Buyer","mobile":"\\u002B60 12-500 0002","email":"betty@bravohotels.my","isDefault":true}]	[35]	[]	1	[]	[{"productId":35,"aliasId":null,"unitKey":"p1"}]
+7	1	B2BC-006	Charlie F&B Group	201901006003	5 Jalan Bukit Bintang	Kuala Lumpur	Wilayah Persekutuan	55100	+60 3-2100 6003		ops@charliefnb.my	[{"id":"c-006","name":"Chen Wei","position":"Operations Lead","mobile":"\\u002B60 12-600 0003","email":"chen@charliefnb.my","isDefault":true}]	[35]	[]	1	[]	[{"productId":35,"aliasId":null,"unitKey":"p1"}]
+9	1	B2BC-008	Echo Wholesale Foods	201701008005	9 Jalan Tun Razak	Kuala Lumpur	Wilayah Persekutuan	50400	+60 3-2100 8005		sales@echowholesale.my	[{"id":"c-008","name":"Ethan Raj","position":"Account Manager","mobile":"\\u002B60 12-800 0005","email":"ethan@echowholesale.my","isDefault":true}]	[35,3,4,5,6]	[]	1	[]	[{"productId":35,"aliasId":null,"unitKey":"p1"},{"productId":3,"aliasId":null,"unitKey":"b2b-unit-1783949430497-ht6pb"},{"productId":4,"aliasId":null,"unitKey":"b2b-unit-1783949430497-g5o02"},{"productId":5,"aliasId":null,"unitKey":"b2b-unit-1783949430497-labbi"},{"productId":6,"aliasId":null,"unitKey":"b2b-unit-1783949430497-9g7kb"}]
+8	1	B2BC-007	Delta Kitchen Hub	201801007004	21 Jalan Imbi	Kuala Lumpur	Wilayah Persekutuan	55100	+60 3-2100 7004		kitchen@deltakitchen.my	[{"id":"c-007","name":"Diana Ong","position":"Chef Buyer","mobile":"\\u002B60 12-700 0004","email":"diana@deltakitchen.my","isDefault":true}]	[35,4,16,17]	[]	1	[]	[{"productId":35,"aliasId":null,"unitKey":"p1"},{"productId":4,"aliasId":null,"unitKey":"b2b-principal"},{"productId":16,"aliasId":null,"unitKey":"b2b-principal"},{"productId":17,"aliasId":null,"unitKey":"b2b-principal"}]
 \.
 
 
@@ -2486,6 +2648,14 @@ COPY public."B2bSalesOrderLines" ("Id", "SalesOrderId", "ProductId", "ProductNam
 2	2	4	SC Demo Product 172	airport	8	8	pcs	46.64	fulfilled	\N
 3	3	3	SC Demo Product 171	westend	5	5	pcs	37.15	locked	\N
 4	4	4	SC Demo Product 172	airport	4	0	pcs	46.64	released	\N
+5	5	35	B2B Save Test 0.4695762894205655	downtown	10	0	Principal Delivery Unit	50	open	\N
+6	6	35	B2B Save Test 0.4695762894205655	downtown	10	0	1box/20each/100gr	50	open	\N
+7	6	3	SC Demo Product 171	downtown	5	0	1pcs	37.15	open	\N
+8	6	4	SC Demo Product 172	downtown	50	0	1pcs	46.64	open	\N
+9	6	5	SC Demo Product 173	downtown	100	0	1pcs	42.34	open	\N
+10	6	6	SC Demo Product 174	downtown	2000	0	1pcs	41.66	open	\N
+11	7	16	SC Demo Product 184	downtown	5	5	1pcs	32.53	locked	\N
+12	7	17	SC Demo Product 185	downtown	1	1	1pcs	16.87	locked	\N
 \.
 
 
@@ -2493,11 +2663,14 @@ COPY public."B2bSalesOrderLines" ("Id", "SalesOrderId", "ProductId", "ProductNam
 -- Data for Name: B2bSalesOrders; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public."B2bSalesOrders" ("Id", "CompanyId", "OrderNumber", "CustomerExternalId", "CustomerName", "Source", "Status", "LockPeriodDays", "IssuedDate", "LockExpiryDate", "DeliveryOrderIssued", "InvoiceIssued", "FulfilledDate", "CreatedAt", "UpdatedAt") FROM stdin;
-1	2	SO-DEMO-001	B2BC-001	Metro Foods Trading Sdn Bhd	sales_order	fulfilled	14	2026-07-09	2026-07-23	t	t	2026-07-09	2026-07-09 13:57:46.141784+00	2026-07-09 13:57:46.28272+00
-2	2	SO-DEMO-002	B2BC-002	Green Leaf Cafés Group	online_order	fulfilled	10	2026-07-09	2026-07-19	t	t	2026-07-09	2026-07-09 13:57:46.338456+00	2026-07-09 13:57:46.345726+00
-3	2	SO-DEMO-003	B2BC-001	Metro Foods Trading Sdn Bhd	sales_order	issued	14	2026-07-09	2026-07-23	f	f		2026-07-09 13:57:46.357475+00	2026-07-09 13:57:46.360223+00
-4	2	SO-DEMO-004	B2BC-002	Green Leaf Cafés Group	sales_order	expired	5	2026-07-01	2026-07-06	f	f		2026-07-09 13:57:46.365587+00	2026-07-09 13:57:46.394662+00
+COPY public."B2bSalesOrders" ("Id", "CompanyId", "OrderNumber", "CustomerExternalId", "CustomerName", "Source", "Status", "LockPeriodDays", "IssuedDate", "LockExpiryDate", "DeliveryOrderIssued", "InvoiceIssued", "FulfilledDate", "CreatedAt", "UpdatedAt", "ShareToken", "CustomerAcceptedBy", "CustomerAcceptedAt") FROM stdin;
+1	2	SO-DEMO-001	B2BC-001	Metro Foods Trading Sdn Bhd	sales_order	fulfilled	14	2026-07-09	2026-07-23	t	t	2026-07-09	2026-07-09 13:57:46.141784+00	2026-07-09 13:57:46.28272+00			\N
+2	2	SO-DEMO-002	B2BC-002	Green Leaf Cafés Group	online_order	fulfilled	10	2026-07-09	2026-07-19	t	t	2026-07-09	2026-07-09 13:57:46.338456+00	2026-07-09 13:57:46.345726+00			\N
+3	2	SO-DEMO-003	B2BC-001	Metro Foods Trading Sdn Bhd	sales_order	issued	14	2026-07-09	2026-07-23	f	f		2026-07-09 13:57:46.357475+00	2026-07-09 13:57:46.360223+00			\N
+4	2	SO-DEMO-004	B2BC-002	Green Leaf Cafés Group	sales_order	expired	5	2026-07-01	2026-07-06	f	f		2026-07-09 13:57:46.365587+00	2026-07-09 13:57:46.394662+00			\N
+5	1	SO-001-00001	B2BC-005	Bravo Hotels Supply	sales_order	confirmed	7	2026-07-13	2026-07-20	f	f		2026-07-13 11:14:28.711966+00	2026-07-13 12:01:04.332789+00	7166ed7b904c4fbea4273566b949f2f4	Bravo Hotels Supply	2026-07-13 12:01:04.332715+00
+6	1	SO-001-00002	B2BC-008	Echo Wholesale Foods	sales_order	draft	14		2026-07-27	f	f		2026-07-13 13:36:38.29472+00	2026-07-13 13:36:38.294831+00	5b4115a67b6b419fbffcb3c0c99c393d		\N
+7	1	SO-001-00003	B2BC-007	Delta Kitchen Hub	sales_order	confirmed	10	2026-07-13	2026-07-23	f	f		2026-07-13 13:39:32.597643+00	2026-07-13 13:43:04.469704+00	ea69bf5a13994087a94e72d8283f0663	Delta Kitchen Hub	2026-07-13 13:43:04.469704+00
 \.
 
 
@@ -2548,6 +2721,14 @@ COPY public."Departments" ("Id", "Name", "DivisionId") FROM stdin;
 8	People	5
 9	Service	2
 10	Operation	2
+\.
+
+
+--
+-- Data for Name: DevQaRuns; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public."DevQaRuns" ("Id", "StartedAt", "FinishedAt", "Status", "TriggeredBy", "Summary", "ResultsJson") FROM stdin;
 \.
 
 
@@ -2705,223 +2886,223 @@ COPY public."IncomeTaxYears" ("Id", "CompanyId", "Year", "CountryCode", "Active"
 -- Data for Name: Ingredients; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public."Ingredients" ("Id", "ComponentId", "Name", "Category", "Group", "RecipeUom", "InventoryUom", "LastPriceRecipe", "LastPriceInventory", "DailyUsage", "OrderFreqDays", "StorageJson", "StorageNote", "DetailConfigJson", "AttachedProducts", "AttachedVendors", "Active", "LocationsJson", "CreatedAt", "UpdatedAt") FROM stdin;
-1	CMP-WAGYUB-001	Wagyu Beef A5	Food	Proteins	g	kg	0.021	42.0	2.4	3	["Freezer"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-CHX001","VP-WAG001"],"vendorProductPrincipalQty":{"VP-CHX001":"2000","VP-WAG001":"1000"},"vendorProductLossYield":{"VP-WAG001":"20"},"vendorProductComponentUom":{"VP-CHX001":"Gr","VP-WAG001":"Gr"},"vendorProductLocations":{"VP-CHX001":["airport","downtown","sg-marina","au-cbd","midtown","sg-orchard","au-southbank","westend"],"VP-WAG001":["airport","downtown","midtown","westend"]},"vendor":"Premium Meats Co.","vendorProduct":"Free-range Chicken Breast","deliveryUnitPrice":"42"}	3	2	t	["downtown","midtown"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-2	CMP-BLACKT-001	Black Truffle	Food	Produce	g	g	2.0	180.0	45.0	7	["Chiller"]		{"altRecipeUnits":[{"fromQty":"1","qty":"5","unit":"Slice"}],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-TRU001"],"vendorProductPrincipalQty":{},"vendorProductLossYield":{"VP-TRU001":"10"},"vendorProductComponentUom":{},"vendorProductLocations":{"VP-TRU001":["downtown","airport"]},"vendor":"Fine Truffle Imports","vendorProduct":"Black Truffle","deliveryUnitPrice":"180"}	2	1	t	["downtown"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-3	CMP-BURRAT-001	Burrata	Food	Dairy	pcs	pcs	8.75	52.5	8.0	2	["Chiller"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-BUR001"],"vendorProductPrincipalQty":{"VP-BUR001":"6"},"vendorProductLossYield":{"VP-BUR001":"0"},"vendorProductComponentUom":{"VP-BUR001":"Each"},"vendorProductLocations":{"VP-BUR001":["airport","downtown"]},"vendor":"Artisan Dairy Co.","vendorProduct":"Burrata","deliveryUnitPrice":"52.5"}	4	1	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-4	CMP-BAKEDB-001	Baked Beans	Food	Dry Goods	g	g	0.00875	42.0	0.0	7	["Dry Store","Chiller"]	Once Opened, keep in chiller	{"altRecipeUnits":[],"altInventoryUnits":[{"fromQty":"1","qty":"400","unit":"Tin"}],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-BEA001","VP-BEA002"],"vendorProductPrincipalQty":{"VP-BEA001":"4800","VP-BEA002":"4560"},"vendorProductLossYield":{"VP-BEA001":"0","VP-BEA002":"0"},"vendorProductComponentUom":{"VP-BEA001":"Gr","VP-BEA002":"Gr"},"vendorProductLocations":{"VP-BEA001":["downtown","midtown"],"VP-BEA002":["airport","downtown","midtown","westend"]},"vendor":"Heritage Pantry Supply","vendorProduct":"Baked Beans","deliveryUnitPrice":"42"}	0	2	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-5	CMP-LAMBRA-001	Lamb Rack	Food	Proteins	g	kg	0.95	95.0	1.8	4	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-6	CMP-DUCKBR-001	Duck Breast	Food	Proteins	g	kg	0.42	42.0	2.2	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-7	CMP-PORKBE-001	Pork Belly	Food	Proteins	g	kg	0.28	28.0	3.5	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-8	CMP-CHICKE-001	Chicken Thigh	Food	Proteins	g	kg	0.18	18.0	5.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-9	CMP-TIGERP-001	Tiger Prawns	Food	Seafood	g	kg	0.65	65.0	2.8	3	["Freezer"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-10	CMP-BLUEFI-001	Bluefin Tuna	Food	Seafood	g	kg	1.2	120.0	1.5	4	["Freezer"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-11	CMP-ATLANT-001	Atlantic Cod	Food	Seafood	g	kg	0.38	38.0	2.4	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-12	CMP-MOZZAR-001	Mozzarella Fior di Latte	Food	Dairy	g	kg	0.045	45.0	2.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-13	CMP-PARMES-001	Parmesan Reggiano	Food	Dairy	g	kg	0.12	120.0	0.8	7	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-14	CMP-UNSALT-001	Unsalted Butter	Food	Dairy	g	kg	0.035	35.0	1.2	5	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-15	CMP-HEAVYC-001	Heavy Cream	Food	Dairy	ml	l	0.018	18.0	3.5	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-16	CMP-FREERA-001	Free Range Eggs	Food	Dairy	pcs	pcs	0.85	0.85	120.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-17	CMP-ROCKET-001	Rocket Arugula	Food	Produce	g	kg	0.022	22.0	1.5	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-18	CMP-ROMATO-001	Roma Tomatoes	Food	Produce	g	kg	0.008	8.0	4.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-19	CMP-YELLOW-001	Yellow Onions	Food	Produce	g	kg	0.004	4.0	3.0	3	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-20	CMP-PEELED-001	Peeled Garlic	Food	Produce	g	kg	0.016842105263157894	16.0	0.6	5	["Chiller"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-GAR006"],"vendorProductPrincipalQty":{"VP-GAR006":"1000"},"vendorProductLossYield":{"VP-GAR006":"5"},"vendorProductComponentUom":{"VP-GAR006":"Gr"},"vendorProductLocations":{"VP-GAR006":["airport"]},"vendor":"Green Valley Produce","vendorProduct":"Peeled Garlic","deliveryUnitPrice":"16"}	0	1	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-21	CMP-RUSSET-001	Russet Potatoes	Food	Produce	g	kg	0.003	3.0	8.0	4	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-22	CMP-BASMAT-001	Basmati Rice	Food	Dry Goods	g	kg	0.006	6.0	2.5	7	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-23	CMP-PENNEP-001	Penne Pasta	Food	Dry Goods	g	kg	0.005	5.0	3.0	10	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-25	CMP-OLIVEO-001	Olive Oil Extra Virgin	Food	Dry Goods	ml	l	0.012	12.0	0.8	14	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-26	CMP-BALSAM-001	Balsamic Vinegar	Food	Dry Goods	ml	l	0.025	25.0	0.3	21	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-27	CMP-SEASAL-001	Sea Salt Flakes	Food	Dry Goods	g	kg	0.008	8.0	0.4	30	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-28	CMP-BLACKP-001	Black Peppercorns	Food	Dry Goods	g	kg	0.035	35.0	0.2	30	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-29	CMP-TOMATO-001	Tomato Passata	Food	Dry Goods	ml	l	0.006	6.0	2.2	7	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-30	CMP-FRESHO-001	Fresh Orange Juice	Beverage	Beverages	ml	l	0.008	8.0	6.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-31	CMP-CRAFTI-001	Craft IPA Beer	Beverage	Spirits	ml	l	0.015	15.0	12.0	5	["Bar"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-32	CMP-HOUSER-001	House Red Wine	Beverage	Spirits	ml	l	0.012	12.0	4.0	7	["Wine Cellar"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-33	CMP-TONICW-001	Tonic Water	Beverage	Beverages	ml	l	0.005	5.0	8.0	4	["Bar"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-34	CMP-OATMIL-001	Oat Milk Barista	Beverage	Beverages	ml	l	0.007	7.0	5.0	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-71	CMP-SCDEMO-033	SC Demo Component 033	Food	Beverages	g	kg	0.3799	379.9	1.87	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-72	CMP-SCDEMO-034	SC Demo Component 034	Food	Packaging	ml	l	0.5336	533.6	3.48	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-35	CMP-YOGURT-001	Yogurt Strawberry	Food	Dairy	pcs	pcs	2.625	42.0	0.0	7	["Chiller"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-032FERN001"],"vendorProductPrincipalQty":{"VP-032FERN001":"16"},"vendorProductLossYield":{"VP-032FERN001":"0"},"vendorProductComponentUom":{"VP-032FERN001":"Each"},"vendorProductLocations":{"VP-032FERN001":["airport"]},"vendor":"Malaysian Yogurt Company","vendorProduct":"Fernleaf Yogurt Strawberry","deliveryUnitPrice":"42"}	0	1	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-36	CMP-SPAGHE-001	Spaghetti No. 5	Food	Dry Goods	g	kg	0.006	30.0	0.0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[{"fromQty":"1","qty":"0.5","unit":"Tray"}],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":["VP-SPG019"],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{"VP-SPG019":["airport","downtown","midtown","westend"]},"vendor":"Noodle House Supply","vendorProduct":"Spaghetti","deliveryUnitPrice":"30"}	0	1	t	["airport","downtown","midtown","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-37	CMP-CHILIF-001	Chili Flakes	Food	Dry Goods	g	kg	0.0	0.0	0.0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["airport","downtown","midtown","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-38	CMP-PAPRIK-001	Paprika	Food	Dry Goods	g	kg	0.0	0.0	0.0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["airport","downtown","midtown","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-39	CMP-SCDEMO-001	SC Demo Component 001	Food	Produce	ml	l	1.498	1498.0	1.3	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-40	CMP-SCDEMO-002	SC Demo Component 002	Food	Dairy	pcs	pcs	0.9651	0.9651	2.71	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-41	CMP-SCDEMO-003	SC Demo Component 003	Food	Dry Goods	g	kg	0.682	682.0	3.05	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-42	CMP-SCDEMO-004	SC Demo Component 004	Food	Seafood	ml	l	2.0013	2001.3	1.49	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-43	CMP-SCDEMO-005	SC Demo Component 005	Food	Beverages	pcs	pcs	1.6925	1.6925	0.66	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-44	CMP-SCDEMO-006	SC Demo Component 006	Food	Packaging	g	kg	0.8389	838.9	1.29	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-45	CMP-SCDEMO-007	SC Demo Component 007	Food	Proteins	ml	l	1.4537	1453.7	2.06	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-46	CMP-SCDEMO-008	SC Demo Component 008	Food	Produce	pcs	pcs	0.0507	0.0507	3.78	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-47	CMP-SCDEMO-009	SC Demo Component 009	Food	Dairy	g	kg	0.9809	980.9	3.94	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-48	CMP-SCDEMO-010	SC Demo Component 010	Food	Dry Goods	ml	l	1.6417	1641.7	1.71	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-49	CMP-SCDEMO-011	SC Demo Component 011	Food	Seafood	pcs	pcs	0.4035	0.4035	2.81	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-50	CMP-SCDEMO-012	SC Demo Component 012	Food	Beverages	g	kg	0.4827	482.7	3.78	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-51	CMP-SCDEMO-013	SC Demo Component 013	Food	Packaging	ml	l	1.1059	1105.9	0.86	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-52	CMP-SCDEMO-014	SC Demo Component 014	Food	Proteins	pcs	pcs	0.4922	0.4922	5.2	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-53	CMP-SCDEMO-015	SC Demo Component 015	Food	Produce	g	kg	0.3499	349.9	0.58	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-54	CMP-SCDEMO-016	SC Demo Component 016	Food	Dairy	ml	l	1.7847	1784.7	1.1	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-55	CMP-SCDEMO-017	SC Demo Component 017	Food	Dry Goods	pcs	pcs	1.883	1.883	1.03	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-56	CMP-SCDEMO-018	SC Demo Component 018	Food	Seafood	g	kg	0.5299	529.9	1.6	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-57	CMP-SCDEMO-019	SC Demo Component 019	Food	Beverages	ml	l	1.3927	1392.7	2.6	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-58	CMP-SCDEMO-020	SC Demo Component 020	Food	Packaging	pcs	pcs	1.9517	1.9517	0.97	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-59	CMP-SCDEMO-021	SC Demo Component 021	Food	Proteins	g	kg	0.732	732.0	5.42	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-60	CMP-SCDEMO-022	SC Demo Component 022	Food	Produce	ml	l	1.4764	1476.4	4.7	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-61	CMP-SCDEMO-023	SC Demo Component 023	Food	Dairy	pcs	pcs	2.0131	2.0131	5.28	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-62	CMP-SCDEMO-024	SC Demo Component 024	Food	Dry Goods	g	kg	1.3991	1399.1	3.09	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-63	CMP-SCDEMO-025	SC Demo Component 025	Food	Seafood	ml	l	1.7876	1787.6	1.14	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-64	CMP-SCDEMO-026	SC Demo Component 026	Food	Beverages	pcs	pcs	1.3311	1.3311	4.71	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-65	CMP-SCDEMO-027	SC Demo Component 027	Food	Packaging	g	kg	1.6432	1643.2	1.7	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-66	CMP-SCDEMO-028	SC Demo Component 028	Food	Proteins	ml	l	0.1343	134.3	1.81	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-67	CMP-SCDEMO-029	SC Demo Component 029	Food	Produce	pcs	pcs	1.9368	1.9368	4.51	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-68	CMP-SCDEMO-030	SC Demo Component 030	Food	Dairy	g	kg	1.8779	1877.9	1.72	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-69	CMP-SCDEMO-031	SC Demo Component 031	Food	Dry Goods	ml	l	0.6281	628.1	0.68	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-70	CMP-SCDEMO-032	SC Demo Component 032	Food	Seafood	pcs	pcs	0.1446	0.1446	4.53	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-73	CMP-SCDEMO-035	SC Demo Component 035	Food	Proteins	pcs	pcs	0.1948	0.1948	4.4	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-74	CMP-SCDEMO-036	SC Demo Component 036	Food	Produce	g	kg	2.0176	2017.6	0.73	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-75	CMP-SCDEMO-037	SC Demo Component 037	Food	Dairy	ml	l	1.5225	1522.5	4.01	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-76	CMP-SCDEMO-038	SC Demo Component 038	Food	Dry Goods	pcs	pcs	1.8537	1.8537	1.46	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-77	CMP-SCDEMO-039	SC Demo Component 039	Food	Seafood	g	kg	1.5464	1546.4	2.38	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-78	CMP-SCDEMO-040	SC Demo Component 040	Food	Beverages	ml	l	1.3981	1398.1	3.36	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-79	CMP-SCDEMO-041	SC Demo Component 041	Food	Packaging	pcs	pcs	0.8446	0.8446	4.01	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-80	CMP-SCDEMO-042	SC Demo Component 042	Food	Proteins	g	kg	0.1916	191.6	0.61	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-81	CMP-SCDEMO-043	SC Demo Component 043	Food	Produce	ml	l	0.8011	801.1	0.63	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-82	CMP-SCDEMO-044	SC Demo Component 044	Food	Dairy	pcs	pcs	0.6974	0.6974	3.88	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-83	CMP-SCDEMO-045	SC Demo Component 045	Food	Dry Goods	g	kg	0.176	176.0	5.39	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-84	CMP-SCDEMO-046	SC Demo Component 046	Food	Seafood	ml	l	0.6026	602.6	4.85	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-85	CMP-SCDEMO-047	SC Demo Component 047	Food	Beverages	pcs	pcs	1.0628	1.0628	4.03	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-86	CMP-SCDEMO-048	SC Demo Component 048	Food	Packaging	g	kg	1.659	1659.0	2.02	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-87	CMP-SCDEMO-049	SC Demo Component 049	Food	Proteins	ml	l	1.9236	1923.6	5.04	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-88	CMP-SCDEMO-050	SC Demo Component 050	Food	Produce	pcs	pcs	1.401	1.401	4.04	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-89	CMP-SCDEMO-051	SC Demo Component 051	Food	Dairy	g	kg	1.4783	1478.3	0.89	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-90	CMP-SCDEMO-052	SC Demo Component 052	Food	Dry Goods	ml	l	0.9428	942.8	0.94	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-91	CMP-SCDEMO-053	SC Demo Component 053	Food	Seafood	pcs	pcs	0.3383	0.3383	3.48	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-92	CMP-SCDEMO-054	SC Demo Component 054	Food	Beverages	g	kg	0.2615	261.5	0.97	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-93	CMP-SCDEMO-055	SC Demo Component 055	Food	Packaging	ml	l	0.7275	727.5	4.75	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-94	CMP-SCDEMO-056	SC Demo Component 056	Food	Proteins	pcs	pcs	1.0789	1.0789	3.34	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-95	CMP-SCDEMO-057	SC Demo Component 057	Food	Produce	g	kg	0.3057	305.7	2.21	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-96	CMP-SCDEMO-058	SC Demo Component 058	Food	Dairy	ml	l	1.7438	1743.8	3.43	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-97	CMP-SCDEMO-059	SC Demo Component 059	Food	Dry Goods	pcs	pcs	1.9806	1.9806	0.63	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-98	CMP-SCDEMO-060	SC Demo Component 060	Food	Seafood	g	kg	0.9093	909.3	1.2	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-99	CMP-SCDEMO-061	SC Demo Component 061	Food	Beverages	ml	l	1.9509	1950.9	3.33	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-100	CMP-SCDEMO-062	SC Demo Component 062	Food	Packaging	pcs	pcs	1.1173	1.1173	0.98	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-101	CMP-SCDEMO-063	SC Demo Component 063	Food	Proteins	g	kg	1.0587	1058.7	1.07	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-102	CMP-SCDEMO-064	SC Demo Component 064	Food	Produce	ml	l	1.1275	1127.5	0.65	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-103	CMP-SCDEMO-065	SC Demo Component 065	Food	Dairy	pcs	pcs	1.8455	1.8455	3.48	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-104	CMP-SCDEMO-066	SC Demo Component 066	Food	Dry Goods	g	kg	0.5616	561.6	4.7	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-105	CMP-SCDEMO-067	SC Demo Component 067	Food	Seafood	ml	l	1.4508	1450.8	5.33	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-106	CMP-SCDEMO-068	SC Demo Component 068	Food	Beverages	pcs	pcs	1.7658	1.7658	2.1	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-107	CMP-SCDEMO-069	SC Demo Component 069	Food	Packaging	g	kg	0.5618	561.8	5.41	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-108	CMP-SCDEMO-070	SC Demo Component 070	Food	Proteins	ml	l	1.8058	1805.8	4.4	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-109	CMP-SCDEMO-071	SC Demo Component 071	Food	Produce	pcs	pcs	1.8892	1.8892	1.65	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-110	CMP-SCDEMO-072	SC Demo Component 072	Food	Dairy	g	kg	0.7242	724.2	1.57	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-111	CMP-SCDEMO-073	SC Demo Component 073	Food	Dry Goods	ml	l	0.9758	975.8	4.04	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-112	CMP-SCDEMO-074	SC Demo Component 074	Food	Seafood	pcs	pcs	1.5331	1.5331	1.32	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-113	CMP-SCDEMO-075	SC Demo Component 075	Food	Beverages	g	kg	1.7695	1769.5	1.59	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-114	CMP-SCDEMO-076	SC Demo Component 076	Food	Packaging	ml	l	0.7293	729.3	5.06	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-115	CMP-SCDEMO-077	SC Demo Component 077	Food	Proteins	pcs	pcs	1.0067	1.0067	3.18	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-116	CMP-SCDEMO-078	SC Demo Component 078	Food	Produce	g	kg	1.5639	1563.9	1.24	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-117	CMP-SCDEMO-079	SC Demo Component 079	Food	Dairy	ml	l	1.1384	1138.4	2.26	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-118	CMP-SCDEMO-080	SC Demo Component 080	Food	Dry Goods	pcs	pcs	1.2175	1.2175	0.65	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-119	CMP-SCDEMO-081	SC Demo Component 081	Food	Seafood	g	kg	0.1634	163.4	0.88	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-120	CMP-SCDEMO-082	SC Demo Component 082	Food	Beverages	ml	l	0.4432	443.2	4.21	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-121	CMP-SCDEMO-083	SC Demo Component 083	Food	Packaging	pcs	pcs	1.2373	1.2373	3.87	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-122	CMP-SCDEMO-084	SC Demo Component 084	Food	Proteins	g	kg	1.7842	1784.2	1.31	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-123	CMP-SCDEMO-085	SC Demo Component 085	Food	Produce	ml	l	1.0181	1018.1	3.14	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-124	CMP-SCDEMO-086	SC Demo Component 086	Food	Dairy	pcs	pcs	0.7117	0.7117	5.41	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-125	CMP-SCDEMO-087	SC Demo Component 087	Food	Dry Goods	g	kg	0.3448	344.8	3.75	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-126	CMP-SCDEMO-088	SC Demo Component 088	Food	Seafood	ml	l	0.4901	490.1	4.11	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-127	CMP-SCDEMO-089	SC Demo Component 089	Food	Beverages	pcs	pcs	0.5076	0.5076	2.1	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-128	CMP-SCDEMO-090	SC Demo Component 090	Food	Packaging	g	kg	1.3143	1314.3	4.48	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-129	CMP-SCDEMO-091	SC Demo Component 091	Food	Proteins	ml	l	0.7956	795.6	2.37	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-130	CMP-SCDEMO-092	SC Demo Component 092	Food	Produce	pcs	pcs	0.3898	0.3898	3.9	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-131	CMP-SCDEMO-093	SC Demo Component 093	Food	Dairy	g	kg	0.5646	564.6	2.22	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-132	CMP-SCDEMO-094	SC Demo Component 094	Food	Dry Goods	ml	l	0.7737	773.7	1.32	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-133	CMP-SCDEMO-095	SC Demo Component 095	Food	Seafood	pcs	pcs	0.4694	0.4694	4.05	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-134	CMP-SCDEMO-096	SC Demo Component 096	Food	Beverages	g	kg	1.6005	1600.5	5.02	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-135	CMP-SCDEMO-097	SC Demo Component 097	Food	Packaging	ml	l	0.8479	847.9	4.74	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-136	CMP-SCDEMO-098	SC Demo Component 098	Food	Proteins	pcs	pcs	1.4968	1.4968	4.72	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-137	CMP-SCDEMO-099	SC Demo Component 099	Food	Produce	g	kg	0.1156	115.6	3.48	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-138	CMP-SCDEMO-100	SC Demo Component 100	Food	Dairy	ml	l	1.2897	1289.7	4.44	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-139	CMP-SCDEMO-101	SC Demo Component 101	Food	Dry Goods	pcs	pcs	1.7333	1.7333	3.4	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-140	CMP-SCDEMO-102	SC Demo Component 102	Food	Seafood	g	kg	1.4108	1410.8	2.16	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-141	CMP-SCDEMO-103	SC Demo Component 103	Food	Beverages	ml	l	1.8238	1823.8	2.29	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-142	CMP-SCDEMO-104	SC Demo Component 104	Food	Packaging	pcs	pcs	1.5783	1.5783	4.64	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-143	CMP-SCDEMO-105	SC Demo Component 105	Food	Proteins	g	kg	0.6816	681.6	0.68	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-144	CMP-SCDEMO-106	SC Demo Component 106	Food	Produce	ml	l	1.8888	1888.8	1.62	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-145	CMP-SCDEMO-107	SC Demo Component 107	Food	Dairy	pcs	pcs	1.4884	1.4884	4.44	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-146	CMP-SCDEMO-108	SC Demo Component 108	Food	Dry Goods	g	kg	1.364	1364.0	3.91	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-147	CMP-SCDEMO-109	SC Demo Component 109	Food	Seafood	ml	l	1.8625	1862.5	3.08	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-148	CMP-SCDEMO-110	SC Demo Component 110	Food	Beverages	pcs	pcs	1.0191	1.0191	1.75	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-149	CMP-SCDEMO-111	SC Demo Component 111	Food	Packaging	g	kg	0.6747	674.7	4.01	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-150	CMP-SCDEMO-112	SC Demo Component 112	Food	Proteins	ml	l	1.953	1953.0	4.37	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-151	CMP-SCDEMO-113	SC Demo Component 113	Food	Produce	pcs	pcs	1.5544	1.5544	2.63	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-152	CMP-SCDEMO-114	SC Demo Component 114	Food	Dairy	g	kg	1.2174	1217.4	2.0	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-153	CMP-SCDEMO-115	SC Demo Component 115	Food	Dry Goods	ml	l	1.9023	1902.3	2.38	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-154	CMP-SCDEMO-116	SC Demo Component 116	Food	Seafood	pcs	pcs	1.4264	1.4264	3.67	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-155	CMP-SCDEMO-117	SC Demo Component 117	Food	Beverages	g	kg	1.4506	1450.6	4.72	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-156	CMP-SCDEMO-118	SC Demo Component 118	Food	Packaging	ml	l	1.9578	1957.8	4.46	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-157	CMP-SCDEMO-119	SC Demo Component 119	Food	Proteins	pcs	pcs	1.4378	1.4378	4.69	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-158	CMP-SCDEMO-120	SC Demo Component 120	Food	Produce	g	kg	1.6362	1636.2	5.0	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-159	CMP-SCDEMO-121	SC Demo Component 121	Food	Dairy	ml	l	1.2102	1210.2	3.17	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-160	CMP-SCDEMO-122	SC Demo Component 122	Food	Dry Goods	pcs	pcs	1.7475	1.7475	1.37	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-161	CMP-SCDEMO-123	SC Demo Component 123	Food	Seafood	g	kg	1.6305	1630.5	3.26	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-162	CMP-SCDEMO-124	SC Demo Component 124	Food	Beverages	ml	l	0.4208	420.8	3.55	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-163	CMP-SCDEMO-125	SC Demo Component 125	Food	Packaging	pcs	pcs	0.4322	0.4322	0.7	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-164	CMP-SCDEMO-126	SC Demo Component 126	Food	Proteins	g	kg	1.9244	1924.4	3.08	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-165	CMP-SCDEMO-127	SC Demo Component 127	Food	Produce	ml	l	0.2714	271.4	2.35	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-166	CMP-SCDEMO-128	SC Demo Component 128	Food	Dairy	pcs	pcs	1.0026	1.0026	1.2	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-167	CMP-SCDEMO-129	SC Demo Component 129	Food	Dry Goods	g	kg	1.3077	1307.7	5.03	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-168	CMP-SCDEMO-130	SC Demo Component 130	Food	Seafood	ml	l	1.2101	1210.1	2.8	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-169	CMP-SCDEMO-131	SC Demo Component 131	Food	Beverages	pcs	pcs	1.5967	1.5967	2.82	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-170	CMP-SCDEMO-132	SC Demo Component 132	Food	Packaging	g	kg	1.8552	1855.2	5.2	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-171	CMP-SCDEMO-133	SC Demo Component 133	Food	Proteins	ml	l	0.7454	745.4	1.93	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-172	CMP-SCDEMO-134	SC Demo Component 134	Food	Produce	pcs	pcs	1.0975	1.0975	4.88	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-173	CMP-SCDEMO-135	SC Demo Component 135	Food	Dairy	g	kg	1.7185	1718.5	4.82	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-174	CMP-SCDEMO-136	SC Demo Component 136	Food	Dry Goods	ml	l	2.027	2027.0	0.84	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-175	CMP-SCDEMO-137	SC Demo Component 137	Food	Seafood	pcs	pcs	1.4969	1.4969	3.42	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-176	CMP-SCDEMO-138	SC Demo Component 138	Food	Beverages	g	kg	1.3886	1388.6	4.4	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-177	CMP-SCDEMO-139	SC Demo Component 139	Food	Packaging	ml	l	1.7576	1757.6	4.39	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-178	CMP-SCDEMO-140	SC Demo Component 140	Food	Proteins	pcs	pcs	2.0183	2.0183	1.51	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-179	CMP-SCDEMO-141	SC Demo Component 141	Food	Produce	g	kg	0.5318	531.8	5.36	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-180	CMP-SCDEMO-142	SC Demo Component 142	Food	Dairy	ml	l	0.2663	266.3	4.93	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-181	CMP-SCDEMO-143	SC Demo Component 143	Food	Dry Goods	pcs	pcs	0.9288	0.9288	1.36	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-182	CMP-SCDEMO-144	SC Demo Component 144	Food	Seafood	g	kg	1.0957	1095.7	2.15	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-183	CMP-SCDEMO-145	SC Demo Component 145	Food	Beverages	ml	l	0.7844	784.4	4.57	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-184	CMP-SCDEMO-146	SC Demo Component 146	Food	Packaging	pcs	pcs	0.3771	0.3771	4.44	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-185	CMP-SCDEMO-147	SC Demo Component 147	Food	Proteins	g	kg	0.5652	565.2	2.16	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-186	CMP-SCDEMO-148	SC Demo Component 148	Food	Produce	ml	l	0.3039	303.9	1.08	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-187	CMP-SCDEMO-149	SC Demo Component 149	Food	Dairy	pcs	pcs	1.311	1.311	5.05	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-188	CMP-SCDEMO-150	SC Demo Component 150	Food	Dry Goods	g	kg	1.7022	1702.2	3.02	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-189	CMP-SCDEMO-151	SC Demo Component 151	Food	Seafood	ml	l	0.105	105.0	2.05	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-190	CMP-SCDEMO-152	SC Demo Component 152	Food	Beverages	pcs	pcs	1.6031	1.6031	2.13	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-191	CMP-SCDEMO-153	SC Demo Component 153	Food	Packaging	g	kg	0.155	155.0	4.84	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-192	CMP-SCDEMO-154	SC Demo Component 154	Food	Proteins	ml	l	1.6356	1635.6	3.13	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-193	CMP-SCDEMO-155	SC Demo Component 155	Food	Produce	pcs	pcs	1.4523	1.4523	3.99	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-194	CMP-SCDEMO-156	SC Demo Component 156	Food	Dairy	g	kg	0.6206	620.6	4.76	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-195	CMP-SCDEMO-157	SC Demo Component 157	Food	Dry Goods	ml	l	1.8937	1893.7	2.4	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-196	CMP-SCDEMO-158	SC Demo Component 158	Food	Seafood	pcs	pcs	0.4894	0.4894	4.5	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-197	CMP-SCDEMO-159	SC Demo Component 159	Food	Beverages	g	kg	0.7635	763.5	0.59	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-198	CMP-SCDEMO-160	SC Demo Component 160	Food	Packaging	ml	l	1.0495	1049.5	1.38	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-199	CMP-SCDEMO-161	SC Demo Component 161	Food	Proteins	pcs	pcs	1.576	1.576	1.47	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-200	CMP-SCDEMO-162	SC Demo Component 162	Food	Produce	g	kg	1.067	1067.0	0.6	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-201	CMP-SCDEMO-163	SC Demo Component 163	Food	Dairy	ml	l	1.452	1452.0	1.5	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-202	CMP-SCDEMO-164	SC Demo Component 164	Food	Dry Goods	pcs	pcs	1.672	1.672	2.45	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-203	CMP-SCDEMO-165	SC Demo Component 165	Food	Seafood	g	kg	0.9647	964.7	3.27	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-204	CMP-SCDEMO-166	SC Demo Component 166	Food	Beverages	ml	l	0.3475	347.5	5.22	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-205	CMP-SCDEMO-167	SC Demo Component 167	Food	Packaging	pcs	pcs	1.9533	1.9533	2.9	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-206	CMP-SCDEMO-168	SC Demo Component 168	Food	Proteins	g	kg	0.397	397.0	5.16	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-207	CMP-SCDEMO-169	SC Demo Component 169	Food	Produce	ml	l	0.4427	442.7	4.41	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-208	CMP-SCDEMO-170	SC Demo Component 170	Food	Dairy	pcs	pcs	1.7154	1.7154	3.35	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-209	CMP-SCFIFO-001	SC FIFO Demo Wagyu	Food	Proteins	g	kg	0.042	42.0	2.5	3	["Chiller"]		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-210	CMP-CHILIR-001	Chili Red Fresh	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-211	CMP-CHILIF-002	Chili Flake	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-212	CMP-OREGAN-001	Oregano Dried	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-213	CMP-CHICKE-002	Chicken Stock Powder	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-214	CMP-WATERT-001	Water Tap	Food	Beverages	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-215	CMP-SAUCEB-001	Sauce Bag 1kg	Food	Packaging	pcs	bunch	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"100","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291
-24	CMP-00FLOU-001	00 Flour	Food	Dry Goods	g	kg	0.00208	52	4.0	14	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":["VP-FLR018","VP-FLR029","VP-FLR049"],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{"VP-FLR018":["airport","downtown","midtown","westend"],"VP-FLR029":["weissbrau-pavilion-kuala-lumpur"],"VP-FLR049":["weissbrau-pavilion-kuala-lumpur"]},"vendor":"Grain & Mill Co.","vendorProduct":"00 Flour","deliveryUnitPrice":"52"}	0	3	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 06:45:50.359824
-216	CMP-BEEFRI-001	Beef Rib Bone-in	Food	Meat & Poultry	g	kg	0	0	0	7	["Prep Kitchen"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0","splitUse":{"enabled":true,"componentQty":"10","qtyBasis":"inventory","lines":[{"key":"split-1783622902105-xi9rv","name":"Beef Rib Off Bone","qty":"8","inventoryUom":"Kg","valueAssigned":"","noValue":false},{"key":"split-1783622982413-j2qba","name":"Beef Bone","qty":"2","inventoryUom":"Kg","valueAssigned":"","noValue":true}]}}	0	0	t	["all"]	2026-07-10 02:51:07.696145	2026-07-10 02:51:07.696323
+COPY public."Ingredients" ("Id", "ComponentId", "Name", "Category", "Group", "RecipeUom", "InventoryUom", "LastPriceRecipe", "LastPriceInventory", "DailyUsage", "OrderFreqDays", "StorageJson", "StorageNote", "DetailConfigJson", "AttachedProducts", "AttachedVendors", "Active", "LocationsJson", "CreatedAt", "UpdatedAt", "CompanyId") FROM stdin;
+5	CMP-LAMBRA-001	Lamb Rack	Food	Proteins	g	kg	0.95	95.0	1.8	4	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+191	CMP-SCDEMO-153	SC Demo Component 153	Food	Packaging	g	kg	0.155	155.0	4.84	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+192	CMP-SCDEMO-154	SC Demo Component 154	Food	Proteins	ml	l	1.6356	1635.6	3.13	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+193	CMP-SCDEMO-155	SC Demo Component 155	Food	Produce	pcs	pcs	1.4523	1.4523	3.99	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+1	CMP-WAGYUB-001	Wagyu Beef A5	Food	Proteins	g	kg	0.021	42.0	2.4	3	["Freezer"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-CHX001","VP-WAG001"],"vendorProductPrincipalQty":{"VP-CHX001":"2000","VP-WAG001":"1000"},"vendorProductLossYield":{"VP-WAG001":"20"},"vendorProductComponentUom":{"VP-CHX001":"Gr","VP-WAG001":"Gr"},"vendorProductLocations":{"VP-CHX001":["airport","downtown","sg-marina","au-cbd","midtown","sg-orchard","au-southbank","westend"],"VP-WAG001":["airport","downtown","midtown","westend"]},"vendor":"Premium Meats Co.","vendorProduct":"Free-range Chicken Breast","deliveryUnitPrice":"42"}	3	2	t	["downtown","midtown"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+2	CMP-BLACKT-001	Black Truffle	Food	Produce	g	g	2.0	180.0	45.0	7	["Chiller"]		{"altRecipeUnits":[{"fromQty":"1","qty":"5","unit":"Slice"}],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-TRU001"],"vendorProductPrincipalQty":{},"vendorProductLossYield":{"VP-TRU001":"10"},"vendorProductComponentUom":{},"vendorProductLocations":{"VP-TRU001":["downtown","airport"]},"vendor":"Fine Truffle Imports","vendorProduct":"Black Truffle","deliveryUnitPrice":"180"}	2	1	t	["downtown"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+3	CMP-BURRAT-001	Burrata	Food	Dairy	pcs	pcs	8.75	52.5	8.0	2	["Chiller"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-BUR001"],"vendorProductPrincipalQty":{"VP-BUR001":"6"},"vendorProductLossYield":{"VP-BUR001":"0"},"vendorProductComponentUom":{"VP-BUR001":"Each"},"vendorProductLocations":{"VP-BUR001":["airport","downtown"]},"vendor":"Artisan Dairy Co.","vendorProduct":"Burrata","deliveryUnitPrice":"52.5"}	4	1	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+4	CMP-BAKEDB-001	Baked Beans	Food	Dry Goods	g	g	0.00875	42.0	0.0	7	["Dry Store","Chiller"]	Once Opened, keep in chiller	{"altRecipeUnits":[],"altInventoryUnits":[{"fromQty":"1","qty":"400","unit":"Tin"}],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-BEA001","VP-BEA002"],"vendorProductPrincipalQty":{"VP-BEA001":"4800","VP-BEA002":"4560"},"vendorProductLossYield":{"VP-BEA001":"0","VP-BEA002":"0"},"vendorProductComponentUom":{"VP-BEA001":"Gr","VP-BEA002":"Gr"},"vendorProductLocations":{"VP-BEA001":["downtown","midtown"],"VP-BEA002":["airport","downtown","midtown","westend"]},"vendor":"Heritage Pantry Supply","vendorProduct":"Baked Beans","deliveryUnitPrice":"42"}	0	2	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+6	CMP-DUCKBR-001	Duck Breast	Food	Proteins	g	kg	0.42	42.0	2.2	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+7	CMP-PORKBE-001	Pork Belly	Food	Proteins	g	kg	0.28	28.0	3.5	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+8	CMP-CHICKE-001	Chicken Thigh	Food	Proteins	g	kg	0.18	18.0	5.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+9	CMP-TIGERP-001	Tiger Prawns	Food	Seafood	g	kg	0.65	65.0	2.8	3	["Freezer"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+10	CMP-BLUEFI-001	Bluefin Tuna	Food	Seafood	g	kg	1.2	120.0	1.5	4	["Freezer"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+11	CMP-ATLANT-001	Atlantic Cod	Food	Seafood	g	kg	0.38	38.0	2.4	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+12	CMP-MOZZAR-001	Mozzarella Fior di Latte	Food	Dairy	g	kg	0.045	45.0	2.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+13	CMP-PARMES-001	Parmesan Reggiano	Food	Dairy	g	kg	0.12	120.0	0.8	7	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+14	CMP-UNSALT-001	Unsalted Butter	Food	Dairy	g	kg	0.035	35.0	1.2	5	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+15	CMP-HEAVYC-001	Heavy Cream	Food	Dairy	ml	l	0.018	18.0	3.5	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+16	CMP-FREERA-001	Free Range Eggs	Food	Dairy	pcs	pcs	0.85	0.85	120.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+17	CMP-ROCKET-001	Rocket Arugula	Food	Produce	g	kg	0.022	22.0	1.5	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+18	CMP-ROMATO-001	Roma Tomatoes	Food	Produce	g	kg	0.008	8.0	4.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+19	CMP-YELLOW-001	Yellow Onions	Food	Produce	g	kg	0.004	4.0	3.0	3	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+20	CMP-PEELED-001	Peeled Garlic	Food	Produce	g	kg	0.016842105263157894	16.0	0.6	5	["Chiller"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-GAR006"],"vendorProductPrincipalQty":{"VP-GAR006":"1000"},"vendorProductLossYield":{"VP-GAR006":"5"},"vendorProductComponentUom":{"VP-GAR006":"Gr"},"vendorProductLocations":{"VP-GAR006":["airport"]},"vendor":"Green Valley Produce","vendorProduct":"Peeled Garlic","deliveryUnitPrice":"16"}	0	1	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+21	CMP-RUSSET-001	Russet Potatoes	Food	Produce	g	kg	0.003	3.0	8.0	4	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+22	CMP-BASMAT-001	Basmati Rice	Food	Dry Goods	g	kg	0.006	6.0	2.5	7	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+23	CMP-PENNEP-001	Penne Pasta	Food	Dry Goods	g	kg	0.005	5.0	3.0	10	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+25	CMP-OLIVEO-001	Olive Oil Extra Virgin	Food	Dry Goods	ml	l	0.012	12.0	0.8	14	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+26	CMP-BALSAM-001	Balsamic Vinegar	Food	Dry Goods	ml	l	0.025	25.0	0.3	21	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+27	CMP-SEASAL-001	Sea Salt Flakes	Food	Dry Goods	g	kg	0.008	8.0	0.4	30	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+28	CMP-BLACKP-001	Black Peppercorns	Food	Dry Goods	g	kg	0.035	35.0	0.2	30	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+29	CMP-TOMATO-001	Tomato Passata	Food	Dry Goods	ml	l	0.006	6.0	2.2	7	["Dry Store"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+30	CMP-FRESHO-001	Fresh Orange Juice	Beverage	Beverages	ml	l	0.008	8.0	6.0	2	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+31	CMP-CRAFTI-001	Craft IPA Beer	Beverage	Spirits	ml	l	0.015	15.0	12.0	5	["Bar"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+32	CMP-HOUSER-001	House Red Wine	Beverage	Spirits	ml	l	0.012	12.0	4.0	7	["Wine Cellar"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+33	CMP-TONICW-001	Tonic Water	Beverage	Beverages	ml	l	0.005	5.0	8.0	4	["Bar"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+34	CMP-OATMIL-001	Oat Milk Barista	Beverage	Beverages	ml	l	0.007	7.0	5.0	3	["Chiller"]		{}	0	0	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+71	CMP-SCDEMO-033	SC Demo Component 033	Food	Beverages	g	kg	0.3799	379.9	1.87	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+72	CMP-SCDEMO-034	SC Demo Component 034	Food	Packaging	ml	l	0.5336	533.6	3.48	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+35	CMP-YOGURT-001	Yogurt Strawberry	Food	Dairy	pcs	pcs	2.625	42.0	0.0	7	["Chiller"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1","taggedVendorProductIds":["VP-032FERN001"],"vendorProductPrincipalQty":{"VP-032FERN001":"16"},"vendorProductLossYield":{"VP-032FERN001":"0"},"vendorProductComponentUom":{"VP-032FERN001":"Each"},"vendorProductLocations":{"VP-032FERN001":["airport"]},"vendor":"Malaysian Yogurt Company","vendorProduct":"Fernleaf Yogurt Strawberry","deliveryUnitPrice":"42"}	0	1	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+36	CMP-SPAGHE-001	Spaghetti No. 5	Food	Dry Goods	g	kg	0.006	30.0	0.0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[{"fromQty":"1","qty":"0.5","unit":"Tray"}],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":["VP-SPG019"],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{"VP-SPG019":["airport","downtown","midtown","westend"]},"vendor":"Noodle House Supply","vendorProduct":"Spaghetti","deliveryUnitPrice":"30"}	0	1	t	["airport","downtown","midtown","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+37	CMP-CHILIF-001	Chili Flakes	Food	Dry Goods	g	kg	0.0	0.0	0.0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["airport","downtown","midtown","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+38	CMP-PAPRIK-001	Paprika	Food	Dry Goods	g	kg	0.0	0.0	0.0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["airport","downtown","midtown","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+39	CMP-SCDEMO-001	SC Demo Component 001	Food	Produce	ml	l	1.498	1498.0	1.3	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+40	CMP-SCDEMO-002	SC Demo Component 002	Food	Dairy	pcs	pcs	0.9651	0.9651	2.71	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+41	CMP-SCDEMO-003	SC Demo Component 003	Food	Dry Goods	g	kg	0.682	682.0	3.05	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+42	CMP-SCDEMO-004	SC Demo Component 004	Food	Seafood	ml	l	2.0013	2001.3	1.49	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+43	CMP-SCDEMO-005	SC Demo Component 005	Food	Beverages	pcs	pcs	1.6925	1.6925	0.66	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+44	CMP-SCDEMO-006	SC Demo Component 006	Food	Packaging	g	kg	0.8389	838.9	1.29	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+45	CMP-SCDEMO-007	SC Demo Component 007	Food	Proteins	ml	l	1.4537	1453.7	2.06	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+46	CMP-SCDEMO-008	SC Demo Component 008	Food	Produce	pcs	pcs	0.0507	0.0507	3.78	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+47	CMP-SCDEMO-009	SC Demo Component 009	Food	Dairy	g	kg	0.9809	980.9	3.94	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+48	CMP-SCDEMO-010	SC Demo Component 010	Food	Dry Goods	ml	l	1.6417	1641.7	1.71	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+49	CMP-SCDEMO-011	SC Demo Component 011	Food	Seafood	pcs	pcs	0.4035	0.4035	2.81	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+50	CMP-SCDEMO-012	SC Demo Component 012	Food	Beverages	g	kg	0.4827	482.7	3.78	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+51	CMP-SCDEMO-013	SC Demo Component 013	Food	Packaging	ml	l	1.1059	1105.9	0.86	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+52	CMP-SCDEMO-014	SC Demo Component 014	Food	Proteins	pcs	pcs	0.4922	0.4922	5.2	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+53	CMP-SCDEMO-015	SC Demo Component 015	Food	Produce	g	kg	0.3499	349.9	0.58	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+54	CMP-SCDEMO-016	SC Demo Component 016	Food	Dairy	ml	l	1.7847	1784.7	1.1	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+55	CMP-SCDEMO-017	SC Demo Component 017	Food	Dry Goods	pcs	pcs	1.883	1.883	1.03	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+56	CMP-SCDEMO-018	SC Demo Component 018	Food	Seafood	g	kg	0.5299	529.9	1.6	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+57	CMP-SCDEMO-019	SC Demo Component 019	Food	Beverages	ml	l	1.3927	1392.7	2.6	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+58	CMP-SCDEMO-020	SC Demo Component 020	Food	Packaging	pcs	pcs	1.9517	1.9517	0.97	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+59	CMP-SCDEMO-021	SC Demo Component 021	Food	Proteins	g	kg	0.732	732.0	5.42	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+60	CMP-SCDEMO-022	SC Demo Component 022	Food	Produce	ml	l	1.4764	1476.4	4.7	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+61	CMP-SCDEMO-023	SC Demo Component 023	Food	Dairy	pcs	pcs	2.0131	2.0131	5.28	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+62	CMP-SCDEMO-024	SC Demo Component 024	Food	Dry Goods	g	kg	1.3991	1399.1	3.09	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+63	CMP-SCDEMO-025	SC Demo Component 025	Food	Seafood	ml	l	1.7876	1787.6	1.14	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+64	CMP-SCDEMO-026	SC Demo Component 026	Food	Beverages	pcs	pcs	1.3311	1.3311	4.71	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+65	CMP-SCDEMO-027	SC Demo Component 027	Food	Packaging	g	kg	1.6432	1643.2	1.7	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+66	CMP-SCDEMO-028	SC Demo Component 028	Food	Proteins	ml	l	0.1343	134.3	1.81	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+67	CMP-SCDEMO-029	SC Demo Component 029	Food	Produce	pcs	pcs	1.9368	1.9368	4.51	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+68	CMP-SCDEMO-030	SC Demo Component 030	Food	Dairy	g	kg	1.8779	1877.9	1.72	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+69	CMP-SCDEMO-031	SC Demo Component 031	Food	Dry Goods	ml	l	0.6281	628.1	0.68	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+70	CMP-SCDEMO-032	SC Demo Component 032	Food	Seafood	pcs	pcs	0.1446	0.1446	4.53	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+73	CMP-SCDEMO-035	SC Demo Component 035	Food	Proteins	pcs	pcs	0.1948	0.1948	4.4	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+74	CMP-SCDEMO-036	SC Demo Component 036	Food	Produce	g	kg	2.0176	2017.6	0.73	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+75	CMP-SCDEMO-037	SC Demo Component 037	Food	Dairy	ml	l	1.5225	1522.5	4.01	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+76	CMP-SCDEMO-038	SC Demo Component 038	Food	Dry Goods	pcs	pcs	1.8537	1.8537	1.46	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+77	CMP-SCDEMO-039	SC Demo Component 039	Food	Seafood	g	kg	1.5464	1546.4	2.38	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+78	CMP-SCDEMO-040	SC Demo Component 040	Food	Beverages	ml	l	1.3981	1398.1	3.36	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+79	CMP-SCDEMO-041	SC Demo Component 041	Food	Packaging	pcs	pcs	0.8446	0.8446	4.01	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+80	CMP-SCDEMO-042	SC Demo Component 042	Food	Proteins	g	kg	0.1916	191.6	0.61	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+81	CMP-SCDEMO-043	SC Demo Component 043	Food	Produce	ml	l	0.8011	801.1	0.63	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+82	CMP-SCDEMO-044	SC Demo Component 044	Food	Dairy	pcs	pcs	0.6974	0.6974	3.88	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+83	CMP-SCDEMO-045	SC Demo Component 045	Food	Dry Goods	g	kg	0.176	176.0	5.39	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+84	CMP-SCDEMO-046	SC Demo Component 046	Food	Seafood	ml	l	0.6026	602.6	4.85	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+85	CMP-SCDEMO-047	SC Demo Component 047	Food	Beverages	pcs	pcs	1.0628	1.0628	4.03	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+86	CMP-SCDEMO-048	SC Demo Component 048	Food	Packaging	g	kg	1.659	1659.0	2.02	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+87	CMP-SCDEMO-049	SC Demo Component 049	Food	Proteins	ml	l	1.9236	1923.6	5.04	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+88	CMP-SCDEMO-050	SC Demo Component 050	Food	Produce	pcs	pcs	1.401	1.401	4.04	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+89	CMP-SCDEMO-051	SC Demo Component 051	Food	Dairy	g	kg	1.4783	1478.3	0.89	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+90	CMP-SCDEMO-052	SC Demo Component 052	Food	Dry Goods	ml	l	0.9428	942.8	0.94	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+91	CMP-SCDEMO-053	SC Demo Component 053	Food	Seafood	pcs	pcs	0.3383	0.3383	3.48	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+92	CMP-SCDEMO-054	SC Demo Component 054	Food	Beverages	g	kg	0.2615	261.5	0.97	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+93	CMP-SCDEMO-055	SC Demo Component 055	Food	Packaging	ml	l	0.7275	727.5	4.75	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+94	CMP-SCDEMO-056	SC Demo Component 056	Food	Proteins	pcs	pcs	1.0789	1.0789	3.34	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+95	CMP-SCDEMO-057	SC Demo Component 057	Food	Produce	g	kg	0.3057	305.7	2.21	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+96	CMP-SCDEMO-058	SC Demo Component 058	Food	Dairy	ml	l	1.7438	1743.8	3.43	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+97	CMP-SCDEMO-059	SC Demo Component 059	Food	Dry Goods	pcs	pcs	1.9806	1.9806	0.63	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+98	CMP-SCDEMO-060	SC Demo Component 060	Food	Seafood	g	kg	0.9093	909.3	1.2	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+99	CMP-SCDEMO-061	SC Demo Component 061	Food	Beverages	ml	l	1.9509	1950.9	3.33	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+100	CMP-SCDEMO-062	SC Demo Component 062	Food	Packaging	pcs	pcs	1.1173	1.1173	0.98	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+101	CMP-SCDEMO-063	SC Demo Component 063	Food	Proteins	g	kg	1.0587	1058.7	1.07	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+102	CMP-SCDEMO-064	SC Demo Component 064	Food	Produce	ml	l	1.1275	1127.5	0.65	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+103	CMP-SCDEMO-065	SC Demo Component 065	Food	Dairy	pcs	pcs	1.8455	1.8455	3.48	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+104	CMP-SCDEMO-066	SC Demo Component 066	Food	Dry Goods	g	kg	0.5616	561.6	4.7	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+105	CMP-SCDEMO-067	SC Demo Component 067	Food	Seafood	ml	l	1.4508	1450.8	5.33	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+106	CMP-SCDEMO-068	SC Demo Component 068	Food	Beverages	pcs	pcs	1.7658	1.7658	2.1	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+107	CMP-SCDEMO-069	SC Demo Component 069	Food	Packaging	g	kg	0.5618	561.8	5.41	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+108	CMP-SCDEMO-070	SC Demo Component 070	Food	Proteins	ml	l	1.8058	1805.8	4.4	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+109	CMP-SCDEMO-071	SC Demo Component 071	Food	Produce	pcs	pcs	1.8892	1.8892	1.65	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+110	CMP-SCDEMO-072	SC Demo Component 072	Food	Dairy	g	kg	0.7242	724.2	1.57	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+111	CMP-SCDEMO-073	SC Demo Component 073	Food	Dry Goods	ml	l	0.9758	975.8	4.04	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+112	CMP-SCDEMO-074	SC Demo Component 074	Food	Seafood	pcs	pcs	1.5331	1.5331	1.32	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+113	CMP-SCDEMO-075	SC Demo Component 075	Food	Beverages	g	kg	1.7695	1769.5	1.59	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+114	CMP-SCDEMO-076	SC Demo Component 076	Food	Packaging	ml	l	0.7293	729.3	5.06	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+115	CMP-SCDEMO-077	SC Demo Component 077	Food	Proteins	pcs	pcs	1.0067	1.0067	3.18	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+116	CMP-SCDEMO-078	SC Demo Component 078	Food	Produce	g	kg	1.5639	1563.9	1.24	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+117	CMP-SCDEMO-079	SC Demo Component 079	Food	Dairy	ml	l	1.1384	1138.4	2.26	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+118	CMP-SCDEMO-080	SC Demo Component 080	Food	Dry Goods	pcs	pcs	1.2175	1.2175	0.65	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+119	CMP-SCDEMO-081	SC Demo Component 081	Food	Seafood	g	kg	0.1634	163.4	0.88	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+120	CMP-SCDEMO-082	SC Demo Component 082	Food	Beverages	ml	l	0.4432	443.2	4.21	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+121	CMP-SCDEMO-083	SC Demo Component 083	Food	Packaging	pcs	pcs	1.2373	1.2373	3.87	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+122	CMP-SCDEMO-084	SC Demo Component 084	Food	Proteins	g	kg	1.7842	1784.2	1.31	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+123	CMP-SCDEMO-085	SC Demo Component 085	Food	Produce	ml	l	1.0181	1018.1	3.14	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+124	CMP-SCDEMO-086	SC Demo Component 086	Food	Dairy	pcs	pcs	0.7117	0.7117	5.41	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+125	CMP-SCDEMO-087	SC Demo Component 087	Food	Dry Goods	g	kg	0.3448	344.8	3.75	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+126	CMP-SCDEMO-088	SC Demo Component 088	Food	Seafood	ml	l	0.4901	490.1	4.11	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+127	CMP-SCDEMO-089	SC Demo Component 089	Food	Beverages	pcs	pcs	0.5076	0.5076	2.1	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+128	CMP-SCDEMO-090	SC Demo Component 090	Food	Packaging	g	kg	1.3143	1314.3	4.48	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+129	CMP-SCDEMO-091	SC Demo Component 091	Food	Proteins	ml	l	0.7956	795.6	2.37	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+130	CMP-SCDEMO-092	SC Demo Component 092	Food	Produce	pcs	pcs	0.3898	0.3898	3.9	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+131	CMP-SCDEMO-093	SC Demo Component 093	Food	Dairy	g	kg	0.5646	564.6	2.22	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+132	CMP-SCDEMO-094	SC Demo Component 094	Food	Dry Goods	ml	l	0.7737	773.7	1.32	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+133	CMP-SCDEMO-095	SC Demo Component 095	Food	Seafood	pcs	pcs	0.4694	0.4694	4.05	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+134	CMP-SCDEMO-096	SC Demo Component 096	Food	Beverages	g	kg	1.6005	1600.5	5.02	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+135	CMP-SCDEMO-097	SC Demo Component 097	Food	Packaging	ml	l	0.8479	847.9	4.74	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+136	CMP-SCDEMO-098	SC Demo Component 098	Food	Proteins	pcs	pcs	1.4968	1.4968	4.72	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+137	CMP-SCDEMO-099	SC Demo Component 099	Food	Produce	g	kg	0.1156	115.6	3.48	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+138	CMP-SCDEMO-100	SC Demo Component 100	Food	Dairy	ml	l	1.2897	1289.7	4.44	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+139	CMP-SCDEMO-101	SC Demo Component 101	Food	Dry Goods	pcs	pcs	1.7333	1.7333	3.4	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+140	CMP-SCDEMO-102	SC Demo Component 102	Food	Seafood	g	kg	1.4108	1410.8	2.16	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+141	CMP-SCDEMO-103	SC Demo Component 103	Food	Beverages	ml	l	1.8238	1823.8	2.29	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+142	CMP-SCDEMO-104	SC Demo Component 104	Food	Packaging	pcs	pcs	1.5783	1.5783	4.64	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+143	CMP-SCDEMO-105	SC Demo Component 105	Food	Proteins	g	kg	0.6816	681.6	0.68	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+144	CMP-SCDEMO-106	SC Demo Component 106	Food	Produce	ml	l	1.8888	1888.8	1.62	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+145	CMP-SCDEMO-107	SC Demo Component 107	Food	Dairy	pcs	pcs	1.4884	1.4884	4.44	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+146	CMP-SCDEMO-108	SC Demo Component 108	Food	Dry Goods	g	kg	1.364	1364.0	3.91	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+147	CMP-SCDEMO-109	SC Demo Component 109	Food	Seafood	ml	l	1.8625	1862.5	3.08	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+148	CMP-SCDEMO-110	SC Demo Component 110	Food	Beverages	pcs	pcs	1.0191	1.0191	1.75	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+149	CMP-SCDEMO-111	SC Demo Component 111	Food	Packaging	g	kg	0.6747	674.7	4.01	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+150	CMP-SCDEMO-112	SC Demo Component 112	Food	Proteins	ml	l	1.953	1953.0	4.37	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+151	CMP-SCDEMO-113	SC Demo Component 113	Food	Produce	pcs	pcs	1.5544	1.5544	2.63	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+152	CMP-SCDEMO-114	SC Demo Component 114	Food	Dairy	g	kg	1.2174	1217.4	2.0	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+153	CMP-SCDEMO-115	SC Demo Component 115	Food	Dry Goods	ml	l	1.9023	1902.3	2.38	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+154	CMP-SCDEMO-116	SC Demo Component 116	Food	Seafood	pcs	pcs	1.4264	1.4264	3.67	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+155	CMP-SCDEMO-117	SC Demo Component 117	Food	Beverages	g	kg	1.4506	1450.6	4.72	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+156	CMP-SCDEMO-118	SC Demo Component 118	Food	Packaging	ml	l	1.9578	1957.8	4.46	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+157	CMP-SCDEMO-119	SC Demo Component 119	Food	Proteins	pcs	pcs	1.4378	1.4378	4.69	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+158	CMP-SCDEMO-120	SC Demo Component 120	Food	Produce	g	kg	1.6362	1636.2	5.0	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+159	CMP-SCDEMO-121	SC Demo Component 121	Food	Dairy	ml	l	1.2102	1210.2	3.17	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+160	CMP-SCDEMO-122	SC Demo Component 122	Food	Dry Goods	pcs	pcs	1.7475	1.7475	1.37	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+161	CMP-SCDEMO-123	SC Demo Component 123	Food	Seafood	g	kg	1.6305	1630.5	3.26	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+162	CMP-SCDEMO-124	SC Demo Component 124	Food	Beverages	ml	l	0.4208	420.8	3.55	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+163	CMP-SCDEMO-125	SC Demo Component 125	Food	Packaging	pcs	pcs	0.4322	0.4322	0.7	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+164	CMP-SCDEMO-126	SC Demo Component 126	Food	Proteins	g	kg	1.9244	1924.4	3.08	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+165	CMP-SCDEMO-127	SC Demo Component 127	Food	Produce	ml	l	0.2714	271.4	2.35	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+166	CMP-SCDEMO-128	SC Demo Component 128	Food	Dairy	pcs	pcs	1.0026	1.0026	1.2	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+167	CMP-SCDEMO-129	SC Demo Component 129	Food	Dry Goods	g	kg	1.3077	1307.7	5.03	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+168	CMP-SCDEMO-130	SC Demo Component 130	Food	Seafood	ml	l	1.2101	1210.1	2.8	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+169	CMP-SCDEMO-131	SC Demo Component 131	Food	Beverages	pcs	pcs	1.5967	1.5967	2.82	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+170	CMP-SCDEMO-132	SC Demo Component 132	Food	Packaging	g	kg	1.8552	1855.2	5.2	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+171	CMP-SCDEMO-133	SC Demo Component 133	Food	Proteins	ml	l	0.7454	745.4	1.93	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+172	CMP-SCDEMO-134	SC Demo Component 134	Food	Produce	pcs	pcs	1.0975	1.0975	4.88	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+173	CMP-SCDEMO-135	SC Demo Component 135	Food	Dairy	g	kg	1.7185	1718.5	4.82	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+174	CMP-SCDEMO-136	SC Demo Component 136	Food	Dry Goods	ml	l	2.027	2027.0	0.84	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+175	CMP-SCDEMO-137	SC Demo Component 137	Food	Seafood	pcs	pcs	1.4969	1.4969	3.42	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+176	CMP-SCDEMO-138	SC Demo Component 138	Food	Beverages	g	kg	1.3886	1388.6	4.4	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+177	CMP-SCDEMO-139	SC Demo Component 139	Food	Packaging	ml	l	1.7576	1757.6	4.39	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+178	CMP-SCDEMO-140	SC Demo Component 140	Food	Proteins	pcs	pcs	2.0183	2.0183	1.51	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+179	CMP-SCDEMO-141	SC Demo Component 141	Food	Produce	g	kg	0.5318	531.8	5.36	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+180	CMP-SCDEMO-142	SC Demo Component 142	Food	Dairy	ml	l	0.2663	266.3	4.93	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+181	CMP-SCDEMO-143	SC Demo Component 143	Food	Dry Goods	pcs	pcs	0.9288	0.9288	1.36	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+182	CMP-SCDEMO-144	SC Demo Component 144	Food	Seafood	g	kg	1.0957	1095.7	2.15	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+183	CMP-SCDEMO-145	SC Demo Component 145	Food	Beverages	ml	l	0.7844	784.4	4.57	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+184	CMP-SCDEMO-146	SC Demo Component 146	Food	Packaging	pcs	pcs	0.3771	0.3771	4.44	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+185	CMP-SCDEMO-147	SC Demo Component 147	Food	Proteins	g	kg	0.5652	565.2	2.16	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+186	CMP-SCDEMO-148	SC Demo Component 148	Food	Produce	ml	l	0.3039	303.9	1.08	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+187	CMP-SCDEMO-149	SC Demo Component 149	Food	Dairy	pcs	pcs	1.311	1.311	5.05	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+188	CMP-SCDEMO-150	SC Demo Component 150	Food	Dry Goods	g	kg	1.7022	1702.2	3.02	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+189	CMP-SCDEMO-151	SC Demo Component 151	Food	Seafood	ml	l	0.105	105.0	2.05	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+190	CMP-SCDEMO-152	SC Demo Component 152	Food	Beverages	pcs	pcs	1.6031	1.6031	2.13	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+194	CMP-SCDEMO-156	SC Demo Component 156	Food	Dairy	g	kg	0.6206	620.6	4.76	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+195	CMP-SCDEMO-157	SC Demo Component 157	Food	Dry Goods	ml	l	1.8937	1893.7	2.4	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+196	CMP-SCDEMO-158	SC Demo Component 158	Food	Seafood	pcs	pcs	0.4894	0.4894	4.5	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+197	CMP-SCDEMO-159	SC Demo Component 159	Food	Beverages	g	kg	0.7635	763.5	0.59	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+198	CMP-SCDEMO-160	SC Demo Component 160	Food	Packaging	ml	l	1.0495	1049.5	1.38	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+199	CMP-SCDEMO-161	SC Demo Component 161	Food	Proteins	pcs	pcs	1.576	1.576	1.47	4	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+200	CMP-SCDEMO-162	SC Demo Component 162	Food	Produce	g	kg	1.067	1067.0	0.6	5	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+201	CMP-SCDEMO-163	SC Demo Component 163	Food	Dairy	ml	l	1.452	1452.0	1.5	6	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+202	CMP-SCDEMO-164	SC Demo Component 164	Food	Dry Goods	pcs	pcs	1.672	1.672	2.45	7	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+203	CMP-SCDEMO-165	SC Demo Component 165	Food	Seafood	g	kg	0.9647	964.7	3.27	3	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+204	CMP-SCDEMO-166	SC Demo Component 166	Food	Beverages	ml	l	0.3475	347.5	5.22	4	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+205	CMP-SCDEMO-167	SC Demo Component 167	Food	Packaging	pcs	pcs	1.9533	1.9533	2.9	5	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+206	CMP-SCDEMO-168	SC Demo Component 168	Food	Proteins	g	kg	0.397	397.0	5.16	6	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+207	CMP-SCDEMO-169	SC Demo Component 169	Food	Produce	ml	l	0.4427	442.7	4.41	7	"Dry Store"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+208	CMP-SCDEMO-170	SC Demo Component 170	Food	Dairy	pcs	pcs	1.7154	1.7154	3.35	3	"Chiller"		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+209	CMP-SCFIFO-001	SC FIFO Demo Wagyu	Food	Proteins	g	kg	0.042	42.0	2.5	3	["Chiller"]		{}	0	0	t	["downtown","midtown","airport","westend"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+210	CMP-CHILIR-001	Chili Red Fresh	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+211	CMP-CHILIF-002	Chili Flake	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+212	CMP-OREGAN-001	Oregano Dried	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+213	CMP-CHICKE-002	Chicken Stock Powder	Food	Dry Goods	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+214	CMP-WATERT-001	Water Tap	Food	Beverages	g	kg	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+215	CMP-SAUCEB-001	Sauce Bag 1kg	Food	Packaging	pcs	bunch	0	0	0	7	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"100","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0"}	0	0	t	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 04:46:19.959735	2026-07-08 04:46:20.057291	1
+24	CMP-00FLOU-001	00 Flour	Food	Dry Goods	g	kg	0.00208	52	4.0	14	["Dry Store"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":["VP-FLR018","VP-FLR029","VP-FLR049"],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{"VP-FLR018":["airport","downtown","midtown","westend"],"VP-FLR029":["weissbrau-pavilion-kuala-lumpur"],"VP-FLR049":["weissbrau-pavilion-kuala-lumpur"]},"vendor":"Grain & Mill Co.","vendorProduct":"00 Flour","deliveryUnitPrice":"52"}	0	3	t	["all"]	2026-07-08 04:46:19.959735	2026-07-08 06:45:50.359824	1
+216	CMP-BEEFRI-001	Beef Rib Bone-in	Food	Meat & Poultry	g	kg	0	0	0	7	["Prep Kitchen"]		{"altRecipeUnits":[],"altInventoryUnits":[],"convertFromInventoryQty":"1","convertToRecipeQty":"1000","taggedVendorProductIds":[],"vendorProductPrincipalQty":{},"vendorProductLossYield":{},"vendorProductComponentUom":{},"vendorProductLocations":{},"vendor":"","vendorProduct":"","deliveryUnitPrice":"0","splitUse":{"enabled":true,"componentQty":"10","qtyBasis":"inventory","lines":[{"key":"split-1783622902105-xi9rv","name":"Beef Rib Off Bone","qty":"8","inventoryUom":"Kg","valueAssigned":"","noValue":false},{"key":"split-1783622982413-j2qba","name":"Beef Bone","qty":"2","inventoryUom":"Kg","valueAssigned":"","noValue":true}]}}	0	0	t	["all"]	2026-07-10 02:51:07.696145	2026-07-10 02:51:07.696323	1
 \.
 
 
@@ -3190,6 +3371,26 @@ COPY public."InventoryMovements" ("Id", "ComponentId", "ComponentName", "Locatio
 224	CMP-SCFIFO-001	SC FIFO Demo Wagyu	downtown	-25	kg	POS sales depletion — FIFO test (25 kg)	pos_sale	9012	1	0	2026-07-04 09:00:00+00
 225	CMP-SCFIFO-001	SC FIFO Demo Wagyu	downtown	-10	kg	Inventory adjustment — Inventory Adjustment	inventory_adjustment	0	1	43.37	2026-07-01 23:59:59.999999+00
 226	CMP-SCFIFO-001	SC FIFO Demo Wagyu	downtown	-10	kg	Inventory adjustment — Inventory adjustment	inventory_adjustment	0	1	43.37	2026-07-01 23:59:59.999999+00
+227	CMP-SCDEMO-139	SC Demo Component 139	airport	-124.0	ml	Production override — WST Sauce Base (WST-SUB-SAUCE) (Sub-product)	production	38	1	0	2026-07-12 15:24:40.014431+00
+228	CMP-SCDEMO-082	SC Demo Component 082	airport	-108.0	ml	Production override — WST Dough Ball (WST-SUB-DOUGH) (Sub-product)	production	39	1	0	2026-07-12 15:24:40.155437+00
+229	CMP-SCDEMO-093	SC Demo Component 093	airport	-100.0	g	Production override — WST Grill Mix (WST-SUB-GRILL) (Sub-product)	production	40	1	0	2026-07-12 15:24:40.255443+00
+230	CMP-SCDEMO-019	SC Demo Component 019	airport	-5.4	ml	Wastage — Dropped / damaged	wastage	1	1	0	2026-07-12 00:00:00+00
+231	CMP-SCDEMO-082	SC Demo Component 082	airport	-8.1	ml	Wastage — Quality reject	wastage	2	1	0	2026-07-05 00:00:00+00
+232	CMP-SCDEMO-007	SC Demo Component 007	airport	-2.9	ml	Wastage — Spoilage	wastage	3	1	0	2026-07-11 00:00:00+00
+233	CMP-SCDEMO-038	SC Demo Component 038	airport	-3.8	pcs	POS wastage — check CHK-AIR-1001 — POS void	wastage	4	1	1.85	2026-07-12 00:00:00+00
+234	CMP-SCDEMO-033	SC Demo Component 033	airport	-8.4	g	POS wastage — check CHK-AIR-1002 — POS refund	wastage	5	1	0	2026-07-12 00:00:00+00
+235	CMP-CHILIR-001	Chili Red Fresh	airport	-4.4	g	POS wastage — check CHK-AIR-1003 — POS void	wastage	6	1	0	2026-07-11 00:00:00+00
+236	CMP-SCDEMO-139	SC Demo Component 139	airport	-124.0	ml	Production override — WST Sauce Base (WST-SUB-SAUCE) (Sub-product)	production	38	1	0	2026-07-12 15:25:21.789349+00
+237	CMP-SCDEMO-082	SC Demo Component 082	airport	-108.0	ml	Production override — WST Dough Ball (WST-SUB-DOUGH) (Sub-product)	production	39	1	0	2026-07-12 15:25:21.885782+00
+238	CMP-SCDEMO-093	SC Demo Component 093	airport	-100.0	g	Production override — WST Grill Mix (WST-SUB-GRILL) (Sub-product)	production	40	1	0	2026-07-12 15:25:21.98195+00
+241	CMP-00FLOU-001	00 Flour	airport	-2	kg	Wastage — Spoilage (inventory UOM)	wastage	9	1	5	2026-07-12 00:00:00+00
+242	CMP-ATLANT-001	Atlantic Cod	airport	-1.2	kg	Wastage — Over-prep (inventory UOM)	wastage	10	1	0	2026-07-11 00:00:00+00
+239	CMP-00FLOU-001	00 Flour	airport	-1.5	g	Wastage — Spoilage	wastage	7	1	0	2026-07-12 00:00:00+00
+240	CMP-ATLANT-001	Atlantic Cod	airport	-0.8	g	Wastage — Over-prep	wastage	8	1	0	2026-07-11 00:00:00+00
+243	CMP-SCDEMO-139	SC Demo Component 139	downtown	-77.5	ml	Production override — WST Sauce Base (WST-SUB-SAUCE) (Sub-product)	production	38	1	0	2026-07-12 15:50:34.415409+00
+244	CMP-SCDEMO-139	SC Demo Component 139	airport	-62.0	ml	Production override — WST Sauce Base (WST-SUB-SAUCE) (Sub-product)	production	38	1	0	2026-07-12 15:50:34.715394+00
+245	CMP-00FLOU-001	00 Flour	airport	-1	kg	Transfer out to downtown	transfer_out	5	1	11	2026-07-12 00:00:00+00
+246	CMP-00FLOU-001	00 Flour	downtown	1	kg	Transfer in from airport	transfer_in	5	1	11	2026-07-12 00:00:00+00
 \.
 
 
@@ -3629,7 +3830,6 @@ COPY public."ProductB2bLocationStocks" ("Id", "ProductId", "LocationExternalId",
 16	13	midtown	40	1.02	0	41	2026-07-02	2026-07-06 02:58:42.718784+00	0
 17	14	airport	40	1.71	0	42	2026-07-01	2026-07-06 02:58:42.718784+00	0
 18	15	westend	40	2.26	0	43	2026-06-30	2026-07-06 02:58:42.718784+00	0
-19	16	downtown	40	4.41	0	44	2026-06-29	2026-07-06 02:58:42.718784+00	0
 20	16	airport	14	0	0	14		2026-07-06 02:58:42.718784+00	0
 21	17	midtown	40	1.25	0	45	2026-06-28	2026-07-06 02:58:42.718784+00	0
 22	18	airport	40	3.8	0	46	2026-06-27	2026-07-06 02:58:42.718784+00	0
@@ -3653,6 +3853,20 @@ COPY public."ProductB2bLocationStocks" ("Id", "ProductId", "LocationExternalId",
 40	32	airport	30	0	0	30		2026-07-06 02:58:42.718784+00	0
 3	3	westend	8	3.18	0	31	2026-06-17	2026-07-09 13:57:46.361307+00	5
 5	4	airport	24	0	0	32		2026-07-09 13:57:46.39466+00	0
+46	38	airport	94	0	0	100	2026-07-15	2026-07-12 15:50:35.145121+00	0
+51	38	downtown	30	0	0	25	2026-07-15	2026-07-12 15:50:35.160212+00	0
+49	46	downtown	35	0	0	40	2026-07-15	2026-07-12 15:50:35.373814+00	0
+50	46	airport	20	0	0	15	2026-07-15	2026-07-12 15:50:35.35826+00	0
+52	35	downtown	0	0	0	0		2026-07-13 11:14:29.240826+00	0
+19	16	downtown	35	4.41	0	44	2026-06-29	2026-07-13 13:39:33.011873+00	5
+53	17	downtown	9	0	0	10	2026-07-20	2026-07-13 13:39:33.03771+00	1
+41	41	airport	59	0	0	60		2026-07-12 15:25:21.412153+00	0
+42	42	airport	58	0	0	60		2026-07-12 15:25:21.489875+00	0
+43	43	airport	58	0	0	60		2026-07-12 15:25:21.565549+00	0
+44	44	airport	59	0	0	60		2026-07-12 15:25:21.632641+00	0
+45	45	airport	59	0	0	60		2026-07-12 15:25:21.7047+00	0
+47	39	airport	77	0	0	80	2026-07-15	2026-07-12 15:25:21.902768+00	0
+48	40	airport	80	0	0	80	2026-07-15	2026-07-12 15:25:21.9993+00	0
 \.
 
 
@@ -3682,6 +3896,16 @@ COPY public."ProductComponentItems" ("Id", "ProductId", "ComponentId", "Componen
 44	36	CMP-CHICKE-002	Chicken Stock Powder	Gr	0	280	0	5
 45	36	CMP-WATERT-001	Water Tap	Gr	0	3600	0	6
 48	37	SUB-SAUCEA-001	Sauce Aglio Olio	8 Kg	55.242105263157896	1	55.242105263157896	0
+49	38	CMP-SCDEMO-139	SC Demo Component 139	ml	1.7576	3.1	5.44856	0
+50	39	CMP-SCDEMO-082	SC Demo Component 082	ml	0.4432	2.7	1.19664	0
+51	40	CMP-SCDEMO-093	SC Demo Component 093	g	0.5646	2.5	1.41150	0
+52	41	CMP-SCDEMO-038	SC Demo Component 038	pcs	1.8537	3.8	7.04406	0
+53	41	WST-SUB-SAUCE	WST Sauce Base	pcs	0	1	0	1
+54	42	CMP-SCDEMO-019	SC Demo Component 019	ml	1.3927	2.7	3.76029	0
+55	43	CMP-SCDEMO-033	SC Demo Component 033	g	0.3799	4.2	1.59558	0
+56	44	CMP-CHILIR-001	Chili Red Fresh	g	1	4.4	4.4	0
+57	45	CMP-SCDEMO-007	SC Demo Component 007	ml	1.4537	2.9	4.21573	0
+58	46	CMP-00FLOU-001	00 Flour	g	0.002	50	0.100	0
 \.
 
 
@@ -3742,6 +3966,40 @@ COPY public."ProductProductionLogs" ("Id", "ProductId", "EntryType", "Quantity",
 42	32	produced	30	2026-06-27	2026-07-11	SUB-SCDEMO-015-B0001-2	0	["airport"]	1	2026-07-01 02:58:42.718784+00
 43	3	offline_order	12	2026-07-09			37.15	["westend"]	1	2026-07-09 13:57:46.316927+00
 44	4	online_order	8	2026-07-09			46.64	["airport"]	1	2026-07-09 13:57:46.347303+00
+45	41	produced	30	2026-07-12		WST-P-BURGER-B0001	0	["airport"]	1	2026-07-12 15:24:39.472446+00
+46	42	produced	30	2026-07-12		WST-P-SALAD-B0001	0	["airport"]	1	2026-07-12 15:24:39.588427+00
+47	43	produced	30	2026-07-12		WST-P-LATTE-B0001	0	["airport"]	1	2026-07-12 15:24:39.673514+00
+48	44	produced	30	2026-07-12		WST-P-FRIES-B0001	0	["airport"]	1	2026-07-12 15:24:39.746983+00
+49	45	produced	30	2026-07-12		WST-P-SOUP-B0001	0	["airport"]	1	2026-07-12 15:24:39.832311+00
+50	38	produced	40	2026-07-12	2026-07-15	WST-SUB-SAUCE-B0001	0	["airport"]	1	2026-07-12 15:24:40.092825+00
+51	39	produced	40	2026-07-12	2026-07-15	WST-SUB-DOUGH-B0001	0	["airport"]	1	2026-07-12 15:24:40.199255+00
+52	40	produced	40	2026-07-12	2026-07-15	WST-SUB-GRILL-B0001	0	["airport"]	1	2026-07-12 15:24:40.296891+00
+53	42	wastage	2	2026-07-12		WST-1	0	["airport"]	1	2026-07-12 00:00:00+00
+54	39	wastage	3	2026-07-05		WST-2	0	["airport"]	1	2026-07-05 00:00:00+00
+55	45	wastage	1	2026-07-11		WST-3	0	["airport"]	1	2026-07-11 00:00:00+00
+56	41	wastage	1	2026-07-12		WST-4	0	["airport"]	1	2026-07-12 00:00:00+00
+57	38	wastage	1	2026-07-12		WST-4	0	["airport"]	1	2026-07-12 00:00:00+00
+58	43	wastage	2	2026-07-12		WST-5	0	["airport"]	1	2026-07-12 00:00:00+00
+59	44	wastage	1	2026-07-11		WST-6	0	["airport"]	1	2026-07-11 00:00:00+00
+60	41	produced	30	2026-07-12		WST-P-BURGER-B0002	0	["airport"]	1	2026-07-12 15:25:21.431767+00
+61	42	produced	30	2026-07-12		WST-P-SALAD-B0002	0	["airport"]	1	2026-07-12 15:25:21.514336+00
+62	43	produced	30	2026-07-12		WST-P-LATTE-B0002	0	["airport"]	1	2026-07-12 15:25:21.58471+00
+63	44	produced	30	2026-07-12		WST-P-FRIES-B0002	0	["airport"]	1	2026-07-12 15:25:21.652607+00
+64	45	produced	30	2026-07-12		WST-P-SOUP-B0002	0	["airport"]	1	2026-07-12 15:25:21.724471+00
+65	38	produced	40	2026-07-12	2026-07-15	WST-SUB-SAUCE-B0002	0	["airport"]	1	2026-07-12 15:25:21.823751+00
+66	39	produced	40	2026-07-12	2026-07-15	WST-SUB-DOUGH-B0002	0	["airport"]	1	2026-07-12 15:25:21.919121+00
+67	40	produced	40	2026-07-12	2026-07-15	WST-SUB-GRILL-B0002	0	["airport"]	1	2026-07-12 15:25:22.015974+00
+68	46	produced	40	2026-07-12	2026-07-15	XFR-B2B-BOX-B0001	0	["downtown"]	1	2026-07-12 15:50:34.076759+00
+69	46	produced	15	2026-07-12	2026-07-15	XFR-B2B-BOX-B0002	0	["airport"]	1	2026-07-12 15:50:34.271259+00
+70	38	produced	25	2026-07-12	2026-07-15	WST-SUB-SAUCE-B0003	0	["downtown"]	1	2026-07-12 15:50:34.598973+00
+71	38	produced	20	2026-07-12	2026-07-15	WST-SUB-SAUCE-B0004	0	["airport"]	1	2026-07-12 15:50:34.836509+00
+72	38	transfer_out	5	2026-07-12		XFR-2	0	["airport"]	1	2026-07-12 00:00:00+00
+73	38	transfer_in	5	2026-07-12		XFR-2	0	["downtown"]	1	2026-07-12 00:00:00+00
+74	46	transfer_out	8	2026-07-11		XFR-3	0	["downtown"]	1	2026-07-11 00:00:00+00
+75	46	transfer_in	8	2026-07-11		XFR-3	0	["airport"]	1	2026-07-11 00:00:00+00
+76	46	transfer_out	3	2026-07-12		XFR-4	0	["airport"]	1	2026-07-12 00:00:00+00
+77	46	transfer_in	3	2026-07-12		XFR-4	0	["downtown"]	1	2026-07-12 00:00:00+00
+78	17	produced	10	2026-07-13	2026-07-20	PRD-SCDEMO-015-B0002	0	["downtown"]	1	2026-07-13 13:37:55.83257+00
 \.
 
 
@@ -3749,44 +4007,53 @@ COPY public."ProductProductionLogs" ("Id", "ProductId", "EntryType", "Quantity",
 -- Data for Name: Products; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public."Products" ("Id", "ProductId", "Name", "Category", "Group", "IsSubProduct", "B2cEnabled", "B2bEnabled", "B2bPackageUnit", "TotalCost", "PackagingCost", "Rrp", "PreviousTotalCost", "PreviousPackagingCost", "PreviousRrp", "YieldQuantity", "YieldUom", "ExpiryPeriodDays", "PosEnabled", "Active", "CompanyId", "LocationIdsJson", "CreatedAt", "UpdatedAt", "B2bSalesConfigJson", "ActivationPeriodHours", "ParStock", "ParStockUom", "YieldAltUnitsJson", "PosDeliveryUnitsJson") FROM stdin;
-1	PRD-SPAGHE-001	Spaghetti Aglio Olio	Food	Pasta	f	t	f	pcs	1.2861052631579	0	8	\N	\N	\N	0		0	f	t	1	["airport","downtown","midtown","westend"]	2026-07-02 14:13:56.782734+00	2026-07-03 03:37:06.627903+00	{}	0	0		[]	[]
-2	SUB-BURGER-001	Burger Patties	Food	Proteins	t	f	f	pcs	42.78	0	0	\N	\N	\N	10	pcs	0	f	t	1	["airport","downtown","midtown","westend"]	2026-07-02 15:03:38.037435+00	2026-07-03 08:46:42.903905+00	{}	0	0		[]	[]
-3	PRD-SCDEMO-001	SC Demo Product 171	Food	Dry Goods	f	f	t	pcs	12.58	2.99	37.15	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-4	PRD-SCDEMO-002	SC Demo Product 172	Food	Seafood	f	t	t	pcs	15.59	0.94	46.64	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-5	PRD-SCDEMO-003	SC Demo Product 173	Food	Beverages	f	f	t	pcs	7.26	0.98	42.34	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-6	PRD-SCDEMO-004	SC Demo Product 174	Food	Packaging	f	t	t	pcs	13.2	1.95	41.66	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-7	PRD-SCDEMO-005	SC Demo Product 175	Food	Proteins	f	f	t	pcs	21.02	2.27	37.02	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-8	PRD-SCDEMO-006	SC Demo Product 176	Food	Produce	f	t	t	pcs	6.15	1.21	14.76	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-9	PRD-SCDEMO-007	SC Demo Product 177	Food	Dairy	f	f	t	pcs	15.97	1.02	47.98	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-10	PRD-SCDEMO-008	SC Demo Product 178	Food	Dry Goods	f	t	t	pcs	9.11	0.87	36.16	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-11	PRD-SCDEMO-009	SC Demo Product 179	Food	Seafood	f	f	t	pcs	8.69	2.79	43.86	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-12	PRD-SCDEMO-010	SC Demo Product 180	Food	Beverages	f	t	t	pcs	16.3	2.52	31.6	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-13	PRD-SCDEMO-011	SC Demo Product 181	Food	Packaging	f	f	t	pcs	11.69	2.8	23.12	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-14	PRD-SCDEMO-012	SC Demo Product 182	Food	Proteins	f	t	t	pcs	20.91	1.61	33.38	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-15	PRD-SCDEMO-013	SC Demo Product 183	Food	Produce	f	f	t	pcs	19.77	1.02	17.2	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-16	PRD-SCDEMO-014	SC Demo Product 184	Food	Dairy	f	t	t	pcs	8.12	2.94	32.53	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-17	PRD-SCDEMO-015	SC Demo Product 185	Food	Dry Goods	f	f	t	pcs	23.55	1.44	16.87	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-18	SUB-SCDEMO-001	SC Demo Sub-Product 186	Food	Seafood	t	f	t	16 portion	13.26	1.27	38.92	\N	\N	\N	16	portion	11	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-19	SUB-SCDEMO-002	SC Demo Sub-Product 187	Food	Beverages	t	f	t	17 portion	19.45	0.55	29.13	\N	\N	\N	17	portion	12	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-20	SUB-SCDEMO-003	SC Demo Sub-Product 188	Food	Packaging	t	f	t	18 portion	22.08	2.92	22.74	\N	\N	\N	18	portion	13	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-21	SUB-SCDEMO-004	SC Demo Sub-Product 189	Food	Proteins	t	f	t	19 portion	10.34	0.71	32.7	\N	\N	\N	19	portion	14	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-22	SUB-SCDEMO-005	SC Demo Sub-Product 190	Food	Produce	t	f	t	20 portion	7.48	2.81	26.06	\N	\N	\N	20	portion	5	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-23	SUB-SCDEMO-006	SC Demo Sub-Product 191	Food	Dairy	t	f	t	21 portion	21.13	1.79	40.15	\N	\N	\N	21	portion	6	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-24	SUB-SCDEMO-007	SC Demo Sub-Product 192	Food	Dry Goods	t	f	t	22 portion	8.17	0.49	28.76	\N	\N	\N	22	portion	7	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-25	SUB-SCDEMO-008	SC Demo Sub-Product 193	Food	Seafood	t	f	t	23 portion	13.31	2.46	45.57	\N	\N	\N	23	portion	8	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-26	SUB-SCDEMO-009	SC Demo Sub-Product 194	Food	Beverages	t	f	t	24 portion	19.33	0.9	51.02	\N	\N	\N	24	portion	9	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-27	SUB-SCDEMO-010	SC Demo Sub-Product 195	Food	Packaging	t	f	t	25 portion	10.19	1.36	28.34	\N	\N	\N	25	portion	10	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-28	SUB-SCDEMO-011	SC Demo Sub-Product 196	Food	Proteins	t	f	t	26 portion	7.15	0.16	29.9	\N	\N	\N	26	portion	11	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-29	SUB-SCDEMO-012	SC Demo Sub-Product 197	Food	Produce	t	f	t	27 portion	6.43	0.5	18.88	\N	\N	\N	27	portion	12	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-30	SUB-SCDEMO-013	SC Demo Sub-Product 198	Food	Dairy	t	f	t	28 portion	14.27	1.16	46.14	\N	\N	\N	28	portion	13	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-31	SUB-SCDEMO-014	SC Demo Sub-Product 199	Food	Dry Goods	t	f	t	29 portion	7.6	0.33	27.27	\N	\N	\N	29	portion	14	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-32	SUB-SCDEMO-015	SC Demo Sub-Product 200	Food	Seafood	t	f	t	10 portion	19.4	2.42	38.64	\N	\N	\N	10	portion	5	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]
-33	PRD-ZZZUNI-001	ZZZ Unique 0.6059193807664951	Food	Proteins	f	t	f	pcs	2.100	0	25	\N	\N	\N	0		0	f	t	1	["downtown"]	2026-07-08 04:46:41.675414+00	2026-07-08 04:46:41.675461+00	{}	0	0		[]	[]
-34	SUB-SUBSAV-001	Sub Save Test 0.15192322734726427	Food	Proteins	t	f	f	pcs	2.100	0	0	\N	\N	\N	20	kitchen	7	f	t	1	["downtown"]	2026-07-08 04:46:55.120454+00	2026-07-08 04:46:55.120454+00	{}	0	0		[]	[]
-35	PRD-B2BSAV-001	B2B Save Test 0.4695762894205655	Food	Proteins	f	f	t	Box/20each/100gr	42.78	0	50	\N	\N	\N	0		7	f	t	1	["downtown"]	2026-07-08 04:46:55.246851+00	2026-07-08 04:46:55.246851+00	{"principal":{"key":"p1","isPrincipal":true,"delivery":{"orderUnit":"Box","orderQty":1,"packUnit":"Each","packQty":20,"unitUnit":"Gr","unitQty":100},"rrp":"50"},"alternates":[]}	0	0		[]	[]
-36	SUB-SAUCEA-001	Sauce Aglio Olio	Food	Sauce & Dressing	t	f	f	pcs	55.242105263157894000	0	0	\N	\N	\N	8	kg	14	f	t	5	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 05:51:04.288223+00	2026-07-09 08:33:17.705841+00	{}	24	0		[]	[]
-37	PRD-SAUCEA-001	Sauce Aglio Olio	Food	Sauce & Dressing	f	f	t	Pack/kg/0	55.242105263157896	0	20	\N	\N	\N	0		30	f	t	5	["weissbrau-pavilion-kuala-lumpur"]	2026-07-09 16:33:20.004176+00	2026-07-09 17:32:41.054524+00	{"principal":{"key":"b2b-principal","isPrincipal":true,"delivery":{"orderUnit":"Pack","orderQty":1,"packUnit":"Kg","packQty":1,"unitUnit":"","unitQty":0},"rrp":"20"},"alternates":[{"key":"b2b-alt-1","isPrincipal":false,"delivery":{"orderUnit":"Bag","orderQty":1,"packUnit":"Kg","packQty":5,"unitUnit":"","unitQty":0},"rrp":"100"},{"key":"b2b-alt-2","isPrincipal":false,"delivery":{"orderUnit":"Each","orderQty":1,"packUnit":"Kg","packQty":8,"unitUnit":"","unitQty":0},"rrp":"150"}]}	0	0		[]	[]
+COPY public."Products" ("Id", "ProductId", "Name", "Category", "Group", "IsSubProduct", "B2cEnabled", "B2bEnabled", "B2bPackageUnit", "TotalCost", "PackagingCost", "Rrp", "PreviousTotalCost", "PreviousPackagingCost", "PreviousRrp", "YieldQuantity", "YieldUom", "ExpiryPeriodDays", "PosEnabled", "Active", "CompanyId", "LocationIdsJson", "CreatedAt", "UpdatedAt", "B2bSalesConfigJson", "ActivationPeriodHours", "ParStock", "ParStockUom", "YieldAltUnitsJson", "PosDeliveryUnitsJson", "OrderLockPeriodDays") FROM stdin;
+1	PRD-SPAGHE-001	Spaghetti Aglio Olio	Food	Pasta	f	t	f	pcs	1.2861052631579	0	8	\N	\N	\N	0		0	f	t	1	["airport","downtown","midtown","westend"]	2026-07-02 14:13:56.782734+00	2026-07-03 03:37:06.627903+00	{}	0	0		[]	[]	7
+2	SUB-BURGER-001	Burger Patties	Food	Proteins	t	f	f	pcs	42.78	0	0	\N	\N	\N	10	pcs	0	f	t	1	["airport","downtown","midtown","westend"]	2026-07-02 15:03:38.037435+00	2026-07-03 08:46:42.903905+00	{}	0	0		[]	[]	7
+3	PRD-SCDEMO-001	SC Demo Product 171	Food	Dry Goods	f	f	t	pcs	12.58	2.99	37.15	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+4	PRD-SCDEMO-002	SC Demo Product 172	Food	Seafood	f	t	t	pcs	15.59	0.94	46.64	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+5	PRD-SCDEMO-003	SC Demo Product 173	Food	Beverages	f	f	t	pcs	7.26	0.98	42.34	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+6	PRD-SCDEMO-004	SC Demo Product 174	Food	Packaging	f	t	t	pcs	13.2	1.95	41.66	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+7	PRD-SCDEMO-005	SC Demo Product 175	Food	Proteins	f	f	t	pcs	21.02	2.27	37.02	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+8	PRD-SCDEMO-006	SC Demo Product 176	Food	Produce	f	t	t	pcs	6.15	1.21	14.76	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+9	PRD-SCDEMO-007	SC Demo Product 177	Food	Dairy	f	f	t	pcs	15.97	1.02	47.98	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+10	PRD-SCDEMO-008	SC Demo Product 178	Food	Dry Goods	f	t	t	pcs	9.11	0.87	36.16	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+11	PRD-SCDEMO-009	SC Demo Product 179	Food	Seafood	f	f	t	pcs	8.69	2.79	43.86	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+12	PRD-SCDEMO-010	SC Demo Product 180	Food	Beverages	f	t	t	pcs	16.3	2.52	31.6	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+13	PRD-SCDEMO-011	SC Demo Product 181	Food	Packaging	f	f	t	pcs	11.69	2.8	23.12	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+14	PRD-SCDEMO-012	SC Demo Product 182	Food	Proteins	f	t	t	pcs	20.91	1.61	33.38	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+15	PRD-SCDEMO-013	SC Demo Product 183	Food	Produce	f	f	t	pcs	19.77	1.02	17.2	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+16	PRD-SCDEMO-014	SC Demo Product 184	Food	Dairy	f	t	t	pcs	8.12	2.94	32.53	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+18	SUB-SCDEMO-001	SC Demo Sub-Product 186	Food	Seafood	t	f	t	16 portion	13.26	1.27	38.92	\N	\N	\N	16	portion	11	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+19	SUB-SCDEMO-002	SC Demo Sub-Product 187	Food	Beverages	t	f	t	17 portion	19.45	0.55	29.13	\N	\N	\N	17	portion	12	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+20	SUB-SCDEMO-003	SC Demo Sub-Product 188	Food	Packaging	t	f	t	18 portion	22.08	2.92	22.74	\N	\N	\N	18	portion	13	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+21	SUB-SCDEMO-004	SC Demo Sub-Product 189	Food	Proteins	t	f	t	19 portion	10.34	0.71	32.7	\N	\N	\N	19	portion	14	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+22	SUB-SCDEMO-005	SC Demo Sub-Product 190	Food	Produce	t	f	t	20 portion	7.48	2.81	26.06	\N	\N	\N	20	portion	5	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+23	SUB-SCDEMO-006	SC Demo Sub-Product 191	Food	Dairy	t	f	t	21 portion	21.13	1.79	40.15	\N	\N	\N	21	portion	6	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+24	SUB-SCDEMO-007	SC Demo Sub-Product 192	Food	Dry Goods	t	f	t	22 portion	8.17	0.49	28.76	\N	\N	\N	22	portion	7	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+25	SUB-SCDEMO-008	SC Demo Sub-Product 193	Food	Seafood	t	f	t	23 portion	13.31	2.46	45.57	\N	\N	\N	23	portion	8	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+26	SUB-SCDEMO-009	SC Demo Sub-Product 194	Food	Beverages	t	f	t	24 portion	19.33	0.9	51.02	\N	\N	\N	24	portion	9	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+27	SUB-SCDEMO-010	SC Demo Sub-Product 195	Food	Packaging	t	f	t	25 portion	10.19	1.36	28.34	\N	\N	\N	25	portion	10	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+28	SUB-SCDEMO-011	SC Demo Sub-Product 196	Food	Proteins	t	f	t	26 portion	7.15	0.16	29.9	\N	\N	\N	26	portion	11	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+29	SUB-SCDEMO-012	SC Demo Sub-Product 197	Food	Produce	t	f	t	27 portion	6.43	0.5	18.88	\N	\N	\N	27	portion	12	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+30	SUB-SCDEMO-013	SC Demo Sub-Product 198	Food	Dairy	t	f	t	28 portion	14.27	1.16	46.14	\N	\N	\N	28	portion	13	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+31	SUB-SCDEMO-014	SC Demo Sub-Product 199	Food	Dry Goods	t	f	t	29 portion	7.6	0.33	27.27	\N	\N	\N	29	portion	14	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+32	SUB-SCDEMO-015	SC Demo Sub-Product 200	Food	Seafood	t	f	t	10 portion	19.4	2.42	38.64	\N	\N	\N	10	portion	5	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-06 02:58:42.718784+00	{}	0	0		[]	[]	7
+33	PRD-ZZZUNI-001	ZZZ Unique 0.6059193807664951	Food	Proteins	f	t	f	pcs	2.100	0	25	\N	\N	\N	0		0	f	t	1	["downtown"]	2026-07-08 04:46:41.675414+00	2026-07-08 04:46:41.675461+00	{}	0	0		[]	[]	7
+34	SUB-SUBSAV-001	Sub Save Test 0.15192322734726427	Food	Proteins	t	f	f	pcs	2.100	0	0	\N	\N	\N	20	kitchen	7	f	t	1	["downtown"]	2026-07-08 04:46:55.120454+00	2026-07-08 04:46:55.120454+00	{}	0	0		[]	[]	7
+35	PRD-B2BSAV-001	B2B Save Test 0.4695762894205655	Food	Proteins	f	f	t	Box/20each/100gr	42.78	0	50	\N	\N	\N	0		7	f	t	1	["downtown"]	2026-07-08 04:46:55.246851+00	2026-07-08 04:46:55.246851+00	{"principal":{"key":"p1","isPrincipal":true,"delivery":{"orderUnit":"Box","orderQty":1,"packUnit":"Each","packQty":20,"unitUnit":"Gr","unitQty":100},"rrp":"50"},"alternates":[]}	0	0		[]	[]	7
+36	SUB-SAUCEA-001	Sauce Aglio Olio	Food	Sauce & Dressing	t	f	f	pcs	55.242105263157894000	0	0	\N	\N	\N	8	kg	14	f	t	5	["weissbrau-pavilion-kuala-lumpur"]	2026-07-08 05:51:04.288223+00	2026-07-09 08:33:17.705841+00	{}	24	0		[]	[]	7
+37	PRD-SAUCEA-001	Sauce Aglio Olio	Food	Sauce & Dressing	f	f	t	Pack/kg/0	55.242105263157896	0	20	\N	\N	\N	0		30	f	t	5	["weissbrau-pavilion-kuala-lumpur"]	2026-07-09 16:33:20.004176+00	2026-07-09 17:32:41.054524+00	{"principal":{"key":"b2b-principal","isPrincipal":true,"delivery":{"orderUnit":"Pack","orderQty":1,"packUnit":"Kg","packQty":1,"unitUnit":"","unitQty":0},"rrp":"20"},"alternates":[{"key":"b2b-alt-1","isPrincipal":false,"delivery":{"orderUnit":"Bag","orderQty":1,"packUnit":"Kg","packQty":5,"unitUnit":"","unitQty":0},"rrp":"100"},{"key":"b2b-alt-2","isPrincipal":false,"delivery":{"orderUnit":"Each","orderQty":1,"packUnit":"Kg","packQty":8,"unitUnit":"","unitQty":0},"rrp":"150"}]}	0	0		[]	[]	7
+38	WST-SUB-SAUCE	WST Sauce Base	Prep	Sub-product	t	f	f	pcs	5.44856	0	0	\N	\N	\N	1	pcs	3	f	t	1	["airport"]	2026-07-12 15:24:38.605931+00	2026-07-12 15:50:35.160466+00	{}	24	20	pcs	[]	[]	7
+46	XFR-B2B-BOX	XFR B2B Meal Box	Hot Kitchen	Mains	f	f	t	pcs	0.100	0	22	\N	\N	\N	0		3	f	t	1	["downtown","airport"]	2026-07-12 15:50:33.756169+00	2026-07-12 15:50:35.374161+00	{}	24	20	pcs	[]	[]	7
+17	PRD-SCDEMO-015	SC Demo Product 185	Food	Dry Goods	f	f	t	pcs	23.55	1.44	16.87	\N	\N	\N	0		0	f	t	1	["downtown","midtown","airport","westend"]	2026-07-06 02:58:42.718784+00	2026-07-13 13:37:55.757537+00	{}	0	0		[]	[]	7
+41	WST-P-BURGER	WST Airport Burger	Hot Kitchen	Mains	f	t	f	pcs	7.04406	0	12	\N	\N	\N	0		0	t	t	1	["airport"]	2026-07-12 15:24:38.997073+00	2026-07-12 15:25:21.412153+00	{}	0	20	pcs	[]	[]	7
+42	WST-P-SALAD	WST Airport Salad	Cold Kitchen	Mains	f	t	f	pcs	3.76029	0	11	\N	\N	\N	0		0	t	t	1	["airport"]	2026-07-12 15:24:39.055797+00	2026-07-12 15:25:21.489875+00	{}	0	20	pcs	[]	[]	7
+43	WST-P-LATTE	WST Airport Latte	Beverage	Drinks	f	t	f	pcs	1.59558	0	9	\N	\N	\N	0		0	t	t	1	["airport"]	2026-07-12 15:24:39.110732+00	2026-07-12 15:25:21.565549+00	{}	0	20	pcs	[]	[]	7
+44	WST-P-FRIES	WST Airport Fries	Hot Kitchen	Sides	f	t	f	pcs	4.4	0	17	\N	\N	\N	0		0	t	t	1	["airport"]	2026-07-12 15:24:39.161715+00	2026-07-12 15:25:21.632641+00	{}	0	20	pcs	[]	[]	7
+45	WST-P-SOUP	WST Airport Soup	Hot Kitchen	Mains	f	t	f	pcs	4.21573	0	11	\N	\N	\N	0		0	t	t	1	["airport"]	2026-07-12 15:24:39.220134+00	2026-07-12 15:25:21.7047+00	{}	0	20	pcs	[]	[]	7
+39	WST-SUB-DOUGH	WST Dough Ball	Prep	Sub-product	t	f	f	pcs	1.19664	0	0	\N	\N	\N	1	pcs	3	f	t	1	["airport"]	2026-07-12 15:24:38.832696+00	2026-07-12 15:25:21.889398+00	{}	24	20	pcs	[]	[]	7
+40	WST-SUB-GRILL	WST Grill Mix	Prep	Sub-product	t	f	f	pcs	1.41150	0	0	\N	\N	\N	1	pcs	3	f	t	1	["airport"]	2026-07-12 15:24:38.888406+00	2026-07-12 15:25:21.985971+00	{}	24	20	pcs	[]	[]	7
 \.
 
 
@@ -3835,6 +4102,8 @@ COPY public."PublicHolidays" ("Id", "Name", "Date", "IsRecognized", "CountryCode
 165	Anzac Day	2027-04-26	t	AU	AU|2027-04-26|ANZAC DAY	f	t
 166	Anzac Day	2027-04-26	t	AU	AU|2027-04-26|ANZAC DAY	f	t
 169	Reconciliation Day	2027-05-31	t	AU	AU|2027-05-31|RECONCILIATION DAY	f	t
+183	Hari Raya Puasa	2026-03-20	t	SG	SG|2026-03-20|HARI RAYA PUASA	f	t
+184	Good Friday	2026-04-03	t	SG	SG|2026-04-03|GOOD FRIDAY	f	t
 170	Western Australia Day	2027-06-07	t	AU	AU|2027-06-07|WESTERN AUSTRALIA DAY	f	t
 171	King's Birthday	2027-06-14	t	AU	AU|2027-06-14|KING'S BIRTHDAY	f	t
 172	Picnic Day	2027-08-02	t	AU	AU|2027-08-02|PICNIC DAY	f	t
@@ -3854,6 +4123,7 @@ COPY public."PublicHolidays" ("Id", "Name", "Date", "IsRecognized", "CountryCode
 128	Labour Day	2026-03-02	t	AU	AU|2026-03-02|LABOUR DAY	f	t
 187	National Day	2026-08-10	t	SG	SG|2026-08-10|NATIONAL DAY	f	t
 129	Canberra Day	2026-03-09	t	AU	AU|2026-03-09|CANBERRA DAY	f	t
+189	Christmas Day	2026-12-25	t	SG	SG|2026-12-25|CHRISTMAS DAY	f	t
 130	Adelaide Cup Day	2026-03-09	t	AU	AU|2026-03-09|ADELAIDE CUP DAY	f	t
 131	Eight Hours Day	2026-03-09	t	AU	AU|2026-03-09|EIGHT HOURS DAY	f	t
 132	Labour Day	2026-03-09	t	AU	AU|2026-03-09|LABOUR DAY	f	t
@@ -3876,8 +4146,6 @@ COPY public."PublicHolidays" ("Id", "Name", "Date", "IsRecognized", "CountryCode
 180	New Year's Day	2026-01-01	t	SG	SG|2026-01-01|NEW YEAR'S DAY	f	t
 181	Chinese New Year	2026-02-17	t	SG	SG|2026-02-17|CHINESE NEW YEAR	f	t
 182	Chinese New Year	2026-02-18	t	SG	SG|2026-02-18|CHINESE NEW YEAR	f	t
-183	Hari Raya Puasa	2026-03-20	t	SG	SG|2026-03-20|HARI RAYA PUASA	f	t
-184	Good Friday	2026-04-03	t	SG	SG|2026-04-03|GOOD FRIDAY	f	t
 185	Labour Day	2026-05-01	t	SG	SG|2026-05-01|LABOUR DAY	f	t
 186	Hari Raya Haji (Tentative Date)	2026-05-27	t	SG	SG|2026-05-27|HARI RAYA HAJI (TENTATIVE DATE)	f	t
 143	Western Australia Day	2026-06-01	t	AU	AU|2026-06-01|WESTERN AUSTRALIA DAY	f	t
@@ -3897,7 +4165,6 @@ COPY public."PublicHolidays" ("Id", "Name", "Date", "IsRecognized", "CountryCode
 156	Canberra Day	2027-03-08	t	AU	AU|2027-03-08|CANBERRA DAY	f	t
 157	Adelaide Cup Day	2027-03-08	t	AU	AU|2027-03-08|ADELAIDE CUP DAY	f	t
 188	Deepavali	2026-11-09	t	SG	SG|2026-11-09|DEEPAVALI	f	t
-189	Christmas Day	2026-12-25	t	SG	SG|2026-12-25|CHRISTMAS DAY	f	t
 \.
 
 
@@ -3942,15 +4209,6 @@ COPY public."PurchaseOrderItems" ("Id", "PurchaseOrderId", "ComponentId", "Compo
 --
 
 COPY public."PurchaseOrders" ("Id", "PoNumber", "VendorName", "OrderDate", "DeliveryDate", "DocumentType", "Status", "CompanyId", "LocationIdsJson", "InitiatedBy", "ApprovedBy", "ApprovedAt", "ReceivedAt", "ReconciledAt", "VendorShareToken", "VendorAcceptedAt", "VendorAcceptedBy") FROM stdin;
-1	PO-2841	Premium Meats Co.	2025-06-18	2025-06-21	PO	In Transit	\N	[]			\N	\N	\N	a94fd1a8e1ff4ab1aea78176811c730f	\N	
-2	PO-2842	Fine Truffle Imports	2025-06-19	2025-06-22	PO	Confirmed	\N	[]			\N	\N	\N	7a8129d5a20a4f4dbc44caeac32aa2c1	\N	
-3	PO-2843	Premium Meats Co.	2026-06-30	2026-07-03	PO	Pending	\N	[]			\N	\N	\N	b7dabbab03864fa69821c7b984304f89	\N	
-4	PO-2844	Premium Meats Co.	2026-07-01	2026-07-04	PO	Pending	\N	[]			\N	\N	\N	00957d3449f14c049bbd6cd716d6a06b	\N	
-5	PO-2845	Premium Meats Co.	2026-07-01	2026-07-04	PO	Pending	\N	[]			\N	\N	\N	2f6e7682f3cc4c41a26c4f356a511a29	\N	
-7	BH-DOWN-001-20260630	Premium Meats Co.	2026-06-30	2026-07-03	PO	Pending	\N	[]			\N	\N	\N	fb24962854034b04902bd8c38fa7e6a7	\N	
-8	BH-DOWN-002-20260630	Ocean Fresh Seafood	2026-06-30	2026-07-03	PO	Pending	\N	[]			\N	\N	\N	9f6de5509eae4932ad7aa5a7e36013ce	\N	
-9	BH-AT-001-20260701	Artisan Dairy Co.	2026-07-01	2026-07-04	PR	Pending Approval	\N	[]			\N	\N	\N	c5961095ed264806b0786de2fbedacdc	\N	
-10	BH-AT-002-20260701	Green Valley Produce	2026-07-01	2026-07-04	PR	Pending Approval	\N	[]			\N	\N	\N	47994332215d4bdf9b58c23a09bd0c16	\N	
 11	BH-DOWN-001-20260701	Artisan Dairy Co.	2026-07-01	2026-07-04	PO	Open	1	["downtown"]	DRA Super Admin	DRA Super Admin	2026-07-01 06:15:32.483546+00	\N	\N	37ef2324828549d7921f719b0e48fd01	\N	
 12	BH-DOWN-002-20260701	Fine Truffle Imports	2026-07-01	2026-07-04	PO	Open	1	["downtown"]	DRA Super Admin	DRA Super Admin	2026-07-01 06:15:32.530613+00	\N	\N	d5508c0f855546f3a3dd803b00257e3d	\N	
 13	BH-DOWN-003-20260701	Premium Meats Co.	2026-07-01	2026-07-04	PO	Open	1	["downtown"]	DRA Super Admin	DRA Super Admin	2026-07-01 06:15:32.53123+00	\N	\N	5b6e9e968751465caf19216982370297	\N	
@@ -3969,8 +4227,17 @@ COPY public."PurchaseOrders" ("Id", "PoNumber", "VendorName", "OrderDate", "Deli
 28	PO-2026-FIFO-042	Premium Meats Co.	2026-07-01	2026-07-03	PO	Reconciled	1	["downtown"]	Demo Seeder	Demo Seeder	2026-07-02 09:00:00+00	2026-07-03 08:00:00+00	2026-07-03 08:00:00+00		\N	
 23	BH-AT-011-20260701	Artisan Dairy Co.	2026-07-01	2026-07-04	PO	Confirmed	1	["airport"]	DRA Super Admin	DRA Super Admin	2026-07-01 11:17:54.949546+00	\N	\N	5a47a3991f344cf1b6055e12abd643fb	2026-07-07 09:26:21.301827+00	Sofia Lim
 22	BH-AT-010-20260701	Green Valley Produce	2026-07-01	2026-07-04	PO	Confirmed	1	["airport"]	DRA Super Admin	DRA Super Admin	2026-07-01 10:52:57.551047+00	\N	\N	39fb1f0c8db64400a82e3594f39d5b3c	2026-07-07 09:35:48.300841+00	Test Vendor
-6	PO-2846	Heritage Pantry Supply	2026-07-01	2026-07-04	PO	Pending	\N	[]			\N	\N	\N	3e8e087065f848c9bc2a1d17e1d86191	2026-07-07 09:36:58.300864+00	Vendor Rep
 29	BH-LOC0-001-20260707	Artisan Dairy Co.	2026-07-07	2026-07-10	PO	Accepted	1	["LOC001"]	Test User	Test User	2026-07-07 09:32:15.509868+00	\N	\N	84dfaa8383d14defa041a81ec6649fd1	2026-07-07 09:42:51.95596+00	Vendor User
+1	PO-2841	Premium Meats Co.	2025-06-18	2025-06-21	PO	In Transit	1	[]			\N	\N	\N	a94fd1a8e1ff4ab1aea78176811c730f	\N	
+2	PO-2842	Fine Truffle Imports	2025-06-19	2025-06-22	PO	Confirmed	1	[]			\N	\N	\N	7a8129d5a20a4f4dbc44caeac32aa2c1	\N	
+3	PO-2843	Premium Meats Co.	2026-06-30	2026-07-03	PO	Pending	1	[]			\N	\N	\N	b7dabbab03864fa69821c7b984304f89	\N	
+4	PO-2844	Premium Meats Co.	2026-07-01	2026-07-04	PO	Pending	1	[]			\N	\N	\N	00957d3449f14c049bbd6cd716d6a06b	\N	
+5	PO-2845	Premium Meats Co.	2026-07-01	2026-07-04	PO	Pending	1	[]			\N	\N	\N	2f6e7682f3cc4c41a26c4f356a511a29	\N	
+7	BH-DOWN-001-20260630	Premium Meats Co.	2026-06-30	2026-07-03	PO	Pending	1	[]			\N	\N	\N	fb24962854034b04902bd8c38fa7e6a7	\N	
+8	BH-DOWN-002-20260630	Ocean Fresh Seafood	2026-06-30	2026-07-03	PO	Pending	1	[]			\N	\N	\N	9f6de5509eae4932ad7aa5a7e36013ce	\N	
+9	BH-AT-001-20260701	Artisan Dairy Co.	2026-07-01	2026-07-04	PR	Pending Approval	1	[]			\N	\N	\N	c5961095ed264806b0786de2fbedacdc	\N	
+10	BH-AT-002-20260701	Green Valley Produce	2026-07-01	2026-07-04	PR	Pending Approval	1	[]			\N	\N	\N	47994332215d4bdf9b58c23a09bd0c16	\N	
+6	PO-2846	Heritage Pantry Supply	2026-07-01	2026-07-04	PO	Pending	1	[]			\N	\N	\N	3e8e087065f848c9bc2a1d17e1d86191	2026-07-07 09:36:58.300864+00	Vendor Rep
 \.
 
 
@@ -4120,11 +4387,37 @@ COPY public."SocsoBrackets" ("Id", "PayStructureId", "SortOrder", "MinAge", "Max
 
 
 --
+-- Data for Name: TenantConnections; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public."TenantConnections" ("Id", "CompanyId", "DatabaseName", "ConnectionString", "IsActive", "CreatedAt", "UpdatedAt") FROM stdin;
+1	2	bisync_c_2		t	2026-07-12 03:12:07.226835	2026-07-12 03:12:07.226857
+2	3	bisync_c_3		t	2026-07-12 03:12:07.295895	2026-07-12 03:12:07.295895
+3	1	bisync_c_1		t	2026-07-12 03:12:07.296843	2026-07-12 03:12:07.296843
+4	4	bisync_c_4		t	2026-07-12 03:12:07.296895	2026-07-12 03:12:07.296895
+5	5	bisync_c_5		t	2026-07-12 03:12:07.296923	2026-07-12 03:12:07.296924
+\.
+
+
+--
+-- Data for Name: TransferEntries; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public."TransferEntries" ("Id", "CompanyId", "FromLocationExternalId", "ToLocationExternalId", "ItemType", "ItemKey", "ItemName", "Quantity", "Uom", "TransferDate", "CreatedAt", "Status", "InitiatedBy", "ReceivedBy", "ReceivedAt", "ReceivedQuantity", "UnitPrice", "RejectedBy", "RejectedAt") FROM stdin;
+1	1	downtown	airport	component	CMP-00FLOU-001	00 Flour	2	kg	2026-07-12	2026-07-12 15:50:35.014314	pending			\N	\N	0		\N
+2	1	airport	downtown	sub-product	38	WST Sauce Base	5	pcs	2026-07-12	2026-07-12 15:50:35.09691	received			2026-07-12 15:50:35.09691	5	0		\N
+3	1	downtown	airport	product	46	XFR B2B Meal Box	8	pcs	2026-07-11	2026-07-12 15:50:35.213681	received			2026-07-12 15:50:35.213681	8	0		\N
+4	1	airport	downtown	product	46	XFR B2B Meal Box	3	pcs	2026-07-12	2026-07-12 15:50:35.311295	received			2026-07-12 15:50:35.311295	3	0		\N
+5	1	airport	downtown	component	CMP-00FLOU-001	00 Flour	1	kg	2026-07-12	2026-07-12 15:51:25.803073	received			2026-07-12 15:51:25.803073	1	11		\N
+\.
+
+
+--
 -- Data for Name: UserNotifications; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public."UserNotifications" ("Id", "UserId", "RecipientName", "PurchaseOrderId", "Type", "Title", "Body", "CreatedAt", "ReadAt") FROM stdin;
-1	\N	Test User	29	purchase_order_accepted	Purchase order BH-LOC0-001-20260707 accepted	Accepted by Vendor User from Artisan Dairy Co..	2026-07-07 09:42:52.019687+00	\N
+COPY public."UserNotifications" ("Id", "UserId", "RecipientName", "PurchaseOrderId", "Type", "Title", "Body", "CreatedAt", "ReadAt", "TransferId") FROM stdin;
+1	\N	Test User	29	purchase_order_accepted	Purchase order BH-LOC0-001-20260707 accepted	Accepted by Vendor User from Artisan Dairy Co..	2026-07-07 09:42:52.019687+00	\N	\N
 \.
 
 
@@ -4263,49 +4556,67 @@ VP-RFQ1-L1-V003	V003	Artisan Dairy Co.	Chili Flakes	Dry Goods			8	{"orderUnit":"
 -- Data for Name: Vendors; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public."Vendors" ("Id", "ExternalId", "Name", "Type", "Brn", "Products", "City", "State", "ContactPerson", "ContactPosition", "Mobile", "Email", "Address", "ContactsJson", "Engaged", "ProductPolicyTag") FROM stdin;
-1	V001	Premium Meats Co.	offline	202001012345	Proteins, Poultry	Kuala Lumpur	WP	Ahmad Razali		+60 12-345 6789	sales@premiummeats.my	12 Jalan Semarak, KL 50450	[]	t	halal
-2	V002	Fine Truffle Imports	offline	201801056789	Truffles, Specialty	Petaling Jaya	Selangor	Jean-Luc Prive		+60 16-778 9900	jl@truffleimports.com	88 Jalan PJ 14, PJ 47810	[]	t	halal
-4	V005	Ocean Fresh Seafood	offline	201701023456	Seafood, Fresh Fish	Port Klang	Selangor	Haji Sulaiman	Sales Manager	+60 13-456 7890	fresh@oceanfish.my	Lot 22, Jln Pelabuhan, Port Klang	[{"Name":"Haji Sulaiman","Position":"Sales Manager","Mobile":"\\u002B60 13-456 7890","Email":"fresh@oceanfish.my","IsDefault":true}]	t	halal
-5	V003	Artisan Dairy Co.	offline	201601034321	Dairy, Cheese	Kuala Lumpur	WP	Sofia Lim	Sales Executive	+60 18-901 2233	orders@artisandairy.my	45 Jalan Tun Razak, KL 50400	[{"Name":"Sofia Lim","Position":"Sales Executive","Mobile":"\\u002B60 18-901 2233","Email":"orders@artisandairy.my","IsDefault":true}]	t	halal
-6	V006	Green Valley Produce	online	202001067890	Produce, Fresh Vegetables	Cameron Highlands	Pahang	Lee Wei Jie	Account Manager	+60 12-778 3344	sales@greenvalley.my	Online — Nationwide Delivery	[{"name":"Lee Wei Jie","position":"Account Manager","mobile":"\\u002B60 12-778 3344","email":"sales@greenvalley.my","isDefault":true}]	t	halal
-7	V007	Heritage Pantry Supply	offline	201901078901	Dry Goods, Canned Goods	Shah Alam	Selangor	Ravi Kumar	Sales Manager	+60 17-234 5678	sales@heritagepantry.my	Lot 8, Jalan Stesen 19/7, Shah Alam 40300	[{"Name":"Ravi Kumar","Position":"Sales Manager","Mobile":"\\u002B60 17-234 5678","Email":"sales@heritagepantry.my","IsDefault":true}]	t	halal
-8	V010	Bean Brothers Roasters	offline	202101011234	Coffee, Beverages	Petaling Jaya	Selangor	Marcus Tan	Sales Manager	+60 16-445 6677	wholesale@beanbrothers.my	22 Jalan SS15, PJ 47500	[]	f	halal
-9	V011	Metro Canned Foods	offline	201801045678	Dry Goods, Canned Goods	Kuala Lumpur	WP	Nurul Izzati	Account Manager	+60 12-556 7890	orders@metrocanned.my	56 Jalan Ipoh, KL 51200	[{"name":"Nurul Izzati","position":"Account Manager","mobile":"\\u002B60 12-556 7890","email":"orders@metrocanned.my","isDefault":true}]	t	halal
-10	V012	Pacific Poultry Supply	offline	201501012345	Poultry, Duck	Kajang	Selangor	Tan Mei Ling	Sales Manager	+60 12-111 2233	sales@pacificpoultry.my	Lot 5, Jalan Mewah, Kajang 43000	[]	f	halal
-11	V013	Harbour Fish Market	offline	201601023456	Seafood, Fresh Fish	Port Klang	Selangor	Captain Wong	Account Manager	+60 16-222 3344	orders@harbourfish.my	Pasar Besar, Port Klang 42000	[]	f	halal
-12	V014	Valley Dairy Wholesale	offline	201701034567	Dairy, Cream, Butter	Seremban	Negeri Sembilan	Priya Nair	Sales Executive	+60 17-333 4455	wholesale@valleydairy.my	12 Jalan Dairy, Seremban 70000	[]	f	halal
-13	V015	Mediterranean Oil Co.	offline	201801045678	Oils, Vinegars	Kuala Lumpur	WP	Marco Rossi	Sales Manager	+60 18-444 5566	marco@medoil.my	88 Jalan Ampang, KL 50450	[]	f	halal
-14	V016	Spice Route Trading	offline	201901056789	Spices, Seasonings	Melaka	Melaka	Aisha Rahman	Account Manager	+60 19-555 6677	aisha@spiceroute.my	45 Jalan Hang Tuah, Melaka 75300	[]	f	halal
-15	V017	Fresh Herb Gardens	online	202001067890	Herbs, Salad Leaves	Cameron Highlands	Pahang	David Choong	Sales Executive	+60 12-666 7788	orders@freshherb.my	Online — Nationwide Delivery	[]	f	halal
-16	V018	Grain & Mill Co.	offline	202101078901	Rice, Flour, Grains	Shah Alam	Selangor	Hassan Ibrahim	Sales Manager	+60 13-777 8899	sales@grainmill.my	Lot 3, Jalan Bukit Raja, Shah Alam 40000	[]	f	halal
-17	V019	Noodle House Supply	offline	202201089012	Pasta, Noodles	Petaling Jaya	Selangor	Lily Tan	Account Manager	+60 14-888 9900	lily@noodlehouse.my	18 Jalan SS2, PJ 47300	[]	f	halal
-18	V020	Frozen Foods Express	offline	202301090123	Frozen Vegetables, Fries	Subang Jaya	Selangor	Kevin Lim	Sales Executive	+60 15-999 0011	kevin@frozenexpress.my	7 Jalan SS15, Subang 47500	[]	f	halal
-19	V021	Juice Factory Direct	offline	202401101234	Juices, Purees	Kuala Lumpur	WP	Siti Aminah	Sales Manager	+60 16-101 1122	orders@juicefactory.my	22 Jalan Tun Razak, KL 50400	[]	f	halal
-21	V023	Tea & Tisane Co.	online	202601123456	Tea, Herbal Infusions	Ipoh	Perak	Mei Lin	Sales Executive	+60 18-303 3344	sales@teatisane.my	Online — Nationwide Delivery	[]	f	halal
-22	V024	Syrup & Mixers Ltd	offline	202701134567	Syrups, Mixers, Tonic	Kuala Lumpur	WP	Raj Patel	Sales Manager	+60 19-404 4455	raj@syrupmixers.my	33 Jalan Bukit Bintang, KL 55100	[]	f	halal
-23	V025	Plant Milk Wholesale	offline	202801145678	Oat Milk, Plant Milks	Shah Alam	Selangor	Emma Walsh	Account Manager	+60 12-505 5566	emma@plantmilk.my	9 Jalan Plumbum, Shah Alam 40300	[]	f	halal
-25	V027	Organic Veg Hub	online	203001167890	Organic Produce	Cameron Highlands	Pahang	Nadia Yusof	Sales Executive	+60 14-707 7788	nadia@organicveg.my	Online — Nationwide Delivery	[]	f	halal
-26	V028	Condiment Central	offline	203101178901	Sauces, Passata, Condiments	Klang	Selangor	Vikram Singh	Account Manager	+60 15-808 8899	vikram@condiment.my	Lot 12, Jalan Kapar, Klang 41000	[]	f	halal
-27	V029	Bakery Ingredients MY	offline	203201189012	Flour, Yeast, Baking	Kuala Lumpur	WP	Christine Lee	Sales Manager	+60 16-909 9900	christine@bakerying.my	44 Jalan Sultan, KL 50000	[]	f	halal
-28	V030	Imported Cheese Cellar	offline	203301190123	Cheese, Dairy Speciality	Petaling Jaya	Selangor	Giuseppe Conti	Account Manager	+60 17-010 1011	giuseppe@cheesecellar.my	66 Jalan SS21, PJ 47400	[]	f	halal
-29	V031	Bottled Water Works	offline	203401201234	Still Water, Sparkling	Rawang	Selangor	Azman Hakim	Sales Executive	+60 18-121 2122	azman@waterworks.my	Lot 8, Jalan Industri, Rawang 48000	[]	f	halal
-30	VZZ999	API Probe Vendor	offline										[{"name":"","position":"","mobile":"","email":"","isDefault":true}]	f	halal
-31	V032	Malaysian Yogurt Company	offline	0928310-951	Dairy, Juice	Kuala Lumpur	WP	dra	sales	01262353503	dra@test.com	2 jalan wan kadir, 60000	[{"name":"dra","position":"sales","mobile":"01262353503","email":"dra@test.com","isDefault":true}]	t	halal
-32	V042	Barakah Halal Meats	offline	203501212345	Halal Beef, Lamb, Poultry	Shah Alam	Selangor	Farid Zulkifli	Sales Manager	+60 12-301 4455	orders@barakahhalal.my	Lot 14, Jalan Utama, Shah Alam 40150	[]	t	halal
-33	V043	Seri Mutiara Halal Seafood	offline	203601223456	Halal Fish, Prawns, Squid	Kuala Terengganu	Terengganu	Wan Aisyah	Account Manager	+60 13-402 5566	sales@serimutiara.my	Pasar Besar Tok Bali, KT 20400	[]	t	halal
-34	V044	Kurnia Poultry Halal	offline	203701234567	Halal Chicken, Marinated Poultry	Kajang	Selangor	Hafiz Rahman	Sales Executive	+60 14-503 6677	wholesale@kurniapoultry.my	Lot 9, Jalan Reko, Kajang 43000	[]	f	halal
-35	V045	Hijrah Fresh Produce Halal	online	203801245678	Halal Fresh Vegetables, Salad	Cameron Highlands	Pahang	Nur Hidayah	Sales Manager	+60 15-604 7788	orders@hijrahproduce.my	Online — Nationwide Delivery	[]	t	halal
-36	V046	Al-Noor Halal Dairy	offline	203901256789	Halal Milk, Cheese, Yogurt	Seremban	Negeri Sembilan	Zainab Osman	Account Manager	+60 16-705 8899	sales@alnoordairy.my	22 Jalan Dairy, Seremban 70400	[]	f	halal
-37	V047	Zam-Zam Beverages Halal	offline	204001267890	Halal Juices, Syrups, Soft Drinks	Kuala Lumpur	WP	Amir Hamzah	Sales Manager	+60 17-806 9900	orders@zamzambeverages.my	88 Jalan Tun Razak, KL 50400	[]	t	halal
-38	V048	Hikmah Spice House	offline	204101278901	Halal Spices, Pastes, Seasonings	Melaka	Melaka	Salmah Idris	Sales Executive	+60 18-907 1011	sales@hikmahspice.my	12 Jalan Hang Jebat, Melaka 75200	[]	f	halal
-39	V049	Raudhah Bakery Supplies Halal	offline	204201289012	Halal Flour, Yeast, Baking	Petaling Jaya	Selangor	Aminah Lee	Account Manager	+60 19-108 2122	orders@raudhahbakery.my	33 Jalan SS2, PJ 47300	[]	t	halal
-40	V050	Nusantara Halal Frozen Foods	offline	204301290123	Halal Frozen Paratha, Pastry, Fish	Subang Jaya	Selangor	Rizal Hakimi	Sales Manager	+60 12-209 3233	frozen@nusantarahalal.my	5 Jalan SS16, Subang 47500	[]	f	halal
-41	V051	Darul Ehsan Halal Pantry	offline	204401301234	Halal Coconut Milk, Sauces, Noodles	Shah Alam	Selangor	Kamaluddin Ali	Sales Executive	+60 13-310 4344	pantry@darulehsan.my	Lot 6, Jalan Plumbum, Shah Alam 40300	[]	t	halal
-42	V052	DRa Trading SB	offline					D Ra		0126233503	dra@test.com		[]	f	halal
-3	V004	Wine & Spirits Direct	online	202201034567	Wine, Spirits, Beer	Kuala Lumpur	WP	Melissa Tan		+60 19-887 6543	melissa@winedirect.my	Online — Nationwide Delivery	[]	t	non-halal
-20	V022	Craft Brew Alliance	offline	202501112345	Craft Beer, Kegs	Petaling Jaya	Selangor	Jake Morrison	Account Manager	+60 17-202 2233	jake@craftbrew.my	5 Jalan Gasing, PJ 46000	[]	f	non-halal
-24	V026	Butcher Block Prime	offline	202901156789	Lamb, Pork, Premium Meats	Kuala Lumpur	WP	Frankie Ho	Sales Manager	+60 13-606 6677	frankie@butcherblock.my	101 Jalan Maarof, KL 59000	[]	f	non-halal
+COPY public."Vendors" ("Id", "ExternalId", "Name", "Type", "Brn", "Products", "City", "State", "ContactPerson", "ContactPosition", "Mobile", "Email", "Address", "ContactsJson", "Engaged", "ProductPolicyTag", "CompanyId") FROM stdin;
+1	V001	Premium Meats Co.	offline	202001012345	Proteins, Poultry	Kuala Lumpur	WP	Ahmad Razali		+60 12-345 6789	sales@premiummeats.my	12 Jalan Semarak, KL 50450	[]	t	halal	1
+2	V002	Fine Truffle Imports	offline	201801056789	Truffles, Specialty	Petaling Jaya	Selangor	Jean-Luc Prive		+60 16-778 9900	jl@truffleimports.com	88 Jalan PJ 14, PJ 47810	[]	t	halal	1
+4	V005	Ocean Fresh Seafood	offline	201701023456	Seafood, Fresh Fish	Port Klang	Selangor	Haji Sulaiman	Sales Manager	+60 13-456 7890	fresh@oceanfish.my	Lot 22, Jln Pelabuhan, Port Klang	[{"Name":"Haji Sulaiman","Position":"Sales Manager","Mobile":"\\u002B60 13-456 7890","Email":"fresh@oceanfish.my","IsDefault":true}]	t	halal	1
+5	V003	Artisan Dairy Co.	offline	201601034321	Dairy, Cheese	Kuala Lumpur	WP	Sofia Lim	Sales Executive	+60 18-901 2233	orders@artisandairy.my	45 Jalan Tun Razak, KL 50400	[{"Name":"Sofia Lim","Position":"Sales Executive","Mobile":"\\u002B60 18-901 2233","Email":"orders@artisandairy.my","IsDefault":true}]	t	halal	1
+6	V006	Green Valley Produce	online	202001067890	Produce, Fresh Vegetables	Cameron Highlands	Pahang	Lee Wei Jie	Account Manager	+60 12-778 3344	sales@greenvalley.my	Online — Nationwide Delivery	[{"name":"Lee Wei Jie","position":"Account Manager","mobile":"\\u002B60 12-778 3344","email":"sales@greenvalley.my","isDefault":true}]	t	halal	1
+7	V007	Heritage Pantry Supply	offline	201901078901	Dry Goods, Canned Goods	Shah Alam	Selangor	Ravi Kumar	Sales Manager	+60 17-234 5678	sales@heritagepantry.my	Lot 8, Jalan Stesen 19/7, Shah Alam 40300	[{"Name":"Ravi Kumar","Position":"Sales Manager","Mobile":"\\u002B60 17-234 5678","Email":"sales@heritagepantry.my","IsDefault":true}]	t	halal	1
+8	V010	Bean Brothers Roasters	offline	202101011234	Coffee, Beverages	Petaling Jaya	Selangor	Marcus Tan	Sales Manager	+60 16-445 6677	wholesale@beanbrothers.my	22 Jalan SS15, PJ 47500	[]	f	halal	1
+9	V011	Metro Canned Foods	offline	201801045678	Dry Goods, Canned Goods	Kuala Lumpur	WP	Nurul Izzati	Account Manager	+60 12-556 7890	orders@metrocanned.my	56 Jalan Ipoh, KL 51200	[{"name":"Nurul Izzati","position":"Account Manager","mobile":"\\u002B60 12-556 7890","email":"orders@metrocanned.my","isDefault":true}]	t	halal	1
+10	V012	Pacific Poultry Supply	offline	201501012345	Poultry, Duck	Kajang	Selangor	Tan Mei Ling	Sales Manager	+60 12-111 2233	sales@pacificpoultry.my	Lot 5, Jalan Mewah, Kajang 43000	[]	f	halal	1
+11	V013	Harbour Fish Market	offline	201601023456	Seafood, Fresh Fish	Port Klang	Selangor	Captain Wong	Account Manager	+60 16-222 3344	orders@harbourfish.my	Pasar Besar, Port Klang 42000	[]	f	halal	1
+12	V014	Valley Dairy Wholesale	offline	201701034567	Dairy, Cream, Butter	Seremban	Negeri Sembilan	Priya Nair	Sales Executive	+60 17-333 4455	wholesale@valleydairy.my	12 Jalan Dairy, Seremban 70000	[]	f	halal	1
+13	V015	Mediterranean Oil Co.	offline	201801045678	Oils, Vinegars	Kuala Lumpur	WP	Marco Rossi	Sales Manager	+60 18-444 5566	marco@medoil.my	88 Jalan Ampang, KL 50450	[]	f	halal	1
+14	V016	Spice Route Trading	offline	201901056789	Spices, Seasonings	Melaka	Melaka	Aisha Rahman	Account Manager	+60 19-555 6677	aisha@spiceroute.my	45 Jalan Hang Tuah, Melaka 75300	[]	f	halal	1
+15	V017	Fresh Herb Gardens	online	202001067890	Herbs, Salad Leaves	Cameron Highlands	Pahang	David Choong	Sales Executive	+60 12-666 7788	orders@freshherb.my	Online — Nationwide Delivery	[]	f	halal	1
+16	V018	Grain & Mill Co.	offline	202101078901	Rice, Flour, Grains	Shah Alam	Selangor	Hassan Ibrahim	Sales Manager	+60 13-777 8899	sales@grainmill.my	Lot 3, Jalan Bukit Raja, Shah Alam 40000	[]	f	halal	1
+17	V019	Noodle House Supply	offline	202201089012	Pasta, Noodles	Petaling Jaya	Selangor	Lily Tan	Account Manager	+60 14-888 9900	lily@noodlehouse.my	18 Jalan SS2, PJ 47300	[]	f	halal	1
+18	V020	Frozen Foods Express	offline	202301090123	Frozen Vegetables, Fries	Subang Jaya	Selangor	Kevin Lim	Sales Executive	+60 15-999 0011	kevin@frozenexpress.my	7 Jalan SS15, Subang 47500	[]	f	halal	1
+19	V021	Juice Factory Direct	offline	202401101234	Juices, Purees	Kuala Lumpur	WP	Siti Aminah	Sales Manager	+60 16-101 1122	orders@juicefactory.my	22 Jalan Tun Razak, KL 50400	[]	f	halal	1
+21	V023	Tea & Tisane Co.	online	202601123456	Tea, Herbal Infusions	Ipoh	Perak	Mei Lin	Sales Executive	+60 18-303 3344	sales@teatisane.my	Online — Nationwide Delivery	[]	f	halal	1
+22	V024	Syrup & Mixers Ltd	offline	202701134567	Syrups, Mixers, Tonic	Kuala Lumpur	WP	Raj Patel	Sales Manager	+60 19-404 4455	raj@syrupmixers.my	33 Jalan Bukit Bintang, KL 55100	[]	f	halal	1
+23	V025	Plant Milk Wholesale	offline	202801145678	Oat Milk, Plant Milks	Shah Alam	Selangor	Emma Walsh	Account Manager	+60 12-505 5566	emma@plantmilk.my	9 Jalan Plumbum, Shah Alam 40300	[]	f	halal	1
+37	V047	Zam-Zam Beverages Halal	offline	204001267890	Halal Juices, Syrups, Soft Drinks	Kuala Lumpur	WP	Amir Hamzah	Sales Manager	+60 17-806 9900	orders@zamzambeverages.my	88 Jalan Tun Razak, KL 50400	[]	t	halal	1
+38	V048	Hikmah Spice House	offline	204101278901	Halal Spices, Pastes, Seasonings	Melaka	Melaka	Salmah Idris	Sales Executive	+60 18-907 1011	sales@hikmahspice.my	12 Jalan Hang Jebat, Melaka 75200	[]	f	halal	1
+42	V052	DRa Trading SB	offline					D Ra		0126233503	dra@test.com		[]	f	halal	1
+25	V027	Organic Veg Hub	online	203001167890	Organic Produce	Cameron Highlands	Pahang	Nadia Yusof	Sales Executive	+60 14-707 7788	nadia@organicveg.my	Online — Nationwide Delivery	[]	f	halal	1
+26	V028	Condiment Central	offline	203101178901	Sauces, Passata, Condiments	Klang	Selangor	Vikram Singh	Account Manager	+60 15-808 8899	vikram@condiment.my	Lot 12, Jalan Kapar, Klang 41000	[]	f	halal	1
+27	V029	Bakery Ingredients MY	offline	203201189012	Flour, Yeast, Baking	Kuala Lumpur	WP	Christine Lee	Sales Manager	+60 16-909 9900	christine@bakerying.my	44 Jalan Sultan, KL 50000	[]	f	halal	1
+28	V030	Imported Cheese Cellar	offline	203301190123	Cheese, Dairy Speciality	Petaling Jaya	Selangor	Giuseppe Conti	Account Manager	+60 17-010 1011	giuseppe@cheesecellar.my	66 Jalan SS21, PJ 47400	[]	f	halal	1
+29	V031	Bottled Water Works	offline	203401201234	Still Water, Sparkling	Rawang	Selangor	Azman Hakim	Sales Executive	+60 18-121 2122	azman@waterworks.my	Lot 8, Jalan Industri, Rawang 48000	[]	f	halal	1
+30	VZZ999	API Probe Vendor	offline										[{"name":"","position":"","mobile":"","email":"","isDefault":true}]	f	halal	1
+31	V032	Malaysian Yogurt Company	offline	0928310-951	Dairy, Juice	Kuala Lumpur	WP	dra	sales	01262353503	dra@test.com	2 jalan wan kadir, 60000	[{"name":"dra","position":"sales","mobile":"01262353503","email":"dra@test.com","isDefault":true}]	t	halal	1
+32	V042	Barakah Halal Meats	offline	203501212345	Halal Beef, Lamb, Poultry	Shah Alam	Selangor	Farid Zulkifli	Sales Manager	+60 12-301 4455	orders@barakahhalal.my	Lot 14, Jalan Utama, Shah Alam 40150	[]	t	halal	1
+33	V043	Seri Mutiara Halal Seafood	offline	203601223456	Halal Fish, Prawns, Squid	Kuala Terengganu	Terengganu	Wan Aisyah	Account Manager	+60 13-402 5566	sales@serimutiara.my	Pasar Besar Tok Bali, KT 20400	[]	t	halal	1
+34	V044	Kurnia Poultry Halal	offline	203701234567	Halal Chicken, Marinated Poultry	Kajang	Selangor	Hafiz Rahman	Sales Executive	+60 14-503 6677	wholesale@kurniapoultry.my	Lot 9, Jalan Reko, Kajang 43000	[]	f	halal	1
+35	V045	Hijrah Fresh Produce Halal	online	203801245678	Halal Fresh Vegetables, Salad	Cameron Highlands	Pahang	Nur Hidayah	Sales Manager	+60 15-604 7788	orders@hijrahproduce.my	Online — Nationwide Delivery	[]	t	halal	1
+36	V046	Al-Noor Halal Dairy	offline	203901256789	Halal Milk, Cheese, Yogurt	Seremban	Negeri Sembilan	Zainab Osman	Account Manager	+60 16-705 8899	sales@alnoordairy.my	22 Jalan Dairy, Seremban 70400	[]	f	halal	1
+39	V049	Raudhah Bakery Supplies Halal	offline	204201289012	Halal Flour, Yeast, Baking	Petaling Jaya	Selangor	Aminah Lee	Account Manager	+60 19-108 2122	orders@raudhahbakery.my	33 Jalan SS2, PJ 47300	[]	t	halal	1
+40	V050	Nusantara Halal Frozen Foods	offline	204301290123	Halal Frozen Paratha, Pastry, Fish	Subang Jaya	Selangor	Rizal Hakimi	Sales Manager	+60 12-209 3233	frozen@nusantarahalal.my	5 Jalan SS16, Subang 47500	[]	f	halal	1
+41	V051	Darul Ehsan Halal Pantry	offline	204401301234	Halal Coconut Milk, Sauces, Noodles	Shah Alam	Selangor	Kamaluddin Ali	Sales Executive	+60 13-310 4344	pantry@darulehsan.my	Lot 6, Jalan Plumbum, Shah Alam 40300	[]	t	halal	1
+3	V004	Wine & Spirits Direct	online	202201034567	Wine, Spirits, Beer	Kuala Lumpur	WP	Melissa Tan		+60 19-887 6543	melissa@winedirect.my	Online — Nationwide Delivery	[]	t	non-halal	1
+20	V022	Craft Brew Alliance	offline	202501112345	Craft Beer, Kegs	Petaling Jaya	Selangor	Jake Morrison	Account Manager	+60 17-202 2233	jake@craftbrew.my	5 Jalan Gasing, PJ 46000	[]	f	non-halal	1
+24	V026	Butcher Block Prime	offline	202901156789	Lamb, Pork, Premium Meats	Kuala Lumpur	WP	Frankie Ho	Sales Manager	+60 13-606 6677	frankie@butcherblock.my	101 Jalan Maarof, KL 59000	[]	f	non-halal	1
+\.
+
+
+--
+-- Data for Name: WastageEntries; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public."WastageEntries" ("Id", "CompanyId", "LocationExternalId", "Source", "ItemType", "ItemKey", "ItemName", "Quantity", "Uom", "WastedDate", "Reason", "PosCheckNo", "CreatedAt") FROM stdin;
+1	1	airport	manual	product	42	WST Airport Salad	2	pcs	2026-07-12	Dropped / damaged		2026-07-12 15:24:40.477525
+2	1	airport	manual	sub-product	39	WST Dough Ball	3	pcs	2026-07-05	Quality reject		2026-07-12 15:24:40.610887
+3	1	airport	manual	product	45	WST Airport Soup	1	pcs	2026-07-11	Spoilage		2026-07-12 15:24:40.694835
+4	1	airport	pos	product	41	WST Airport Burger	1	pcs	2026-07-12	POS void	CHK-AIR-1001	2026-07-12 15:24:40.790633
+5	1	airport	pos	product	43	WST Airport Latte	2	pcs	2026-07-12	POS refund	CHK-AIR-1002	2026-07-12 15:24:40.884564
+6	1	airport	pos	product	44	WST Airport Fries	1	pcs	2026-07-11	POS void	CHK-AIR-1003	2026-07-12 15:24:40.95758
+7	1	airport	manual	component	CMP-00FLOU-001	00 Flour	1.5	g	2026-07-12	Spoilage		2026-07-12 15:25:22.126295
+8	1	airport	manual	component	CMP-ATLANT-001	Atlantic Cod	0.8	g	2026-07-11	Over-prep		2026-07-12 15:25:22.174925
+9	1	airport	manual	component	CMP-00FLOU-001	00 Flour	2	kg	2026-07-12	Spoilage (inventory UOM)		2026-07-12 15:26:08.945047
+10	1	airport	manual	component	CMP-ATLANT-001	Atlantic Cod	1.2	kg	2026-07-11	Over-prep (inventory UOM)		2026-07-12 15:26:08.993766
 \.
 
 
@@ -4320,28 +4631,28 @@ SELECT pg_catalog.setval('public."AppUsers_Id_seq"', 35, true);
 -- Name: AttendanceRecords_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."AttendanceRecords_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."AttendanceRecords_Id_seq"', 110, true);
 
 
 --
 -- Name: B2bCustomers_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."B2bCustomers_Id_seq"', 4, true);
+SELECT pg_catalog.setval('public."B2bCustomers_Id_seq"', 9, true);
 
 
 --
 -- Name: B2bSalesOrderLines_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."B2bSalesOrderLines_Id_seq"', 4, true);
+SELECT pg_catalog.setval('public."B2bSalesOrderLines_Id_seq"', 12, true);
 
 
 --
 -- Name: B2bSalesOrders_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."B2bSalesOrders_Id_seq"', 4, true);
+SELECT pg_catalog.setval('public."B2bSalesOrders_Id_seq"', 7, true);
 
 
 --
@@ -4369,7 +4680,14 @@ SELECT pg_catalog.setval('public."CompanySettings_Id_seq"', 1, false);
 -- Name: Departments_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."Departments_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."Departments_Id_seq"', 10, true);
+
+
+--
+-- Name: DevQaRuns_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public."DevQaRuns_Id_seq"', 1, false);
 
 
 --
@@ -4383,7 +4701,7 @@ SELECT pg_catalog.setval('public."DevelopmentMilestones_Id_seq"', 1, false);
 -- Name: Divisions_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."Divisions_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."Divisions_Id_seq"', 5, true);
 
 
 --
@@ -4397,7 +4715,7 @@ SELECT pg_catalog.setval('public."EducationRecords_Id_seq"', 1, false);
 -- Name: EmployeeLevels_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."EmployeeLevels_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."EmployeeLevels_Id_seq"', 3, true);
 
 
 --
@@ -4411,7 +4729,7 @@ SELECT pg_catalog.setval('public."EmployeeMovements_Id_seq"', 1, false);
 -- Name: Employees_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."Employees_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."Employees_Id_seq"', 36, true);
 
 
 --
@@ -4460,21 +4778,21 @@ SELECT pg_catalog.setval('public."InventoryAlerts_Id_seq"', 1, false);
 -- Name: InventoryCountSessionLines_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."InventoryCountSessionLines_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."InventoryCountSessionLines_Id_seq"', 12, true);
 
 
 --
 -- Name: InventoryCountSessions_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."InventoryCountSessions_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."InventoryCountSessions_Id_seq"', 4, true);
 
 
 --
 -- Name: InventoryMovements_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."InventoryMovements_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."InventoryMovements_Id_seq"', 246, true);
 
 
 --
@@ -4579,14 +4897,14 @@ SELECT pg_catalog.setval('public."ProductAliases_Id_seq"', 1, true);
 -- Name: ProductB2bLocationStocks_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."ProductB2bLocationStocks_Id_seq"', 40, true);
+SELECT pg_catalog.setval('public."ProductB2bLocationStocks_Id_seq"', 53, true);
 
 
 --
 -- Name: ProductComponentItems_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."ProductComponentItems_Id_seq"', 48, true);
+SELECT pg_catalog.setval('public."ProductComponentItems_Id_seq"', 58, true);
 
 
 --
@@ -4600,14 +4918,14 @@ SELECT pg_catalog.setval('public."ProductPackagingItems_Id_seq"', 1, false);
 -- Name: ProductProductionLogs_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."ProductProductionLogs_Id_seq"', 44, true);
+SELECT pg_catalog.setval('public."ProductProductionLogs_Id_seq"', 78, true);
 
 
 --
 -- Name: Products_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."Products_Id_seq"', 37, true);
+SELECT pg_catalog.setval('public."Products_Id_seq"', 46, true);
 
 
 --
@@ -4684,7 +5002,7 @@ SELECT pg_catalog.setval('public."SampleRequests_Id_seq"', 1, true);
 -- Name: ShiftSchedules_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public."ShiftSchedules_Id_seq"', 1, false);
+SELECT pg_catalog.setval('public."ShiftSchedules_Id_seq"', 50, true);
 
 
 --
@@ -4692,6 +5010,20 @@ SELECT pg_catalog.setval('public."ShiftSchedules_Id_seq"', 1, false);
 --
 
 SELECT pg_catalog.setval('public."SocsoBrackets_Id_seq"', 1, false);
+
+
+--
+-- Name: TenantConnections_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public."TenantConnections_Id_seq"', 5, true);
+
+
+--
+-- Name: TransferEntries_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public."TransferEntries_Id_seq"', 5, true);
 
 
 --
@@ -4706,6 +5038,13 @@ SELECT pg_catalog.setval('public."UserNotifications_Id_seq"', 1, true);
 --
 
 SELECT pg_catalog.setval('public."Vendors_Id_seq"', 42, true);
+
+
+--
+-- Name: WastageEntries_Id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public."WastageEntries_Id_seq"', 10, true);
 
 
 --
@@ -4786,6 +5125,14 @@ ALTER TABLE ONLY public."CompanySettings"
 
 ALTER TABLE ONLY public."Departments"
     ADD CONSTRAINT "PK_Departments" PRIMARY KEY ("Id");
+
+
+--
+-- Name: DevQaRuns PK_DevQaRuns; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public."DevQaRuns"
+    ADD CONSTRAINT "PK_DevQaRuns" PRIMARY KEY ("Id");
 
 
 --
@@ -5165,6 +5512,14 @@ ALTER TABLE ONLY public."SocsoBrackets"
 
 
 --
+-- Name: TransferEntries PK_TransferEntries; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public."TransferEntries"
+    ADD CONSTRAINT "PK_TransferEntries" PRIMARY KEY ("Id");
+
+
+--
 -- Name: UserNotifications PK_UserNotifications; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5194,6 +5549,22 @@ ALTER TABLE ONLY public."VendorProducts"
 
 ALTER TABLE ONLY public."Vendors"
     ADD CONSTRAINT "PK_Vendors" PRIMARY KEY ("Id");
+
+
+--
+-- Name: WastageEntries PK_WastageEntries; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public."WastageEntries"
+    ADD CONSTRAINT "PK_WastageEntries" PRIMARY KEY ("Id");
+
+
+--
+-- Name: TenantConnections TenantConnections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public."TenantConnections"
+    ADD CONSTRAINT "TenantConnections_pkey" PRIMARY KEY ("Id");
 
 
 --
@@ -5239,10 +5610,24 @@ CREATE INDEX "IX_B2bSalesOrders_CompanyId_Status" ON public."B2bSalesOrders" USI
 
 
 --
+-- Name: IX_B2bSalesOrders_ShareToken; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_B2bSalesOrders_ShareToken" ON public."B2bSalesOrders" USING btree ("ShareToken");
+
+
+--
 -- Name: IX_Departments_DivisionId_Name; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX "IX_Departments_DivisionId_Name" ON public."Departments" USING btree ("DivisionId", "Name");
+
+
+--
+-- Name: IX_DevQaRuns_StartedAt; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_DevQaRuns_StartedAt" ON public."DevQaRuns" USING btree ("StartedAt");
 
 
 --
@@ -5344,17 +5729,24 @@ CREATE UNIQUE INDEX "IX_IncomeTaxYears_CompanyId_Year" ON public."IncomeTaxYears
 
 
 --
--- Name: IX_Ingredients_ComponentId; Type: INDEX; Schema: public; Owner: -
+-- Name: IX_Ingredients_CompanyId; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX "IX_Ingredients_ComponentId" ON public."Ingredients" USING btree ("ComponentId");
+CREATE INDEX "IX_Ingredients_CompanyId" ON public."Ingredients" USING btree ("CompanyId");
 
 
 --
--- Name: IX_Ingredients_Name; Type: INDEX; Schema: public; Owner: -
+-- Name: IX_Ingredients_CompanyId_ComponentId; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX "IX_Ingredients_Name" ON public."Ingredients" USING btree ("Name");
+CREATE UNIQUE INDEX "IX_Ingredients_CompanyId_ComponentId" ON public."Ingredients" USING btree ("CompanyId", "ComponentId");
+
+
+--
+-- Name: IX_Ingredients_CompanyId_Name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "IX_Ingredients_CompanyId_Name" ON public."Ingredients" USING btree ("CompanyId", "Name");
 
 
 --
@@ -5638,6 +6030,27 @@ CREATE INDEX "IX_SocsoBrackets_PayStructureId" ON public."SocsoBrackets" USING b
 
 
 --
+-- Name: IX_TenantConnections_CompanyId; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "IX_TenantConnections_CompanyId" ON public."TenantConnections" USING btree ("CompanyId");
+
+
+--
+-- Name: IX_TransferEntries_CompanyId_TransferDate; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_TransferEntries_CompanyId_TransferDate" ON public."TransferEntries" USING btree ("CompanyId", "TransferDate");
+
+
+--
+-- Name: IX_TransferEntries_Status_ToLocation; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_TransferEntries_Status_ToLocation" ON public."TransferEntries" USING btree ("Status", "ToLocationExternalId");
+
+
+--
 -- Name: IX_VendorProducts_VendorExternalId; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5645,10 +6058,24 @@ CREATE INDEX "IX_VendorProducts_VendorExternalId" ON public."VendorProducts" USI
 
 
 --
--- Name: IX_Vendors_ExternalId; Type: INDEX; Schema: public; Owner: -
+-- Name: IX_Vendors_CompanyId; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX "IX_Vendors_ExternalId" ON public."Vendors" USING btree ("ExternalId");
+CREATE INDEX "IX_Vendors_CompanyId" ON public."Vendors" USING btree ("CompanyId");
+
+
+--
+-- Name: IX_Vendors_CompanyId_ExternalId; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX "IX_Vendors_CompanyId_ExternalId" ON public."Vendors" USING btree ("CompanyId", "ExternalId");
+
+
+--
+-- Name: IX_WastageEntries_CompanyId_WastedDate; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX "IX_WastageEntries_CompanyId_WastedDate" ON public."WastageEntries" USING btree ("CompanyId", "WastedDate");
 
 
 --
@@ -5967,5 +6394,5 @@ ALTER TABLE ONLY public."SocsoBrackets"
 -- PostgreSQL database dump complete
 --
 
-\unrestrict j9WS3CEHCRJALDBgZpk4AjmIz2eLAaVr5cBRE86OdgmebtlJGq1Pfky0KEOaPQ5
+\unrestrict dQP7QAeqzDaR9CyBt73Y00oDUdCkXiB96V0m3jgEws25ywJT7KGrWfrhgLnl9gV
 

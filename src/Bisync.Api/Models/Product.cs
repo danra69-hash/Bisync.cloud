@@ -23,6 +23,8 @@ public class Product
     public string YieldAltUnitsJson { get; set; } = "[]";
     public int ExpiryPeriodDays { get; set; }
     public int ActivationPeriodHours { get; set; }
+    /// <summary>Default sales-order stock lock period (days) for B2B Product / Active Order.</summary>
+    public int OrderLockPeriodDays { get; set; } = 7;
     public decimal ParStock { get; set; }
     public string ParStockUom { get; set; } = string.Empty;
     public bool PosEnabled { get; set; }

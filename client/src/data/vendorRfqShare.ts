@@ -1,6 +1,7 @@
+import { buildShareMessageWithLink, buildWhatsAppShareHref, resolveShareAppOrigin } from './shareLinks';
+
 export function buildVendorRfqShareUrl(shareToken: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/vendor/rfq/${shareToken}`;
+  return `${resolveShareAppOrigin()}/vendor/rfq/${shareToken}`;
 }
 
 export function parseVendorRfqToken(pathname: string): string | null {
@@ -26,8 +27,11 @@ export async function copyVendorRfqShareLink(shareToken: string): Promise<void> 
 
 export function buildVendorRfqWhatsAppUrl(shareToken: string, vendorName: string, rfqNumber: string): string {
   const url = buildVendorRfqShareUrl(shareToken);
-  const text = `Hi${vendorName ? ` ${vendorName}` : ''}, please fill in our Sample & Quote ${rfqNumber}:\n${url}`;
-  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  const text = buildShareMessageWithLink(
+    `Hi${vendorName ? ` ${vendorName}` : ''}, please fill in our Sample & Quote ${rfqNumber}:`,
+    url,
+  );
+  return buildWhatsAppShareHref(text);
 }
 
 export function buildVendorRfqMailtoUrl(
@@ -39,7 +43,7 @@ export function buildVendorRfqMailtoUrl(
   const url = buildVendorRfqShareUrl(shareToken);
   const subject = encodeURIComponent(`Sample & Quote ${rfqNumber}`);
   const body = encodeURIComponent(
-    `Hi${vendorName ? ` ${vendorName}` : ''},\n\nPlease fill in our Sample & Quote ${rfqNumber} using this link:\n${url}\n\nThank you.`,
+    `Hi${vendorName ? ` ${vendorName}` : ''},\n\nPlease fill in our Sample & Quote ${rfqNumber} using this link:\n\n${url}\n\nThank you.`,
   );
   const to = email.trim();
   return to ? `mailto:${to}?subject=${subject}&body=${body}` : `mailto:?subject=${subject}&body=${body}`;

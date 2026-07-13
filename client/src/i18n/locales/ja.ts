@@ -120,6 +120,8 @@ export const ja = {
       comparePrice: '価格比較',
       products: '商品',
       externalPosMapping: '外部POSマッピング',
+      activeSalesOrder: 'Active Sales Order',
+
       customerList: '顧客一覧',
       customerGroup: '顧客グループ',
       customerManagement: '顧客管理',

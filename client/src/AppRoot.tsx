@@ -5,6 +5,7 @@ import { LandingPage } from './pages/LandingPage';
 import { VendorOrderPortalPage } from './pages/VendorOrderPortalPage';
 import { VendorRfqPortalPage } from './pages/VendorRfqPortalPage';
 import { SampleRequestPortalPage } from './pages/SampleRequestPortalPage';
+import { SalesOrderPortalPage } from './pages/SalesOrderPortalPage';
 import { DevConsolePage } from './pages/DevConsolePage';
 import { ActivateAccountPage, parseActivationToken } from './pages/ActivateAccountPage';
 import { CompanyOnboardingPage } from './pages/CompanyOnboardingPage';
@@ -17,8 +18,10 @@ import {
   isAwaitingPayment,
 } from './data/onboardingFlags';
 import { parseVendorOrderToken } from './data/vendorOrderShare';
+import { parseVendorOrderShareTarget } from './data/vendorOrderShare';
 import { parseVendorRfqToken } from './data/vendorRfqShare';
 import { parseSampleRequestToken } from './data/requestForSample';
+import { parseSalesOrderShareTarget } from './data/salesOrderShare';
 import { matchDevConsolePath } from './config/devConsole';
 import { REQUIRE_PLATFORM_LOGIN } from './config/platformAuth';
 
@@ -34,18 +37,19 @@ function LoadingScreen() {
 }
 
 export function AppRoot() {
-  const vendorToken = parseVendorOrderToken(window.location.pathname);
+  const vendorShare = parseVendorOrderShareTarget(window.location.pathname);
   const rfqToken = parseVendorRfqToken(window.location.pathname);
   const sampleRequestToken = parseSampleRequestToken(window.location.pathname);
   const activationToken = parseActivationToken(window.location.pathname);
+  const salesOrderShare = parseSalesOrderShareTarget(window.location.pathname);
   const isDevConsole = matchDevConsolePath(window.location.pathname);
   const { isAuthenticated, loading, currentUser } = useCurrentUser();
   /** Explicit steps so next gate opens even if user sync races. */
   const [forceLocation, setForceLocation] = useState(false);
   const [forcePayment, setForcePayment] = useState(false);
 
-  if (vendorToken) {
-    return <VendorOrderPortalPage token={vendorToken} />;
+  if (vendorShare) {
+    return <VendorOrderPortalPage token={vendorShare.token} pdfOnly={vendorShare.pdfOnly} />;
   }
   if (rfqToken) {
     return <VendorRfqPortalPage token={rfqToken} />;
@@ -55,6 +59,9 @@ export function AppRoot() {
   }
   if (activationToken) {
     return <ActivateAccountPage token={activationToken} />;
+  }
+  if (salesOrderShare) {
+    return <SalesOrderPortalPage token={salesOrderShare.token} pdfOnly={salesOrderShare.pdfOnly} />;
   }
   if (isDevConsole) {
     return <DevConsolePage />;

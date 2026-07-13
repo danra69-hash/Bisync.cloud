@@ -19,7 +19,11 @@ import {
   DETAIL_PANEL_OVERLAY_ELEVATED_CLS,
   DETAIL_PANEL_SHELL_ELEVATED_CLS,
 } from '../layout/sidePanelShared';
-import { buildVendorOrderShareUrl, copyVendorOrderShareLink } from '../../data/vendorOrderShare';
+import {
+  buildVendorOrderShareUrl,
+  buildVendorOrderWhatsAppUrl,
+  copyVendorOrderShareLink,
+} from '../../data/vendorOrderShare';
 import { isPurchaseOrderVendorAccepted, resolvePurchaseOrderStatusLabel } from '../../data/purchaseOrderStatus';
 
 type Props = {
@@ -354,27 +358,44 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-foreground">Vendor share link</p>
+                  <p className="text-xs font-semibold text-foreground">Vendor PDF link</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Send this link to the vendor so they can view the PDF and accept the order.
+                    Send this PDF link to the vendor. They can open the portal from the PDF page to accept the order.
                   </p>
                   {shareToken ? (
-                    <p className="text-xs font-sans text-primary mt-2 break-all">
+                    <a
+                      href={buildVendorOrderShareUrl(shareToken)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-sans text-primary mt-2 break-all hover:underline block"
+                    >
                       {buildVendorOrderShareUrl(shareToken)}
-                    </p>
+                    </a>
                   ) : (
                     <p className="text-xs text-muted-foreground mt-2">Generating share link…</p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleCopyShareLink()}
-                  disabled={!shareToken}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
-                >
-                  <Copy size={12} />
-                  {shareLinkCopied ? 'Copied!' : 'Copy link'}
-                </button>
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyShareLink()}
+                    disabled={!shareToken}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
+                  >
+                    <Copy size={12} />
+                    {shareLinkCopied ? 'Copied!' : 'Copy link'}
+                  </button>
+                  {shareToken ? (
+                    <a
+                      href={buildVendorOrderWhatsAppUrl(shareToken, order.poNumber, order.vendorName)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-[#25D366] text-white text-xs font-medium hover:bg-[#1ebe57]"
+                    >
+                      WhatsApp
+                    </a>
+                  ) : null}
+                </div>
               </div>
             </div>
           )}

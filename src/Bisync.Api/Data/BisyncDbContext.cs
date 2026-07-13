@@ -226,6 +226,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         modelBuilder.Entity<B2bSalesOrder>(e =>
         {
             e.HasIndex(x => new { x.CompanyId, x.OrderNumber }).IsUnique();
+            e.HasIndex(x => x.ShareToken);
             e.HasMany(x => x.Lines)
                 .WithOne(x => x.SalesOrder)
                 .HasForeignKey(x => x.SalesOrderId)

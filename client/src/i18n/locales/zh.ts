@@ -120,6 +120,8 @@ export const zh = {
       comparePrice: '比价',
       products: '产品',
       externalPosMapping: '外部 POS 映射',
+      activeSalesOrder: 'Active Sales Order',
+
       customerList: '客户列表',
       customerGroup: '客户分组',
       customerManagement: '客户管理',

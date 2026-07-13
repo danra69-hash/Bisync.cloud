@@ -27,7 +27,7 @@ export type PurchaseOrderPdfLine = {
 
 export type PurchaseOrderPdfData = {
   poNumber: string;
-  documentKind: 'purchase_order' | 'purchase_request';
+  documentKind: 'purchase_order' | 'purchase_request' | 'sales_order';
   orderDate: string;
   deliveryDate: string;
   countryCode?: string;
@@ -178,7 +178,7 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.text('ORDER BY', colLeft, y);
-  doc.text('VENDOR', colRight, y);
+  doc.text(data.documentKind === 'sales_order' ? 'CUSTOMER' : 'VENDOR', colRight, y);
   y += 4.5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
@@ -325,7 +325,11 @@ export function triggerBlobDownload(blob: Blob, filename: string): void {
 
 export async function downloadPurchaseOrderPdf(data: PurchaseOrderPdfData): Promise<void> {
   const blob = await createPurchaseOrderPdfBlob(data);
-  const prefix = data.documentKind === 'purchase_request' ? 'PR' : 'PO';
+  const prefix = data.documentKind === 'purchase_request'
+    ? 'PR'
+    : data.documentKind === 'sales_order'
+      ? 'SO'
+      : 'PO';
   triggerBlobDownload(blob, `${prefix}-${safePdfFilename(data.poNumber)}.pdf`);
 }
 

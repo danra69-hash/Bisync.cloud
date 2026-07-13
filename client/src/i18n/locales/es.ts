@@ -120,6 +120,8 @@ export const es = {
       comparePrice: 'Comparar precios',
       products: 'Productos',
       externalPosMapping: 'Asignación de TPV externo',
+      activeSalesOrder: 'Active Sales Order',
+
       customerList: 'Lista de clientes',
       customerGroup: 'Grupo de clientes',
       customerManagement: 'Gestión de clientes',

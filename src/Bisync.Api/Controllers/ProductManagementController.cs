@@ -55,7 +55,8 @@ public class ProductManagementController(
             .Where(s => productIds.Contains(s.ProductId) && locationIdList.Contains(s.LocationExternalId))
             .ToListAsync();
 
-        var lockExpiryByProduct = await ResolveLockExpiryByProductAsync(productIds, locationIdList);
+        var lockExpiryByProduct = await ResolveLockExpiryDatesByProductAsync(productIds, locationIdList);
+        var onOrderByProduct = await ResolveOnOrderQtyByProductAsync(productIds, locationIdList);
 
         var stockByProduct = stockRows
             .GroupBy(s => s.ProductId)
@@ -90,8 +91,9 @@ public class ProductManagementController(
         {
             stockByProduct.TryGetValue(product.Id, out var rows);
             rows ??= [];
-            var summary = BuildSummaryData(product, rows);
-            lockExpiryByProduct.TryGetValue(product.Id, out var lockExpiryDate);
+            var summary = BuildSummaryData(product, rows, onOrderByProduct.GetValueOrDefault(product.Id));
+            lockExpiryByProduct.TryGetValue(product.Id, out var lockExpiryDates);
+            lockExpiryDates ??= [];
 
             var productLogs = producedLogs
                 .Where(l => l.ProductId == product.Id && LogMatchesLocations(l, locationIdList))
@@ -123,7 +125,7 @@ public class ProductManagementController(
                 latestToProduce,
                 summaryIncubationQty > 0 ? summaryIncubationQty : null,
                 summaryIncubationTimeLeft,
-                lockExpiryDate));
+                lockExpiryDates));
 
             foreach (var log in productLogs)
             {
@@ -151,6 +153,12 @@ public class ProductManagementController(
             if (string.IsNullOrWhiteSpace(unit))
                 return BadRequest(new { message = "Package unit cannot be empty." });
             product.B2bPackageUnit = unit;
+            product.UpdatedAt = DateTime.UtcNow;
+        }
+
+        if (request.OrderLockPeriodDays is int lockDays)
+        {
+            product.OrderLockPeriodDays = Math.Clamp(lockDays, 1, 365);
             product.UpdatedAt = DateTime.UtcNow;
         }
 
@@ -497,7 +505,56 @@ public class ProductManagementController(
 
     async Task<object> MapSummaryAsync(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
     {
-        return MapSummary(product, rows);
+        var locationIds = rows
+            .Select(r => r.LocationExternalId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var onOrderByProduct = locationIds.Count == 0
+            ? new Dictionary<int, decimal>()
+            : await ResolveOnOrderQtyByProductAsync([product.Id], locationIds);
+        return MapSummary(product, rows, onOrderByProduct.GetValueOrDefault(product.Id));
+    }
+
+    async Task<Dictionary<int, decimal>> ResolveOnOrderQtyByProductAsync(
+        IReadOnlyList<int> productIds,
+        IReadOnlyList<string> locationIds)
+    {
+        if (productIds.Count == 0 || locationIds.Count == 0)
+            return new Dictionary<int, decimal>();
+
+        var locationSet = locationIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (locationSet.Count == 0)
+            return new Dictionary<int, decimal>();
+
+        // Load candidate lines then filter locations case-insensitively in memory.
+        // Active Order qty must appear even when stock.OnOrderQty was never locked (e.g. draft→confirmed).
+        var lines = await db.B2bSalesOrderLines.AsNoTracking()
+            .Where(l => productIds.Contains(l.ProductId)
+                && l.Status != "fulfilled"
+                && l.Status != "released")
+            .Join(
+                db.B2bSalesOrders.AsNoTracking()
+                    .Where(o => o.Status == "draft" || o.Status == "issued" || o.Status == "confirmed"),
+                line => line.SalesOrderId,
+                order => order.Id,
+                (line, order) => new
+                {
+                    line.ProductId,
+                    line.QuantityOrdered,
+                    line.LocationExternalId,
+                })
+            .ToListAsync();
+
+        return lines
+            .Where(l => locationSet.Any(loc =>
+                string.Equals(loc, l.LocationExternalId?.Trim(), StringComparison.OrdinalIgnoreCase)))
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.QuantityOrdered));
     }
 
     static string? ResolveEarliestExpiry(IReadOnlyList<ProductB2bLocationStock> rows)
@@ -644,31 +701,65 @@ public class ProductManagementController(
         return logLocs.Any(locationIds.Contains);
     }
 
-    async Task<Dictionary<int, string>> ResolveLockExpiryByProductAsync(
+    sealed record OnOrderLockEntry(decimal Quantity, string LockExpiryDate);
+
+    async Task<Dictionary<int, List<OnOrderLockEntry>>> ResolveLockExpiryDatesByProductAsync(
         IReadOnlyList<int> productIds,
         IReadOnlyList<string> locationIds)
     {
-        if (productIds.Count == 0)
-            return new Dictionary<int, string>();
+        if (productIds.Count == 0 || locationIds.Count == 0)
+            return new Dictionary<int, List<OnOrderLockEntry>>();
+
+        var locationSet = locationIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         var lines = await db.B2bSalesOrderLines.AsNoTracking()
             .Where(l => productIds.Contains(l.ProductId)
-                && locationIds.Contains(l.LocationExternalId)
-                && l.Status == "locked"
-                && l.QuantityLocked > 0)
+                && l.Status != "fulfilled"
+                && l.Status != "released")
             .Join(
                 db.B2bSalesOrders.AsNoTracking().Where(o => o.Status == "issued"),
                 line => line.SalesOrderId,
                 order => order.Id,
-                (line, order) => new { line.ProductId, order.LockExpiryDate })
-            .Where(x => x.LockExpiryDate != "")
+                (line, order) => new
+                {
+                    line.ProductId,
+                    line.LocationExternalId,
+                    line.QuantityOrdered,
+                    OrderId = order.Id,
+                    order.LockExpiryDate,
+                    order.LockPeriodDays,
+                    order.CreatedAt,
+                })
             .ToListAsync();
 
         return lines
+            .Where(l => locationSet.Any(loc =>
+                string.Equals(loc, l.LocationExternalId?.Trim(), StringComparison.OrdinalIgnoreCase)))
+            .Select(l =>
+            {
+                var expiry = l.LockExpiryDate?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(expiry) && l.LockPeriodDays > 0)
+                {
+                    expiry = DateOnly.FromDateTime(l.CreatedAt).AddDays(l.LockPeriodDays).ToString("yyyy-MM-dd");
+                }
+                return new { l.ProductId, l.OrderId, l.QuantityOrdered, LockExpiryDate = expiry };
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.LockExpiryDate))
             .GroupBy(x => x.ProductId)
             .ToDictionary(
                 g => g.Key,
-                g => g.Min(x => x.LockExpiryDate),
+                g => g
+                    .GroupBy(x => x.OrderId)
+                    .Select(orderGroup => new OnOrderLockEntry(
+                        orderGroup.Sum(x => x.QuantityOrdered),
+                        orderGroup.Min(x => x.LockExpiryDate)!))
+                    .OrderBy(x => x.LockExpiryDate)
+                    .ThenBy(x => x.Quantity)
+                    .ToList(),
                 EqualityComparer<int>.Default);
     }
 
@@ -685,7 +776,10 @@ public class ProductManagementController(
         decimal ProducedQty,
         string? ExpiryDate);
 
-    static ProductManagementSummaryData BuildSummaryData(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
+    static ProductManagementSummaryData BuildSummaryData(
+        Product product,
+        IReadOnlyList<ProductB2bLocationStock> rows,
+        decimal? onOrderQtyOverride = null)
     {
         var batchUnit = ResolveBatchUnit(product);
         return new ProductManagementSummaryData(
@@ -695,7 +789,7 @@ public class ProductManagementController(
             GetBatchSize(product),
             product.IsSubProduct,
             rows.Sum(r => r.InStock),
-            rows.Sum(r => r.OnOrderQty),
+            onOrderQtyOverride ?? rows.Sum(r => r.OnOrderQty),
             rows.Sum(r => r.SalesPerDay),
             rows.Sum(r => r.ToProduceQty),
             rows.Sum(r => r.ProducedQty),
@@ -737,7 +831,7 @@ public class ProductManagementController(
         ProductProductionLog? latestToProduce,
         decimal? summaryIncubationQty = null,
         string? summaryIncubationTimeLeft = null,
-        string? lockExpiryDate = null)
+        IReadOnlyList<OnOrderLockEntry>? onOrderLocks = null)
     {
         var utcNow = DateTime.UtcNow;
         decimal? incubationQty = summaryIncubationQty;
@@ -756,6 +850,10 @@ public class ProductManagementController(
             }
         }
 
+        var locks = log is null
+            ? (onOrderLocks ?? Array.Empty<OnOrderLockEntry>())
+            : Array.Empty<OnOrderLockEntry>();
+
         return new
         {
             productId = summary.ProductId,
@@ -765,7 +863,13 @@ public class ProductManagementController(
             isSubProduct = summary.IsSubProduct,
             inStock = summary.InStock,
             onOrderQty = summary.OnOrderQty,
-            lockExpiryDate = log is null ? lockExpiryDate : null,
+            orderLockPeriodDays = product.OrderLockPeriodDays > 0 ? product.OrderLockPeriodDays : 7,
+            lockExpiryDate = locks.Count > 0 ? locks[0].LockExpiryDate : null,
+            onOrderLocks = locks.Select(l => new
+            {
+                quantity = l.Quantity,
+                lockExpiryDate = l.LockExpiryDate,
+            }),
             salesPerDay = summary.SalesPerDay,
             toProduceQty = summary.ToProduceQty,
             producedQty = summary.ProducedQty,
@@ -781,9 +885,12 @@ public class ProductManagementController(
         };
     }
 
-    static object MapSummary(Product product, IReadOnlyList<ProductB2bLocationStock> rows)
+    static object MapSummary(
+        Product product,
+        IReadOnlyList<ProductB2bLocationStock> rows,
+        decimal? onOrderQtyOverride = null)
     {
-        var summary = BuildSummaryData(product, rows);
+        var summary = BuildSummaryData(product, rows, onOrderQtyOverride);
         return new
         {
             productId = summary.ProductId,
@@ -793,6 +900,7 @@ public class ProductManagementController(
             isSubProduct = summary.IsSubProduct,
             inStock = summary.InStock,
             onOrderQty = summary.OnOrderQty,
+            orderLockPeriodDays = product.OrderLockPeriodDays > 0 ? product.OrderLockPeriodDays : 7,
             salesPerDay = summary.SalesPerDay,
             toProduceQty = summary.ToProduceQty,
             producedQty = summary.ProducedQty,

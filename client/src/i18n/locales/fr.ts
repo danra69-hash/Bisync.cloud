@@ -120,6 +120,8 @@ export const fr = {
       comparePrice: 'Comparer les prix',
       products: 'Produits',
       externalPosMapping: 'Correspondance POS externe',
+      activeSalesOrder: 'Active Sales Order',
+
       customerList: 'Liste des clients',
       customerGroup: 'Groupe de clients',
       customerManagement: 'Gestion des clients',

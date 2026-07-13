@@ -796,6 +796,8 @@ public class UpsertProductRequest
     public int? ExpiryPeriodDays { get; set; }
     [Range(0, 99999)]
     public int? ActivationPeriodHours { get; set; }
+    [Range(1, 365)]
+    public int? OrderLockPeriodDays { get; set; }
     [Range(0, 999999999)]
     public decimal? ParStock { get; set; }
     [MaxLength(20)]
@@ -832,6 +834,8 @@ public class PatchProductManagementRequest
     public decimal? InStock { get; set; }
     [Range(0, 999999999)]
     public decimal? SalesPerDay { get; set; }
+    [Range(1, 365)]
+    public int? OrderLockPeriodDays { get; set; }
     public List<string> LocationExternalIds { get; set; } = [];
 }
 

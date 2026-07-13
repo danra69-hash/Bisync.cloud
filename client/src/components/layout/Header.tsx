@@ -1,4 +1,4 @@
-import { Bell, Building2, GripHorizontal, Menu, Moon, RefreshCw, Search, Sun } from 'lucide-react';
+import { Building2, GripHorizontal, Menu, Moon, RefreshCw, Search, Sun } from 'lucide-react';
 
 import type { NavItem } from '../../data/revenueManagement';
 
@@ -9,6 +9,7 @@ import type { DropdownLocation } from '../../utils/orgFilters';
 import { LocationDropdown } from '../overview/LocationDropdown';
 import { LanguageSelector } from './LanguageSelector';
 import { BrandEngineLockup } from './BrandEngineLockup';
+import { NotificationBell } from './NotificationBell';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 const optionStyle = { color: '#1a1a1a', background: '#ffffff' };
@@ -118,10 +119,7 @@ export function Header({
           </button>
         )}
 
-        <button className="relative p-2 rounded-md hover:bg-white/10" title={t('header.notifications')}>
-          <Bell size={14} className="text-white/70" />
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
-        </button>
+        <NotificationBell />
 
         <LanguageSelector />
       </div>

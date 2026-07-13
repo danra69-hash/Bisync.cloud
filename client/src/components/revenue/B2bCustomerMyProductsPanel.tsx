@@ -40,7 +40,9 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
     setLoading(true);
     api.products(companyId)
       .then(rows => {
-        const b2bProducts = rows.filter(product => product.b2bEnabled && product.active);
+        const b2bProducts = rows.filter(
+          product => product.b2bEnabled && product.active && !product.isSubProduct,
+        );
         setCatalogProducts(rows);
         setProducts(b2bProducts);
         setTaggedUnits(parseTaggedB2bProductUnits(customer, b2bProducts, rows));

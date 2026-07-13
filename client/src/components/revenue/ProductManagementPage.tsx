@@ -35,6 +35,7 @@ type ManagementBatchRow = Product & {
   batchUnit: string;
   inStock: number;
   onOrderQty: number;
+  onOrderLocks: { quantity: number; lockExpiryDate: string }[];
   lockExpiryDate: string | null;
   salesPerDay: number;
   toProduceQty: number;
@@ -88,7 +89,7 @@ const BATCH_TABLE_COLUMNS: SortableColumnDef<BatchSortColumn>[] = [
   { key: 'categoryGroup', label: 'Category / Group' },
   { key: 'batchUnit', label: 'Delivery Unit', sortable: false },
   { key: 'onHand', label: 'QTY On Hand / Batch Date / Expiry Date' },
-  { key: 'onOrder', label: 'QTY On Order / Lock expiry', sortable: false },
+  { key: 'onOrder', label: 'QTY On Order', sortable: false },
   { key: 'incubation', label: 'QTY in incubation / Time left', sortable: false },
   { key: 'qtyToProduce', label: 'QTY to Produce / Date requested', align: 'center' },
 ];
@@ -182,6 +183,55 @@ function formatDisplayDate(iso: string | null | undefined): string {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function formatCompactLockDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function formatOnOrderWithLocks(
+  onOrderQty: number,
+  locks: { quantity: number; lockExpiryDate: string }[],
+  countryCode: string,
+): ReactNode {
+  if (!(onOrderQty > 0) && locks.length === 0) return '—';
+
+  if (locks.length === 0) {
+    return <span className="font-medium tabular-nums">{formatQty(onOrderQty, countryCode)}</span>;
+  }
+
+  // Multiple issued orders: show each qty with its lock expiry, then any unlocked remainder.
+  const lockedQty = locks.reduce((sum, lock) => sum + (Number(lock.quantity) || 0), 0);
+  const unlockedQty = Math.max(0, onOrderQty - lockedQty);
+  const parts = locks.map(lock => (
+    <span key={`${lock.lockExpiryDate}-${lock.quantity}`} className="tabular-nums">
+      {formatQty(lock.quantity, countryCode)}
+      <span className="font-normal text-muted-foreground">
+        {' '}({formatCompactLockDate(lock.lockExpiryDate)})
+      </span>
+    </span>
+  ));
+  if (unlockedQty > 0) {
+    parts.push(
+      <span key="unlocked" className="tabular-nums">
+        {formatQty(unlockedQty, countryCode)}
+      </span>,
+    );
+  }
+
+  return (
+    <span className="font-medium inline-flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+      {parts.map((part, index) => (
+        <span key={index} className="inline-flex items-baseline gap-1">
+          {index > 0 ? <span className="text-muted-foreground font-normal">·</span> : null}
+          {part}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function stackedMetric(label: string, value: ReactNode) {
   return (
     <div>
@@ -209,6 +259,7 @@ function buildBatchRow(product: Product, entry: ProductManagementSummary): Manag
     batchUnit: resolveManagementBatchUnit(product, storedUnit),
     inStock: entry.inStock ?? 0,
     onOrderQty: entry.onOrderQty ?? 0,
+    onOrderLocks: entry.onOrderLocks ?? [],
     lockExpiryDate: entry.lockExpiryDate ?? null,
     salesPerDay: entry.salesPerDay ?? 0,
     toProduceQty: entry.toProduceQty ?? 0,
@@ -646,7 +697,11 @@ export function ProductManagementPage({
                       <div
                         key={row.rowKey}
                         className={`flex border-b border-border ${
-                          isSummary && row.toProduceQty > 0 ? 'bg-amber-50/70 dark:bg-amber-950/20' : ''
+                          isSummary && row.onOrderQty > row.inStock
+                            ? 'bg-yellow-300/90 dark:bg-yellow-500/30'
+                            : isSummary && row.toProduceQty > 0
+                              ? 'bg-amber-50/70 dark:bg-amber-950/20'
+                              : ''
                         } ${isBatchLine ? 'bg-muted/10' : ''}`}
                       >
                         <table className="flex-1 table-fixed border-collapse">
@@ -765,13 +820,7 @@ export function ProductManagementPage({
                                   <div className="space-y-1.5">
                                     {stackedMetric(
                                       'QTY On Order',
-                                      <span className="font-medium tabular-nums">
-                                        {row.onOrderQty > 0 ? formatQty(row.onOrderQty, countryCode) : '—'}
-                                      </span>,
-                                    )}
-                                    {stackedMetric(
-                                      'Lock expiry',
-                                      row.lockExpiryDate ? formatDisplayDate(row.lockExpiryDate) : '—',
+                                      formatOnOrderWithLocks(row.onOrderQty, row.onOrderLocks, countryCode),
                                     )}
                                   </div>
                                 ) : null}

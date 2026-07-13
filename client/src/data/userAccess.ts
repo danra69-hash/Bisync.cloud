@@ -89,6 +89,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
       { id: 'manageCustomers', label: 'Manage Customers' },
       { id: 'customerGroup', label: 'Customer Group' },
       { id: 'manageSalesOrder', label: 'Manage Sales Order' },
+      { id: 'approveSalesOrder', label: 'Approve / Issue Sales Order' },
       { id: 'manageInvoice', label: 'Manage Invoice' },
       { id: 'promotionScheduler', label: 'Promotion Scheduler' },
       { id: 'accountMapping', label: 'Account Mapping' },
@@ -235,4 +236,11 @@ export function hasRmsTask(access: UserAccess, taskId: string): boolean {
 
 export function canApprovePurchaseOrder(access: UserAccess): boolean {
   return hasRmsTask(access, RMS_APPROVE_ORDER_TASK);
+}
+
+export const RMS_APPROVE_SALES_ORDER_TASK = 'approveSalesOrder';
+
+/** Users with this task can issue a sales order immediately (no approval queue). */
+export function canIssueSalesOrderWithoutApproval(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_APPROVE_SALES_ORDER_TASK);
 }

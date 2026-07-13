@@ -18,7 +18,11 @@ import {
   type PurchaseOrderPdfData,
 } from '../../data/generatePurchaseOrderPdf';
 import { PurchaseOrderPdfPreview } from './PurchaseOrderPdfPreview';
-import { buildVendorOrderShareUrl, copyVendorOrderShareLink } from '../../data/vendorOrderShare';
+import {
+  buildVendorOrderShareUrl,
+  buildVendorOrderWhatsAppUrl,
+  copyVendorOrderShareLink,
+} from '../../data/vendorOrderShare';
 
 type Props = {
   items: OrderCartItem[];
@@ -457,7 +461,7 @@ export function OrderCartModal({
               <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
                 <p className="text-xs font-semibold text-foreground">{documentLabels?.savedMessage ?? 'Documents saved'}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Review each vendor PDF below, download a copy, or copy a share link for the vendor to accept online.
+                  Review each vendor PDF below, download a copy, or copy/share the PDF link with the vendor.
                 </p>
               </div>
 
@@ -489,9 +493,15 @@ export function OrderCartModal({
                       </p>
                       <p className="text-xs text-muted-foreground font-sans">{activeOrder.vendorName}</p>
                       {activeOrder.shareToken ? (
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate" title={buildVendorOrderShareUrl(activeOrder.shareToken)}>
+                        <a
+                          href={buildVendorOrderShareUrl(activeOrder.shareToken)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-primary mt-0.5 truncate hover:underline block"
+                          title={buildVendorOrderShareUrl(activeOrder.shareToken)}
+                        >
                           {buildVendorOrderShareUrl(activeOrder.shareToken)}
-                        </p>
+                        </a>
                       ) : (
                         <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
                           Share link generating — also available in My Order → Active Purchase.
@@ -508,6 +518,20 @@ export function OrderCartModal({
                         <Copy size={11} />
                         {copiedKey === activeOrder.poNumber ? 'Copied!' : 'Copy link'}
                       </button>
+                      {activeOrder.shareToken ? (
+                        <a
+                          href={buildVendorOrderWhatsAppUrl(
+                            activeOrder.shareToken,
+                            activeOrder.poNumber,
+                            activeOrder.vendorName,
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#25D366] text-white text-xs font-sans hover:bg-[#1ebe57]"
+                        >
+                          WhatsApp
+                        </a>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => void handleOpenInTab(activeOrder.pdf)}

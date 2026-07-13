@@ -1,11 +1,30 @@
+import { buildShareMessageWithLink, buildWhatsAppShareHref, resolveShareAppOrigin } from './shareLinks';
+
+export type VendorOrderShareTarget = {
+  token: string;
+  /** When true, open the PDF viewer page instead of the full vendor portal. */
+  pdfOnly: boolean;
+};
+
 export function buildVendorOrderShareUrl(shareToken: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/vendor/order/${shareToken}`;
+  return `${resolveShareAppOrigin()}/vendor/order/${shareToken}/pdf`;
+}
+
+export function buildVendorOrderPortalUrl(shareToken: string): string {
+  return `${resolveShareAppOrigin()}/vendor/order/${shareToken}`;
 }
 
 export function parseVendorOrderToken(pathname: string): string | null {
-  const match = pathname.match(/^\/vendor\/order\/([a-f0-9]{32})$/i);
-  return match ? match[1] : null;
+  return parseVendorOrderShareTarget(pathname)?.token ?? null;
+}
+
+export function parseVendorOrderShareTarget(pathname: string): VendorOrderShareTarget | null {
+  const match = pathname.match(/^\/vendor\/order\/([a-f0-9]{32})(\/pdf)?\/?$/i);
+  if (!match) return null;
+  return {
+    token: match[1],
+    pdfOnly: Boolean(match[2]),
+  };
 }
 
 export async function copyVendorOrderShareLink(shareToken: string): Promise<void> {
@@ -22,4 +41,18 @@ export async function copyVendorOrderShareLink(shareToken: string): Promise<void
   textarea.select();
   document.execCommand('copy');
   textarea.remove();
+}
+
+export function buildVendorOrderWhatsAppUrl(
+  shareToken: string,
+  poNumber: string,
+  vendorName?: string,
+): string {
+  const url = buildVendorOrderShareUrl(shareToken);
+  const who = vendorName?.trim() ? ` for ${vendorName.trim()}` : '';
+  const text = buildShareMessageWithLink(
+    `Purchase Order ${poNumber}${who}. Please review the PDF:`,
+    url,
+  );
+  return buildWhatsAppShareHref(text);
 }

@@ -2,21 +2,28 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, Download, FileText } from 'lucide-react';
 import { api, type VendorOrderPortal } from '../api';
 import { buildPurchaseOrderPdfDataFromPortal } from '../data/buildPurchaseOrderPdfDataFromPortal';
-import { downloadPurchaseOrderPdf } from '../data/generatePurchaseOrderPdf';
+import {
+  createPurchaseOrderPdfBlob,
+  downloadPurchaseOrderPdf,
+} from '../data/generatePurchaseOrderPdf';
 import { formatRm } from '../data/createOrder';
+import { buildVendorOrderPortalUrl } from '../data/vendorOrderShare';
 import { PurchaseOrderPdfPreview } from '../components/revenue/PurchaseOrderPdfPreview';
 
 type Props = {
   token: string;
+  /** Open as a full-page PDF viewer (used by Copy link / WhatsApp). */
+  pdfOnly?: boolean;
 };
 
-export function VendorOrderPortalPage({ token }: Props) {
+export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
   const [portal, setPortal] = useState<VendorOrderPortal | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [acceptedBy, setAcceptedBy] = useState('');
+  const [pdfObjectUrl, setPdfObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -37,6 +44,32 @@ export function VendorOrderPortalPage({ token }: Props) {
     () => (portal ? buildPurchaseOrderPdfDataFromPortal(portal) : null),
     [portal],
   );
+
+  useEffect(() => {
+    if (!pdfOnly || !pdfData) {
+      setPdfObjectUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    void createPurchaseOrderPdfBlob(pdfData)
+      .then(blob => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPdfObjectUrl(objectUrl);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Failed to generate PDF.');
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [pdfOnly, pdfData]);
 
   const totalAmount = useMemo(() => {
     if (!portal) return 0;
@@ -68,6 +101,98 @@ export function VendorOrderPortalPage({ token }: Props) {
     } finally {
       setDownloading(false);
     }
+  }
+
+  if (pdfOnly) {
+    return (
+      <div className="min-h-screen bg-neutral-900 text-white flex flex-col">
+        <div className="shrink-0 px-4 py-2 border-b border-white/10 flex items-center justify-between gap-3 bg-black/40">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-widest text-white/50">Purchase Order PDF</p>
+            <p className="text-sm font-semibold truncate">
+              {portal?.poNumber ?? 'Loading…'}
+              {portal?.vendorName ? ` · ${portal.vendorName}` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={!pdfData || downloading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-white/20 text-xs font-medium hover:bg-white/10 disabled:opacity-50 shrink-0"
+          >
+            <Download size={12} />
+            {downloading ? 'Generating…' : 'Download'}
+          </button>
+        </div>
+
+        {loading && (
+          <p className="text-sm text-white/60 text-center py-16">Preparing PDF…</p>
+        )}
+        {error && (
+          <div className="m-4 rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+        {!loading && !error && pdfObjectUrl && (
+          <iframe
+            title={portal?.poNumber ? `Purchase Order ${portal.poNumber}` : 'Purchase Order PDF'}
+            src={pdfObjectUrl}
+            className="flex-1 w-full min-h-0 border-0 bg-neutral-800"
+          />
+        )}
+
+        {!loading && portal && (
+          <div className="shrink-0 border-t border-white/10 bg-black/60 px-4 py-3">
+            {portal.vendorAcceptedAt ? (
+              <div className="flex items-start gap-2 text-emerald-300">
+                <Check size={16} className="mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">Order accepted</p>
+                  <p className="text-xs text-emerald-200/80 mt-0.5">
+                    Accepted by {portal.vendorAcceptedBy || portal.vendorName}
+                    {` on ${new Date(portal.vendorAcceptedAt).toLocaleString()}`}.
+                  </p>
+                </div>
+              </div>
+            ) : portal.canAccept ? (
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white">Confirm this purchase order</p>
+                  <p className="text-xs text-white/60 mt-0.5">
+                    Enter your name and accept to confirm the order with the buyer.
+                  </p>
+                  <label htmlFor="po-accepted-by" className="sr-only">Your name</label>
+                  <input
+                    id="po-accepted-by"
+                    value={acceptedBy}
+                    onChange={e => setAcceptedBy(e.target.value)}
+                    className="mt-2 w-full max-w-md px-3 py-2 text-sm rounded-md border border-white/20 bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    placeholder="Your name"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleAccept()}
+                  disabled={accepting || !acceptedBy.trim()}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 shrink-0"
+                >
+                  <Check size={14} />
+                  {accepting ? 'Accepting…' : 'Accept Order'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-white/60">
+                This purchase order cannot be accepted right now.
+                {' '}
+                <a href={buildVendorOrderPortalUrl(token)} className="underline text-white/80 hover:text-white">
+                  Open full portal
+                </a>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

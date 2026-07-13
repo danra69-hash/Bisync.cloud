@@ -19,7 +19,7 @@ public static class SuperAdminAccess
         "createEditComponentGroup", "createEditStorageAssignment", "accountMapping",
         "viewVendorList", "viewVendorProducts", "activateDeactivateVendor",
         "viewProductSubProduct", "manageProductSubProduct", "manageCustomers", "customerGroup",
-        "manageSalesOrder", "manageInvoice", "promotionScheduler", "viewReports",
+        "manageSalesOrder", "approveSalesOrder", "manageInvoice", "promotionScheduler", "viewReports",
     ];
 
     public static string BuildJson()

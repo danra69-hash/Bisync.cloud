@@ -28,6 +28,89 @@ public class B2bSalesOrdersController(
         return Ok(orders.Select(MapOrder));
     }
 
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<object>> Get(int id, CancellationToken cancellationToken)
+    {
+        var order = await db.B2bSalesOrders.AsNoTracking()
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+        if (order is null)
+            return NotFound(new { message = "Sales order not found." });
+        return Ok(MapOrder(order));
+    }
+
+    [HttpGet("share/{token}")]
+    public async Task<ActionResult<object>> GetByShareToken(string token, CancellationToken cancellationToken)
+    {
+        var normalized = (token ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length != 32)
+            return NotFound(new { message = "Sales order not found." });
+
+        var order = await db.B2bSalesOrders.AsNoTracking()
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.ShareToken == normalized, cancellationToken);
+        if (order is null)
+            return NotFound(new { message = "Sales order not found." });
+
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+        var customer = await db.B2bCustomers.AsNoTracking()
+            .FirstOrDefaultAsync(
+                c => c.CompanyId == order.CompanyId && c.ExternalId == order.CustomerExternalId,
+                cancellationToken);
+
+        return Ok(MapSharedOrder(order, company, customer));
+    }
+
+    [HttpPost("share/{token}/accept")]
+    public async Task<ActionResult<object>> AcceptByShareToken(
+        string token,
+        [FromBody] AcceptB2bSalesOrderShareRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var normalized = (token ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length != 32)
+            return NotFound(new { message = "Sales order not found." });
+
+        var order = await db.B2bSalesOrders
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.ShareToken == normalized, cancellationToken);
+        if (order is null)
+            return NotFound(new { message = "Sales order not found." });
+
+        if (order.CustomerAcceptedAt is not null)
+        {
+            var companyDone = await db.Companies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+            var customerDone = await db.B2bCustomers.AsNoTracking()
+                .FirstOrDefaultAsync(
+                    c => c.CompanyId == order.CompanyId && c.ExternalId == order.CustomerExternalId,
+                    cancellationToken);
+            return Ok(MapSharedOrder(order, companyDone, customerDone));
+        }
+
+        if (!CanCustomerAccept(order))
+            return Conflict(new { message = "This sales order can no longer be accepted." });
+
+        var acceptedBy = request?.AcceptedBy?.Trim();
+        if (string.IsNullOrWhiteSpace(acceptedBy))
+            acceptedBy = order.CustomerName;
+
+        order.CustomerAcceptedAt = DateTime.UtcNow;
+        order.CustomerAcceptedBy = acceptedBy;
+        order.Status = "confirmed";
+        order.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+        var customer = await db.B2bCustomers.AsNoTracking()
+            .FirstOrDefaultAsync(
+                c => c.CompanyId == order.CompanyId && c.ExternalId == order.CustomerExternalId,
+                cancellationToken);
+        return Ok(MapSharedOrder(order, company, customer));
+    }
+
     [HttpPost]
     public async Task<ActionResult<object>> Create([FromBody] CreateB2bSalesOrderRequest request, CancellationToken cancellationToken)
     {
@@ -52,6 +135,10 @@ public class B2bSalesOrdersController(
         var productById = products.ToDictionary(p => p.Id);
 
         var orderNumber = await GenerateOrderNumberAsync(request.CompanyId, cancellationToken);
+        var lockPeriodDays = request.LockPeriodDays > 0
+            ? request.LockPeriodDays
+            : ResolveDefaultLockPeriodDays(productById.Values);
+        var createdDate = DateOnly.FromDateTime(DateTime.UtcNow);
         var order = new B2bSalesOrder
         {
             CompanyId = request.CompanyId,
@@ -59,8 +146,10 @@ public class B2bSalesOrdersController(
             CustomerExternalId = request.CustomerExternalId.Trim(),
             CustomerName = request.CustomerName.Trim(),
             Source = source,
-            LockPeriodDays = request.LockPeriodDays,
+            LockPeriodDays = lockPeriodDays,
+            LockExpiryDate = createdDate.AddDays(lockPeriodDays).ToString("yyyy-MM-dd"),
             Status = "draft",
+            ShareToken = Guid.NewGuid().ToString("N"),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
             Lines = request.Lines.Select(line =>
@@ -114,6 +203,51 @@ public class B2bSalesOrdersController(
         }
     }
 
+    [HttpPost("{id:int}/ensure-share-token")]
+    public async Task<ActionResult<object>> EnsureShareToken(int id, CancellationToken cancellationToken)
+    {
+        var order = await db.B2bSalesOrders
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+        if (order is null)
+            return NotFound(new { message = "Sales order not found." });
+
+        if (string.IsNullOrWhiteSpace(order.ShareToken))
+        {
+            order.ShareToken = Guid.NewGuid().ToString("N");
+            order.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return Ok(MapOrder(order));
+    }
+
+    [HttpPost("{orderId:int}/lines/{lineId:int}/ready-to-ship")]
+    public async Task<ActionResult<object>> MarkLineReadyToShip(int orderId, int lineId, CancellationToken cancellationToken)
+    {
+        var order = await db.B2bSalesOrders
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
+        if (order is null)
+            return NotFound(new { message = "Sales order not found." });
+
+        if (!string.Equals(order.Status, "confirmed", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Only confirmed sales orders can be marked ready to ship." });
+
+        var line = order.Lines.FirstOrDefault(l => l.Id == lineId);
+        if (line is null)
+            return NotFound(new { message = "Sales order line not found." });
+
+        if (string.Equals(line.Status, "ready_to_ship", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(line.Status, "fulfilled", StringComparison.OrdinalIgnoreCase))
+            return Ok(MapOrder(order));
+
+        line.Status = "ready_to_ship";
+        order.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(MapOrder(order));
+    }
+
     [HttpPost("{id:int}/fulfill")]
     public async Task<ActionResult<object>> Fulfill(int id, [FromBody] FulfillB2bSalesOrderRequest request, CancellationToken cancellationToken)
     {
@@ -145,6 +279,16 @@ public class B2bSalesOrdersController(
         return $"SO-{companyId:D3}-{count + 1:D5}";
     }
 
+    static int ResolveDefaultLockPeriodDays(IEnumerable<Product> products)
+    {
+        var days = products
+            .Where(p => p.OrderLockPeriodDays > 0)
+            .Select(p => p.OrderLockPeriodDays)
+            .DefaultIfEmpty(7)
+            .Max();
+        return Math.Clamp(days, 1, 365);
+    }
+
     static object MapOrder(B2bSalesOrder order) => new
     {
         id = order.Id,
@@ -160,6 +304,11 @@ public class B2bSalesOrdersController(
         deliveryOrderIssued = order.DeliveryOrderIssued,
         invoiceIssued = order.InvoiceIssued,
         fulfilledDate = order.FulfilledDate,
+        shareToken = order.ShareToken,
+        customerAcceptedAt = order.CustomerAcceptedAt,
+        customerAcceptedBy = order.CustomerAcceptedBy,
+        createdAt = order.CreatedAt,
+        updatedAt = order.UpdatedAt,
         lines = order.Lines.Select(line => new
         {
             id = line.Id,
@@ -174,4 +323,56 @@ public class B2bSalesOrdersController(
             status = line.Status,
         }),
     };
+
+    static bool CanCustomerAccept(B2bSalesOrder order)
+    {
+        if (order.CustomerAcceptedAt is not null) return false;
+        if (string.IsNullOrWhiteSpace(order.ShareToken)) return false;
+        return string.Equals(order.Status, "issued", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.Status, "draft", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static object MapSharedOrder(B2bSalesOrder order, Company? company, B2bCustomer? customer)
+    {
+        var mapped = MapOrder(order);
+        return new
+        {
+            order = mapped,
+            canAccept = CanCustomerAccept(order),
+            customerAcceptedAt = order.CustomerAcceptedAt,
+            customerAcceptedBy = order.CustomerAcceptedBy,
+            company = company is null ? null : new
+            {
+                id = company.Id,
+                name = company.Name,
+                brn = company.Brn,
+                gstTin = company.GstTin,
+                countryCode = company.CountryCode,
+                addressLine1 = company.AddressLine1,
+                addressLine2 = company.AddressLine2,
+                city = company.City,
+                stateProvince = company.StateProvince,
+                postcode = company.Postcode,
+                phone = company.Phone,
+                email = company.Email,
+            },
+            customer = customer is null ? null : new
+            {
+                companyName = customer.CompanyName,
+                brn = customer.Brn,
+                address = customer.Address,
+                city = customer.City,
+                state = customer.State,
+                postcode = customer.Postcode,
+                phone = customer.Phone,
+                email = customer.Email,
+                contactsJson = customer.ContactsJson,
+            },
+        };
+    }
+}
+
+public class AcceptB2bSalesOrderShareRequest
+{
+    public string? AcceptedBy { get; set; }
 }

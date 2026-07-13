@@ -77,6 +77,10 @@ export const en = {
     editLayout: 'Edit Layout',
     editing: 'Editing',
     notifications: 'Notifications',
+    unreadCount: '{{count}} unread',
+    allCaughtUp: 'You are all caught up',
+    signInForNotifications: 'Sign in to view your notifications.',
+    new: 'New',
   },
   nav: {
     overview: 'Overview',
@@ -118,6 +122,7 @@ export const en = {
       comparePrice: 'Compare Price',
       products: 'Products',
       externalPosMapping: 'External POS Mapping',
+      activeSalesOrder: 'Active Sales Order',
       customerList: 'Customer List',
       customerGroup: 'Customer Group',
       customerManagement: 'Customer Management',

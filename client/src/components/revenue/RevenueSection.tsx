@@ -5,6 +5,7 @@ import { ModuleContent } from './ModuleContent';
 import { SmartIngredientPage } from './SmartIngredientPage';
 import { ComponentConfigPage } from './ComponentConfigPage';
 import { CustomerListPage } from './CustomerListPage';
+import { ActiveSalesOrderPage } from './ActiveSalesOrderPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
 import { OrderPage } from './OrderPage';
@@ -63,11 +64,18 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
+    case 'Active Sales Order':
+      return (
+        <ActiveSalesOrderPage
+          selectedCompanyId={selectedCompanyId}
+        />
+      );
     case 'Customer List':
       return (
         <CustomerListPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
+          onOpenActiveSalesOrders={() => onSelectItem?.('Sales||||Active Sales Order')}
         />
       );
     case 'Vendor List & Products':

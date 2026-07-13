@@ -85,15 +85,41 @@ public static class B2bProductPricing
 
     static string ResolvePrincipalUom(B2bSalesConfigDto config, string fallback)
     {
-        var delivery = config.Principal?.Delivery;
-        if (delivery is null) return string.IsNullOrWhiteSpace(fallback) ? "pcs" : fallback.Trim();
+        // B2bPackageUnit is already the formatted delivery path (e.g. "1 Box/12 Bottle").
+        if (!string.IsNullOrWhiteSpace(fallback))
+            return fallback.Trim();
 
-        var parts = new[] { delivery.UnitUnit, delivery.PackUnit, delivery.OrderUnit }
-            .Where(part => !string.IsNullOrWhiteSpace(part))
-            .Select(part => part!.Trim())
-            .ToList();
-        if (parts.Count == 0) return string.IsNullOrWhiteSpace(fallback) ? "pcs" : fallback.Trim();
-        return parts[0];
+        var delivery = config.Principal?.Delivery;
+        if (delivery is null) return "pcs";
+
+        var path = FormatDeliveryUnitPath(delivery);
+        return string.IsNullOrWhiteSpace(path) ? "pcs" : path;
+    }
+
+    static string FormatDeliveryUnitPath(DeliveryUnitDto delivery)
+    {
+        var orderUnit = delivery.OrderUnit?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(orderUnit)) return string.Empty;
+
+        static string Segment(decimal? qty, string unit)
+        {
+            var q = qty is null or <= 0 ? 1m : qty.Value;
+            return q == 1m ? unit : $"{q:0.##} {unit}";
+        }
+
+        var packUnit = delivery.PackUnit?.Trim() ?? string.Empty;
+        var unitUnit = delivery.UnitUnit?.Trim() ?? string.Empty;
+        var packQty = delivery.PackQty is null or <= 0 ? 1m : delivery.PackQty.Value;
+        var unitQty = delivery.UnitQty is null or <= 0 ? 1m : delivery.UnitQty.Value;
+        var hasPack = !string.IsNullOrWhiteSpace(packUnit)
+            && (!string.Equals(packUnit, orderUnit, StringComparison.OrdinalIgnoreCase) || packQty != 1m);
+        var hasUnit = !string.IsNullOrWhiteSpace(unitUnit)
+            && (!string.Equals(unitUnit, hasPack ? packUnit : orderUnit, StringComparison.OrdinalIgnoreCase) || unitQty != 1m);
+
+        var parts = new List<string> { Segment(delivery.OrderQty, orderUnit) };
+        if (hasPack) parts.Add(Segment(delivery.PackQty, packUnit));
+        if (hasUnit) parts.Add(Segment(delivery.UnitQty, unitUnit));
+        return string.Join("/", parts);
     }
 
     sealed class B2bSalesConfigDto
@@ -110,7 +136,10 @@ public static class B2bProductPricing
     sealed class DeliveryUnitDto
     {
         public string? OrderUnit { get; set; }
+        public decimal? OrderQty { get; set; }
         public string? PackUnit { get; set; }
+        public decimal? PackQty { get; set; }
         public string? UnitUnit { get; set; }
+        public decimal? UnitQty { get; set; }
     }
 }

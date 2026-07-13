@@ -45,7 +45,10 @@ export function blankDeliveryUnit(): DeliveryUnitBreakdown {
 
 export function blankB2bSalesUnit(isPrincipal = false, key?: string): B2bSalesUnitLine {
   return {
-    key: key || `b2b-unit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    // Principal must stay stable across reloads so My Product tags keep matching.
+    key: key || (isPrincipal
+      ? 'b2b-principal'
+      : `b2b-unit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
     isPrincipal,
     delivery: blankDeliveryUnit(),
     rrp: '',
@@ -251,12 +254,13 @@ export function parseB2bSalesConfigJson(json?: string | null): B2bSalesConfig {
     const parsed = JSON.parse(json) as Partial<B2bSalesConfig>;
     const principal = parsed.principal
       ? {
-          ...blankB2bSalesUnit(true),
+          ...blankB2bSalesUnit(true, 'b2b-principal'),
           ...parsed.principal,
+          key: parsed.principal.key?.trim() || 'b2b-principal',
           isPrincipal: true,
           delivery: { ...blankDeliveryUnit(), ...parsed.principal.delivery },
         }
-      : blankB2bSalesUnit(true);
+      : blankB2bSalesUnit(true, 'b2b-principal');
     const alternates = Array.isArray(parsed.alternates)
       ? ensureB2bAlternates(parsed.alternates.slice(0, MAX_B2B_ALTERNATE_DELIVERY_UNITS).map((line, index) => ({
           ...blankB2bSalesUnit(false, `b2b-alt-${index + 1}`),

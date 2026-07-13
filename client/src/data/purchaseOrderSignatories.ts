@@ -1,7 +1,7 @@
 import type { AppUser } from '../api';
 import { canApprovePurchaseOrder, parseUserAccess } from './userAccess';
 
-export type PurchaseDocumentKind = 'purchase_order' | 'purchase_request';
+export type PurchaseDocumentKind = 'purchase_order' | 'purchase_request' | 'sales_order';
 
 export type PurchaseOrderSignatories = {
   initiatedBy: string;
@@ -40,6 +40,23 @@ export function getPurchaseDocumentLabels(kind: PurchaseDocumentKind): PurchaseD
       savedMessage: 'Purchase requests saved and sent for approval',
       combinedPdfName: 'Purchase-Requests',
       errorCreate: 'Failed to submit purchase requests.',
+    };
+  }
+
+  if (kind === 'sales_order') {
+    return {
+      kind,
+      title: 'Sales Order',
+      confirmTitle: 'Confirm Sales Order',
+      successTitle: 'Sales Order Submitted',
+      successSubtitle: () => 'Sales order saved · share link below',
+      numberLabel: 'SO No.:',
+      pdfTitle: 'SALES ORDER',
+      submitButton: 'Submit Sales Order',
+      submittingButton: 'Submitting…',
+      savedMessage: 'Sales order saved',
+      combinedPdfName: 'Sales-Orders',
+      errorCreate: 'Failed to create sales order.',
     };
   }
 
