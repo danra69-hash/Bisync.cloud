@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, type AppUser } from '../api';
 import { REQUIRE_PLATFORM_LOGIN } from '../config/platformAuth';
 import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
+import { clearAllOnboardingFlags } from '../data/onboardingFlags';
 import {
   CurrentUserContext,
   DEMO_PASSWORD,
@@ -120,7 +121,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       }
     }
     localStorage.removeItem(AUTH_KEY);
-    localStorage.removeItem('bisync.awaitingSubscription');
+    clearAllOnboardingFlags();
     clearUserActivity();
     setIsAuthenticated(false);
     setCurrentUserIdState(null);

@@ -7,12 +7,15 @@ import { VendorRfqPortalPage } from './pages/VendorRfqPortalPage';
 import { SampleRequestPortalPage } from './pages/SampleRequestPortalPage';
 import { DevConsolePage } from './pages/DevConsolePage';
 import { ActivateAccountPage, parseActivationToken } from './pages/ActivateAccountPage';
-import {
-  CompanyOnboardingPage,
-  clearAwaitingSubscription,
-  isAwaitingSubscription,
-} from './pages/CompanyOnboardingPage';
+import { CompanyOnboardingPage } from './pages/CompanyOnboardingPage';
+import { LocationOnboardingPage } from './pages/LocationOnboardingPage';
 import { SubscriptionPlaceholderPage } from './pages/SubscriptionPlaceholderPage';
+import {
+  clearAwaitingLocation,
+  clearAwaitingPayment,
+  isAwaitingLocation,
+  isAwaitingPayment,
+} from './data/onboardingFlags';
 import { parseVendorOrderToken } from './data/vendorOrderShare';
 import { parseVendorRfqToken } from './data/vendorRfqShare';
 import { parseSampleRequestToken } from './data/requestForSample';
@@ -37,8 +40,9 @@ export function AppRoot() {
   const activationToken = parseActivationToken(window.location.pathname);
   const isDevConsole = matchDevConsolePath(window.location.pathname);
   const { isAuthenticated, loading, currentUser } = useCurrentUser();
-  /** Explicit step so subscription opens even if companyId sync races. */
-  const [forceSubscription, setForceSubscription] = useState(false);
+  /** Explicit steps so next gate opens even if user sync races. */
+  const [forceLocation, setForceLocation] = useState(false);
+  const [forcePayment, setForcePayment] = useState(false);
 
   if (vendorToken) {
     return <VendorOrderPortalPage token={vendorToken} />;
@@ -62,25 +66,48 @@ export function AppRoot() {
     return <LandingPage />;
   }
 
-  const showSubscription =
-    isAuthenticated
-    && (forceSubscription || (currentUser?.companyId != null && isAwaitingSubscription()));
-
-  if (showSubscription) {
+  // Self-serve gates: company (min 1) → location (min 1) → payment stub → app
+  if (isAuthenticated && currentUser && currentUser.companyId == null) {
     return (
-      <SubscriptionPlaceholderPage
-        onContinue={() => {
-          clearAwaitingSubscription();
-          setForceSubscription(false);
+      <CompanyOnboardingPage
+        onCompleted={() => setForceLocation(true)}
+      />
+    );
+  }
+
+  const hasCompany = currentUser?.companyId != null;
+  const hasLocation = (currentUser?.locationIds?.length ?? 0) > 0;
+  // Only gate onboarding funnel users — not every account with empty locationIds.
+  const needsLocation =
+    hasCompany
+    && (forceLocation
+      || isAwaitingLocation()
+      || (!hasLocation && isAwaitingPayment()));
+
+  if (isAuthenticated && needsLocation) {
+    return (
+      <LocationOnboardingPage
+        onCompleted={() => {
+          clearAwaitingLocation();
+          setForceLocation(false);
+          setForcePayment(true);
         }}
       />
     );
   }
 
-  if (isAuthenticated && currentUser && currentUser.companyId == null) {
+  const needsPayment =
+    hasCompany
+    && hasLocation
+    && (forcePayment || isAwaitingPayment());
+
+  if (isAuthenticated && needsPayment) {
     return (
-      <CompanyOnboardingPage
-        onCompleted={() => setForceSubscription(true)}
+      <SubscriptionPlaceholderPage
+        onContinue={() => {
+          clearAwaitingPayment();
+          setForcePayment(false);
+        }}
       />
     );
   }

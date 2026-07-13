@@ -30,6 +30,8 @@ public class AuthController(
 
     public record CompleteCompanyOnboardingRequest(int UserId, CompanyOnboardingDto Company);
 
+    public record CompleteLocationOnboardingRequest(int UserId, LocationOnboardingDto Location);
+
     public class CompanyOnboardingDto
     {
         public string Name { get; set; } = string.Empty;
@@ -48,6 +50,16 @@ public class AuthController(
         public string BusinessTypesJson { get; set; } = "[]";
         public string VendorPolicyTagsJson { get; set; } = "[]";
         public string ModulesJson { get; set; } = "[]";
+    }
+
+    public class LocationOnboardingDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string AddressLine1 { get; set; } = string.Empty;
+        public string AddressLine2 { get; set; } = string.Empty;
+        public string City { get; set; } = string.Empty;
+        public string StateProvince { get; set; } = string.Empty;
+        public string Postcode { get; set; } = string.Empty;
     }
 
     [HttpPost("login")]
@@ -240,6 +252,98 @@ public class AuthController(
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
         var locations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
         return Ok(MapUser(user, companies, locations));
+    }
+
+    [HttpPost("complete-location-onboarding")]
+    public async Task<ActionResult<object>> CompleteLocationOnboarding([FromBody] CompleteLocationOnboardingRequest request)
+    {
+        if (request.UserId <= 0)
+            return BadRequest(new { message = "User is required." });
+        if (request.Location is null || string.IsNullOrWhiteSpace(request.Location.Name))
+            return BadRequest(new { message = "Location name is required." });
+
+        var user = await db.AppUsers.Include(u => u.Employee).FirstOrDefaultAsync(u => u.Id == request.UserId);
+        if (user is null || !user.Active)
+            return NotFound(new { message = "User not found or not activated." });
+        if (user.CompanyId is null)
+            return BadRequest(new { message = "Register a company before adding a location." });
+
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == user.CompanyId.Value);
+        if (company is null)
+            return BadRequest(new { message = "Company not found." });
+
+        var assignedIds = ParseLocationIds(user.LocationIdsJson);
+        var companyLocationIds = await db.Locations.AsNoTracking()
+            .Where(l => l.CompanyId == company.Id)
+            .Select(l => l.Id)
+            .ToListAsync();
+        if (companyLocationIds.Count > 0 && assignedIds.Any(id => companyLocationIds.Contains(id)))
+        {
+            var existingCompanies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
+            var existingLocations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
+            return Ok(MapUser(user, existingCompanies, existingLocations));
+        }
+
+        var dto = request.Location;
+        // Inherit company profile/modules for first onboarding location.
+        const string inherit = "[]";
+        var businessTypesJson = CompanyProfileRules.NormalizeLocationProfileForStorage(inherit, company.BusinessTypesJson);
+        var vendorPolicyTagsJson = CompanyProfileRules.NormalizeLocationProfileForStorage(inherit, company.VendorPolicyTagsJson, ignoreCase: true);
+        var modulesJson = CompanyModuleRules.NormalizeLocationModulesForStorage(inherit, company.ModulesJson);
+        var effectiveBusinessTypesJson = CompanyProfileRules.ResolveProfileJson(businessTypesJson, company.BusinessTypesJson);
+        var effectiveVendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(vendorPolicyTagsJson, company.VendorPolicyTagsJson);
+        var validationError = CompanyProfileRules.Validate(effectiveBusinessTypesJson, effectiveVendorPolicyTagsJson);
+        if (validationError is not null)
+            return BadRequest(new { message = validationError });
+
+        await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Locations");
+
+        var externalId = await GenerateUniqueLocationExternalIdAsync(dto.Name);
+
+        var loc = new Location
+        {
+            ExternalId = externalId,
+            Name = dto.Name.Trim(),
+            CompanyId = company.Id,
+            AddressLine1 = dto.AddressLine1?.Trim() ?? string.Empty,
+            AddressLine2 = dto.AddressLine2?.Trim() ?? string.Empty,
+            City = dto.City?.Trim() ?? string.Empty,
+            StateProvince = dto.StateProvince?.Trim() ?? string.Empty,
+            Postcode = dto.Postcode?.Trim() ?? string.Empty,
+            PrincipalContactUserId = user.Id,
+            BusinessTypesJson = businessTypesJson,
+            VendorPolicyTagsJson = vendorPolicyTagsJson,
+            ModulesJson = modulesJson,
+            Address = string.Join(", ", new[] { dto.AddressLine1, dto.City, dto.StateProvince, dto.Postcode }
+                .Where(s => !string.IsNullOrWhiteSpace(s))),
+        };
+
+        db.Locations.Add(loc);
+        await db.SaveChangesAsync();
+
+        if (!assignedIds.Contains(loc.Id))
+            assignedIds.Add(loc.Id);
+        user.LocationIdsJson = JsonSerializer.Serialize(assignedIds);
+        await db.SaveChangesAsync();
+
+        var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
+        var locationsMap = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
+        return Ok(MapUser(user, companies, locationsMap));
+    }
+
+    async Task<string> GenerateUniqueLocationExternalIdAsync(string name)
+    {
+        var slugBase = new string(name.Trim().ToLowerInvariant().Where(ch => char.IsLetterOrDigit(ch) || ch == '-').ToArray());
+        if (string.IsNullOrWhiteSpace(slugBase)) slugBase = "location";
+        var candidate = slugBase.Length > 36 ? slugBase[..36] : slugBase;
+        var suffix = 2;
+        while (await db.Locations.AnyAsync(l => l.ExternalId == candidate))
+        {
+            candidate = $"{slugBase}-{suffix}";
+            if (candidate.Length > 40) candidate = $"{slugBase[..Math.Max(1, 40 - $"-{suffix}".Length)]}-{suffix}";
+            suffix++;
+        }
+        return candidate;
     }
 
     static string NormalizePhoneDigits(string? phone)

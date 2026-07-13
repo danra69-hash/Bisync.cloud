@@ -1,17 +1,18 @@
 import { useAppTranslation } from '../i18n/useAppTranslation';
 import { useCurrentUser } from '../hooks/useCurrentUser';
-import { clearAwaitingSubscription } from './CompanyOnboardingPage';
+import { clearAwaitingPayment } from '../data/onboardingFlags';
 
 type Props = {
   onContinue: () => void;
 };
 
+/** Placeholder until payment based on min 1 company + 1 location is built. */
 export function SubscriptionPlaceholderPage({ onContinue }: Props) {
   const { t } = useAppTranslation();
   const { currentUser, logout } = useCurrentUser();
 
   function handleContinue() {
-    clearAwaitingSubscription();
+    clearAwaitingPayment();
     onContinue();
   }
 
@@ -21,9 +22,9 @@ export function SubscriptionPlaceholderPage({ onContinue }: Props) {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#C9963A]">
-              {t('auth.onboardingStepSubscription')}
+              {t('auth.onboardingStepPayment')}
             </p>
-            <h1 className="text-xl font-bold text-herme-ink">{t('auth.subscriptionTitle')}</h1>
+            <h1 className="text-xl font-bold text-herme-ink">{t('auth.paymentTitle')}</h1>
           </div>
           <button
             type="button"
@@ -38,13 +39,13 @@ export function SubscriptionPlaceholderPage({ onContinue }: Props) {
       <main className="mx-auto max-w-3xl px-6 py-16 text-center">
         <div className="rounded-2xl border border-dashed border-[#C9963A]/50 bg-white px-8 py-12 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-widest text-[#C9963A]">
-            {t('auth.subscriptionComingSoon')}
+            {t('auth.paymentComingSoon')}
           </p>
           <h2 className="mt-3 text-2xl font-bold text-herme-ink">
-            {t('auth.subscriptionPlaceholderHeading')}
+            {t('auth.paymentPlaceholderHeading')}
           </h2>
           <p className="mx-auto mt-3 max-w-lg text-sm text-herme-ink/60">
-            {t('auth.subscriptionPlaceholderBody', {
+            {t('auth.paymentPlaceholderBody', {
               company: currentUser?.companyName ?? t('auth.yourCompany'),
             })}
           </p>

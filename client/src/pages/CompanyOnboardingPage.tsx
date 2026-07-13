@@ -15,6 +15,7 @@ import { CountryPhoneInput, getPhoneValidationError } from '../components/shared
 import { COUNTRIES, inputCls, selectCls } from '../data/countries';
 import type { AddressParts } from '../utils/countryFormat';
 import { CompanyProfileFields } from '../components/admin/CompanyProfileFields';
+import { setAwaitingLocation } from '../data/onboardingFlags';
 
 type CompanyDraft = Omit<Company, 'id' | 'locationCount'>;
 
@@ -36,8 +37,6 @@ const blankCompany = (): CompanyDraft => ({
   vendorPolicyTagsJson: '[]',
   modulesJson: '[]',
 });
-
-const SUBSCRIPTION_FLAG = 'bisync.awaitingSubscription';
 
 type Props = {
   onCompleted: () => void;
@@ -129,14 +128,14 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
     setError(null);
     try {
       const user = await api.completeCompanyOnboarding(currentUser.id, payload);
-      localStorage.setItem(SUBSCRIPTION_FLAG, 'true');
+      setAwaitingLocation();
       applyAuthenticatedUser(user);
       onCompleted();
     } catch (err) {
       const message = err instanceof Error ? err.message : t('auth.companySaveFailed');
       // Prior attempt may have linked the company already — continue onboarding.
       if (/already linked/i.test(message)) {
-        localStorage.setItem(SUBSCRIPTION_FLAG, 'true');
+        setAwaitingLocation();
         onCompleted();
         return;
       }
@@ -284,7 +283,7 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
               onClick={() => void save()}
               className="rounded-xl bg-[#C9963A] px-6 py-3 text-sm font-semibold text-white hover:bg-[#A87A2E] disabled:opacity-60"
             >
-              {saving ? t('auth.savingCompany') : t('auth.continueToSubscription')}
+              {saving ? t('auth.savingCompany') : t('auth.continueToLocation')}
             </button>
           </div>
           <p className="text-right text-[11px] text-muted-foreground">
@@ -294,12 +293,4 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
       </main>
     </div>
   );
-}
-
-export function isAwaitingSubscription(): boolean {
-  return localStorage.getItem(SUBSCRIPTION_FLAG) === 'true';
-}
-
-export function clearAwaitingSubscription(): void {
-  localStorage.removeItem(SUBSCRIPTION_FLAG);
 }

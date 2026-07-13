@@ -1768,6 +1768,21 @@ export const api = {
       userId,
       company,
     }),
+  completeLocationOnboarding: (
+    userId: number,
+    location: {
+      name: string;
+      addressLine1: string;
+      addressLine2: string;
+      city: string;
+      stateProvince: string;
+      postcode: string;
+    },
+  ) =>
+    fetchJsonWithMethod<AppUser>('/api/auth/complete-location-onboarding', 'POST', {
+      userId,
+      location,
+    }),
   availableEmployees: () => fetchJson<AvailableEmployee[]>('/api/users/available-employees'),
   createUser: (data: UserUpsert) => fetchJsonWithMethod<AppUser>('/api/users', 'POST', data),
   updateUser: (id: number, data: UserUpsert) => fetchJsonWithMethod<AppUser>(`/api/users/${id}`, 'PUT', data),
