@@ -17,7 +17,6 @@ import {
   isAwaitingLocation,
   isAwaitingPayment,
 } from './data/onboardingFlags';
-import { parseVendorOrderToken } from './data/vendorOrderShare';
 import { parseVendorOrderShareTarget } from './data/vendorOrderShare';
 import { parseVendorRfqToken } from './data/vendorRfqShare';
 import { parseSampleRequestToken } from './data/requestForSample';
