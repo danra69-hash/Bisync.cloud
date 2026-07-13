@@ -28,7 +28,27 @@ public class AuthController(
 
     public record ConfirmActivationRequest(string Token);
 
-    public record CompleteCompanyOnboardingRequest(int UserId, Company Company);
+    public record CompleteCompanyOnboardingRequest(int UserId, CompanyOnboardingDto Company);
+
+    public class CompanyOnboardingDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Brn { get; set; } = string.Empty;
+        public string GstTin { get; set; } = string.Empty;
+        public string CountryCode { get; set; } = "MY";
+        public string AddressLine1 { get; set; } = string.Empty;
+        public string AddressLine2 { get; set; } = string.Empty;
+        public string City { get; set; } = string.Empty;
+        public string StateProvince { get; set; } = string.Empty;
+        public string Postcode { get; set; } = string.Empty;
+        public string Phone { get; set; } = string.Empty;
+        public string Fax { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public bool Active { get; set; } = true;
+        public string BusinessTypesJson { get; set; } = "[]";
+        public string VendorPolicyTagsJson { get; set; } = "[]";
+        public string ModulesJson { get; set; } = "[]";
+    }
 
     [HttpPost("login")]
     public async Task<ActionResult<object>> Login([FromBody] LoginRequest request)
@@ -175,16 +195,38 @@ public class AuthController(
         if (user is null || !user.Active)
             return NotFound(new { message = "User not found or not activated." });
         if (user.CompanyId is not null)
-            return Conflict(new { message = "This account is already linked to a company." });
+        {
+            var existingCompanies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
+            var existingLocations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
+            return Ok(MapUser(user, existingCompanies, existingLocations));
+        }
 
-        var company = request.Company;
-        var validationError = CompanyProfileRules.Validate(company.BusinessTypesJson, company.VendorPolicyTagsJson);
+        var dto = request.Company;
+        var validationError = CompanyProfileRules.Validate(dto.BusinessTypesJson, dto.VendorPolicyTagsJson);
         if (validationError is not null) return BadRequest(new { message = validationError });
-        var modulesError = CompanyModuleRules.ValidateCompanyModules(company.ModulesJson);
+        var modulesError = CompanyModuleRules.ValidateCompanyModules(dto.ModulesJson);
         if (modulesError is not null) return BadRequest(new { message = modulesError });
 
-        company.Id = 0;
-        company.Active = true;
+        var company = new Company
+        {
+            Name = dto.Name.Trim(),
+            Brn = dto.Brn?.Trim() ?? string.Empty,
+            GstTin = dto.GstTin?.Trim() ?? string.Empty,
+            CountryCode = string.IsNullOrWhiteSpace(dto.CountryCode) ? "MY" : dto.CountryCode.Trim(),
+            AddressLine1 = dto.AddressLine1?.Trim() ?? string.Empty,
+            AddressLine2 = dto.AddressLine2?.Trim() ?? string.Empty,
+            City = dto.City?.Trim() ?? string.Empty,
+            StateProvince = dto.StateProvince?.Trim() ?? string.Empty,
+            Postcode = dto.Postcode?.Trim() ?? string.Empty,
+            Phone = dto.Phone?.Trim() ?? string.Empty,
+            Fax = dto.Fax?.Trim() ?? string.Empty,
+            Email = dto.Email?.Trim() ?? string.Empty,
+            Active = true,
+            BusinessTypesJson = dto.BusinessTypesJson ?? "[]",
+            VendorPolicyTagsJson = dto.VendorPolicyTagsJson ?? "[]",
+            ModulesJson = dto.ModulesJson ?? "[]",
+        };
+
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Companies");
         db.Companies.Add(company);
         await db.SaveChangesAsync();

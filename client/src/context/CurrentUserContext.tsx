@@ -90,11 +90,19 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applyAuthenticatedUser = useCallback((user: AppUser) => {
-    setUsers(prev => upsertUser(prev, user));
+    const normalized: AppUser = {
+      ...user,
+      id: Number(user.id),
+      companyId: user.companyId == null ? null : Number(user.companyId),
+      locationIds: Array.isArray(user.locationIds) ? user.locationIds : [],
+      locationIdsJson: user.locationIdsJson ?? '[]',
+      accessJson: user.accessJson ?? '{"modules":[]}',
+    };
+    setUsers(prev => upsertUser(prev, normalized));
     localStorage.setItem(AUTH_KEY, 'true');
-    localStorage.setItem(STORAGE_KEY, String(user.id));
+    localStorage.setItem(STORAGE_KEY, String(normalized.id));
     markUserActivity();
-    setCurrentUserIdState(user.id);
+    setCurrentUserIdState(normalized.id);
     setIsAuthenticated(true);
   }, []);
 

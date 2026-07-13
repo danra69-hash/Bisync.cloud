@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api, type Company } from '../api';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useAppTranslation } from '../i18n/useAppTranslation';
@@ -52,6 +52,7 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
   const [modules, setModules] = useState<AccessModule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
 
   function set<K extends keyof CompanyDraft>(key: K, val: CompanyDraft[K]) {
     setForm(f => ({ ...f, [key]: val }));
@@ -78,24 +79,31 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
     setError(null);
   }
 
+  function showError(message: string) {
+    setError(message);
+    window.requestAnimationFrame(() => {
+      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
   async function save() {
     if (!currentUser) {
-      setError(t('auth.loginRequired'));
+      showError(t('auth.loginRequired'));
       return;
     }
     if (!form.name.trim()) {
-      setError(t('auth.companyNameRequired'));
+      showError(t('auth.companyNameRequired'));
       return;
     }
 
     const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
     if (profileError) {
-      setError(profileError);
+      showError(profileError);
       return;
     }
     const modulesError = validateCompanyModules(modules);
     if (modulesError) {
-      setError(modulesError);
+      showError(modulesError);
       return;
     }
 
@@ -104,7 +112,7 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
     const addressError = getAddressValidationError(form.countryCode, addressParts);
     const validationError = phoneError ?? faxError ?? addressError;
     if (validationError) {
-      setError(validationError);
+      showError(validationError);
       return;
     }
 
@@ -125,7 +133,14 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
       applyAuthenticatedUser(user);
       onCompleted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('auth.companySaveFailed'));
+      const message = err instanceof Error ? err.message : t('auth.companySaveFailed');
+      // Prior attempt may have linked the company already — continue onboarding.
+      if (/already linked/i.test(message)) {
+        localStorage.setItem(SUBSCRIPTION_FLAG, 'true');
+        onCompleted();
+        return;
+      }
+      showError(message);
     } finally {
       setSaving(false);
     }
@@ -153,12 +168,6 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
 
       <main className="mx-auto max-w-3xl px-6 py-8">
         <p className="mb-6 text-sm text-herme-ink/60">{t('auth.companyRegistrationHint')}</p>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
 
         <div className="space-y-4 rounded-2xl border border-border bg-white p-6 shadow-sm">
           <label className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
@@ -259,15 +268,28 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
           />
         </div>
 
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void save()}
-            className="rounded-xl bg-[#C9963A] px-6 py-3 text-sm font-semibold text-white hover:bg-[#A87A2E] disabled:opacity-60"
-          >
-            {saving ? t('auth.savingCompany') : t('auth.continueToSubscription')}
-          </button>
+        <div className="mt-6 space-y-3">
+          {error && (
+            <div
+              ref={errorRef}
+              className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {error}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void save()}
+              className="rounded-xl bg-[#C9963A] px-6 py-3 text-sm font-semibold text-white hover:bg-[#A87A2E] disabled:opacity-60"
+            >
+              {saving ? t('auth.savingCompany') : t('auth.continueToSubscription')}
+            </button>
+          </div>
+          <p className="text-right text-[11px] text-muted-foreground">
+            Required: company name, business type, module, and vendor product policy.
+          </p>
         </div>
       </main>
     </div>

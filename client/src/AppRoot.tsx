@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import App from './App';
 import { useCurrentUser } from './hooks/useCurrentUser';
 import { LandingPage } from './pages/LandingPage';
@@ -8,6 +9,7 @@ import { DevConsolePage } from './pages/DevConsolePage';
 import { ActivateAccountPage, parseActivationToken } from './pages/ActivateAccountPage';
 import {
   CompanyOnboardingPage,
+  clearAwaitingSubscription,
   isAwaitingSubscription,
 } from './pages/CompanyOnboardingPage';
 import { SubscriptionPlaceholderPage } from './pages/SubscriptionPlaceholderPage';
@@ -16,7 +18,6 @@ import { parseVendorRfqToken } from './data/vendorRfqShare';
 import { parseSampleRequestToken } from './data/requestForSample';
 import { matchDevConsolePath } from './config/devConsole';
 import { REQUIRE_PLATFORM_LOGIN } from './config/platformAuth';
-import { useState } from 'react';
 
 function LoadingScreen() {
   return (
@@ -36,7 +37,8 @@ export function AppRoot() {
   const activationToken = parseActivationToken(window.location.pathname);
   const isDevConsole = matchDevConsolePath(window.location.pathname);
   const { isAuthenticated, loading, currentUser } = useCurrentUser();
-  const [onboardingTick, setOnboardingTick] = useState(0);
+  /** Explicit step so subscription opens even if companyId sync races. */
+  const [forceSubscription, setForceSubscription] = useState(false);
 
   if (vendorToken) {
     return <VendorOrderPortalPage token={vendorToken} />;
@@ -60,23 +62,28 @@ export function AppRoot() {
     return <LandingPage />;
   }
 
+  const showSubscription =
+    isAuthenticated
+    && (forceSubscription || (currentUser?.companyId != null && isAwaitingSubscription()));
+
+  if (showSubscription) {
+    return (
+      <SubscriptionPlaceholderPage
+        onContinue={() => {
+          clearAwaitingSubscription();
+          setForceSubscription(false);
+        }}
+      />
+    );
+  }
+
   if (isAuthenticated && currentUser && currentUser.companyId == null) {
     return (
       <CompanyOnboardingPage
-        onCompleted={() => setOnboardingTick(v => v + 1)}
+        onCompleted={() => setForceSubscription(true)}
       />
     );
   }
 
-  if (isAuthenticated && currentUser?.companyId != null && isAwaitingSubscription()) {
-    return (
-      <SubscriptionPlaceholderPage
-        onContinue={() => setOnboardingTick(v => v + 1)}
-      />
-    );
-  }
-
-  // onboardingTick forces re-render after localStorage flag changes
-  void onboardingTick;
   return <App />;
 }
