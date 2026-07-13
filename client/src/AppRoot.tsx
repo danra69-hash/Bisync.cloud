@@ -10,7 +10,7 @@ import { DevConsolePage } from './pages/DevConsolePage';
 import { ActivateAccountPage, parseActivationToken } from './pages/ActivateAccountPage';
 import { CompanyOnboardingPage } from './pages/CompanyOnboardingPage';
 import { LocationOnboardingPage } from './pages/LocationOnboardingPage';
-import { SubscriptionPlaceholderPage } from './pages/SubscriptionPlaceholderPage';
+import { PaymentPage } from './pages/PaymentPage';
 import {
   clearAwaitingLocation,
   clearAwaitingPayment,
@@ -109,7 +109,7 @@ export function AppRoot() {
 
   if (isAuthenticated && needsPayment) {
     return (
-      <SubscriptionPlaceholderPage
+      <PaymentPage
         onContinue={() => {
           clearAwaitingPayment();
           setForcePayment(false);
