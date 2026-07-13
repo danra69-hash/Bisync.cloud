@@ -89,6 +89,15 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(true);
   }, []);
 
+  const applyAuthenticatedUser = useCallback((user: AppUser) => {
+    setUsers(prev => upsertUser(prev, user));
+    localStorage.setItem(AUTH_KEY, 'true');
+    localStorage.setItem(STORAGE_KEY, String(user.id));
+    markUserActivity();
+    setCurrentUserIdState(user.id);
+    setIsAuthenticated(true);
+  }, []);
+
   const logout = useCallback(() => {
     if (!REQUIRE_PLATFORM_LOGIN) {
       // Auth paused — stay in-app on the default user instead of bouncing to landing.
@@ -103,6 +112,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
       }
     }
     localStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem('bisync.awaitingSubscription');
     clearUserActivity();
     setIsAuthenticated(false);
     setCurrentUserIdState(null);
@@ -114,7 +124,16 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
 
   return (
     <CurrentUserContext.Provider
-      value={{ currentUser, users, loading, isAuthenticated, setCurrentUserId, login, logout }}
+      value={{
+        currentUser,
+        users,
+        loading,
+        isAuthenticated,
+        setCurrentUserId,
+        login,
+        logout,
+        applyAuthenticatedUser,
+      }}
     >
       {children}
     </CurrentUserContext.Provider>

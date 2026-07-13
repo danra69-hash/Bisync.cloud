@@ -24,6 +24,8 @@ var defaultConnection = ApplyDbPassword(
 var archiveConnection = ApplyDbPassword(
     builder.Configuration.GetConnectionString("ArchiveConnection"), dbPassword);
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 builder.Services.AddDbContext<BisyncDbContext>(options =>
     options.UseNpgsql(defaultConnection));
 

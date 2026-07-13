@@ -12,6 +12,7 @@ export type CurrentUserContextValue = {
   setCurrentUserId: (id: number) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  applyAuthenticatedUser: (user: AppUser) => void;
 };
 
 export const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);

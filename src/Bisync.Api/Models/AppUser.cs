@@ -15,4 +15,6 @@ public class AppUser
     public Company? Company { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
     public string? PasswordHash { get; set; }
+    public string? ActivationToken { get; set; }
+    public DateTime? ActivationTokenExpiresAt { get; set; }
 }

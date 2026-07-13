@@ -1744,6 +1744,30 @@ export const api = {
   users: () => fetchJson<AppUser[]>('/api/users'),
   login: (email: string, password: string) =>
     fetchJsonWithMethod<AppUser>('/api/auth/login', 'POST', { email, password }),
+  register: (data: {
+    surname: string;
+    givenName: string;
+    email: string;
+    mobile: string;
+    password: string;
+    confirmPassword: string;
+  }) =>
+    fetchJsonWithMethod<{ message: string; email: string; activationUrl: string }>(
+      '/api/auth/register',
+      'POST',
+      data,
+    ),
+  confirmActivation: (token: string) =>
+    fetchJsonWithMethod<{ message: string; email: string }>(
+      '/api/auth/confirm-activation',
+      'POST',
+      { token },
+    ),
+  completeCompanyOnboarding: (userId: number, company: Omit<Company, 'id' | 'locationCount'>) =>
+    fetchJsonWithMethod<AppUser>('/api/auth/complete-company-onboarding', 'POST', {
+      userId,
+      company,
+    }),
   availableEmployees: () => fetchJson<AvailableEmployee[]>('/api/users/available-employees'),
   createUser: (data: UserUpsert) => fetchJsonWithMethod<AppUser>('/api/users', 'POST', data),
   updateUser: (id: number, data: UserUpsert) => fetchJsonWithMethod<AppUser>(`/api/users/${id}`, 'PUT', data),

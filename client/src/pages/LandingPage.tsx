@@ -12,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { LoginModal } from '../components/auth/LoginModal';
+import { RegisterModal } from '../components/auth/RegisterModal';
 import { LanguageSelector } from '../components/layout/LanguageSelector';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { useAppTranslation } from '../i18n/useAppTranslation';
@@ -99,6 +100,7 @@ function AiOrb({ labels }: { labels: string[] }) {
 export function LandingPage() {
   const { t } = useAppTranslation();
   const [loginOpen, setLoginOpen] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
 
   function scrollToFeatures() {
     document.getElementById('capabilities')?.scrollIntoView({ behavior: 'smooth' });
@@ -119,6 +121,13 @@ export function LandingPage() {
               className="rounded-full border border-herme bg-herme/10 px-6 py-2 text-sm font-semibold text-herme transition-all hover:bg-herme hover:text-white hover:shadow-lg hover:shadow-herme/25"
             >
               {t('landing.login')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRegisterOpen(true)}
+              className="rounded-full bg-[#C9963A] px-6 py-2 text-sm font-semibold text-white transition-all hover:bg-[#A87A2E] hover:shadow-lg hover:shadow-[#C9963A]/30"
+            >
+              {t('landing.register')}
             </button>
           </div>
         </div>
@@ -327,6 +336,15 @@ export function LandingPage() {
       </footer>
 
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
+      {registerOpen && (
+        <RegisterModal
+          onClose={() => setRegisterOpen(false)}
+          onOpenLogin={() => {
+            setRegisterOpen(false);
+            setLoginOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 }
