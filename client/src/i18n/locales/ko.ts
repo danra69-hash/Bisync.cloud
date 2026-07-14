@@ -160,6 +160,8 @@ export const ko = {
     locations: '매장',
     accessControl: '접근 제어',
     cogsAudit: 'COGS Audit',
+    auditTrail: 'Audit Trail',
+    ghostSupport: 'Ghost Support',
     addCompany: '회사 추가',
     addLocation: '매장 추가',
     registeredCompanies: '등록된 회사 {{count}}개',

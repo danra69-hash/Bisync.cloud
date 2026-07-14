@@ -96,18 +96,11 @@ export function GhostSupportTab({
 
   async function handleEnterGhost(e: React.FormEvent) {
     e.preventDefault();
-    if (!filtersReady || companyId === '' || locationId === '') return;
+    if (typeof companyId !== 'number' || typeof locationId !== 'number') return;
     setEntering(true);
     setEnterError(null);
     try {
-      let result: Awaited<ReturnType<typeof devConsoleAuthApi.ghostEnter>>;
-      if (allowDevConsoleAccess) {
-        result = await devConsoleAuthApi.ghostEnter({ companyId, locationId });
-      } else {
-        // From System Configuration: still use Dev Console API if a Dev session exists;
-        // otherwise require the operator to use Dev Console.
-        result = await devConsoleAuthApi.ghostEnter({ companyId, locationId });
-      }
+      const result = await devConsoleAuthApi.ghostEnter({ companyId, locationId });
 
       setGhostSupportSession({
         companyId: result.company.id,

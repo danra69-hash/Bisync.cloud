@@ -160,6 +160,8 @@ export const th = {
     locations: 'สาขา',
     accessControl: 'การควบคุมการเข้าถึง',
     cogsAudit: 'COGS Audit',
+    auditTrail: 'Audit Trail',
+    ghostSupport: 'Ghost Support',
     addCompany: 'เพิ่มบริษัท',
     addLocation: 'เพิ่มสาขา',
     registeredCompanies: 'บริษัทที่ลงทะเบียน {{count}} แห่ง',

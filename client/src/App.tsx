@@ -447,6 +447,7 @@ export default function App() {
           ) : activeNav === 'System Configuration' ? (
             <SystemConfigurationPage
               selectedCompanyId={selectedCompanyId}
+              selectedLocationIds={selectedLocationIds}
               onOrgDataChanged={refreshOrgFilters}
             />
           ) : activeNav === 'Human Resources' ? (

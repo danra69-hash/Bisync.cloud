@@ -160,6 +160,8 @@ export const it = {
     locations: 'Sedi',
     accessControl: 'Controllo accessi',
     cogsAudit: 'COGS Audit',
+    auditTrail: 'Audit Trail',
+    ghostSupport: 'Ghost Support',
     addCompany: 'Aggiungi azienda',
     addLocation: 'Aggiungi sede',
     registeredCompanies: '{{count}} aziende registrate',

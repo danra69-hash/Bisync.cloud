@@ -176,7 +176,7 @@ function TrailDetailPanel({
                         <ul className="mt-1.5 space-y-0.5">
                           {task.irregularities!.map((item, index) => (
                             <li key={`${task.id}-irr-${index}`} className="text-[11px] text-red-700 dark:text-red-300">
-                              · {item}
+                              · {item.label}: {item.actual}
                             </li>
                           ))}
                         </ul>

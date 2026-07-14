@@ -160,6 +160,8 @@ export const ms = {
     locations: 'Lokasi',
     accessControl: 'Kawalan Akses',
     cogsAudit: 'COGS Audit',
+    auditTrail: 'Audit Trail',
+    ghostSupport: 'Ghost Support',
     addCompany: 'Tambah Syarikat',
     addLocation: 'Tambah Lokasi',
     registeredCompanies: '{{count}} syarikat berdaftar',

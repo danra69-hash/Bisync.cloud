@@ -160,6 +160,8 @@ export const ja = {
     locations: '店舗',
     accessControl: 'アクセス制御',
     cogsAudit: 'COGS Audit',
+    auditTrail: 'Audit Trail',
+    ghostSupport: 'Ghost Support',
     addCompany: '会社を追加',
     addLocation: '店舗を追加',
     registeredCompanies: '登録会社 {{count}} 社',

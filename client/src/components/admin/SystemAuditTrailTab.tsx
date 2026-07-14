@@ -143,7 +143,7 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
   }, [companyId, locationId]);
 
   const loadRows = useCallback(async () => {
-    if (!filtersReady || companyId === '' || locationId === '') {
+    if (typeof companyId !== 'number' || typeof locationId !== 'number') {
       setRows([]);
       setTotal(0);
       return;
