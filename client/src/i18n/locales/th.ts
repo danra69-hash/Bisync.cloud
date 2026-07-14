@@ -237,7 +237,7 @@ export const th = {
     emailAddress: 'Email address',
     mobileNumber: 'Mobile number',
     preferredLanguage: 'Preferred language',
-    detectingCountry: 'Detecting your country for the dial code…',
+    detectingCountry: 'Detecting your country for the dial code...',
     mobileCountryHint: 'Dial code {{dialCode}} ({{country}}). Change the flag if you need another country.',
     mobileRequired: 'Enter a valid mobile number.',
     mobileCountryCode: 'Country code',
