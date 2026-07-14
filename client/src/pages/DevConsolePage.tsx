@@ -14,6 +14,13 @@ import { useCurrentUser } from '../hooks/useCurrentUser';
  */
 const REQUIRE_DEV_CONSOLE_LOGIN = false;
 
+type DevConsoleTab = 'overview' | 'automated-qa';
+
+const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'automated-qa', label: 'Power-user Automated QA' },
+];
+
 function DevLoginGate({ onSuccess }: { onSuccess: () => void }) {
   const { login } = useCurrentUser();
   const [email, setEmail] = useState('');
@@ -110,6 +117,7 @@ function DevForbidden() {
 export function DevConsolePage() {
   const { currentUser, isAuthenticated, loading } = useCurrentUser();
   const [tick, setTick] = useState(0);
+  const [tab, setTab] = useState<DevConsoleTab>('overview');
   const allowed = useMemo(
     () => canAccessDevConsole(currentUser, currentUser ? parseUserAccess(currentUser.accessJson) : undefined),
     [currentUser, tick],
@@ -151,12 +159,39 @@ export function DevConsolePage() {
             <p className="text-[11px] text-muted-foreground font-sans">{DEV_CONSOLE_PATH}</p>
           </div>
         </div>
+        <div className="max-w-6xl mx-auto px-4">
+          <nav className="flex gap-1 -mb-px" aria-label="Dev Console sections">
+            {DEV_CONSOLE_TABS.map(item => {
+              const active = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                  className={`px-3 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+                    active
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-10">
-        <UsageDashboard />
-        <TenantRollupsPanel />
-        <AutomatedQaPanel triggeredBy={triggeredBy} />
+        {tab === 'overview' && (
+          <>
+            <UsageDashboard />
+            <TenantRollupsPanel />
+          </>
+        )}
+        {tab === 'automated-qa' && (
+          <AutomatedQaPanel triggeredBy={triggeredBy} />
+        )}
       </main>
     </div>
   );
