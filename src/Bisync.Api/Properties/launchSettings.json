@@ -8,7 +8,8 @@
       "launchUrl": "api/health",
       "applicationUrl": "http://localhost:5299",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DEV_CONSOLE_ENABLED": "true"
       }
     }
   }

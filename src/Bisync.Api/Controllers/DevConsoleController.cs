@@ -7,7 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Bisync.Api.Controllers;
 
 /// <summary>
-/// Dev Team console APIs. Enabled when DEV_CONSOLE_ENABLED=true, or always in Development.
+/// Dev Team console APIs. Enabled when DEV_CONSOLE_ENABLED=true, always in Development,
+/// or when the request Host is localhost / 127.0.0.1 / ::1 (local Vite proxy).
+/// Cloud hosts stay disabled unless DEV_CONSOLE_ENABLED is set.
 /// Usage and rollups fan out across shared + provisioned company DBs.
 /// </summary>
 [ApiController]
@@ -21,7 +23,13 @@ public class DevConsoleController(
     bool IsEnabled()
     {
         if (env.IsDevelopment()) return true;
-        return string.Equals(config["DEV_CONSOLE_ENABLED"], "true", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(config["DEV_CONSOLE_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Local API (or Vite proxy) even if ASPNETCORE_ENVIRONMENT leaked as Production.
+        var host = Request.Host.Host;
+        return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || host is "127.0.0.1" or "::1";
     }
 
     ActionResult? Guard() => IsEnabled() ? null : NotFound();

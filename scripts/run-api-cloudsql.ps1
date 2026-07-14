@@ -53,10 +53,12 @@ $defaultConn = "Host=$ip;Port=5432;Database=bisync;Username=$DbUser;Password=$pa
 $archiveConn = "Host=$ip;Port=5432;Database=bisync_archive;Username=$DbUser;Password=$password;SSL Mode=Require;Trust Server Certificate=true"
 
 $env:ASPNETCORE_ENVIRONMENT = "Development"
+$env:DEV_CONSOLE_ENABLED = "true"
 $env:ConnectionStrings__DefaultConnection = $defaultConn
 $env:ConnectionStrings__ArchiveConnection = $archiveConn
 
 Write-Host "Starting API on http://localhost:5299 (Cloud SQL backend)..." -ForegroundColor Green
+Write-Host "  ASPNETCORE_ENVIRONMENT=Development  DEV_CONSOLE_ENABLED=true" -ForegroundColor Gray
 Push-Location (Join-Path $Root "src\Bisync.Api")
 dotnet run
 Pop-Location

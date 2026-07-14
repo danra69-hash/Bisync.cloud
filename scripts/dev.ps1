@@ -7,7 +7,14 @@ $root = Split-Path -Parent $PSScriptRoot
 
 if (-not $ClientOnly) {
     Write-Host "Starting Bisync API on http://localhost:5299 ..." -ForegroundColor Cyan
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\src\Bisync.Api'; dotnet run"
+    # Dev Console Guard() requires Development and/or DEV_CONSOLE_ENABLED (or localhost Host).
+    $apiCmd = @"
+`$env:ASPNETCORE_ENVIRONMENT = 'Development'
+`$env:DEV_CONSOLE_ENABLED = 'true'
+cd '$root\src\Bisync.Api'
+dotnet run
+"@
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", $apiCmd
     Start-Sleep -Seconds 3
 }
 
