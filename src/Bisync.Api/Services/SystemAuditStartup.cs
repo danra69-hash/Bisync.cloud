@@ -21,12 +21,18 @@ public static class SystemAuditStartup
 
         await using var scope = services.CreateAsyncScope();
         var auditDb = scope.ServiceProvider.GetRequiredService<SystemAuditDbContext>();
-        await auditDb.Database.EnsureCreatedAsync();
-        await EnsureAuditColumnsAsync(auditDb);
-
-        var archive = scope.ServiceProvider.GetRequiredService<ISystemAuditService>();
-        await archive.ArchiveOlderThanOneYearAsync();
-    }
+        try
+        {
+            await auditDb.Database.EnsureCreatedAsync();
+            await EnsureAuditColumnsAsync(auditDb);
+            var archive = scope.ServiceProvider.GetRequiredService<ISystemAuditService>();
+            await archive.ArchiveOlderThanOneYearAsync();
+        }
+        catch (Exception ex)
+        {
+            // Do not block API boot if the audit DB is temporarily unreachable.
+            Console.Error.WriteLine($"[SystemAudit] schema init failed: {ex.Message}");
+        }
 
     static async Task EnsureAuditColumnsAsync(SystemAuditDbContext auditDb)
     {
