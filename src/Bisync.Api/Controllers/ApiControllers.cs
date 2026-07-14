@@ -527,7 +527,9 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
 
 [ApiController]
 [Route("api/[controller]")]
-public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
+public class PurchaseOrdersController(
+    BisyncDbContext db,
+    LocationPartitionService locationPartitions) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
@@ -766,6 +768,17 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
         var updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
             db, order.Items, order.Id);
 
+        var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
+        var locationIdsJson = locationIds.Count > 0
+            ? order.LocationIdsJson
+            : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+        var locationExternalId = locationIds.Count > 0
+            ? locationIds[0].Trim().ToLowerInvariant()
+            : string.Empty;
+
+        if (!string.IsNullOrEmpty(locationExternalId))
+            await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+
         foreach (var line in request.Items)
         {
             var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
@@ -789,7 +802,11 @@ public class PurchaseOrdersController(BisyncDbContext db) : ControllerBase
                 PurchaseOrderId = order.Id,
                 PurchaseOrderItemId = item.Id,
                 CompanyId = order.CompanyId,
-                LocationIdsJson = order.LocationIdsJson,
+                LocationIdsJson = string.IsNullOrWhiteSpace(locationIdsJson)
+                    ? PurchaseOrderWorkflow.SerializeLocationIds(
+                        string.IsNullOrEmpty(locationExternalId) ? [] : [locationExternalId])
+                    : locationIdsJson,
+                LocationExternalId = locationExternalId,
             });
         }
 

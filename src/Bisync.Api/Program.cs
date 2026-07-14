@@ -93,6 +93,7 @@ builder.Services.AddScoped<TenantRollupService>();
 builder.Services.Configure<DevConsoleAuthOptions>(
     builder.Configuration.GetSection(DevConsoleAuthOptions.SectionName));
 builder.Services.AddHttpClient("google-oauth");
+builder.Services.AddHttpClient("geo-hint");
 builder.Services.AddScoped<DevConsoleAuthService>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.TenantContext>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.ITenantContext>(sp =>

@@ -3,6 +3,20 @@ import { createPortal } from 'react-dom';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { api } from '../../api';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import { setAppLocale } from '../../i18n';
+import {
+  DEFAULT_LOCALE,
+  isAppLocale,
+  LANGUAGES,
+  readStoredLocale,
+  type AppLocale,
+} from '../../i18n/languages';
+import {
+  DEFAULT_PHONE_COUNTRY,
+  getPhoneCountry,
+  preferredLanguageForCountry,
+} from '../../data/phoneCountries';
+import { RegisterPhoneInput } from './RegisterPhoneInput';
 
 type Props = {
   onClose: () => void;
@@ -16,6 +30,8 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
   const [givenName, setGivenName] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
+  const [phoneCountryCode, setPhoneCountryCode] = useState(DEFAULT_PHONE_COUNTRY);
+  const [preferredLanguage, setPreferredLanguage] = useState<AppLocale>(() => readStoredLocale());
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,6 +39,14 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
   const [successEmail, setSuccessEmail] = useState<string | null>(null);
+  const [geoStatus, setGeoStatus] = useState<'loading' | 'ready'>('loading');
+  const countryManualRef = useRef(false);
+  const languageManualRef = useRef(false);
+
+  // Keep registration UI in the selected preferred language for the whole flow.
+  useEffect(() => {
+    void setAppLocale(preferredLanguage);
+  }, [preferredLanguage]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -37,6 +61,55 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const hint = await api.geoHint();
+        if (cancelled) return;
+        const country = getPhoneCountry(hint.countryCode).code;
+        if (!countryManualRef.current) {
+          setPhoneCountryCode(country);
+          setMobile(prev => {
+            if (prev.trim()) return prev;
+            return getPhoneCountry(country).dialCode;
+          });
+        }
+        // Only infer language from IP when the user has not chosen one yet in this session.
+        if (!languageManualRef.current && preferredLanguage === readStoredLocale() && !sessionStorage.getItem('bisync.registerLanguageChosen')) {
+          const inferred = preferredLanguageForCountry(country);
+          const nextLocale = isAppLocale(inferred) ? inferred : DEFAULT_LOCALE;
+          setPreferredLanguage(nextLocale);
+        }
+      } catch {
+        // keep defaults
+      } finally {
+        if (!cancelled) setGeoStatus('ready');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- geo once on open
+
+  async function handleLanguageChange(code: AppLocale) {
+    languageManualRef.current = true;
+    try {
+      sessionStorage.setItem('bisync.registerLanguageChosen', code);
+    } catch {
+      // ignore
+    }
+    setPreferredLanguage(code);
+    setError(null);
+    await setAppLocale(code);
+  }
+
+  function handlePhoneCountryChange(code: string) {
+    countryManualRef.current = true;
+    setPhoneCountryCode(code);
+    setError(null);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -49,6 +122,11 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
       setError(t('auth.passwordMismatch'));
       return;
     }
+    const digits = mobile.replace(/\D/g, '');
+    if (digits.length < 8) {
+      setError(t('auth.mobileRequired'));
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -59,9 +137,14 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
         mobile,
         password,
         confirmPassword,
+        preferredLanguage,
+        phoneCountryCode,
       });
       setSuccessEmail(result.email);
       setActivationUrl(result.activationUrl);
+      if (isAppLocale(result.preferredLanguage)) {
+        await setAppLocale(result.preferredLanguage);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.registerFailed'));
     } finally {
@@ -71,6 +154,11 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
 
   const inputCls =
     'w-full rounded-xl border border-herme-muted/70 bg-herme-cream px-4 py-3 text-sm text-herme-ink placeholder:text-herme-ink/30 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-herme';
+  const selectCls = `${inputCls} cursor-pointer`;
+  const phoneSelectCls =
+    'shrink-0 w-[9.5rem] rounded-xl border border-herme-muted/70 bg-herme-cream px-2 py-3 text-sm text-herme-ink focus:border-transparent focus:outline-none focus:ring-2 focus:ring-herme cursor-pointer';
+  const phoneInputCls =
+    'min-w-0 flex-1 rounded-xl border border-herme-muted/70 bg-herme-cream px-4 py-3 text-sm text-herme-ink placeholder:text-herme-ink/30 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-herme';
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -83,7 +171,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="register-title"
-        className="relative w-full max-w-lg rounded-2xl border border-herme-muted/60 bg-white shadow-xl"
+        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-herme-muted/60 bg-white shadow-xl"
         onClick={e => e.stopPropagation()}
       >
         <button
@@ -145,6 +233,28 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
             <p className="mt-2 text-sm text-herme-ink/60">{t('auth.registerHint')}</p>
 
             <div className="mt-6 space-y-4">
+              <div>
+                <label htmlFor="reg-language" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-herme-ink/70">
+                  {t('auth.preferredLanguage')}
+                </label>
+                <select
+                  id="reg-language"
+                  required
+                  value={preferredLanguage}
+                  onChange={e => {
+                    const code = e.target.value;
+                    if (isAppLocale(code)) void handleLanguageChange(code);
+                  }}
+                  className={selectCls}
+                >
+                  {LANGUAGES.map(lang => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.flag} {lang.nativeName} ({lang.name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="reg-surname" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-herme-ink/70">
@@ -192,15 +302,24 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
                 <label htmlFor="reg-mobile" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-herme-ink/70">
                   {t('auth.mobileNumber')}
                 </label>
-                <input
+                <RegisterPhoneInput
                   id="reg-mobile"
-                  type="tel"
-                  autoComplete="tel"
+                  countryCode={phoneCountryCode}
+                  onCountryCodeChange={handlePhoneCountryChange}
                   value={mobile}
-                  onChange={e => { setMobile(e.target.value); setError(null); }}
+                  onChange={next => { setMobile(next); setError(null); }}
                   required
-                  className={inputCls}
+                  inputClassName={phoneInputCls}
+                  selectClassName={phoneSelectCls}
                 />
+                <p className="mt-1.5 text-xs text-herme-ink/45">
+                  {geoStatus === 'loading'
+                    ? t('auth.detectingCountry')
+                    : t('auth.mobileCountryHint', {
+                        country: getPhoneCountry(phoneCountryCode).name,
+                        dialCode: getPhoneCountry(phoneCountryCode).dialCode,
+                      })}
+                </p>
               </div>
 
               <div>

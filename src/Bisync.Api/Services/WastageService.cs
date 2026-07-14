@@ -7,11 +7,92 @@ namespace Bisync.Api.Services;
 
 public class WastageService(
     BisyncDbContext db,
-    ComponentStockService componentStock)
+    ComponentStockService componentStock,
+    ComponentFifoCostingService fifoCosting,
+    StockCardService stockCards)
 {
     public const string ReferenceType = "wastage";
     public const string SourceManual = "manual";
     public const string SourcePos = "pos";
+
+    public async Task<(decimal UnitPrice, decimal TotalValue, string Uom)> EstimateValueAsync(
+        int companyId,
+        string locationExternalId,
+        string itemType,
+        string itemKey,
+        decimal quantity,
+        string uom,
+        DateOnly wastedDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (quantity <= 0)
+            return (0, 0, (uom ?? string.Empty).Trim());
+
+        var type = NormalizeItemType(itemType);
+        var asOfEnd = EndOfUtcDay(wastedDate);
+        var loc = locationExternalId.Trim();
+
+        if (type == "component")
+        {
+            var ingredient = await db.Ingredients
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ComponentId == itemKey && i.CompanyId == companyId, cancellationToken)
+                ?? await db.Ingredients
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(i => i.ComponentId == itemKey, cancellationToken);
+
+            var deductQty = quantity;
+            var deductUom = (uom ?? string.Empty).Trim();
+            if (ingredient is not null)
+                (deductQty, deductUom) = IngredientUomBridge.ToInventoryPreferred(ingredient, deductQty, deductUom);
+
+            var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
+                itemKey.Trim(),
+                loc,
+                deductUom,
+                deductQty,
+                companyId,
+                asOfEnd,
+                cancellationToken);
+
+            var totalValue = Math.Round(unitPrice * deductQty, 2, MidpointRounding.AwayFromZero);
+            return (StockCardFifoEngine.RoundUnitPrice(unitPrice), totalValue, deductUom);
+        }
+
+        if (!int.TryParse(itemKey, out _))
+            return (0, 0, (uom ?? string.Empty).Trim());
+
+        var snapshot = await stockCards.GetAsOfSnapshotAsync(
+            type,
+            itemKey.Trim(),
+            companyId,
+            loc,
+            [loc],
+            "inventory",
+            wastedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            cancellationToken);
+
+        if (snapshot is null || snapshot.Layers.Count == 0)
+            return (0, 0, string.IsNullOrWhiteSpace(uom) ? (snapshot?.Uom ?? string.Empty) : uom.Trim());
+
+        var layers = snapshot.Layers
+            .Select((l, i) => new FifoLayer
+            {
+                ReceivedAt = l.SortOrder,
+                SourceId = i,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                SourceLabel = "on-hand",
+            })
+            .ToList();
+
+        var consumed = StockCardFifoEngine.Consume(ref layers, quantity);
+        var total = Math.Round(consumed.TotalCost, 2, MidpointRounding.AwayFromZero);
+        return (
+            StockCardFifoEngine.RoundUnitPrice(consumed.UnitPrice),
+            total,
+            string.IsNullOrWhiteSpace(uom) ? snapshot.Uom : uom.Trim());
+    }
 
     public async Task<WastageEntry> CreateManualAsync(
         int companyId,
@@ -51,7 +132,8 @@ public class WastageService(
         db.WastageEntries.Add(entry);
         await db.SaveChangesAsync(cancellationToken);
 
-        var occurredAt = wastedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        // End-of-day stamp so same-day purchases/receipts sit before wastage in FIFO.
+        var occurredAt = EndOfUtcDay(wastedDate);
         var reasonLabel = $"Wastage — {entry.Reason}";
 
         if (type == "component")
@@ -72,18 +154,17 @@ public class WastageService(
                     entry.ItemName = ingredient.Name;
             }
 
-            await componentStock.RecordDeductionAsync(
+            await RecordWastageComponentDeductionAsync(
                 entry.ItemKey,
                 entry.ItemName,
                 entry.LocationExternalId,
                 deductQty,
                 deductUom,
                 reasonLabel,
-                ReferenceType,
                 entry.Id,
                 companyId,
-                cancellationToken,
-                createdAt: occurredAt);
+                occurredAt,
+                cancellationToken);
         }
         else
         {
@@ -145,7 +226,7 @@ public class WastageService(
         db.WastageEntries.Add(entry);
         await db.SaveChangesAsync(cancellationToken);
 
-        var occurredAt = wastedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var occurredAt = EndOfUtcDay(wastedDate);
         var reasonLabel = $"POS wastage — check {entry.PosCheckNo} — {entry.Reason}";
 
         await DepleteProductOrSubProductAsync(
@@ -246,18 +327,17 @@ public class WastageService(
                 line.ComponentUom,
                 cancellationToken);
 
-            await componentStock.RecordDeductionAsync(
+            await RecordWastageComponentDeductionAsync(
                 line.ComponentId,
                 line.ComponentName,
                 locationExternalId,
                 deductQty,
                 deductUom,
                 reasonLabel,
-                ReferenceType,
                 wastageId,
                 companyId,
-                cancellationToken,
-                createdAt: occurredAt);
+                occurredAt,
+                cancellationToken);
         }
 
         foreach (var pack in product.PackagingItems.Where(l => !string.IsNullOrWhiteSpace(l.ComponentId)))
@@ -274,18 +354,17 @@ public class WastageService(
                 pack.ComponentUom,
                 cancellationToken);
 
-            await componentStock.RecordDeductionAsync(
+            await RecordWastageComponentDeductionAsync(
                 pack.ComponentId,
                 pack.ComponentName,
                 locationExternalId,
                 deductQty,
                 deductUom,
                 reasonLabel,
-                ReferenceType,
                 wastageId,
                 companyId,
-                cancellationToken,
-                createdAt: occurredAt);
+                occurredAt,
+                cancellationToken);
         }
 
         product.UpdatedAt = DateTime.UtcNow;
@@ -372,18 +451,17 @@ public class WastageService(
                 line.ComponentUom,
                 cancellationToken);
 
-            await componentStock.RecordDeductionAsync(
+            await RecordWastageComponentDeductionAsync(
                 line.ComponentId,
                 line.ComponentName,
                 locationExternalId,
                 deductQty,
                 deductUom,
                 reasonLabel,
-                ReferenceType,
                 wastageId,
                 companyId,
-                cancellationToken,
-                createdAt: occurredAt);
+                occurredAt,
+                cancellationToken);
         }
 
         foreach (var pack in subProduct.PackagingItems.Where(l => !string.IsNullOrWhiteSpace(l.ComponentId)))
@@ -400,19 +478,64 @@ public class WastageService(
                 pack.ComponentUom,
                 cancellationToken);
 
-            await componentStock.RecordDeductionAsync(
+            await RecordWastageComponentDeductionAsync(
                 pack.ComponentId,
                 pack.ComponentName,
                 locationExternalId,
                 deductQty,
                 deductUom,
                 reasonLabel,
-                ReferenceType,
                 wastageId,
                 companyId,
-                cancellationToken,
-                createdAt: occurredAt);
+                occurredAt,
+                cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Depletes component stock with FIFO unit cost as of <paramref name="occurredAt"/> (wasted date).
+    /// </summary>
+    async Task RecordWastageComponentDeductionAsync(
+        string componentId,
+        string componentName,
+        string locationExternalId,
+        decimal quantity,
+        string uom,
+        string reasonLabel,
+        int wastageId,
+        int companyId,
+        DateTime occurredAt,
+        CancellationToken cancellationToken)
+    {
+        if (quantity <= 0)
+            return;
+
+        var asOfEnd = DateTime.SpecifyKind(
+            occurredAt.Date.AddDays(1).AddTicks(-1),
+            occurredAt.Kind == DateTimeKind.Unspecified ? DateTimeKind.Utc : occurredAt.Kind);
+
+        var unitPrice = await fifoCosting.ResolveOutboundUnitPriceAsOfAsync(
+            componentId,
+            locationExternalId,
+            uom,
+            quantity,
+            companyId,
+            asOfEnd,
+            cancellationToken);
+
+        await componentStock.RecordDeductionAsync(
+            componentId,
+            componentName,
+            locationExternalId,
+            quantity,
+            uom,
+            reasonLabel,
+            ReferenceType,
+            wastageId,
+            companyId,
+            cancellationToken,
+            createdAt: occurredAt,
+            unitPriceOverride: unitPrice);
     }
 
     async Task<(decimal Quantity, string Uom)> ToInventoryDeductionAsync(
@@ -434,6 +557,9 @@ public class WastageService(
 
         return IngredientUomBridge.ToInventoryPreferred(ingredient, quantity, uom);
     }
+
+    static DateTime EndOfUtcDay(DateOnly date) =>
+        date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddDays(1).AddTicks(-1);
 
     static string NormalizeItemType(string itemType)
     {

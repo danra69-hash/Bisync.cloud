@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Net.Http.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
@@ -17,7 +18,8 @@ public class AuthController(
     IHttpContextAccessor httpContextAccessor,
     LocationPartitionService locationPartitions,
     CompanyOperationalDbProvisioner companyDbProvisioner,
-    ISystemAuditService systemAudit) : ControllerBase
+    ISystemAuditService systemAudit,
+    IHttpClientFactory httpClientFactory) : ControllerBase
 {
     public record LoginRequest(string Email, string Password);
 
@@ -27,7 +29,9 @@ public class AuthController(
         string Email,
         string Mobile,
         string Password,
-        string ConfirmPassword);
+        string ConfirmPassword,
+        string? PreferredLanguage = null,
+        string? PhoneCountryCode = null);
 
     public record ConfirmActivationRequest(string Token);
 
@@ -102,6 +106,46 @@ public class AuthController(
         return Ok(MapUser(user, companies, locations));
     }
 
+    /// <summary>
+    /// Hint the caller's country from Cloudflare / forwarded IP for registration phone defaults.
+    /// </summary>
+    [HttpGet("geo-hint")]
+    public async Task<ActionResult<object>> GeoHint(CancellationToken ct)
+    {
+        var cfCountry = Request.Headers["CF-IPCountry"].FirstOrDefault()
+            ?? Request.Headers["CloudFront-Viewer-Country"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(cfCountry)
+            && !string.Equals(cfCountry, "XX", StringComparison.OrdinalIgnoreCase)
+            && cfCountry.Length == 2)
+        {
+            return Ok(new { countryCode = cfCountry.ToUpperInvariant(), source = "edge" });
+        }
+
+        var ip = ResolveClientIp();
+        if (string.IsNullOrWhiteSpace(ip) || IsPrivateOrLocal(ip))
+            return Ok(new { countryCode = "MY", source = "default" });
+
+        try
+        {
+            var client = httpClientFactory.CreateClient("geo-hint");
+            using var res = await client.GetAsync(
+                $"http://ip-api.com/json/{Uri.EscapeDataString(ip)}?fields=status,countryCode",
+                ct);
+            if (!res.IsSuccessStatusCode)
+                return Ok(new { countryCode = "MY", source = "fallback" });
+
+            var payload = await res.Content.ReadFromJsonAsync<IpApiResponse>(cancellationToken: ct);
+            if (payload?.Status == "success" && !string.IsNullOrWhiteSpace(payload.CountryCode))
+                return Ok(new { countryCode = payload.CountryCode.ToUpperInvariant(), source = "ip" });
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return Ok(new { countryCode = "MY", source = "fallback" });
+    }
+
     [HttpPost("register")]
     public async Task<ActionResult<object>> Register([FromBody] RegisterRequest request)
     {
@@ -111,6 +155,9 @@ public class AuthController(
         var mobile = (request.Mobile ?? string.Empty).Trim();
         var password = request.Password ?? string.Empty;
         var confirm = request.ConfirmPassword ?? string.Empty;
+        var preferredLanguage = NormalizePreferredLanguage(request.PreferredLanguage);
+        var phoneCountryCode = (request.PhoneCountryCode ?? string.Empty).Trim().ToUpperInvariant();
+        if (phoneCountryCode.Length > 2) phoneCountryCode = phoneCountryCode[..2];
 
         if (string.IsNullOrWhiteSpace(surname) || string.IsNullOrWhiteSpace(givenName))
             return BadRequest(new { message = "Surname and given name are required." });
@@ -159,6 +206,8 @@ public class AuthController(
             PasswordHash = AppPasswordHasher.Hash(password),
             ActivationToken = token,
             ActivationTokenExpiresAt = DateTime.UtcNow.AddHours(48),
+            PreferredLanguage = preferredLanguage,
+            PhoneCountryCode = string.IsNullOrWhiteSpace(phoneCountryCode) ? null : phoneCountryCode,
         };
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "AppUsers");
@@ -178,6 +227,7 @@ public class AuthController(
             message = "Registration successful. Confirm your email to activate the account.",
             email,
             activationUrl,
+            preferredLanguage,
         });
     }
 
@@ -514,6 +564,8 @@ public class AuthController(
             u.Active,
             u.AccessJson,
             u.CompanyId,
+            preferredLanguage = u.PreferredLanguage,
+            phoneCountryCode = u.PhoneCountryCode,
             companyName = u.CompanyId is int cid && companies.TryGetValue(cid, out var cn) ? cn : null,
             locationIds,
             locationNames = locationIds
@@ -535,5 +587,47 @@ public class AuthController(
         {
             return [];
         }
+    }
+
+    static readonly HashSet<string> AllowedLanguages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "en", "ms", "id", "zh", "th", "ko", "ja", "fr", "es", "it",
+    };
+
+    static string NormalizePreferredLanguage(string? value)
+    {
+        var code = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return AllowedLanguages.Contains(code) ? code : "en";
+    }
+
+    string? ResolveClientIp()
+    {
+        var forwarded = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+        {
+            var first = forwarded.Split(',')[0].Trim();
+            if (!string.IsNullOrWhiteSpace(first)) return first;
+        }
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
+    }
+
+    static bool IsPrivateOrLocal(string ip)
+    {
+        if (string.Equals(ip, "::1", StringComparison.OrdinalIgnoreCase)
+            || ip.StartsWith("127.", StringComparison.Ordinal)
+            || ip.StartsWith("10.", StringComparison.Ordinal)
+            || ip.StartsWith("192.168.", StringComparison.Ordinal)
+            || ip.StartsWith("172.", StringComparison.Ordinal))
+            return true;
+        return false;
+    }
+
+    sealed class IpApiResponse
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("countryCode")]
+        public string? CountryCode { get; set; }
     }
 }

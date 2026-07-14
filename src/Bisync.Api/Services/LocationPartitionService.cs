@@ -85,7 +85,7 @@ public class LocationPartitionService(BisyncDbContext db, ILogger<LocationPartit
                         FROM pg_partitioned_table pt
                         JOIN pg_class c ON c.oid = pt.partrelid
                         JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE n.nspname = 'public' AND c.relname = lower('{table}')
+                        WHERE n.nspname = 'public' AND lower(c.relname) = lower('{table}')
                       ) THEN
                         EXECUTE format(
                           'CREATE TABLE IF NOT EXISTS %I PARTITION OF %I FOR VALUES IN (%L)',

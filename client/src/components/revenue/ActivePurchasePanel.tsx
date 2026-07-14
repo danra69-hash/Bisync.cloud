@@ -105,6 +105,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         ? 'reconcile'
         : 'view';
 
+  const vendorShareActionsLocked =
+    mode === 'reconcile'
+    || order.status === 'Received'
+    || order.status === 'Reconciled'
+    || Boolean(order.receivedAt)
+    || Boolean(order.reconciledAt);
   const [lines, setLines] = useState(() => buildEditableLines(order, mode));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,7 +195,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   }
 
   async function handleCopyShareLink() {
-    if (!shareToken) return;
+    if (!shareToken || vendorShareActionsLocked) return;
     setError(null);
     try {
       await copyVendorOrderShareLink(shareToken);
@@ -379,21 +385,32 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                   <button
                     type="button"
                     onClick={() => void handleCopyShareLink()}
-                    disabled={!shareToken}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
+                    disabled={!shareToken || vendorShareActionsLocked}
+                    title={vendorShareActionsLocked ? 'Vendor link disabled after goods are received' : undefined}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 disabled:pointer-events-none disabled:hover:bg-transparent"
                   >
                     <Copy size={12} />
                     {shareLinkCopied ? 'Copied!' : 'Copy link'}
                   </button>
                   {shareToken ? (
-                    <a
-                      href={buildVendorOrderWhatsAppUrl(shareToken, order.poNumber, order.vendorName)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-[#25D366] text-white text-xs font-medium hover:bg-[#1ebe57]"
-                    >
-                      WhatsApp
-                    </a>
+                    vendorShareActionsLocked ? (
+                      <span
+                        aria-disabled="true"
+                        title="Vendor link disabled after goods are received"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-[#25D366]/70 text-white text-xs font-medium opacity-50 pointer-events-none cursor-not-allowed"
+                      >
+                        WhatsApp
+                      </span>
+                    ) : (
+                      <a
+                        href={buildVendorOrderWhatsAppUrl(shareToken, order.poNumber, order.vendorName)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-[#25D366] text-white text-xs font-medium hover:bg-[#1ebe57]"
+                      >
+                        WhatsApp
+                      </a>
+                    )
                   ) : null}
                 </div>
               </div>

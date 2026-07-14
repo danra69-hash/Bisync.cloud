@@ -9,7 +9,9 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/cashpurchases")]
-public class CashPurchasesController(BisyncDbContext db) : ControllerBase
+public class CashPurchasesController(
+    BisyncDbContext db,
+    LocationPartitionService locationPartitions) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List([FromQuery] int? companyId)
@@ -66,6 +68,12 @@ public class CashPurchasesController(BisyncDbContext db) : ControllerBase
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var locationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+        var locationExternalId = locationIds.Count > 0
+            ? locationIds[0].Trim().ToLowerInvariant()
+            : string.Empty;
+
+        if (!string.IsNullOrEmpty(locationExternalId))
+            await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
 
         var unitCost = request.Quantity > 0
             ? Math.Round(request.DeliveryPrice / request.Quantity, 4, MidpointRounding.AwayFromZero)
@@ -84,6 +92,7 @@ public class CashPurchasesController(BisyncDbContext db) : ControllerBase
             PurchaseOrderItemId = 0,
             CompanyId = request.CompanyId,
             LocationIdsJson = locationIdsJson,
+            LocationExternalId = locationExternalId,
         };
 
         db.InventoryPurchases.Add(inventoryPurchase);

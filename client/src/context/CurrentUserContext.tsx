@@ -7,6 +7,8 @@ import {
   CurrentUserContext,
   DEMO_PASSWORD,
 } from './currentUserContext';
+import { isAppLocale } from '../i18n/languages';
+import { setAppLocale } from '../i18n';
 
 const STORAGE_KEY = 'bisync.currentUserId';
 const AUTH_KEY = 'bisync.authenticated';
@@ -88,6 +90,9 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     markUserActivity();
     setCurrentUserIdState(user.id);
     setIsAuthenticated(true);
+    if (isAppLocale(user.preferredLanguage)) {
+      void setAppLocale(user.preferredLanguage);
+    }
   }, []);
 
   const applyAuthenticatedUser = useCallback((user: AppUser) => {
@@ -105,6 +110,9 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     markUserActivity();
     setCurrentUserIdState(normalized.id);
     setIsAuthenticated(true);
+    if (isAppLocale(normalized.preferredLanguage)) {
+      void setAppLocale(normalized.preferredLanguage);
+    }
   }, []);
 
   const logout = useCallback(() => {

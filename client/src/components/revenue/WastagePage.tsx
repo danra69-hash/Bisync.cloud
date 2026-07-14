@@ -7,13 +7,10 @@ import {
   type WastageEntry,
 } from '../../api';
 import { pageShellClass } from '../layout/pageLayout';
+import { filterSelectCls } from '../layout/formControls';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
-import {
-  currentStockCardMonth,
-  earliestStockCardMonth,
-  formatStockCardMonthLabel,
-} from './stockCardPeriod';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
 import { fromApiUom } from '../../data/componentForm';
@@ -24,6 +21,9 @@ type Props = {
 };
 
 type ItemKind = 'component' | 'product' | 'sub-product';
+
+const WASTE_TYPES = ['All', 'Product', 'Sub-Product', 'Smart Component'] as const;
+type WasteTypeFilter = (typeof WASTE_TYPES)[number];
 
 type CatalogItem = {
   kind: ItemKind;
@@ -109,6 +109,37 @@ function formatWastedDate(iso: string) {
   });
 }
 
+function itemTypeLabel(itemType: string) {
+  switch (itemType) {
+    case 'component':
+      return 'Smart Component';
+    case 'sub-product':
+      return 'Sub-Product';
+    case 'product':
+      return 'Product';
+    default:
+      return itemType;
+  }
+}
+
+function itemTypeFilterParam(filter: WasteTypeFilter): string {
+  switch (filter) {
+    case 'Product':
+      return 'product';
+    case 'Sub-Product':
+      return 'sub-product';
+    case 'Smart Component':
+      return 'component';
+    default:
+      return 'all';
+  }
+}
+
+function kindMatchesFilter(kind: ItemKind, filter: WasteTypeFilter) {
+  if (filter === 'All') return true;
+  return kind === itemTypeFilterParam(filter);
+}
+
 const fieldCls =
   'w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary/40';
 const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted-foreground mb-1';
@@ -116,8 +147,10 @@ const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted
 export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
   const orgReady = !!selectedCompanyId && selectedLocationIds.length > 0;
   const primaryLocation = selectedLocationIds[0] ?? '';
+  const { rm } = useCountryFormatters();
 
-  const [month, setMonth] = useState(currentStockCardMonth);
+  const [filterDate, setFilterDate] = useState(() => toDateInputValue(new Date()));
+  const [wasteTypeFilter, setWasteTypeFilter] = useState<WasteTypeFilter>('All');
   const [rows, setRows] = useState<WastageEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,11 +163,16 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
   const [selected, setSelected] = useState<CatalogItem | null>(null);
   const [quantity, setQuantity] = useState('');
   const [uom, setUom] = useState('');
+  const [onHandQty, setOnHandQty] = useState<number | null>(null);
+  const [onHandLoading, setOnHandLoading] = useState(false);
+  const [wastageValue, setWastageValue] = useState<number | null>(null);
+  const [wastageValueLoading, setWastageValueLoading] = useState(false);
   const [wastedDate, setWastedDate] = useState(() => toDateInputValue(new Date()));
   const [reason, setReason] = useState('');
   const [reasonSuggestions, setReasonSuggestions] = useState<string[]>([]);
   const [showReasonMenu, setShowReasonMenu] = useState(false);
   const reasonTimer = useRef<number | null>(null);
+  const valueTimer = useRef<number | null>(null);
 
   const loadRows = useCallback(async () => {
     if (!orgReady || !selectedCompanyId) {
@@ -144,7 +182,10 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.wastageEntries(selectedCompanyId, selectedLocationIds, month);
+      const data = await api.wastageEntries(selectedCompanyId, selectedLocationIds, {
+        date: filterDate,
+        itemType: itemTypeFilterParam(wasteTypeFilter),
+      });
       setRows(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load wastage.');
@@ -152,7 +193,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [orgReady, selectedCompanyId, selectedLocationIds, month]);
+  }, [orgReady, selectedCompanyId, selectedLocationIds, filterDate, wasteTypeFilter]);
 
   useEffect(() => {
     void loadRows();
@@ -198,7 +239,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
         key: ing.componentId,
         name: ing.name,
         uoms,
-        searchText: `${ing.name} ${ing.componentId} component`.toLowerCase(),
+        searchText: `${ing.name} ${ing.componentId} component smart`.toLowerCase(),
       });
     }
     for (const p of products) {
@@ -217,19 +258,94 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
     return items.sort((a, b) => a.name.localeCompare(b.name));
   }, [ingredients, products, selectedLocationIds]);
 
+  const typeFilteredCatalog = useMemo(
+    () => catalog.filter(c => kindMatchesFilter(c.kind, wasteTypeFilter)),
+    [catalog, wasteTypeFilter],
+  );
+
   const filteredCatalog = useMemo(() => {
     const q = itemSearch.trim().toLowerCase();
-    if (!q) return catalog.slice(0, 40);
-    return catalog.filter(c => c.searchText.includes(q)).slice(0, 40);
-  }, [catalog, itemSearch]);
+    if (!q) return typeFilteredCatalog.slice(0, 40);
+    return typeFilteredCatalog.filter(c => c.searchText.includes(q)).slice(0, 40);
+  }, [typeFilteredCatalog, itemSearch]);
+
+  useEffect(() => {
+    if (selected && !kindMatchesFilter(selected.kind, wasteTypeFilter)) {
+      setSelected(null);
+      setItemSearch('');
+    }
+  }, [wasteTypeFilter, selected]);
 
   useEffect(() => {
     if (!selected) {
       setUom('');
+      setOnHandQty(null);
+      setWastageValue(null);
       return;
     }
     setUom(selected.uoms[0] ?? '');
   }, [selected]);
+
+  useEffect(() => {
+    if (!selectedCompanyId || !selected || !primaryLocation || !uom) {
+      setOnHandQty(null);
+      return;
+    }
+    let cancelled = false;
+    setOnHandLoading(true);
+    void api
+      .transferAvailable(selectedCompanyId, selected.kind, selected.key, primaryLocation, uom)
+      .then(res => {
+        if (!cancelled) setOnHandQty(res.availableQty);
+      })
+      .catch(() => {
+        if (!cancelled) setOnHandQty(null);
+      })
+      .finally(() => {
+        if (!cancelled) setOnHandLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId, selected, primaryLocation, uom]);
+
+  useEffect(() => {
+    if (valueTimer.current) window.clearTimeout(valueTimer.current);
+
+    if (!selectedCompanyId || !selected || !primaryLocation || !uom || !wastedDate) {
+      setWastageValue(null);
+      setWastageValueLoading(false);
+      return;
+    }
+
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setWastageValue(null);
+      setWastageValueLoading(false);
+      return;
+    }
+
+    setWastageValueLoading(true);
+    valueTimer.current = window.setTimeout(() => {
+      void api
+        .wastageValue({
+          companyId: selectedCompanyId,
+          locationExternalId: primaryLocation,
+          itemType: selected.kind,
+          itemKey: selected.key,
+          quantity: qty,
+          uom,
+          wastedDate,
+        })
+        .then(res => setWastageValue(res.totalValue))
+        .catch(() => setWastageValue(null))
+        .finally(() => setWastageValueLoading(false));
+    }, 200);
+
+    return () => {
+      if (valueTimer.current) window.clearTimeout(valueTimer.current);
+    };
+  }, [selectedCompanyId, selected, primaryLocation, uom, quantity, wastedDate]);
 
   useEffect(() => {
     if (reasonTimer.current) window.clearTimeout(reasonTimer.current);
@@ -266,6 +382,10 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
       setError('Select a UOM.');
       return;
     }
+    if (onHandQty != null && qty > onHandQty) {
+      setError(`Wastage quantity exceeds on hand (${onHandQty} ${uom}).`);
+      return;
+    }
     if (!reason.trim()) {
       setError('Enter a wastage reason.');
       return;
@@ -288,7 +408,8 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
       setReason('');
       setSelected(null);
       setItemSearch('');
-      await loadRows();
+      if (wastedDate !== filterDate) setFilterDate(wastedDate);
+      else await loadRows();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save wastage.');
     } finally {
@@ -304,6 +425,11 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
     );
   }
 
+  const catalogLabel =
+    wasteTypeFilter === 'All'
+      ? 'Smart Component / Product / Sub-Product'
+      : wasteTypeFilter;
+
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -313,20 +439,33 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
             Manual spoilage &amp; POS void/refund wastage · 2-year live history
           </p>
         </div>
-        <label className="text-xs">
-          <span className={labelCls}>Month</span>
-          <input
-            type="month"
-            className={fieldCls + ' w-[11rem]'}
-            value={month}
-            min={earliestStockCardMonth()}
-            max={currentStockCardMonth()}
-            onChange={e => e.target.value && setMonth(e.target.value)}
-          />
-          <span className="block text-[10px] text-muted-foreground mt-1">
-            {formatStockCardMonthLabel(month, month === currentStockCardMonth())}
-          </span>
-        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Date</label>
+            <input
+              type="date"
+              className={`${filterSelectCls} min-w-[11rem]`}
+              value={filterDate}
+              min={earliestLiveDate()}
+              max={toDateInputValue(new Date())}
+              onChange={e => e.target.value && setFilterDate(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Type of Waste</label>
+            <select
+              value={wasteTypeFilter}
+              onChange={e => setWasteTypeFilter(e.target.value as WasteTypeFilter)}
+              className={`${filterSelectCls} min-w-[11rem]`}
+            >
+              {WASTE_TYPES.map(option => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -339,8 +478,8 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
         onSubmit={submit}
         className="rounded-lg border border-border bg-card p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3"
       >
-        <div className="lg:col-span-4 relative">
-          <label className={labelCls}>Smart Component / Product / Sub-product</label>
+        <div className="lg:col-span-3 relative">
+          <label className={labelCls}>{catalogLabel}</label>
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -373,7 +512,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
                   >
                     <span className="truncate">{item.name}</span>
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
-                      {item.kind}
+                      {itemTypeLabel(item.kind)}
                     </span>
                   </button>
                 </li>
@@ -385,7 +524,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
           )}
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
           <label className={labelCls}>UOM</label>
           <select
             className={fieldCls}
@@ -399,7 +538,14 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
           </select>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
+          <label className={labelCls}>On hand</label>
+          <div className={fieldCls + ' bg-muted/40 text-muted-foreground tabular-nums'}>
+            {onHandLoading ? '…' : onHandQty == null ? '—' : onHandQty}
+          </div>
+        </div>
+
+        <div className="lg:col-span-1">
           <label className={labelCls}>Qty</label>
           <input
             type="number"
@@ -410,6 +556,19 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
             onChange={e => setQuantity(e.target.value)}
             disabled={!selected}
           />
+        </div>
+
+        <div className="lg:col-span-2">
+          <label className={labelCls}>Wastage value</label>
+          <div className={fieldCls + ' bg-muted/40 text-muted-foreground tabular-nums'}>
+            {!selected || !quantity || Number(quantity) <= 0
+              ? '—'
+              : wastageValueLoading
+                ? '…'
+                : wastageValue == null
+                  ? '—'
+                  : rm(wastageValue)}
+          </div>
         </div>
 
         <div className="lg:col-span-2">
@@ -474,7 +633,8 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">
-            Summary · {formatStockCardMonthLabel(month, month === currentStockCardMonth())}
+            Summary · {formatWastedDate(filterDate)}
+            {wasteTypeFilter !== 'All' ? ` · ${wasteTypeFilter}` : ''}
           </h3>
           <span className="text-[11px] text-muted-foreground">{rows.length} record{rows.length === 1 ? '' : 's'}</span>
         </div>
@@ -488,7 +648,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
                 <th className="text-left px-2 py-1.5 w-10">POS</th>
                 <th className="text-left px-2 py-1.5 w-24">Date</th>
                 <th className="text-left px-2 py-1.5">Item</th>
-                <th className="text-left px-2 py-1.5 w-24">Type</th>
+                <th className="text-left px-2 py-1.5 w-28">Type</th>
                 <th className="text-right px-2 py-1.5 w-20">Qty</th>
                 <th className="text-left px-2 py-1.5 w-16">UOM</th>
                 <th className="text-left px-2 py-1.5">Reason</th>
@@ -504,7 +664,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
               {!loading && visibleItems.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground text-xs">
-                    No wastage in this month.
+                    No wastage for this date{wasteTypeFilter !== 'All' ? ` and type` : ''}.
                   </td>
                 </tr>
               )}
@@ -519,7 +679,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatWastedDate(row.wastedDate)}</td>
                   <td className="px-2 py-1.5 truncate" title={row.itemName}>{row.itemName}</td>
-                  <td className="px-2 py-1.5 capitalize text-xs text-muted-foreground">{row.itemType}</td>
+                  <td className="px-2 py-1.5 text-xs text-muted-foreground">{itemTypeLabel(row.itemType)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{row.quantity}</td>
                   <td className="px-2 py-1.5">{row.uom}</td>
                   <td className="px-2 py-1.5 truncate" title={row.reason}>{row.reason}</td>

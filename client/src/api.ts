@@ -282,6 +282,8 @@ export interface AppUser {
   locationIds: number[];
   locationNames?: string[];
   locationIdsJson: string;
+  preferredLanguage?: string | null;
+  phoneCountryCode?: string | null;
 }
 
 export interface AvailableEmployee {
@@ -1891,12 +1893,15 @@ export const api = {
     mobile: string;
     password: string;
     confirmPassword: string;
+    preferredLanguage?: string;
+    phoneCountryCode?: string;
   }) =>
-    fetchJsonWithMethod<{ message: string; email: string; activationUrl: string }>(
+    fetchJsonWithMethod<{ message: string; email: string; activationUrl: string; preferredLanguage?: string }>(
       '/api/auth/register',
       'POST',
       data,
     ),
+  geoHint: () => fetchJson<{ countryCode: string; source: string }>('/api/auth/geo-hint'),
   confirmActivation: (token: string) =>
     fetchJsonWithMethod<{ message: string; email: string }>(
       '/api/auth/confirm-activation',
@@ -2066,11 +2071,17 @@ export const api = {
     fetchJson<CashPurchase[]>(`/api/cashpurchases${companyId ? `?companyId=${companyId}` : ''}`),
   createCashPurchase: (payload: CreateCashPurchasePayload) =>
     fetchJsonWithMethod<CreateCashPurchaseResult>('/api/cashpurchases', 'POST', payload),
-  wastageEntries: (companyId: number | undefined, locationIds: string[], month?: string) => {
+  wastageEntries: (
+    companyId: number | undefined,
+    locationIds: string[],
+    opts?: { month?: string; date?: string; itemType?: string },
+  ) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
-    if (month) params.set('month', month);
+    if (opts?.date) params.set('date', opts.date);
+    else if (opts?.month) params.set('month', opts.month);
+    if (opts?.itemType && opts.itemType !== 'all') params.set('itemType', opts.itemType);
     const query = params.toString();
     return fetchJson<WastageEntry[]>(`/api/wastage${query ? `?${query}` : ''}`);
   },
@@ -2080,6 +2091,27 @@ export const api = {
     if (q?.trim()) params.set('q', q.trim());
     const query = params.toString();
     return fetchJson<string[]>(`/api/wastage/reasons${query ? `?${query}` : ''}`);
+  },
+  wastageValue: (opts: {
+    companyId: number;
+    locationExternalId: string;
+    itemType: string;
+    itemKey: string;
+    quantity: number;
+    uom: string;
+    wastedDate: string;
+  }) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(opts.companyId));
+    params.set('locationExternalId', opts.locationExternalId);
+    params.set('itemType', opts.itemType);
+    params.set('itemKey', opts.itemKey);
+    params.set('quantity', String(opts.quantity));
+    params.set('uom', opts.uom);
+    params.set('wastedDate', opts.wastedDate);
+    return fetchJson<{ unitPrice: number; totalValue: number; uom: string; wastedDate: string }>(
+      `/api/wastage/value?${params.toString()}`,
+    );
   },
   createWastage: (payload: CreateWastagePayload) =>
     fetchJsonWithMethod<WastageEntry>('/api/wastage', 'POST', payload),

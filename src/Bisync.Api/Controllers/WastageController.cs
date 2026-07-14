@@ -18,7 +18,9 @@ public class WastageController(
     public async Task<ActionResult<IEnumerable<object>>> List(
         [FromQuery] int? companyId = null,
         [FromQuery] string? locationIds = null,
-        [FromQuery] string? month = null)
+        [FromQuery] string? month = null,
+        [FromQuery] string? date = null,
+        [FromQuery] string? itemType = null)
     {
         var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
         if (cid is null && !TenantQuery.AllowsAllCompanies(tenant, cid))
@@ -34,7 +36,11 @@ public class WastageController(
         if (locs.Count > 0)
             query = query.Where(w => locs.Contains(w.LocationExternalId));
 
-        if (!string.IsNullOrWhiteSpace(month)
+        if (!string.IsNullOrWhiteSpace(date) && DateOnly.TryParse(date.Trim(), out var day))
+        {
+            query = query.Where(w => w.WastedDate == day);
+        }
+        else if (!string.IsNullOrWhiteSpace(month)
             && DateOnly.TryParse($"{month.Trim()}-01", out var monthStart))
         {
             var monthEnd = monthStart.AddMonths(1);
@@ -47,12 +53,28 @@ public class WastageController(
             query = query.Where(w => w.WastedDate >= earliest);
         }
 
+        var typeFilter = NormalizeListItemType(itemType);
+        if (typeFilter is not null)
+            query = query.Where(w => w.ItemType == typeFilter);
+
         var rows = await query
             .OrderByDescending(w => w.WastedDate)
             .ThenByDescending(w => w.Id)
             .ToListAsync();
 
         return Ok(rows.Select(Map));
+    }
+
+    static string? NormalizeListItemType(string? itemType)
+    {
+        var t = (itemType ?? string.Empty).Trim().ToLowerInvariant();
+        return t switch
+        {
+            "product" => "product",
+            "sub-product" or "subproduct" or "sub_product" => "sub-product",
+            "component" or "smart-component" or "smart_component" => "component",
+            _ => null,
+        };
     }
 
     [HttpGet("reasons")]
@@ -81,6 +103,52 @@ public class WastageController(
             .ToListAsync();
 
         return Ok(reasons);
+    }
+
+    [HttpGet("value")]
+    public async Task<ActionResult<object>> EstimateValue(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null,
+        [FromQuery] string? itemType = null,
+        [FromQuery] string? itemKey = null,
+        [FromQuery] decimal quantity = 0,
+        [FromQuery] string? uom = null,
+        [FromQuery] string? wastedDate = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        if (cid is null)
+            return BadRequest(new { message = "Company is required." });
+        if (string.IsNullOrWhiteSpace(locationExternalId))
+            return BadRequest(new { message = "Location is required." });
+        if (string.IsNullOrWhiteSpace(itemKey))
+            return BadRequest(new { message = "Item is required." });
+        if (quantity <= 0)
+            return Ok(new { unitPrice = 0m, totalValue = 0m, uom = uom ?? string.Empty });
+        if (!DateOnly.TryParse(wastedDate, out var day))
+            return BadRequest(new { message = "Valid wastedDate (yyyy-MM-dd) is required." });
+
+        try
+        {
+            var (unitPrice, totalValue, resolvedUom) = await wastage.EstimateValueAsync(
+                cid.Value,
+                locationExternalId,
+                itemType ?? "component",
+                itemKey,
+                quantity,
+                uom ?? string.Empty,
+                day);
+            return Ok(new
+            {
+                unitPrice,
+                totalValue,
+                uom = resolvedUom,
+                wastedDate = day.ToString("yyyy-MM-dd"),
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPost]

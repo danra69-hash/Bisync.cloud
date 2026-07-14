@@ -874,7 +874,7 @@ public class StockCardService(
             .Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             .Sum(l => l.Quantity);
         var outbound = monthLogs
-            .Where(l => IsProductSaleEntryType(l.EntryType))
+            .Where(l => IsProductSaleEntryType(l.EntryType) || IsProductWastageEntryType(l.EntryType))
             .Sum(l => l.Quantity);
         var adjustment = monthLogs
             .Where(l => IsProductAdjustmentEntryType(l.EntryType))
@@ -975,6 +975,26 @@ public class StockCardService(
                     Reason = FormatProductSaleReason(entryType, product.Name),
                     ReferenceNumber = log.BatchNumber ?? string.Empty,
                     SourceLabel = entryType,
+                });
+                continue;
+            }
+
+            if (IsProductWastageEntryType(log.EntryType))
+            {
+                events.Add(new FifoEvent
+                {
+                    Id = log.Id,
+                    OccurredAt = occurredAt,
+                    EntryType = "wastage",
+                    Quantity = log.Quantity,
+                    SignedQty = -log.Quantity,
+                    Uom = uom,
+                    UnitPrice = 0,
+                    Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
+                        ? $"Wastage — {product.Name}"
+                        : $"Wastage — {log.BatchNumber}",
+                    ReferenceNumber = log.BatchNumber ?? string.Empty,
+                    SourceLabel = "wastage",
                 });
                 continue;
             }
@@ -1168,6 +1188,12 @@ public class StockCardService(
     {
         var normalized = entryType.Trim().ToLowerInvariant();
         return normalized is "pos_sale" or "online_order" or "offline_order";
+    }
+
+    static bool IsProductWastageEntryType(string entryType)
+    {
+        var normalized = entryType.Trim().ToLowerInvariant();
+        return normalized is "wastage";
     }
 
     static bool IsProductAdjustmentEntryType(string entryType)

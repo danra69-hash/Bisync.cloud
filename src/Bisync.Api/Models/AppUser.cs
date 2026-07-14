@@ -17,4 +17,8 @@ public class AppUser
     public string? PasswordHash { get; set; }
     public string? ActivationToken { get; set; }
     public DateTime? ActivationTokenExpiresAt { get; set; }
+    /// <summary>UI locale preference (en, ms, id, …).</summary>
+    public string PreferredLanguage { get; set; } = "en";
+    /// <summary>ISO country code used for the phone dial prefix at registration.</summary>
+    public string? PhoneCountryCode { get; set; }
 }
