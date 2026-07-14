@@ -1022,7 +1022,7 @@ public static class SchemaPatcher
                 "TenantCount" INTEGER NOT NULL DEFAULT 0,
                 "ProvisionedCount" INTEGER NOT NULL DEFAULT 0,
                 "SharedCount" INTEGER NOT NULL DEFAULT 0,
-                "PayloadJson" TEXT NOT NULL DEFAULT '{}',
+                "PayloadJson" TEXT NOT NULL DEFAULT '{{}}',
                 "ErrorsJson" TEXT NOT NULL DEFAULT '[]'
             );
             """);
