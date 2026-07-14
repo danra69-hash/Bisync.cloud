@@ -1,5 +1,6 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,11 +8,15 @@ namespace Bisync.Api.Controllers;
 
 /// <summary>
 /// Dev Team console APIs. Enabled when DEV_CONSOLE_ENABLED=true, or always in Development.
-/// Usage metrics are placeholders until AWS instrumentation is wired.
+/// Usage and rollups fan out across shared + provisioned company DBs.
 /// </summary>
 [ApiController]
 [Route("api/dev-console")]
-public class DevConsoleController(BisyncDbContext db, IConfiguration config, IWebHostEnvironment env) : ControllerBase
+public class DevConsoleController(
+    BisyncDbContext db,
+    IConfiguration config,
+    IWebHostEnvironment env,
+    TenantRollupService rollupService) : ControllerBase
 {
     bool IsEnabled()
     {
@@ -29,13 +34,13 @@ public class DevConsoleController(BisyncDbContext db, IConfiguration config, IWe
         return Ok(new
         {
             enabled = true,
-            usageSource = "local-aggregate", // later: aws
+            usageSource = "tenant-fanout-rollup",
             environment = env.EnvironmentName,
         });
     }
 
     /// <summary>
-    /// System usage snapshot. Currently derived from local DB counts; replace with AWS metrics later.
+    /// System usage snapshot via tenant fan-out rollup (shared + provisioned DBs).
     /// </summary>
     [HttpGet("usage")]
     public async Task<ActionResult<object>> Usage(CancellationToken ct)
@@ -43,76 +48,78 @@ public class DevConsoleController(BisyncDbContext db, IConfiguration config, IWe
         var blocked = Guard();
         if (blocked is not null) return blocked;
 
-        var companies = await db.Companies.AsNoTracking()
-            .Select(c => new { c.Id, c.Name, c.Active })
-            .ToListAsync(ct);
-        var locations = await db.Locations.AsNoTracking()
-            .Select(l => new { l.Id, l.ExternalId, l.Name, l.CompanyId })
-            .ToListAsync(ct);
-
-        var productCount = await db.Products.CountAsync(ct);
-        var ingredientCount = await db.Ingredients.CountAsync(ct);
-        var poCount = await db.PurchaseOrders.CountAsync(ct);
-        var salesOrderCount = await db.B2bSalesOrders.CountAsync(ct);
-        var movementCount = await db.InventoryMovements.CountAsync(ct);
-        var userCount = await db.AppUsers.CountAsync(u => u.Active, ct);
-
-        var byCompany = companies.Select(c =>
-        {
-            var locIds = locations.Where(l => l.CompanyId == c.Id).Select(l => l.ExternalId).ToHashSet();
-            return new
-            {
-                companyId = c.Id,
-                companyName = c.Name,
-                active = c.Active,
-                locations = locIds.Count,
-                // Placeholder activity score until AWS CloudWatch / usage API is connected.
-                apiCalls30d = EstimateActivity(c.Id, locIds.Count, productCount, movementCount),
-                activeUsers = Math.Max(1, userCount / Math.Max(1, companies.Count)),
-            };
-        }).OrderByDescending(x => x.apiCalls30d).ToList();
-
-        var byLocation = locations.Select(l => new
-        {
-            locationExternalId = l.ExternalId,
-            locationName = l.Name,
-            companyId = l.CompanyId,
-            companyName = companies.FirstOrDefault(c => c.Id == l.CompanyId)?.Name ?? "—",
-            apiCalls30d = EstimateActivity(l.Id, 1, productCount, movementCount),
-        }).OrderByDescending(x => x.apiCalls30d).Take(25).ToList();
-
-        var days = Enumerable.Range(0, 14)
-            .Select(i => DateTime.UtcNow.Date.AddDays(-13 + i))
-            .Select(day => new
-            {
-                date = day.ToString("yyyy-MM-dd"),
-                apiCalls = EstimateDaily(day, movementCount, poCount, salesOrderCount),
-            })
-            .ToList();
-
-        return Ok(new
-        {
-            generatedAt = DateTime.UtcNow,
-            source = "local-aggregate",
-            sourceNote = "Placeholder metrics from local DB. Wire to AWS usage API in a later stage.",
-            overall = new
-            {
-                companies = companies.Count,
-                activeCompanies = companies.Count(c => c.Active),
-                locations = locations.Count,
-                products = productCount,
-                components = ingredientCount,
-                purchaseOrders = poCount,
-                salesOrders = salesOrderCount,
-                inventoryMovements = movementCount,
-                activeUsers = userCount,
-                apiCalls30d = days.Sum(d => d.apiCalls),
-            },
-            trend14d = days,
-            byCompany,
-            byLocation,
-        });
+        var rollup = await rollupService.GetOrRefreshAsync(ct);
+        return Ok(ToUsageResponse(rollup));
     }
+
+    /// <summary>
+    /// Latest persisted tenant rollup snapshot, or refresh if none exists.
+    /// </summary>
+    [HttpGet("rollups")]
+    public async Task<ActionResult<object>> GetRollups(CancellationToken ct)
+    {
+        var blocked = Guard();
+        if (blocked is not null) return blocked;
+
+        var latest = await rollupService.GetLatestAsync(ct);
+        if (latest is null)
+            latest = await rollupService.RefreshAndPersistAsync(ct);
+        return Ok(ToUsageResponse(latest));
+    }
+
+    /// <summary>
+    /// Force a fresh fan-out rollup and persist the snapshot.
+    /// </summary>
+    [HttpPost("rollups/refresh")]
+    public async Task<ActionResult<object>> RefreshRollups(CancellationToken ct)
+    {
+        var blocked = Guard();
+        if (blocked is not null) return blocked;
+
+        var rollup = await rollupService.RefreshAndPersistAsync(ct);
+        return Ok(ToUsageResponse(rollup));
+    }
+
+    static object ToUsageResponse(TenantRollupResult rollup) => new
+    {
+        generatedAt = rollup.GeneratedAt,
+        source = rollup.Source,
+        sourceNote = rollup.SourceNote,
+        status = rollup.Status,
+        tenantCount = rollup.TenantCount,
+        provisionedCount = rollup.ProvisionedCount,
+        sharedCount = rollup.SharedCount,
+        errors = rollup.Errors,
+        overall = rollup.Overall,
+        trend14d = rollup.Trend14d,
+        byCompany = rollup.ByCompany.Select(c => new
+        {
+            companyId = c.CompanyId,
+            companyName = c.CompanyName,
+            active = c.Active,
+            databaseMode = c.DatabaseMode,
+            databaseName = c.DatabaseName,
+            locations = c.Locations,
+            products = c.Products,
+            components = c.Components,
+            vendors = c.Vendors,
+            purchaseOrders = c.PurchaseOrders,
+            salesOrders = c.SalesOrders,
+            inventoryMovements = c.InventoryMovements,
+            activeUsers = c.ActiveUsers,
+            apiCalls30d = c.ApiCalls30d,
+            error = c.Error,
+        }),
+        byLocation = rollup.ByLocation.Select(l => new
+        {
+            locationExternalId = l.LocationExternalId,
+            locationName = l.LocationName,
+            companyId = l.CompanyId,
+            companyName = l.CompanyName,
+            inventoryMovements = l.InventoryMovements,
+            apiCalls30d = l.ApiCalls30d,
+        }),
+    };
 
     [HttpGet("qa/history")]
     public async Task<ActionResult<IEnumerable<object>>> QaHistory([FromQuery] int take = 30, CancellationToken ct = default)
@@ -419,18 +426,5 @@ public class DevConsoleController(BisyncDbContext db, IConfiguration config, IWe
             historyRowsKept,
             note = "Operational QA records deleted. DevQaRuns history retained.",
         });
-    }
-
-    static int EstimateActivity(int seed, int locations, int products, int movements)
-    {
-        var hash = Math.Abs(HashCode.Combine(seed, locations, products));
-        return 40 + (hash % 220) + locations * 12 + Math.Min(movements / 10, 80);
-    }
-
-    static int EstimateDaily(DateTime day, int movements, int pos, int sales)
-    {
-        var hash = Math.Abs(HashCode.Combine(day.DayOfYear, movements, pos, sales));
-        var weekend = day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? 0.55 : 1.0;
-        return (int)((80 + hash % 160) * weekend);
     }
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Eye, EyeOff, Lock, Shield } from 'lucide-react';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { UsageDashboard } from '../components/dev/UsageDashboard';
+import { TenantRollupsPanel } from '../components/dev/TenantRollupsPanel';
 import { AutomatedQaPanel } from '../components/dev/AutomatedQaPanel';
 import { DEV_CONSOLE_PATH } from '../config/devConsole';
 import { canAccessDevConsole } from '../data/devTeamAccess';
@@ -154,6 +155,7 @@ export function DevConsolePage() {
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-10">
         <UsageDashboard />
+        <TenantRollupsPanel />
         <AutomatedQaPanel triggeredBy={triggeredBy} />
       </main>
     </div>

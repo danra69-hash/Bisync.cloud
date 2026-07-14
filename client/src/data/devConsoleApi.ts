@@ -2,6 +2,11 @@ export type DevUsageResponse = {
   generatedAt: string;
   source: string;
   sourceNote: string;
+  status?: string;
+  tenantCount?: number;
+  provisionedCount?: number;
+  sharedCount?: number;
+  errors?: string[];
   overall: {
     companies: number;
     activeCompanies: number;
@@ -13,6 +18,10 @@ export type DevUsageResponse = {
     inventoryMovements: number;
     activeUsers: number;
     apiCalls30d: number;
+    provisionedDatabases?: number;
+    sharedDatabases?: number;
+    vendors?: number;
+    rollupErrors?: number;
   };
   trend14d: { date: string; apiCalls: number }[];
   byCompany: {
@@ -22,6 +31,15 @@ export type DevUsageResponse = {
     locations: number;
     apiCalls30d: number;
     activeUsers: number;
+    databaseMode?: string;
+    databaseName?: string;
+    products?: number;
+    components?: number;
+    vendors?: number;
+    purchaseOrders?: number;
+    salesOrders?: number;
+    inventoryMovements?: number;
+    error?: string | null;
   }[];
   byLocation: {
     locationExternalId: string;
@@ -29,6 +47,7 @@ export type DevUsageResponse = {
     companyId: number | null;
     companyName: string;
     apiCalls30d: number;
+    inventoryMovements?: number;
   }[];
 };
 
@@ -62,6 +81,9 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 export const devConsoleApi = {
   status: () => fetchJson<{ enabled: boolean; usageSource: string; environment: string }>('/api/dev-console/status'),
   usage: () => fetchJson<DevUsageResponse>('/api/dev-console/usage'),
+  rollups: () => fetchJson<DevUsageResponse>('/api/dev-console/rollups'),
+  refreshRollups: () =>
+    fetchJson<DevUsageResponse>('/api/dev-console/rollups/refresh', { method: 'POST' }),
   qaHistory: (take = 30) => fetchJson<DevQaHistoryRow[]>(`/api/dev-console/qa/history?take=${take}`),
   startQaRun: (payload: { triggeredBy: string; status?: string; summary?: string; resultsJson?: string }) =>
     fetchJson<{ id: number; startedAt: string; status: string }>('/api/dev-console/qa/runs', {

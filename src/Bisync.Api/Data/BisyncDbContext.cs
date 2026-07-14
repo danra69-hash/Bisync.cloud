@@ -68,6 +68,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<SampleRequest> SampleRequests => Set<SampleRequest>();
     public DbSet<DevQaRun> DevQaRuns => Set<DevQaRun>();
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
+    public DbSet<TenantRollupSnapshot> TenantRollupSnapshots => Set<TenantRollupSnapshot>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
 

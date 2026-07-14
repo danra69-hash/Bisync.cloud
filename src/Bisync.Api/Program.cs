@@ -73,6 +73,7 @@ builder.Services.AddScoped<WastageService>();
 builder.Services.AddScoped<TransferService>();
 builder.Services.AddScoped<LocationPartitionService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
+builder.Services.AddScoped<TenantRollupService>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.TenantContext>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.ITenantContext>(sp =>
     sp.GetRequiredService<Bisync.Api.Tenancy.TenantContext>());

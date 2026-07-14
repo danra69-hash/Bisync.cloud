@@ -105,6 +105,12 @@ export function UsageDashboard() {
           <h2 className="text-sm font-semibold">System usage</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             {data?.sourceNote ?? 'Overall and per company / location activity.'}
+            {typeof data?.provisionedCount === 'number' || typeof data?.sharedCount === 'number' ? (
+              <>
+                {' '}
+                ({data.provisionedCount ?? 0} provisioned · {data.sharedCount ?? 0} shared)
+              </>
+            ) : null}
           </p>
         </div>
         <button
@@ -138,17 +144,28 @@ export function UsageDashboard() {
               <TrendChart points={data.trend14d} />
             </div>
             <div className="rounded-lg border border-border bg-card p-4">
-              <h3 className="text-xs font-medium mb-3">By company</h3>
-              <BarChart rows={companyRows} valueKey="apiCalls30d" labelKey="label" />
+              <h3 className="text-xs font-medium mb-3">By company (inventory movements)</h3>
+              <BarChart
+                rows={companyRows}
+                valueKey={companyRows.some(r => Number(r.inventoryMovements) > 0) ? 'inventoryMovements' : 'apiCalls30d'}
+                labelKey="label"
+              />
             </div>
             <div className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-xs font-medium mb-3">By location</h3>
-              <BarChart rows={locationRows} valueKey="apiCalls30d" labelKey="label" />
+              <BarChart
+                rows={locationRows}
+                valueKey={locationRows.some(r => Number(r.inventoryMovements) > 0) ? 'inventoryMovements' : 'apiCalls30d'}
+                labelKey="label"
+              />
             </div>
           </div>
 
           <p className="text-[11px] text-muted-foreground">
-            Source: {data.source} · Generated {new Date(data.generatedAt).toLocaleString()}
+            Source: {data.source}
+            {data.source === 'tenant-fanout-rollup' ? ' (fan-out)' : ''}
+            {' · '}Generated {new Date(data.generatedAt).toLocaleString()}
+            {data.status ? ` · ${data.status}` : ''}
           </p>
         </>
       ) : null}
