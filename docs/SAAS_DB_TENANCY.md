@@ -32,6 +32,13 @@ Status of one-DB-per-company + location LIST partitions inside each operational 
 - Provision creates `bisync_c_{companyId}_archive` and stores `ArchiveConnectionString` / `ArchiveDatabaseName`.
 - `StockCardArchiveService.ArchiveAllTenantsAsync` archives shared DB then each provisioned company into its archive (shared archive remains fallback for legacy/empty connection tenants).
 
+## Dev Console rollups ✅
+
+- `TenantRollupService` fans out across shared DB (company-scoped) + each provisioned `TenantConnections.ConnectionString`.
+- Snapshots stored in control-plane `TenantRollupSnapshots` (last 30 kept).
+- APIs: `GET /api/dev-console/usage` (auto-refresh if &gt;1h), `GET /api/dev-console/rollups`, `POST /api/dev-console/rollups/refresh`.
+- UI: System usage dashboard + **Tenant rollups** panel (DB mode, counts, Refresh).
+
 ## Limitations
 
 - Existing shared-DB tenants keep working while `ConnectionString` is empty.
