@@ -33,6 +33,7 @@ public static class SystemAuditStartup
             // Do not block API boot if the audit DB is temporarily unreachable.
             Console.Error.WriteLine($"[SystemAudit] schema init failed: {ex.Message}");
         }
+    }
 
     static async Task EnsureAuditColumnsAsync(SystemAuditDbContext auditDb)
     {
