@@ -197,7 +197,7 @@ public class DevConsoleController(
 
     /// <summary>
     /// Deletes disposable Power-user QA operational records (companies, locations, users, inventory, POs, products, vendors).
-    /// DevQaRuns history rows are retained for the History tab.
+    /// DevQaRuns Audit History rows are retained; operational data is disposable (“disappearing”).
     /// </summary>
     [HttpPost("qa/cleanup")]
     public async Task<ActionResult<object>> CleanupQaData([FromBody] CleanupQaRequest? request, CancellationToken ct)

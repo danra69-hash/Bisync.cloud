@@ -19,11 +19,19 @@ import {
   executeQaFix,
   runAutomatedQa,
   type PowerQaContext,
+  type QaRunResult,
   type QaStatus,
   type QaTaskResult,
 } from '../../data/devQaRunner';
 import { buildIssueView, type QaIssueViewModel } from '../../data/devQaIssueGuide';
 import { devConsoleApi, type DevQaHistoryRow } from '../../data/devConsoleApi';
+import {
+  markQaDataDisappeared,
+  parseQaAuditPayload,
+  sealQaAudit,
+  serializeQaAudit,
+  type QaAuditEnvelope,
+} from '../../data/qaAuditTrail';
 
 type QaPanelTab = 'run' | 'history';
 
@@ -60,15 +68,18 @@ function historyStatusClass(status: string): string {
 }
 
 function parseHistoryTasks(resultsJson: string): QaTaskResult[] {
-  try {
-    const parsed = JSON.parse(resultsJson) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((t): t is QaTaskResult =>
-      !!t && typeof t === 'object' && typeof (t as QaTaskResult).id === 'string' && typeof (t as QaTaskResult).status === 'string',
-    );
-  } catch {
-    return [];
+  return parseQaAuditPayload(resultsJson).tasks;
+}
+
+function auditLifecycleLabel(row: DevQaHistoryRow): { label: string; className: string } {
+  const { audit } = parseQaAuditPayload(row.resultsJson);
+  if (audit?.dataLifecycle === 'disappeared') {
+    return { label: 'Disappeared', className: 'bg-muted text-muted-foreground' };
   }
+  if (audit?.dataLifecycle === 'active') {
+    return { label: 'Active data', className: 'bg-sky-500/15 text-sky-800' };
+  }
+  return { label: 'Legacy', className: 'bg-muted text-muted-foreground' };
 }
 
 function StepDetailPanel({
@@ -273,6 +284,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
   const [runContext, setRunContext] = useState<PowerQaContext | null>(null);
   const [running, setRunning] = useState(false);
   const [runSummary, setRunSummary] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<'passed' | 'failed' | 'warning' | null>(null);
   const [history, setHistory] = useState<DevQaHistoryRow[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [issue, setIssue] = useState<QaIssueViewModel | null>(null);
@@ -280,13 +292,16 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
   const [fixMessage, setFixMessage] = useState<string | null>(null);
   const [purging, setPurging] = useState(false);
   const [purgeMessage, setPurgeMessage] = useState<string | null>(null);
+  const [lastRunId, setLastRunId] = useState<number | null>(null);
+  const [lastAudit, setLastAudit] = useState<QaAuditEnvelope | null>(null);
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
 
   const loadHistory = useCallback(async () => {
     try {
       setHistoryError(null);
       setHistory(await devConsoleApi.qaHistory(40));
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Failed to load QA history');
+      setHistoryError(err instanceof Error ? err.message : 'Failed to load Audit History');
     }
   }, []);
 
@@ -294,7 +309,9 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
 
   const runFinished = !running && tasks.some(t => t.status === 'pass' || t.status === 'fail' || t.status === 'warn');
   const hasOpenIssues = tasks.some(t => t.status === 'fail' || t.status === 'warn');
-  const canShowPurge = runFinished || history.length > 0;
+  const dataStillActive = lastAudit?.dataLifecycle === 'active' && !!runContext?.companyId;
+  const canConfirmVanish = runFinished && runStatus === 'passed' && !hasOpenIssues && dataStillActive && !!lastRunId && !!lastAudit;
+  const canShowPurge = (runFinished && dataStillActive) || history.some(r => parseQaAuditPayload(r.resultsJson).audit?.dataLifecycle === 'active');
 
   function openStep(task: QaTaskResult, summary?: string | null, context?: PowerQaContext | null) {
     setFixMessage(null);
@@ -302,30 +319,59 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
   }
 
   function openHistoryRow(row: DevQaHistoryRow) {
-    const parsed = parseHistoryTasks(row.resultsJson);
+    const { tasks: parsed, audit } = parseQaAuditPayload(row.resultsJson);
     if (parsed.length === 0) return;
     const problem = parsed.find(t => t.status === 'fail') ?? parsed.find(t => t.status === 'warn') ?? parsed[parsed.length - 1];
     setTasks(parsed);
     setRunSummary(row.summary);
+    setLastRunId(row.id);
+    setLastAudit(audit);
+    setRunStatus(
+      row.status === 'passed' || row.status === 'failed' || row.status === 'warning'
+        ? row.status
+        : null,
+    );
+    setAwaitingConfirm(false);
+    if (audit?.context) {
+      setRunContext({
+        ...audit.context,
+        components: audit.context.components ?? [],
+        purchaseOrders: audit.context.purchaseOrders ?? [],
+      });
+    } else {
+      setRunContext(null);
+    }
     setTab('run');
-    openStep(problem, row.summary, null);
+    openStep(problem, row.summary, audit?.context
+      ? { ...audit.context, components: audit.context.components ?? [], purchaseOrders: audit.context.purchaseOrders ?? [] }
+      : null);
   }
 
   async function persistAndFinish(
     runId: number,
-    result: Awaited<ReturnType<typeof runAutomatedQa>>,
+    result: QaRunResult,
   ) {
+    const audit = sealQaAudit(result);
     setRunSummary(result.summary);
+    setRunStatus(result.status);
     setRunContext(result.context);
     setTasks(result.tasks);
+    setLastRunId(runId);
+    setLastAudit(audit);
     await devConsoleApi.completeQaRun(runId, {
       status: result.status,
       summary: result.summary,
-      resultsJson: JSON.stringify(result.tasks),
+      resultsJson: serializeQaAudit(audit),
     });
     await loadHistory();
     const firstProblem = result.tasks.find(t => t.status === 'fail') ?? result.tasks.find(t => t.status === 'warn');
-    if (firstProblem) openStep(firstProblem, result.summary, result.context);
+    if (firstProblem) {
+      setAwaitingConfirm(false);
+      openStep(firstProblem, result.summary, result.context);
+    } else if (result.status === 'passed') {
+      setAwaitingConfirm(true);
+      setTab('run');
+    }
   }
 
   async function startRun() {
@@ -333,8 +379,12 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
     setTab('run');
     setRunning(true);
     setRunSummary('Starting power-user QA…');
+    setRunStatus(null);
     setPurgeMessage(null);
     setRunContext(null);
+    setLastAudit(null);
+    setLastRunId(null);
+    setAwaitingConfirm(false);
     setIssue(null);
     setFixMessage(null);
     setTasks(createPendingTasks());
@@ -354,6 +404,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'QA run failed to start';
       setRunSummary(message);
+      setRunStatus('failed');
       if (runId != null) {
         try {
           await devConsoleApi.completeQaRun(runId, {
@@ -371,7 +422,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
     }
   }
 
-  async function handlePurgeQaData() {
+  async function vanishQaDataAfterConfirm(confirmedNoIssues: boolean) {
     setPurging(true);
     setPurgeMessage(null);
     try {
@@ -379,22 +430,46 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         companyIds: runContext?.companyId != null ? [runContext.companyId] : undefined,
         purgeAllQaPower: true,
       });
+
+      if (lastRunId != null && lastAudit != null) {
+        const disposed = markQaDataDisappeared(lastAudit);
+        const baseSummary = runSummary ?? lastAudit.context.companyName ?? 'Power-user QA';
+        const summary = confirmedNoIssues
+          ? `${baseSummary} · Confirmed no issues — QA data disappeared (audit only)`
+          : `${baseSummary} · QA data disappeared (audit only)`;
+        await devConsoleApi.completeQaRun(lastRunId, {
+          status: runStatus ?? 'passed',
+          summary,
+          resultsJson: serializeQaAudit(disposed),
+        });
+        setLastAudit(disposed);
+        setRunSummary(summary);
+      }
+
       setTasks(createPendingTasks());
       setRunContext(null);
       setIssue(null);
-      setRunSummary(null);
+      setAwaitingConfirm(false);
       setPurgeMessage(
-        `Kept ${result.historyRowsKept} history row(s). Deleted ${result.companiesDeleted} QA compan${result.companiesDeleted === 1 ? 'y' : 'ies'}`
+        `QA operational data vanished. Kept ${result.historyRowsKept} Audit History row(s). Deleted ${result.companiesDeleted} QA compan${result.companiesDeleted === 1 ? 'y' : 'ies'}`
           + (result.companyNames.length ? `: ${result.companyNames.join(', ')}` : '.')
           + ` ${result.note}`,
       );
       setTab('history');
       await loadHistory();
     } catch (err) {
-      setPurgeMessage(err instanceof Error ? err.message : 'Failed to purge QA data');
+      setPurgeMessage(err instanceof Error ? err.message : 'Failed to vanish QA data');
     } finally {
       setPurging(false);
     }
+  }
+
+  async function handlePurgeQaData() {
+    await vanishQaDataAfterConfirm(false);
+  }
+
+  async function handleConfirmNoIssuesAndVanish() {
+    await vanishQaDataAfterConfirm(true);
   }
 
   async function handleFix(actionId: string) {
@@ -411,13 +486,8 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         return;
       }
       if (actionId === 'cleanup') {
-        const outcome = await executeQaFix(actionId, runContext ?? { runKey: 'fix', components: [], purchaseOrders: [] }, setTasks);
-        setFixMessage('message' in outcome ? outcome.message : outcome.summary);
-        setTasks(createPendingTasks());
-        setRunContext(null);
-        setIssue(null);
-        setTab('history');
-        await loadHistory();
+        await vanishQaDataAfterConfirm(false);
+        setFixMessage('QA operational data vanished. Audit History kept.');
         return;
       }
       const started = await devConsoleApi.startQaRun({
@@ -452,9 +522,8 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         <div>
           <h2 className="text-sm font-semibold">Power-user Automated QA</h2>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            End-to-end user journey: company → locations → System Admin login → components/vendors → sub-product & product →
-            RRP/COGS → 25 POs → accept/receive → stock cards → cash purchase → produce + POS FIFO → final audit.
-            Every step is clickable. Red/yellow steps include irregular numbers and executable fixes.
+            Creates temporary (“disappearing”) operational data for an end-to-end journey. Every completed run seals an
+            Audit History trail. When you confirm no issues, all QA-created records vanish — only Audit History remains.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -463,21 +532,21 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
               type="button"
               onClick={() => void handlePurgeQaData()}
               disabled={purging || running || fixing}
-              title="Delete QA operational DB records; keep History"
+              title="Vanish QA operational DB records now; keep Audit History"
               className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50"
             >
               {purging ? <Loader2 size={13} className="animate-spin" /> : <Eraser size={13} />}
-              Keep history & delete QA records
+              Vanish QA data
             </button>
           )}
           <button
             type="button"
             onClick={() => void startRun()}
             disabled={running || fixing || purging}
-            className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 hover:opacity-90 disabled:opacity-50"
           >
             {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-            {running ? 'Running power QA…' : 'Run Power-user QA'}
+            {running ? 'Running…' : 'Run automated QA'}
           </button>
         </div>
       </div>
@@ -495,7 +564,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           onClick={() => setTab('history')}
           className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'history' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          <History size={12} /> History
+          <History size={12} /> Audit History
         </button>
       </div>
 
@@ -507,9 +576,27 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           {purgeMessage}
         </div>
       )}
+      {(awaitingConfirm || canConfirmVanish) && tab === 'run' && (
+        <div className="px-3 py-3 rounded-md border border-emerald-500/40 bg-emerald-500/10 space-y-2">
+          <p className="text-xs text-emerald-900 dark:text-emerald-100">
+            QA completed with no open issues. Confirm to vanish all temporary QA data — like a disappearing message.
+            Audit History stays sealed permanently.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleConfirmNoIssuesAndVanish()}
+            disabled={purging || running || fixing}
+            className="inline-flex items-center gap-1.5 text-xs font-medium bg-emerald-700 text-white rounded-md px-3 py-2 hover:bg-emerald-800 disabled:opacity-50"
+          >
+            {purging ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            Confirm no issues — vanish QA data
+          </button>
+        </div>
+      )}
       {hasOpenIssues && runFinished && tab === 'run' && (
         <div className="px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-100">
-          Resolve open issues (or re-run) before purging if you still need the QA company for investigation. History is always kept.
+          Resolve open issues (or re-run) before vanishing data if you still need the QA company for investigation.
+          Audit History is always kept.
         </div>
       )}
 
@@ -577,9 +664,12 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       {tab === 'history' && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">QA history</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Audit History</h3>
             <button type="button" onClick={() => void loadHistory()} className="text-[11px] text-primary hover:underline">Refresh</button>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Durable trail of every completed QA run. Operational data is temporary; after confirm, only these rows remain.
+          </p>
           {historyError && (
             <div className="px-3 py-2 rounded-md bg-destructive/10 text-destructive text-xs">{historyError}</div>
           )}
@@ -589,6 +679,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
                 <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground">
                   <th className="px-3 py-2 font-medium">When</th>
                   <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Data</th>
                   <th className="px-3 py-2 font-medium">Triggered by</th>
                   <th className="px-3 py-2 font-medium">Summary</th>
                 </tr>
@@ -596,6 +687,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
               <tbody>
                 {history.map(row => {
                   const parsed = parseHistoryTasks(row.resultsJson);
+                  const lifecycle = auditLifecycleLabel(row);
                   const clickable = parsed.length > 0;
                   return (
                     <tr
@@ -607,6 +699,11 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
                       <td className="px-3 py-2">
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${historyStatusClass(row.status)}`}>
                           {row.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${lifecycle.className}`}>
+                          {lifecycle.label}
                         </span>
                       </td>
                       <td className="px-3 py-2">{row.triggeredBy || '—'}</td>
@@ -621,7 +718,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
                 })}
                 {history.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">No QA runs yet.</td>
+                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No Audit History yet.</td>
                   </tr>
                 )}
               </tbody>
