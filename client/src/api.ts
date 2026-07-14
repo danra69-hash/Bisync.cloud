@@ -2210,7 +2210,9 @@ export const api = {
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     params.set('period', period);
     params.set('uomMode', uomMode);
-    const res = await fetch(`${API_BASE}/api/inventory-counts/active?${params.toString()}`);
+    const res = await fetch(`${API_BASE}/api/inventory-counts/active?${params.toString()}`, {
+      headers: tenantHeaders(),
+    });
     if (!res.ok) throw new Error(`API error ${res.status}: /api/inventory-counts/active`);
     const text = await res.text();
     if (!text.trim()) return null;

@@ -8,25 +8,62 @@ export type QaIssueGuide = {
 };
 
 const GUIDES: Record<string, QaIssueGuide> = {
-  'create-company': {
-    area: 'System Configuration → Companies',
-    expected: 'New company with Restaurant + Central Kitchen, Halal + Muslim Friendly, all modules.',
+  'register-activate': {
+    area: 'Public registration → email activation',
+    expected: 'New person registers, activationUrl is returned (SMTP stub), confirm-activation, then login succeeds.',
     whereToFix: [
-      'Open System Configuration → Companies → Add Company.',
-      'Set both business types and both vendor policies (halal + muslim-friendly).',
-      'Enable RMS, POS, HRM, Accounting.',
+      'POST /api/auth/register with unique email/mobile and matching passwords (≥8).',
+      'Use activationUrl from the register response (LoggingEmailSender stub).',
+      'POST /api/auth/confirm-activation with the token, then login.',
     ],
-    checks: ['Company created', 'Both business types saved', 'Both vendor policies saved', 'Modules enabled'],
+    checks: ['Register returns activationUrl', 'User Active after confirm', 'Login as owner works'],
   },
-  'create-locations': {
-    area: 'System Configuration → Locations',
-    expected: 'Restaurant location overridden to Halal; Central Kitchen overridden to Muslim Friendly.',
+  'company-onboarding': {
+    area: 'Company onboarding',
+    expected: 'Registered owner completes company onboarding; user.companyId set.',
     whereToFix: [
-      'Add location #1: Restaurant / Cafe with Halal policy.',
-      'Add location #2: Central Kitchen with Muslim Friendly policy.',
-      'Confirm overrides (not inherit) under Type of Business / Vendor Policy.',
+      'Call complete-company-onboarding with company profile (types + modules).',
+      'Confirm owner is Company Admin for the new company.',
     ],
-    checks: ['Restaurant location exists', 'Kitchen location exists', 'Policies differ as designed'],
+    checks: ['companyId assigned', 'Company name is QA Power Co*', 'Modules include RMS/POS/HRM'],
+  },
+  'location-onboarding': {
+    area: 'Location onboarding',
+    expected: 'First location created via onboarding, then typed as Restaurant / Halal.',
+    whereToFix: [
+      'complete-location-onboarding for the owner.',
+      'Update location config: Restaurant type + halal policy.',
+    ],
+    checks: ['Restaurant location exists', 'externalId present', 'Halal policy saved'],
+  },
+  'create-kitchen-location': {
+    area: 'System Configuration → Locations',
+    expected: 'Second location: Central Kitchen / Muslim Friendly for dual-policy QA.',
+    whereToFix: [
+      'Add Central Kitchen location under the QA company.',
+      'Set Muslim Friendly vendor policy (override).',
+    ],
+    checks: ['Kitchen location exists', 'Policies differ from restaurant'],
+  },
+  'payment-continue': {
+    area: 'Payment page Continue',
+    expected: 'Company/location profiles saved; subscription pricing MYR 300+450; no gateway charge yet.',
+    whereToFix: [
+      'Ensure company types include Restaurant + Central Kitchen and modules set.',
+      'Location types inherit from company types.',
+      'Assert standard (300) vs premium (450) MYR pricing.',
+    ],
+    checks: ['Company updated', 'Locations typed', 'Pricing totals MYR 750'],
+  },
+  'provision-company-db': {
+    area: 'SaaS tenancy provision',
+    expected: 'Operational DB bisync_c_{id} (+ archive) provisioned or already present.',
+    whereToFix: [
+      'Call provision-company-db after payment Continue.',
+      'Confirm Postgres CREATE DATABASE rights / Tenancy:ProvisionCompanyDatabases.',
+      'Set X-Bisync-Company-Id for subsequent API calls.',
+    ],
+    checks: ['provisioned or alreadyProvisioned', 'databaseName matches', 'Feature flag not blocking'],
   },
   'create-system-admin': {
     area: 'HR Employees + Access Control',
@@ -37,6 +74,15 @@ const GUIDES: Record<string, QaIssueGuide> = {
       'Grant all modules; set superAdmin in accessJson if UI lacks the toggle.',
     ],
     checks: ['Employee created', 'User linked to employee', 'superAdmin true', 'All RMS tasks on'],
+  },
+  'create-hr-staff': {
+    area: 'HR Employees + Access Control',
+    expected: 'Second HR employee (Operations Staff) with limited non-admin access.',
+    whereToFix: [
+      'Create employee under Operations (or People).',
+      'Link AppUser with role Staff and superAdmin false.',
+    ],
+    checks: ['Staff employee created', 'User not superAdmin', 'Distinct from System Admin'],
   },
   'login-system-admin': {
     area: 'Authentication',
@@ -174,6 +220,16 @@ const GUIDES: Record<string, QaIssueGuide> = {
       'Inspect FIFO layers for anomalies.',
     ],
     checks: ['Product on-hand coherent', 'Components non-negative', 'Irregularities cleared'],
+  },
+  'cogs-audit-history': {
+    area: 'Inventory confirm → COGS Audit History',
+    expected: 'Full inventory confirmed writes a System COGS Audit History run for the QA company/period.',
+    whereToFix: [
+      'Save a full inventory count (counted = system qty) for the kitchen.',
+      'Confirm the session to trigger SystemCogsAuditSnapshotService.',
+      'Open COGS Audit → System History and verify the new run.',
+    ],
+    checks: ['Inventory session confirmed', 'History runId present', 'Live summary reachable'],
   },
 };
 

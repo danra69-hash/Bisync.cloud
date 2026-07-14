@@ -522,8 +522,9 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         <div>
           <h2 className="text-sm font-semibold">Power-user Automated QA</h2>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            Creates temporary (“disappearing”) operational data for an end-to-end journey. Every completed run seals an
-            Audit History trail. When you confirm no issues, all QA-created records vanish — only Audit History remains.
+            Creates temporary (“disappearing”) operational data for the full journey: register → company/location
+            onboarding → payment → DB provision → System Admin + HR staff → inventory/PO/POS → COGS Audit History.
+            Every completed run seals an Audit History trail. Confirm no issues to vanish QA data — only Audit History remains.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

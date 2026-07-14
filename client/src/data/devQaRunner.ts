@@ -1,7 +1,8 @@
-import { api } from '../api';
+import { api, setApiTenantCompanyId } from '../api';
 import { DEMO_PASSWORD } from '../context/currentUserContext';
 import { EMPTY_COMPONENT_DETAIL_CONFIG, serializeDetailConfig } from './componentForm';
 import { calcCogsPercentValue, calcProductCogs } from './productForm';
+import { priceLocationLine, sumPricedLines } from './subscriptionPricing';
 import { allRmsTaskIds } from './userAccess';
 import { hrApi } from '../modules/hr/api';
 import { purgeQaOperationalData } from './devConsoleApi';
@@ -58,6 +59,11 @@ export type PowerQaComponent = {
 
 export type PowerQaContext = {
   runKey: string;
+  /** Registered owner (steps A–E) before System Admin exists. */
+  ownerUserId?: number;
+  ownerEmail?: string;
+  ownerPassword?: string;
+  ownerName?: string;
   companyId?: number;
   companyName?: string;
   restaurantLocationId?: number;
@@ -69,6 +75,12 @@ export type PowerQaContext = {
   adminEmail?: string;
   adminPassword?: string;
   adminName?: string;
+  /** Extra HR employee created in step G (beyond System Admin). */
+  hrStaffEmployeeId?: number;
+  hrStaffEmail?: string;
+  hrStaffName?: string;
+  provisionedDatabaseName?: string;
+  cogsAuditHistoryRunId?: string;
   components: PowerQaComponent[];
   subProduct?: { id: number; productId: string; name: string; totalCost: number; yieldQuantity: number; yieldUom: string };
   finishedProduct?: { id: number; productId: string; name: string; totalCost: number; rrp: number; cogs: number; cogsPercent: number | null };
@@ -98,6 +110,24 @@ function daysAgoIso(days: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+function periodMonthIso(date = new Date()): string {
+  return date.toISOString().slice(0, 7);
+}
+
+function extractActivationToken(activationUrl: string): string {
+  const match = activationUrl.match(/\/activate\/([^/?#]+)/i);
+  if (!match?.[1]) throw new Error(`Activation URL missing token: ${activationUrl}`);
+  return decodeURIComponent(match[1]);
+}
+
+function setApiTenantUserId(userId: number | null | undefined) {
+  if (userId == null || userId <= 0) {
+    localStorage.removeItem('bisync.currentUserId');
+    return;
+  }
+  localStorage.setItem('bisync.currentUserId', String(userId));
 }
 
 function approxEqual(a: number, b: number, tolerance = COGS_TOLERANCE): boolean {
@@ -257,11 +287,51 @@ async function createOneComponentBundle(
 
 const TASKS: TaskDef[] = [
   {
-    id: 'create-company',
-    label: '1. Create new Company',
+    id: 'register-activate',
+    label: '1. Register person + email activation',
     run: async (ctx, update) => {
+      const email = `qa.owner.${ctx.runKey.toLowerCase()}@bisync.dev`;
+      const password = DEMO_PASSWORD;
+      const surname = 'QA';
+      const givenName = `Owner${ctx.runKey.slice(-6)}`;
+      const mobile = `+6017${ctx.runKey.slice(-8)}`;
+      const registered = await api.register({
+        surname,
+        givenName,
+        email,
+        mobile,
+        password,
+        confirmPassword: password,
+      });
+      await assert(!!registered.activationUrl, 'Register did not return activationUrl (SMTP stub link)');
+      const token = extractActivationToken(registered.activationUrl);
+      await api.confirmActivation(token);
+      const user = await api.login(email, password);
+      await assert(user.active !== false, 'Owner user is not active after activation');
+      ctx.ownerUserId = user.id;
+      ctx.ownerEmail = email;
+      ctx.ownerPassword = password;
+      ctx.ownerName = user.fullName || `${givenName} ${surname}`;
+      setApiTenantUserId(user.id);
+      update({
+        detail: `Activated ${email} · user #${user.id}`,
+        facts: {
+          userId: user.id,
+          email,
+          activationUrlPresent: true,
+          companyId: user.companyId,
+        },
+        fixActions: defaultFixActions('register-activate'),
+      });
+    },
+  },
+  {
+    id: 'company-onboarding',
+    label: '2. Company onboarding',
+    run: async (ctx, update) => {
+      await assert(!!ctx.ownerUserId, 'Owner user missing — complete register/activation first');
       const name = `QA Power Co ${ctx.runKey}`;
-      const company = await api.createCompany({
+      const user = await api.completeCompanyOnboarding(ctx.ownerUserId!, {
         name,
         brn: `BRN${ctx.runKey}`,
         gstTin: `GST${ctx.runKey}`,
@@ -279,39 +349,70 @@ const TASKS: TaskDef[] = [
         vendorPolicyTagsJson: JSON.stringify(['halal', 'muslim-friendly']),
         modulesJson: JSON.stringify(['RMS', 'POS', 'HRM', 'Accounting']),
       });
-      ctx.companyId = company.id;
-      ctx.companyName = company.name;
+      await assert(!!user.companyId, 'Company onboarding did not assign companyId');
+      ctx.companyId = user.companyId!;
+      ctx.companyName = user.companyName ?? name;
+      setApiTenantCompanyId(user.companyId!);
       update({
-        detail: `Created ${company.name} (#${company.id})`,
+        detail: `Onboarded ${ctx.companyName} (#${user.companyId})`,
         facts: {
-          companyId: company.id,
-          name: company.name,
+          companyId: user.companyId!,
+          name: ctx.companyName,
+          ownerUserId: user.id,
           businessTypes: 'Restaurant + Central Kitchen',
-          vendorPolicies: 'halal + muslim-friendly',
           modules: 'RMS, POS, HRM, Accounting',
         },
-        fixActions: defaultFixActions('create-company'),
+        fixActions: defaultFixActions('company-onboarding'),
       });
     },
   },
   {
-    id: 'create-locations',
-    label: '2. Create 2 Locations (Restaurant Halal + Central Kitchen Muslim Friendly)',
+    id: 'location-onboarding',
+    label: '3. Location onboarding (Restaurant Halal)',
     run: async (ctx, update) => {
-      await assert(!!ctx.companyId, 'Company missing');
-      const restaurant = await api.createLocationConfig({
-        companyId: ctx.companyId!,
+      await assert(!!ctx.ownerUserId && !!ctx.companyId, 'Owner/company missing');
+      await api.completeLocationOnboarding(ctx.ownerUserId!, {
         name: `QA Restaurant ${ctx.runKey}`,
         addressLine1: '12 Food Street',
         addressLine2: '',
         city: 'Kuala Lumpur',
         stateProvince: 'Wilayah Persekutuan',
         postcode: '50000',
-        principalContactUserId: null,
+      });
+      const locs = await api.locationsConfig();
+      const restaurant = locs.find(l => l.companyId === ctx.companyId);
+      await assert(!!restaurant, 'Onboarded restaurant location not found');
+      const updated = await api.updateLocationConfig(restaurant!.id, {
+        name: restaurant!.name,
+        companyId: ctx.companyId!,
+        addressLine1: restaurant!.addressLine1,
+        addressLine2: restaurant!.addressLine2,
+        city: restaurant!.city,
+        stateProvince: restaurant!.stateProvince,
+        postcode: restaurant!.postcode,
+        principalContactUserId: restaurant!.principalContactUserId ?? ctx.ownerUserId!,
         businessTypesJson: JSON.stringify([RESTAURANT]),
         vendorPolicyTagsJson: JSON.stringify(['halal']),
         modulesJson: JSON.stringify(['RMS', 'POS', 'HRM']),
       });
+      ctx.restaurantLocationId = updated.id;
+      ctx.restaurantExternalId = updated.externalId;
+      update({
+        detail: `${updated.name} · ${updated.externalId} (halal)`,
+        facts: {
+          restaurantId: updated.id,
+          restaurant: updated.externalId,
+          restaurantPolicy: 'halal',
+        },
+        fixActions: defaultFixActions('location-onboarding'),
+      });
+    },
+  },
+  {
+    id: 'create-kitchen-location',
+    label: '4. Add Central Kitchen location (Muslim Friendly)',
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.restaurantLocationId, 'Company/restaurant missing');
       const kitchen = await api.createLocationConfig({
         companyId: ctx.companyId!,
         name: `QA Central Kitchen ${ctx.runKey}`,
@@ -320,30 +421,190 @@ const TASKS: TaskDef[] = [
         city: 'Shah Alam',
         stateProvince: 'Selangor',
         postcode: '40000',
-        principalContactUserId: null,
+        principalContactUserId: ctx.ownerUserId ?? null,
         businessTypesJson: JSON.stringify([CENTRAL_KITCHEN]),
         vendorPolicyTagsJson: JSON.stringify(['muslim-friendly']),
         modulesJson: JSON.stringify(['RMS', 'POS', 'HRM']),
       });
-      ctx.restaurantLocationId = restaurant.id;
-      ctx.restaurantExternalId = restaurant.externalId;
       ctx.kitchenLocationId = kitchen.id;
       ctx.kitchenExternalId = kitchen.externalId;
       update({
-        detail: `${restaurant.name} (halal) · ${kitchen.name} (muslim-friendly)`,
+        detail: `${kitchen.name} · ${kitchen.externalId} (muslim-friendly)`,
         facts: {
-          restaurant: restaurant.externalId,
-          restaurantPolicy: 'halal',
+          kitchenId: kitchen.id,
           kitchen: kitchen.externalId,
           kitchenPolicy: 'muslim-friendly',
         },
-        fixActions: defaultFixActions('create-locations'),
+        fixActions: defaultFixActions('create-kitchen-location'),
       });
     },
   },
   {
+    id: 'payment-continue',
+    label: '5. Payment Continue (types, modules, pricing)',
+    run: async (ctx, update) => {
+      await assert(
+        !!ctx.companyId && !!ctx.restaurantLocationId && !!ctx.kitchenLocationId,
+        'Company and both locations required before payment',
+      );
+      const companies = await api.companies();
+      const company = companies.find(c => c.id === ctx.companyId);
+      await assert(!!company, 'QA company not found for payment save');
+      const updatedCompany = await api.updateCompany(company!.id, {
+        ...company!,
+        businessTypesJson: JSON.stringify([RESTAURANT, CENTRAL_KITCHEN]),
+        modulesJson: JSON.stringify(['RMS', 'POS', 'HRM', 'Accounting']),
+      });
+      const locs = await api.locationsConfig();
+      const restaurant = locs.find(l => l.id === ctx.restaurantLocationId);
+      const kitchen = locs.find(l => l.id === ctx.kitchenLocationId);
+      await assert(!!restaurant && !!kitchen, 'Payment locations missing');
+      await api.updateLocationConfig(restaurant!.id, {
+        name: restaurant!.name,
+        companyId: ctx.companyId!,
+        addressLine1: restaurant!.addressLine1,
+        addressLine2: restaurant!.addressLine2,
+        city: restaurant!.city,
+        stateProvince: restaurant!.stateProvince,
+        postcode: restaurant!.postcode,
+        principalContactUserId: restaurant!.principalContactUserId,
+        businessTypesJson: JSON.stringify([RESTAURANT]),
+        vendorPolicyTagsJson: '[]',
+        modulesJson: '[]',
+      });
+      await api.updateLocationConfig(kitchen!.id, {
+        name: kitchen!.name,
+        companyId: ctx.companyId!,
+        addressLine1: kitchen!.addressLine1,
+        addressLine2: kitchen!.addressLine2,
+        city: kitchen!.city,
+        stateProvince: kitchen!.stateProvince,
+        postcode: kitchen!.postcode,
+        principalContactUserId: kitchen!.principalContactUserId,
+        businessTypesJson: JSON.stringify([CENTRAL_KITCHEN]),
+        vendorPolicyTagsJson: '[]',
+        modulesJson: '[]',
+      });
+
+      const priced = [
+        priceLocationLine({
+          companyId: ctx.companyId!,
+          companyName: ctx.companyName ?? updatedCompany.name,
+          locationId: restaurant!.id,
+          locationName: restaurant!.name,
+          locationType: RESTAURANT,
+          countryCode: updatedCompany.countryCode || 'MY',
+        }),
+        priceLocationLine({
+          companyId: ctx.companyId!,
+          companyName: ctx.companyName ?? updatedCompany.name,
+          locationId: kitchen!.id,
+          locationName: kitchen!.name,
+          locationType: CENTRAL_KITCHEN,
+          countryCode: updatedCompany.countryCode || 'MY',
+        }),
+      ];
+      const totals = sumPricedLines(priced);
+      const irregularities: QaIrregularity[] = [];
+      if (priced[0].amount !== 300 || priced[0].currency !== 'MYR') {
+        irregularities.push({
+          id: 'price-restaurant',
+          label: 'Restaurant subscription MYR',
+          expected: 300,
+          actual: `${priced[0].currency} ${priced[0].amount}`,
+          severity: 'fail',
+        });
+      }
+      if (priced[1].amount !== 450 || priced[1].currency !== 'MYR') {
+        irregularities.push({
+          id: 'price-kitchen',
+          label: 'Central Kitchen subscription MYR',
+          expected: 450,
+          actual: `${priced[1].currency} ${priced[1].amount}`,
+          severity: 'fail',
+        });
+      }
+      update({
+        detail: `Profiles saved · bill MYR ${totals.myr} (rest ${priced[0].amount} + kitchen ${priced[1].amount})`,
+        facts: {
+          companyModules: 'RMS, POS, HRM, Accounting',
+          restaurantTier: priced[0].tier,
+          kitchenTier: priced[1].tier,
+          totalMyr: totals.myr,
+          gateway: 'deferred (Continue only)',
+        },
+        irregularities,
+        fixActions: defaultFixActions('payment-continue'),
+      });
+      if (irregularities.length) {
+        throw new Error(`Payment pricing assert failed: ${irregularities.map(i => i.label).join('; ')}`);
+      }
+    },
+  },
+  {
+    id: 'provision-company-db',
+    label: '6. Provision company operational DB',
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId, 'Company missing');
+      const result = await api.provisionCompanyDb({
+        companyId: ctx.companyId,
+        userId: ctx.ownerUserId,
+      });
+      setApiTenantCompanyId(result.companyId || ctx.companyId);
+      ctx.provisionedDatabaseName = result.databaseName;
+      const irregularities: QaIrregularity[] = [];
+      if (result.skippedByFeatureFlag) {
+        irregularities.push({
+          id: 'provision-skipped',
+          label: 'Company DB provision feature flag',
+          expected: 'enabled',
+          actual: result.message || 'skipped',
+          severity: 'warn',
+        });
+      }
+      if (!result.skippedByFeatureFlag && !result.provisioned && !result.alreadyProvisioned) {
+        irregularities.push({
+          id: 'not-provisioned',
+          label: 'Company DB provisioned',
+          expected: 'true',
+          actual: result.message || 'false',
+          severity: 'fail',
+        });
+      }
+      const expectedDb = `bisync_c_${ctx.companyId}`;
+      if (!result.skippedByFeatureFlag && result.databaseName && result.databaseName !== expectedDb) {
+        irregularities.push({
+          id: 'db-name',
+          label: 'Operational DB name',
+          expected: expectedDb,
+          actual: result.databaseName,
+          severity: 'warn',
+        });
+      }
+      update({
+        detail: result.message || `DB ${result.databaseName}`,
+        facts: {
+          companyId: result.companyId,
+          databaseName: result.databaseName,
+          archiveDatabaseName: result.archiveDatabaseName,
+          provisioned: result.provisioned,
+          alreadyProvisioned: result.alreadyProvisioned,
+          skippedByFeatureFlag: result.skippedByFeatureFlag,
+        },
+        irregularities,
+        fixActions: defaultFixActions('provision-company-db'),
+      });
+      if (irregularities.some(i => i.severity === 'fail')) {
+        throw new Error(irregularities.filter(i => i.severity === 'fail').map(i => `${i.label}: ${i.actual}`).join('; '));
+      }
+      if (irregularities.some(i => i.severity === 'warn')) {
+        softFail(irregularities.filter(i => i.severity === 'warn').map(i => `${i.label} (${i.actual})`).join('; '));
+      }
+    },
+  },
+  {
     id: 'create-system-admin',
-    label: '3. Create System Admin user with all rights',
+    label: '7. Create System Admin user with all rights',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId && !!ctx.restaurantLocationId && !!ctx.kitchenLocationId, 'Org context missing');
       const departments = await hrApi.org.departments.list();
@@ -415,12 +676,90 @@ const TASKS: TaskDef[] = [
     },
   },
   {
+    id: 'create-hr-staff',
+    label: '8. Create additional HR employee (non-admin)',
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId, 'Company missing');
+      const departments = await hrApi.org.departments.list();
+      const department = departments.find(d => d.name === 'Operations')
+        ?? departments.find(d => d.name === 'People')
+        ?? departments[0];
+      await assert(!!department, 'No HR department available');
+      const email = `qa.staff.${ctx.runKey.toLowerCase()}@bisync.dev`;
+      const name = `QA Staff ${ctx.runKey}`;
+      const mobile = `+6018${ctx.runKey.slice(-7)}`;
+      const employee = await hrApi.employees.create({
+        name,
+        email,
+        mobile,
+        department: department.name,
+        departmentId: department.id,
+        divisionId: department.divisionId,
+        position: 'Operations Staff',
+        joinDate: todayIso(),
+        fingerprintEnrolled: false,
+        faceRecognitionEnrolled: false,
+        isShiftEmployee: true,
+        posEnabled: true,
+        bisyncEnabled: true,
+        active: true,
+        companyId: ctx.companyId!,
+        workingHoursPerDay: 8,
+      });
+      const accessJson = JSON.stringify({
+        modules: ['RMS', 'POS', 'HRM'],
+        superAdmin: false,
+        rms: {
+          enabled: true,
+          tasks: {
+            viewDashboard: true,
+            viewStockCards: true,
+          },
+        },
+      });
+      const userPayload = {
+        employeeId: employee.id,
+        fullName: name,
+        email,
+        role: 'Staff',
+        phone: mobile,
+        active: true,
+        companyId: ctx.companyId!,
+        locationIdsJson: JSON.stringify(
+          [ctx.restaurantLocationId, ctx.kitchenLocationId].filter((id): id is number => id != null),
+        ),
+        accessJson,
+      };
+      const existing = (await api.users()).find(u => u.employeeId === employee.id || u.email === email);
+      const user = existing
+        ? await api.updateUser(existing.id, userPayload)
+        : await api.createUser(userPayload);
+      ctx.hrStaffEmployeeId = employee.id;
+      ctx.hrStaffEmail = email;
+      ctx.hrStaffName = name;
+      update({
+        detail: `${name} · ${email} · role Staff (not superAdmin)`,
+        facts: {
+          employeeId: employee.id,
+          userId: user.id,
+          email,
+          position: 'Operations Staff',
+          superAdmin: false,
+          department: department.name,
+        },
+        fixActions: defaultFixActions('create-hr-staff'),
+      });
+    },
+  },
+  {
     id: 'login-system-admin',
-    label: '4. Log in with System Admin credentials',
+    label: '9. Log in with System Admin credentials',
     run: async (ctx, update) => {
       await assert(!!ctx.adminEmail && !!ctx.adminPassword, 'Admin credentials missing');
       const user = await api.login(ctx.adminEmail!, ctx.adminPassword!);
       await assert(user.id === ctx.adminUserId || user.email === ctx.adminEmail, 'Logged-in user does not match QA admin');
+      setApiTenantUserId(user.id);
+      setApiTenantCompanyId(ctx.companyId);
       update({
         detail: `Authenticated as ${user.fullName} (${user.email})`,
         facts: { userId: user.id, email: user.email, role: user.role },
@@ -430,7 +769,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-first-component-vendor',
-    label: '5–7. Add Component, Vendor, Vendor Product, Engage & Tag (seed #1)',
+    label: '10. Add Component, Vendor, Vendor Product, Engage & Tag (seed #1)',
     run: async (ctx, update) => {
       await assert(!!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Locations missing');
       const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!];
@@ -451,7 +790,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-five-component-vendors',
-    label: '8. Create 5 Components + Vendors + Vendor Products (engaged & tagged)',
+    label: '11. Create 5 Components + Vendors + Vendor Products (engaged & tagged)',
     run: async (ctx, update) => {
       await assert(!!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Locations missing');
       const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!];
@@ -478,7 +817,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-sub-product',
-    label: '9. Create Sub-Product using 3 components',
+    label: '12. Create Sub-Product using 3 components',
     run: async (ctx, update) => {
       await assert(ctx.components.length >= 3 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Need ≥3 components');
       const used = ctx.components.slice(0, 3);
@@ -539,7 +878,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-finished-product',
-    label: '10. Create Product utilizing all 5 components (incl. sub-product)',
+    label: '13. Create Product utilizing all 5 components (incl. sub-product)',
     run: async (ctx, update) => {
       await assert(ctx.components.length === 5 && !!ctx.subProduct && !!ctx.companyId, 'Need 5 components + sub-product');
       // Use components 3,4 (index 3,4) as direct BOM + sub-product (which embeds 0,1,2) + also include all 5:
@@ -630,7 +969,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'set-rrp-check-cogs',
-    label: '11. Add RRP and verify COGS / COGS%',
+    label: '14. Add RRP and verify COGS / COGS%',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct, 'Finished product missing');
       const current = await api.product(ctx.finishedProduct!.id);
@@ -700,7 +1039,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-purchase-orders',
-    label: '12. Open POs to all test vendors (5 POs each, staggered dates/prices)',
+    label: '15. Open POs to all test vendors (5 POs each, staggered dates/prices)',
     run: async (ctx, update) => {
       await assert(ctx.components.length === 5 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const createdMeta: PowerQaContext['purchaseOrders'] = [];
@@ -757,7 +1096,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'vendor-accept-pos',
-    label: '13. Vendors accept POs (1 simulated price change before goods-in)',
+    label: '16. Vendors accept POs (1 simulated price change before goods-in)',
     run: async (ctx, update) => {
       await assert(ctx.purchaseOrders.length > 0, 'No POs');
       let accepted = 0;
@@ -788,7 +1127,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'receive-all-pos',
-    label: '14. Receive all vendor products',
+    label: '17. Receive all vendor products',
     run: async (ctx, update) => {
       await assert(ctx.purchaseOrders.length > 0, 'No POs');
       let received = 0;
@@ -815,7 +1154,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'verify-stock-after-po',
-    label: '15. Verify STOCK CARD after PO receipts',
+    label: '18. Verify STOCK CARD after PO receipts',
     run: async (ctx, update) => {
       await assert(ctx.components.length === 5 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const irregularities: QaIrregularity[] = [];
@@ -859,7 +1198,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'cash-purchase',
-    label: '16. Cash-purchase one component',
+    label: '19. Cash-purchase one component',
     run: async (ctx, update) => {
       await assert(ctx.components.length > 0 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const bundle = ctx.components[0];
@@ -887,7 +1226,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'verify-stock-after-cash',
-    label: '17. Verify cash purchase on STOCK CARD',
+    label: '20. Verify cash purchase on STOCK CARD',
     run: async (ctx, update) => {
       await assert(!!ctx.cashPurchaseComponentId && !!ctx.companyId && !!ctx.kitchenExternalId, 'Cash purchase context missing');
       const detail = await api.stockCardDetail('component', ctx.cashPurchaseComponentId!, ctx.companyId, [ctx.kitchenExternalId!]);
@@ -914,7 +1253,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'produce-and-pos-sales',
-    label: '18. Produce product (2 dated batches) + POS sales for FIFO',
+    label: '21. Produce product (2 dated batches) + POS sales for FIFO',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct && !!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Product/location missing');
       const productId = ctx.finishedProduct!.id;
@@ -973,7 +1312,7 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'final-stock-card-audit',
-    label: '19. Final STOCK CARD audit (PO + cash + produce + POS / FIFO)',
+    label: '22. Final STOCK CARD audit (PO + cash + produce + POS / FIFO)',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const loc = [ctx.kitchenExternalId!];
@@ -1027,6 +1366,102 @@ const TASKS: TaskDef[] = [
       }
       if (irregularities.some(i => i.severity === 'warn')) {
         softFail(`Final stock audit warnings: ${irregularities.filter(i => i.severity === 'warn').map(i => i.label).join('; ')}`);
+      }
+    },
+  },
+  {
+    id: 'cogs-audit-history',
+    label: '23. Confirm inventory + COGS Audit History',
+    run: async (ctx, update) => {
+      await assert(!!ctx.companyId && !!ctx.kitchenExternalId && ctx.components.length > 0, 'Stock context missing for COGS audit');
+      const period = periodMonthIso();
+      const locIds = [ctx.kitchenExternalId!];
+      const irregularities: QaIrregularity[] = [];
+
+      const stockRows = await api.stockCards(ctx.companyId, locIds, {
+        itemType: 'component',
+        uomMode: 'inventory',
+        period,
+      });
+      const qaComponentIds = new Set(ctx.components.map(c => c.componentId));
+      const lines = stockRows
+        .filter(row => qaComponentIds.has(row.itemKey) || row.itemType === 'component')
+        .slice(0, 20)
+        .map(row => ({
+          itemType: row.itemType,
+          itemKey: row.itemKey,
+          itemName: row.name,
+          groupName: row.group || 'QA',
+          uom: row.uom || 'Kg',
+          systemQty: row.onHandQty,
+          countedQty: row.onHandQty,
+        }));
+      await assert(lines.length > 0, 'No stock card lines available to count for COGS audit');
+
+      const saved = await api.saveInventoryCount({
+        sessionType: 'full',
+        companyId: ctx.companyId,
+        locationIds: locIds.join(','),
+        periodMonth: period,
+        uomMode: 'inventory',
+        itemTypeFilter: 'component',
+        groupFilter: 'All',
+        countDate: todayIso(),
+        savedBy: ctx.adminName ?? 'QA Power',
+        lines,
+      });
+      await assert(!!saved.session?.id, 'Inventory save did not return a session');
+
+      const confirmed = await api.confirmInventoryCount(
+        saved.session.id,
+        ctx.adminName ?? 'QA Power',
+        todayIso(),
+      );
+      await assert(confirmed.session?.status?.toLowerCase().includes('confirm') || !!confirmed.session?.confirmedAt,
+        `Inventory confirm failed (status=${confirmed.session?.status ?? 'unknown'})`);
+
+      const summary = await api.cogsAuditSummary(ctx.companyId, locIds, {
+        period,
+        uomMode: 'inventory',
+        itemType: 'component',
+      });
+      const history = await api.cogsAuditSystemHistory(50);
+      const match = history.find(h =>
+        (h.companyId != null && h.companyId === ctx.companyId)
+        || (ctx.companyName != null && h.companyName === ctx.companyName)
+        || (h.locationExternalId === ctx.kitchenExternalId && h.periodMonth === period),
+      );
+      if (!match) {
+        irregularities.push({
+          id: 'history-missing',
+          label: 'COGS Audit History entry after inventory confirm',
+          expected: `company ${ctx.companyId} / ${period}`,
+          actual: `none in ${history.length} recent runs`,
+          severity: 'fail',
+        });
+      } else {
+        ctx.cogsAuditHistoryRunId = match.runId;
+      }
+
+      update({
+        detail: match
+          ? `Inventory confirmed · COGS history ${match.runId}`
+          : `Inventory confirmed · live summary ok but history row missing`,
+        facts: {
+          periodMonth: period,
+          inventorySessionId: saved.session.id,
+          inventoryStatus: confirmed.session?.status ?? null,
+          summaryIngredientCount: summary.ingredientCount,
+          summaryRows: summary.rows?.length ?? 0,
+          historyRunId: match?.runId ?? null,
+          historyTrigger: match?.trigger ?? null,
+        },
+        irregularities,
+        fixActions: defaultFixActions('cogs-audit-history'),
+      });
+
+      if (irregularities.some(i => i.severity === 'fail')) {
+        throw new Error(irregularities.filter(i => i.severity === 'fail').map(i => i.label).join('; '));
       }
     },
   },

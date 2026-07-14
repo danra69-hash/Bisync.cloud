@@ -21,6 +21,9 @@ export type QaAuditEnvelope = {
 
 export type QaAuditContext = {
   runKey: string;
+  ownerUserId?: number;
+  ownerEmail?: string;
+  ownerName?: string;
   companyId?: number;
   companyName?: string;
   restaurantLocationId?: number;
@@ -31,6 +34,11 @@ export type QaAuditContext = {
   adminUserId?: number;
   adminEmail?: string;
   adminName?: string;
+  hrStaffEmployeeId?: number;
+  hrStaffEmail?: string;
+  hrStaffName?: string;
+  provisionedDatabaseName?: string;
+  cogsAuditHistoryRunId?: string;
   components: PowerQaContext['components'];
   subProduct?: PowerQaContext['subProduct'];
   finishedProduct?: PowerQaContext['finishedProduct'];
@@ -41,6 +49,9 @@ export type QaAuditContext = {
 export function sanitizeQaContext(ctx: PowerQaContext): QaAuditContext {
   return {
     runKey: ctx.runKey,
+    ownerUserId: ctx.ownerUserId,
+    ownerEmail: ctx.ownerEmail,
+    ownerName: ctx.ownerName,
     companyId: ctx.companyId,
     companyName: ctx.companyName,
     restaurantLocationId: ctx.restaurantLocationId,
@@ -51,6 +62,11 @@ export function sanitizeQaContext(ctx: PowerQaContext): QaAuditContext {
     adminUserId: ctx.adminUserId,
     adminEmail: ctx.adminEmail,
     adminName: ctx.adminName,
+    hrStaffEmployeeId: ctx.hrStaffEmployeeId,
+    hrStaffEmail: ctx.hrStaffEmail,
+    hrStaffName: ctx.hrStaffName,
+    provisionedDatabaseName: ctx.provisionedDatabaseName,
+    cogsAuditHistoryRunId: ctx.cogsAuditHistoryRunId,
     components: ctx.components,
     subProduct: ctx.subProduct,
     finishedProduct: ctx.finishedProduct,
