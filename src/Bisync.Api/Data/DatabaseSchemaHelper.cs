@@ -119,21 +119,6 @@ public static class DatabaseSchemaHelper
             "OrderTemplates",
             "OrderTemplateItems",
             "UserNotifications",
-            "InventoryMovements",
-            "InventoryCountSessions",
-            "InventoryCountSessionLines",
-            "Employees",
-            "EmployeeLevels",
-            "Divisions",
-            "Departments",
-            "LeaveRequests",
-            "AttendanceRecords",
-            "ShiftSchedules",
-            "EducationRecords",
-            "PreviousEmployments",
-            "EmployeeMovements",
-            "PerformanceAppraisals",
-            "DevQaRuns",
         ];
 
         foreach (var table in tables)

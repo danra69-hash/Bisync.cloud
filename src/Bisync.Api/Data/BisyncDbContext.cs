@@ -67,6 +67,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<QuoteRequestLine> QuoteRequestLines => Set<QuoteRequestLine>();
     public DbSet<SampleRequest> SampleRequests => Set<SampleRequest>();
     public DbSet<DevQaRun> DevQaRuns => Set<DevQaRun>();
+    public DbSet<DevTeamUser> DevTeamUsers => Set<DevTeamUser>();
+    public DbSet<DevConsoleSession> DevConsoleSessions => Set<DevConsoleSession>();
+    public DbSet<DevConsolePasswordTicket> DevConsolePasswordTickets => Set<DevConsolePasswordTicket>();
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
     public DbSet<TenantRollupSnapshot> TenantRollupSnapshots => Set<TenantRollupSnapshot>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
@@ -258,5 +261,25 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         modelBuilder.Entity<RevMgmtCompanyConfig>()
             .HasIndex(c => new { c.CompanyId, c.ConfigKey })
             .IsUnique();
+        modelBuilder.Entity<DevTeamUser>(e =>
+        {
+            e.HasIndex(x => x.Email).IsUnique();
+        });
+        modelBuilder.Entity<DevConsoleSession>(e =>
+        {
+            e.HasIndex(x => x.Token).IsUnique();
+            e.HasOne(x => x.DevTeamUser)
+                .WithMany()
+                .HasForeignKey(x => x.DevTeamUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<DevConsolePasswordTicket>(e =>
+        {
+            e.HasIndex(x => x.Ticket).IsUnique();
+            e.HasOne(x => x.DevTeamUser)
+                .WithMany()
+                .HasForeignKey(x => x.DevTeamUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

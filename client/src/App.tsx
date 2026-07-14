@@ -7,7 +7,7 @@ import { TableScrollContainer } from './components/shared/TableScrollContainer';
 import { sortTableRows } from './utils/tableSort';
 import {
   TrendingUp, Users, ShoppingBag, AlertTriangle,
-  ArrowUpRight, ArrowDownRight, Package, FileText
+  ArrowUpRight, ArrowDownRight, Package, FileText, Ghost
 } from 'lucide-react';
 import { api, setApiTenantCompanyId, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
 import { Sidebar } from './components/layout/Sidebar';
@@ -25,6 +25,11 @@ import { isNavItemEnabled, moduleForNavItem, resolveOrgEnabledModules } from './
 import type { NavItem } from './data/revenueManagement';
 import { useAppTranslation } from './i18n/useAppTranslation';
 import { NAV_ITEM_I18N } from './i18n/navKeys';
+import {
+  clearGhostSupportSession,
+  getGhostSupportSession,
+  type GhostSupportSession,
+} from './data/ghostSupportSession';
 
 function fmtUsd(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
@@ -103,8 +108,12 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [editLayout, setEditLayout] = useState(false);
   const [activeNav, setActiveNav] = useState<NavItem>('Overview');
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
-  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+  const [ghostSession, setGhostSession] = useState<GhostSupportSession | null>(() => getGhostSupportSession());
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(() => getGhostSupportSession()?.companyId ?? null);
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>(() => {
+    const ghost = getGhostSupportSession();
+    return ghost?.locationExternalId ? [ghost.locationExternalId] : [];
+  });
   const {
     companies,
     configLocations,
@@ -143,11 +152,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setApiTenantCompanyId(selectedCompanyId);
-  }, [selectedCompanyId]);
+    if (ghostSession) {
+      setApiTenantCompanyId(ghostSession.companyId);
+    }
+  }, [ghostSession]);
 
   useEffect(() => {
-    if (selectedCompanyId && !companies.some(c => c.id === selectedCompanyId)) {
+    if (!selectedCompanyId || companies.length === 0) return;
+    if (!companies.some(c => c.id === selectedCompanyId)) {
       setSelectedCompanyId(null);
       setSelectedLocationIds([]);
     }
@@ -155,11 +167,22 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedCompanyId) return;
-    const allowed = new Set(
-      configLocations.filter(l => l.companyId === selectedCompanyId).map(l => l.externalId),
-    );
-    setSelectedLocationIds(prev => prev.filter(id => allowed.has(id)));
+    const forCompany = configLocations.filter(l => l.companyId === selectedCompanyId);
+    if (forCompany.length === 0) return;
+    const allowed = new Set(forCompany.map(l => l.externalId));
+    setSelectedLocationIds(prev => {
+      const next = prev.filter(id => allowed.has(id));
+      // Keep ghost location if still valid; avoid clearing to empty while org loads.
+      return next;
+    });
   }, [configLocations, selectedCompanyId]);
+
+  function exitGhostSupport() {
+    const returnPath = ghostSession?.returnPath || '/dev/console';
+    clearGhostSupportSession();
+    setGhostSession(null);
+    window.location.assign(returnPath);
+  }
 
   const companyScopedConfigLocations = selectedCompanyId
     ? configLocations.filter(l => l.companyId === selectedCompanyId)
@@ -258,6 +281,26 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {ghostSession && (
+        <div className="sticky top-0 z-40 px-3 py-2 flex flex-wrap items-center justify-between gap-2 bg-amber-500 text-amber-950 text-xs">
+          <div className="inline-flex items-center gap-2 min-w-0">
+            <Ghost size={14} className="shrink-0" />
+            <span className="font-semibold">Ghost Support</span>
+            <span className="truncate">
+              {ghostSession.companyName} · {ghostSession.locationName}
+              {ghostSession.actorEmail ? ` · ${ghostSession.actorEmail}` : ''}
+            </span>
+            <span className="hidden sm:inline opacity-80">· viewing as Super User</span>
+          </div>
+          <button
+            type="button"
+            onClick={exitGhostSupport}
+            className="shrink-0 rounded-md border border-amber-900/30 bg-amber-100/80 px-2.5 py-1 font-medium hover:bg-amber-100"
+          >
+            Exit Ghost Support
+          </button>
+        </div>
+      )}
       <Sidebar
         open={sidebarOpen}
         activeNav={activeNav}
@@ -281,6 +324,7 @@ export default function App() {
           onCompanyChange={(companyId) => {
             setSelectedCompanyId(companyId);
             setSelectedLocationIds([]);
+            setApiTenantCompanyId(companyId);
           }}
           onLocationChange={setSelectedLocationIds}
           onToggleSidebar={() => setSidebarOpen(v => !v)}
@@ -403,7 +447,6 @@ export default function App() {
           ) : activeNav === 'System Configuration' ? (
             <SystemConfigurationPage
               selectedCompanyId={selectedCompanyId}
-              selectedLocationIds={selectedLocationIds}
               onOrgDataChanged={refreshOrgFilters}
             />
           ) : activeNav === 'Human Resources' ? (

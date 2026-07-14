@@ -11,7 +11,8 @@ param(
     [string]$AppUser = "bisync",
     [string]$AppPassword = "bisync",
     [string]$Database = "bisync",
-    [string]$ArchiveDatabase = "bisync_archive"
+    [string]$ArchiveDatabase = "bisync_archive",
+    [string]$AuditDatabase = "bisync_audit"
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,6 +65,13 @@ if (-not ($archiveExists -match "1")) {
     Invoke-Psql -Psql $psql -DatabaseName "postgres" -Sql "CREATE DATABASE $ArchiveDatabase OWNER $AppUser"
 } else {
     Write-Host "Database $ArchiveDatabase already exists." -ForegroundColor Gray
+}
+
+$auditExists = & $psql -h $DbHost -p $DbPort -U $SuperUser -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$AuditDatabase'"
+if (-not ($auditExists -match "1")) {
+    Invoke-Psql -Psql $psql -DatabaseName "postgres" -Sql "CREATE DATABASE $AuditDatabase OWNER $AppUser"
+} else {
+    Write-Host "Database $AuditDatabase already exists." -ForegroundColor Gray
 }
 
 Write-Host "Local PostgreSQL ready for Bisync ($AppUser / $Database)." -ForegroundColor Green

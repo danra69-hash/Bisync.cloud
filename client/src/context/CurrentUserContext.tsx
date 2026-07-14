@@ -108,6 +108,17 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    const userId = currentUserId;
+    const companyIdRaw = localStorage.getItem('bisync.selectedCompanyId');
+    const companyId = companyIdRaw ? Number(companyIdRaw) : null;
+    if (userId) {
+      void api.recordLogoutAudit({
+        userId,
+        companyId: companyId && companyId > 0 ? companyId : null,
+        reason: 'user-logout',
+      }).catch(() => { /* audit best-effort */ });
+    }
+
     if (!REQUIRE_PLATFORM_LOGIN) {
       // Auth paused — stay in-app on the default user instead of bouncing to landing.
       const defaultId = resolveDefaultUserId(users);
@@ -125,7 +136,7 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     clearUserActivity();
     setIsAuthenticated(false);
     setCurrentUserIdState(null);
-  }, [users]);
+  }, [users, currentUserId]);
 
   useIdleLogout(REQUIRE_PLATFORM_LOGIN && isAuthenticated, logout);
 

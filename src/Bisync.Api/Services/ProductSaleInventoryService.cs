@@ -7,8 +7,7 @@ namespace Bisync.Api.Services;
 
 /// <summary>
 /// Depletes stock when a parent product is sold (POS, online, offline).
-/// Finished goods: deplete produced parent stock (stock card / FIFO).
-/// Smart components: BOM qty × units sold (FIFO) for make-to-order shortfall paths.
+/// Smart components: BOM qty × units sold (FIFO).
 /// Sub-products: deplete produced stock first; shortfall uses sub-product recipe components.
 /// </summary>
 public class ProductSaleInventoryService(
@@ -57,13 +56,6 @@ public class ProductSaleInventoryService(
 
         foreach (var locationId in locationExternalIds)
         {
-            await DepleteFinishedProductStockAsync(
-                product,
-                locationId,
-                quantitySold,
-                referenceType,
-                cancellationToken);
-
             foreach (var line in product.Items.Where(l => !string.IsNullOrWhiteSpace(l.ComponentId)))
             {
                 if (subProductsByCode.TryGetValue(line.ComponentId, out var subProduct))
@@ -103,39 +95,6 @@ public class ProductSaleInventoryService(
 
         product.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Records finished-goods depletion so product stock cards / FIFO layers reflect POS sales.
-    /// </summary>
-    async Task DepleteFinishedProductStockAsync(
-        Product product,
-        string locationId,
-        decimal quantitySold,
-        string referenceType,
-        CancellationToken cancellationToken)
-    {
-        var stockRow = await db.ProductB2bLocationStocks
-            .FirstOrDefaultAsync(
-                s => s.ProductId == product.Id && s.LocationExternalId == locationId,
-                cancellationToken);
-
-        if (stockRow is not null)
-        {
-            stockRow.InStock = Math.Max(0, stockRow.InStock - quantitySold);
-            stockRow.UpdatedAt = DateTime.UtcNow;
-        }
-
-        db.ProductProductionLogs.Add(new ProductProductionLog
-        {
-            ProductId = product.Id,
-            EntryType = referenceType,
-            Quantity = quantitySold,
-            ProductionDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
-            LocationIdsJson = JsonSerializer.Serialize(new[] { locationId }),
-            CompanyId = product.CompanyId,
-            CreatedAt = DateTime.UtcNow,
-        });
     }
 
     async Task DepleteSubProductLineAsync(

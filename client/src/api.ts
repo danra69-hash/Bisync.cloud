@@ -18,6 +18,12 @@ function tenantHeaders(extra?: HeadersInit): HeadersInit {
   const userId = localStorage.getItem(TENANT_USER_KEY);
   if (companyId) headers['X-Bisync-Company-Id'] = companyId;
   if (userId) headers['X-Bisync-User-Id'] = userId;
+  try {
+    const devToken = localStorage.getItem('bisync.devConsoleToken');
+    if (devToken) headers['X-Bisync-Dev-Console-Token'] = devToken;
+  } catch {
+    // ignore
+  }
   if (extra) {
     const e = new Headers(extra);
     e.forEach((v, k) => {
@@ -214,6 +220,52 @@ export interface SystemCogsAuditHistoryFile {
   entry: SystemCogsAuditHistoryEntry;
   summary: CogsAuditSummaryResult;
 }
+
+export type SystemAuditMonthBucket = {
+  year: number;
+  month: number;
+  count: number;
+};
+
+export type SystemAuditEventRow = {
+  id: number;
+  occurredAtUtc: string;
+  occurredAtLocal: string;
+  timeZoneId: string;
+  year: number;
+  month: number;
+  category: string;
+  action: string;
+  companyId: number | null;
+  companyName: string | null;
+  countryCode: string | null;
+  locationId: number | null;
+  locationExternalId: string | null;
+  locationName: string | null;
+  databaseBucket: string | null;
+  userId: number | null;
+  userEmail: string | null;
+  userName: string | null;
+  entityType: string | null;
+  entityKey: string | null;
+  summary: string;
+  detailsJson: string;
+  activityType?: string;
+  activityDetail?: string;
+  effectedDbBucket?: string | null;
+};
+
+export type SystemAuditListResponse = {
+  companyId?: number;
+  locationId?: number;
+  year: number;
+  month: number;
+  total: number;
+  take: number;
+  skip: number;
+  retentionNote: string;
+  rows: SystemAuditEventRow[];
+};
 
 export interface AppUser {
   id: number;
@@ -2309,6 +2361,32 @@ export const api = {
     fetchJson<SystemCogsAuditHistoryEntry[]>(`/api/cogs-audit/system/history?take=${take}`),
   cogsAuditSystemHistoryOpen: (runId: string) =>
     fetchJson<SystemCogsAuditHistoryFile>(`/api/cogs-audit/system/history/${encodeURIComponent(runId)}`),
+  systemAuditMonths: (params: { companyId?: number; locationId?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.companyId != null) q.set('companyId', String(params.companyId));
+    if (params.locationId != null) q.set('locationId', String(params.locationId));
+    const qs = q.toString();
+    return fetchJson<SystemAuditMonthBucket[]>(`/api/system-audit/months${qs ? `?${qs}` : ''}`);
+  },
+  systemAuditEvents: (params: {
+    companyId: number;
+    locationId: number;
+    year: number;
+    month: number;
+    take?: number;
+    skip?: number;
+  }) => {
+    const q = new URLSearchParams();
+    q.set('companyId', String(params.companyId));
+    q.set('locationId', String(params.locationId));
+    q.set('year', String(params.year));
+    q.set('month', String(params.month));
+    if (params.take != null) q.set('take', String(params.take));
+    if (params.skip != null) q.set('skip', String(params.skip));
+    return fetchJson<SystemAuditListResponse>(`/api/system-audit?${q.toString()}`);
+  },
+  recordLogoutAudit: (payload: { userId?: number; companyId?: number | null; reason?: string } = {}) =>
+    fetchJsonWithMethod<{ recorded: boolean }>('/api/system-audit/logout', 'POST', payload),
   revenue: (period = 'week') => fetchJson<RevenuePoint[]>(`/api/revenue?period=${period}`),
   progress: () => fetchJson<ProgressData>('/api/progress'),
 };

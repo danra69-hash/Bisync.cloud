@@ -226,6 +226,7 @@ public class SystemCogsAuditSnapshotService(
     BisyncDbContext db,
     CogsAuditService cogsAudit,
     SystemCogsAuditHistoryStore historyStore,
+    ISystemAuditService systemAudit,
     ILogger<SystemCogsAuditSnapshotService> logger)
 {
     public async Task SnapshotAfterInventoryReconcileAsync(
@@ -281,6 +282,13 @@ public class SystemCogsAuditSnapshotService(
                 };
 
                 historyStore.Save(entry, summary, isRevised: false);
+                await systemAudit.RecordComputationAsync(
+                    "CogsAuditSnapshot",
+                    $"COGS audit computed for {locationName} · {periodMonth}",
+                    new { companyId, locationId, periodMonth, trigger, entry.IngredientCount },
+                    "CogsAudit",
+                    entry.RunId,
+                    cancellationToken);
                 logger.LogInformation(
                     "COGS audit saved {Path} ({Ingredients} ingredients)",
                     entry.RelativePath,
@@ -355,6 +363,13 @@ public class SystemCogsAuditSnapshotService(
             };
 
             historyStore.Save(entry, summary, isRevised: true, revisedAtUtc: now);
+            await systemAudit.RecordComputationAsync(
+                "CogsAuditRevisedSnapshot",
+                $"COGS audit revised for {locationName} · {periodMonth}",
+                new { companyId, locationExternalId, periodMonth, reason },
+                "CogsAudit",
+                entry.RunId,
+                cancellationToken);
             logger.LogInformation(
                 "COGS audit REVISED saved {Path} after adjustment on {Date}",
                 entry.RelativePath,

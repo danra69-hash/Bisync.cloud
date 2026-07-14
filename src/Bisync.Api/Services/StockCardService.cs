@@ -1,15 +1,13 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Bisync.Api.Services;
 
 public class StockCardService(
     BisyncDbContext db,
     ComponentStockService componentStock,
-    ComponentFifoCostingService fifoCosting,
-    IServiceScopeFactory scopeFactory)
+    ComponentFifoCostingService fifoCosting)
 {
     public async Task<IReadOnlyList<StockCardListRow>> ListAsync(
         int? companyId,
@@ -106,7 +104,7 @@ public class StockCardService(
 
         IQueryable<Product> productQuery = db.Products.AsNoTracking().Where(p => p.Active);
         if (companyId is int cid)
-            productQuery = productQuery.Where(p => p.CompanyId == cid);
+            productQuery = productQuery.Where(p => p.CompanyId == null || p.CompanyId == cid);
 
         var products = await productQuery
             .OrderBy(p => p.Group)
@@ -486,8 +484,6 @@ public class StockCardService(
             }
 
             await db.SaveChangesAsync(cancellationToken);
-            await TryRevisedCogsAuditAfterAdjustmentAsync(
-                companyId, locationExternalId, adjustmentDate, uomMode, trimmedReason, cancellationToken);
             return StockCardAdjustmentResult.Ok();
         }
 
@@ -541,36 +537,7 @@ public class StockCardService(
 
         await ApplyProductLocationStockDeltaAsync(product.Id, locationExternalId, signedQty, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        await TryRevisedCogsAuditAfterAdjustmentAsync(
-            companyId, locationExternalId, adjustmentDate, uomMode, trimmedReason, cancellationToken);
         return StockCardAdjustmentResult.Ok();
-    }
-
-    async Task TryRevisedCogsAuditAfterAdjustmentAsync(
-        int? companyId,
-        string locationExternalId,
-        DateOnly adjustmentDate,
-        string uomMode,
-        string reason,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            // New scope avoids circular DI with CogsAuditService → StockCardService.
-            using var scope = scopeFactory.CreateScope();
-            var snapshots = scope.ServiceProvider.GetRequiredService<SystemCogsAuditSnapshotService>();
-            await snapshots.SnapshotRevisedAfterAdjustmentAsync(
-                companyId,
-                locationExternalId,
-                adjustmentDate,
-                uomMode,
-                reason,
-                cancellationToken);
-        }
-        catch
-        {
-            // Adjustment already committed — revised audit is best-effort.
-        }
     }
 
     async Task ApplyProductLocationStockDeltaAsync(
@@ -904,13 +871,10 @@ public class StockCardService(
         }).ToList();
 
         var inbound = monthLogs
-            .Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase)
-                || IsProductTransferInEntryType(l.EntryType))
+            .Where(l => string.Equals(l.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             .Sum(l => l.Quantity);
         var outbound = monthLogs
-            .Where(l => IsProductSaleEntryType(l.EntryType)
-                || IsProductWastageEntryType(l.EntryType)
-                || IsProductTransferOutEntryType(l.EntryType))
+            .Where(l => IsProductSaleEntryType(l.EntryType))
             .Sum(l => l.Quantity);
         var adjustment = monthLogs
             .Where(l => IsProductAdjustmentEntryType(l.EntryType))
@@ -996,8 +960,7 @@ public class StockCardService(
                 continue;
             }
 
-            if (IsProductSaleEntryType(log.EntryType) || IsProductWastageEntryType(log.EntryType)
-                || IsProductTransferOutEntryType(log.EntryType))
+            if (IsProductSaleEntryType(log.EntryType))
             {
                 var entryType = log.EntryType.Trim().ToLowerInvariant();
                 events.Add(new FifoEvent
@@ -1012,25 +975,6 @@ public class StockCardService(
                     Reason = FormatProductSaleReason(entryType, product.Name),
                     ReferenceNumber = log.BatchNumber ?? string.Empty,
                     SourceLabel = entryType,
-                });
-                continue;
-            }
-
-            if (IsProductTransferInEntryType(log.EntryType))
-            {
-                var transferUnitPrice = log.UnitPrice > 0 ? log.UnitPrice : productionUnitPrice;
-                events.Add(new FifoEvent
-                {
-                    Id = log.Id,
-                    OccurredAt = occurredAt,
-                    EntryType = "transfer_in",
-                    Quantity = log.Quantity,
-                    SignedQty = log.Quantity,
-                    Uom = uom,
-                    UnitPrice = transferUnitPrice,
-                    Reason = $"Transfer in — {product.Name}",
-                    ReferenceNumber = log.BatchNumber ?? string.Empty,
-                    SourceLabel = "transfer_in",
                 });
                 continue;
             }
@@ -1061,14 +1005,13 @@ public class StockCardService(
 
     static decimal ResolveProductUnitPrice(Product product)
     {
-        // Stock valuation (production + inter-outlet transfer inbound) must use cost, never RRP.
         if (product.IsSubProduct && product.YieldQuantity > 0)
             return StockCardFifoEngine.RoundUnitPrice(product.TotalCost / product.YieldQuantity);
 
-        if (product.TotalCost > 0)
-            return StockCardFifoEngine.RoundUnitPrice(product.TotalCost);
+        if (product.Rrp > 0)
+            return StockCardFifoEngine.RoundUnitPrice(product.Rrp);
 
-        return StockCardFifoEngine.RoundUnitPrice(product.Rrp);
+        return StockCardFifoEngine.RoundUnitPrice(product.TotalCost);
     }
 
     async Task<FifoSimulationResult> BuildComponentFifoResultAsync(
@@ -1207,7 +1150,11 @@ public class StockCardService(
                 Quantity = qty,
                 SignedQty = movement.QtyDelta,
                 Uom = movement.Uom,
-                UnitPrice = ResolveComponentMovementUnitPrice(entryType, movement, movements, ingredient, displayUom),
+                UnitPrice = entryType is "adjustment_in" or "adjustment_out"
+                    ? 0
+                    : movement.UnitPrice > 0
+                        ? movement.UnitPrice
+                        : ResolveComponentFallbackPrice(ingredient, displayUom),
                 Reason = FormatMovementReason(movement, productionProduct),
                 ReferenceNumber = ResolveMovementReferenceNumber(movement, productionProduct),
                 SourceLabel = entryType,
@@ -1217,68 +1164,10 @@ public class StockCardService(
         return events;
     }
 
-    /// <summary>
-    /// Transfer lines use FIFO stock cost only — never ingredient LastPrice/catalog fallback.
-    /// Outbound is priced by the FIFO engine; inbound carries the paired transfer-out cost.
-    /// </summary>
-    static decimal ResolveComponentMovementUnitPrice(
-        string entryType,
-        InventoryMovement movement,
-        IReadOnlyList<InventoryMovement> allMovements,
-        Ingredient ingredient,
-        string displayUom)
-    {
-        if (entryType is "adjustment_in" or "adjustment_out")
-            return 0;
-
-        if (entryType is "transfer_out")
-            return 0;
-
-        if (entryType is "transfer_in")
-        {
-            if (movement.UnitPrice > 0)
-                return StockCardFifoEngine.RoundUnitPrice(movement.UnitPrice);
-
-            if (movement.ReferenceId > 0)
-            {
-                var pairedOut = allMovements.FirstOrDefault(m =>
-                    m.ReferenceId == movement.ReferenceId
-                    && m.ReferenceType.Equals("transfer_out", StringComparison.OrdinalIgnoreCase)
-                    && m.UnitPrice > 0);
-                if (pairedOut is not null)
-                    return StockCardFifoEngine.RoundUnitPrice(pairedOut.UnitPrice);
-            }
-
-            return 0;
-        }
-
-        return movement.UnitPrice > 0
-            ? movement.UnitPrice
-            : ResolveComponentFallbackPrice(ingredient, displayUom);
-    }
-
     static bool IsProductSaleEntryType(string entryType)
     {
         var normalized = entryType.Trim().ToLowerInvariant();
         return normalized is "pos_sale" or "online_order" or "offline_order";
-    }
-
-    static bool IsProductWastageEntryType(string entryType)
-    {
-        var normalized = entryType.Trim().ToLowerInvariant();
-        return normalized is "wastage";
-    }
-
-    static bool IsProductTransferOutEntryType(string entryType)
-    {
-        var normalized = entryType.Trim().ToLowerInvariant();
-        return normalized is "transfer_out";
-    }
-
-    static bool IsProductTransferInEntryType(string entryType)
-    {
-        var normalized = entryType.Trim().ToLowerInvariant();
-        return normalized is "transfer_in";
     }
 
     static bool IsProductAdjustmentEntryType(string entryType)
@@ -1293,9 +1182,6 @@ public class StockCardService(
         {
             "online_order" => $"Online order — {productName}",
             "offline_order" => $"Offline order — {productName}",
-            "wastage" => $"Wastage — {productName}",
-            "transfer_out" => $"Transfer out — {productName}",
-            "transfer_in" => $"Transfer in — {productName}",
             _ => $"POS sales — {productName}",
         };
     }

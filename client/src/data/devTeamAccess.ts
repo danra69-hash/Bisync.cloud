@@ -1,7 +1,10 @@
 import { isSuperAdmin, parseUserAccess, type UserAccess } from './userAccess';
 import type { AppUser } from '../api';
 
-/** Dev Team = Super Admin, or an explicit role/email allowlist. */
+/**
+ * Legacy client-side helper for Super Admin shortcuts.
+ * Authoritative Dev Console access is the server-managed DevTeamUsers list + Dev session.
+ */
 const DEV_TEAM_EMAILS = new Set([
   'dra@cubevalue.com',
 ]);

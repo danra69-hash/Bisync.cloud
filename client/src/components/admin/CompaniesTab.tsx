@@ -124,7 +124,6 @@ function CompanyPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setForm(company);
@@ -133,11 +132,6 @@ function CompanyPanel({
     setModules(parseCompanyModules(company.modulesJson));
     setError(null);
   }, [company]);
-
-  function showError(message: string) {
-    setError(message);
-    bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }
 
   function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: val }));
@@ -185,7 +179,7 @@ function CompanyPanel({
       setForm(f => ({ ...f, active: nextActive }));
       onSave();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to update company status.');
+      setError(err instanceof Error ? err.message : 'Failed to update company status.');
     } finally {
       setSaving(false);
     }
@@ -193,18 +187,18 @@ function CompanyPanel({
 
   async function save() {
     if (!form.name.trim()) {
-      showError('Company name is required.');
+      setError('Company name is required.');
       return;
     }
 
     const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
     if (profileError) {
-      showError(profileError);
+      setError(profileError);
       return;
     }
     const modulesError = validateCompanyModules(modules);
     if (modulesError) {
-      showError(modulesError);
+      setError(modulesError);
       return;
     }
 
@@ -213,7 +207,7 @@ function CompanyPanel({
     const addressError = getAddressValidationError(form.countryCode, addressParts);
     const validationError = phoneError ?? faxError ?? addressError;
     if (validationError) {
-      showError(validationError);
+      setError(validationError);
       return;
     }
 
@@ -227,7 +221,7 @@ function CompanyPanel({
       onSave();
       onClose();
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Failed to save company.');
+      setError(err instanceof Error ? err.message : 'Failed to save company.');
     } finally {
       setSaving(false);
     }
@@ -252,7 +246,7 @@ function CompanyPanel({
           <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"><X size={14} className="text-muted-foreground" /></button>
         </div>
 
-        <div ref={bodyRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {error && (
             <div className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs">
               {error}
@@ -356,11 +350,6 @@ function CompanyPanel({
         </div>
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
-          {error && (
-            <div className="px-3 py-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-md text-xs">
-              {error}
-            </div>
-          )}
           <div className="flex items-center justify-between gap-3">
             {!isNew && 'id' in form ? (
               <button
@@ -386,7 +375,7 @@ function CompanyPanel({
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground text-right">
-            Required: company name, business type, module, and vendor product policy.
+            Required: company name, at least one business type, and one vendor product policy.
           </p>
         </div>
       </div>

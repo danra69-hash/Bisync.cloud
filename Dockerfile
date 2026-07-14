@@ -4,9 +4,6 @@ WORKDIR /src/client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
 COPY client/ ./
-# Hidden Dev Console URL — set at image build time (empty disables in production).
-ARG VITE_DEV_CONSOLE_PATH=
-ENV VITE_DEV_CONSOLE_PATH=$VITE_DEV_CONSOLE_PATH
 RUN npm run build
 
 # ── Stage 2: Build .NET API ───────────────────────────────────────────────────

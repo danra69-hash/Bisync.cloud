@@ -301,7 +301,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       setHistoryError(null);
       setHistory(await devConsoleApi.qaHistory(40));
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Failed to load Audit History');
+      setHistoryError(err instanceof Error ? err.message : 'Failed to load QA History');
     }
   }, []);
 
@@ -451,7 +451,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       setIssue(null);
       setAwaitingConfirm(false);
       setPurgeMessage(
-        `QA operational data vanished. Kept ${result.historyRowsKept} Audit History row(s). Deleted ${result.companiesDeleted} QA compan${result.companiesDeleted === 1 ? 'y' : 'ies'}`
+        `QA operational data vanished. Kept ${result.historyRowsKept} QA History row(s). Deleted ${result.companiesDeleted} QA compan${result.companiesDeleted === 1 ? 'y' : 'ies'}`
           + (result.companyNames.length ? `: ${result.companyNames.join(', ')}` : '.')
           + ` ${result.note}`,
       );
@@ -487,7 +487,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       }
       if (actionId === 'cleanup') {
         await vanishQaDataAfterConfirm(false);
-        setFixMessage('QA operational data vanished. Audit History kept.');
+        setFixMessage('QA operational data vanished. QA History kept.');
         return;
       }
       const started = await devConsoleApi.startQaRun({
@@ -524,7 +524,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
             Creates temporary (“disappearing”) operational data for the full journey: register → company/location
             onboarding → payment → DB provision → System Admin + HR staff → inventory/PO/POS → COGS Audit History.
-            Every completed run seals an Audit History trail. Confirm no issues to vanish QA data — only Audit History remains.
+            Every completed run is stored in QA History. Confirm no issues to vanish QA data — only QA History remains.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -533,7 +533,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
               type="button"
               onClick={() => void handlePurgeQaData()}
               disabled={purging || running || fixing}
-              title="Vanish QA operational DB records now; keep Audit History"
+              title="Vanish QA operational DB records now; keep QA History"
               className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50"
             >
               {purging ? <Loader2 size={13} className="animate-spin" /> : <Eraser size={13} />}
@@ -565,7 +565,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           onClick={() => setTab('history')}
           className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'history' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
-          <History size={12} /> Audit History
+          <History size={12} /> QA History
         </button>
       </div>
 
@@ -581,7 +581,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         <div className="px-3 py-3 rounded-md border border-emerald-500/40 bg-emerald-500/10 space-y-2">
           <p className="text-xs text-emerald-900 dark:text-emerald-100">
             QA completed with no open issues. Confirm to vanish all temporary QA data — like a disappearing message.
-            Audit History stays sealed permanently.
+            QA History stays sealed permanently.
           </p>
           <button
             type="button"
@@ -597,7 +597,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       {hasOpenIssues && runFinished && tab === 'run' && (
         <div className="px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-100">
           Resolve open issues (or re-run) before vanishing data if you still need the QA company for investigation.
-          Audit History is always kept.
+          QA History is always kept.
         </div>
       )}
 
@@ -665,11 +665,11 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       {tab === 'history' && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Audit History</h3>
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">QA History</h3>
             <button type="button" onClick={() => void loadHistory()} className="text-[11px] text-primary hover:underline">Refresh</button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Durable trail of every completed QA run. Operational data is temporary; after confirm, only these rows remain.
+            Results of completed Power-user Automated QA runs. Operational data is temporary; after confirm, only these rows remain.
           </p>
           {historyError && (
             <div className="px-3 py-2 rounded-md bg-destructive/10 text-destructive text-xs">{historyError}</div>
@@ -719,7 +719,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
                 })}
                 {history.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No Audit History yet.</td>
+                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No QA History yet.</td>
                   </tr>
                 )}
               </tbody>

@@ -42,7 +42,7 @@ export function SortableTableHead<T extends string>({
   onSort,
   className = '',
   style,
-  align: _align = 'center',
+  align = 'left',
   sortable = true,
   rowSpan,
   colSpan,
@@ -57,7 +57,7 @@ export function SortableTableHead<T extends string>({
         rowSpan={rowSpan}
         colSpan={colSpan}
         style={style}
-        className={tableHeaderCls('center', className)}
+        className={tableHeaderCls(align, className)}
       >
         {content}
       </th>
@@ -70,7 +70,7 @@ export function SortableTableHead<T extends string>({
       colSpan={colSpan}
       aria-sort={ariaSort}
       style={style}
-      className={tableHeaderCls('center', className)}
+      className={tableHeaderCls(align, className)}
     >
       <button
         type="button"
@@ -78,10 +78,10 @@ export function SortableTableHead<T extends string>({
         title={active ? (sortDirection === 'asc' ? 'Sorted ascending — click for descending' : 'Sorted descending — click for ascending') : 'Sort ascending'}
         className={`${tableHeaderSortBtnCls} ${
           active ? 'text-foreground' : 'text-muted-foreground'
-        }`}
+        } ${align === 'right' ? 'ml-auto text-right' : align === 'center' ? 'mx-auto text-center' : 'text-left'}`}
       >
         {header ? (
-          <span className="min-w-0 flex-1 text-center">{header}</span>
+          <span className="min-w-0 flex-1">{header}</span>
         ) : (
           <span className={tableHeaderSortLabelCls}>{label}</span>
         )}
@@ -104,7 +104,7 @@ export function SortableTableHeaderRow<T extends string>({
   sortColumn,
   sortDirection,
   onSort,
-  className = 'text-center border-b border-border',
+  className = 'text-left border-b border-border',
 }: SortableTableHeaderRowProps<T>) {
   return (
     <tr className={className}>

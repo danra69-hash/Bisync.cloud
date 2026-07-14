@@ -1,127 +1,79 @@
-import { useMemo, useState } from 'react';
-import { Eye, EyeOff, Lock, Shield } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { LogOut } from 'lucide-react';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { UsageDashboard } from '../components/dev/UsageDashboard';
 import { TenantRollupsPanel } from '../components/dev/TenantRollupsPanel';
 import { AutomatedQaPanel } from '../components/dev/AutomatedQaPanel';
+import { AuditTrailPanel } from '../components/dev/AuditTrailPanel';
+import { SystemAuditTrailTab } from '../components/admin/SystemAuditTrailTab';
+import { GhostSupportTab } from '../components/admin/GhostSupportTab';
 import { DEV_CONSOLE_PATH } from '../config/devConsole';
-import { canAccessDevConsole } from '../data/devTeamAccess';
-import { parseUserAccess } from '../data/userAccess';
-import { useCurrentUser } from '../hooks/useCurrentUser';
+import { clearDevConsoleSession, getDevConsoleToken } from '../data/devConsoleSession';
+import { devConsoleAuthApi } from '../data/devConsoleAuthApi';
+import { DevConsoleForbidden, DevConsoleLoginGate } from './DevConsoleLoginGate';
 
-/**
- * Set to `true` when reactivating Dev Console login / Dev Team gate.
- */
-const REQUIRE_DEV_CONSOLE_LOGIN = false;
+/** Dev Console always requires its own login (separate from customer Access Control). */
+const REQUIRE_DEV_CONSOLE_LOGIN = true;
 
-type DevConsoleTab = 'overview' | 'automated-qa';
+type DevConsoleTab = 'overview' | 'automated-qa' | 'qa-history' | 'audit-trail' | 'ghost-support';
 
 const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'automated-qa', label: 'Power-user Automated QA' },
+  { id: 'qa-history', label: 'QA History' },
+  { id: 'audit-trail', label: 'Audit Trail' },
+  { id: 'ghost-support', label: 'Ghost Support' },
 ];
 
-function DevLoginGate({ onSuccess }: { onSuccess: () => void }) {
-  const { login } = useCurrentUser();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await login(email.trim(), password);
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-lg space-y-4">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Lock size={16} />
-          <span className="text-[11px] uppercase tracking-widest font-sans">Dev Team only</span>
-        </div>
-        <h1 className="text-lg font-semibold">Sign in to Dev Console</h1>
-        <p className="text-xs text-muted-foreground">
-          Hidden console at <span className="font-sans">{DEV_CONSOLE_PATH}</span>. Not linked from the main app.
-        </p>
-        {error && (
-          <div className="px-3 py-2 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs">{error}</div>
-        )}
-        <label className="block space-y-1">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Email</span>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Password</span>
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              required
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm pr-10"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(v => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
-        </label>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-md bg-primary text-primary-foreground text-sm font-medium py-2 disabled:opacity-50"
-        >
-          {submitting ? 'Signing in…' : 'Continue'}
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function DevForbidden() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center space-y-3">
-        <Shield size={28} className="mx-auto text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Dev Team access required</h1>
-        <p className="text-sm text-muted-foreground">
-          You are signed in, but this console is limited to Dev Team accounts.
-        </p>
-        <a href="/" className="inline-block text-xs text-primary hover:underline">Back to app</a>
-      </div>
-    </div>
-  );
-}
+type DevSessionUser = {
+  email: string;
+  fullName: string;
+  isRoot: boolean;
+  expiresAt: string;
+};
 
 export function DevConsolePage() {
-  const { currentUser, isAuthenticated, loading } = useCurrentUser();
-  const [tick, setTick] = useState(0);
   const [tab, setTab] = useState<DevConsoleTab>('overview');
-  const allowed = useMemo(
-    () => canAccessDevConsole(currentUser, currentUser ? parseUserAccess(currentUser.accessJson) : undefined),
-    [currentUser, tick],
-  );
+  const [loading, setLoading] = useState(true);
+  const [sessionUser, setSessionUser] = useState<DevSessionUser | null>(null);
+  const [authTick, setAuthTick] = useState(0);
+
+  const refreshSession = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = getDevConsoleToken();
+      if (!token) {
+        setSessionUser(null);
+        return;
+      }
+      const me = await devConsoleAuthApi.me();
+      setSessionUser({
+        email: me.email,
+        fullName: me.fullName,
+        isRoot: me.isRoot,
+        expiresAt: me.expiresAt,
+      });
+    } catch {
+      clearDevConsoleSession();
+      setSessionUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSession();
+  }, [refreshSession, authTick]);
+
+  async function handleLogout() {
+    try {
+      await devConsoleAuthApi.logout();
+    } catch {
+      clearDevConsoleSession();
+    }
+    setSessionUser(null);
+    setAuthTick(t => t + 1);
+  }
 
   if (REQUIRE_DEV_CONSOLE_LOGIN) {
     if (loading) {
@@ -131,15 +83,16 @@ export function DevConsolePage() {
         </div>
       );
     }
-    if (!isAuthenticated || !currentUser) {
-      return <DevLoginGate onSuccess={() => setTick(t => t + 1)} />;
-    }
-    if (!allowed) {
-      return <DevForbidden />;
+    if (!sessionUser) {
+      return <DevConsoleLoginGate onSuccess={() => setAuthTick(t => t + 1)} />;
     }
   }
 
-  const triggeredBy = currentUser?.fullName || currentUser?.email || 'Dev Console';
+  if (!sessionUser) {
+    return <DevConsoleForbidden />;
+  }
+
+  const triggeredBy = sessionUser.fullName || sessionUser.email || 'Dev Console';
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -149,14 +102,25 @@ export function DevConsolePage() {
             <BrandEngineLockup size="sm" tone="onLight" />
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-sans">
-                Hidden · Dev Team{!REQUIRE_DEV_CONSOLE_LOGIN ? ' · auth paused' : ''}
+                Hidden · Dev Team
               </p>
               <h1 className="text-sm font-semibold truncate">Dev Console</h1>
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-xs font-medium">{currentUser?.fullName ?? 'Guest access'}</p>
-            <p className="text-[11px] text-muted-foreground font-sans">{DEV_CONSOLE_PATH}</p>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <p className="text-xs font-medium">{sessionUser.fullName}</p>
+              <p className="text-[11px] text-muted-foreground font-sans">{sessionUser.email}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              title="Sign out of Dev Console"
+            >
+              <LogOut size={12} />
+              Sign out
+            </button>
           </div>
         </div>
         <div className="max-w-6xl mx-auto px-4">
@@ -183,6 +147,7 @@ export function DevConsolePage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-10">
+        <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
           <>
             <UsageDashboard />
@@ -191,6 +156,19 @@ export function DevConsolePage() {
         )}
         {tab === 'automated-qa' && (
           <AutomatedQaPanel triggeredBy={triggeredBy} />
+        )}
+        {tab === 'qa-history' && (
+          <AuditTrailPanel />
+        )}
+        {tab === 'audit-trail' && (
+          <SystemAuditTrailTab allowDevConsoleAccess />
+        )}
+        {tab === 'ghost-support' && (
+          <GhostSupportTab
+            allowDevConsoleAccess
+            isDevConsoleRoot={sessionUser.isRoot}
+            devConsoleEmail={sessionUser.email}
+          />
         )}
       </main>
     </div>

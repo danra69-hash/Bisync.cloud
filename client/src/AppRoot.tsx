@@ -10,7 +10,7 @@ import { DevConsolePage } from './pages/DevConsolePage';
 import { ActivateAccountPage, parseActivationToken } from './pages/ActivateAccountPage';
 import { CompanyOnboardingPage } from './pages/CompanyOnboardingPage';
 import { LocationOnboardingPage } from './pages/LocationOnboardingPage';
-import { PaymentPage } from './pages/PaymentPage';
+import { SubscriptionPlaceholderPage } from './pages/SubscriptionPlaceholderPage';
 import {
   clearAwaitingLocation,
   clearAwaitingPayment,
@@ -72,8 +72,17 @@ export function AppRoot() {
     return <LandingPage />;
   }
 
+  // Ghost Support sessions skip customer onboarding gates.
+  const isGhostSupport = (() => {
+    try {
+      return Boolean(sessionStorage.getItem('bisync.ghostSupportSession'));
+    } catch {
+      return false;
+    }
+  })();
+
   // Self-serve gates: company (min 1) → location (min 1) → payment stub → app
-  if (isAuthenticated && currentUser && currentUser.companyId == null) {
+  if (!isGhostSupport && isAuthenticated && currentUser && currentUser.companyId == null) {
     return (
       <CompanyOnboardingPage
         onCompleted={() => setForceLocation(true)}
@@ -90,7 +99,7 @@ export function AppRoot() {
       || isAwaitingLocation()
       || (!hasLocation && isAwaitingPayment()));
 
-  if (isAuthenticated && needsLocation) {
+  if (!isGhostSupport && isAuthenticated && needsLocation) {
     return (
       <LocationOnboardingPage
         onCompleted={() => {
@@ -107,9 +116,9 @@ export function AppRoot() {
     && hasLocation
     && (forcePayment || isAwaitingPayment());
 
-  if (isAuthenticated && needsPayment) {
+  if (!isGhostSupport && isAuthenticated && needsPayment) {
     return (
-      <PaymentPage
+      <SubscriptionPlaceholderPage
         onContinue={() => {
           clearAwaitingPayment();
           setForcePayment(false);

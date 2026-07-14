@@ -1,6 +1,4 @@
 using Bisync.Api.Data;
-using Bisync.Api.Tenancy;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Bisync.Api.Services;
@@ -29,7 +27,7 @@ public sealed class StockCardArchiveHostedService(
         {
             using var scope = scopeFactory.CreateScope();
             var archiveService = scope.ServiceProvider.GetRequiredService<StockCardArchiveService>();
-            await archiveService.ArchiveAllTenantsAsync(cancellationToken);
+            await archiveService.ArchiveExpiredRecordsAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -42,12 +40,7 @@ public static class StockCardArchiveStartup
 {
     public static async Task InitializeAsync(IServiceProvider services)
     {
-        var resolver = services.GetRequiredService<ITenantConnectionResolver>();
-        var options = new DbContextOptionsBuilder<StockCardArchiveDbContext>()
-            .UseNpgsql(resolver.DefaultArchiveConnection)
-            .Options;
-        await using var archiveDb = new StockCardArchiveDbContext(options);
+        var archiveDb = services.GetRequiredService<StockCardArchiveDbContext>();
         await archiveDb.Database.EnsureCreatedAsync();
     }
 }
-

@@ -135,15 +135,7 @@ public static class VendorCatalogSeeder
 
     public static async Task EnsureCatalogVendorsAsync(BisyncDbContext db)
     {
-        var defaultCompanyId = await db.Companies.AsNoTracking()
-            .OrderBy(c => c.Id)
-            .Select(c => (int?)c.Id)
-            .FirstOrDefaultAsync();
-        if (defaultCompanyId is null)
-            return;
-
         var existingIds = await db.Vendors
-            .Where(v => v.CompanyId == defaultCompanyId)
             .Select(v => v.ExternalId)
             .ToListAsync();
 
@@ -155,7 +147,7 @@ public static class VendorCatalogSeeder
             if (existing.Contains(seed.ExternalId))
                 continue;
 
-            db.Vendors.Add(seed.ToVendor(defaultCompanyId.Value));
+            db.Vendors.Add(seed.ToVendor());
             added = true;
         }
 
@@ -179,9 +171,8 @@ public static class VendorCatalogSeeder
         bool Engaged,
         string? ProductPolicyTag = null)
     {
-        public Vendor ToVendor(int companyId) => new()
+        public Vendor ToVendor() => new()
         {
-            CompanyId = companyId,
             ExternalId = ExternalId,
             Name = Name,
             Type = Type,

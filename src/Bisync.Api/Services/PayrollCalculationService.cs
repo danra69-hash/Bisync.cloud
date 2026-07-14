@@ -48,7 +48,7 @@ public record PayrollPreviewResult(
     int? ExistingRunId,
     IReadOnlyList<PayrollLineResult> Lines);
 
-public class PayrollCalculationService(BisyncDbContext db)
+public class PayrollCalculationService(BisyncDbContext db, ISystemAuditService systemAudit)
 {
     static readonly string[] MonthNames =
         ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -118,6 +118,14 @@ public class PayrollCalculationService(BisyncDbContext db)
 
         var existing = await db.PayrollRuns.AsNoTracking()
             .FirstOrDefaultAsync(r => r.CompanyId == companyId && r.Year == year && r.Month == month, ct);
+
+        await systemAudit.RecordComputationAsync(
+            "PayrollPreview",
+            $"Payroll computation for {year}-{month:D2} ({lines.Count} employees)",
+            new { companyId, year, month, employeeCount = lines.Count },
+            "Payroll",
+            $"{companyId}:{year}-{month:D2}",
+            ct);
 
         return new PayrollPreviewResult(
             companyId,

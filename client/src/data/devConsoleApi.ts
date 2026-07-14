@@ -61,15 +61,24 @@ export type DevQaHistoryRow = {
   resultsJson: string;
 };
 
+import { getDevConsoleToken } from './devConsoleSession';
+
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+  };
+  const token = getDevConsoleToken();
+  if (token) headers['X-Bisync-Dev-Console-Token'] = token;
+  if (init?.headers) {
+    new Headers(init.headers).forEach((v, k) => {
+      headers[k] = v;
+    });
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
-    },
+    headers,
   });
   if (!res.ok) {
     const text = await res.text();

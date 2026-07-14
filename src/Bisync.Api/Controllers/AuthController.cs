@@ -16,7 +16,8 @@ public class AuthController(
     IConfiguration configuration,
     IHttpContextAccessor httpContextAccessor,
     LocationPartitionService locationPartitions,
-    CompanyOperationalDbProvisioner companyDbProvisioner) : ControllerBase
+    CompanyOperationalDbProvisioner companyDbProvisioner,
+    ISystemAuditService systemAudit) : ControllerBase
 {
     public record LoginRequest(string Email, string Password);
 
@@ -92,6 +93,11 @@ public class AuthController(
 
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
         var locations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
+
+        Company? company = null;
+        if (user.CompanyId is > 0)
+            company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == user.CompanyId.Value);
+        await systemAudit.RecordLoginAsync(user, company);
 
         return Ok(MapUser(user, companies, locations));
     }

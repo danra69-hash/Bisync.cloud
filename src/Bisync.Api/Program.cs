@@ -17,7 +17,8 @@ static string ResolveOperationalConnection(IServiceProvider sp)
     var path = http.Request.Path.Value ?? string.Empty;
     // Auth + health always use the control-plane (shared) database.
     if (path.StartsWith("/api/auth", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/api/health", StringComparison.OrdinalIgnoreCase))
+        || path.StartsWith("/api/health", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/dev-console", StringComparison.OrdinalIgnoreCase))
         return resolver.DefaultOperationalConnection;
 
     int? companyId = null;
@@ -45,13 +46,28 @@ static string ResolveArchiveConnection(IServiceProvider sp)
     return resolver.ResolveArchiveConnection(companyId);
 }
 
+static string ResolveAuditConnection(IServiceProvider sp)
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    return SystemAuditStartup.ApplyPassword(
+        config.GetConnectionString("AuditConnection")
+        ?? SystemAuditStartup.DeriveDatabase(
+            config.GetConnectionString("DefaultConnection") ?? string.Empty,
+            SystemAuditStartup.DatabaseName),
+        config["DB_PASSWORD"]);
+}
+
 builder.Services.Configure<TenancyOptions>(builder.Configuration.GetSection(TenancyOptions.SectionName));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 builder.Services.AddSingleton<ITenantConnectionResolver, TenantConnectionResolver>();
+builder.Services.AddSingleton<SystemAuditSaveChangesInterceptor>();
 
 builder.Services.AddDbContext<BisyncDbContext>((sp, options) =>
-    options.UseNpgsql(ResolveOperationalConnection(sp)));
+{
+    options.UseNpgsql(ResolveOperationalConnection(sp));
+    options.AddInterceptors(sp.GetRequiredService<SystemAuditSaveChangesInterceptor>());
+});
 
 builder.Services.AddHttpClient<PublicHolidayCatalogService>();
 builder.Services.AddScoped<PublicHolidaySyncService>();
@@ -74,6 +90,10 @@ builder.Services.AddScoped<TransferService>();
 builder.Services.AddScoped<LocationPartitionService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
 builder.Services.AddScoped<TenantRollupService>();
+builder.Services.Configure<DevConsoleAuthOptions>(
+    builder.Configuration.GetSection(DevConsoleAuthOptions.SectionName));
+builder.Services.AddHttpClient("google-oauth");
+builder.Services.AddScoped<DevConsoleAuthService>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.TenantContext>();
 builder.Services.AddScoped<Bisync.Api.Tenancy.ITenantContext>(sp =>
     sp.GetRequiredService<Bisync.Api.Tenancy.TenantContext>());
@@ -83,6 +103,10 @@ builder.Services.AddDbContext<StockCardArchiveDbContext>((sp, options) =>
     options.UseNpgsql(ResolveArchiveConnection(sp)));
 builder.Services.AddScoped<StockCardArchiveService>();
 builder.Services.AddHostedService<StockCardArchiveHostedService>();
+builder.Services.AddDbContext<SystemAuditDbContext>((sp, options) =>
+    options.UseNpgsql(ResolveAuditConnection(sp)));
+builder.Services.AddScoped<ISystemAuditService, SystemAuditService>();
+builder.Services.AddHostedService<SystemAuditArchiveHostedService>();
 builder.Services.AddHostedService<InventoryCountAutoConfirmHostedService>();
 builder.Services.AddHostedService<SalesOrderLockExpiryHostedService>();
 
@@ -134,6 +158,8 @@ using (var scope = app.Services.CreateScope())
     await SchemaPatcher.EnsureTenantRegistryAsync(db);
     await HrStartup.InitializeAsync(db);
     await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
+    await SystemAuditStartup.InitializeAsync(scope.ServiceProvider);
+    await scope.ServiceProvider.GetRequiredService<DevConsoleAuthService>().EnsureRootUserAsync();
 
     var partitions = scope.ServiceProvider.GetRequiredService<LocationPartitionService>();
     await partitions.EnsureLocationListPartitionsAsync();

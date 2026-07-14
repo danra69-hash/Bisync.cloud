@@ -141,7 +141,6 @@ public static class HrStartup
         await OrgSeeder.SeedAsync(db);
         await EmployeeSeeder.SeedAsync(db);
         await PayrollDemoSeeder.SeedAsync(db);
-        await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);
     }
 
     static readonly string[] PayrollTableSql =
