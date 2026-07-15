@@ -34,16 +34,16 @@ public static class ComponentIdentityMigrator
             // Best-effort; recreate later.
         }
 
-        var remapNeeded = await db.Ingredients.AnyAsync(i =>
-            i.ComponentId == null
-            || i.ComponentId == ""
+        var componentRows = await db.Ingredients
+            .AsNoTracking()
+            .Select(i => new { i.ComponentId, i.Name })
+            .ToListAsync();
+
+        var remapNeeded = componentRows.Any(i =>
+            string.IsNullOrWhiteSpace(i.ComponentId)
             || !ComponentIdentityRules.IsValidComponentId(i.ComponentId));
 
-        var namesNeedSanitize = await db.Ingredients
-            .AsNoTracking()
-            .Select(i => new { i.Id, i.Name })
-            .ToListAsync();
-        var anyUnsanitized = namesNeedSanitize.Any(i =>
+        var anyUnsanitized = componentRows.Any(i =>
             !string.Equals(i.Name, ComponentIdentityRules.NormalizeName(i.Name), StringComparison.Ordinal));
 
         if (!remapNeeded && !anyUnsanitized)
