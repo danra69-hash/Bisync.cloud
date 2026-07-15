@@ -1,0 +1,29 @@
+---
+description: Structural ownership gates for pages, routes, and API controllers
+alwaysApply: true
+---
+
+# Structure ownership (permanent)
+
+Do **not** rename runtime page/component/controller class names for authorship.
+
+Use the ownership system instead:
+
+- Manifest: `ownership/structure-ownership.json`
+- Verifier: `node scripts/verify-structure-ownership.mjs`
+- GitHub review: `.github/CODEOWNERS`
+
+## Rules
+
+1. Every page/controller/module shell must have a unique immutable id: `dr.<area>.<name>`.
+2. New page or API controller files fail CI until registered.
+3. Changing an existing entry's `id`, `owner`, `path`, `symbol`, or `route` is blocked unless the platform owner updates the manifest intentionally.
+4. Prefer adding a new owned module over hijacking an existing `dr.*` id.
+5. Runtime symbols stay readable (`SmartIngredientPage`, `IngredientsController`); authorship lives in the ownership id + metadata.
+
+## When adding a page/controller
+
+1. Create the file with a clear technical name.
+2. Add a new `dr.*` entry to `ownership/structure-ownership.json`.
+3. Run `npm run verify:ownership` from `client/` or `node scripts/verify-structure-ownership.mjs` from repo root.
+4. Do not reuse or reassign another developer's ownership id.

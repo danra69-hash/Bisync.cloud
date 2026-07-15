@@ -1,0 +1,17 @@
+# CODEOWNERS — platform structure ownership
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# GitHub must map these emails/usernames to accounts with write access.
+# Until then, treat ownership/structure-ownership.json + CI as the hard gate.
+
+* @danra69-hash
+
+/ownership/ @danra69-hash
+/scripts/verify-structure-ownership.mjs @danra69-hash
+/.github/workflows/ci.yml @danra69-hash
+
+/client/src/AppRoot.tsx @danra69-hash
+/client/src/App.tsx @danra69-hash
+/client/src/pages/ @danra69-hash
+/client/src/components/**/*Page.tsx @danra69-hash
+/src/Bisync.Api/Controllers/ @danra69-hash

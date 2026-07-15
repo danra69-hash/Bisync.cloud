@@ -1,0 +1,943 @@
+{
+  "$schema": "./structure-ownership.schema.json",
+  "version": 1,
+  "policy": {
+    "platformOwner": "dra",
+    "platformOwnerEmail": "dra@cubevalue.com",
+    "defaultBranch": "master",
+    "requireOwnerApprovalFor": [
+      "owner",
+      "ownerEmail",
+      "path",
+      "symbol",
+      "route",
+      "kind",
+      "id"
+    ],
+    "description": "Stable structural IDs for platform pages/controllers. IDs are immutable ownership markers. New files must be registered; existing owner/path/symbol/route changes fail verification unless the platform owner updates this manifest."
+  },
+  "entries": [
+    {
+      "id": "dr.client.approot",
+      "kind": "client-shell",
+      "path": "client/src/AppRoot.tsx",
+      "symbol": "AppRoot",
+      "route": "/",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15",
+      "notes": "Top-level portal/onboarding/auth gate"
+    },
+    {
+      "id": "dr.client.app",
+      "kind": "client-shell",
+      "path": "client/src/App.tsx",
+      "symbol": "App",
+      "route": "/app",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15",
+      "notes": "Authenticated shell, Overview, nav modules"
+    },
+    {
+      "id": "dr.page.landing",
+      "kind": "client-page",
+      "path": "client/src/pages/LandingPage.tsx",
+      "symbol": "LandingPage",
+      "route": "/login",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.activate-account",
+      "kind": "client-page",
+      "path": "client/src/pages/ActivateAccountPage.tsx",
+      "symbol": "ActivateAccountPage",
+      "route": "/activate",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.company-onboarding",
+      "kind": "client-page",
+      "path": "client/src/pages/CompanyOnboardingPage.tsx",
+      "symbol": "CompanyOnboardingPage",
+      "route": "/onboarding/company",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.location-onboarding",
+      "kind": "client-page",
+      "path": "client/src/pages/LocationOnboardingPage.tsx",
+      "symbol": "LocationOnboardingPage",
+      "route": "/onboarding/location",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.subscription-placeholder",
+      "kind": "client-page",
+      "path": "client/src/pages/SubscriptionPlaceholderPage.tsx",
+      "symbol": "SubscriptionPlaceholderPage",
+      "route": "/onboarding/payment",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.payment",
+      "kind": "client-page",
+      "path": "client/src/pages/PaymentPage.tsx",
+      "symbol": "PaymentPage",
+      "route": "/payment",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.dev-console",
+      "kind": "client-page",
+      "path": "client/src/pages/DevConsolePage.tsx",
+      "symbol": "DevConsolePage",
+      "route": "/dev/console",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.dev-console-login",
+      "kind": "client-page",
+      "path": "client/src/pages/DevConsoleLoginGate.tsx",
+      "symbol": "DevConsoleLoginGate",
+      "route": "/dev/console/login",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.vendor-order-portal",
+      "kind": "client-page",
+      "path": "client/src/pages/VendorOrderPortalPage.tsx",
+      "symbol": "VendorOrderPortalPage",
+      "route": "/vendor-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.vendor-rfq-portal",
+      "kind": "client-page",
+      "path": "client/src/pages/VendorRfqPortalPage.tsx",
+      "symbol": "VendorRfqPortalPage",
+      "route": "/vendor-rfq",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.sample-request-portal",
+      "kind": "client-page",
+      "path": "client/src/pages/SampleRequestPortalPage.tsx",
+      "symbol": "SampleRequestPortalPage",
+      "route": "/sample-request",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.sales-order-portal",
+      "kind": "client-page",
+      "path": "client/src/pages/SalesOrderPortalPage.tsx",
+      "symbol": "SalesOrderPortalPage",
+      "route": "/sales-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.rev-mgmt-landing",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/RevMgmtLandingPage.tsx",
+      "symbol": "RevMgmtLandingPage",
+      "route": "/revenue",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.smart-ingredient",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/SmartIngredientPage.tsx",
+      "symbol": "SmartIngredientPage",
+      "route": "/revenue/smart-components",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.component-config",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ComponentConfigPage.tsx",
+      "symbol": "ComponentConfigPage",
+      "route": "/revenue/component-config",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.products",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ProductsPage.tsx",
+      "symbol": "ProductsPage",
+      "route": "/revenue/products",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.product-list",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ProductListPage.tsx",
+      "symbol": "ProductListPage",
+      "route": "/revenue/product-list",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.product-management",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ProductManagementPage.tsx",
+      "symbol": "ProductManagementPage",
+      "route": "/revenue/product-management",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.inventory",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/InventoryPage.tsx",
+      "symbol": "InventoryPage",
+      "route": "/revenue/inventory",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.stock-card",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/StockCardPage.tsx",
+      "symbol": "StockCardPage",
+      "route": "/revenue/stock-card",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.order",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/OrderPage.tsx",
+      "symbol": "OrderPage",
+      "route": "/revenue/order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.create-order",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CreateOrderPage.tsx",
+      "symbol": "CreateOrderPage",
+      "route": "/revenue/create-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.active-purchase",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ActivePurchasePage.tsx",
+      "symbol": "ActivePurchasePage",
+      "route": "/revenue/active-purchase",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.order-template",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/OrderTemplatePage.tsx",
+      "symbol": "OrderTemplatePage",
+      "route": "/revenue/order-template",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.cash-purchase",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CashPurchasePage.tsx",
+      "symbol": "CashPurchasePage",
+      "route": "/revenue/cash-purchase",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.compare-price",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ComparePricePage.tsx",
+      "symbol": "ComparePricePage",
+      "route": "/revenue/compare-price",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.vendor-list",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/VendorListPage.tsx",
+      "symbol": "VendorListPage",
+      "route": "/revenue/vendors",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.customer-list",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CustomerListPage.tsx",
+      "symbol": "CustomerListPage",
+      "route": "/revenue/customers",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.create-b2b-sales-order",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CreateB2bSalesOrderPage.tsx",
+      "symbol": "CreateB2bSalesOrderPage",
+      "route": "/revenue/b2b-create-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.b2b-active-order",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/B2bActiveOrderPage.tsx",
+      "symbol": "B2bActiveOrderPage",
+      "route": "/revenue/b2b-active-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.active-sales-order",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ActiveSalesOrderPage.tsx",
+      "symbol": "ActiveSalesOrderPage",
+      "route": "/revenue/active-sales-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.sales-data",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/SalesDataPage.tsx",
+      "symbol": "SalesDataPage",
+      "route": "/revenue/sales-data",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.transfer",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/TransferPage.tsx",
+      "symbol": "TransferPage",
+      "route": "/revenue/transfer",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.wastage",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/WastagePage.tsx",
+      "symbol": "WastagePage",
+      "route": "/revenue/wastage",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.system-configuration",
+      "kind": "client-page",
+      "path": "client/src/components/admin/SystemConfigurationPage.tsx",
+      "symbol": "SystemConfigurationPage",
+      "route": "/admin/system-configuration",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.human-resources",
+      "kind": "client-page",
+      "path": "client/src/components/hr/HumanResourcesPage.tsx",
+      "symbol": "HumanResourcesPage",
+      "route": "/hr",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.page.accounting",
+      "kind": "client-page",
+      "path": "client/src/components/accounting/AccountingPage.tsx",
+      "symbol": "AccountingPage",
+      "route": "/accounting",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.module.hr",
+      "kind": "client-module",
+      "path": "client/src/modules/hr/HrModule.tsx",
+      "symbol": "default",
+      "route": "/hr/module",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.auth",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AuthController.cs",
+      "symbol": "AuthController",
+      "route": "api/auth",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.locations",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "LocationsController",
+      "route": "api/locations",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.menu",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "MenuController",
+      "route": "api/menu",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.vendors",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "VendorsController",
+      "route": "api/vendors",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.ingredients",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "IngredientsController",
+      "route": "api/ingredients",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.purchase-orders",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "PurchaseOrdersController",
+      "route": "api/purchaseorders",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.vendor-products",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "VendorProductsController",
+      "route": "api/vendorproducts",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.inventory",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "InventoryController",
+      "route": "api/inventory",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.revenue",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "RevenueController",
+      "route": "api/revenue",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.progress",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "ProgressController",
+      "route": "api/progress",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.health",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ApiControllers.cs",
+      "symbol": "HealthController",
+      "route": "api/health",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.companies",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ConfigurationControllers.cs",
+      "symbol": "CompaniesController",
+      "route": "api/companies",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.users",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ConfigurationControllers.cs",
+      "symbol": "UsersController",
+      "route": "api/users",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.cash-purchases",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CashPurchasesController.cs",
+      "symbol": "CashPurchasesController",
+      "route": "api/cashpurchases",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.wastage",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/WastageController.cs",
+      "symbol": "WastageController",
+      "route": "api/wastage",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.transfers",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/TransfersController.cs",
+      "symbol": "TransfersController",
+      "route": "api/transfers",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.stock-card",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/StockCardController.cs",
+      "symbol": "StockCardController",
+      "route": "api/stockcard",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.stock-card-archive",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/StockCardArchiveController.cs",
+      "symbol": "StockCardArchiveController",
+      "route": "api/stockcardarchive",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.products",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ProductsController.cs",
+      "symbol": "ProductsController",
+      "route": "api/products",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.product-management",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ProductManagementController.cs",
+      "symbol": "ProductManagementController",
+      "route": "api/productmanagement",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.order-templates",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/OrderTemplatesController.cs",
+      "symbol": "OrderTemplatesController",
+      "route": "api/ordertemplates",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.quote-requests",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/QuoteRequestsController.cs",
+      "symbol": "QuoteRequestsController",
+      "route": "api/quoterequests",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.vendor-rfq-portal",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/QuoteRequestsController.cs",
+      "symbol": "VendorRfqPortalController",
+      "route": "api/vendorrfqportal",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.sample-requests",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/SampleRequestsController.cs",
+      "symbol": "SampleRequestsController",
+      "route": "api/samplerequests",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.vendor-order-portal",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/VendorOrderPortalController.cs",
+      "symbol": "VendorOrderPortalController",
+      "route": "api/vendororderportal",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.b2b-sales-orders",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/B2bSalesOrdersController.cs",
+      "symbol": "B2bSalesOrdersController",
+      "route": "api/b2bsalesorders",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.sales-data",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/SalesDataController.cs",
+      "symbol": "SalesDataController",
+      "route": "api/salesdata",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.b2b-customers",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CustomersController.cs",
+      "symbol": "B2bCustomersController",
+      "route": "api/b2bcustomers",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.pos-customers",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CustomersController.cs",
+      "symbol": "PosCustomersController",
+      "route": "api/poscustomers",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.inventory-count-sessions",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/InventoryCountSessionsController.cs",
+      "symbol": "InventoryCountSessionsController",
+      "route": "api/inventorycountsessions",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.vendor-product-catalog",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/VendorProductCatalogController.cs",
+      "symbol": "VendorProductCatalogController",
+      "route": "api/vendorproductcatalog",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.rev-mgmt-config",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/RevMgmtConfigController.cs",
+      "symbol": "RevMgmtConfigController",
+      "route": "api/revmgmtconfig",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.notifications",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/NotificationsController.cs",
+      "symbol": "NotificationsController",
+      "route": "api/notifications",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.access-control",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AccessControlController.cs",
+      "symbol": "AccessControlController",
+      "route": "api/accesscontrol",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.cogs-audit",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CogsAuditController.cs",
+      "symbol": "CogsAuditController",
+      "route": "api/cogsaudit",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.system-audit",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/SystemAuditController.cs",
+      "symbol": "SystemAuditController",
+      "route": "api/systemaudit",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.dev-console",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/DevConsoleController.cs",
+      "symbol": "DevConsoleController",
+      "route": "api/devconsole",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.dev-console-auth",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/DevConsoleAuthController.cs",
+      "symbol": "DevConsoleAuthController",
+      "route": "api/dev-console",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.dev-seed",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/DevSeedController.cs",
+      "symbol": "DevSeedController",
+      "route": "api/devseed",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.employees",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/EmployeesController.cs",
+      "symbol": "EmployeesController",
+      "route": "api/employees",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.attendance",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AttendanceController.cs",
+      "symbol": "AttendanceController",
+      "route": "api/attendance",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.leave-requests",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/LeaveController.cs",
+      "symbol": "LeaveRequestsController",
+      "route": "api/leaverequests",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.leave-balances",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/LeaveController.cs",
+      "symbol": "LeaveBalancesController",
+      "route": "api/leavebalances",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.shift-schedules",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ShiftSchedulesController.cs",
+      "symbol": "ShiftSchedulesController",
+      "route": "api/shiftschedules",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.pay-structures",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PayStructuresController.cs",
+      "symbol": "PayStructuresController",
+      "route": "api/paystructures",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.payroll-runs",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PayrollRunsController.cs",
+      "symbol": "PayrollRunsController",
+      "route": "api/payrollruns",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.income-tax",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/IncomeTaxController.cs",
+      "symbol": "IncomeTaxController",
+      "route": "api/incometax",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.public-holidays",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AdminController.cs",
+      "symbol": "PublicHolidaysController",
+      "route": "api/publicholidays",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.employee-levels",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AdminController.cs",
+      "symbol": "EmployeeLevelsController",
+      "route": "api/employeelevels",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.settings",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AdminController.cs",
+      "symbol": "SettingsController",
+      "route": "api/settings",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.divisions",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AdminController.cs",
+      "symbol": "DivisionsController",
+      "route": "api/divisions",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.departments",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/AdminController.cs",
+      "symbol": "DepartmentsController",
+      "route": "api/departments",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-15"
+    }
+  ]
+}
