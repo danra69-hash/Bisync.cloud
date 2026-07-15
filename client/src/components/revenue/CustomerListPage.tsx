@@ -25,6 +25,7 @@ import { B2bCustomerPurchaseHistoryPanel } from './B2bCustomerPurchaseHistoryPan
 import { CreateB2bSalesOrderPage } from './CreateB2bSalesOrderPage';
 import { PosCustomerPanel } from './PosCustomerPanel';
 import { PosCustomerHistoryPanel } from './PosCustomerHistoryPanel';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 const CUSTOMER_TABS = [
   { id: 'b2b' as const, label: 'Customer List' },
@@ -296,7 +297,7 @@ export function CustomerListPage({
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">Loading…</td></tr>
+                  <TableLoadingRow colSpan={7} label="Loading…" />
                 ) : pagedB2b.length === 0 ? (
                   <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">No B2B customers yet.</td></tr>
                 ) : pagedB2b.map(customer => {
@@ -385,7 +386,7 @@ export function CustomerListPage({
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">Loading…</td></tr>
+                  <TableLoadingRow colSpan={6} label="Loading…" />
                 ) : pagedPos.length === 0 ? (
                   <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">No POS customers yet.</td></tr>
                 ) : pagedPos.map(customer => {

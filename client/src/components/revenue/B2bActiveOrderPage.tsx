@@ -9,6 +9,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { ProduceBatchModal } from './ProduceBatchModal';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -319,7 +320,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
           disabled={loading}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={12}  />
           Refresh
         </button>
       </div>
@@ -341,7 +342,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
           </thead>
           <tbody>
             {loading && lineRows.length === 0 ? (
-              <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">Loading…</td></tr>
+              <TableLoadingRow colSpan={7} label="Loading…" />
             ) : visibleItems.length === 0 ? (
               <tr>
                 <td colSpan={7} className="py-8 text-center text-muted-foreground">

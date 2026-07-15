@@ -22,6 +22,8 @@ import {
   resolveInventoryToRecipeQty,
   inputCls,
   isComponentNameTaken,
+  componentNameValidationMessage,
+  normalizeComponentName,
   MAX_ALTERNATE_UOMS,
   selectCls,
   swapPrincipalWithAlternateUnit,
@@ -399,6 +401,7 @@ type Props = {
 
 export function ComponentEditPanel({ row, isNew = false, existingComponents, selectedCompanyId, selectedLocationIds = [], saveError, elevated = false, onClose, onSave }: Props) {
   const existingComponentIds = existingComponents.map(c => c.componentId).filter(Boolean);
+  const [companyCode, setCompanyCode] = useState<string | null>(null);
   const [form, setForm] = useState<ComponentForm>(() => toForm(row, existingComponentIds));
   const [nameError, setNameError] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState('');
@@ -429,11 +432,24 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   }, [form.storages, catalogVersion]);
 
   useEffect(() => {
-    setForm(toForm(row, existingComponentIds));
+    setForm(toForm(row, existingComponentIds, companyCode));
     setNameError(null);
     setProductSearch('');
     setVendorSearch('');
-  }, [row]);
+  }, [row, companyCode]);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setCompanyCode(null);
+      return;
+    }
+    api.companies()
+      .then(companies => {
+        const match = companies.find(c => c.id === selectedCompanyId);
+        setCompanyCode(match?.code?.trim() || null);
+      })
+      .catch(() => setCompanyCode(null));
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
@@ -509,13 +525,16 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
     setForm(f => {
       const next = { ...f, [key]: val };
       if (key === 'name' && typeof val === 'string') {
-        if (isComponentNameTaken(val, existingComponents, row.id)) {
-          setNameError('A component with this name already exists.');
+        const validation = componentNameValidationMessage(val);
+        if (validation) {
+          setNameError(validation);
+        } else if (isComponentNameTaken(val, existingComponents, row.id)) {
+          setNameError('A component with this name already exists for this company.');
         } else {
           setNameError(null);
         }
         if (isNew) {
-          next.componentId = generateComponentId(val, existingComponentIds);
+          next.componentId = generateComponentId(companyCode, existingComponentIds);
         }
       }
       return next;
@@ -804,13 +823,14 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   }
 
   function save() {
-    const trimmedName = form.name.trim();
-    if (!trimmedName) {
-      setNameError('Component name is required.');
+    const validation = componentNameValidationMessage(form.name);
+    if (validation) {
+      setNameError(validation);
       return;
     }
+    const trimmedName = normalizeComponentName(form.name);
     if (isComponentNameTaken(trimmedName, existingComponents, row.id)) {
-      setNameError('A component with this name already exists.');
+      setNameError('A component with this name already exists for this company.');
       return;
     }
     const splitError = validateSplitUseConfig(
@@ -884,7 +904,9 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               <FormField label="Component ID">
                 <input className={`${inputCls} bg-muted text-muted-foreground`} value={form.componentId} readOnly />
                 {isNew && (
-                  <p className="text-xs text-muted-foreground mt-0.5">Assigned automatically from component name</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Assigned automatically from company code{companyCode ? ` (${companyCode})` : ''}
+                  </p>
                 )}
               </FormField>
               <FormField label="Category">

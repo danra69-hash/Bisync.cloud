@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, MapPin, X } from 'lucide-react';
 import type { DropdownLocation } from '../../utils/orgFilters';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   locations: DropdownLocation[];
@@ -50,9 +51,7 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
 
   const label = disabled
     ? 'Select Company First'
-    : loading
-      ? 'Loading locations…'
-      : selected.length === 0
+    : selected.length === 0
         ? 'Select locations'
         : allSelected
           ? 'All Locations'
@@ -75,7 +74,11 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
         style={isHeader ? { background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' } : undefined}
       >
         <MapPin size={12} className="shrink-0 text-primary" />
-        <span className={isHeader ? 'hidden lg:inline' : ''}>{label}</span>
+        {loading ? (
+          <MillstoneLoader size="xs" layout="inline" label="" />
+        ) : (
+          <span className={isHeader ? 'hidden lg:inline' : ''}>{label}</span>
+        )}
         <span className={isHeader ? 'lg:hidden' : 'hidden'}>{disabled ? '—' : selected.length === 0 ? '0' : selected.length}</span>
         <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''} ${isHeader ? 'text-white/40' : 'text-muted-foreground'}`} />
       </button>

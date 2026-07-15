@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { History, Loader2, RefreshCw, Shield } from 'lucide-react';
+import { History, RefreshCw, Shield } from 'lucide-react';
 import {
   api,
   type Company,
@@ -10,6 +10,7 @@ import {
 import { isSuperAdmin, parseUserAccess } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 function activityTypeLabel(category: string): string {
   switch (category) {
@@ -213,7 +214,7 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
           disabled={loading || !filtersReady}
           className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50"
         >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          <RefreshCw size={13} />
           Refresh
         </button>
       </div>
@@ -335,13 +336,7 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
                 </tr>
               )}
               {loading && rows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" /> Loading…
-                    </span>
-                  </td>
-                </tr>
+                <TableLoadingRow colSpan={4} />
               )}
             </tbody>
           </table>

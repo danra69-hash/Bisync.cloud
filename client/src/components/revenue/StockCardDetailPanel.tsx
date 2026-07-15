@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 import { createPortal } from 'react-dom';
 
@@ -387,7 +388,7 @@ export function StockCardDetailPanel({
 
         {loading ? (
 
-          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>
+          <MillstoneLoader size="md" layout="block" label="Loading stock card…" className="flex-1" />
 
         ) : error ? (
 

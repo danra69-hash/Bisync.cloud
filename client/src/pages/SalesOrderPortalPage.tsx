@@ -12,6 +12,7 @@ import {
   createPurchaseOrderPdfBlob,
   downloadPurchaseOrderPdf,
 } from '../data/generatePurchaseOrderPdf';
+import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 
 type Props = {
   token: string;
@@ -236,7 +237,7 @@ export function SalesOrderPortalPage({ token }: Props) {
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-widest text-white/50">Sales Order PDF</p>
           <p className="text-sm font-semibold truncate">
-            {order?.orderNumber ?? 'Loading…'}
+            {order?.orderNumber ?? 'Sales order'}
             {order?.customerName ? ` · ${order.customerName}` : ''}
           </p>
         </div>
@@ -252,7 +253,7 @@ export function SalesOrderPortalPage({ token }: Props) {
       </div>
 
       {loading && (
-        <p className="text-sm text-white/60 text-center py-16">Preparing PDF…</p>
+        <MillstoneLoader layout="block" size="lg" label="Preparing PDF…" className="flex-1 text-white/60" />
       )}
       {error && (
         <div className="m-4 rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">

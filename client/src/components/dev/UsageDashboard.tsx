@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, Building2, MapPin, RefreshCw, Users } from 'lucide-react';
 import { devConsoleApi, type DevUsageResponse } from '../../data/devConsoleApi';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 function BarChart({
   rows,
@@ -119,7 +120,7 @@ export function UsageDashboard() {
           disabled={loading}
           className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          <RefreshCw size={12}  /> Refresh
         </button>
       </div>
 
@@ -128,7 +129,7 @@ export function UsageDashboard() {
       )}
 
       {loading && !data ? (
-        <p className="text-xs text-muted-foreground py-8 text-center">Loading usage…</p>
+        <MillstoneLoader size="sm" layout="block" label="Loading usage…" />
       ) : data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

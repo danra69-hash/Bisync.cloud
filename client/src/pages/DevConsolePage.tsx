@@ -11,6 +11,7 @@ import { DEV_CONSOLE_PATH } from '../config/devConsole';
 import { clearDevConsoleSession, getDevConsoleToken } from '../data/devConsoleSession';
 import { devConsoleAuthApi } from '../data/devConsoleAuthApi';
 import { DevConsoleForbidden, DevConsoleLoginGate } from './DevConsoleLoginGate';
+import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 
 /** Dev Console always requires its own login (separate from customer Access Control). */
 const REQUIRE_DEV_CONSOLE_LOGIN = true;
@@ -77,11 +78,7 @@ export function DevConsolePage() {
 
   if (REQUIRE_DEV_CONSOLE_LOGIN) {
     if (loading) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        </div>
-      );
+      return <MillstoneLoader layout="screen" size="lg" label="Loading developer console…" />;
     }
     if (!sessionUser) {
       return <DevConsoleLoginGate onSuccess={() => setAuthTick(t => t + 1)} />;

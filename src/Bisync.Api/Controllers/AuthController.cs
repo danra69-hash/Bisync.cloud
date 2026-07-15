@@ -302,6 +302,7 @@ public class AuthController(
         };
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Companies");
+        await CompanyCodeService.EnsureCodeAsync(db, company);
         db.Companies.Add(company);
         await db.SaveChangesAsync();
 

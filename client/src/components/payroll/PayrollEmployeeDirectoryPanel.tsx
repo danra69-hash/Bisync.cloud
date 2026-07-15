@@ -7,6 +7,7 @@ import { PayrollEmployeeDetailPanel } from './PayrollEmployeeDetailPanel';
 import { PayrollEmployeeDirectoryTab } from './PayrollEmployeeDirectoryTab';
 import { MALAYSIA_BANKS, type MalaysiaBank } from './malaysiaBanks';
 import { validatePayrollAllowanceDetails } from './payrollAllowanceShared';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -113,7 +114,7 @@ export function PayrollEmployeeDirectoryPanel({
   };
 
   if (loading) {
-    return <p className="p-8 text-center text-xs text-muted-foreground">Loading employee directory…</p>;
+    return <MillstoneLoader size="sm" layout="block" label="Loading employee directory…" />;
   }
 
   if (error && !detailDraft) {

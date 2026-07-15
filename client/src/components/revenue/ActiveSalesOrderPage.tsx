@@ -20,6 +20,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -197,7 +198,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
           disabled={loading}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={12}  />
           Refresh
         </button>
       </div>
@@ -219,7 +220,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
           </thead>
           <tbody>
             {loading && orders.length === 0 ? (
-              <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">Loading…</td></tr>
+              <TableLoadingRow colSpan={7} label="Loading…" />
             ) : visibleItems.length === 0 ? (
               <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">No active sales orders.</td></tr>
             ) : visibleItems.map(order => {

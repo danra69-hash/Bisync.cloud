@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Data;
@@ -11,12 +12,15 @@ namespace Bisync.Api.Data;
 public static class StockCardFifoDemoSeeder
 {
     public const string ComponentName = "SC FIFO Demo Wagyu";
-    public const string ComponentId = "CMP-SCFIFO-001";
+    public const string LegacyComponentId = "CMP-SCFIFO-001";
 
     public static async Task<object> EnsureAsync(BisyncDbContext db, int companyId = 1, bool force = false)
     {
         var existing = await db.Ingredients
-            .FirstOrDefaultAsync(i => i.ComponentId == ComponentId || i.Name == ComponentName);
+            .FirstOrDefaultAsync(i =>
+                i.ComponentId == LegacyComponentId
+                || i.Name == ComponentName
+                || (i.CompanyId == companyId && i.Name.ToLower() == ComponentName.ToLower()));
 
         if (existing is not null && force)
         {
@@ -46,9 +50,11 @@ public static class StockCardFifoDemoSeeder
 
         var now = DateTime.UtcNow;
         var locationsJson = JsonSerializer.Serialize(new[] { "downtown", "midtown", "airport", "westend" });
+        var code = await CompanyCodeService.ResolveCodeAsync(db, companyId);
         var ingredient = existing ?? new Ingredient
         {
-            ComponentId = ComponentId,
+            CompanyId = companyId,
+            ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId),
             Name = ComponentName,
             Category = "Food",
             Group = "Proteins",
@@ -68,6 +74,10 @@ public static class StockCardFifoDemoSeeder
         {
             db.Ingredients.Add(ingredient);
             await db.SaveChangesAsync();
+        }
+        else
+        {
+            existing.CompanyId ??= companyId;
         }
 
         var poNumbers = new[] { "PO-2026-FIFO-001", "PO-2026-FIFO-014", "PO-2026-FIFO-028" };

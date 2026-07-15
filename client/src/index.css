@@ -185,6 +185,24 @@
     @apply focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
   }
 
+  /* Slow millstone spinner for platform data loading */
+  .bisync-millstone-spin {
+    display: inline-block;
+    transform-origin: center;
+    animation: bisync-millstone-spin 3s linear infinite;
+  }
+
+  @keyframes bisync-millstone-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bisync-millstone-spin {
+      animation: none;
+    }
+  }
+
   /* Bisync ↔ Pasar shared-engine sync animation */
   .brand-sync-dot {
     position: absolute;

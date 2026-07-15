@@ -35,6 +35,7 @@ export function ingredientToRow(i: Ingredient): ComponentRow {
   const detailConfig = resolveDetailConfigForRow({ detailConfigJson });
   return {
     id: i.id,
+    companyId: i.companyId ?? null,
     componentId: i.componentId ?? '',
     name: i.name,
     category: i.category,
@@ -64,6 +65,7 @@ export function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow
   const detailConfigJson = resolveDetailConfigJsonForSave(row, partial);
   return {
     id: merged.id ?? 0,
+    companyId: merged.companyId ?? undefined,
     componentId: merged.componentId,
     name: merged.name,
     category: merged.category,

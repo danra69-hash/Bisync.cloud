@@ -12,6 +12,7 @@ import {
   formatProcessedAt,
   groupRunsByYear,
 } from './payrollProcess';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
@@ -112,7 +113,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
             </div>
           )}
 
-          {loading && <p className="text-sm text-muted-foreground">Loading history…</p>}
+          {loading && <MillstoneLoader size="sm" layout="block" label="Loading history…" />}
 
           {!loading && runs.length === 0 && (
             <p className="text-sm text-muted-foreground">No processed payrolls yet for this company.</p>
@@ -153,7 +154,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
                 {expanded && (
                   <div className="border-t border-border bg-muted/20 px-4 py-3">
                     {detailLoadingId === run.id && (
-                      <p className="text-xs text-muted-foreground">Loading payment details…</p>
+                      <MillstoneLoader size="sm" layout="block" label="Loading payment details…" />
                     )}
                     {detail && (
                       <div className="overflow-x-hidden" data-table-scroll>

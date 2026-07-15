@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, Save } from 'lucide-react';
 import { api, type VendorRfqPortal } from '../api';
 import { inputCls } from '../data/componentForm';
+import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 
 type Props = {
   token: string;
@@ -82,11 +83,7 @@ export function VendorRfqPortalPage({ token }: Props) {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F7F3EE]">
-        <p className="text-sm text-muted-foreground">Loading sample & quote request…</p>
-      </div>
-    );
+    return <MillstoneLoader layout="screen" size="lg" label="Loading sample & quote request…" />;
   }
 
   if (!portal) {

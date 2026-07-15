@@ -9,6 +9,7 @@ import {
   weekdayLabelForDate,
 } from '../../data/orderTemplates';
 import type { CreateOrderLine } from '../../data/createOrder';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number;
@@ -76,7 +77,7 @@ export function OrderTemplatePickerModal({
 
         <div className="max-h-[28rem] overflow-y-auto divide-y divide-border">
           {loading ? (
-            <p className="px-5 py-8 text-xs text-muted-foreground text-center">Loading templates…</p>
+            <MillstoneLoader size="sm" layout="block" label="Loading templates…" />
           ) : matchingTemplates.length === 0 ? (
             <div className="px-5 py-10 text-center space-y-2">
               <CalendarDays size={24} className="mx-auto text-muted-foreground" />

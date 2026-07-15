@@ -95,6 +95,7 @@ export interface LocationConfig {
 export interface Company {
   id: number;
   name: string;
+  code?: string;
   brn: string;
   gstTin: string;
   countryCode: string;

@@ -12,6 +12,7 @@ import { getPhoneValidationError } from '../shared/CountryPhoneInput';
 import { getAddressValidationError } from '../shared/CountryAddressFields';
 import { parseUserAccess, setAccessControlType } from '../../data/userAccess';
 import { parseAddress } from '../../utils/countryFormat';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   onDataChanged?: () => void;
@@ -324,7 +325,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   };
 
   if (loading) {
-    return <p className="p-8 text-center text-xs text-muted-foreground">Loading employees…</p>;
+    return <MillstoneLoader size="sm" layout="block" label="Loading employees…" />;
   }
 
   return (

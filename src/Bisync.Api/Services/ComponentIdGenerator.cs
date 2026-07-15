@@ -5,6 +5,7 @@ namespace Bisync.Api.Services;
 
 public static class ComponentIdGenerator
 {
+    /// <summary>Legacy name-prefix helper retained for product / sub-product IDs.</summary>
     public static string BuildPrefix(string name)
     {
         var alpha = new string(name.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
@@ -13,28 +14,27 @@ public static class ComponentIdGenerator
 
     public static async Task<string> GenerateAsync(
         BisyncDbContext db,
-        string name,
-        int? excludeId = null,
-        int? companyId = null)
+        string companyCode,
+        int? companyId = null,
+        int? excludeId = null)
     {
-        var prefix = BuildPrefix(name);
-        var baseId = $"CMP-{prefix}";
-        var existingQuery = db.Ingredients
-            .Where(i => i.ComponentId.StartsWith(baseId) && (excludeId == null || i.Id != excludeId));
-        if (companyId is int cid)
-            existingQuery = existingQuery.Where(i => i.CompanyId == cid);
+        var code = companyCode.Trim().ToUpperInvariant();
+        if (code.Length != ComponentIdentityRules.CompanyCodeLength)
+            throw new InvalidOperationException("Company code must be exactly 4 letters.");
 
-        var existing = await existingQuery
+        var prefix = code + "-";
+        var query = db.Ingredients.AsQueryable();
+        if (companyId is int cid)
+            query = query.Where(i => i.CompanyId == cid);
+        if (excludeId is int eid)
+            query = query.Where(i => i.Id != eid);
+
+        var existing = await query
+            .Where(i => i.ComponentId.StartsWith(prefix))
             .Select(i => i.ComponentId)
             .ToListAsync();
 
-        for (var seq = 1; seq <= 999; seq++)
-        {
-            var candidate = $"{baseId}-{seq:D3}";
-            if (!existing.Contains(candidate))
-                return candidate;
-        }
-
-        return $"{baseId}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
+        var suffix = ComponentIdentityRules.GenerateSuffix(existing, code);
+        return ComponentIdentityRules.BuildComponentId(code, suffix);
     }
 }

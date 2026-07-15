@@ -118,9 +118,11 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Companies", "Code", "TEXT NOT NULL DEFAULT ''");
         await BackfillIngredientComponentIdsAsync(db);
         await BackfillCatalogCompanyIdsAsync(db);
         await EnsureCompanyScopedCatalogIndexesAsync(db);
+        await ComponentIdentityMigrator.ApplyAsync(db);
         await EnsureTenantConnectionsTableAsync(db);
         await BackfillTenantConnectionsAsync(db);
         await EnsureTenantRollupSnapshotsTableAsync(db);
@@ -927,9 +929,7 @@ public static class SchemaPatcher
             .ToListAsync();
 
         foreach (var ingredient in needsId)
-        {
-            ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, ingredient.Name, ingredient.Id);
-        }
+            ingredient.ComponentId = $"TMP-{ingredient.Id:D8}";
 
         if (needsId.Count > 0)
             await db.SaveChangesAsync();
@@ -981,9 +981,10 @@ public static class SchemaPatcher
                 CREATE UNIQUE INDEX IF NOT EXISTS "IX_Ingredients_CompanyId_ComponentId"
                 ON "Ingredients" ("CompanyId", "ComponentId");
                 """);
+            await db.Database.ExecuteSqlRawAsync("""DROP INDEX IF EXISTS "IX_Ingredients_CompanyId_Name";""");
             await db.Database.ExecuteSqlRawAsync("""
-                CREATE UNIQUE INDEX IF NOT EXISTS "IX_Ingredients_CompanyId_Name"
-                ON "Ingredients" ("CompanyId", "Name");
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_Ingredients_CompanyId_LowerName"
+                ON "Ingredients" ("CompanyId", LOWER("Name"));
                 """);
             await db.Database.ExecuteSqlRawAsync("""
                 CREATE UNIQUE INDEX IF NOT EXISTS "IX_Vendors_CompanyId_ExternalId"

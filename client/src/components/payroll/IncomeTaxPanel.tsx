@@ -8,6 +8,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { inputCls, selectCls } from '../../data/countries';
 import { hrApi } from '../../modules/hr/api';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 import type {
   IncomeTaxBracketItem,
   IncomeTaxRebateItem,
@@ -303,7 +304,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
       )}
 
       {selectedCompanyId && loading && (
-        <p className="text-sm text-muted-foreground">Loading income tax for {year}…</p>
+        <MillstoneLoader size="sm" layout="block" label={`Loading income tax for ${year}…`} />
       )}
 
       {selectedCompanyId && !loading && schedule && (

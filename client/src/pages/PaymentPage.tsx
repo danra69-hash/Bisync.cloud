@@ -28,6 +28,7 @@ import {
   sumPricedLines,
 } from '../data/subscriptionPricing';
 import { inputCls } from '../data/countries';
+import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 
 type CompanyDraft = {
   id: number;
@@ -249,7 +250,7 @@ export function PaymentPage({ onContinue }: Props) {
         <p className="mb-6 text-sm text-herme-ink/60">{t('auth.paymentSetupHint')}</p>
 
         {loading ? (
-          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+          <MillstoneLoader layout="block" size="lg" label={t('common.loading')} />
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-border bg-white shadow-sm">
             <table className="w-full min-w-[720px] border-collapse text-left text-sm">

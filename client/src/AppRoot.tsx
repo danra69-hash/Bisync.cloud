@@ -23,17 +23,7 @@ import { parseSampleRequestToken } from './data/requestForSample';
 import { parseSalesOrderShareTarget } from './data/salesOrderShare';
 import { matchDevConsolePath } from './config/devConsole';
 import { REQUIRE_PLATFORM_LOGIN } from './config/platformAuth';
-
-function LoadingScreen() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-herme-cream">
-      <div className="text-center">
-        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-herme-muted border-t-herme" />
-        <p className="mt-4 text-sm font-medium text-herme-ink/60">Loading Bisync.cloud...</p>
-      </div>
-    </div>
-  );
-}
+import { MillstoneLoader } from './components/shared/MillstoneLoader';
 
 export function AppRoot() {
   const vendorShare = parseVendorOrderShareTarget(window.location.pathname);
@@ -66,7 +56,7 @@ export function AppRoot() {
     return <DevConsolePage />;
   }
   if (loading) {
-    return <LoadingScreen />;
+    return <MillstoneLoader layout="screen" size="lg" label="Loading Bisync.cloud…" />;
   }
   if (REQUIRE_PLATFORM_LOGIN && !isAuthenticated) {
     return <LandingPage />;

@@ -7,6 +7,7 @@ import {
 } from '../../data/vendorRfqShare';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { QuoteComparisonModal } from './QuoteComparisonModal';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -123,7 +124,7 @@ export function RequestForQuoteList({
   }
 
   if (loading) {
-    return <p className="p-8 text-center text-xs text-muted-foreground">Loading sample & quote requests…</p>;
+    return <MillstoneLoader size="sm" layout="block" label="Loading sample & quote requests…" />;
   }
 
   if (error) {
@@ -150,7 +151,7 @@ export function RequestForQuoteList({
           disabled={refreshing}
           className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-[11px] font-semibold hover:bg-muted disabled:opacity-50"
         >
-          <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
+          <RefreshCw size={10}  />
           Refresh
         </button>
       </div>

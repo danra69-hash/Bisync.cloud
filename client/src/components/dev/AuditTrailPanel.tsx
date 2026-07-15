@@ -1,23 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
-  Circle,
-  ClipboardList,
-  History,
-  Loader2,
-  RefreshCw,
-  X,
-  XCircle,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight, Circle, ClipboardList, History, RefreshCw, X, XCircle } from 'lucide-react';
 import { devConsoleApi, type DevQaHistoryRow } from '../../data/devConsoleApi';
 import {
   parseQaAuditPayload,
   type QaAuditEnvelope,
 } from '../../data/qaAuditTrail';
 import type { QaStatus, QaTaskResult } from '../../data/devQaRunner';
+import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 
 const STATUS_DOT: Record<QaStatus, string> = {
   pending: 'bg-muted-foreground/40',
@@ -31,7 +21,7 @@ function StatusIcon({ status }: { status: QaStatus }) {
   if (status === 'pass') return <CheckCircle2 size={14} className="text-emerald-600" />;
   if (status === 'fail') return <XCircle size={14} className="text-red-600" />;
   if (status === 'warn') return <AlertTriangle size={14} className="text-amber-600" />;
-  if (status === 'running') return <Loader2 size={14} className="animate-spin text-amber-600" />;
+  if (status === 'running') return <MillstoneLoader size="xs" layout="inline" label="" />;
   return <Circle size={14} className="text-muted-foreground" />;
 }
 
@@ -254,7 +244,7 @@ export function AuditTrailPanel() {
           disabled={loading}
           className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50"
         >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          <RefreshCw size={13} />
           Refresh
         </button>
       </div>
@@ -338,13 +328,7 @@ export function AuditTrailPanel() {
               </tr>
             )}
             {loading && history.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                  <span className="inline-flex items-center gap-2 justify-center">
-                    <Loader2 size={14} className="animate-spin" /> Loading QA History…
-                  </span>
-                </td>
-              </tr>
+              <TableLoadingRow colSpan={6} label="Loading QA History…" />
             )}
           </tbody>
         </table>

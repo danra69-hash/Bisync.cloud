@@ -6,19 +6,13 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
-import {
-  Activity,
-  AlertTriangle,
-  Bell,
-  ClipboardList,
-  Package,
-  ShoppingCart,
-} from 'lucide-react';
+import { Activity, AlertTriangle, Bell, ClipboardList, Package, ShoppingCart } from 'lucide-react';
 import { api, type Company, type PurchaseOrder, type UserNotification } from '../../api';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { getCompanyMessages } from '../../data/revMgmtCompanyMessages';
 import { filterPurchaseOrdersByOrg } from '../../utils/orgFilters';
 import { ActivePurchasePanel } from './ActivePurchasePanel';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -334,7 +328,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds, onO
           </div>
           <div className="flex-1 divide-y divide-border overflow-y-auto">
             {loading ? (
-              <p className="px-5 py-4 text-xs text-muted-foreground">Loading activity…</p>
+              <MillstoneLoader size="sm" layout="block" label="Loading activity…" />
             ) : !orgReady ? (
               <p className="px-5 py-4 text-xs text-muted-foreground">
                 Select a company and locations to view today&apos;s activity.
@@ -460,7 +454,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds, onO
           </div>
           <TableScrollContainer ref={scrollRootRef} className="flex-1 overflow-auto max-h-[calc(100vh-12rem)]">
             {loading ? (
-              <p className="px-5 py-4 text-xs text-muted-foreground">Loading orders…</p>
+              <MillstoneLoader size="sm" layout="block" label="Loading orders…" />
             ) : !orgReady ? (
               <div className="px-5 py-8 text-center">
                 <p className="text-xs font-medium">Select company and locations</p>

@@ -92,7 +92,7 @@ export function Header({
             className="p-2 rounded-md hover:bg-white/10"
             title={orgError ?? t('header.reloadOrg')}
           >
-            <RefreshCw size={13} className={`text-primary ${orgLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw size={13} className="text-primary" />
           </button>
         )}
 

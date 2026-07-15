@@ -31,6 +31,7 @@ import {
 } from './payStructureShared';
 import { ToggleSwitch } from './ToggleSwitch';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type PayStructureSortColumn = 'company' | 'country' | 'payType' | 'payCycle' | 'pf' | 'socso' | 'otherContributions' | 'active';
 
@@ -454,7 +455,7 @@ export function PayStructureTab() {
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
-          <p className="p-8 text-center text-xs text-muted-foreground">Loading pay structures…</p>
+          <MillstoneLoader size="sm" layout="block" label="Loading pay structures…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">

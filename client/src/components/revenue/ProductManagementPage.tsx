@@ -20,6 +20,7 @@ import {
 import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProduceBatchModal } from './ProduceBatchModal';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -643,7 +644,7 @@ export function ProductManagementPage({
               disabled={loading}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50 shrink-0 ml-auto"
             >
-              <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={11}  />
               Refresh
             </button>
           </div>
@@ -675,9 +676,7 @@ export function ProductManagementPage({
               </div>
 
               {loading ? (
-                <p className="px-3 py-8 text-center text-xs text-muted-foreground border-b border-border">
-                  Loading products…
-                </p>
+                <MillstoneLoader size="sm" layout="block" label="Loading products…" />
               ) : displayRows.length === 0 ? (
                 <p className="px-3 py-8 text-center text-xs text-muted-foreground border-b border-border">
                   {hasActiveFilters

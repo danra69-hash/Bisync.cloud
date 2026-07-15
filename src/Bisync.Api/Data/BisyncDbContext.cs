@@ -119,12 +119,16 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.CompanyId);
             e.Property(x => x.Active).HasConversion<int>();
         });
+        modelBuilder.Entity<Company>(e =>
+        {
+            e.Property(x => x.Code).HasMaxLength(4);
+        });
         modelBuilder.Entity<Ingredient>(e =>
         {
             e.Property(x => x.ComponentId).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(200);
             e.HasIndex(x => new { x.CompanyId, x.ComponentId }).IsUnique();
-            e.HasIndex(x => new { x.CompanyId, x.Name }).IsUnique();
+            // Exact Name uniqueness is enforced by SQL index on LOWER("Name") for space/case normalization.
             e.HasIndex(x => x.CompanyId);
         });
         modelBuilder.Entity<TenantConnection>(e =>

@@ -23,6 +23,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
@@ -252,7 +253,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
           Select at least one location to create an order.
         </p>
       ) : loading ? (
-        <p className="text-xs text-muted-foreground">Loading order data…</p>
+        <MillstoneLoader size="sm" layout="block" label="Loading order data…" />
       ) : (
         <>
           <div className="flex items-center gap-3 flex-wrap">

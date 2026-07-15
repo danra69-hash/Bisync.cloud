@@ -29,6 +29,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0';
 const COMPONENT_COL_WIDTH_PX = 220;
@@ -486,7 +487,7 @@ export function ComparePricePage({
           Select a company to compare vendor pricing.
         </p>
       ) : loading ? (
-        <p className="text-xs text-muted-foreground">Loading compare price data…</p>
+        <MillstoneLoader size="sm" layout="block" label="Loading compare price data…" />
       ) : (
         <>
           <div className="flex items-center gap-3 flex-wrap">

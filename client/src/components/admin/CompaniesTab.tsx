@@ -28,6 +28,7 @@ import type { AddressParts } from '../../utils/countryFormat';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 import { CompanyProfileFields } from './CompanyProfileFields';
 import { ToggleSwitch } from './ToggleSwitch';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'locations' | 'status';
 type CompanyTableColumn = CompanySortColumn | 'accessControl';
@@ -474,7 +475,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
-          <p className="p-8 text-center text-xs text-muted-foreground">Loading companies…</p>
+          <MillstoneLoader size="sm" layout="block" label="Loading companies…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">

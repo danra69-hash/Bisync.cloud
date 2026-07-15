@@ -17,6 +17,7 @@ import {
   currentStockCardMonth,
   formatStockCardMonthLabel,
 } from '../revenue/stockCardPeriod';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -230,7 +231,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
           )}
         </div>
 
-        {detailLoading && <p className="text-xs text-muted-foreground">Loading dated FIFO ledger…</p>}
+        {detailLoading && <MillstoneLoader size="sm" layout="block" label="Loading dated FIFO ledger…" />}
         {error && <p className="text-xs text-destructive">{error}</p>}
 
         {detail && !detailLoading && (
@@ -364,7 +365,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
 
       {historyPanel}
 
-      {loading && <p className="text-xs text-muted-foreground">Loading summary…</p>}
+      {loading && <MillstoneLoader size="sm" layout="block" label="Loading summary…" />}
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       {summary && !loading && (
@@ -489,7 +490,7 @@ function HistoryPanel({
         </button>
       </div>
 
-      {loading && <p className="text-xs text-muted-foreground">Loading history…</p>}
+      {loading && <MillstoneLoader size="sm" layout="block" label="Loading history…" />}
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       {!loading && systemRows.length === 0 && (

@@ -3,6 +3,7 @@ import { Bell } from 'lucide-react';
 import { api, type UserNotification } from '../../api';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 function formatNotificationWhen(iso: string): string {
   const date = new Date(iso);
@@ -131,7 +132,7 @@ export function NotificationBell() {
               disabled={loading}
               className="text-[10px] font-semibold text-primary hover:underline disabled:opacity-50"
             >
-              {loading ? t('common.loading') : t('common.refresh')}
+              {t('common.refresh')}
             </button>
           </div>
 
@@ -143,9 +144,7 @@ export function NotificationBell() {
             ) : error ? (
               <p className="px-3 py-4 text-xs text-red-600">{error}</p>
             ) : loading && notifications.length === 0 ? (
-              <p className="px-3 py-6 text-xs text-muted-foreground text-center">
-                {t('common.loading')}
-              </p>
+              <MillstoneLoader size="sm" layout="block" label={t('common.loading')} />
             ) : notifications.length === 0 ? (
               <p className="px-3 py-6 text-xs text-muted-foreground text-center">
                 {t('revMgmt.noNotifications')}

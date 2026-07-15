@@ -15,6 +15,7 @@ import {
   purchaseOrderStatusBadgeClass,
   resolvePurchaseOrderStatusLabel,
 } from '../../data/purchaseOrderStatus';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -178,7 +179,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
           disabled={loading}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={12}  />
           Refresh
         </button>
       </div>
@@ -227,9 +228,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
             </thead>
             <tbody>
               {loading && orders.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">Loading…</td>
-                </tr>
+                <TableLoadingRow colSpan={9} label="Loading…" />
               ) : orders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">

@@ -19,6 +19,7 @@ import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
 import { fromApiUom } from '../../data/componentForm';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -841,9 +842,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             </thead>
             <tbody>
               {loading && (
-                <tr>
-                  <td colSpan={12} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
-                </tr>
+                <TableLoadingRow colSpan={12} label="Loading…" />
               )}
               {!loading && visibleItems.length === 0 && (
                 <tr>

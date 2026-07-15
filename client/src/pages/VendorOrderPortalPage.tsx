@@ -9,6 +9,7 @@ import {
 import { formatRm } from '../data/createOrder';
 import { buildVendorOrderPortalUrl } from '../data/vendorOrderShare';
 import { PurchaseOrderPdfPreview } from '../components/revenue/PurchaseOrderPdfPreview';
+import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 
 type Props = {
   token: string;
@@ -110,7 +111,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-widest text-white/50">Purchase Order PDF</p>
             <p className="text-sm font-semibold truncate">
-              {portal?.poNumber ?? 'Loading…'}
+              {portal?.poNumber ?? 'Purchase order'}
               {portal?.vendorName ? ` · ${portal.vendorName}` : ''}
             </p>
           </div>
@@ -126,7 +127,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
         </div>
 
         {loading && (
-          <p className="text-sm text-white/60 text-center py-16">Preparing PDF…</p>
+          <MillstoneLoader layout="block" size="lg" label="Preparing PDF…" className="flex-1 text-white/60" />
         )}
         {error && (
           <div className="m-4 rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -219,7 +220,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
 
       <main className="max-w-5xl mx-auto p-6 space-y-4">
         {loading && (
-          <p className="text-sm text-muted-foreground text-center py-16">Loading purchase order…</p>
+          <MillstoneLoader layout="block" size="lg" label="Loading purchase order…" />
         )}
 
         {error && (

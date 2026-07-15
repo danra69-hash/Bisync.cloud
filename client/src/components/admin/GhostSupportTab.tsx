@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ghost, Loader2, LogIn, Plus, Trash2, UserCog } from 'lucide-react';
+import { Ghost, LogIn, Plus, Trash2, UserCog } from 'lucide-react';
 import {
   api,
   setApiTenantCompanyId,
@@ -13,6 +13,7 @@ import {
   defaultGhostReturnPath,
   setGhostSupportSession,
 } from '../../data/ghostSupportSession';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type GhostSupportTabProps = {
   allowDevConsoleAccess?: boolean;
@@ -248,7 +249,7 @@ export function GhostSupportTab({
           disabled={!filtersReady || entering}
           className="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground text-sm font-medium px-4 py-2 disabled:opacity-50"
         >
-          {entering ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
+          {!entering && <LogIn size={14} />}
           {entering ? 'Entering…' : 'Enter as Super User'}
         </button>
       </form>
@@ -308,7 +309,7 @@ export function GhostSupportTab({
               disabled={saving}
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border text-sm font-medium py-2 px-3 disabled:opacity-50"
             >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              {!saving && <Plus size={14} />}
               Add user
             </button>
           </form>
@@ -326,12 +327,7 @@ export function GhostSupportTab({
               </thead>
               <tbody>
                 {loadingTeam && (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-xs text-muted-foreground">
-                      <Loader2 size={14} className="inline animate-spin mr-2" />
-                      Loading…
-                    </td>
-                  </tr>
+                  <TableLoadingRow colSpan={5} />
                 )}
                 {!loadingTeam && users.length === 0 && (
                   <tr>

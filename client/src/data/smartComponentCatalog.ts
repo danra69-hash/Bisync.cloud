@@ -1474,7 +1474,7 @@ export function draftToComponentRow(
   const existingDetail = resolveDetailConfigForRow(existing ?? {});
   const componentId = draft.componentId.trim().toUpperCase()
     || existing?.componentId
-    || generateComponentId(draft.name, existingComponentIds);
+    || generateComponentId(undefined, existingComponentIds);
 
   const detailConfig = {
     ...existingDetail,

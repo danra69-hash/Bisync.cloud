@@ -23,6 +23,7 @@ import {
   buildVendorOrderWhatsAppUrl,
   copyVendorOrderShareLink,
 } from '../../data/vendorOrderShare';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   items: OrderCartItem[];
@@ -432,7 +433,7 @@ export function OrderCartModal({
                       Initiated by
                     </p>
                     <p className="mt-1.5 text-xs font-medium text-foreground">
-                      {userLoading ? 'Loading…' : signatories?.initiatedBy ?? '—'}
+                      {userLoading ? <MillstoneLoader size="xs" layout="inline" label="" /> : signatories?.initiatedBy ?? '—'}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">Current logged-in user</p>
                   </div>
@@ -441,7 +442,7 @@ export function OrderCartModal({
                       Approved by
                     </p>
                     <p className="mt-1.5 text-xs font-medium text-foreground">
-                      {userLoading ? 'Loading…' : signatories?.approvedBy ?? '—'}
+                      {userLoading ? <MillstoneLoader size="xs" layout="inline" label="" /> : signatories?.approvedBy ?? '—'}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {signatories?.canSelfApprove

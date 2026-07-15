@@ -293,18 +293,55 @@ export type ComponentForm = {
   splitUse: ComponentSplitUseConfig;
 };
 
+export function normalizeComponentName(name: string): string {
+  return name
+    .trim()
+    .replace(/[^a-zA-Z0-9 -]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/-{2,}/g, '-')
+    .trim();
+}
+
+export function normalizeComponentNameKey(name: string): string {
+  return normalizeComponentName(name).toLowerCase();
+}
+
+export function isValidComponentName(name: string): boolean {
+  const normalized = normalizeComponentName(name);
+  if (!normalized) return false;
+  if (normalized !== name.trim()) return false;
+  return /^[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*$/.test(normalized);
+}
+
+export function componentNameValidationMessage(name: string): string | null {
+  if (!name.trim()) return 'Component name is required.';
+  if (!isValidComponentName(name)) {
+    return 'Component name allows only letters, numbers, a single space between words, and - (dash).';
+  }
+  return null;
+}
+
 export function buildComponentIdPrefix(name: string): string {
   const alpha = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   return alpha.slice(0, 6) || 'NEW';
 }
 
-export function generateComponentId(name: string, existingIds: string[]): string {
-  const baseId = `CMP-${buildComponentIdPrefix(name)}`;
-  for (let seq = 1; seq <= 999; seq++) {
-    const candidate = `${baseId}-${String(seq).padStart(3, '0')}`;
-    if (!existingIds.includes(candidate)) return candidate;
+/** Preview-only ID. Final ID is always assigned by the API from the company code. */
+export function generateComponentId(companyCode: string | null | undefined, existingIds: string[]): string {
+  const code = (companyCode ?? 'XXXX').replace(/[^a-zA-Z]/g, '').toUpperCase().padEnd(4, 'X').slice(0, 4);
+  const used = new Set(
+    existingIds
+      .filter(id => id.toUpperCase().startsWith(`${code}-`) && id.length === 9)
+      .map(id => id.slice(-4).toUpperCase()),
+  );
+  for (let letter = 0; letter < 26; letter++) {
+    const L = String.fromCharCode(65 + letter);
+    for (let n = 1; n <= 999; n++) {
+      const suffix = `${L}${String(n).padStart(3, '0')}`;
+      if (!used.has(suffix)) return `${code}-${suffix}`;
+    }
   }
-  return `${baseId}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+  return `${code}-Z${Date.now().toString(36).toUpperCase().slice(-3)}`;
 }
 
 export function isComponentNameTaken(
@@ -312,13 +349,14 @@ export function isComponentNameTaken(
   existing: { id?: number; name: string }[],
   excludeId?: number,
 ): boolean {
-  const normalized = name.trim().toLowerCase();
+  const normalized = normalizeComponentNameKey(name);
   if (!normalized) return false;
-  return existing.some(c => c.id !== excludeId && c.name.trim().toLowerCase() === normalized);
+  return existing.some(c => c.id !== excludeId && normalizeComponentNameKey(c.name) === normalized);
 }
 
 export type ComponentRow = {
   id?: number;
+  companyId?: number | null;
   componentId: string;
   name: string;
   category: string;
@@ -341,11 +379,15 @@ export type ComponentRow = {
   updatedAt?: string;
 };
 
-export function toForm(row: ComponentRow, existingComponentIds: string[] = []): ComponentForm {
+export function toForm(
+  row: ComponentRow,
+  existingComponentIds: string[] = [],
+  companyCode?: string | null,
+): ComponentForm {
   const recipeUnit = fromApiUom(row.recipeUOM);
   const inventoryUnit = fromApiUom(row.inventoryUOM);
   const componentId = row.componentId
-    || generateComponentId(row.name || 'New', existingComponentIds);
+    || generateComponentId(companyCode, existingComponentIds);
   const detail = resolveDetailConfigForRow(row);
   return {
     name: row.name,

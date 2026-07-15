@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Database, RefreshCw } from 'lucide-react';
 import { devConsoleApi, type DevUsageResponse } from '../../data/devConsoleApi';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 export function TenantRollupsPanel() {
   const [data, setData] = useState<DevUsageResponse | null>(null);
@@ -58,7 +59,7 @@ export function TenantRollupsPanel() {
           disabled={busy}
           className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
         >
-          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          <RefreshCw size={12}  />
           Refresh rollup
         </button>
       </div>
@@ -79,7 +80,7 @@ export function TenantRollupsPanel() {
       )}
 
       {loading && !data ? (
-        <p className="text-xs text-muted-foreground py-8 text-center">Loading tenant rollups…</p>
+        <MillstoneLoader size="sm" layout="block" label="Loading tenant rollups…" />
       ) : (
         <div className="rounded-lg border border-border bg-card overflow-x-auto">
           <table className="w-full text-xs">

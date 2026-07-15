@@ -67,7 +67,8 @@ public static class IngredientCatalogSeeder
             if (existing.Contains(seed.Name.ToLower()))
                 continue;
 
-            var componentId = await ComponentIdGenerator.GenerateAsync(db, seed.Name, companyId: defaultCompanyId);
+            var code = await CompanyCodeService.ResolveCodeAsync(db, defaultCompanyId.Value);
+            var componentId = await ComponentIdGenerator.GenerateAsync(db, code, defaultCompanyId);
             db.Ingredients.Add(seed.ToIngredient(componentId, defaultCompanyId.Value));
             added = true;
         }

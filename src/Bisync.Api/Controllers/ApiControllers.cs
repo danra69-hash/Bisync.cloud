@@ -2,6 +2,7 @@ using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -448,11 +449,20 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
 
 [ApiController]
 [Route("api/[controller]")]
-public class IngredientsController(BisyncDbContext db) : ControllerBase
+public class IngredientsController(BisyncDbContext db, ITenantContext tenant) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Ingredient>>> GetAll() =>
-        Ok(await db.Ingredients.OrderBy(i => i.Name).ToListAsync());
+    public async Task<ActionResult<IEnumerable<Ingredient>>> GetAll([FromQuery] int? companyId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        IQueryable<Ingredient> query = db.Ingredients.AsNoTracking();
+        if (cid is int id)
+            query = query.Where(i => i.CompanyId == id);
+        else if (!TenantQuery.AllowsAllCompanies(tenant, cid))
+            return Ok(Array.Empty<Ingredient>());
+
+        return Ok(await query.OrderBy(i => i.Name).ToListAsync());
+    }
 
     [HttpPut("{id:int}")]
     public async Task<ActionResult<Ingredient>> Update(int id, [FromBody] Ingredient updated)
@@ -460,15 +470,23 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
         var item = await db.Ingredients.FindAsync(id);
         if (item is null) return NotFound();
 
-        var name = updated.Name.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return BadRequest(new { message = "Component name is required." });
+        var nameError = ComponentIdentityRules.ValidateName(updated.Name);
+        if (nameError is not null)
+            return BadRequest(new { message = nameError });
+
+        var name = ComponentIdentityRules.NormalizeName(updated.Name);
+        var companyId = item.CompanyId ?? TenantQuery.ResolveCompanyId(tenant, updated.CompanyId);
+        if (companyId is null)
+            return BadRequest(new { message = "Company is required for components." });
 
         var nameTaken = await db.Ingredients.AnyAsync(i =>
-            i.Id != id && i.Name.ToLower() == name.ToLower());
+            i.Id != id
+            && i.CompanyId == companyId
+            && i.Name.ToLower() == name.ToLower());
         if (nameTaken)
-            return Conflict(new { message = "A component with this name already exists." });
+            return Conflict(new { message = "A component with this name already exists for this company." });
 
+        item.CompanyId = companyId;
         item.Name = name;
         item.Category = updated.Category;
         item.Group = updated.Group;
@@ -487,8 +505,11 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
         item.LocationsJson = updated.LocationsJson;
         item.UpdatedAt = DateTime.UtcNow;
 
-        if (string.IsNullOrWhiteSpace(item.ComponentId))
-            item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, item.Name, item.Id);
+        if (!ComponentIdentityRules.IsValidComponentId(item.ComponentId))
+        {
+            var code = await CompanyCodeService.ResolveCodeAsync(db, companyId.Value);
+            item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId, item.Id);
+        }
 
         await db.SaveChangesAsync();
         await ProductCostRecalculator.RecalculateForComponentAsync(db, item.ComponentId);
@@ -498,22 +519,25 @@ public class IngredientsController(BisyncDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Ingredient>> Create([FromBody] Ingredient ingredient)
     {
-        var name = ingredient.Name.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return BadRequest(new { message = "Component name is required." });
+        var nameError = ComponentIdentityRules.ValidateName(ingredient.Name);
+        if (nameError is not null)
+            return BadRequest(new { message = nameError });
 
-        var nameTaken = await db.Ingredients.AnyAsync(i => i.Name.ToLower() == name.ToLower());
+        var name = ComponentIdentityRules.NormalizeName(ingredient.Name);
+        var companyId = TenantQuery.ResolveCompanyId(tenant, ingredient.CompanyId);
+        if (companyId is null)
+            return BadRequest(new { message = "Company is required for components." });
+
+        var nameTaken = await db.Ingredients.AnyAsync(i =>
+            i.CompanyId == companyId
+            && i.Name.ToLower() == name.ToLower());
         if (nameTaken)
-            return Conflict(new { message = "A component with this name already exists." });
+            return Conflict(new { message = "A component with this name already exists for this company." });
 
+        var code = await CompanyCodeService.ResolveCodeAsync(db, companyId.Value);
+        ingredient.CompanyId = companyId;
         ingredient.Name = name;
-        ingredient.ComponentId = string.IsNullOrWhiteSpace(ingredient.ComponentId)
-            ? await ComponentIdGenerator.GenerateAsync(db, name)
-            : ingredient.ComponentId.Trim();
-
-        var idTaken = await db.Ingredients.AnyAsync(i => i.ComponentId == ingredient.ComponentId);
-        if (idTaken)
-            ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, name);
+        ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId);
 
         ingredient.DetailConfigJson = string.IsNullOrWhiteSpace(ingredient.DetailConfigJson) ? "{}" : ingredient.DetailConfigJson;
         ingredient.CreatedAt = DateTime.UtcNow;

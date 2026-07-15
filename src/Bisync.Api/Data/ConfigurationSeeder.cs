@@ -138,6 +138,7 @@ public static class ConfigurationSeeder
                 Email = seed.Email,
                 Active = true,
             };
+            await CompanyCodeService.EnsureCodeAsync(db, company);
             db.Companies.Add(company);
         }
         await db.SaveChangesAsync();

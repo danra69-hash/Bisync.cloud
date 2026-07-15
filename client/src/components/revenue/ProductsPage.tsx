@@ -92,6 +92,7 @@ import {
 } from './SubProductBatchUomSection';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -982,10 +983,14 @@ export function ProductsPage({
   async function handleSaveComponent(updated: Partial<ReturnType<typeof ingredientToRow>>) {
     if (!editComponentRow || !componentEditorLineKey) return;
     setComponentSaveError(null);
+    if (!selectedCompanyId) {
+      setComponentSaveError('Select a company before creating a component.');
+      return;
+    }
 
-    const newRow = { ...blankComponentRow, ...editComponentRow, ...updated };
+    const newRow = { ...blankComponentRow, ...editComponentRow, ...updated, companyId: selectedCompanyId };
     try {
-      const created = await api.createIngredient(rowToIngredient(newRow, {}));
+      const created = await api.createIngredient(rowToIngredient(newRow, { companyId: selectedCompanyId }));
       const savedRow = mergeSavedRow(created, newRow);
       setComponents(prev => [savedRow, ...prev.filter(r => r.id !== savedRow.id)]);
       if (componentEditorTarget === 'packaging') {
@@ -1400,7 +1405,7 @@ export function ProductsPage({
           Select a company and at least one location in the header to build products.
         </p>
       ) : loading ? (
-        <p className="text-xs text-muted-foreground">Loading components…</p>
+        <MillstoneLoader size="sm" layout="block" label="Loading components…" />
       ) : (
         <>
           <fieldset disabled={!isEditing || saving} className="space-y-5 border-0 p-0 m-0 min-w-0 disabled:opacity-90">

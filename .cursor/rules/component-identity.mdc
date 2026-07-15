@@ -1,0 +1,35 @@
+---
+description: Permanent component name and Component ID identity rules
+alwaysApply: true
+---
+
+# Component identity (permanent)
+
+Apply these rules whenever creating, updating, importing, or migrating smart components / ingredients.
+
+## Company code
+
+- Every company has an immutable 4-letter `Code` (A–Z), auto-created from the company name when missing.
+- Short names are padded with `X`. Colliding names get a unique suffix letter/digit.
+- Locations inherit the company catalog; uniqueness is never scoped per location.
+
+## Component name
+
+- Unique within a company (case-insensitive).
+- Normalize by trimming, collapsing repeated spaces to one space, and rejecting characters other than letters, digits, spaces, and `-`.
+- `"Flour  "` / `" flour"` / `"Flour"` are the same name and must not create a second Component ID.
+- On collisions in legacy data: merge duplicates into the oldest row and remount all related string references to the keeper.
+
+## Component ID
+
+- Format: `{COMPANY_CODE}-{XXXX}` where `XXXX` is 4 uppercase alphanumeric characters containing **at least one letter and one number** (e.g. `BISY-A001`).
+- Assigned by the API only. Clients may preview, never invent final authority.
+- After creation, treat Component ID as immutable in the public API.
+- When changing IDs, update denormalized copies (`PurchaseOrderItems`, inventory, movements, recipes that match ingredient IDs, wastage/transfer `ItemKey` for `component`, archives via remap table). Do not rewrite product numeric IDs stored in recipe `ComponentId` fields.
+
+## Implementation anchors
+
+- Rules: `src/Bisync.Api/Services/ComponentIdentityRules.cs`
+- IDs: `src/Bisync.Api/Services/ComponentIdGenerator.cs`
+- Migration: `src/Bisync.Api/Data/ComponentIdentityMigrator.cs`
+- UI: `client/src/data/componentForm.ts`, `ComponentEditPanel.tsx`

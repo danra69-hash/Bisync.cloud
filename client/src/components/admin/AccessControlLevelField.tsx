@@ -6,6 +6,7 @@ import {
   type AccessControlType,
 } from '../../data/accessControlCatalog';
 import { selectCls } from '../../data/countries';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   value: string | null | undefined;
@@ -30,17 +31,23 @@ export function AccessControlLevelField({ value, disabled, onChange }: Props) {
       <p className="text-xs text-muted-foreground mt-0.5 mb-1">
         Assign one of the platform access control types configured under Platform Config.
       </p>
-      <select
-        className={`${selectCls} mt-1`}
-        value={value ?? ''}
-        disabled={disabled || loading}
-        onChange={e => onChange(e.target.value || null)}
-      >
-        <option value="">{loading ? 'Loading…' : '— Not assigned —'}</option>
-        {types.map(type => (
-          <option key={type.id} value={type.id}>{type.label}</option>
-        ))}
-      </select>
+      {loading ? (
+        <div className={`${selectCls} mt-1 flex items-center`}>
+          <MillstoneLoader size="xs" layout="inline" label="" />
+        </div>
+      ) : (
+        <select
+          className={`${selectCls} mt-1`}
+          value={value ?? ''}
+          disabled={disabled}
+          onChange={e => onChange(e.target.value || null)}
+        >
+          <option value="">— Not assigned —</option>
+          {types.map(type => (
+            <option key={type.id} value={type.id}>{type.label}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

@@ -44,6 +44,7 @@ import {
   earliestStockCardMonth,
   formatStockCardMonthLabel,
 } from './stockCardPeriod';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 const TABLE_COL_COUNT = 12;
 const HISTORY_TABLE_COL_COUNT = 13;
@@ -804,7 +805,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                 disabled={loading || !requiredFiltersReady}
                 className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 min-w-[100px]"
               >
-                {loading ? 'Loading…' : 'Create'}
+                Create
               </button>
             </div>
           </div>
@@ -865,11 +866,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={TABLE_COL_COUNT} className="px-3 py-8 text-center text-muted-foreground">
-                  Loading inventory…
-                </td>
-              </tr>
+              <TableLoadingRow colSpan={TABLE_COL_COUNT} label="Loading inventory…" />
             ) : !listLoaded ? (
               <tr>
                 <td colSpan={TABLE_COL_COUNT} className="px-3 py-8 text-center text-muted-foreground">
@@ -994,11 +991,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
               </thead>
               <tbody>
                 {historyLoading ? (
-                  <tr>
-                    <td colSpan={HISTORY_TABLE_COL_COUNT} className="px-3 py-8 text-center text-muted-foreground">
-                      Loading history…
-                    </td>
-                  </tr>
+                  <TableLoadingRow colSpan={HISTORY_TABLE_COL_COUNT} label="Loading history…" />
                 ) : sortedHistoryLineRows.length === 0 ? (
                   <tr>
                     <td colSpan={HISTORY_TABLE_COL_COUNT} className="px-3 py-8 text-center text-muted-foreground">

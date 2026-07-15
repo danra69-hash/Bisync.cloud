@@ -17,6 +17,7 @@ import {
   payrollYearOptions,
 } from './payrollProcess';
 import { formatPayrollAmount } from './payrollDisplay';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 const amountCls = 'px-3 py-2.5 text-right font-sans whitespace-nowrap text-xs';
 const textCls = 'px-3 py-2.5 text-xs';
@@ -207,7 +208,7 @@ export function ProcessPayrollPanel({
         )}
 
         {selectedCompanyId && loading && (
-          <p className="text-sm text-muted-foreground">Loading payroll preview…</p>
+          <MillstoneLoader size="sm" layout="block" label="Loading payroll preview…" />
         )}
 
         {selectedCompanyId && !loading && preview && (

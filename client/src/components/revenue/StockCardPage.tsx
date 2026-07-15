@@ -20,6 +20,7 @@ import {
   formatStockCardMonthLabel,
   STOCK_CARD_HISTORY_YEARS,
 } from './stockCardPeriod';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -261,11 +262,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
-                  Loading stock cards…
-                </td>
-              </tr>
+              <TableLoadingRow colSpan={9} label="Loading stock cards…" />
             ) : visibleItems.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">

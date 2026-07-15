@@ -20,6 +20,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             {
                 c.Id,
                 c.Name,
+                c.Code,
                 c.Brn,
                 c.GstTin,
                 c.CountryCode,
@@ -56,6 +57,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Companies");
 
+        await CompanyCodeService.EnsureCodeAsync(db, company);
         db.Companies.Add(company);
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(GetById), new { id = company.Id }, company);

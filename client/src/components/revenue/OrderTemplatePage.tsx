@@ -19,6 +19,7 @@ import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import type { CompanyVendorPolicyTag } from '../../data/vendorPolicyRules';
 import { ingredientToRow } from './smartIngredientShared';
 import { OrderTemplateVendorProductPickerModal } from './OrderTemplateVendorProductPickerModal';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -465,7 +466,7 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
           Select a company and at least one location in the header to create an order template.
         </p>
       ) : loading ? (
-        <p className="text-xs text-muted-foreground">Loading components…</p>
+        <MillstoneLoader size="sm" layout="block" label="Loading components…" />
       ) : (
         <>
           <section className="rounded-lg border border-border bg-card p-4 space-y-4">

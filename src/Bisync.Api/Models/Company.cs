@@ -4,6 +4,8 @@ public class Company
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    /// <summary>Immutable 4-letter company code used as the component ID prefix.</summary>
+    public string Code { get; set; } = string.Empty;
     public string Brn { get; set; } = string.Empty;
     public string GstTin { get; set; } = string.Empty;
     public string CountryCode { get; set; } = "MY";

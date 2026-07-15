@@ -19,6 +19,7 @@ import {
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   customer: B2bCustomer;
@@ -113,7 +114,7 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4">
           {loading ? (
-            <p className="text-xs text-muted-foreground">Loading B2B products…</p>
+            <MillstoneLoader size="sm" layout="block" label="Loading B2B products…" />
           ) : rows.length === 0 ? (
             <p className="text-xs text-muted-foreground">No B2B-enabled products with delivery units found for this company.</p>
           ) : (

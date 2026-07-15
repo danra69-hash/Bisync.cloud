@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Calculator, RefreshCw } from 'lucide-react';
 import { probeHrApi } from '../../modules/hr/api';
 import { PayrollSection } from '../payroll/PayrollSection';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 function AccountingOfflinePanel({ onRetry }: { onRetry: () => void }) {
   return (
@@ -45,11 +46,7 @@ export function AccountingPage({ selectedCompanyId = null }: { selectedCompanyId
   }, [check]);
 
   if (status === 'checking') {
-    return (
-      <div className="flex-1 flex items-center justify-center p-12">
-        <p className="text-xs text-muted-foreground font-sans">Loading Accounting…</p>
-      </div>
-    );
+    return <MillstoneLoader layout="block" size="lg" label="Loading Accounting…" className="flex-1" />;
   }
 
   if (status === 'offline') {

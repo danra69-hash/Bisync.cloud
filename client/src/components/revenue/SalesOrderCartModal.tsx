@@ -16,6 +16,7 @@ import {
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { PurchaseOrderPdfPreview } from './PurchaseOrderPdfPreview';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   companyId: number;
@@ -233,13 +234,13 @@ export function SalesOrderCartModal({
                 <div>
                   <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Initiated by</p>
                   <p className="mt-1.5 text-xs font-medium text-foreground">
-                    {userLoading ? 'Loading…' : initiatedBy}
+                    {userLoading ? <MillstoneLoader size="xs" layout="inline" label="" /> : initiatedBy}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Approved by</p>
                   <p className="mt-1.5 text-xs font-medium text-foreground">
-                    {userLoading ? 'Loading…' : approvedBy}
+                    {userLoading ? <MillstoneLoader size="xs" layout="inline" label="" /> : approvedBy}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {canIssue

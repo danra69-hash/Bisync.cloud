@@ -36,6 +36,7 @@ import { SampleQuoteTemplatesPanel } from './SampleQuoteTemplatesPanel';
 import { SampleRequestList } from './SampleRequestList';
 import type { SampleQuoteTemplateId } from '../../data/requestForSample';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'action';
 
@@ -449,7 +450,7 @@ export function VendorListPage({
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
-          <p className="p-8 text-center text-xs text-muted-foreground">Loading vendors…</p>
+          <MillstoneLoader size="sm" layout="block" label="Loading vendors…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full table-fixed text-xs">

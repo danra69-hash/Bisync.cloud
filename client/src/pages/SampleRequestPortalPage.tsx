@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type SampleRequestDetail } from '../api';
 import { formatVendorPolicyLabel } from '../data/vendorPolicyRules';
 import { sampleRequestTemplateTitle } from '../data/requestForSample';
+import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 
 type Props = {
   token: string;
@@ -56,11 +57,7 @@ export function SampleRequestPortalPage({ token }: Props) {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F7F3EE]">
-        <p className="text-sm text-muted-foreground">Loading sample request…</p>
-      </div>
-    );
+    return <MillstoneLoader layout="screen" size="lg" label="Loading sample request…" />;
   }
 
   if (!request) {

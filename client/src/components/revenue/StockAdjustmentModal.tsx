@@ -7,6 +7,7 @@ import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   itemType: string;
@@ -221,7 +222,7 @@ export function StockAdjustmentModal({
               Available stock on {adjustmentDate}
             </p>
             {snapshotLoading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <MillstoneLoader size="sm" layout="block" label="Loading…" />
             ) : snapshotError ? (
               <p className="text-sm text-destructive">{snapshotError}</p>
             ) : snapshot ? (

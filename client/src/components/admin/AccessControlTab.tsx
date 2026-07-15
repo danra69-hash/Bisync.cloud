@@ -17,6 +17,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { filterSelectCls } from '../layout/formControls';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 const ALL_MODULES = '';
 const acColumnCls = 'w-11 min-w-[44px] max-w-[48px] px-0.5 py-1 text-center border-l border-border/40';
@@ -216,11 +217,7 @@ export function AccessControlTab() {
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={columnCount} className="px-4 py-10 text-center text-muted-foreground">
-                  Loading access control matrix…
-                </td>
-              </tr>
+              <TableLoadingRow colSpan={columnCount} label="Loading access control matrix…" />
             ) : pagedRows.length === 0 ? (
               <tr>
                 <td colSpan={columnCount} className="px-4 py-10 text-center text-muted-foreground">

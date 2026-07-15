@@ -12,6 +12,7 @@ import {
   earliestStockCardMonth,
   formatStockCardMonthLabel,
 } from './stockCardPeriod';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -177,7 +178,7 @@ export function SalesDataPage({ selectedCompanyId, selectedLocationIds, embedded
                 disabled={loading}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50 shrink-0 ml-auto"
               >
-                <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+                <RefreshCw size={11}  />
                 Refresh
               </button>
             </div>
@@ -229,11 +230,7 @@ export function SalesDataPage({ selectedCompanyId, selectedLocationIds, embedded
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">
-                      Loading sales data…
-                    </td>
-                  </tr>
+                  <TableLoadingRow colSpan={9} label="Loading sales data…" />
                 ) : rows.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">

@@ -14,6 +14,7 @@ import {
 import { formatVendorPolicyLabel } from '../../data/vendorPolicyRules';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -331,7 +332,7 @@ export function SampleRequestList({ selectedCompanyId, refreshKey = 0 }: Props) 
   }
 
   if (loading) {
-    return <p className="p-8 text-center text-xs text-muted-foreground">Loading sample requests…</p>;
+    return <MillstoneLoader size="sm" layout="block" label="Loading sample requests…" />;
   }
 
   return (
@@ -345,7 +346,7 @@ export function SampleRequestList({ selectedCompanyId, refreshKey = 0 }: Props) 
             disabled={refreshing}
             className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-[11px] font-semibold hover:bg-muted disabled:opacity-50"
           >
-            <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
+            <RefreshCw size={10}  />
             Refresh
           </button>
         </div>

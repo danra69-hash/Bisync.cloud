@@ -1,19 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
-  Circle,
-  ClipboardList,
-  Eraser,
-  History,
-  Loader2,
-  Play,
-  Wrench,
-  X,
-  XCircle,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight, Circle, ClipboardList, Eraser, History, Play, Wrench, X, XCircle } from 'lucide-react';
 import {
   createPendingTasks,
   executeQaFix,
@@ -32,6 +19,7 @@ import {
   serializeQaAudit,
   type QaAuditEnvelope,
 } from '../../data/qaAuditTrail';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type QaPanelTab = 'run' | 'history';
 
@@ -55,7 +43,7 @@ function StatusIcon({ status }: { status: QaStatus }) {
   if (status === 'pass') return <CheckCircle2 size={14} className="text-emerald-600" />;
   if (status === 'fail') return <XCircle size={14} className="text-red-600" />;
   if (status === 'warn') return <AlertTriangle size={14} className="text-amber-600" />;
-  if (status === 'running') return <Loader2 size={14} className="animate-spin text-amber-600" />;
+  if (status === 'running') return <MillstoneLoader size="xs" layout="inline" label="" />;
   return <Circle size={14} className="text-muted-foreground" />;
 }
 
@@ -252,7 +240,7 @@ function StepDetailPanel({
               )}
               {fixing && (
                 <p className="text-[11px] mt-2 inline-flex items-center gap-1.5 text-amber-700">
-                  <Loader2 size={12} className="animate-spin" /> Running fix…
+                  Running fix…
                 </p>
               )}
             </div>
@@ -536,7 +524,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
               title="Vanish QA operational DB records now; keep QA History"
               className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-2 hover:bg-muted disabled:opacity-50"
             >
-              {purging ? <Loader2 size={13} className="animate-spin" /> : <Eraser size={13} />}
+              {!purging && <Eraser size={13} />}
               Vanish QA data
             </button>
           )}
@@ -546,7 +534,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
             disabled={running || fixing || purging}
             className="inline-flex items-center gap-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md px-3 py-2 hover:opacity-90 disabled:opacity-50"
           >
-            {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+            {!running && <Play size={13} />}
             {running ? 'Running…' : 'Run automated QA'}
           </button>
         </div>
@@ -589,7 +577,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
             disabled={purging || running || fixing}
             className="inline-flex items-center gap-1.5 text-xs font-medium bg-emerald-700 text-white rounded-md px-3 py-2 hover:bg-emerald-800 disabled:opacity-50"
           >
-            {purging ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            {!purging && <CheckCircle2 size={13} />}
             Confirm no issues — vanish QA data
           </button>
         </div>

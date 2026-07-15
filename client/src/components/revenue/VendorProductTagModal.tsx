@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Search, Tag, X } from 'lucide-react';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 import { api } from '../../api';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
@@ -540,7 +541,7 @@ export function VendorProductTagModal({
 
               {loading ? (
 
-                <p className="text-xs text-muted-foreground text-center py-10">Loading smart components…</p>
+                <MillstoneLoader size="sm" layout="block" label="Loading smart components…" />
 
               ) : filtered.length === 0 ? (
 

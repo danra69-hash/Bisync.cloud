@@ -4,6 +4,7 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus } from 'lucide-react';
 import { api, type Company } from '../../api';
@@ -202,7 +203,12 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
               {countryName
                 ? `${selectedCompany?.name} · ${countryName}`
                 : selectedCompany?.name}
-              {loading && ' · Loading…'}
+              {loading && (
+                <>
+                  {' · '}
+                  <MillstoneLoader size="xs" layout="inline" label="" />
+                </>
+              )}
             </p>
           </div>
           <button

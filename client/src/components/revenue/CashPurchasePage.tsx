@@ -13,6 +13,7 @@ import { ingredientToRow } from './smartIngredientShared';
 import { pageShellClass } from '../layout/pageLayout';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -406,7 +407,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
               Select a company and at least one location in the header to record a cash purchase.
             </p>
           ) : loading ? (
-            <p className="text-xs text-muted-foreground">Loading components…</p>
+            <MillstoneLoader size="sm" layout="block" label="Loading components…" />
           ) : (
             <form onSubmit={e => void handleSubmit(e)} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -636,7 +637,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                 </div>
               ) : historyLoading ? (
                 <div className="h-full min-h-[12rem] flex items-center justify-center px-4 py-6">
-                  <p className="text-xs text-muted-foreground text-center">Loading history…</p>
+                  <MillstoneLoader size="sm" layout="block" label="Loading history…" />
                 </div>
               ) : monthHistory.rows.length === 0 ? (
                 <div className="h-full min-h-[12rem] flex items-center justify-center px-4 py-6">

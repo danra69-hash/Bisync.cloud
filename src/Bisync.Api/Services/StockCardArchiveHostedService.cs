@@ -1,4 +1,6 @@
 using Bisync.Api.Data;
+using Bisync.Api.Tenancy;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Bisync.Api.Services;
@@ -42,5 +44,19 @@ public static class StockCardArchiveStartup
     {
         var archiveDb = services.GetRequiredService<StockCardArchiveDbContext>();
         await archiveDb.Database.EnsureCreatedAsync();
+
+        try
+        {
+            var resolver = services.GetRequiredService<ITenantConnectionResolver>();
+            var opsOptions = new DbContextOptionsBuilder<BisyncDbContext>()
+                .UseNpgsql(resolver.DefaultOperationalConnection)
+                .Options;
+            await using var opsDb = new BisyncDbContext(opsOptions);
+            await ComponentIdentityMigrator.RemapArchiveAsync(archiveDb, opsDb);
+        }
+        catch
+        {
+            // Best-effort archive ID remap.
+        }
     }
 }

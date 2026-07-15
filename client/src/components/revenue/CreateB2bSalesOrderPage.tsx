@@ -20,6 +20,7 @@ import { pageShellClass } from '../layout/pageLayout';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { SalesOrderCartModal } from './SalesOrderCartModal';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
   companyId: number;
@@ -249,7 +250,7 @@ export function CreateB2bSalesOrderPage({
       </div>
 
       {loading ? (
-        <p className="text-xs text-muted-foreground">Loading products…</p>
+        <MillstoneLoader size="sm" layout="block" label="Loading products…" />
       ) : !selectedCustomer ? (
         <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-8 text-center">
           Choose a customer to start the sales order.

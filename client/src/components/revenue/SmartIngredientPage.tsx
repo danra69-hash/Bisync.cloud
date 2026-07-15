@@ -25,6 +25,7 @@ import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredie
 import { countComponentTaggedVendors } from '../../data/vendorProductTagging';
 import { formatParStock, resolveComponentParStock } from '../../data/componentParStock';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type IngredientSortColumn =
   | 'componentId'
@@ -95,11 +96,11 @@ export function SmartIngredientPage({
 
   useEffect(() => {
     setLoading(true);
-    api.ingredients()
+    api.ingredients(selectedCompanyId ?? undefined)
       .then(data => setRows(data.map(ingredientToRow)))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     if (!selectedCompanyId) {
@@ -210,9 +211,13 @@ export function SmartIngredientPage({
     if (!editRow) return;
     setSaveError(null);
     if (isNewRow) {
-      const newRow = { ...blankComponentRow, ...updated } as ComponentRow;
+      if (!selectedCompanyId) {
+        setSaveError('Select a company before creating a component.');
+        return;
+      }
+      const newRow = { ...blankComponentRow, ...updated, companyId: selectedCompanyId } as ComponentRow;
       try {
-        const created = await api.createIngredient(rowToIngredient(newRow, {}));
+        const created = await api.createIngredient(rowToIngredient(newRow, { companyId: selectedCompanyId }));
         setRows(prev => [mergeSavedRow(created, newRow), ...prev]);
         setIsNewRow(false);
         setEditRow(null);
@@ -220,9 +225,9 @@ export function SmartIngredientPage({
         setSaveError(err instanceof Error ? err.message : 'Failed to save component.');
       }
     } else if (editRow.id) {
-      const merged = { ...editRow, ...updated };
+      const merged = { ...editRow, ...updated, companyId: editRow.companyId ?? selectedCompanyId };
       try {
-        const saved = await api.updateIngredient(editRow.id, rowToIngredient(merged, {}));
+        const saved = await api.updateIngredient(editRow.id, rowToIngredient(merged, { companyId: merged.companyId ?? undefined }));
         setRows(prev => prev.map(r => r.id === editRow.id ? mergeSavedRow(saved, merged) : r));
         setIsNewRow(false);
         setEditRow(null);
@@ -399,7 +404,7 @@ export function SmartIngredientPage({
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
-          <p className="p-8 text-center text-xs text-muted-foreground">Loading ingredients…</p>
+          <MillstoneLoader size="sm" layout="block" label="Loading ingredients…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full table-fixed text-xs">

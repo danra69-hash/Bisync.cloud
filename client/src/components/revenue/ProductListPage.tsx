@@ -25,6 +25,7 @@ import { ToggleSwitch } from '../admin/ToggleSwitch';
 import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProductPosUnitsModal } from './ProductPosUnitsModal';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
+import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -297,7 +298,7 @@ export function ProductListPage({
           disabled={loading || !orgReady}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={12}  />
           Refresh
         </button>
         {onCreateProduct ? (
@@ -427,11 +428,7 @@ export function ProductListPage({
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">
-                      Loading products…
-                    </td>
-                  </tr>
+                  <TableLoadingRow colSpan={9} label="Loading products…" />
                 ) : visibleProducts.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">

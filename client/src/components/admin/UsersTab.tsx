@@ -28,6 +28,7 @@ import { AccessControlLevelField } from './AccessControlLevelField';
 import { ToggleSwitch } from './ToggleSwitch';
 import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_WIDE_CLS, NESTED_PANEL_OVERLAY_CLS, NESTED_PANEL_SHELL_WIDE_CLS } from '../layout/sidePanelShared';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type UserSortColumn = 'employeeId' | 'name' | 'company' | 'locations' | 'email' | 'role' | 'access' | 'status';
 
@@ -621,7 +622,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
-          <p className="p-8 text-center text-xs text-muted-foreground">Loading users…</p>
+          <MillstoneLoader size="sm" layout="block" label="Loading users…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed text-xs">

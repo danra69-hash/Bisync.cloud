@@ -56,6 +56,10 @@ public static class StockCardDummySeeder
         var rng = new Random(42_006);
         var locationsJson = JsonSerializer.Serialize(LocationIds);
         var now = DateTime.UtcNow;
+        var resolvedCompanyId = companyId
+            ?? await db.Companies.OrderBy(c => c.Id).Select(c => (int?)c.Id).FirstOrDefaultAsync()
+            ?? 1;
+        var companyCode = await CompanyCodeService.ResolveCodeAsync(db, resolvedCompanyId);
 
         var componentsAdded = 0;
         var sequence = existing + existingProducts + 1;
@@ -68,7 +72,7 @@ public static class StockCardDummySeeder
 
             var group = ComponentGroups[sequence % ComponentGroups.Length];
             var uom = UomPairs[sequence % UomPairs.Length];
-            var componentId = await ComponentIdGenerator.GenerateAsync(db, name);
+            var componentId = await ComponentIdGenerator.GenerateAsync(db, companyCode, resolvedCompanyId);
             var priceRecipe = Math.Round((decimal)(rng.NextDouble() * 2 + 0.05), 4);
             var priceInventory = uom.RecipeUom == uom.InventoryUom
                 ? priceRecipe
@@ -76,6 +80,7 @@ public static class StockCardDummySeeder
 
             var ingredient = new Ingredient
             {
+                CompanyId = resolvedCompanyId,
                 ComponentId = componentId,
                 Name = name,
                 Category = "Food",

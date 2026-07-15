@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Users } from 'lucide-react';
 import { probeHrApi } from '../../modules/hr/api';
+import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 const HrModule = lazy(() => import('../../modules/hr/HrModule'));
 
@@ -47,11 +48,7 @@ export function HumanResourcesPage({ selectedCompanyId }: { selectedCompanyId: n
   }, [check]);
 
   if (status === 'checking') {
-    return (
-      <div className="flex-1 min-h-0 flex items-center justify-center p-12">
-        <p className="text-xs text-muted-foreground font-sans">Loading Human Resources…</p>
-      </div>
-    );
+    return <MillstoneLoader layout="block" size="lg" label="Loading Human Resources…" className="flex-1 min-h-0" />;
   }
 
   if (status === 'offline') {
@@ -66,9 +63,7 @@ export function HumanResourcesPage({ selectedCompanyId }: { selectedCompanyId: n
     <div className="flex-1 min-h-0 flex flex-col w-full min-w-0">
       <Suspense
         fallback={
-          <div className="flex-1 flex items-center justify-center p-12">
-            <p className="text-xs text-muted-foreground font-sans">Loading HR module…</p>
-          </div>
+          <MillstoneLoader layout="block" size="lg" label="Loading HR module…" className="flex-1" />
         }
       >
         <HrModule embedded selectedCompanyId={selectedCompanyId} />

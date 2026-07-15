@@ -11,6 +11,7 @@ import { filterSelectCls } from '../layout/formControls';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
 import { fromApiUom } from '../../data/componentForm';
@@ -498,7 +499,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
               }}
             />
           </div>
-          {!selected && (itemSearch.trim() || filteredCatalog.length > 0) && (
+          {!selected && itemSearch.trim().length > 0 && (
             <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-card shadow-lg">
               {filteredCatalog.map(item => (
                 <li key={`${item.kind}:${item.key}`}>
@@ -540,8 +541,12 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
 
         <div className="lg:col-span-1">
           <label className={labelCls}>On hand</label>
-          <div className={fieldCls + ' bg-muted/40 text-muted-foreground tabular-nums'}>
-            {onHandLoading ? '…' : onHandQty == null ? '—' : onHandQty}
+          <div className={fieldCls + ' bg-muted/40 text-muted-foreground tabular-nums flex items-center'}>
+            {onHandLoading
+              ? <MillstoneLoader size="xs" layout="inline" label="" />
+              : onHandQty == null
+                ? '—'
+                : onHandQty}
           </div>
         </div>
 
@@ -560,11 +565,11 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
 
         <div className="lg:col-span-2">
           <label className={labelCls}>Wastage value</label>
-          <div className={fieldCls + ' bg-muted/40 text-muted-foreground tabular-nums'}>
+          <div className={fieldCls + ' bg-muted/40 text-muted-foreground tabular-nums flex items-center'}>
             {!selected || !quantity || Number(quantity) <= 0
               ? '—'
               : wastageValueLoading
-                ? '…'
+                ? <MillstoneLoader size="xs" layout="inline" label="" />
                 : wastageValue == null
                   ? '—'
                   : rm(wastageValue)}
@@ -657,9 +662,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
             </thead>
             <tbody>
               {loading && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground text-xs">Loading…</td>
-                </tr>
+                <TableLoadingRow colSpan={8} />
               )}
               {!loading && visibleItems.length === 0 && (
                 <tr>
