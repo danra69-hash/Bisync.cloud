@@ -124,7 +124,7 @@ export const it = {
       comparePrice: 'Confronta prezzi',
       products: 'Prodotti',
       externalPosMapping: 'Mappatura POS esterno',
-      activeSalesOrder: 'Active Sales Order',
+      activeSalesOrder: 'Sales Order',
 
       customerList: 'Elenco clienti',
       customerGroup: 'Gruppo clienti',

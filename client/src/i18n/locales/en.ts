@@ -122,7 +122,7 @@ export const en = {
       comparePrice: 'Compare Price',
       products: 'Products',
       externalPosMapping: 'External POS Mapping',
-      activeSalesOrder: 'Active Sales Order',
+      activeSalesOrder: 'Sales Order',
       customerList: 'Customer List',
       customerGroup: 'Customer Group',
       customerManagement: 'Customer Management',

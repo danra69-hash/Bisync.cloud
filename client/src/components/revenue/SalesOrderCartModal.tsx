@@ -245,7 +245,7 @@ export function SalesOrderCartModal({
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {canIssue
                       ? 'You can issue sales orders without approval'
-                      : 'No issue permission — order will go to Active Sales Order for approval'}
+                      : 'No issue permission — order will go to Sales Order for approval'}
                   </p>
                 </div>
               </div>
@@ -293,7 +293,7 @@ export function SalesOrderCartModal({
                     ? (issued
                       ? 'Sales order issued. Share the customer link below.'
                       : 'Sales order saved. Share is available; issue may still need stock or a follow-up.')
-                    : 'Sales order placed in Active Sales Order for approval.'}
+                    : 'Sales order placed in Sales Order for approval.'}
                 </p>
                 {createdOrder && shareToken ? (
                   <p className="text-xs text-muted-foreground mt-1 truncate" title={buildSalesOrderShareUrl(shareToken)}>

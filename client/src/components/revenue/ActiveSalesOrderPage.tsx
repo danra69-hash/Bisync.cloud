@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, ExternalLink, RefreshCw } from 'lucide-react';
-import { api, type B2bSalesOrder } from '../../api';
+import { Check, ClipboardList, Copy, ExternalLink, RefreshCw } from 'lucide-react';
+import { api, type B2bCustomer, type B2bSalesOrder } from '../../api';
 import {
   canIssueSalesOrderWithoutApproval,
   parseUserAccess,
@@ -20,10 +20,12 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+import { CreateB2bSalesOrderPage } from './CreateB2bSalesOrderPage';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
   selectedCompanyId: number | null;
+  selectedLocationIds: string[];
 };
 
 type SortColumn = 'orderNumber' | 'customer' | 'status' | 'items' | 'total' | 'updated' | 'action';
@@ -80,8 +82,8 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
-  useRevMgmtPageLabel('Active Sales Order');
+export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }: Props) {
+  useRevMgmtPageLabel('Sales Order');
   const { rm } = useCountryFormatters();
   const { currentUser } = useCurrentUser();
   const access = useMemo(
@@ -91,10 +93,12 @@ export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
   const canIssue = Boolean(access && canIssueSalesOrderWithoutApproval(access));
 
   const [orders, setOrders] = useState<B2bSalesOrder[]>([]);
+  const [customers, setCustomers] = useState<B2bCustomer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [showCreateSalesOrder, setShowCreateSalesOrder] = useState(false);
   const { sortColumn, sortDirection, toggleSort } = useTableSort<SortColumn>();
   const scrollRootRef = useRef<HTMLDivElement>(null);
 
@@ -119,9 +123,26 @@ export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
     }
   }, [selectedCompanyId]);
 
+  const loadCustomers = useCallback(async () => {
+    if (!selectedCompanyId) {
+      setCustomers([]);
+      return;
+    }
+    try {
+      const rows = await api.b2bCustomers(selectedCompanyId);
+      setCustomers(rows);
+    } catch {
+      setCustomers([]);
+    }
+  }, [selectedCompanyId]);
+
   useEffect(() => {
     void loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    void loadCustomers();
+  }, [loadCustomers]);
 
   const sorted = useMemo(() => {
     return sortTableRows(orders, sortColumn, sortDirection, {
@@ -181,8 +202,23 @@ export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
   if (!selectedCompanyId) {
     return (
       <div className={pageShellClass()}>
-        <p className="text-sm text-muted-foreground">Select a company to view active sales orders.</p>
+        <p className="text-sm text-muted-foreground">Select a company to view sales orders.</p>
       </div>
+    );
+  }
+
+  if (showCreateSalesOrder) {
+    return (
+      <CreateB2bSalesOrderPage
+        companyId={selectedCompanyId}
+        customers={customers}
+        selectedLocationIds={selectedLocationIds}
+        onClose={() => setShowCreateSalesOrder(false)}
+        onSubmitted={() => {
+          setShowCreateSalesOrder(false);
+          void loadOrders();
+        }}
+      />
     );
   }
 
@@ -192,15 +228,25 @@ export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
         <p className="text-xs text-muted-foreground">
           Draft orders await approval. Issued orders are locked for fulfillment.
         </p>
-        <button
-          type="button"
-          onClick={() => void loadOrders()}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw size={12}  />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCreateSalesOrder(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800"
+          >
+            <ClipboardList size={12} />
+            Create Sales Order
+          </button>
+          <button
+            type="button"
+            onClick={() => void loadOrders()}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw size={12} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -222,7 +268,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId }: Props) {
             {loading && orders.length === 0 ? (
               <TableLoadingRow colSpan={7} label="Loading…" />
             ) : visibleItems.length === 0 ? (
-              <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">No active sales orders.</td></tr>
+              <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">No sales orders.</td></tr>
             ) : visibleItems.map(order => {
               const token = order.shareToken?.trim() ?? '';
               const canShare = (order.status === 'issued' || order.status === 'confirmed') && canIssue;

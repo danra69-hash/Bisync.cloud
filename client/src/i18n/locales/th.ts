@@ -124,7 +124,7 @@ export const th = {
       comparePrice: 'เปรียบเทียบราคา',
       products: 'สินค้า',
       externalPosMapping: 'การแมป POS ภายนอก',
-      activeSalesOrder: 'Active Sales Order',
+      activeSalesOrder: 'Sales Order',
 
       customerList: 'รายชื่อลูกค้า',
       customerGroup: 'กลุ่มลูกค้า',

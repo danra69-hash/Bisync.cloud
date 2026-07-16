@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ClipboardList, Plus, Search, UserPlus } from 'lucide-react';
+import { Plus, Search, UserPlus } from 'lucide-react';
 import { api, type B2bCustomer, type Company, type PosCustomer } from '../../api';
 import {
   formatCustomerAddress,
@@ -22,7 +22,6 @@ import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { B2bCustomerPanel } from './B2bCustomerPanel';
 import { B2bCustomerMyProductsPanel } from './B2bCustomerMyProductsPanel';
 import { B2bCustomerPurchaseHistoryPanel } from './B2bCustomerPurchaseHistoryPanel';
-import { CreateB2bSalesOrderPage } from './CreateB2bSalesOrderPage';
 import { PosCustomerPanel } from './PosCustomerPanel';
 import { PosCustomerHistoryPanel } from './PosCustomerHistoryPanel';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
@@ -56,12 +55,9 @@ const POS_COLUMNS: SortableColumnDef<PosSortColumn>[] = [
 
 export function CustomerListPage({
   selectedCompanyId,
-  selectedLocationIds,
-  onOpenActiveSalesOrders,
 }: {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
-  onOpenActiveSalesOrders?: () => void;
 }) {
   const [tab, setTab] = useState<'b2b' | 'pos'>('b2b');
   const activeTabLabel = CUSTOMER_TABS.find(t => t.id === tab)?.label ?? 'Customer List';
@@ -77,7 +73,6 @@ export function CustomerListPage({
   const [posSearch, setPosSearch] = useState('');
 
   const [b2bEditTarget, setB2bEditTarget] = useState<B2bCustomer | 'new' | null>(null);
-  const [showCreateSalesOrder, setShowCreateSalesOrder] = useState(false);
   const [posEditTarget, setPosEditTarget] = useState<PosCustomer | 'new' | null>(null);
   const [myProductsTarget, setMyProductsTarget] = useState<B2bCustomer | null>(null);
   const [purchaseHistoryTarget, setPurchaseHistoryTarget] = useState<B2bCustomer | null>(null);
@@ -219,21 +214,6 @@ export function CustomerListPage({
     );
   }
 
-  if (showCreateSalesOrder) {
-    return (
-      <CreateB2bSalesOrderPage
-        companyId={selectedCompanyId}
-        customers={b2bCustomers}
-        selectedLocationIds={selectedLocationIds}
-        onClose={() => setShowCreateSalesOrder(false)}
-        onSubmitted={(_order, issued) => {
-          setShowCreateSalesOrder(false);
-          if (!issued) onOpenActiveSalesOrders?.();
-        }}
-      />
-    );
-  }
-
   return (
     <div className={pageShellClass()}>
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -273,14 +253,6 @@ export function CustomerListPage({
             >
               <UserPlus size={12} />
               Add Customer
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCreateSalesOrder(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800"
-            >
-              <ClipboardList size={12} />
-              Create Sales Order
             </button>
           </div>
 

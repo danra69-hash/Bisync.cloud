@@ -124,7 +124,7 @@ export const id = {
       comparePrice: 'Bandingkan Harga',
       products: 'Produk',
       externalPosMapping: 'Pemetaan POS Eksternal',
-      activeSalesOrder: 'Active Sales Order',
+      activeSalesOrder: 'Sales Order',
 
       customerList: 'Daftar Pelanggan',
       customerGroup: 'Grup Pelanggan',

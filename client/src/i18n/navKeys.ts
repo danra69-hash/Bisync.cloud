@@ -43,6 +43,7 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'Compare Price': 'revMgmt.items.comparePrice',
   Products: 'revMgmt.items.products',
   'External POS Mapping': 'revMgmt.items.externalPosMapping',
+  'Sales Order': 'revMgmt.items.activeSalesOrder',
   'Active Sales Order': 'revMgmt.items.activeSalesOrder',
   'Customer List': 'revMgmt.items.customerList',
   'Customer Group': 'revMgmt.items.customerGroup',

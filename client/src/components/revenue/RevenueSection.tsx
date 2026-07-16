@@ -64,10 +64,12 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
+    case 'Sales Order':
     case 'Active Sales Order':
       return (
         <ActiveSalesOrderPage
           selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
         />
       );
     case 'Customer List':
@@ -75,7 +77,6 @@ function renderRevMgmtContent(
         <CustomerListPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
-          onOpenActiveSalesOrders={() => onSelectItem?.('Sales||||Active Sales Order')}
         />
       );
     case 'Vendor List & Products':

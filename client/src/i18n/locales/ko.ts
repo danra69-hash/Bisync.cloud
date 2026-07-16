@@ -124,7 +124,7 @@ export const ko = {
       comparePrice: '가격 비교',
       products: '제품',
       externalPosMapping: '외부 POS 매핑',
-      activeSalesOrder: 'Active Sales Order',
+      activeSalesOrder: 'Sales Order',
 
       customerList: '고객 목록',
       customerGroup: '고객 그룹',
