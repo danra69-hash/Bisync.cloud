@@ -12,7 +12,7 @@ param(
     [string]$DbUser = "postgres",
 
     # Hidden Dev Team console path baked into the SPA (e.g. /dev/ops-a7f3c9). Empty disables it.
-    [string]$DevConsolePath = ""
+    [string]$DevConsolePath = "/dev/console"
 )
 
 # gcloud writes progress/info to stderr; with "Stop" that aborts the script mid-deploy.

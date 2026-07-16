@@ -99,6 +99,8 @@ public class DevConsoleAuthService(
         && _opts.AllowPasswordOnlyWhenGoogleUnconfigured
         && (env.IsDevelopment()
             || string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development",
+                StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Environment.GetEnvironmentVariable("DEV_CONSOLE_ENABLED"), "true",
                 StringComparison.OrdinalIgnoreCase));
 
     public async Task<(DevConsoleSession? Session, DevTeamUser? User, string? Error)> CompleteWithGoogleAsync(

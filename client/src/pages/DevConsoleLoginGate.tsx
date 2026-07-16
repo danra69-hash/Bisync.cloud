@@ -125,7 +125,7 @@ export function DevConsoleLoginGate({ onSuccess }: { onSuccess: () => void }) {
       setTicket(result);
       if (result.googleRequired && result.googleClientId) {
         setStep('google');
-      } else if (result.allowPasswordOnly) {
+      } else if (result.allowPasswordOnly || !result.googleRequired) {
         await devConsoleAuthApi.completePasswordOnly(result.passwordTicket);
         onSuccess();
       } else {

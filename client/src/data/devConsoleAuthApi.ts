@@ -8,6 +8,9 @@ import {
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 async function parseError(res: Response): Promise<string> {
+  if (res.status === 404) {
+    return 'Dev Console API is not enabled on this server. Redeploy with Dev Console enabled, or restart the local API with DEV_CONSOLE_ENABLED=true.';
+  }
   try {
     const body = await res.json() as { message?: string };
     if (body?.message) return body.message;

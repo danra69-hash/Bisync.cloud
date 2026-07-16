@@ -16,8 +16,8 @@ public class DevConsoleAuthOptions
     public int PasswordTicketMinutes { get; set; } = 10;
 
     /// <summary>
-    /// When true and GoogleClientId is empty, password-only login is allowed (local/dev only).
-    /// Production should leave this false and set GoogleClientId.
+    /// When true and GoogleClientId is empty, password-only login is allowed in Development
+    /// or when DEV_CONSOLE_ENABLED=true (e.g. cloud deploy without OAuth yet).
     /// </summary>
     public bool AllowPasswordOnlyWhenGoogleUnconfigured { get; set; } = true;
 }
