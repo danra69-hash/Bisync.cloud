@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test:split-use": "node --test ../scripts/split-use-calculation.test.mjs",
+    "test:yield-loss": "node --test ../scripts/yield-loss-calculation.test.mjs",
     "preview": "vite preview",
     "verify:ownership": "node ../scripts/verify-structure-ownership.mjs"
   },

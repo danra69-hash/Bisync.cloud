@@ -7,7 +7,7 @@ namespace Bisync.Api.Services;
 
 /// <summary>
 /// Depletes stock when a parent product is sold (POS, online, offline).
-/// Smart components: BOM qty × units sold (FIFO).
+/// Smart components: BOM qty × units sold (FIFO), inflated by Yield Loss % to gross stock.
 /// Sub-products: deplete produced stock first; shortfall uses sub-product recipe components.
 /// </summary>
 public class ProductSaleInventoryService(
@@ -47,12 +47,7 @@ public class ProductSaleInventoryService(
             .Where(p => p.IsSubProduct && p.Active)
             .ToDictionaryAsync(p => p.ProductId, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
-        var ingredientIds = await db.Ingredients
-            .AsNoTracking()
-            .Where(i => i.Active)
-            .Select(i => i.ComponentId)
-            .ToListAsync(cancellationToken);
-        var ingredientCodes = new HashSet<string>(ingredientIds, StringComparer.OrdinalIgnoreCase);
+        var ingredientsByCode = await LoadActiveIngredientsByCodeAsync(product.CompanyId, cancellationToken);
 
         foreach (var locationId in locationExternalIds)
         {
@@ -68,28 +63,31 @@ public class ProductSaleInventoryService(
                         quantitySold,
                         referenceType,
                         reasonLabel,
+                        ingredientsByCode,
                         cancellationToken);
                     continue;
                 }
 
-                if (ingredientCodes.Contains(line.ComponentId))
-                {
-                    var requiredQty = line.Quantity * quantitySold;
-                    if (requiredQty <= 0)
-                        continue;
+                if (!ingredientsByCode.TryGetValue(line.ComponentId, out var ingredient))
+                    continue;
 
-                    await componentStock.RecordDeductionAsync(
-                        line.ComponentId,
-                        line.ComponentName,
-                        locationId,
-                        requiredQty,
-                        line.ComponentUom,
-                        reason: $"{reasonLabel} — {product.Name}",
-                        referenceType: referenceType,
-                        referenceId: product.Id,
-                        companyId: product.CompanyId,
-                        cancellationToken);
-                }
+                var nettQty = line.Quantity * quantitySold;
+                if (nettQty <= 0)
+                    continue;
+
+                var requiredQty = ComponentYieldLossRules.ToGrossQuantity(ingredient, nettQty);
+
+                await componentStock.RecordDeductionAsync(
+                    line.ComponentId,
+                    line.ComponentName,
+                    locationId,
+                    requiredQty,
+                    line.ComponentUom,
+                    reason: $"{reasonLabel} — {product.Name}",
+                    referenceType: referenceType,
+                    referenceId: product.Id,
+                    companyId: product.CompanyId,
+                    cancellationToken);
             }
         }
 
@@ -105,6 +103,7 @@ public class ProductSaleInventoryService(
         decimal quantitySold,
         string referenceType,
         string reasonLabel,
+        IReadOnlyDictionary<string, Ingredient> ingredientsByCode,
         CancellationToken cancellationToken)
     {
         var piecesNeeded = bomLine.Quantity * quantitySold;
@@ -149,9 +148,14 @@ public class ProductSaleInventoryService(
 
         foreach (var recipeLine in subProduct.Items.Where(line => !string.IsNullOrWhiteSpace(line.ComponentId)))
         {
-            var componentQty = recipeLine.Quantity * shortfall;
-            if (componentQty <= 0)
+            if (!ingredientsByCode.TryGetValue(recipeLine.ComponentId, out var ingredient))
                 continue;
+
+            var nettQty = recipeLine.Quantity * shortfall;
+            if (nettQty <= 0)
+                continue;
+
+            var componentQty = ComponentYieldLossRules.ToGrossQuantity(ingredient, nettQty);
 
             await componentStock.RecordDeductionAsync(
                 recipeLine.ComponentId,
@@ -168,9 +172,14 @@ public class ProductSaleInventoryService(
 
         foreach (var packagingLine in subProduct.PackagingItems.Where(line => !string.IsNullOrWhiteSpace(line.ComponentId)))
         {
-            var componentQty = packagingLine.Quantity * shortfall;
-            if (componentQty <= 0)
+            if (!ingredientsByCode.TryGetValue(packagingLine.ComponentId, out var ingredient))
                 continue;
+
+            var nettQty = packagingLine.Quantity * shortfall;
+            if (nettQty <= 0)
+                continue;
+
+            var componentQty = ComponentYieldLossRules.ToGrossQuantity(ingredient, nettQty);
 
             await componentStock.RecordDeductionAsync(
                 packagingLine.ComponentId,
@@ -184,6 +193,20 @@ public class ProductSaleInventoryService(
                 companyId: parentProduct.CompanyId,
                 cancellationToken);
         }
+    }
+
+    async Task<Dictionary<string, Ingredient>> LoadActiveIngredientsByCodeAsync(
+        int? companyId,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<Ingredient> query = db.Ingredients.AsNoTracking().Where(i => i.Active);
+        if (companyId is int cid)
+            query = query.Where(i => i.CompanyId == null || i.CompanyId == cid);
+
+        var rows = await query.ToListAsync(cancellationToken);
+        return rows
+            .GroupBy(i => i.ComponentId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
     }
 
     static string NormalizeChannel(string salesChannel)

@@ -47,6 +47,11 @@ public class ProductionInventoryService(
                     line.Quantity)))
             .ToList();
 
+        var ingredientsByCode = await LoadIngredientsByCodeAsync(
+            recipeLines.Select(l => l.ComponentId).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            product.CompanyId,
+            cancellationToken);
+
         var components = new List<ProduceComponentRequirement>();
         var shortages = new List<ProduceStockShortage>();
         if (!overrideStock)
@@ -55,7 +60,7 @@ public class ProductionInventoryService(
             {
                 foreach (var line in recipeLines)
                 {
-                    var requiredQty = line.Quantity * batchQty;
+                    var requiredQty = GrossRequiredQty(line.Quantity, batchQty, line.ComponentId, ingredientsByCode);
                     if (requiredQty <= 0) continue;
 
                     var onHand = await componentStock.GetOnHandAsync(
@@ -103,7 +108,7 @@ public class ProductionInventoryService(
         {
             foreach (var line in recipeLines)
             {
-                var requiredQty = line.Quantity * batchQty;
+                var requiredQty = GrossRequiredQty(line.Quantity, batchQty, line.ComponentId, ingredientsByCode);
                 if (requiredQty <= 0) continue;
 
                 await componentStock.RecordDeductionAsync(
@@ -177,6 +182,10 @@ public class ProductionInventoryService(
                         line.ComponentUom,
                         line.Quantity)))
                 .ToList();
+            var ingredientsByCode = await LoadIngredientsByCodeAsync(
+                recipeLines.Select(l => l.ComponentId).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                product.CompanyId,
+                cancellationToken);
             var components = new List<ProduceComponentRequirement>();
             var shortages = new List<ProduceStockShortage>();
 
@@ -186,7 +195,7 @@ public class ProductionInventoryService(
                 {
                     foreach (var line in recipeLines)
                     {
-                        var requiredQty = line.Quantity * delta;
+                        var requiredQty = GrossRequiredQty(line.Quantity, delta, line.ComponentId, ingredientsByCode);
                         if (requiredQty <= 0) continue;
 
                         var onHand = await componentStock.GetOnHandAsync(
@@ -234,7 +243,7 @@ public class ProductionInventoryService(
             {
                 foreach (var line in recipeLines)
                 {
-                    var componentDelta = line.Quantity * delta;
+                    var componentDelta = GrossRequiredQty(line.Quantity, delta, line.ComponentId, ingredientsByCode);
                     if (componentDelta == 0) continue;
 
                     if (componentDelta > 0)
@@ -378,6 +387,42 @@ public class ProductionInventoryService(
             _ =>
                 $"Production — {product.Name.Trim()}{codeSuffix} ({kind})",
         };
+    }
+
+    static decimal GrossRequiredQty(
+        decimal lineQuantity,
+        decimal multiplier,
+        string componentId,
+        IReadOnlyDictionary<string, Ingredient> ingredientsByCode)
+    {
+        var nett = lineQuantity * multiplier;
+        if (nett == 0)
+            return 0m;
+
+        if (!ingredientsByCode.TryGetValue(componentId, out var ingredient))
+            return nett;
+
+        var sign = nett < 0 ? -1m : 1m;
+        return sign * ComponentYieldLossRules.ToGrossQuantity(ingredient, Math.Abs(nett));
+    }
+
+    async Task<Dictionary<string, Ingredient>> LoadIngredientsByCodeAsync(
+        IReadOnlyList<string> componentIds,
+        int? companyId,
+        CancellationToken cancellationToken)
+    {
+        if (componentIds.Count == 0)
+            return new Dictionary<string, Ingredient>(StringComparer.OrdinalIgnoreCase);
+
+        IQueryable<Ingredient> query = db.Ingredients.AsNoTracking()
+            .Where(i => componentIds.Contains(i.ComponentId));
+        if (companyId is int cid)
+            query = query.Where(i => i.CompanyId == null || i.CompanyId == cid);
+
+        var rows = await query.ToListAsync(cancellationToken);
+        return rows
+            .GroupBy(i => i.ComponentId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
     }
 }
 

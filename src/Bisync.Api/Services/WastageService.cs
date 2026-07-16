@@ -556,7 +556,9 @@ public class WastageService(
         if (ingredient is null)
             return (quantity, uom);
 
-        return IngredientUomBridge.ToInventoryPreferred(ingredient, quantity, uom);
+        // Recipe qty is nett usable; inflate by Yield Loss % before stock write.
+        var grossQty = ComponentYieldLossRules.ToGrossQuantity(ingredient, quantity);
+        return IngredientUomBridge.ToInventoryPreferred(ingredient, grossQty, uom);
     }
 
     static DateTime EndOfUtcDay(DateOnly date) =>
