@@ -12,6 +12,7 @@ import {
   loadStorageAssignment,
   loadStorageAssignmentForCompany,
   saveStorageAssignment,
+  ensureLocationStorageEntries,
   STORAGE_AREAS,
   STORAGE_CATALOG,
   storageCatalogMatchesLocations,
@@ -100,12 +101,25 @@ export function ComponentConfigPage({
     void Promise.all([
       loadComponentHierarchyForCompany(selectedCompanyId),
       loadStorageAssignmentForCompany(selectedCompanyId),
-    ]).then(([nextHierarchy, nextStorage]) => {
+      api.locationsConfig().catch(() => [] as LocationConfig[]),
+    ]).then(([nextHierarchy, nextStorage, locations]) => {
       setHierarchy(nextHierarchy);
-      setMyStorageEntries(nextStorage.entries);
-      setNextEntryId(nextStorage.nextEntryId);
+      const companyLocIds = locations
+        .filter(location => location.companyId === selectedCompanyId)
+        .map(location => location.externalId);
+      const selectedOrCompany = selectedLocationIds.length > 0 ? selectedLocationIds : companyLocIds;
+      const ensured = ensureLocationStorageEntries(nextStorage, selectedOrCompany);
+      if (ensured.changed) {
+        saveStorageAssignment(ensured.state, selectedCompanyId);
+        setMyStorageEntries(ensured.state.entries);
+        setNextEntryId(ensured.state.nextEntryId);
+      } else {
+        setMyStorageEntries(nextStorage.entries);
+        setNextEntryId(nextStorage.nextEntryId);
+      }
+      setCompanyLocations(locations.filter(location => location.companyId === selectedCompanyId));
     });
-  }, [selectedCompanyId]);
+  }, [selectedCompanyId, selectedLocationIds.join(',')]);
 
   useEffect(() => {
     const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
@@ -122,22 +136,17 @@ export function ComponentConfigPage({
     };
   }, []);
 
-  useEffect(() => {
-    if (!selectedCompanyId) {
-      setCompanyLocations([]);
-      return;
-    }
-    api.locationsConfig()
-      .then(locations => setCompanyLocations(
-        locations.filter(location => location.companyId === selectedCompanyId),
-      ))
-      .catch(() => setCompanyLocations([]));
-  }, [selectedCompanyId]);
-
-  const locationStorage = useMemo(
-    () => storage.filter(row => storageCatalogMatchesLocations(row.location, selectedLocationIds)),
-    [storage, selectedLocationIds],
-  );
+  const locationStorage = useMemo(() => {
+    const matched = storage.filter(row => storageCatalogMatchesLocations(row.location, selectedLocationIds));
+    // Non-demo locations may match every catalog row; keep one entry per storage name.
+    const seen = new Set<string>();
+    return matched.filter(row => {
+      const key = `${row.name}::${row.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [storage, selectedLocationIds]);
 
   const myStorageByArea = useMemo(() => {
     const entries = myStorageEntries.filter(entry => storageEntryMatchesLocations(entry.location, selectedLocationIds));

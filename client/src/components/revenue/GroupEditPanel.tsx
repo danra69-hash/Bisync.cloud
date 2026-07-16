@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { siCategories } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
 import { inputCls, selectCls } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_OVERFLOW_CLS } from '../layout/sidePanelShared';
 
@@ -51,7 +51,7 @@ export function GroupEditPanel({ group, isNew = false, onClose, onSave }: Props)
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Category</label>
             <select className={selectCls} value={category} onChange={e => setCategory(e.target.value)}>
-              {siCategories.filter(c => c !== 'All').map(c => (
+              {getSiCategoryFilterOptions().filter(c => c !== 'All').map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>

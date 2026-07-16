@@ -65,7 +65,7 @@ import {
 import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import { B2bSalesBox } from './B2bSalesBox';
 import { ProductAliasB2bSalesModal } from './ProductAliasB2bSalesModal';
-import { siCategories, siGroups } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import { ComponentEditPanel } from './ComponentEditPanel';
 import { GroupEditPanel, type GroupRow } from './GroupEditPanel';
@@ -121,7 +121,7 @@ const BOM_LINE_TABLE_COLUMNS: SortableColumnDef<BomLineSortColumn>[] = [
   { key: 'action', label: '', sortable: false, className: 'w-10' },
 ];
 
-const categoryOptions = siCategories.filter(c => c !== 'All');
+const categoryOptions = getSiCategoryFilterOptions().filter(c => c !== 'All');
 
 type ComponentRow = ReturnType<typeof ingredientToRow>;
 
@@ -502,7 +502,7 @@ export function ProductsPage({
     const fromComponents = components.map(c => c.group).filter(Boolean);
     const fromProducts = savedProducts.map(product => product.group).filter(Boolean);
     const merged = new Set([
-      ...siGroups.filter(g => g !== 'All'),
+      ...getSiGroupFilterOptions().filter(g => g !== 'All'),
       ...extraGroups,
       ...fromComponents,
       ...fromProducts,

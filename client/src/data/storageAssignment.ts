@@ -52,10 +52,15 @@ export function storageCatalogMatchesLocations(
   selectedLocationIds: string[],
 ): boolean {
   if (selectedLocationIds.length === 0) return false;
+  // Global catalog rows apply to every outlet.
   if (catalogLocation === 'All Locations') return true;
   const catalogKey = normalizeStorageLocationKey(catalogLocation);
   const selected = new Set(selectedLocationIds.map(id => id.trim().toLowerCase()).filter(Boolean));
-  return selected.has(catalogKey);
+  if (selected.has(catalogKey)) return true;
+  // Demo catalog is keyed to Downtown/Midtown/Westend only. For any other real
+  // cloud location, still show the full type catalog so the left panel isn't empty.
+  const demoKeys = new Set(['downtown', 'midtown', 'westend']);
+  return [...selected].some(id => !demoKeys.has(id));
 }
 
 export function storageEntryMatchesLocations(

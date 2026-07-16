@@ -20,7 +20,7 @@ import {
   type ProductListRrpPoint,
 } from '../../data/productListDisplay';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
-import { siCategories, siGroups } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProductPosUnitsModal } from './ProductPosUnitsModal';
@@ -176,7 +176,7 @@ export function ProductListPage({
   const categoryOptions = useMemo(() => {
     const fromProducts = products.map(p => p.category).filter(Boolean);
     return [...new Set([
-      ...siCategories.filter(c => c !== 'All'),
+      ...getSiCategoryFilterOptions().filter(c => c !== 'All'),
       ...fromProducts,
     ])].sort((a, b) => a.localeCompare(b));
   }, [products]);
@@ -184,7 +184,7 @@ export function ProductListPage({
   const groupOptions = useMemo(() => {
     const fromProducts = products.map(p => p.group).filter(Boolean);
     return [...new Set([
-      ...siGroups.filter(g => g !== 'All'),
+      ...getSiGroupFilterOptions().filter(g => g !== 'All'),
       ...fromProducts,
     ])].sort((a, b) => a.localeCompare(b));
   }, [products]);

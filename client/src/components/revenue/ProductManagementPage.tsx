@@ -20,6 +20,7 @@ import {
 import { ProductDetailPanel } from './ProductDetailPanel';
 import { ProduceBatchModal } from './ProduceBatchModal';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
+import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
@@ -459,17 +460,18 @@ export function ProductManagementPage({
   }
 
   const categoryOptions = useMemo(
-    () => [...PRODUCT_MANAGEMENT_CATEGORIES],
+    () => getSiCategoryFilterOptions([...PRODUCT_MANAGEMENT_CATEGORIES]).filter(c => c !== 'All'),
     [],
   );
 
   const groupOptions = useMemo(() => {
+    const allowed = new Set(categoryOptions.map(c => c.toLowerCase()));
     const fromProducts = products
-      .filter(p => p.active && PRODUCT_MANAGEMENT_CATEGORIES.includes(p.category as typeof PRODUCT_MANAGEMENT_CATEGORIES[number]))
+      .filter(p => p.active && allowed.has((p.category ?? '').toLowerCase()))
       .map(p => p.group)
       .filter(Boolean);
     return [...new Set(fromProducts)].sort((a, b) => a.localeCompare(b));
-  }, [products]);
+  }, [products, categoryOptions]);
 
   const { productSummaries, fifoBatchRowsByProductId } = useMemo(() => {
     const productById = new Map(products.map(product => [product.id, product]));
@@ -480,7 +482,7 @@ export function ProductManagementPage({
         if (!product) return null;
         if (!matchesProductManagementFilters(product, productTypeFilter)) return null;
         if (!productMatchesLocations(product, selectedLocationIds)) return null;
-        if (!PRODUCT_MANAGEMENT_CATEGORIES.includes(product.category as typeof PRODUCT_MANAGEMENT_CATEGORIES[number])) {
+        if (!categoryOptions.some(c => c.toLowerCase() === (product.category ?? '').toLowerCase())) {
           return null;
         }
         return buildBatchRow(product, entry);

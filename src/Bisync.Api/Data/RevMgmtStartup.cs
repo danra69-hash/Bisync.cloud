@@ -28,11 +28,111 @@ public static class RevMgmtStartup
         {
             await EnsureConfigAsync(db, companyId, RevMgmtConfigController.ComponentHierarchyKey,
                 JsonSerializer.Serialize(RevMgmtDefaults.ComponentHierarchy(), JsonOptions));
+
+            var locationIds = await db.Locations.AsNoTracking()
+                .Where(l => l.CompanyId == companyId && !string.IsNullOrWhiteSpace(l.ExternalId))
+                .Select(l => l.ExternalId!)
+                .ToListAsync();
             await EnsureConfigAsync(db, companyId, RevMgmtConfigController.StorageAssignmentKey,
-                JsonSerializer.Serialize(RevMgmtDefaults.StorageAssignment(), JsonOptions));
+                JsonSerializer.Serialize(RevMgmtDefaults.StorageAssignmentForLocations(locationIds), JsonOptions));
+
             await EnsureConfigAsync(db, companyId, RevMgmtConfigController.ComponentCatalogKey,
                 JsonSerializer.Serialize(RevMgmtDefaults.ComponentCatalog(), JsonOptions));
         }
+
+        // Backfill My Storage for company locations that only have the old downtown/midtown/westend seed.
+        await BackfillMissingLocationStorageAsync(db);
+    }
+
+    static async Task BackfillMissingLocationStorageAsync(BisyncDbContext db)
+    {
+        var configs = await db.RevMgmtCompanyConfigs
+            .Where(c => c.ConfigKey == RevMgmtConfigController.StorageAssignmentKey)
+            .ToListAsync();
+        if (configs.Count == 0) return;
+
+        var locationsByCompany = await db.Locations.AsNoTracking()
+            .Where(l => l.CompanyId != null && !string.IsNullOrWhiteSpace(l.ExternalId))
+            .Select(l => new { CompanyId = l.CompanyId!.Value, ExternalId = l.ExternalId! })
+            .ToListAsync();
+
+        foreach (var config in configs)
+        {
+            var companyLocationIds = locationsByCompany
+                .Where(l => l.CompanyId == config.CompanyId)
+                .Select(l => l.ExternalId.Trim().ToLowerInvariant())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct()
+                .ToList();
+            if (companyLocationIds.Count == 0) continue;
+
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(config.StateJson) ? "{}" : config.StateJson);
+            if (!doc.RootElement.TryGetProperty("entries", out var entriesEl) || entriesEl.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var existingLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entriesEl.EnumerateArray())
+            {
+                if (entry.TryGetProperty("location", out var locEl))
+                {
+                    var loc = locEl.GetString()?.Trim().ToLowerInvariant();
+                    if (!string.IsNullOrWhiteSpace(loc)) existingLocations.Add(loc);
+                }
+            }
+
+            var missing = companyLocationIds.Where(id => !existingLocations.Contains(id)).ToList();
+            if (missing.Count == 0) continue;
+
+            // Rebuild a merged assignment: keep existing entries, append defaults for missing locations.
+            var areas = doc.RootElement.TryGetProperty("areas", out var areasEl) && areasEl.ValueKind == JsonValueKind.Array
+                ? areasEl.EnumerateArray().Select(a => a.GetString() ?? "").Where(a => !string.IsNullOrWhiteSpace(a)).ToList()
+                : ["Dining Room", "Bar", "Kitchen"];
+
+            var nextId = 1;
+            if (doc.RootElement.TryGetProperty("nextEntryId", out var nextEl) && nextEl.TryGetInt32(out var parsedNext))
+                nextId = Math.Max(1, parsedNext);
+
+            var mergedEntries = new List<object>();
+            foreach (var entry in entriesEl.EnumerateArray())
+            {
+                mergedEntries.Add(JsonSerializer.Deserialize<object>(entry.GetRawText(), JsonOptions)!);
+                if (entry.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var id) && id >= nextId)
+                    nextId = id + 1;
+            }
+
+            var templates = new[]
+            {
+                new { area = "Kitchen", sourceStorageId = 1, name = "Walk-in Freezer", type = "Freezer", items = 0 },
+                new { area = "Kitchen", sourceStorageId = 2, name = "Main Chiller", type = "Chiller", items = 0 },
+                new { area = "Kitchen", sourceStorageId = 4, name = "Dry Store", type = "Dry Store", items = 0 },
+            };
+            foreach (var location in missing)
+            {
+                foreach (var template in templates)
+                {
+                    mergedEntries.Add(new
+                    {
+                        id = nextId++,
+                        location,
+                        template.area,
+                        template.sourceStorageId,
+                        template.name,
+                        template.type,
+                        template.items,
+                    });
+                }
+            }
+
+            config.StateJson = JsonSerializer.Serialize(new
+            {
+                areas,
+                entries = mergedEntries,
+                nextEntryId = nextId,
+            }, JsonOptions);
+            config.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
     }
 
     static async Task EnsureConfigAsync(BisyncDbContext db, int companyId, string configKey, string stateJson)

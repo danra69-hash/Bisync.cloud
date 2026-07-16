@@ -19,7 +19,7 @@ import {
   previewSampleRequestNumber,
   SAMPLE_REQUEST_COUNTRY_OPTIONS,
 } from '../../data/requestForSample';
-import { siCategories, siGroups } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
@@ -34,8 +34,8 @@ type ProductSampleDraft = {
   description: string;
 };
 
-const CATEGORY_OPTIONS = siCategories.filter(c => c !== 'All');
-const GROUP_OPTIONS = siGroups.filter(g => g !== 'All');
+const CATEGORY_OPTIONS = getSiCategoryFilterOptions().filter(c => c !== 'All');
+const GROUP_OPTIONS = getSiGroupFilterOptions().filter(g => g !== 'All');
 
 function newKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

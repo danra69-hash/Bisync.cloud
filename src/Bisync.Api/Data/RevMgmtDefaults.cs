@@ -29,24 +29,62 @@ public static class RevMgmtDefaults
         nextSubGroupId = 5,
     };
 
-    public static object StorageAssignment() => new
+    /// <summary>
+    /// Default My Storage rows for demo locations (legacy seed). Prefer
+    /// <see cref="StorageAssignmentForLocations"/> for real company locations.
+    /// </summary>
+    public static object StorageAssignment() =>
+        StorageAssignmentForLocations(new[] { "downtown", "midtown", "westend" });
+
+    /// <summary>
+    /// Kitchen Freezer / Chiller / Dry Store for each location external id.
+    /// Used so Inventory / Component Config dropdowns are never empty on cloud.
+    /// </summary>
+    public static object StorageAssignmentForLocations(IReadOnlyList<string> locationExternalIds)
     {
-        areas = new[] { "Dining Room", "Bar", "Kitchen" },
-        entries = new[]
+        var locations = locationExternalIds
+            .Select(id => (id ?? string.Empty).Trim().ToLowerInvariant())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToList();
+
+        if (locations.Count == 0)
+            locations = ["downtown", "midtown", "westend"];
+
+        var templates = new[]
         {
-            new { id = 1, location = "downtown", area = "Kitchen", sourceStorageId = 1, name = "Walk-in Freezer", type = "Freezer", items = 18 },
-            new { id = 2, location = "downtown", area = "Kitchen", sourceStorageId = 2, name = "Main Chiller", type = "Chiller", items = 32 },
-            new { id = 3, location = "downtown", area = "Bar", sourceStorageId = 3, name = "Wine Cellar", type = "Wine Cellar", items = 14 },
-            new { id = 4, location = "downtown", area = "Kitchen", sourceStorageId = 4, name = "Dry Store", type = "Dry Store", items = 41 },
-            new { id = 5, location = "midtown", area = "Bar", sourceStorageId = 5, name = "Bar Cooler", type = "Chiller", items = 9 },
-            new { id = 6, location = "midtown", area = "Kitchen", sourceStorageId = 6, name = "Prep Kitchen Store", type = "Prep Kitchen", items = 22 },
-            new { id = 7, location = "westend", area = "Kitchen", sourceStorageId = 7, name = "Westend Freezer", type = "Freezer", items = 11 },
-            new { id = 8, location = "westend", area = "Kitchen", sourceStorageId = 8, name = "Westend Chiller", type = "Chiller", items = 16 },
-            new { id = 9, location = "midtown", area = "Kitchen", sourceStorageId = 4, name = "Dry Store", type = "Dry Store", items = 41 },
-            new { id = 10, location = "westend", area = "Kitchen", sourceStorageId = 4, name = "Dry Store", type = "Dry Store", items = 41 },
-        },
-        nextEntryId = 11,
-    };
+            new { area = "Kitchen", sourceStorageId = 1, name = "Walk-in Freezer", type = "Freezer", items = 0 },
+            new { area = "Kitchen", sourceStorageId = 2, name = "Main Chiller", type = "Chiller", items = 0 },
+            new { area = "Kitchen", sourceStorageId = 4, name = "Dry Store", type = "Dry Store", items = 0 },
+        };
+
+        var entries = new List<object>();
+        var id = 1;
+        foreach (var location in locations)
+        {
+            foreach (var template in templates)
+            {
+                entries.Add(new
+                {
+                    id,
+                    location,
+                    template.area,
+                    template.sourceStorageId,
+                    template.name,
+                    template.type,
+                    template.items,
+                });
+                id++;
+            }
+        }
+
+        return new
+        {
+            areas = new[] { "Dining Room", "Bar", "Kitchen" },
+            entries,
+            nextEntryId = id,
+        };
+    }
 
     public static object ComponentCatalog() => new
     {

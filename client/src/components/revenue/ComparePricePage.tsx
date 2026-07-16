@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Tag, UserCheck, UserPlus } from 'lucide-react';
+import { getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
@@ -170,7 +171,8 @@ export function ComparePricePage({
   const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [search, setSearch] = useState('');
-  const [groupFilter, setGroupFilter] = useState<'all' | 'Proteins' | 'Dairy' | 'Produce' | 'Dry Goods' | 'Beverages' | 'Seafood' | 'Spirits'>('all');
+  const [groupFilter, setGroupFilter] = useState('all');
+  const groupFilterOptions = useMemo(() => getSiGroupFilterOptions(['Seafood']), []);
   const [vendorFilter, setVendorFilter] = useState<'all' | 'engaged' | 'available'>('all');
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -502,17 +504,14 @@ export function ComparePricePage({
             </div>
             <select
               value={groupFilter}
-              onChange={e => setGroupFilter(e.target.value as typeof groupFilter)}
+              onChange={e => setGroupFilter(e.target.value)}
               className={`${filterSelectCls} min-w-[140px]`}
             >
-              <option value="all">All groups</option>
-              <option value="Proteins">Proteins</option>
-              <option value="Dairy">Dairy</option>
-              <option value="Produce">Produce</option>
-              <option value="Dry Goods">Dry Goods</option>
-              <option value="Beverages">Beverages</option>
-              <option value="Seafood">Seafood</option>
-              <option value="Spirits">Spirits</option>
+              {groupFilterOptions.map(option => (
+                <option key={option} value={option === 'All' ? 'all' : option}>
+                  {option === 'All' ? 'All groups' : option}
+                </option>
+              ))}
             </select>
             <div className="flex items-center gap-1">
               {(['all', 'engaged', 'available'] as const).map(f => (

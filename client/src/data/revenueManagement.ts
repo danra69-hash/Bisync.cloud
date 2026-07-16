@@ -1,3 +1,5 @@
+import { loadComponentHierarchy } from './componentHierarchy';
+
 export type RevMgmtItem = { label: string };
 export type RevMgmtSubSection = { subtitle?: string; items: RevMgmtItem[] };
 export type RevMgmtSection = { title: string; subs: RevMgmtSubSection[] };
@@ -121,6 +123,36 @@ export type NavItem = (typeof NAV_ITEMS)[number];
 
 export const siCategories = ['All', 'Assets', 'Ops Expenses', 'FF&E', 'Maintenance', 'MarComm', 'Food', 'Beverage', 'Retail'];
 export const siGroups = ['All', 'Proteins', 'Dairy', 'Produce', 'Dry Goods', 'Beverages', 'Spirits', 'Cleaning', 'Equipment', 'Packaging'];
+
+function uniqueSortedLabels(values: string[]): string[] {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Category filter options: company hierarchy + static fallbacks + caller extras.
+ * Always includes "All" so dropdowns never look blank on cloud.
+ */
+export function getSiCategoryFilterOptions(extra: string[] = []): string[] {
+  const hierarchyNames = loadComponentHierarchy().categories.map(category => category.name);
+  return ['All', ...uniqueSortedLabels([
+    ...hierarchyNames,
+    ...siCategories.filter(category => category !== 'All'),
+    ...extra,
+  ])];
+}
+
+/**
+ * Group filter options: company hierarchy groups + static fallbacks + caller extras.
+ */
+export function getSiGroupFilterOptions(extra: string[] = []): string[] {
+  const hierarchyNames = loadComponentHierarchy().groups.map(group => group.name);
+  return ['All', ...uniqueSortedLabels([
+    ...hierarchyNames,
+    ...siGroups.filter(group => group !== 'All'),
+    ...extra,
+  ])];
+}
 
 export type IngredientRow = {
   name: string;

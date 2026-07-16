@@ -9,7 +9,7 @@ import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { FilePlus2, Search, Upload, X } from 'lucide-react';
 import { api } from '../../api';
-import { siCategories, siGroups } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { blankComponentRow, fromApiUom, type ComponentRow } from '../../data/componentForm';
 import { getDefaultCategoryAndGroup, loadComponentHierarchy } from '../../data/componentHierarchy';
 import {
@@ -341,8 +341,8 @@ export function SmartIngredientPage({
 
       <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
-          <FilterSelect label="Category" value={catFilter} options={siCategories} onChange={setCatFilter} />
-          <FilterSelect label="Group" value={grpFilter} options={siGroups} onChange={setGrpFilter} />
+          <FilterSelect label="Category" value={catFilter} options={getSiCategoryFilterOptions()} onChange={setCatFilter} />
+          <FilterSelect label="Group" value={grpFilter} options={getSiGroupFilterOptions()} onChange={setGrpFilter} />
           <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Keyword</label>
             <div className="relative">

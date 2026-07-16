@@ -33,7 +33,7 @@ import {
 
 import { resolveComponentUomQty } from '../../data/vendorProductCatalog';
 
-import { siCategories, siGroups } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
 
@@ -499,7 +499,7 @@ export function VendorProductTagModal({
 
                   <select className={selectCls} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
 
-                    {siCategories.map(c => <option key={c}>{c}</option>)}
+                    {getSiCategoryFilterOptions().map(c => <option key={c}>{c}</option>)}
 
                   </select>
 
@@ -511,7 +511,7 @@ export function VendorProductTagModal({
 
                   <select className={selectCls} value={grpFilter} onChange={e => setGrpFilter(e.target.value)}>
 
-                    {siGroups.map(g => <option key={g}>{g}</option>)}
+                    {getSiGroupFilterOptions().map(g => <option key={g}>{g}</option>)}
 
                   </select>
 

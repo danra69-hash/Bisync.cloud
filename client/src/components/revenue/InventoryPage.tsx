@@ -22,6 +22,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { InventoryConfirmModal } from './InventoryConfirmModal';
+import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
 import { StorageFilter } from './StorageFilter';
 import {
   listStoragesForFilter,
@@ -52,7 +53,7 @@ const INVENTORY_TABS = [
   { id: 'count', label: 'Count' },
   { id: 'history', label: 'History' },
 ] as const;
-const CATEGORY_OPTIONS = ['All', 'Food', 'Beverage'] as const;
+const CATEGORY_OPTIONS_FALLBACK = ['All', 'Food', 'Beverage'] as const;
 
 type InventoryPageTab = (typeof INVENTORY_TABS)[number]['id'];
 
@@ -266,7 +267,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const canSave = access ? canSaveInventoryCount(access) : false;
   const canConfirm = access ? canConfirmInventoryCount(access) : false;
 
-  const [categoryFilter, setCategoryFilter] = useState<(typeof CATEGORY_OPTIONS)[number]>('All');
+  const [categoryFilter, setCategoryFilter] = useState('All');
   const [historyMonth, setHistoryMonth] = useState('');
 
   const [rows, setRows] = useState<StockCardListRow[]>([]);
@@ -298,6 +299,10 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [areaFilter, setAreaFilter] = useState('All');
   const [selectedStorageKeys, setSelectedStorageKeys] = useState<string[]>([]);
   const [storageAssignmentVersion, setStorageAssignmentVersion] = useState(0);
+  const categoryOptions = useMemo(() => {
+    const options = getSiCategoryFilterOptions();
+    return options.length > 0 ? options : [...CATEGORY_OPTIONS_FALLBACK];
+  }, [storageAssignmentVersion]);
   const [activeSession, setActiveSession] = useState<InventoryCountSession | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -765,8 +770,8 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
             <FilterSelect
               label="Category"
               value={categoryFilter}
-              options={[...CATEGORY_OPTIONS]}
-              onChange={value => setCategoryFilter(value as (typeof CATEGORY_OPTIONS)[number])}
+              options={categoryOptions}
+              onChange={value => setCategoryFilter(value)}
             />
             <FilterSelect
               label="Type"
@@ -949,8 +954,8 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
             <FilterSelect
               label="Category"
               value={categoryFilter}
-              options={[...CATEGORY_OPTIONS]}
-              onChange={value => setCategoryFilter(value as (typeof CATEGORY_OPTIONS)[number])}
+              options={categoryOptions}
+              onChange={value => setCategoryFilter(value)}
             />
             <div className="flex flex-col gap-1 shrink-0">
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>

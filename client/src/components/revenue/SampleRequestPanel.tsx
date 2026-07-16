@@ -18,7 +18,7 @@ import {
   copySampleRequestShareLink,
   previewSampleRequestNumber,
 } from '../../data/requestForSample';
-import { siCategories, siGroups } from '../../data/revenueManagement';
+import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import {
   formatVendorPolicyLabel,
   VENDOR_PRODUCT_POLICY_OPTIONS,
@@ -37,8 +37,8 @@ type Props = {
   onVendorCreated: (vendor: Vendor) => void;
 };
 
-const CATEGORY_OPTIONS = siCategories.filter(c => c !== 'All');
-const GROUP_OPTIONS = siGroups.filter(g => g !== 'All');
+const CATEGORY_OPTIONS = getSiCategoryFilterOptions().filter(c => c !== 'All');
+const GROUP_OPTIONS = getSiGroupFilterOptions().filter(g => g !== 'All');
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
