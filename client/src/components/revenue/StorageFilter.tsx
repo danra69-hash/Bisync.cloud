@@ -1,14 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { filterSelectCls } from '../layout/formControls';
 import {
   ensureLocationStorageEntries,
   listAreasForLocations,
   listStoragesForFilter,
   loadStorageAssignment,
+  loadStorageAssignmentForCompany,
   saveStorageAssignment,
   storageEntryKey,
-  type MyStorageEntry,
 } from '../../data/storageAssignment';
 
 type Props = {
@@ -20,15 +19,7 @@ type Props = {
   onStorageKeysChange: (keys: string[]) => void;
 };
 
-function storageButtonLabel(storages: MyStorageEntry[], selectedKeys: string[]) {
-  if (selectedKeys.length === 0) return 'All';
-  if (selectedKeys.length === 1) {
-    const match = storages.find(entry => storageEntryKey(entry) === selectedKeys[0]);
-    return match?.name ?? '1 selected';
-  }
-  return `${selectedKeys.length} selected`;
-}
-
+/** Area + Storage filters. Storage is a native select so it opens reliably on cloud. */
 export function StorageFilter({
   locationIds,
   areaFilter,
@@ -37,15 +28,7 @@ export function StorageFilter({
   onAreaChange,
   onStorageKeysChange,
 }: Props) {
-  const [open, setOpen] = useState(false);
   const [assignmentVersion, setAssignmentVersion] = useState(0);
-  const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const assignment = useMemo(
-    () => loadStorageAssignment(),
-    [open, areaFilter, locationIds.join(','), assignmentVersion],
-  );
 
   useEffect(() => {
     const reload = () => setAssignmentVersion(version => version + 1);
@@ -53,14 +36,35 @@ export function StorageFilter({
     return () => window.removeEventListener('bisync:storageAssignmentChanged', reload);
   }, []);
 
-  // Persist default Kitchen storages for locations that have none (cloud companies
-  // outside downtown/midtown/westend), so Area/Storage filters stay usable.
+  // Always load company storage from API, then ensure this location has Kitchen defaults.
   useEffect(() => {
-    if (!companyId || locationIds.length === 0) return;
-    const { state, changed } = ensureLocationStorageEntries(loadStorageAssignment(), locationIds);
-    if (!changed) return;
-    saveStorageAssignment(state, companyId);
+    if (!companyId) return;
+    let cancelled = false;
+    void loadStorageAssignmentForCompany(companyId)
+      .then(loaded => {
+        if (cancelled) return;
+        const { state, changed } = ensureLocationStorageEntries(loaded, locationIds);
+        if (changed) {
+          saveStorageAssignment(state, companyId);
+        } else {
+          setAssignmentVersion(version => version + 1);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const { state, changed } = ensureLocationStorageEntries(loadStorageAssignment(), locationIds);
+        if (changed && companyId) saveStorageAssignment(state, companyId);
+        else setAssignmentVersion(version => version + 1);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [companyId, locationIds.join(',')]);
+
+  const assignment = useMemo(
+    () => loadStorageAssignment(),
+    [areaFilter, locationIds.join(','), assignmentVersion],
+  );
 
   const areas = useMemo(
     () => ['All', ...listAreasForLocations(assignment, locationIds)],
@@ -72,96 +76,17 @@ export function StorageFilter({
     [assignment, locationIds, areaFilter],
   );
 
-  useLayoutEffect(() => {
-    if (!open) {
-      setPanelPos(null);
-      return;
-    }
-    function updatePosition() {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const width = Math.max(240, rect.width);
-      const left = Math.min(rect.left, window.innerWidth - width - 8);
-      setPanelPos({
-        top: rect.bottom + 4,
-        left: Math.max(8, left),
-        width,
-      });
-    }
-    updatePosition();
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-    return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
-    };
-  }, [open]);
-
+  // Drop stale selection when Area/location changes and the key is no longer listed.
   useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (panelRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
-      setOpen(false);
+    if (selectedStorageKeys.length === 0) return;
+    const allowed = new Set(storages.map(storageEntryKey));
+    const next = selectedStorageKeys.filter(key => allowed.has(key));
+    if (next.length !== selectedStorageKeys.length) {
+      onStorageKeysChange(next);
     }
-    window.addEventListener('mousedown', handlePointerDown);
-    return () => window.removeEventListener('mousedown', handlePointerDown);
-  }, [open]);
+  }, [storages, selectedStorageKeys, onStorageKeysChange]);
 
-  function toggleStorage(key: string) {
-    if (selectedStorageKeys.includes(key)) {
-      onStorageKeysChange(selectedStorageKeys.filter(value => value !== key));
-      return;
-    }
-    onStorageKeysChange([...selectedStorageKeys, key]);
-  }
-
-  const panel = open && panelPos
-    ? createPortal(
-        <div
-          ref={panelRef}
-          style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, minWidth: panelPos.width }}
-          className="z-[120] rounded-md border border-border bg-card shadow-lg p-2"
-        >
-          <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={selectedStorageKeys.length === 0}
-              onChange={() => onStorageKeysChange([])}
-              className="accent-primary"
-            />
-            <span>All</span>
-          </label>
-          {storages.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-muted-foreground">No storage assigned for this area.</p>
-          ) : (
-            storages.map(entry => {
-              const key = storageEntryKey(entry);
-              return (
-                <label
-                  key={key}
-                  className="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedStorageKeys.includes(key)}
-                    onChange={() => toggleStorage(key)}
-                    className="accent-primary mt-0.5"
-                  />
-                  <span>
-                    <span className="block font-medium">{entry.name}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {entry.area} · {entry.type}
-                    </span>
-                  </span>
-                </label>
-              );
-            })
-          )}
-        </div>,
-        document.body,
-      )
-    : null;
+  const selectedValue = selectedStorageKeys[0] ?? '';
 
   return (
     <div className="flex flex-nowrap items-end gap-2 shrink-0">
@@ -180,20 +105,27 @@ export function StorageFilter({
         </select>
       </div>
 
-      <div className="flex flex-col gap-1 relative">
+      <div className="flex flex-col gap-1">
         <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Storage</label>
-        <button
-          ref={buttonRef}
-          type="button"
-          onClick={() => setOpen(value => !value)}
-          className={`${filterSelectCls} min-w-[180px] text-left flex items-center justify-between gap-2`}
-          aria-expanded={open}
-          aria-haspopup="listbox"
+        <select
+          value={selectedValue}
+          onChange={e => {
+            const value = e.target.value;
+            onStorageKeysChange(value ? [value] : []);
+          }}
+          className={`${filterSelectCls} min-w-[180px]`}
+          disabled={locationIds.length === 0}
         >
-          <span className="truncate">{storageButtonLabel(storages, selectedStorageKeys)}</span>
-          <span className="text-muted-foreground text-xs">{open ? '▴' : '▾'}</span>
-        </button>
-        {panel}
+          <option value="">All</option>
+          {storages.map(entry => {
+            const key = storageEntryKey(entry);
+            return (
+              <option key={key} value={key}>
+                {entry.name} ({entry.type})
+              </option>
+            );
+          })}
+        </select>
       </div>
     </div>
   );
