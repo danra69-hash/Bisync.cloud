@@ -778,6 +778,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
               locationIds={countLocationIds}
               areaFilter={areaFilter}
               selectedStorageKeys={selectedStorageKeys}
+              companyId={selectedCompanyId}
               onAreaChange={area => {
                 setAreaFilter(area);
                 setSelectedStorageKeys([]);

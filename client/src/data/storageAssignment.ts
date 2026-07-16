@@ -150,8 +150,56 @@ export function storageEntryKey(entry: Pick<MyStorageEntry, 'location' | 'area' 
   return `${entry.location}::${entry.area}::${entry.sourceStorageId}::${entry.name}`;
 }
 
+/** Default Kitchen storages seeded when a location has no My Storage rows yet. */
+const DEFAULT_LOCATION_STORAGE_TEMPLATES: Omit<MyStorageEntry, 'id' | 'location'>[] = [
+  { area: 'Kitchen', sourceStorageId: 1, name: 'Walk-in Freezer', type: 'Freezer', items: 0 },
+  { area: 'Kitchen', sourceStorageId: 2, name: 'Main Chiller', type: 'Chiller', items: 0 },
+  { area: 'Kitchen', sourceStorageId: 4, name: 'Dry Store', type: 'Dry Store', items: 0 },
+];
+
+/**
+ * Ensures each selected location has at least the default Kitchen storages.
+ * Seeded company configs only cover downtown/midtown/westend — other cloud locations
+ * otherwise leave the Inventory Storage dropdown empty.
+ */
+export function ensureLocationStorageEntries(
+  state: StorageAssignmentState,
+  locationIds: string[],
+): { state: StorageAssignmentState; changed: boolean } {
+  if (locationIds.length === 0) return { state, changed: false };
+
+  let nextId = state.nextEntryId;
+  const entries = [...state.entries];
+  let changed = false;
+
+  for (const locationId of locationIds) {
+    const key = normalizeStorageLocationKey(locationId);
+    if (!key) continue;
+    const hasAny = entries.some(entry => normalizeStorageLocationKey(entry.location) === key);
+    if (hasAny) continue;
+
+    for (const template of DEFAULT_LOCATION_STORAGE_TEMPLATES) {
+      entries.push({
+        ...template,
+        id: nextId++,
+        location: key,
+      });
+    }
+    changed = true;
+  }
+
+  if (!changed) return { state, changed: false };
+
+  const areas = [...new Set([...state.areas, ...STORAGE_AREAS])];
+  return {
+    state: { areas, entries, nextEntryId: nextId },
+    changed: true,
+  };
+}
+
 export function listAreasForLocations(state: StorageAssignmentState, locationIds: string[]): string[] {
-  const areas = state.entries
+  const ensured = ensureLocationStorageEntries(state, locationIds).state;
+  const areas = ensured.entries
     .filter(entry => storageEntryMatchesLocations(entry.location, locationIds))
     .map(entry => entry.area);
   return [...new Set(areas)].sort((a, b) => a.localeCompare(b));
@@ -162,7 +210,8 @@ export function listStoragesForFilter(
   locationIds: string[],
   areaFilter: string,
 ): MyStorageEntry[] {
-  return state.entries
+  const ensured = ensureLocationStorageEntries(state, locationIds).state;
+  return ensured.entries
     .filter(entry => storageEntryMatchesLocations(entry.location, locationIds))
     .filter(entry => areaFilter === 'All' || entry.area === areaFilter)
     .sort((a, b) => a.area.localeCompare(b.area) || a.name.localeCompare(b.name));
