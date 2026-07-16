@@ -20,7 +20,7 @@ public class StockCardService(
         if (locationIds.Count == 0)
             return [];
 
-        var stockPeriod = ResolvePeriod(period);
+        var stockPeriod = await ResolvePeriodAsync(period, companyId, cancellationToken);
         var rows = new List<StockCardListRow>();
         var mode = NormalizeUomMode(uomMode);
 
@@ -195,7 +195,7 @@ public class StockCardService(
         if (locationIds.Count == 0)
             return null;
 
-        var stockPeriod = ResolvePeriod(period);
+        var stockPeriod = await ResolvePeriodAsync(period, companyId, cancellationToken);
         var mode = NormalizeUomMode(uomMode);
         var normalizedType = itemType.Trim().ToLowerInvariant();
 
@@ -377,6 +377,7 @@ public class StockCardService(
         string reason,
         string? inboundUom = null,
         decimal? inboundUnitPrice = null,
+        bool allowNegativeStock = false,
         CancellationToken cancellationToken = default)
     {
         if (locationIds.Count == 0 || string.IsNullOrWhiteSpace(locationExternalId))
@@ -431,7 +432,7 @@ public class StockCardService(
             if (snapshot is null)
                 return StockCardAdjustmentResult.Fail("Unable to resolve stock for the selected date.");
 
-            if (!isInbound && quantity > snapshot.OnHandQty)
+            if (!isInbound && !allowNegativeStock && quantity > snapshot.OnHandQty)
                 return StockCardAdjustmentResult.Fail($"Cannot deplete {quantity} {displayUom}. Only {snapshot.OnHandQty} on hand on that date.");
 
             var reasonText = $"Inventory adjustment — {trimmedReason}";
@@ -445,6 +446,10 @@ public class StockCardService(
                 if (inboundUomResolved is null)
                     return StockCardAdjustmentResult.Fail("Select a valid UOM for this component.");
 
+                var resolvedInboundPrice = inboundUnitPrice is decimal asserted && asserted > 0
+                    ? StockCardFifoEngine.RoundUnitPrice(asserted)
+                    : snapshot.SuggestedAdjustmentInUnitPrice;
+
                 componentStock.RecordAddition(
                     ingredient.ComponentId,
                     ingredient.Name,
@@ -455,7 +460,8 @@ public class StockCardService(
                     "inventory_adjustment",
                     referenceId: 0,
                     companyId,
-                    occurredAt);
+                    occurredAt,
+                    unitPrice: resolvedInboundPrice);
             }
             else
             {
@@ -513,7 +519,7 @@ public class StockCardService(
         if (productSnapshot is null)
             return StockCardAdjustmentResult.Fail("Unable to resolve stock for the selected date.");
 
-        if (!isInbound && quantity > productSnapshot.OnHandQty)
+        if (!isInbound && !allowNegativeStock && quantity > productSnapshot.OnHandQty)
             return StockCardAdjustmentResult.Fail($"Cannot deplete {quantity} {productSnapshot.Uom}. Only {productSnapshot.OnHandQty} on hand on that date.");
 
         var entryType = isInbound ? "adjustment_in" : "adjustment_out";
@@ -522,6 +528,12 @@ public class StockCardService(
             && !string.Equals(NormalizeUom(inboundUom), NormalizeUom(productUom), StringComparison.OrdinalIgnoreCase))
             return StockCardAdjustmentResult.Fail("UOM does not match this product.");
 
+        var productInboundPrice = isInbound
+            ? (inboundUnitPrice is decimal pAsserted && pAsserted > 0
+                ? StockCardFifoEngine.RoundUnitPrice(pAsserted)
+                : productSnapshot.SuggestedAdjustmentInUnitPrice)
+            : 0m;
+
         db.ProductProductionLogs.Add(new ProductProductionLog
         {
             ProductId = product.Id,
@@ -529,7 +541,7 @@ public class StockCardService(
             Quantity = quantity,
             ProductionDate = productionDate,
             BatchNumber = trimmedReason,
-            UnitPrice = 0,
+            UnitPrice = productInboundPrice,
             LocationIdsJson = System.Text.Json.JsonSerializer.Serialize(new[] { locationExternalId }),
             CompanyId = product.CompanyId,
             CreatedAt = occurredAt,
@@ -633,6 +645,14 @@ public class StockCardService(
         var running = balanceForward;
         var ledger = new List<StockCardLedgerEntry>();
 
+        var bfReason = period.CarryForwardDate is DateOnly cfDate
+            ? beforePeriod.Count > 0
+                ? $"B/F from physical inventory C/F ({cfDate:yyyy-MM-dd})"
+                : $"B/F — physical inventory C/F ({cfDate:yyyy-MM-dd}), no prior ledger rows"
+            : beforePeriod.Count > 0
+                ? "B/F from previous period end inventory (FIFO)"
+                : "B/F — no eligible history in the last 2 years";
+
         ledger.Add(new StockCardLedgerEntry
         {
             Id = 0,
@@ -645,18 +665,21 @@ public class StockCardService(
             Subtotal = balanceForward > 0
                 ? RoundLineSubtotal(balanceForward, balanceForwardAvgCogs)
                 : 0,
-            Reason = beforePeriod.Count > 0
-                ? "B/F from previous period end inventory (FIFO)"
-                : "B/F — no eligible history in the last 2 years",
+            Reason = bfReason,
             RunningBalance = balanceForward,
             AverageCogsAfter = balanceForwardAvgCogs,
             FifoPolicy = "FIFO",
+            IsNegativeBalance = balanceForward < 0,
         });
 
         foreach (var entry in inPeriod)
         {
             running += entry.SignedQty;
-            ledger.Add(entry with { RunningBalance = running });
+            ledger.Add(entry with
+            {
+                RunningBalance = running,
+                IsNegativeBalance = running < 0,
+            });
         }
 
         var inbound = inPeriod.Where(e => IsInboundSummaryType(e.EntryType)).Sum(e => e.Quantity);
@@ -695,6 +718,8 @@ public class StockCardService(
             ArchiveCutoff = period.ArchiveCutoff,
             IsCurrentMonth = period.IsCurrentMonth,
             HistoryRetentionYears = HistoryRetentionYears,
+            HasNegativeStock = running < 0 || ledger.Any(e => e.IsShortage || e.IsNegativeBalance),
+            InventoryCarryForwardDate = period.CarryForwardDate,
             Entries = ledger,
         };
     }
@@ -771,6 +796,9 @@ public class StockCardService(
             AverageCogsAfter = enriched.AverageCogsAfter,
             FifoPolicy = "FIFO",
             SplitIndex = enriched.SplitIndex,
+            IsShortage = enriched.IsShortage,
+            IsCogsBackfilled = enriched.IsCogsBackfilled,
+            IsNegativeBalance = enriched.IsNegativeBalance,
         };
     }
 
@@ -1170,11 +1198,13 @@ public class StockCardService(
                 Quantity = qty,
                 SignedQty = movement.QtyDelta,
                 Uom = movement.Uom,
-                UnitPrice = entryType is "adjustment_in" or "adjustment_out"
+                UnitPrice = entryType is "adjustment_out"
                     ? 0
                     : movement.UnitPrice > 0
                         ? movement.UnitPrice
-                        : ResolveComponentFallbackPrice(ingredient, displayUom),
+                        : entryType is "adjustment_in"
+                            ? 0
+                            : ResolveComponentFallbackPrice(ingredient, displayUom),
                 Reason = FormatMovementReason(movement, productionProduct),
                 ReferenceNumber = ResolveMovementReferenceNumber(movement, productionProduct),
                 SourceLabel = entryType,
@@ -1536,6 +1566,108 @@ public class StockCardService(
             isCurrentMonth);
     }
 
+    /// <summary>
+    /// Calendar month window, shifted when prior-month full inventory was consolidated
+    /// on a later EffectiveDate (C/F). Next period starts the day after EffectiveDate;
+    /// prior period extends through end of EffectiveDate.
+    /// </summary>
+    async Task<StockCardPeriod> ResolvePeriodAsync(
+        string? period,
+        int? companyId,
+        CancellationToken cancellationToken)
+    {
+        var basePeriod = ResolvePeriod(period);
+        var carryForward = await FindCarryForwardEffectiveDateAsync(
+            basePeriod.MonthKey,
+            companyId,
+            cancellationToken);
+
+        if (carryForward is null)
+            return basePeriod;
+
+        var cf = carryForward.Value;
+        var calendarStart = basePeriod.MonthStart;
+        var nextCalendarStart = calendarStart.AddMonths(1);
+
+        // Viewing the inventory's own PeriodMonth: extend PeriodEnd through EffectiveDate.
+        if (string.Equals(cf.PeriodMonth, basePeriod.MonthKey, StringComparison.OrdinalIgnoreCase))
+        {
+            var extendedEnd = EndOfUtcDay(cf.EffectiveDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            if (extendedEnd <= basePeriod.PeriodEnd)
+                return basePeriod with { CarryForwardDate = cf.EffectiveDate };
+
+            var now = DateTime.UtcNow;
+            var cappedEnd = extendedEnd > now ? now : extendedEnd;
+            return basePeriod with
+            {
+                PeriodEnd = cappedEnd,
+                CarryForwardDate = cf.EffectiveDate,
+                IsCurrentMonth = cappedEnd >= now.Date,
+            };
+        }
+
+        // Viewing the month after a late C/F: start day after EffectiveDate.
+        if (cf.EffectiveDate >= DateOnly.FromDateTime(calendarStart)
+            && cf.EffectiveDate < DateOnly.FromDateTime(nextCalendarStart))
+        {
+            var shiftedStart = cf.EffectiveDate.AddDays(1)
+                .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            if (shiftedStart <= basePeriod.PeriodEnd)
+            {
+                return basePeriod with
+                {
+                    MonthStart = shiftedStart,
+                    CarryForwardDate = cf.EffectiveDate,
+                };
+            }
+        }
+
+        return basePeriod with { CarryForwardDate = cf.EffectiveDate };
+    }
+
+    async Task<(string PeriodMonth, DateOnly EffectiveDate)?> FindCarryForwardEffectiveDateAsync(
+        string viewingMonthKey,
+        int? companyId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseMonthKey(viewingMonthKey, out var year, out var month))
+            return null;
+
+        var viewingStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var priorKey = viewingStart.AddMonths(-1).ToString("yyyy-MM");
+
+        var sessions = await db.InventoryCountSessions.AsNoTracking()
+            .Where(s => s.SessionType == InventoryCountWorkflow.TypeFull
+                && (s.Status == InventoryCountWorkflow.StatusConfirmed
+                    || s.Status == InventoryCountWorkflow.StatusAutoConfirmed)
+                && (s.PeriodMonth == viewingMonthKey || s.PeriodMonth == priorKey)
+                && s.EffectiveDate != "")
+            .ToListAsync(cancellationToken);
+
+        if (companyId is int cid)
+            sessions = sessions.Where(s => s.CompanyId is null || s.CompanyId == cid).ToList();
+
+        (string PeriodMonth, DateOnly EffectiveDate)? best = null;
+        foreach (var session in sessions)
+        {
+            if (!DateOnly.TryParse(session.EffectiveDate, out var effective))
+                continue;
+
+            // Prefer the session that owns this viewing month, else prior-month C/F into this month.
+            if (best is null
+                || string.Equals(session.PeriodMonth, viewingMonthKey, StringComparison.OrdinalIgnoreCase)
+                || (string.Equals(session.PeriodMonth, priorKey, StringComparison.OrdinalIgnoreCase)
+                    && effective >= DateOnly.FromDateTime(viewingStart)
+                    && (best.Value.EffectiveDate < effective
+                        || !string.Equals(best.Value.PeriodMonth, viewingMonthKey, StringComparison.OrdinalIgnoreCase))))
+            {
+                best = (session.PeriodMonth, effective);
+            }
+        }
+
+        return best;
+    }
+
     static bool TryParseMonthKey(string value, out int year, out int month)
     {
         year = 0;
@@ -1611,6 +1743,9 @@ public sealed class StockCardDetail
     public DateTime ArchiveCutoff { get; init; }
     public bool IsCurrentMonth { get; init; }
     public int HistoryRetentionYears { get; init; } = 2;
+    public bool HasNegativeStock { get; init; }
+    /// <summary>Prior month physical inventory effective date when C/F shifted this period start.</summary>
+    public DateOnly? InventoryCarryForwardDate { get; init; }
     public IReadOnlyList<StockCardLedgerEntry> Entries { get; init; } = [];
 }
 
@@ -1619,7 +1754,8 @@ public sealed record StockCardPeriod(
     DateTime MonthStart,
     DateTime PeriodEnd,
     DateTime ArchiveCutoff,
-    bool IsCurrentMonth);
+    bool IsCurrentMonth,
+    DateOnly? CarryForwardDate = null);
 
 public sealed record StockCardLedgerEntry
 {
@@ -1638,6 +1774,9 @@ public sealed record StockCardLedgerEntry
     public decimal AverageCogsAfter { get; init; }
     public string FifoPolicy { get; init; } = "FIFO";
     public int SplitIndex { get; init; }
+    public bool IsShortage { get; init; }
+    public bool IsCogsBackfilled { get; init; }
+    public bool IsNegativeBalance { get; init; }
 }
 
 public sealed record StockCardOnHandLayer

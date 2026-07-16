@@ -425,6 +425,20 @@ export function StockCardDetailPanel({
 
             </div>
 
+            {detail.hasNegativeStock || detail.onHandQty < 0 ? (
+              <div className="px-5 py-2.5 border-b border-border bg-destructive/10 text-destructive text-sm shrink-0">
+                Stock quantity is negative (or has uncovered shortage). Outbound without stock shows no COGS until inbound
+                arrives and backfills earlier lines.
+                {detail.inventoryCarryForwardDate
+                  ? ` Period opens after inventory C/F on ${detail.inventoryCarryForwardDate}.`
+                  : null}
+              </div>
+            ) : detail.inventoryCarryForwardDate ? (
+              <div className="px-5 py-2.5 border-b border-border bg-muted/40 text-muted-foreground text-sm shrink-0">
+                Period aligned to inventory C/F effective date {detail.inventoryCarryForwardDate}.
+              </div>
+            ) : null}
+
             {splitUseConfig?.enabled && detail && splitUseIngredient ? (
               <div className="px-5 py-3 border-b border-border shrink-0">
                 <StockCardSplitUsePanel
@@ -467,12 +481,27 @@ export function StockCardDetailPanel({
 
                   {detail.entries.map((entry, index) => {
                     const { inbound, outbound } = entryInboundOutbound(entry, countryCode);
+                    const rowTone = entry.isShortage
+                      ? 'bg-destructive/5'
+                      : entry.isCogsBackfilled
+                        ? 'bg-amber-500/5'
+                        : entry.isNegativeBalance
+                          ? 'bg-destructive/5'
+                          : '';
                     return (
-                    <tr key={`${entry.id}-${entry.splitIndex ?? 0}-${index}`} className="border-t border-border/60 hover:bg-muted/30 align-top">
+                    <tr key={`${entry.id}-${entry.splitIndex ?? 0}-${index}`} className={`border-t border-border/60 hover:bg-muted/30 align-top ${rowTone}`}>
 
                       <td className="px-5 py-2.5 whitespace-nowrap">{fmtDateTime(entry.occurredAt)}</td>
 
-                      <td className="px-3 py-2.5 whitespace-nowrap">{entryTypeLabel(entry.entryType)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {entryTypeLabel(entry.entryType)}
+                        {entry.isShortage ? (
+                          <span className="ml-1 text-[10px] uppercase tracking-wide text-destructive">Neg / short</span>
+                        ) : null}
+                        {entry.isCogsBackfilled ? (
+                          <span className="ml-1 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400">Backfill</span>
+                        ) : null}
+                      </td>
 
                       <td className="px-3 py-2.5 text-right tabular-nums">{inbound}</td>
 
@@ -510,7 +539,7 @@ export function StockCardDetailPanel({
 
                       </td>
 
-                      <td className="px-3 py-2.5 text-right tabular-nums font-medium">
+                      <td className={`px-3 py-2.5 text-right tabular-nums font-medium ${entry.isNegativeBalance || entry.runningBalance < 0 ? 'text-destructive' : ''}`}>
 
                         {fmtQty(entry.runningBalance, countryCode)}
 

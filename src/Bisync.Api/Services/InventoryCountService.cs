@@ -460,6 +460,23 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
                     continue;
 
                 var direction = variance > 0 ? "in" : "out";
+                decimal? inboundUnitPrice = null;
+                if (variance > 0)
+                {
+                    var snapshot = await stockCardService.GetAsOfSnapshotAsync(
+                        line.ItemType,
+                        line.ItemKey,
+                        session.CompanyId,
+                        locationId,
+                        locationIds,
+                        session.UomMode,
+                        asOfDate,
+                        cancellationToken);
+                    inboundUnitPrice = snapshot?.SuggestedAdjustmentInUnitPrice;
+                    if (inboundUnitPrice is null or <= 0)
+                        inboundUnitPrice = null;
+                }
+
                 var result = await stockCardService.CreateAdjustmentAsync(
                     line.ItemType,
                     line.ItemKey,
@@ -472,6 +489,8 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
                     direction,
                     reason,
                     inboundUom: variance > 0 ? line.Uom : null,
+                    inboundUnitPrice: inboundUnitPrice,
+                    allowNegativeStock: true,
                     cancellationToken: cancellationToken);
 
                 if (!result.Success)
@@ -517,11 +536,26 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
             return ProportionalSplit(locationIds, onHandByLocation, absVariance);
         }
 
-        if (totalOnHand < absVariance)
-            return [];
+        // Negative variance (physical < system): always allocate, even when on-hand is
+        // insufficient — inventory confirm must be allowed to drive stock negative.
+        if (totalOnHand <= 0)
+            return SplitEvenly(locationIds, absVariance);
 
         if (locationIds.Count == 1)
             return [(locationIds[0], absVariance)];
+
+        if (totalOnHand < absVariance)
+        {
+            // Deplete what exists proportionally, then put the remainder on the first location.
+            var baseAlloc = ProportionalSplit(locationIds, onHandByLocation, totalOnHand).ToList();
+            var remainder = absVariance - totalOnHand;
+            if (baseAlloc.Count == 0)
+                return SplitEvenly(locationIds, absVariance);
+
+            var first = baseAlloc[0];
+            baseAlloc[0] = (first.LocationId, first.Quantity + remainder);
+            return baseAlloc;
+        }
 
         return ProportionalSplit(locationIds, onHandByLocation, absVariance);
     }

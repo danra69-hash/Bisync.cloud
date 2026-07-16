@@ -7,7 +7,11 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/dev")]
-public class DevSeedController(BisyncDbContext db, IWebHostEnvironment env, B2bSalesOrderService salesOrderService) : ControllerBase
+public class DevSeedController(
+    BisyncDbContext db,
+    IWebHostEnvironment env,
+    B2bSalesOrderService salesOrderService,
+    LocationPartitionService locationPartitions) : ControllerBase
 {
     [HttpPost("seed-stock-cards")]
     public async Task<ActionResult<object>> SeedStockCards([FromQuery] int? companyId = 1)
@@ -34,6 +38,23 @@ public class DevSeedController(BisyncDbContext db, IWebHostEnvironment env, B2bS
             return NotFound();
 
         var result = await StockCardFifoDemoSeeder.EnsureAsync(db, companyId ?? 1, force);
+        return Ok(result);
+    }
+
+    [HttpPost("seed-fifo-integrity")]
+    public async Task<ActionResult<object>> SeedFifoIntegrity(
+        [FromQuery] int? companyId = 1,
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (!env.IsDevelopment())
+            return NotFound();
+
+        await locationPartitions.EnsurePartitionsForLocationAsync("downtown", cancellationToken);
+        var result = await StockCardFifoDemoSeeder.EnsureIntegrityChickenBreastAsync(
+            db,
+            companyId ?? 1,
+            force);
         return Ok(result);
     }
 

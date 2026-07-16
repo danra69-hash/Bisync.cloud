@@ -90,6 +90,8 @@ public class StockCardController(StockCardService stockCardService) : Controller
             archiveCutoff = detail.ArchiveCutoff,
             isCurrentMonth = detail.IsCurrentMonth,
             historyRetentionYears = detail.HistoryRetentionYears,
+            hasNegativeStock = detail.HasNegativeStock,
+            inventoryCarryForwardDate = detail.InventoryCarryForwardDate,
             entries = detail.Entries.Select(e => new
             {
                 e.Id,
@@ -107,6 +109,9 @@ public class StockCardController(StockCardService stockCardService) : Controller
                 averageCogsAfter = e.AverageCogsAfter,
                 fifoPolicy = e.FifoPolicy,
                 splitIndex = e.SplitIndex,
+                isShortage = e.IsShortage,
+                isCogsBackfilled = e.IsCogsBackfilled,
+                isNegativeBalance = e.IsNegativeBalance,
             }),
         });
     }

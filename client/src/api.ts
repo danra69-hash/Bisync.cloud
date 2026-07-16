@@ -1641,6 +1641,9 @@ export interface StockCardLedgerEntry {
   averageCogsAfter: number;
   fifoPolicy: string;
   splitIndex?: number;
+  isShortage?: boolean;
+  isCogsBackfilled?: boolean;
+  isNegativeBalance?: boolean;
 }
 
 export interface StockCardOnHandLayer {
@@ -1800,6 +1803,8 @@ export interface StockCardDetail {
   archiveCutoff: string;
   isCurrentMonth: boolean;
   historyRetentionYears: number;
+  hasNegativeStock?: boolean;
+  inventoryCarryForwardDate?: string | null;
   entries: StockCardLedgerEntry[];
 }
 
