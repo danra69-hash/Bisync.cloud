@@ -818,7 +818,11 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         nextSplitUse.componentQty = f.convertFromInventoryQty || '1';
         nextSplitUse.qtyBasis = 'inventory';
       }
-      return { ...f, splitUse: nextSplitUse };
+      return {
+        ...f,
+        splitUse: nextSplitUse,
+        vendorProductLossYield: enabled ? {} : f.vendorProductLossYield,
+      };
     });
   }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Plus, Search } from 'lucide-react';
+import { Check, Plus, Search, Trash2 } from 'lucide-react';
 import {
   api,
   type Ingredient,
@@ -650,23 +650,24 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
           <table className="w-full table-fixed border-collapse text-sm">
             <thead className="sticky top-0 bg-card z-10">
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="text-left px-2 py-1.5 w-10">POS</th>
+                <th className="text-left px-2 py-1.5 w-16">Source</th>
                 <th className="text-left px-2 py-1.5 w-24">Date</th>
                 <th className="text-left px-2 py-1.5">Item</th>
                 <th className="text-left px-2 py-1.5 w-28">Type</th>
                 <th className="text-right px-2 py-1.5 w-20">Qty</th>
                 <th className="text-left px-2 py-1.5 w-16">UOM</th>
+                <th className="text-right px-2 py-1.5 w-24">Value</th>
                 <th className="text-left px-2 py-1.5">Reason</th>
                 <th className="text-left px-2 py-1.5 w-28">Check no.</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <TableLoadingRow colSpan={8} />
+                <TableLoadingRow colSpan={9} />
               )}
               {!loading && visibleItems.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground text-xs">
+                  <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground text-xs">
                     No wastage for this date{wasteTypeFilter !== 'All' ? ` and type` : ''}.
                   </td>
                 </tr>
@@ -674,7 +675,9 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
               {visibleItems.map(row => (
                 <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
                   <td className="px-2 py-1.5 text-center">
-                    {row.isPos ? (
+                    {row.isSplitUse ? (
+                      <Trash2 size={14} className="inline text-destructive" aria-label="Split Use wastage" />
+                    ) : row.isPos ? (
                       <Check size={14} className="inline text-primary" aria-label="POS wastage" />
                     ) : (
                       <span className="text-muted-foreground/40">—</span>
@@ -685,6 +688,9 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
                   <td className="px-2 py-1.5 text-xs text-muted-foreground">{itemTypeLabel(row.itemType)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{row.quantity}</td>
                   <td className="px-2 py-1.5">{row.uom}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">
+                    {row.totalValue != null ? rm(row.totalValue) : '—'}
+                  </td>
                   <td className="px-2 py-1.5 truncate" title={row.reason}>{row.reason}</td>
                   <td className="px-2 py-1.5 font-mono text-xs">{row.posCheckNo || '—'}</td>
                 </tr>

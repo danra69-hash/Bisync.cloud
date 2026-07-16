@@ -45,7 +45,10 @@ export type SplitUseLine = {
   qty: string;
   inventoryUom: string;
   valueAssigned: string;
+  valueAssignedPct: string;
   noValue: boolean;
+  isWaste: boolean;
+  childComponentId?: string;
 };
 
 export type ComponentSplitUseConfig = {
@@ -69,7 +72,10 @@ export function createSplitUseLine(partial: Partial<SplitUseLine> = {}): SplitUs
     qty: partial.qty ?? '',
     inventoryUom: partial.inventoryUom ?? 'Gr',
     valueAssigned: partial.valueAssigned ?? '',
+    valueAssignedPct: partial.valueAssignedPct ?? partial.valueAssigned ?? '',
     noValue: partial.noValue ?? false,
+    isWaste: partial.isWaste ?? false,
+    childComponentId: partial.childComponentId ?? '',
   };
 }
 
@@ -84,8 +90,11 @@ export function parseSplitUseConfig(raw: unknown): ComponentSplitUseConfig {
           name: String(row.name ?? row.Name ?? ''),
           qty: String(row.qty ?? row.Qty ?? ''),
           inventoryUom: fromApiUom(String(row.inventoryUom ?? row.InventoryUom ?? 'Gr')),
-          valueAssigned: String(row.valueAssigned ?? row.ValueAssigned ?? ''),
+          valueAssigned: String(row.valueAssignedPct ?? row.ValueAssignedPct ?? row.valueAssigned ?? row.ValueAssigned ?? ''),
+          valueAssignedPct: String(row.valueAssignedPct ?? row.ValueAssignedPct ?? row.valueAssigned ?? row.ValueAssigned ?? ''),
           noValue: Boolean(row.noValue ?? row.NoValue),
+          isWaste: Boolean(row.isWaste ?? row.IsWaste),
+          childComponentId: String(row.childComponentId ?? row.ChildComponentId ?? ''),
         });
       })
     : [];
@@ -207,8 +216,28 @@ export function validateSplitUseConfig(
   if (unresolved || total === null) {
     return 'Sub-component quantities use UOMs that cannot be totalled — align units or add conversion.';
   }
-  if (Math.abs(total - componentQty) > 0.0001) {
-    return `Sub-component total (${total} ${basisUom}) must match component quantity (${componentQty} ${basisUom}).`;
+  if (total >= componentQty - 0.0001) {
+    return `Split outputs (${total} ${basisUom}) must leave a positive nett component quantity.`;
+  }
+  if (activeLines.some(line => {
+    const pct = parseFloat(line.valueAssignedPct);
+    return !Number.isFinite(pct) || pct < 0 || pct > 100;
+  })) {
+    return 'Each Value Assigned % must be between 0 and 100.';
+  }
+  const allocatedBasis = activeLines.reduce((sum, line) => {
+    const qty = lineQtyInBasis(
+      line,
+      basisUom,
+      inventoryUom,
+      recipeUom,
+      convertFromInventoryQty,
+      convertToRecipeQty,
+    ) ?? 0;
+    return sum + qty * (parseFloat(line.valueAssignedPct) || 0) / 100;
+  }, 0);
+  if (allocatedBasis > componentQty + 0.0001) {
+    return 'Split Use assigned value exceeds 100% of the component value.';
   }
   return null;
 }
@@ -245,30 +274,10 @@ export function calcSplitUseLineAssignedValue(
   );
   if (lineQty === null) return null;
 
-  if (!line.noValue) {
-    const manual = parseFloat(line.valueAssigned);
-    return Number.isFinite(manual) ? manual : null;
-  }
-
-  const activeLines = config.lines.filter(row => row.name.trim() && parseFloat(row.qty) > 0);
-  const hasNoValue = activeLines.some(row => row.noValue);
-  if (!hasNoValue) return null;
-
-  const noValueQtyTotal = activeLines.reduce((sum, row) => {
-    if (!row.noValue) return sum;
-    const qty = lineQtyInBasis(
-      row,
-      basisUom,
-      inventoryUom,
-      recipeUom,
-      convertFromInventoryQty,
-      convertToRecipeQty,
-    );
-    return qty === null ? sum : sum + qty;
-  }, 0);
-
-  const unitCost = calcSplitUseNoValueUnitCost(componentPrice, componentQty, noValueQtyTotal);
-  return unitCost * lineQty;
+  const pct = parseFloat(line.valueAssignedPct);
+  if (!Number.isFinite(pct)) return null;
+  const unitCost = componentQty > 0 ? componentPrice / componentQty : 0;
+  return lineQty * unitCost * pct / 100;
 }
 
 export function calcSplitUseBreakdown(

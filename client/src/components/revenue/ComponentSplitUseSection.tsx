@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import type { ComponentForm } from '../../data/componentForm';
 import { inputCls, selectCls } from '../../data/componentForm';
 import {
@@ -37,7 +37,21 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
     form.convertToRecipeQty,
   );
   const componentQty = parseFloat(splitUse.componentQty) || 0;
-  const totalMatches = lineTotal !== null && Math.abs(lineTotal - componentQty) < 0.0001;
+  const quantitiesValid = lineTotal !== null && lineTotal < componentQty;
+  const nettQty = lineTotal === null ? null : Math.max(0, componentQty - lineTotal);
+  const allocatedValue = splitUse.lines.reduce((sum, line) => {
+    const value = calcSplitUseLineAssignedValue(
+      line,
+      splitUse,
+      componentPrice,
+      form.inventoryUnit,
+      form.recipeUnit,
+      form.convertFromInventoryQty,
+      form.convertToRecipeQty,
+      principalQty,
+    );
+    return sum + (value ?? 0);
+  }, 0);
 
   function patchSplitUse(patch: Partial<ComponentSplitUseConfig>) {
     onChange({ ...splitUse, ...patch });
@@ -82,14 +96,15 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
       </div>
 
       <div className="overflow-x-auto border border-border rounded-md">
-        <table className="w-full text-xs min-w-[640px]">
+        <table className="w-full text-xs min-w-[760px]">
           <thead>
             <tr className="border-b border-border bg-muted/20">
               <TableHeaderCell>Sub-component Name</TableHeaderCell>
               <TableHeaderCell>QTY</TableHeaderCell>
               <TableHeaderCell>Inventory UOM</TableHeaderCell>
-              <TableHeaderCell headerAlign="right">Value Assigned</TableHeaderCell>
-              <TableHeaderCell headerAlign="center">No Value</TableHeaderCell>
+              <TableHeaderCell headerAlign="right">Value Assigned %</TableHeaderCell>
+              <TableHeaderCell headerAlign="right">Calculated Value</TableHeaderCell>
+              <TableHeaderCell headerAlign="center">Waste</TableHeaderCell>
               <TableHeaderCell className="w-8">&nbsp;</TableHeaderCell>
             </tr>
           </thead>
@@ -136,33 +151,37 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
                       ))}
                     </select>
                   </td>
-                  <td className="p-2 text-right">
-                    {line.noValue ? (
-                      <span className="tabular-nums text-muted-foreground">
-                        {assigned !== null && assigned > 0 ? number(assigned) : 'Auto'}
-                      </span>
-                    ) : (
+                  <td className="p-2">
+                    <div className="relative w-24 ml-auto">
                       <input
-                        className={`${inputCls} w-24 text-right`}
+                        className={`${inputCls} w-24 pr-6 text-right bg-amber-50/60 dark:bg-amber-950/20`}
                         type="number"
                         min="0"
+                        max="100"
                         step="any"
-                        value={line.valueAssigned}
-                        onChange={e => patchLine(line.key, { valueAssigned: e.target.value })}
+                        value={line.valueAssignedPct}
+                        onChange={e => patchLine(line.key, {
+                          valueAssignedPct: e.target.value,
+                          valueAssigned: e.target.value,
+                        })}
                         placeholder="0"
                       />
-                    )}
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                    </div>
+                  </td>
+                  <td className="p-2 text-right tabular-nums text-muted-foreground">
+                    {assigned !== null ? number(assigned) : '—'}
                   </td>
                   <td className="p-2 text-center">
-                    <input
-                      type="checkbox"
-                      checked={line.noValue}
-                      onChange={e => patchLine(line.key, {
-                        noValue: e.target.checked,
-                        valueAssigned: e.target.checked ? '' : line.valueAssigned,
-                      })}
-                      aria-label={`No value for ${line.name || 'sub-component'}`}
-                    />
+                    <label className={`inline-flex items-center gap-1 cursor-pointer ${line.isWaste ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      <input
+                        type="checkbox"
+                        checked={line.isWaste}
+                        onChange={e => patchLine(line.key, { isWaste: e.target.checked })}
+                        aria-label={`Mark ${line.name || 'split output'} as waste`}
+                      />
+                      <Trash2 size={13} />
+                    </label>
                   </td>
                   <td className="p-2">
                     <button
@@ -170,7 +189,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
                       onClick={() => patchSplitUse({ lines: splitUse.lines.filter(row => row.key !== line.key) })}
                       className="p-1 text-muted-foreground hover:text-destructive"
                     >
-                      <Trash2 size={12} />
+                      <X size={12} />
                     </button>
                   </td>
                 </tr>
@@ -179,13 +198,15 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
           </tbody>
           <tfoot>
             <tr className="bg-muted/10">
-              <td colSpan={2} className="p-2 font-medium">Total</td>
-              <td className="p-2 font-medium tabular-nums" colSpan={4}>
-                <span className={totalMatches ? 'text-foreground' : 'text-destructive'}>
-                  {lineTotal !== null ? `${number(lineTotal)} ${basisUom}` : '—'}
+              <td className="p-2 font-medium">Component Nett</td>
+              <td className="p-2 font-medium tabular-nums" colSpan={2}>
+                <span className={quantitiesValid ? 'text-foreground' : 'text-destructive'}>
+                  {nettQty !== null ? `${number(nettQty)} ${basisUom}` : '—'}
                 </span>
-                <span className="text-muted-foreground mx-2">/</span>
-                <span>{componentQty > 0 ? `${number(componentQty)} ${basisUom}` : '—'}</span>
+              </td>
+              <td className="p-2 text-right text-muted-foreground">Remaining value</td>
+              <td className="p-2 text-right font-medium tabular-nums" colSpan={3}>
+                {number(Math.max(0, componentPrice - allocatedValue))}
               </td>
             </tr>
           </tfoot>
@@ -201,8 +222,9 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
         Add sub-component
       </button>
       <p className="text-[10px] text-muted-foreground">
-        Total sub-component quantity must match component QTY. Tick No Value to auto-allocate cost from component price
-        (price ÷ (component QTY − no-value QTY) × sub-component QTY). Yield loss is not applied when split use is enabled.
+        Split output quantities are deducted from the inbound component; Component Nett remains as parent stock.
+        Value Assigned % allocates incoming FIFO value to each output. Tick the bin to record that output as wastage.
+        Yield Loss % is disabled while Split Use is enabled.
       </p>
     </div>
   );

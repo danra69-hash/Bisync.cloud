@@ -180,6 +180,15 @@ public static class SchemaPatcher
             );
             """);
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "LocationExternalId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitSourceType", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitSourceId", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitLineKey", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "InventoryPurchases", "SplitParentComponentId", "TEXT NOT NULL DEFAULT ''");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "UX_InventoryPurchases_SplitSource"
+            ON "InventoryPurchases" ("SplitSourceType", "SplitSourceId", "SplitLineKey", "LocationExternalId")
+            WHERE "SplitSourceType" <> '';
+            """);
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "VendorProductPrices" (
@@ -246,6 +255,16 @@ public static class SchemaPatcher
         await db.Database.ExecuteSqlRawAsync("""
             CREATE INDEX IF NOT EXISTS "IX_WastageEntries_CompanyId_WastedDate"
             ON "WastageEntries" ("CompanyId", "WastedDate");
+            """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "WastageEntries", "UnitPrice", "REAL NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "WastageEntries", "TotalValue", "REAL NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "WastageEntries", "SourceReferenceType", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "WastageEntries", "SourceReferenceId", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "WastageEntries", "SplitUseLineKey", "TEXT NOT NULL DEFAULT ''");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "UX_WastageEntries_SplitSource"
+            ON "WastageEntries" ("SourceReferenceType", "SourceReferenceId", "SplitUseLineKey", "LocationExternalId")
+            WHERE "SourceReferenceType" <> '' AND "SplitUseLineKey" <> '';
             """);
 
         await db.Database.ExecuteSqlRawAsync("""

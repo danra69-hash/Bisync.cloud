@@ -11,7 +11,8 @@ namespace Bisync.Api.Controllers;
 [Route("api/cashpurchases")]
 public class CashPurchasesController(
     BisyncDbContext db,
-    LocationPartitionService locationPartitions) : ControllerBase
+    LocationPartitionService locationPartitions,
+    SplitUseService splitUse) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List([FromQuery] int? companyId)
@@ -79,31 +80,6 @@ public class CashPurchasesController(
             ? Math.Round(request.DeliveryPrice / request.Quantity, 4, MidpointRounding.AwayFromZero)
             : request.DeliveryPrice;
 
-        var inventoryPurchase = new InventoryPurchase
-        {
-            ComponentId = componentId,
-            ComponentName = componentName,
-            Quantity = request.Quantity,
-            Uom = componentUom,
-            UnitPrice = unitCost,
-            DateOrdered = request.DatePurchased,
-            DateCreatedInStock = DateTime.UtcNow,
-            PurchaseOrderId = 0,
-            PurchaseOrderItemId = 0,
-            CompanyId = request.CompanyId,
-            LocationIdsJson = locationIdsJson,
-            LocationExternalId = locationExternalId,
-        };
-
-        db.InventoryPurchases.Add(inventoryPurchase);
-
-        ingredient.LastPriceInventory = unitCost;
-        if (ingredient.InventoryUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase)
-            && ingredient.RecipeUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase))
-        {
-            ingredient.LastPriceRecipe = unitCost;
-        }
-
         var receiptBase64 = request.ReceiptFileBase64?.Trim() ?? string.Empty;
         if (receiptBase64.Length > 2_000_000)
             return BadRequest(new { message = "Receipt attachment is too large (max ~1.5 MB)." });
@@ -127,11 +103,65 @@ public class CashPurchasesController(
             CreatedAt = DateTime.UtcNow,
         };
 
-        await db.SaveChangesAsync();
-
-        cashPurchase.InventoryPurchaseId = inventoryPurchase.Id;
         db.CashPurchases.Add(cashPurchase);
-        await db.SaveChangesAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        InventoryPurchase inventoryPurchase;
+        try
+        {
+            // Reserve the cash purchase ID so all generated rows share an auditable source.
+            await db.SaveChangesAsync();
+
+            if (splitUse.ReadConfig(ingredient) is not null)
+            {
+                var posting = await splitUse.PostInboundAsync(
+                    ingredient,
+                    request.Quantity,
+                    componentUom,
+                    unitCost,
+                    request.DatePurchased,
+                    cashPurchase.CreatedAt,
+                    0,
+                    0,
+                    request.CompanyId,
+                    locationIdsJson,
+                    locationExternalId,
+                    "cash-purchase",
+                    cashPurchase.Id);
+                inventoryPurchase = posting.ParentPurchase;
+            }
+            else
+            {
+                inventoryPurchase = new InventoryPurchase
+                {
+                    ComponentId = componentId,
+                    ComponentName = componentName,
+                    Quantity = request.Quantity,
+                    Uom = componentUom,
+                    UnitPrice = unitCost,
+                    DateOrdered = request.DatePurchased,
+                    DateCreatedInStock = cashPurchase.CreatedAt,
+                    PurchaseOrderId = 0,
+                    PurchaseOrderItemId = 0,
+                    CompanyId = request.CompanyId,
+                    LocationIdsJson = locationIdsJson,
+                    LocationExternalId = locationExternalId,
+                };
+                db.InventoryPurchases.Add(inventoryPurchase);
+                ingredient.LastPriceInventory = unitCost;
+                if (ingredient.InventoryUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase)
+                    && ingredient.RecipeUom.Equals(componentUom, StringComparison.OrdinalIgnoreCase))
+                    ingredient.LastPriceRecipe = unitCost;
+            }
+
+            await db.SaveChangesAsync();
+            cashPurchase.InventoryPurchaseId = inventoryPurchase.Id;
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
 
         return Ok(new
         {
@@ -149,6 +179,10 @@ public class CashPurchasesController(
                 purchaseOrderId = inventoryPurchase.PurchaseOrderId,
                 companyId = inventoryPurchase.CompanyId,
                 locationExternalIds = PurchaseOrderWorkflow.DeserializeLocationIds(inventoryPurchase.LocationIdsJson),
+                splitSourceType = inventoryPurchase.SplitSourceType,
+                splitSourceId = inventoryPurchase.SplitSourceId,
+                splitLineKey = inventoryPurchase.SplitLineKey,
+                splitParentComponentId = inventoryPurchase.SplitParentComponentId,
             },
         });
     }

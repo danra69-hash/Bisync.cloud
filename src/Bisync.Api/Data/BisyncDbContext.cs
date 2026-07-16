@@ -144,6 +144,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.CompanyId);
             e.HasIndex(x => new { x.CompanyId, x.WastedDate });
             e.HasIndex(x => x.LocationExternalId);
+            e.HasIndex(x => new { x.SourceReferenceType, x.SourceReferenceId, x.SplitUseLineKey });
             e.Property(x => x.Source).HasMaxLength(20);
             e.Property(x => x.ItemType).HasMaxLength(30);
             e.Property(x => x.ItemKey).HasMaxLength(80);
@@ -152,6 +153,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Reason).HasMaxLength(300);
             e.Property(x => x.PosCheckNo).HasMaxLength(80);
             e.Property(x => x.LocationExternalId).HasMaxLength(100);
+            e.Property(x => x.SourceReferenceType).HasMaxLength(40);
+            e.Property(x => x.SplitUseLineKey).HasMaxLength(100);
         });
         modelBuilder.Entity<TransferEntry>(e =>
         {
@@ -250,7 +253,14 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
                 .OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<InventoryMovement>().HasIndex(m => new { m.ComponentId, m.LocationExternalId });
-        modelBuilder.Entity<InventoryPurchase>().HasIndex(i => i.PurchaseOrderItemId);
+        modelBuilder.Entity<InventoryPurchase>(e =>
+        {
+            e.HasIndex(i => i.PurchaseOrderItemId);
+            e.HasIndex(i => new { i.SplitSourceType, i.SplitSourceId, i.SplitLineKey });
+            e.Property(i => i.SplitSourceType).HasMaxLength(40);
+            e.Property(i => i.SplitLineKey).HasMaxLength(100);
+            e.Property(i => i.SplitParentComponentId).HasMaxLength(32);
+        });
         modelBuilder.Entity<InventoryCountSession>(e =>
         {
             e.HasIndex(x => new { x.CompanyId, x.SessionType, x.PeriodMonth, x.Status });

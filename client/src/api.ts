@@ -1155,6 +1155,10 @@ export interface InventoryPurchase {
   purchaseOrderItemId: number;
   companyId?: number | null;
   locationExternalIds?: string[];
+  splitSourceType?: string;
+  splitSourceId?: number;
+  splitLineKey?: string;
+  splitParentComponentId?: string;
 }
 
 export interface CashPurchase {
@@ -1212,6 +1216,12 @@ export interface WastageEntry {
   wastedDate: string;
   reason: string;
   posCheckNo?: string | null;
+  unitPrice?: number;
+  totalValue?: number;
+  sourceReferenceType?: string;
+  sourceReferenceId?: number;
+  splitUseLineKey?: string;
+  isSplitUse?: boolean;
   isPos: boolean;
   createdAt: string;
 }

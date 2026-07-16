@@ -14,6 +14,7 @@ public class WastageService(
     public const string ReferenceType = "wastage";
     public const string SourceManual = "manual";
     public const string SourcePos = "pos";
+    public const string SourceSplitUse = "split-use";
 
     public async Task<(decimal UnitPrice, decimal TotalValue, string Uom)> EstimateValueAsync(
         int companyId,

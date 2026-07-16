@@ -449,7 +449,10 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
 
 [ApiController]
 [Route("api/[controller]")]
-public class IngredientsController(BisyncDbContext db, ITenantContext tenant) : ControllerBase
+public class IngredientsController(
+    BisyncDbContext db,
+    ITenantContext tenant,
+    SplitUseService splitUse) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Ingredient>>> GetAll([FromQuery] int? companyId = null)
@@ -497,7 +500,6 @@ public class IngredientsController(BisyncDbContext db, ITenantContext tenant) : 
         item.LastPriceInventory = updated.LastPriceInventory;
         item.StorageJson = updated.StorageJson;
         item.StorageNote = updated.StorageNote ?? string.Empty;
-        item.DetailConfigJson = string.IsNullOrWhiteSpace(updated.DetailConfigJson) ? "{}" : updated.DetailConfigJson;
         item.DailyUsage = updated.DailyUsage;
         item.OrderFreqDays = updated.OrderFreqDays;
         item.AttachedProducts = updated.AttachedProducts;
@@ -511,7 +513,20 @@ public class IngredientsController(BisyncDbContext db, ITenantContext tenant) : 
             item.ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId, item.Id);
         }
 
-        await db.SaveChangesAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        try
+        {
+            item.DetailConfigJson = await splitUse.NormalizeIngredientConfigAsync(
+                item,
+                companyId.Value,
+                updated.DetailConfigJson);
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         await ProductCostRecalculator.RecalculateForComponentAsync(db, item.ComponentId);
         return Ok(item);
     }
@@ -539,12 +554,26 @@ public class IngredientsController(BisyncDbContext db, ITenantContext tenant) : 
         ingredient.Name = name;
         ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId);
 
-        ingredient.DetailConfigJson = string.IsNullOrWhiteSpace(ingredient.DetailConfigJson) ? "{}" : ingredient.DetailConfigJson;
+        var submittedDetailConfig = ingredient.DetailConfigJson;
+        ingredient.DetailConfigJson = "{}";
         ingredient.CreatedAt = DateTime.UtcNow;
         ingredient.UpdatedAt = DateTime.UtcNow;
 
-        db.Ingredients.Add(ingredient);
-        await db.SaveChangesAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        try
+        {
+            ingredient.DetailConfigJson = await splitUse.NormalizeIngredientConfigAsync(
+                ingredient,
+                companyId.Value,
+                submittedDetailConfig);
+            db.Ingredients.Add(ingredient);
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         return CreatedAtAction(nameof(GetAll), new { id = ingredient.Id }, ingredient);
     }
 }
@@ -553,7 +582,8 @@ public class IngredientsController(BisyncDbContext db, ITenantContext tenant) : 
 [Route("api/[controller]")]
 public class PurchaseOrdersController(
     BisyncDbContext db,
-    LocationPartitionService locationPartitions) : ControllerBase
+    LocationPartitionService locationPartitions,
+    SplitUseService splitUse) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
@@ -787,6 +817,7 @@ public class PurchaseOrdersController(
         if (request.Items is null || request.Items.Count == 0)
             return BadRequest(new { message = "At least one line item is required to reconcile." });
 
+        await using var transaction = await db.Database.BeginTransactionAsync();
         ApplyWorkflowLines(order, request.Items, workflow: "reconcile");
 
         var updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
@@ -803,6 +834,7 @@ public class PurchaseOrdersController(
         if (!string.IsNullOrEmpty(locationExternalId))
             await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
 
+        var receiptCreatedAt = DateTime.UtcNow;
         foreach (var line in request.Items)
         {
             var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
@@ -814,30 +846,63 @@ public class PurchaseOrdersController(
                 ? (string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom)
                 : line.ComponentUom.Trim();
 
-            db.InventoryPurchases.Add(new InventoryPurchase
+            var parent = await db.Ingredients.FirstOrDefaultAsync(ingredient =>
+                ingredient.ComponentId == item.ComponentId
+                && (order.CompanyId == null || ingredient.CompanyId == order.CompanyId));
+            try
             {
-                ComponentId = item.ComponentId,
-                ComponentName = string.IsNullOrWhiteSpace(item.ComponentName) ? item.Name : item.ComponentName,
-                Quantity = qty,
-                Uom = uom,
-                UnitPrice = price,
-                DateOrdered = order.OrderDate,
-                DateCreatedInStock = DateTime.UtcNow,
-                PurchaseOrderId = order.Id,
-                PurchaseOrderItemId = item.Id,
-                CompanyId = order.CompanyId,
-                LocationIdsJson = string.IsNullOrWhiteSpace(locationIdsJson)
-                    ? PurchaseOrderWorkflow.SerializeLocationIds(
-                        string.IsNullOrEmpty(locationExternalId) ? [] : [locationExternalId])
-                    : locationIdsJson,
-                LocationExternalId = locationExternalId,
-            });
+                if (parent is not null && splitUse.ReadConfig(parent) is not null)
+                {
+                    await splitUse.PostInboundAsync(
+                        parent,
+                        qty,
+                        uom,
+                        price,
+                        order.OrderDate,
+                        receiptCreatedAt,
+                        order.Id,
+                        item.Id,
+                        order.CompanyId,
+                        string.IsNullOrWhiteSpace(locationIdsJson)
+                            ? PurchaseOrderWorkflow.SerializeLocationIds(
+                                string.IsNullOrEmpty(locationExternalId) ? [] : [locationExternalId])
+                            : locationIdsJson,
+                        locationExternalId,
+                        "purchase-order",
+                        item.Id);
+                    continue;
+                }
+
+                db.InventoryPurchases.Add(new InventoryPurchase
+                {
+                    ComponentId = item.ComponentId,
+                    ComponentName = string.IsNullOrWhiteSpace(item.ComponentName) ? item.Name : item.ComponentName,
+                    Quantity = qty,
+                    Uom = uom,
+                    UnitPrice = price,
+                    DateOrdered = order.OrderDate,
+                    DateCreatedInStock = receiptCreatedAt,
+                    PurchaseOrderId = order.Id,
+                    PurchaseOrderItemId = item.Id,
+                    CompanyId = order.CompanyId,
+                    LocationIdsJson = string.IsNullOrWhiteSpace(locationIdsJson)
+                        ? PurchaseOrderWorkflow.SerializeLocationIds(
+                            string.IsNullOrEmpty(locationExternalId) ? [] : [locationExternalId])
+                        : locationIdsJson,
+                    LocationExternalId = locationExternalId,
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         order.Status = PurchaseOrderWorkflow.StatusReconciled;
         order.ReconciledAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return Ok(new
         {
             order = PurchaseOrderWorkflow.MapOrder(order),
@@ -942,6 +1007,10 @@ public class InventoryController(BisyncDbContext db) : ControllerBase
             purchaseOrderItemId = p.PurchaseOrderItemId,
             companyId = p.CompanyId,
             locationExternalIds = PurchaseOrderWorkflow.DeserializeLocationIds(p.LocationIdsJson),
+            splitSourceType = p.SplitSourceType,
+            splitSourceId = p.SplitSourceId,
+            splitLineKey = p.SplitLineKey,
+            splitParentComponentId = p.SplitParentComponentId,
         }));
     }
 }

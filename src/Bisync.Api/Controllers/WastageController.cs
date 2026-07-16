@@ -250,6 +250,12 @@ public class WastageController(
         wastedDate = w.WastedDate.ToString("yyyy-MM-dd"),
         reason = w.Reason,
         posCheckNo = w.PosCheckNo,
+        unitPrice = w.UnitPrice,
+        totalValue = w.TotalValue,
+        sourceReferenceType = w.SourceReferenceType,
+        sourceReferenceId = w.SourceReferenceId,
+        splitUseLineKey = w.SplitUseLineKey,
+        isSplitUse = string.Equals(w.Source, WastageService.SourceSplitUse, StringComparison.OrdinalIgnoreCase),
         isPos = string.Equals(w.Source, WastageService.SourcePos, StringComparison.OrdinalIgnoreCase),
         createdAt = w.CreatedAt,
     };

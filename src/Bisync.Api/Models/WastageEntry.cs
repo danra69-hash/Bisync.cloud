@@ -21,5 +21,11 @@ public class WastageEntry
     public string Reason { get; set; } = string.Empty;
     /// <summary>POS check / ticket number when Source = pos.</summary>
     public string PosCheckNo { get; set; } = string.Empty;
+    /// <summary>Stored valuation for system-generated Split Use waste.</summary>
+    public decimal UnitPrice { get; set; }
+    public decimal TotalValue { get; set; }
+    public string SourceReferenceType { get; set; } = string.Empty;
+    public int SourceReferenceId { get; set; }
+    public string SplitUseLineKey { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
