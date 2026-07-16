@@ -222,8 +222,9 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
         Add sub-component
       </button>
       <p className="text-[10px] text-muted-foreground">
-        Split output quantities are deducted from the inbound component; Component Nett remains as parent stock.
-        Value Assigned % allocates incoming FIFO value to each output. Tick the bin to record that output as wastage.
+        Split output quantities move to child stock (or wastage) on inbound; Component Nett remains as parent stock.
+        Products always use nett recipe qty and nett recipe cost (LastPriceRecipe). Stock depletion is 1:1 against
+        the post-split parent/child card — the gross purchase is already visible on the parent inbound line.
         Yield Loss % is disabled while Split Use is enabled.
       </p>
     </div>

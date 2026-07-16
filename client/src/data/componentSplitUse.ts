@@ -252,6 +252,74 @@ export function calcSplitUseNoValueUnitCost(
   return componentPrice / denominator;
 }
 
+/** Component Nett qty in basis UOM (componentQty − sum of output qtys). */
+export function calcSplitUseNettQty(
+  config: ComponentSplitUseConfig,
+  inventoryUom: string,
+  recipeUom: string,
+  convertFromInventoryQty: string,
+  convertToRecipeQty: string,
+): number | null {
+  if (!config.enabled) return null;
+  const componentQty = parseFloat(config.componentQty);
+  if (!Number.isFinite(componentQty) || componentQty <= 0) return null;
+  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
+  const { total, unresolved } = sumSplitUseLineQtyInBasis(
+    config.lines,
+    basisUom,
+    inventoryUom,
+    recipeUom,
+    convertFromInventoryQty,
+    convertToRecipeQty,
+  );
+  if (unresolved || total === null) return null;
+  const nett = componentQty - total;
+  return nett > 0 ? nett : null;
+}
+
+/**
+ * Nett recipe unit cost for Split Use:
+ * (purchase value − value assigned to outputs) ÷ Component Nett qty.
+ * When outputs take 0% value, this equals grossUnitCost / keepFraction
+ * (same relationship as Yield Loss nett cost).
+ */
+export function calcSplitUseNettUnitCost(
+  purchaseValue: number,
+  config: ComponentSplitUseConfig,
+  inventoryUom: string,
+  recipeUom: string,
+  convertFromInventoryQty: string,
+  convertToRecipeQty: string,
+): number {
+  if (!config.enabled || purchaseValue <= 0) return 0;
+  const componentQty = parseFloat(config.componentQty);
+  if (!Number.isFinite(componentQty) || componentQty <= 0) return 0;
+
+  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
+  let allocatedValue = 0;
+  let outputBasisQty = 0;
+  for (const line of config.lines) {
+    if (!line.name.trim() && !line.qty.trim()) continue;
+    const lineQty = lineQtyInBasis(
+      line,
+      basisUom,
+      inventoryUom,
+      recipeUom,
+      convertFromInventoryQty,
+      convertToRecipeQty,
+    );
+    if (lineQty === null) continue;
+    outputBasisQty += lineQty;
+    const pct = parseFloat(line.valueAssignedPct) || 0;
+    allocatedValue += purchaseValue * (lineQty / componentQty) * (pct / 100);
+  }
+
+  const nettQty = componentQty - outputBasisQty;
+  if (nettQty <= 0) return 0;
+  const nettValue = Math.max(0, purchaseValue - allocatedValue);
+  return nettValue / nettQty;
+}
+
 export function calcSplitUseLineAssignedValue(
   line: SplitUseLine,
   config: ComponentSplitUseConfig,

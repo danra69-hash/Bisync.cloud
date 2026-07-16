@@ -15,6 +15,7 @@ import {
   resolveComponentUomQty,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
+import { calcSplitUseNettUnitCost } from './componentSplitUse';
 
 export type VendorProductTagApplyOptions = {
   recipeUnit: string;
@@ -160,9 +161,22 @@ export function syncComponentPricesFromPrimaryTag(row: ComponentRow): ComponentR
         ? String(resolved.qty)
         : '',
   ) || 0;
-  const lossYield = parseFloat(detail.vendorProductLossYield[primaryId] ?? '0') || 0;
+  const lossYield = detail.splitUse?.enabled
+    ? 0
+    : (parseFloat(detail.vendorProductLossYield[primaryId] ?? '0') || 0);
   const nettQty = calcNettUomQty(principalQty, lossYield);
-  const nettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
+  const yieldNettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
+  const splitNettPrice = detail.splitUse?.enabled
+    ? calcSplitUseNettUnitCost(
+      product.deliveryPrice,
+      detail.splitUse,
+      fromApiUom(row.inventoryUOM),
+      recipeUnit,
+      detail.convertFromInventoryQty || '1',
+      detail.convertToRecipeQty || '1',
+    )
+    : 0;
+  const nettPrice = detail.splitUse?.enabled ? splitNettPrice : yieldNettPrice;
 
   if (nettPrice <= 0) return row;
 

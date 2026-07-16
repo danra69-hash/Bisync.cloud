@@ -43,7 +43,11 @@ import {
 } from '../../data/componentParStock';
 import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { ComponentSplitUseSection } from './ComponentSplitUseSection';
-import { createSplitUseLine, validateSplitUseConfig } from '../../data/componentSplitUse';
+import {
+  calcSplitUseNettUnitCost,
+  createSplitUseLine,
+  validateSplitUseConfig,
+} from '../../data/componentSplitUse';
 
 function computeTaggedVendorProductPricing(
   product: VendorProductCatalogItem,
@@ -754,7 +758,19 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   ]);
 
   const delivPrice = taggedPricing?.product.deliveryPrice ?? (parseFloat(form.deliveryUnitPrice) || 0);
-  const componentPrice = taggedPricing?.nettPrice ?? 0;
+  const yieldNettPrice = taggedPricing?.nettPrice ?? 0;
+  const splitNettPrice = form.splitUse.enabled
+    ? calcSplitUseNettUnitCost(
+      delivPrice,
+      form.splitUse,
+      form.inventoryUnit,
+      form.recipeUnit,
+      form.convertFromInventoryQty,
+      form.convertToRecipeQty,
+    )
+    : 0;
+  // Product BOM always uses nett recipe cost (Yield Loss or Split Use).
+  const componentPrice = form.splitUse.enabled ? splitNettPrice : yieldNettPrice;
 
   const dailyUsageRecipe = parseFloat(form.dailyUsage) > 0
     ? parseFloat(form.dailyUsage) || 0

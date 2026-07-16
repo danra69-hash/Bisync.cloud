@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {
+  calcSplitUseNettUnitCost,
+  createSplitUseLine,
+} from '../client/src/data/componentSplitUse.ts';
 
 /** Mirrors ComponentYieldLossRules.ToGrossQuantity */
 function toGrossQuantity(nettQty, yieldLossPct) {
@@ -17,7 +21,6 @@ function nettUnitCost(purchasePrice, purchaseQty, yieldLossPct) {
 }
 
 test('Carrot Fresh 20% yield loss: nett cost is 0.0125/g', () => {
-  // RM10 / kg → 1000g purchased, 20% loss → 800g nett
   const costPerGram = nettUnitCost(10, 1000, 20);
   assert.equal(Number(costPerGram.toFixed(4)), 0.0125);
 });
@@ -36,10 +39,30 @@ test('Product COGS equals stock COGS after yield inflation', () => {
   const productCogs = recipeNettGrams * nettCostPerGram;
 
   const grossGrams = toGrossQuantity(recipeNettGrams, yieldLoss);
-  const stockUnitCost = purchasePricePerKg / purchaseGrams; // 0.01/g opening
+  const stockUnitCost = purchasePricePerKg / purchaseGrams;
   const stockCogs = grossGrams * stockUnitCost;
 
   assert.equal(Number(productCogs.toFixed(4)), 1.25);
   assert.equal(Number(stockCogs.toFixed(4)), 1.25);
   assert.equal(grossGrams, 125);
+});
+
+test('Split Use parent nett recipe cost is 0.0125/g when 20% peels take 0% value', () => {
+  const config = {
+    enabled: true,
+    componentQty: '1000',
+    qtyBasis: 'recipe',
+    lines: [
+      createSplitUseLine({
+        key: 'peels',
+        name: 'Carrot Peels',
+        qty: '200',
+        inventoryUom: 'Gr',
+        valueAssignedPct: '0',
+        isWaste: false,
+      }),
+    ],
+  };
+  const nettCost = calcSplitUseNettUnitCost(10, config, 'Kg', 'Gr', '1', '1000');
+  assert.equal(Number(nettCost.toFixed(4)), 0.0125);
 });

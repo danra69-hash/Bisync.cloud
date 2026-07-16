@@ -5,10 +5,12 @@ using Bisync.Api.Models;
 namespace Bisync.Api.Services;
 
 /// <summary>
-/// Product recipes store nett usable quantity and nett unit cost.
-/// Stock depletion must pull gross purchased quantity:
-/// gross = nett / (1 − yieldLoss%).
-/// Split Use components never apply Yield Loss (waste is explicit).
+/// Product recipes always store nett usable quantity and nett unit cost.
+///
+/// Yield Loss: stock holds gross purchases; sale depletes gross = nett / (1 − loss%).
+/// Split Use: inbound posts gross then moves outputs to child/waste cards; parent on-hand
+/// is already Component Nett, so sale/production depletes parent (or child) 1:1.
+/// Both paths expose LastPriceRecipe as the nett unit cost for product BOMs.
 /// </summary>
 public static class ComponentYieldLossRules
 {
@@ -22,9 +24,7 @@ public static class ComponentYieldLossRules
             using var doc = JsonDocument.Parse(ingredient.DetailConfigJson);
             var root = doc.RootElement;
 
-            if (root.TryGetProperty("splitUse", out var splitUse)
-                && splitUse.ValueKind == JsonValueKind.Object
-                && ReadBool(splitUse, "enabled", "Enabled"))
+            if (IsSplitUseEnabled(root))
                 return 0m;
 
             if (root.TryGetProperty("taggedVendorProductIds", out var tagged)
@@ -58,6 +58,7 @@ public static class ComponentYieldLossRules
 
     /// <summary>
     /// Converts a recipe/nett quantity into the gross stock quantity that must leave inventory.
+    /// Yield Loss inflates; Split Use does not (cards already hold post-split quantities).
     /// </summary>
     public static decimal ToGrossQuantity(decimal nettQuantity, decimal yieldLossPercent)
     {
@@ -78,11 +79,12 @@ public static class ComponentYieldLossRules
     public static decimal ToGrossQuantity(Ingredient? ingredient, decimal nettQuantity)
         => ToGrossQuantity(nettQuantity, ResolvePrimaryYieldLossPercent(ingredient));
 
-    static decimal ClampPercent(decimal pct)
-    {
-        if (pct < 0) return 0m;
-        return pct;
-    }
+    static bool IsSplitUseEnabled(JsonElement root)
+        => root.TryGetProperty("splitUse", out var splitUse)
+            && splitUse.ValueKind == JsonValueKind.Object
+            && ReadBool(splitUse, "enabled", "Enabled");
+
+    static decimal ClampPercent(decimal pct) => pct < 0 ? 0m : pct;
 
     static bool ReadBool(JsonElement obj, string camel, string pascal)
     {

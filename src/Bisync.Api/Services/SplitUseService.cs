@@ -160,14 +160,14 @@ public class SplitUseService(BisyncDbContext db)
         var existing = await db.InventoryPurchases.AnyAsync(
             purchase => purchase.SplitSourceType == sourceType
                 && purchase.SplitSourceId == sourceId
-                && purchase.SplitLineKey == "__nett__",
+                && (purchase.SplitLineKey == "__gross__" || purchase.SplitLineKey == "__nett__"),
             cancellationToken);
         if (existing)
-            throw new InvalidOperationException("This receipt has already been split into inventory.");
+            throw new InvalidOperationException("This receipt has already been posted for Split Use.");
 
         var scale = receiptBasisQty / config.ComponentQuantity;
         var totalReceiptValue = receiptQuantity * receiptUnitPrice;
-        var parentBasisUnitCost = totalReceiptValue / receiptBasisQty;
+        var parentBasisUnitCost = receiptBasisQty > 0 ? totalReceiptValue / receiptBasisQty : 0;
         decimal outputBasisQty = 0;
         decimal allocatedValue = 0;
         var childPurchases = new List<InventoryPurchase>();
@@ -213,6 +213,7 @@ public class SplitUseService(BisyncDbContext db)
                 cancellationToken)
                 ?? throw new InvalidOperationException($"Split Use component '{line.Name}' was not found.");
 
+            // Child BOM/catalog price is the allocated nett cost.
             child.LastPriceInventory = StockCardFifoEngine.RoundUnitPrice(lineUnitPrice);
             child.LastPriceRecipe = child.LastPriceInventory;
             child.UpdatedAt = DateTime.UtcNow;
@@ -234,6 +235,22 @@ public class SplitUseService(BisyncDbContext db)
                 sourceId,
                 line.Key,
                 parent.ComponentId));
+
+            // Move mass from parent → child so stock cards stay conserved.
+            db.InventoryMovements.Add(new InventoryMovement
+            {
+                ComponentId = parent.ComponentId,
+                ComponentName = parent.Name,
+                LocationExternalId = locationExternalId,
+                QtyDelta = -lineBasisQty,
+                Uom = basisUom,
+                UnitPrice = StockCardFifoEngine.RoundUnitPrice(parentBasisUnitCost * line.ValueAssignedPct / 100m),
+                Reason = $"Split Use → {child.Name}",
+                ReferenceType = "split_use",
+                ReferenceId = sourceId,
+                CompanyId = companyId,
+                CreatedAt = createdAt,
+            });
         }
 
         var nettQty = receiptBasisQty - outputBasisQty;
@@ -243,19 +260,19 @@ public class SplitUseService(BisyncDbContext db)
         if (nettValue < -Tolerance)
             throw new InvalidOperationException("Split Use assigned value exceeds the receipt value.");
 
+        // Stock card: GROSS inbound, then split outs (children/waste). On-hand = Component Nett.
+        // Product BOM: always LastPriceRecipe = nett unit cost (same idea as Yield Loss).
         var nettUnitPrice = nettValue / nettQty;
-        parent.LastPriceInventory = StockCardFifoEngine.RoundUnitPrice(nettUnitPrice);
-        if (string.Equals(parent.InventoryUom, basisUom, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(parent.RecipeUom, basisUom, StringComparison.OrdinalIgnoreCase))
-            parent.LastPriceRecipe = parent.LastPriceInventory;
+        parent.LastPriceInventory = StockCardFifoEngine.RoundUnitPrice(parentBasisUnitCost);
+        parent.LastPriceRecipe = StockCardFifoEngine.RoundUnitPrice(nettUnitPrice);
         parent.UpdatedAt = DateTime.UtcNow;
 
         var parentPurchase = CreatePurchase(
             parent.ComponentId,
             parent.Name,
-            nettQty,
+            receiptBasisQty,
             basisUom,
-            nettUnitPrice,
+            parentBasisUnitCost,
             dateOrdered,
             createdAt,
             purchaseOrderId,
@@ -265,12 +282,31 @@ public class SplitUseService(BisyncDbContext db)
             locationExternalId,
             sourceType,
             sourceId,
-            "__nett__",
+            "__gross__",
             parent.ComponentId);
 
         db.InventoryPurchases.Add(parentPurchase);
         db.InventoryPurchases.AddRange(childPurchases);
         db.WastageEntries.AddRange(wasteEntries);
+
+        foreach (var waste in wasteEntries)
+        {
+            var wasteBasisQty = ConvertQuantity(waste.Quantity, waste.Uom, basisUom, parent);
+            db.InventoryMovements.Add(new InventoryMovement
+            {
+                ComponentId = parent.ComponentId,
+                ComponentName = parent.Name,
+                LocationExternalId = locationExternalId,
+                QtyDelta = -wasteBasisQty,
+                Uom = basisUom,
+                UnitPrice = waste.UnitPrice,
+                Reason = waste.Reason,
+                ReferenceType = WastageService.ReferenceType,
+                ReferenceId = 0,
+                CompanyId = companyId,
+                CreatedAt = createdAt,
+            });
+        }
 
         return new SplitUsePostingResult(parentPurchase, childPurchases, wasteEntries);
     }
