@@ -562,11 +562,15 @@ public class IngredientsController(
         await using var transaction = await db.Database.BeginTransactionAsync();
         try
         {
+            // Persist the parent first so its ComponentId is reserved before any
+            // Split Use child IDs are generated (avoids parent/child ID collisions).
+            db.Ingredients.Add(ingredient);
+            await db.SaveChangesAsync();
+
             ingredient.DetailConfigJson = await splitUse.NormalizeIngredientConfigAsync(
                 ingredient,
                 companyId.Value,
                 submittedDetailConfig);
-            db.Ingredients.Add(ingredient);
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
         }
