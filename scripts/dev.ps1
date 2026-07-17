@@ -22,7 +22,7 @@ if (-not $ClientOnly) {
         Write-Host "API already healthy at $apiUrl" -ForegroundColor Green
     } else {
         Write-Host "Starting Bisync API on $apiUrl ..." -ForegroundColor Cyan
-        # Bind 127.0.0.1 explicitly so Vite proxy (also 127.0.0.1) never hits IPv6 localhost mismatch → 502.
+        # Bind 127.0.0.1 explicitly so Vite proxy (also 127.0.0.1) never hits IPv6 localhost mismatch -> 502.
         $apiCmd = @"
 `$env:ASPNETCORE_ENVIRONMENT = 'Development'
 `$env:DEV_CONSOLE_ENABLED = 'true'
@@ -66,5 +66,5 @@ Write-Host "  Client: http://localhost:5173"
 Write-Host "  Login:  dra@cubevalue.com / Pass@123"
 Write-Host ""
 if (-not (Test-ApiHealth)) {
-    Write-Host "WARNING: API not healthy — browser login will show API error 502." -ForegroundColor Red
+    Write-Host "WARNING: API not healthy - browser login will show API error 502." -ForegroundColor Red
 }
