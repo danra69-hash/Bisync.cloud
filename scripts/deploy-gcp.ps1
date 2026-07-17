@@ -19,10 +19,26 @@ param(
 # Every critical step below checks $LASTEXITCODE and throws explicitly, so use "Continue".
 $ErrorActionPreference = "Continue"
 
-$Gcloud = "$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"
-if (-not (Test-Path $Gcloud)) {
-    throw "Google Cloud CLI not found. Install with: winget install Google.CloudSDK"
+function Resolve-Gcloud {
+    $candidates = @()
+    if ($env:LOCALAPPDATA) {
+        $candidates += "$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"
+    }
+    $cmd = Get-Command gcloud -ErrorAction SilentlyContinue
+    if ($cmd) { $candidates += $cmd.Source }
+    $candidates += @(
+        "$env:HOME/google-cloud-sdk/bin/gcloud",
+        "/usr/bin/gcloud",
+        "/usr/local/bin/gcloud"
+    )
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path $path)) { return $path }
+    }
+    throw "Google Cloud CLI not found. Install with: winget install Google.CloudSDK (Windows) or https://cloud.google.com/sdk/docs/install"
 }
+
+$Gcloud = Resolve-Gcloud
+Write-Host "Using gcloud: $Gcloud" -ForegroundColor Gray
 
 function Step([string]$Number, [string]$Message) {
     Write-Host ""

@@ -182,6 +182,36 @@ export function sumSplitUseLineQtyInBasis(
   return { total: unresolved ? null : total, unresolved };
 }
 
+/** Convert a quantity in an arbitrary UOM into the Split Use basis UOM. */
+export function toSplitUseBasisQty(
+  qty: number,
+  fromUom: string,
+  config: ComponentSplitUseConfig,
+  inventoryUom: string,
+  recipeUom: string,
+  convertFromInventoryQty: string,
+  convertToRecipeQty: string,
+): number | null {
+  if (!Number.isFinite(qty) || qty <= 0) return null;
+  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
+  const direct = convertQtyBetweenUnits(qty, fromUom, basisUom);
+  if (direct !== null) return direct;
+
+  if (basisUom === recipeUom && fromUom === inventoryUom) {
+    const from = parseFloat(convertFromInventoryQty || '1') || 1;
+    const to = parseFloat(convertToRecipeQty || '1') || 1;
+    if (from <= 0) return null;
+    return (qty / from) * to;
+  }
+  if (basisUom === inventoryUom && fromUom === recipeUom) {
+    const from = parseFloat(convertFromInventoryQty || '1') || 1;
+    const to = parseFloat(convertToRecipeQty || '1') || 1;
+    if (to <= 0) return null;
+    return (qty / to) * from;
+  }
+  return null;
+}
+
 export function validateSplitUseConfig(
   config: ComponentSplitUseConfig,
   inventoryUom: string,
@@ -216,11 +246,15 @@ export function validateSplitUseConfig(
   if (unresolved || total === null) {
     return 'Sub-component quantities use UOMs that cannot be totalled — align units or add conversion.';
   }
-  if (total >= componentQty - 0.0001) {
-    return `Split outputs (${total} ${basisUom}) must leave a positive nett component quantity.`;
+  // Full butcher splits may consume 100% of the reference qty (nett = 0).
+  // Outputs must not exceed the reference component quantity.
+  if (total > componentQty + 0.0001) {
+    return `Split outputs (${total} ${basisUom}) cannot exceed component quantity (${componentQty} ${basisUom}).`;
   }
   if (activeLines.some(line => {
-    const pct = parseFloat(line.valueAssignedPct);
+    const raw = line.valueAssignedPct.trim();
+    if (raw === '') return false;
+    const pct = parseFloat(raw);
     return !Number.isFinite(pct) || pct < 0 || pct > 100;
   })) {
     return 'Each Value Assigned % must be between 0 and 100.';
@@ -234,7 +268,7 @@ export function validateSplitUseConfig(
       convertFromInventoryQty,
       convertToRecipeQty,
     ) ?? 0;
-    return sum + qty * (parseFloat(line.valueAssignedPct) || 0) / 100;
+    return sum + qty * (parseFloat(line.valueAssignedPct || '0') || 0) / 100;
   }, 0);
   if (allocatedBasis > componentQty + 0.0001) {
     return 'Split Use assigned value exceeds 100% of the component value.';
@@ -274,7 +308,7 @@ export function calcSplitUseNettQty(
   );
   if (unresolved || total === null) return null;
   const nett = componentQty - total;
-  return nett > 0 ? nett : null;
+  return nett >= -0.0001 ? Math.max(0, nett) : null;
 }
 
 /**
@@ -282,6 +316,10 @@ export function calcSplitUseNettQty(
  * (purchase value − value assigned to outputs) ÷ Component Nett qty.
  * When outputs take 0% value, this equals grossUnitCost / keepFraction
  * (same relationship as Yield Loss nett cost).
+ *
+ * `receiptBasisQty` is the actual tagged/received quantity in the Split Use basis UOM.
+ * Split Use `componentQty` + line qtys are a ratio recipe; when tagging a 1kg delivery
+ * against a 10kg recipe, pass receiptBasisQty=1 so outputs scale (e.g. 8kg→0.8kg).
  */
 export function calcSplitUseNettUnitCost(
   purchaseValue: number,
@@ -290,10 +328,16 @@ export function calcSplitUseNettUnitCost(
   recipeUom: string,
   convertFromInventoryQty: string,
   convertToRecipeQty: string,
+  receiptBasisQty?: number,
 ): number {
   if (!config.enabled || purchaseValue <= 0) return 0;
   const componentQty = parseFloat(config.componentQty);
   if (!Number.isFinite(componentQty) || componentQty <= 0) return 0;
+
+  const receiptQty = receiptBasisQty !== undefined && Number.isFinite(receiptBasisQty) && receiptBasisQty > 0
+    ? receiptBasisQty
+    : componentQty;
+  const scale = receiptQty / componentQty;
 
   const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
   let allocatedValue = 0;
@@ -309,13 +353,15 @@ export function calcSplitUseNettUnitCost(
       convertToRecipeQty,
     );
     if (lineQty === null) continue;
-    outputBasisQty += lineQty;
-    const pct = parseFloat(line.valueAssignedPct) || 0;
+    const scaledLineQty = lineQty * scale;
+    outputBasisQty += scaledLineQty;
+    const pct = parseFloat(line.valueAssignedPct || '0') || 0;
     allocatedValue += purchaseValue * (lineQty / componentQty) * (pct / 100);
   }
 
-  const nettQty = componentQty - outputBasisQty;
-  if (nettQty <= 0) return 0;
+  const nettQty = receiptQty - outputBasisQty;
+  // Full split (outputs consume 100% of receipt): parent nett cost is 0; value lives on children.
+  if (nettQty <= 0.0001) return 0;
   const nettValue = Math.max(0, purchaseValue - allocatedValue);
   return nettValue / nettQty;
 }

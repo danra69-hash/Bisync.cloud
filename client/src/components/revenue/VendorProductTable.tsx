@@ -54,9 +54,57 @@ type Props = RowHandlers & {
   productSearch: string;
   companyLocations: CompanyLocationOption[];
   hideYieldLoss?: boolean;
+  /** When false, tagged products are not rendered here (caller shows them above the section title). */
+  showTaggedSection?: boolean;
   onVendorChange: (vendor: string) => void;
   onProductSearchChange: (search: string) => void;
 };
+
+export function resolveScopedTaggedVendorProducts(
+  taggedProductIds: string[],
+  locationsByProduct: Record<string, string[]>,
+  activeLocationIds: string[] = [],
+): VendorProductCatalogItem[] {
+  const scopedTaggedProductIds = filterTaggedVendorProductIdsForLocations(
+    taggedProductIds,
+    locationsByProduct,
+    activeLocationIds,
+  );
+  return scopedTaggedProductIds
+    .map(id => applyVendorProductOverrides().find(p => p.id === id) ?? VENDOR_PRODUCT_CATALOG.find(p => p.id === id))
+    .filter((p): p is VendorProductCatalogItem => !!p);
+}
+
+export function VendorProductTaggedSection({
+  products,
+  companyLocations,
+  hideYieldLoss = false,
+  handlers,
+}: {
+  products: VendorProductCatalogItem[];
+  companyLocations: CompanyLocationOption[];
+  hideYieldLoss?: boolean;
+  handlers: RowHandlers;
+}) {
+  if (products.length === 0) return null;
+  return (
+    <div className="space-y-2 mb-4">
+      <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+        Tagged Vendor Products ({products.length})
+      </p>
+      <div className="border border-primary/25 rounded-lg overflow-hidden bg-primary/[0.03]">
+        <VendorProductTableBody
+          products={products}
+          showTagColumn
+          showLocationColumn
+          companyLocations={companyLocations}
+          handlers={handlers}
+          hideYieldLoss={hideYieldLoss}
+        />
+      </div>
+    </div>
+  );
+}
 
 function formatQty(n: number, countryCode: string): string {
   if (n <= 0) return '—';
@@ -428,6 +476,7 @@ export function VendorProductTable({
   onToggleTag,
   onProductLocationsChange,
   hideYieldLoss = false,
+  showTaggedSection = true,
 }: Props) {
   const searchRows = filterVendorProducts(
     applyVendorProductOverrides(),
@@ -437,14 +486,11 @@ export function VendorProductTable({
   )
     .filter(product => !taggedProductIds.includes(product.id));
   const showSearchTable = productSearch.trim().length > 0 || !!vendor;
-  const scopedTaggedProductIds = filterTaggedVendorProductIdsForLocations(
+  const taggedProducts = resolveScopedTaggedVendorProducts(
     taggedProductIds,
     locationsByProduct,
     activeLocationIds,
   );
-  const taggedProducts = scopedTaggedProductIds
-    .map(id => VENDOR_PRODUCT_CATALOG.find(p => p.id === id))
-    .filter((p): p is VendorProductCatalogItem => !!p);
 
   const rowHandlers: RowHandlers = {
     defaultComponentUom,
@@ -466,22 +512,13 @@ export function VendorProductTable({
 
   return (
     <div className="space-y-4">
-      {taggedProducts.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-            Tagged Vendor Products ({taggedProducts.length})
-          </p>
-          <div className="border border-primary/25 rounded-lg overflow-hidden bg-primary/[0.03]">
-            <VendorProductTableBody
-              products={taggedProducts}
-              showTagColumn
-              showLocationColumn
-              companyLocations={companyLocations}
-              handlers={rowHandlers}
-              hideYieldLoss={hideYieldLoss}
-            />
-          </div>
-        </div>
+      {showTaggedSection && (
+        <VendorProductTaggedSection
+          products={taggedProducts}
+          companyLocations={companyLocations}
+          hideYieldLoss={hideYieldLoss}
+          handlers={rowHandlers}
+        />
       )}
 
       <div className="space-y-3">

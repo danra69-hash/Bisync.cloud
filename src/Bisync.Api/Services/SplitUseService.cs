@@ -255,16 +255,19 @@ public class SplitUseService(BisyncDbContext db)
 
         var nettQty = receiptBasisQty - outputBasisQty;
         var nettValue = totalReceiptValue - allocatedValue;
-        if (nettQty <= Tolerance)
-            throw new InvalidOperationException("Split Use must leave a positive nett parent quantity.");
+        // Full butcher splits may consume 100% of the receipt (nett ≈ 0). Reject only over-split.
+        if (nettQty < -Tolerance)
+            throw new InvalidOperationException("Split Use outputs exceed the receipt quantity.");
         if (nettValue < -Tolerance)
             throw new InvalidOperationException("Split Use assigned value exceeds the receipt value.");
 
         // Stock card: GROSS inbound, then split outs (children/waste). On-hand = Component Nett.
         // Product BOM: always LastPriceRecipe = nett unit cost (same idea as Yield Loss).
-        var nettUnitPrice = nettValue / nettQty;
+        // Full split: parent on-hand goes to zero; BOM cost lives on children.
         parent.LastPriceInventory = StockCardFifoEngine.RoundUnitPrice(parentBasisUnitCost);
-        parent.LastPriceRecipe = StockCardFifoEngine.RoundUnitPrice(nettUnitPrice);
+        parent.LastPriceRecipe = nettQty > Tolerance
+            ? StockCardFifoEngine.RoundUnitPrice(nettValue / nettQty)
+            : 0m;
         parent.UpdatedAt = DateTime.UtcNow;
 
         var parentPurchase = CreatePurchase(
@@ -397,8 +400,9 @@ public class SplitUseService(BisyncDbContext db)
 
         if (lines.Count == 0)
             throw new InvalidOperationException("Add at least one Split Use output.");
-        if (outputBasisQty >= componentQty - Tolerance)
-            throw new InvalidOperationException("Split Use outputs must leave a positive Component Nett quantity.");
+        // Full butcher splits may consume 100% of the reference qty (nett = 0).
+        if (outputBasisQty > componentQty + Tolerance)
+            throw new InvalidOperationException("Split Use outputs cannot exceed the component quantity.");
         if (weightedAllocation > componentQty + Tolerance)
             throw new InvalidOperationException("Split Use assigned value exceeds 100% of the component value.");
 
