@@ -85,7 +85,16 @@ if ($DevConsolePath) {
 } else {
     Write-Host "Dev console path: (disabled)" -ForegroundColor Gray
 }
-$CloudbuildYaml = @"
+# Prefer repo cloudbuild.yaml (same config as GitHub Actions CD).
+$CloudbuildConfig = Join-Path $Root "cloudbuild.yaml"
+if (Test-Path $CloudbuildConfig) {
+    $ImageSha = $Image -replace ':latest$', ":manual-$(Get-Date -Format 'yyyyMMddHHmmss')"
+    & $Gcloud builds submit `
+        --config $CloudbuildConfig `
+        --substitutions "_IMAGE=$Image,_IMAGE_SHA=$ImageSha,_VITE_DEV_CONSOLE_PATH=$DevConsolePath" `
+        .
+} else {
+    $CloudbuildYaml = @"
 steps:
 - name: 'gcr.io/cloud-builders/docker'
   args:
@@ -98,9 +107,10 @@ steps:
 images:
 - '$Image'
 "@
-$Tmp = Join-Path $env:TEMP "bisync-cloudbuild-devconsole.yaml"
-Set-Content -Path $Tmp -Value $CloudbuildYaml -Encoding UTF8
-& $Gcloud builds submit --config $Tmp .
+    $Tmp = Join-Path $env:TEMP "bisync-cloudbuild-devconsole.yaml"
+    Set-Content -Path $Tmp -Value $CloudbuildYaml -Encoding UTF8
+    & $Gcloud builds submit --config $Tmp .
+}
 if ($LASTEXITCODE -ne 0) { throw "Cloud Build failed." }
 Write-Host "Image built and pushed." -ForegroundColor Green
 

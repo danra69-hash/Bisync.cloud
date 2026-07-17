@@ -1,0 +1,26 @@
+# Used by GitHub Actions CD and optional local `gcloud builds submit --config cloudbuild.yaml`.
+# Substitutions:
+#   _IMAGE                 full Artifact Registry image URI (required)
+#   _VITE_DEV_CONSOLE_PATH SPA path for Dev Console (default /dev/console)
+
+substitutions:
+  # Overridden by GitHub Actions / deploy-gcp.ps1 via --substitutions
+  _IMAGE: 'asia-southeast1-docker.pkg.dev/project-8d670aa9-f439-44d9-8e1/bisync/bisync-cloud:latest'
+  _IMAGE_SHA: 'asia-southeast1-docker.pkg.dev/project-8d670aa9-f439-44d9-8e1/bisync/bisync-cloud:manual'
+  _VITE_DEV_CONSOLE_PATH: '/dev/console'
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_DEV_CONSOLE_PATH=${_VITE_DEV_CONSOLE_PATH}'
+      - '-t'
+      - '${_IMAGE}'
+      - '-t'
+      - '${_IMAGE_SHA}'
+      - '.'
+
+images:
+  - '${_IMAGE}'
+  - '${_IMAGE_SHA}'

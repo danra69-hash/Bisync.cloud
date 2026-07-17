@@ -1,34 +1,38 @@
 ---
-description: After pushing to GitHub, always deploy Bisync.cloud to Cloud Run unless the user opts out.
+description: After pushing to GitHub, ship via PR; Cloud Run auto-deploys from master.
 alwaysApply: true
 ---
 
-# Ship changes: commit, push, deploy
+# Ship changes: commit, push, (auto) deploy
 
-When you finish **implementing** changes in this repo, or after **any successful `git push`** to GitHub, complete the full release workflow unless the user explicitly opts out or there is nothing to ship.
+When you finish **implementing** changes in this repo, or after **any successful `git push`** to GitHub, complete the release workflow unless the user explicitly opts out or there is nothing to ship.
 
 ## Workflow
 
 1. **Verify** — Run a quick build check when practical (`client`: `npm run build`; API: `dotnet build`).
 2. **Commit** — Stage relevant code changes only; never commit secrets (`.env`, credentials). Skip if working tree is clean.
-3. **Push** — `git push origin master` (or the branch the user is working on). Skip if already up to date with remote.
-4. **Publish local DB (required)** — Before deploy, always sync `src/Bisync.Api/bisync.db` to GitHub and cloud:
+3. **Push** — `git push -u origin <branch>` (feature branches use `cursor/<name>-ebcb`). Open/update the PR into `master`.
+4. **Deploy** — Prefer **GitHub Actions CD** (`.github/workflows/deploy.yml`):
+   - Merging (or pushing) to **`master`** builds the container and deploys Cloud Run automatically.
+   - Do **not** run `deploy-gcp.ps1` from Cloud Agents (no GCP credentials).
+   - Manual Windows fallback only if CD is broken or the user asks:
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File .\scripts\deploy-gcp.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
+     ```
+5. **One-time CD setup** (human, Windows, once per repo):
    ```powershell
-   .\scripts\publish-local-db.ps1
+   powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-deploy.ps1
    ```
-   Or rely on deploy step 0/7 which runs this automatically (`GitHub` before build, `cloud` after deploy).
-5. **Deploy (required after every push)** — From repo root, always run after a successful GitHub update:
-   ```powershell
-   .\scripts\deploy-gcp.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
-   ```
-   This publishes the local DB to GitHub, builds/deploys the app, then uploads the same DB to Cloud Run GCS.
-6. **Verify cloud** — Confirm `GET /api/health` returns 200 on the live URL.
+   Creates Workload Identity Federation + deploy SA, and sets GitHub variables
+   `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` (no JSON keys).
+6. **Verify cloud** — After master deploy finishes, confirm `GET /api/health` returns 200 on the live URL.
 
 ## Skip deploy only when
 
 - User explicitly says not to deploy.
 - Push failed or was not performed.
 - Question-only task with no code changes and no push.
+- Change is only on a feature branch (CD runs after merge to `master`).
 
 ## Project details
 
@@ -36,5 +40,6 @@ When you finish **implementing** changes in this repo, or after **any successful
 - **GCP project:** `project-8d670aa9-f439-44d9-8e1`
 - **Cloud Run:** `bisync-cloud` in `asia-southeast1`
 - **Live URL:** https://bisync-cloud-389272498937.asia-southeast1.run.app
+- **CD workflow:** Actions → **Deploy Cloud Run**
 
-Report the commit hash, pushed branch, deployment status, and live URL when done.
+Report the commit hash, pushed branch, PR link, and that deploy will run on merge to `master` (or the Actions run URL if already on master).
