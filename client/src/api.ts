@@ -638,6 +638,7 @@ export interface PurchaseOrderItem {
   reconciledUnitPrice?: number | null;
   taxAmount?: number;
   halalCertNo?: string;
+  productExpiryDate?: string | null;
 }
 
 export interface PurchaseOrder {
@@ -658,6 +659,8 @@ export interface PurchaseOrder {
   vendorShareToken?: string | null;
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;
+  vendorDoNumber?: string | null;
+  vendorInvoiceNumber?: string | null;
   canApprove?: boolean;
   canReceive?: boolean;
   canReconcile?: boolean;
@@ -701,10 +704,13 @@ export interface PurchaseOrderLineWorkflowPayload {
   componentUom?: string;
   taxAmount?: number;
   halalCertNo?: string;
+  productExpiryDate?: string;
 }
 
 export interface PurchaseOrderWorkflowPayload {
   items: PurchaseOrderLineWorkflowPayload[];
+  vendorDoNumber?: string;
+  vendorInvoiceNumber?: string;
 }
 
 export interface ReconcilePurchaseOrderResult {

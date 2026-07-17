@@ -676,6 +676,9 @@ public class PurchaseOrderLineWorkflowRequest
     public decimal TaxAmount { get; set; }
     [MaxLength(100)]
     public string? HalalCertNo { get; set; }
+    /// <summary>Optional product expiry date as yyyy-MM-dd.</summary>
+    [MaxLength(20)]
+    public string? ProductExpiryDate { get; set; }
 }
 
 public class CreateCashPurchaseRequest
@@ -917,6 +920,12 @@ public class CreateB2bSalesOrderLineRequest
 public class PurchaseOrderWorkflowRequest
 {
     public List<PurchaseOrderLineWorkflowRequest> Items { get; set; } = [];
+    /// <summary>Vendor delivery order number. Required on receive unless invoice number is set.</summary>
+    [MaxLength(100)]
+    public string? VendorDoNumber { get; set; }
+    /// <summary>Vendor invoice number. Required on receive unless DO number is set.</summary>
+    [MaxLength(100)]
+    public string? VendorInvoiceNumber { get; set; }
 }
 
 public class B2bCustomerContactRequest

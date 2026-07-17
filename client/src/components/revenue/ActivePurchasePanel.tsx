@@ -43,6 +43,7 @@ type EditableLine = {
   issuedUnitPrice: number;
   componentUom: string;
   halalCertNo: string;
+  productExpiryDate: string;
 };
 
 function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 'reconcile' | 'view'): EditableLine[] {
@@ -67,6 +68,7 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       issuedUnitPrice: issued,
       componentUom: item.componentUom || item.unit,
       halalCertNo: item.halalCertNo ?? '',
+      productExpiryDate: item.productExpiryDate?.trim() ?? '',
     };
   });
 }
@@ -79,6 +81,7 @@ function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] 
     componentUom: line.componentUom,
     taxAmount: parseFloat(line.taxAmount) || 0,
     halalCertNo: line.halalCertNo.trim() || undefined,
+    productExpiryDate: line.productExpiryDate.trim() || undefined,
   }));
 }
 
@@ -112,6 +115,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     || Boolean(order.receivedAt)
     || Boolean(order.reconciledAt);
   const [lines, setLines] = useState(() => buildEditableLines(order, mode));
+  const [vendorDoNumber, setVendorDoNumber] = useState(order.vendorDoNumber?.trim() ?? '');
+  const [vendorInvoiceNumber, setVendorInvoiceNumber] = useState(order.vendorInvoiceNumber?.trim() ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shareToken, setShareToken] = useState(order.vendorShareToken?.trim() ?? '');
@@ -119,6 +124,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
 
   useEffect(() => {
     setLines(buildEditableLines(order, mode));
+    setVendorDoNumber(order.vendorDoNumber?.trim() ?? '');
+    setVendorInvoiceNumber(order.vendorInvoiceNumber?.trim() ?? '');
     setError(null);
     setShareToken(order.vendorShareToken?.trim() ?? '');
     setShareLinkCopied(false);
@@ -178,8 +185,24 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   }, [lines]);
 
   const showTaxColumn = !isPurchaseRequest && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const showHalalCertColumn = requiresHalalCert && mode === 'receive';
-  const lineColSpan = ['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, showHalalCertColumn ? 'Halal cert no.' : null, 'Line total'].filter(Boolean).length;
+  // Halal cert is optional — show when org is under a halal policy (or value already stored).
+  const showHalalCertColumn = (requiresHalalCert || lines.some(line => line.halalCertNo.trim()))
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+  const showExpiryColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  const showReceiveDocs = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  const lineColSpan = [
+    'Component',
+    'Product',
+    'Qty',
+    'UOM',
+    mode === 'reconcile' ? 'Issued price' : null,
+    'Unit price',
+    showTaxColumn ? 'Tax' : null,
+    showHalalCertColumn ? 'Halal cert no.' : null,
+    showExpiryColumn ? 'Expiry date' : null,
+    'Line total',
+  ].filter(Boolean).length;
+
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const {
@@ -232,14 +255,20 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       setError('Each line must have a quantity greater than zero.');
       return;
     }
-    if (requiresHalalCert && payload.some(line => !line.halalCertNo?.trim())) {
-      setError('Halal certificate number is required for each line when receiving under a halal product policy.');
+    const doNumber = vendorDoNumber.trim();
+    const invoiceNumber = vendorInvoiceNumber.trim();
+    if (!doNumber && !invoiceNumber) {
+      setError('Enter a Vendor DO number and/or Vendor Invoice number for the documents received.');
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.receivePurchaseOrder(order.id, { items: payload });
+      const updated = await api.receivePurchaseOrder(order.id, {
+        items: payload,
+        vendorDoNumber: doNumber || undefined,
+        vendorInvoiceNumber: invoiceNumber || undefined,
+      });
       onUpdated(updated);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to receive purchase order.');
@@ -417,6 +446,48 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             </div>
           )}
 
+          {showReceiveDocs && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-border bg-muted/10 p-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+                  Vendor DO number
+                </label>
+                {mode === 'receive' && !readOnly ? (
+                  <input
+                    type="text"
+                    value={vendorDoNumber}
+                    onChange={e => setVendorDoNumber(e.target.value)}
+                    placeholder="Delivery order no. (if received)"
+                    className="rounded border border-border bg-background px-2 py-1.5 text-xs"
+                  />
+                ) : (
+                  <p className="text-xs font-medium text-foreground">{vendorDoNumber || '—'}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+                  Vendor Invoice number
+                </label>
+                {mode === 'receive' && !readOnly ? (
+                  <input
+                    type="text"
+                    value={vendorInvoiceNumber}
+                    onChange={e => setVendorInvoiceNumber(e.target.value)}
+                    placeholder="Invoice no. (if received)"
+                    className="rounded border border-border bg-background px-2 py-1.5 text-xs"
+                  />
+                ) : (
+                  <p className="text-xs font-medium text-foreground">{vendorInvoiceNumber || '—'}</p>
+                )}
+              </div>
+              {mode === 'receive' && !readOnly ? (
+                <p className="sm:col-span-2 text-[10px] text-muted-foreground">
+                  Enter at least one of Vendor DO number or Vendor Invoice number (or both), matching the document(s) received.
+                </p>
+              ) : null}
+            </div>
+          )}
+
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">Line items</p>
@@ -425,7 +496,18 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {['Component', 'Product', 'Qty', 'UOM', mode === 'reconcile' ? 'Issued price' : null, 'Unit price', showTaxColumn ? 'Tax' : null, showHalalCertColumn ? 'Halal cert no.' : null, 'Line total'].filter(Boolean).map(h => (
+                    {[
+                      'Component',
+                      'Product',
+                      'Qty',
+                      'UOM',
+                      mode === 'reconcile' ? 'Issued price' : null,
+                      'Unit price',
+                      showTaxColumn ? 'Tax' : null,
+                      showHalalCertColumn ? 'Halal cert no.' : null,
+                      showExpiryColumn ? 'Expiry date' : null,
+                      'Line total',
+                    ].filter(Boolean).map(h => (
                       <th key={h} className="text-left px-3 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
                     ))}
                   </tr>
@@ -505,15 +587,29 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                         )}
                         {showHalalCertColumn && (
                           <td className="px-3 py-2">
-                            {readOnly ? (
+                            {readOnly || mode !== 'receive' ? (
                               <span>{line.halalCertNo || '—'}</span>
                             ) : (
                               <input
                                 type="text"
                                 value={line.halalCertNo}
                                 onChange={e => updateLine(line.itemId, { halalCertNo: e.target.value })}
-                                placeholder="Certificate no."
+                                placeholder="Optional"
                                 className="w-32 rounded border border-border bg-background px-2 py-1"
+                              />
+                            )}
+                          </td>
+                        )}
+                        {showExpiryColumn && (
+                          <td className="px-3 py-2">
+                            {readOnly || mode !== 'receive' ? (
+                              <span className="font-sans">{line.productExpiryDate || '—'}</span>
+                            ) : (
+                              <input
+                                type="date"
+                                value={line.productExpiryDate}
+                                onChange={e => updateLine(line.itemId, { productExpiryDate: e.target.value })}
+                                className="w-36 rounded border border-border bg-background px-2 py-1 font-sans"
                               />
                             )}
                           </td>
@@ -530,7 +626,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
 
           {requiresHalalCert && mode === 'receive' && (
             <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              Halal policy is active for this order&apos;s company/location. Enter the halal certificate number for each product received.
+              Halal policy is active for this order&apos;s company/location. Halal certificate number is optional — enter it when available.
             </div>
           )}
 

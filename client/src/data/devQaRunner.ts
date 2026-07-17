@@ -1140,7 +1140,10 @@ const TASKS: TaskDef[] = [
           componentUom: item.componentUom ?? 'Kg',
           halalCertNo: 'QA-HALAL-001',
         }));
-        await api.receivePurchaseOrder(meta.id, { items });
+        await api.receivePurchaseOrder(meta.id, {
+          items,
+          vendorDoNumber: `QA-DO-${meta.id}`,
+        });
         await api.reconcilePurchaseOrder(meta.id, { items });
         received += 1;
         if (received % 5 === 0) update({ detail: `Received ${received}/${ctx.purchaseOrders.length}…` });
