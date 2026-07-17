@@ -125,6 +125,14 @@ function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
 
       return 'Wastage';
 
+    case 'split_use':
+
+      return 'Split';
+
+    case 'split_use_in':
+
+      return 'Split';
+
     case 'production':
 
       return 'Production';
@@ -160,6 +168,10 @@ function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
 
 
 function entryInboundOutbound(entry: StockCardLedgerEntry, countryCode: string): { inbound: string; outbound: string } {
+  // Split Use on the parent is composition of inbound — not an outbound leave.
+  if (entry.entryType === 'split_use') {
+    return { inbound: '—', outbound: '—' };
+  }
   const qty = fmtQty(Math.abs(entry.signedQty), countryCode);
   if (entry.signedQty > 0) return { inbound: qty, outbound: '—' };
   if (entry.signedQty < 0) return { inbound: '—', outbound: qty };

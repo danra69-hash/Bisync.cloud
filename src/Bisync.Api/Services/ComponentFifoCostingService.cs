@@ -129,6 +129,8 @@ public class ComponentFifoCostingService(BisyncDbContext db)
         var refType = movement.ReferenceType.Trim().ToLowerInvariant();
         if (refType == "inventory_adjustment" || movement.Reason.Contains("adjust", StringComparison.OrdinalIgnoreCase))
             return movement.QtyDelta >= 0 ? "adjustment_in" : "adjustment_out";
+        if (refType == "split_use" || movement.Reason.Contains("split use", StringComparison.OrdinalIgnoreCase))
+            return "split_use";
         if (movement.QtyDelta >= 0 && refType is "transfer_in")
             return "transfer_in";
         if (movement.QtyDelta < 0)
