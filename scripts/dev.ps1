@@ -17,7 +17,59 @@ function Test-ApiHealth {
     }
 }
 
+function Ensure-LocalPostgres {
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $docker) {
+        Write-Host "Docker not found. If the API fails with 'permission denied to create database'," -ForegroundColor Yellow
+        Write-Host "  run: .\scripts\setup-local-postgres.ps1  (needs postgres superuser password)" -ForegroundColor Yellow
+        return
+    }
+
+    Write-Host "Ensuring Docker Postgres (bisync / bisync_archive / bisync_audit) ..." -ForegroundColor Cyan
+    Push-Location $root
+    try {
+        docker compose up -d 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "docker compose up failed. Port 5432 may already be used by native Windows PostgreSQL." -ForegroundColor Yellow
+            Write-Host "  Stop that service, or run: .\scripts\setup-local-postgres.ps1" -ForegroundColor Yellow
+            return
+        }
+
+        $ready = $false
+        for ($i = 1; $i -le 30; $i++) {
+            docker compose exec -T postgres pg_isready -U bisync -d bisync 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                $ready = $true
+                break
+            }
+            Start-Sleep -Seconds 1
+        }
+        if (-not $ready) {
+            Write-Host "Postgres container did not become ready." -ForegroundColor Red
+            return
+        }
+
+        foreach ($dbName in @("bisync", "bisync_archive", "bisync_audit")) {
+            $exists = docker compose exec -T postgres psql -U bisync -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$dbName'" 2>$null
+            if ($exists -match "1") {
+                Write-Host "  database $dbName OK" -ForegroundColor DarkGray
+            } else {
+                Write-Host "  creating database $dbName ..." -ForegroundColor Gray
+                docker compose exec -T postgres psql -U bisync -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $dbName OWNER bisync" 2>&1 | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "  Failed to create $dbName" -ForegroundColor Red
+                }
+            }
+        }
+        Write-Host "Local Postgres ready." -ForegroundColor Green
+    } finally {
+        Pop-Location
+    }
+}
+
 if (-not $ClientOnly) {
+    Ensure-LocalPostgres
+
     if (Test-ApiHealth) {
         Write-Host "API already healthy at $apiUrl" -ForegroundColor Green
     } else {
@@ -46,7 +98,10 @@ dotnet run --urls $apiUrl
             Write-Host "API did not become healthy at $apiUrl/api/health" -ForegroundColor Red
             Write-Host "Common fixes:" -ForegroundColor Yellow
             Write-Host "  1. Start Postgres:  docker compose up -d"
-            Write-Host "  2. Check the API PowerShell window for errors"
+            Write-Host "  2. If you see 'permission denied to create database':"
+            Write-Host "       stop native Windows PostgreSQL on port 5432, then: docker compose up -d"
+            Write-Host "       OR run: .\scripts\setup-local-postgres.ps1"
+            Write-Host "  3. Check the API PowerShell window for errors"
             Write-Host "Login will return 502 until the API is up."
         } else {
             Write-Host "API healthy." -ForegroundColor Green
