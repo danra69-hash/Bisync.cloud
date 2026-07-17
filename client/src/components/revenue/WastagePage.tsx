@@ -363,10 +363,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
   }, [reason, selectedCompanyId]);
 
   const historyScrollRef = useRef<HTMLDivElement | null>(null);
-  const { visibleItems, sentinelRef, hasMore } = useInfiniteScrollSlice(rows, {
-    pageSize: 40,
-    scrollRootRef: historyScrollRef,
-  });
+  const { visibleItems, sentinelRef, hasMore, nextPageSize, loadMore } = useInfiniteScrollSlice(rows, { scrollRootRef: historyScrollRef });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -697,7 +694,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
               ))}
             </tbody>
           </table>
-          <InfiniteScrollDivSentinel hasMore={hasMore} sentinelRef={sentinelRef} />
+          <InfiniteScrollDivSentinel hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
         </div>
         <p className="px-3 py-2 text-[10px] text-muted-foreground border-t border-border">
           POS void/refund wastage posts automatically once POS is live (API: <code className="font-mono">POST /api/wastage/pos</code>).

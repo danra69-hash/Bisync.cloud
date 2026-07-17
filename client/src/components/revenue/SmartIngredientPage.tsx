@@ -179,8 +179,7 @@ export function SmartIngredientPage({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedFiltered, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedFiltered, { scrollRootRef });
 
   const locationScope = useMemo<SmartComponentLocationScope | undefined>(() => {
     if (!selectedCompanyId || selectedLocationIds.length === 0) return undefined;
@@ -477,7 +476,7 @@ export function SmartIngredientPage({
                   </tr>
                   );
                 })}
-                <InfiniteScrollTableSentinel colSpan={11} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={11} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>

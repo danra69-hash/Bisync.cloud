@@ -575,8 +575,7 @@ export function ProductManagementPage({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(displayRows, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(displayRows, { scrollRootRef });
 
   function replaceProduct(updated: Product) {
     setProducts(prev => prev.map(p => (p.id === updated.id ? updated : p)));
@@ -911,7 +910,7 @@ export function ProductManagementPage({
                     );
                   })}
                   <InfiniteScrollDivSentinel
-                    hasMore={hasMore}
+                    hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize}
                     sentinelRef={sentinelRef}
                     totalCount={totalCount}
                     visibleCount={visibleCount}

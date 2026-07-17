@@ -250,8 +250,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedLevels, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedLevels, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -318,7 +317,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
                 </td>
               </tr>
             )}
-            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>

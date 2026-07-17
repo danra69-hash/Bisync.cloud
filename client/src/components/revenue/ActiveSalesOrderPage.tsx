@@ -160,8 +160,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sorted, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sorted, { scrollRootRef });
 
   async function ensureToken(order: B2bSalesOrder): Promise<string> {
     const existing = order.shareToken?.trim();
@@ -330,7 +329,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
             })}
             <InfiniteScrollTableSentinel
               colSpan={7}
-              hasMore={hasMore}
+              hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize}
               sentinelRef={sentinelRef}
               totalCount={totalCount}
               visibleCount={visibleCount}

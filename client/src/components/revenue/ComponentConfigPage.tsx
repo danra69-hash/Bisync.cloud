@@ -345,7 +345,7 @@ export function ComponentConfigPage({
                       </td>
                     </tr>
                   )}
-                  <InfiniteScrollTableSentinel colSpan={2} hasMore={locationStorageScroll.hasMore} sentinelRef={locationStorageScroll.sentinelRef} totalCount={locationStorageScroll.totalCount} visibleCount={locationStorageScroll.visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={2} hasMore={locationStorageScroll.hasMore} onLoadMore={locationStorageScroll.loadMore} nextPageSize={locationStorageScroll.nextPageSize} sentinelRef={locationStorageScroll.sentinelRef} totalCount={locationStorageScroll.totalCount} visibleCount={locationStorageScroll.visibleCount} />
                 </tbody>
               </table>
               </TableScrollContainer>
@@ -417,7 +417,7 @@ export function ComponentConfigPage({
                           </tr>
                         );
                       })}
-                      <InfiniteScrollTableSentinel colSpan={3} hasMore={myStorageScroll.hasMore} sentinelRef={myStorageScroll.sentinelRef} totalCount={myStorageScroll.totalCount} visibleCount={myStorageScroll.visibleCount} />
+                      <InfiniteScrollTableSentinel colSpan={3} hasMore={myStorageScroll.hasMore} onLoadMore={myStorageScroll.loadMore} nextPageSize={myStorageScroll.nextPageSize} sentinelRef={myStorageScroll.sentinelRef} totalCount={myStorageScroll.totalCount} visibleCount={myStorageScroll.visibleCount} />
                     </tbody>
                   </table>
                 </TableScrollContainer>

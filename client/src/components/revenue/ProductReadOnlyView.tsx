@@ -64,8 +64,7 @@ function ComponentItemsTable({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(items, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(items, { scrollRootRef });
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
@@ -114,7 +113,7 @@ function ComponentItemsTable({
                   <td className={`${tdCls} font-medium`}>{rm(item.subtotal)}</td>
                 </tr>
               ))}
-              <InfiniteScrollTableSentinel colSpan={5} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={5} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
         </TableScrollContainer>

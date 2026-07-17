@@ -90,8 +90,7 @@ export function MalaysiaProvidentFundSection({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedBrackets, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedBrackets, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -198,7 +197,7 @@ export function MalaysiaProvidentFundSection({
                   </td>
                 </tr>
               )}
-              <InfiniteScrollTableSentinel colSpan={6} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={6} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
         </TableScrollContainer>

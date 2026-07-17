@@ -190,17 +190,19 @@ export function CustomerListPage({
   const {
     visibleItems: pagedB2b,
     hasMore: b2bHasMore,
-    sentinelRef: b2bSentinelRef,
     totalCount: b2bTotalCount,
     visibleCount: b2bVisibleCount,
+    nextPageSize: b2bNextPageSize,
+    loadMore: b2bLoadMore,
   } = useInfiniteScrollSlice(sortedB2b, { scrollRootRef });
 
   const {
     visibleItems: pagedPos,
     hasMore: posHasMore,
-    sentinelRef: posSentinelRef,
     totalCount: posTotalCount,
     visibleCount: posVisibleCount,
+    nextPageSize: posNextPageSize,
+    loadMore: posLoadMore,
   } = useInfiniteScrollSlice(sortedPos, { scrollRootRef });
 
   const nextB2bId = useMemo(() => nextB2bCustomerExternalId(allB2bCustomers), [allB2bCustomers]);
@@ -316,7 +318,8 @@ export function CustomerListPage({
             <InfiniteScrollTableSentinel
               colSpan={7}
               hasMore={b2bHasMore}
-              sentinelRef={b2bSentinelRef}
+              onLoadMore={b2bLoadMore}
+              nextPageSize={b2bNextPageSize}
               visibleCount={b2bVisibleCount}
               totalCount={b2bTotalCount}
             />
@@ -405,7 +408,8 @@ export function CustomerListPage({
             <InfiniteScrollTableSentinel
               colSpan={6}
               hasMore={posHasMore}
-              sentinelRef={posSentinelRef}
+              onLoadMore={posLoadMore}
+              nextPageSize={posNextPageSize}
               visibleCount={posVisibleCount}
               totalCount={posTotalCount}
             />

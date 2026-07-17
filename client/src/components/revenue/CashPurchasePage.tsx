@@ -184,9 +184,10 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
   const {
     visibleItems: pagedHistoryRows,
     hasMore: historyHasMore,
-    sentinelRef: historySentinelRef,
     totalCount: historyTotalCount,
     visibleCount: historyVisibleCount,
+    nextPageSize: historyNextPageSize,
+    loadMore: historyLoadMore,
   } = useInfiniteScrollSlice(monthHistory.rows, { scrollRootRef: historyScrollRef });
 
   const previousPriceByPurchaseId = useMemo(() => {
@@ -718,7 +719,8 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                 })}
                 <InfiniteScrollDivSentinel
                   hasMore={historyHasMore}
-                  sentinelRef={historySentinelRef}
+                  onLoadMore={historyLoadMore}
+                  nextPageSize={historyNextPageSize}
                   totalCount={historyTotalCount}
                   visibleCount={historyVisibleCount}
                 />

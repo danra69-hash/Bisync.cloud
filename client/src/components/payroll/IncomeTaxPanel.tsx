@@ -395,7 +395,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                       </td>
                     </tr>
                   )}
-                  <InfiniteScrollTableSentinel colSpan={5} hasMore={bracketsScroll.hasMore} sentinelRef={bracketsScroll.sentinelRef} totalCount={bracketsScroll.totalCount} visibleCount={bracketsScroll.visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={5} hasMore={bracketsScroll.hasMore} onLoadMore={bracketsScroll.loadMore} nextPageSize={bracketsScroll.nextPageSize} sentinelRef={bracketsScroll.sentinelRef} totalCount={bracketsScroll.totalCount} visibleCount={bracketsScroll.visibleCount} />
                 </tbody>
               </table>
             </TableScrollContainer>
@@ -479,7 +479,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                       </td>
                     </tr>
                   )}
-                  <InfiniteScrollTableSentinel colSpan={4} hasMore={reliefsScroll.hasMore} sentinelRef={reliefsScroll.sentinelRef} totalCount={reliefsScroll.totalCount} visibleCount={reliefsScroll.visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={4} hasMore={reliefsScroll.hasMore} onLoadMore={reliefsScroll.loadMore} nextPageSize={reliefsScroll.nextPageSize} sentinelRef={reliefsScroll.sentinelRef} totalCount={reliefsScroll.totalCount} visibleCount={reliefsScroll.visibleCount} />
                 </tbody>
               </table>
             </TableScrollContainer>
@@ -543,7 +543,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                       </td>
                     </tr>
                   )}
-                  <InfiniteScrollTableSentinel colSpan={2} hasMore={rebatesScroll.hasMore} sentinelRef={rebatesScroll.sentinelRef} totalCount={rebatesScroll.totalCount} visibleCount={rebatesScroll.visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={2} hasMore={rebatesScroll.hasMore} onLoadMore={rebatesScroll.loadMore} nextPageSize={rebatesScroll.nextPageSize} sentinelRef={rebatesScroll.sentinelRef} totalCount={rebatesScroll.totalCount} visibleCount={rebatesScroll.visibleCount} />
                 </tbody>
               </table>
             </TableScrollContainer>
@@ -597,7 +597,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
                         </td>
                       </tr>
                     )}
-                    <InfiniteScrollTableSentinel colSpan={8} hasMore={previewScroll.hasMore} sentinelRef={previewScroll.sentinelRef} totalCount={previewScroll.totalCount} visibleCount={previewScroll.visibleCount} />
+                    <InfiniteScrollTableSentinel colSpan={8} hasMore={previewScroll.hasMore} onLoadMore={previewScroll.loadMore} nextPageSize={previewScroll.nextPageSize} sentinelRef={previewScroll.sentinelRef} totalCount={previewScroll.totalCount} visibleCount={previewScroll.visibleCount} />
                   </tbody>
                 </table>
               </TableScrollContainer>

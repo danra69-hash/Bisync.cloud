@@ -111,8 +111,7 @@ export function PayrollEmployeeDirectoryTab({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -179,7 +178,7 @@ export function PayrollEmployeeDirectoryTab({
                 </td>
               </tr>
             )}
-            <InfiniteScrollTableSentinel colSpan={DIRECTORY_TABLE_COLUMNS.length} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={DIRECTORY_TABLE_COLUMNS.length} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>

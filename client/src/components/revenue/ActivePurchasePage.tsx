@@ -155,8 +155,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedOrders, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedOrders, { scrollRootRef });
 
   function handleOrderUpdated(updated: PurchaseOrder) {
     setOrders(prev => {
@@ -256,7 +255,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                   </tr>
                 ))
               )}
-              <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
         </TableScrollContainer>

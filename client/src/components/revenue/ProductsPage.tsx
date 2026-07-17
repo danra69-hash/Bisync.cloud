@@ -238,8 +238,7 @@ function ComponentLinesSection({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedLines, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedLines, { scrollRootRef });
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
@@ -381,7 +380,7 @@ function ComponentLinesSection({
                 </td>
               </tr>
             ) : null}
-            <InfiniteScrollTableSentinel colSpan={6} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={6} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>

@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-export const DEFAULT_INFINITE_SCROLL_PAGE_SIZE = 50;
+/** Rows shown initially, and appended each time the user clicks Load next. */
+export const DEFAULT_TABLE_PAGE_SIZE = 100;
+
+/** @deprecated Use DEFAULT_TABLE_PAGE_SIZE */
+export const DEFAULT_INFINITE_SCROLL_PAGE_SIZE = DEFAULT_TABLE_PAGE_SIZE;
 
 type Options = {
   pageSize?: number;
-  scrollRootRef?: RefObject<HTMLElement | null>;
+  /** Ignored — kept for call-site compatibility after removing infinite scroll. */
+  scrollRootRef?: unknown;
 };
 
+/**
+ * Progressive table paging: show the first `pageSize` rows, then append another
+ * `pageSize` on each Load next click without removing earlier rows.
+ */
 export function useInfiniteScrollSlice<T>(items: T[], options: Options = {}) {
-  const pageSize = options.pageSize ?? DEFAULT_INFINITE_SCROLL_PAGE_SIZE;
-  const scrollRootRef = options.scrollRootRef;
+  const pageSize = options.pageSize ?? DEFAULT_TABLE_PAGE_SIZE;
   const [visibleCount, setVisibleCount] = useState(pageSize);
-  const sentinelRef = useRef<HTMLElement | null>(null);
 
   const itemsLength = items.length;
 
@@ -26,38 +32,23 @@ export function useInfiniteScrollSlice<T>(items: T[], options: Options = {}) {
   );
 
   const hasMore = visibleCount < itemsLength;
+  const remainingCount = Math.max(0, itemsLength - visibleCount);
+  const nextPageSize = Math.min(pageSize, remainingCount);
 
   const loadMore = useCallback(() => {
     setVisibleCount(current => Math.min(current + pageSize, itemsLength));
   }, [itemsLength, pageSize]);
 
-  useEffect(() => {
-    if (!hasMore) return;
-
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-
-    const root = scrollRootRef?.current ?? null;
-
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries.some(entry => entry.isIntersecting)) {
-          loadMore();
-        }
-      },
-      { root, rootMargin: '240px', threshold: 0 },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMore, loadMore, scrollRootRef, visibleCount, itemsLength]);
-
   return {
     visibleItems,
     hasMore,
-    sentinelRef,
+    /** @deprecated No longer used; load-more is button-driven. */
+    sentinelRef: { current: null },
     totalCount: itemsLength,
     visibleCount: visibleItems.length,
+    pageSize,
+    nextPageSize,
+    remainingCount,
     loadMore,
   };
 }

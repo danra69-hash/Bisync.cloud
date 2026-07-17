@@ -78,8 +78,7 @@ function SocsoCategoryTable({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedBrackets, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedBrackets, { scrollRootRef });
 
   return (
     <div>
@@ -127,7 +126,7 @@ function SocsoCategoryTable({
                   </td>
                 </tr>
               ))}
-              <InfiniteScrollTableSentinel colSpan={3} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={3} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
         </TableScrollContainer>

@@ -133,8 +133,7 @@ export function ProcessPayrollPanel({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedPreviewLines, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedPreviewLines, { scrollRootRef });
 
   const handleProcess = async () => {
     if (!selectedCompanyId || !preview || preview.alreadyProcessed) return;
@@ -262,7 +261,7 @@ export function ProcessPayrollPanel({
                       <PayrollLineRow key={line.employeeId} line={line} preview={preview} countryCode={displayCountry} />
                     ))
                   )}
-                  <InfiniteScrollTableSentinel colSpan={TABLE_COLUMNS.length} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={TABLE_COLUMNS.length} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
             </TableScrollContainer>

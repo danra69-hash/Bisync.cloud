@@ -175,8 +175,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedLines, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedLines, { scrollRootRef });
 
   function applyTemplateNow(template: OrderTemplate, currentLines: CreateOrderLine[]) {
     const updates = buildOrderQtyFromTemplate(template, currentLines);
@@ -395,7 +394,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                       </td>
                     </tr>
                   ))}
-                  <InfiniteScrollTableSentinel colSpan={11} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={11} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
                 {lines.length > 0 && (
                   <tfoot>

@@ -51,8 +51,7 @@ export function AccessControlTab() {
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(filteredRows, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(filteredRows, { scrollRootRef });
 
   useEffect(() => {
     setLoading(true);
@@ -246,7 +245,7 @@ export function AccessControlTab() {
             )}
             <InfiniteScrollTableSentinel
               colSpan={columnCount}
-              hasMore={hasMore}
+              hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize}
               sentinelRef={sentinelRef}
               visibleCount={visibleCount}
               totalCount={totalCount}

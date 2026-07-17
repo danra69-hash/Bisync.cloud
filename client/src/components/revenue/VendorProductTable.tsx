@@ -248,8 +248,7 @@ export function VendorProductTableBody({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(products, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(products, { scrollRootRef });
 
   return (
     <>
@@ -435,7 +434,7 @@ export function VendorProductTableBody({
               </tr>
             );
           })}
-          <InfiniteScrollTableSentinel colSpan={colSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+          <InfiniteScrollTableSentinel colSpan={colSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
         </tbody>
       </table>
       </TableScrollContainer>

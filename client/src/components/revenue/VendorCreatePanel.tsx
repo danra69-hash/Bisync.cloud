@@ -78,8 +78,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
     hasMore: parsedRowsHasMore,
     sentinelRef: parsedRowsSentinelRef,
     totalCount: parsedRowsTotalCount,
-    visibleCount: parsedRowsVisibleCount,
-  } = useInfiniteScrollSlice(parsedRows, { scrollRootRef: parsedRowsScrollRef });
+    visibleCount: parsedRowsVisibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(parsedRows, { scrollRootRef: parsedRowsScrollRef });
 
   function setField<K extends keyof VendorCreatePayload>(key: K, value: VendorCreatePayload[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -473,7 +472,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                               </td>
                             </tr>
                           ))}
-                          <InfiniteScrollTableSentinel colSpan={7} hasMore={parsedRowsHasMore} sentinelRef={parsedRowsSentinelRef} totalCount={parsedRowsTotalCount} visibleCount={parsedRowsVisibleCount} />
+                          <InfiniteScrollTableSentinel colSpan={7} hasMore={parsedRowsHasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={parsedRowsSentinelRef} totalCount={parsedRowsTotalCount} visibleCount={parsedRowsVisibleCount} />
                         </tbody>
                       </table>
                     </TableScrollContainer>

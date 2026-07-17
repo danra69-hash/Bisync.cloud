@@ -245,8 +245,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sorted, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sorted, { scrollRootRef });
 
   async function handleReadyToShip(row: ActiveOrderLineRow) {
     setBusyLineId(row.line.id);
@@ -423,7 +422,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
             })}
             <InfiniteScrollTableSentinel
               colSpan={7}
-              hasMore={hasMore}
+              hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize}
               sentinelRef={sentinelRef}
               totalCount={totalCount}
               visibleCount={visibleCount}

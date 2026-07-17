@@ -151,8 +151,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedDivisionRows, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedDivisionRows, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -323,7 +322,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
                   </tr>
                 );
               })}
-              <InfiniteScrollTableSentinel colSpan={4} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={4} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
         </TableScrollContainer>

@@ -597,7 +597,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     storageAssignmentVersion,
   ]);
 
-  const { visibleItems, hasMore, sentinelRef } = useInfiniteScrollSlice(displayRows, { scrollRootRef });
+  const { visibleItems, hasMore, sentinelRef, nextPageSize, loadMore } = useInfiniteScrollSlice(displayRows, { scrollRootRef });
 
   function handleSort(column: CountSortColumn) {
     toggleSort(column);
@@ -937,7 +937,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                 );
               })
             )}
-            <InfiniteScrollTableSentinel colSpan={TABLE_COL_COUNT} hasMore={hasMore} sentinelRef={sentinelRef} />
+            <InfiniteScrollTableSentinel colSpan={TABLE_COL_COUNT} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
           </tbody>
         </table>
       </TableScrollContainer>

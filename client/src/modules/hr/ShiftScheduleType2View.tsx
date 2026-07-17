@@ -318,8 +318,7 @@ export default function ShiftScheduleType2View({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
 
   useEffect(() => {
     setDraft(serverDraft);
@@ -594,7 +593,7 @@ export default function ShiftScheduleType2View({
                 })}
               </tr>
             ))}
-            <InfiniteScrollTableSentinel colSpan={scheduleColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={scheduleColSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       )}

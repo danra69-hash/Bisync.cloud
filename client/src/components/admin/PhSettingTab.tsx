@@ -179,8 +179,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedHolidays, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedHolidays, { scrollRootRef });
 
   if (!selectedCompanyId) {
     return null;
@@ -317,7 +316,7 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
                       </td>
                     </tr>
                   )}
-                  <InfiniteScrollTableSentinel colSpan={4} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={4} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
             </TableScrollContainer>
