@@ -15,7 +15,7 @@ import {
   resolveComponentUomQty,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
-import { calcSplitUseNettUnitCost } from './componentSplitUse';
+import { calcSplitUseNettUnitCost, toSplitUseBasisQty } from './componentSplitUse';
 
 export type VendorProductTagApplyOptions = {
   recipeUnit: string;
@@ -166,17 +166,38 @@ export function syncComponentPricesFromPrimaryTag(row: ComponentRow): ComponentR
     : (parseFloat(detail.vendorProductLossYield[primaryId] ?? '0') || 0);
   const nettQty = calcNettUomQty(principalQty, lossYield);
   const yieldNettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
+  const inventoryUnit = fromApiUom(row.inventoryUOM);
+  const receiptBasisQty = detail.splitUse?.enabled
+    ? toSplitUseBasisQty(
+      principalQty,
+      componentUom,
+      detail.splitUse,
+      inventoryUnit,
+      recipeUnit,
+      detail.convertFromInventoryQty || '1',
+      detail.convertToRecipeQty || '1',
+    ) ?? undefined
+    : undefined;
   const splitNettPrice = detail.splitUse?.enabled
     ? calcSplitUseNettUnitCost(
       product.deliveryPrice,
       detail.splitUse,
-      fromApiUom(row.inventoryUOM),
+      inventoryUnit,
       recipeUnit,
       detail.convertFromInventoryQty || '1',
       detail.convertToRecipeQty || '1',
+      receiptBasisQty,
     )
     : 0;
+  // Full Split Use (nett = 0) keeps inventory delivery price; recipe nett may be 0.
   const nettPrice = detail.splitUse?.enabled ? splitNettPrice : yieldNettPrice;
+  if (detail.splitUse?.enabled && nettPrice <= 0 && product.deliveryPrice > 0) {
+    return {
+      ...row,
+      lastPriceRecipe: 0,
+      lastPriceInventory: product.deliveryPrice,
+    };
+  }
 
   if (nettPrice <= 0) return row;
 

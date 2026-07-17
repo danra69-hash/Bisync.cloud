@@ -37,7 +37,8 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
     form.convertToRecipeQty,
   );
   const componentQty = parseFloat(splitUse.componentQty) || 0;
-  const quantitiesValid = lineTotal !== null && lineTotal < componentQty;
+  // Full butcher splits may consume 100% of the reference qty (nett = 0).
+  const quantitiesValid = lineTotal !== null && lineTotal <= componentQty + 0.0001;
   const nettQty = lineTotal === null ? null : Math.max(0, componentQty - lineTotal);
   const allocatedValue = splitUse.lines.reduce((sum, line) => {
     const value = calcSplitUseLineAssignedValue(
@@ -222,10 +223,11 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
         Add sub-component
       </button>
       <p className="text-[10px] text-muted-foreground">
-        Split output quantities move to child stock (or wastage) on inbound; Component Nett remains as parent stock.
-        Products always use nett recipe qty and nett recipe cost (LastPriceRecipe). Stock depletion is 1:1 against
-        the post-split parent/child card — the gross purchase is already visible on the parent inbound line.
-        Yield Loss % is disabled while Split Use is enabled.
+        Split output quantities move to child stock (or wastage) on inbound. Component Nett remains as parent stock
+        when outputs are less than the reference QTY; a full split (outputs = QTY) leaves zero parent stock.
+        When a vendor product is tagged, inbound qty scales this recipe (e.g. 1kg against a 10kg recipe → 0.8 + 0.2).
+        Products always use nett recipe qty and nett recipe cost (LastPriceRecipe). Yield Loss % is disabled while
+        Split Use is enabled.
       </p>
     </div>
   );

@@ -32,7 +32,12 @@ import {
   toForm,
 } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_DETAIL_CLS, DETAIL_PANEL_OVERLAY_ELEVATED_CLS, DETAIL_PANEL_SHELL_ELEVATED_CLS } from '../layout/sidePanelShared';
-import { VendorProductTable, type CompanyLocationOption } from './VendorProductTable';
+import {
+  resolveScopedTaggedVendorProducts,
+  VendorProductTable,
+  VendorProductTaggedSection,
+  type CompanyLocationOption,
+} from './VendorProductTable';
 import { isVendorProductTagReady, countComponentTaggedVendors } from '../../data/vendorProductTagging';
 import {
   dailyUsageToRecipeBasis,
@@ -46,6 +51,7 @@ import { ComponentSplitUseSection } from './ComponentSplitUseSection';
 import {
   calcSplitUseNettUnitCost,
   createSplitUseLine,
+  toSplitUseBasisQty,
   validateSplitUseConfig,
 } from '../../data/componentSplitUse';
 
@@ -759,6 +765,17 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
 
   const delivPrice = taggedPricing?.product.deliveryPrice ?? (parseFloat(form.deliveryUnitPrice) || 0);
   const yieldNettPrice = taggedPricing?.nettPrice ?? 0;
+  const taggedReceiptBasisQty = taggedPricing
+    ? toSplitUseBasisQty(
+      taggedPricing.principalQty,
+      taggedPricing.productUom,
+      form.splitUse,
+      form.inventoryUnit,
+      form.recipeUnit,
+      form.convertFromInventoryQty,
+      form.convertToRecipeQty,
+    ) ?? undefined
+    : undefined;
   const splitNettPrice = form.splitUse.enabled
     ? calcSplitUseNettUnitCost(
       delivPrice,
@@ -767,6 +784,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       form.recipeUnit,
       form.convertFromInventoryQty,
       form.convertToRecipeQty,
+      taggedReceiptBasisQty,
     )
     : 0;
   // Product BOM always uses nett recipe cost (Yield Loss or Split Use).
@@ -1124,6 +1142,33 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
           </div>
 
           <div>
+            <VendorProductTaggedSection
+              products={resolveScopedTaggedVendorProducts(
+                form.taggedVendorProductIds,
+                form.vendorProductLocations,
+                selectedLocationIds,
+              )}
+              companyLocations={companyLocations}
+              hideYieldLoss={form.splitUse.enabled}
+              handlers={{
+                defaultComponentUom: form.recipeUnit,
+                principalComponentUom: form.recipeUnit,
+                altRecipeUnits: form.altRecipeUnits,
+                componentUomChoices,
+                componentUomByProduct: form.vendorProductComponentUom,
+                principalQtyByProduct: form.vendorProductPrincipalQty,
+                lossYieldByProduct: form.vendorProductLossYield,
+                locationsByProduct: form.vendorProductLocations,
+                taggedProductIds: form.taggedVendorProductIds,
+                activeLocationIds: selectedLocationIds,
+                onPrincipalQtyChange: handlePrincipalQtyChange,
+                onLossYieldChange: handleLossYieldChange,
+                onComponentUomChange: handleVendorProductComponentUomChange,
+                onToggleTag: handleToggleVendorProductTag,
+                onProductLocationsChange: handleProductLocationsChange,
+              }}
+            />
+
             <SectionTitle>Vendor &amp; Pricing</SectionTitle>
 
             <VendorProductTable
@@ -1139,6 +1184,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
               principalQtyByProduct={form.vendorProductPrincipalQty}
               lossYieldByProduct={form.vendorProductLossYield}
               hideYieldLoss={form.splitUse.enabled}
+              showTaggedSection={false}
               locationsByProduct={form.vendorProductLocations}
               companyLocations={companyLocations}
               activeLocationIds={selectedLocationIds}
