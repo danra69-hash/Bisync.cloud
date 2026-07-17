@@ -43,9 +43,9 @@ Invoke-Psql -Psql $psql -DatabaseName "postgres" -Sql @"
 DO `$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$AppUser') THEN
-    CREATE ROLE $AppUser LOGIN PASSWORD '$AppPassword';
+    CREATE ROLE $AppUser LOGIN PASSWORD '$AppPassword' CREATEDB;
   ELSE
-    ALTER ROLE $AppUser WITH LOGIN PASSWORD '$AppPassword';
+    ALTER ROLE $AppUser WITH LOGIN PASSWORD '$AppPassword' CREATEDB;
   END IF;
 END
 `$\$;

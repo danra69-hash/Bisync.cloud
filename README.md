@@ -27,7 +27,9 @@ Hospitality operations platform — restaurant dashboard, revenue management, in
 docker compose up -d
 ```
 
-This starts PostgreSQL on `localhost:5432` with databases `bisync` and `bisync_archive` (user/password: `bisync`/`bisync`).
+This starts PostgreSQL on `127.0.0.1:5432` with databases `bisync`, `bisync_archive`, and `bisync_audit` (user/password: `bisync`/`bisync`).
+
+If the API crashes with `permission denied to create database`, something else (often native Windows PostgreSQL) is bound to port 5432. Stop that service and re-run `docker compose up -d`, or provision with `.\scripts\setup-local-postgres.ps1`.
 
 ### 1. Start the API
 

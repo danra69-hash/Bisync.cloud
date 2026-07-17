@@ -148,6 +148,9 @@ using (var scope = app.Services.CreateScope())
         .UseNpgsql(resolver.DefaultOperationalConnection)
         .Options;
     await using var db = new BisyncDbContext(controlOptions);
+    // Create missing DBs with a clear error before EF EnsureCreated tries CREATE DATABASE.
+    await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultOperationalConnection);
+    await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultArchiveConnection);
     await db.Database.EnsureCreatedAsync();
     await SchemaPatcher.ApplyAsync(db);
     await RevMgmtStartup.InitializeAsync(db);

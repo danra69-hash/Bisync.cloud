@@ -42,12 +42,14 @@ public static class StockCardArchiveStartup
 {
     public static async Task InitializeAsync(IServiceProvider services)
     {
+        var resolver = services.GetRequiredService<ITenantConnectionResolver>();
+        await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultArchiveConnection);
+
         var archiveDb = services.GetRequiredService<StockCardArchiveDbContext>();
         await archiveDb.Database.EnsureCreatedAsync();
 
         try
         {
-            var resolver = services.GetRequiredService<ITenantConnectionResolver>();
             var opsOptions = new DbContextOptionsBuilder<BisyncDbContext>()
                 .UseNpgsql(resolver.DefaultOperationalConnection)
                 .Options;

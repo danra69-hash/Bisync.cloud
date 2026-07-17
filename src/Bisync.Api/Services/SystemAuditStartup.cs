@@ -17,7 +17,14 @@ public static class SystemAuditStartup
             ?? DeriveDatabase(config.GetConnectionString("DefaultConnection") ?? string.Empty, DatabaseName),
             config["DB_PASSWORD"]);
 
-        await EnsureDatabaseExistsAsync(conn);
+        try
+        {
+            await PostgresDatabaseBootstrap.EnsureExistsAsync(conn);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SystemAudit] ensure database: {ex.Message}");
+        }
 
         await using var scope = services.CreateAsyncScope();
         var auditDb = scope.ServiceProvider.GetRequiredService<SystemAuditDbContext>();
@@ -70,34 +77,6 @@ public static class SystemAuditStartup
             {
                 // ignore — already timestamp without time zone, or table missing
             }
-        }
-    }
-
-    static async Task EnsureDatabaseExistsAsync(string connectionString)
-    {
-        try
-        {
-            var builder = new NpgsqlConnectionStringBuilder(connectionString);
-            var dbName = builder.Database;
-            if (string.IsNullOrWhiteSpace(dbName)) return;
-
-            builder.Database = "postgres";
-            await using var conn = new NpgsqlConnection(builder.ConnectionString);
-            await conn.OpenAsync();
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @name";
-            cmd.Parameters.AddWithValue("name", dbName);
-            var exists = await cmd.ExecuteScalarAsync();
-            if (exists is not null) return;
-
-            await using var create = conn.CreateCommand();
-            create.CommandText = $"CREATE DATABASE \"{dbName.Replace("\"", "\"\"")}\"";
-            await create.ExecuteNonQueryAsync();
-            Console.WriteLine($"[SystemAudit] Created database '{dbName}'.");
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[SystemAudit] ensure database: {ex.Message}");
         }
     }
 
