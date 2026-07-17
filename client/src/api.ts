@@ -1639,7 +1639,9 @@ export type StockCardEntryType =
   | 'adjustment_out'
   | 'adjustment'
   | 'inbound'
-  | 'outbound';
+  | 'outbound'
+  | 'split_use'
+  | 'split_use_in';
 
 export interface StockCardLedgerEntry {
   id: number;

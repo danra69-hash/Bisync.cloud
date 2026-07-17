@@ -725,9 +725,10 @@ public class StockCardService(
     }
 
     static bool IsInboundSummaryType(string entryType) =>
-        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound";
+        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "split_use_in";
 
     static bool IsOutboundSummaryType(string entryType) =>
+        // split_use is composition of inbound (not a true outbound leave).
         entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "adjustment_out" or "outbound";
 
     static decimal ComputeOutboundAveragePrice(
@@ -1144,6 +1145,28 @@ public class StockCardService(
                 ? num
                 : string.Empty;
 
+            // Child Split Use lines are composition of the parent receipt — not a new PO inbound.
+            var isSplitChild = !string.IsNullOrWhiteSpace(purchase.SplitParentComponentId)
+                && !string.IsNullOrWhiteSpace(purchase.SplitLineKey)
+                && purchase.SplitLineKey is not ("__gross__" or "__nett__");
+            if (isSplitChild)
+                entryType = "split_use_in";
+
+            var reason = isSplitChild
+                ? $"Split from {purchase.SplitParentComponentId}"
+                    + (string.IsNullOrWhiteSpace(poNumber) ? string.Empty : $" — PO {poNumber}")
+                : entryType == "purchase"
+                    ? $"Purchase received — PO {poNumber}"
+                    : entryType == "cash_purchase"
+                        ? "Cash purchase"
+                        : "Stock inbound";
+
+            var sourceLabel = isSplitChild
+                ? $"Split from {purchase.SplitParentComponentId}"
+                : entryType == "purchase" || entryType == "split_use_in"
+                    ? (string.IsNullOrWhiteSpace(poNumber) ? "Purchase" : $"PO {poNumber}")
+                    : "Cash purchase";
+
             events.Add(new FifoEvent
             {
                 Id = purchase.Id,
@@ -1153,11 +1176,9 @@ public class StockCardService(
                 SignedQty = purchase.Quantity,
                 Uom = purchase.Uom,
                 UnitPrice = purchase.UnitPrice,
-                Reason = entryType == "purchase"
-                    ? $"Purchase received — PO {poNumber}"
-                    : "Cash purchase",
+                Reason = reason,
                 ReferenceNumber = poNumber,
-                SourceLabel = entryType == "purchase" ? $"PO {poNumber}" : "Cash purchase",
+                SourceLabel = sourceLabel,
             });
         }
 
@@ -1259,6 +1280,8 @@ public class StockCardService(
             return "offline_order";
         if (refType == "wastage" || reason.Contains("wastage") || reason.Contains("spoilage"))
             return "wastage";
+        if (refType == "split_use" || reason.Contains("split use"))
+            return "split_use";
         if (refType == "inventory_adjustment" || IsAdjustmentMovement(movement))
             return movement.QtyDelta >= 0 ? "adjustment_in" : "adjustment_out";
         if (reason.Contains("production") || refType is "production" or "sub_product_batch")
@@ -1289,6 +1312,7 @@ public class StockCardService(
             "online_order" => "Online order sales depletion",
             "offline_order" => "Offline order sales depletion",
             "wastage" => "Wastage",
+            "split_use" => "Split composition",
             "production" => productionProduct is null
                 ? "Production"
                 : FormatProductionDeductionReason(productionProduct, movement),

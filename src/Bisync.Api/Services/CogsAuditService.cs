@@ -297,9 +297,10 @@ public class CogsAuditService(StockCardService stockCards)
     }
 
     static bool IsInbound(string entryType) =>
-        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound";
+        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "split_use_in";
 
     static bool IsOutbound(string entryType) =>
+        // split_use is composition of inbound — not a COGS credit leave.
         entryType is "production" or "pos_sale" or "online_order" or "offline_order"
             or "wastage" or "transfer_out" or "adjustment_out" or "outbound";
 
@@ -309,6 +310,8 @@ public class CogsAuditService(StockCardService stockCards)
         "purchase" => "DEBIT_PURCHASE",
         "cash_purchase" => "DEBIT_CASH_PURCHASE",
         "transfer_in" => "DEBIT_TRANSFER_IN",
+        "split_use_in" => "DEBIT_SPLIT",
+        "split_use" => "MEMO_SPLIT",
         "adjustment_in" => "ME_DEBIT_ADJ",
         "pos_sale" => "CREDIT_SALES",
         "online_order" => "CREDIT_ONLINE",

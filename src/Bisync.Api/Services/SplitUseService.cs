@@ -236,7 +236,8 @@ public class SplitUseService(BisyncDbContext db)
                 line.Key,
                 parent.ComponentId));
 
-            // Move mass from parent → child so stock cards stay conserved.
+            // Allocate parent receipt into child stock (composition). Parent on-hand becomes
+            // Component Nett; this is not a sale/transfer outbound — stock card labels it Split.
             db.InventoryMovements.Add(new InventoryMovement
             {
                 ComponentId = parent.ComponentId,

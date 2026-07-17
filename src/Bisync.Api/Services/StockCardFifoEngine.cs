@@ -543,10 +543,11 @@ public static class StockCardFifoEngine
         new(value.Year, value.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
     static bool IsInboundLayer(string entryType) =>
-        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "balance_forward";
+        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "balance_forward" or "split_use_in";
 
     static bool IsOutboundConsume(string entryType) =>
-        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "outbound";
+        // split_use reduces parent on-hand to Component Nett after composition (not a sale).
+        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "outbound" or "split_use";
 
     static string FormatQty(decimal qty)
     {
