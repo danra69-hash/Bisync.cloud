@@ -54,6 +54,23 @@ public static class SystemAuditStartup
         {
             // ignore
         }
+
+        // OccurredAtLocal is a wall-clock local time (DateTimeKind.Unspecified). Npgsql rejects
+        // Unspecified values for timestamptz, which broke login audit writes.
+        foreach (var table in new[] { "SystemAuditEvents", "ArchivedSystemAuditEvents" })
+        {
+            try
+            {
+                // table name is from a fixed allow-list above (not user input)
+                await auditDb.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE \"" + table + "\" ALTER COLUMN \"OccurredAtLocal\" TYPE timestamp without time zone "
+                    + "USING (\"OccurredAtLocal\" AT TIME ZONE 'UTC');");
+            }
+            catch
+            {
+                // ignore — already timestamp without time zone, or table missing
+            }
+        }
     }
 
     static async Task EnsureDatabaseExistsAsync(string connectionString)
