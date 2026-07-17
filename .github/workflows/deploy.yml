@@ -1,0 +1,125 @@
+# Auto-deploy Bisync.cloud to Cloud Run when master is updated.
+# One-time setup (from Windows, with gcloud logged in):
+#   powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-deploy.ps1
+#
+# Requires GitHub repo secret: GCP_SA_KEY (JSON key for the deploy service account)
+
+name: Deploy Cloud Run
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: project-8d670aa9-f439-44d9-8e1
+  REGION: asia-southeast1
+  SERVICE_NAME: bisync-cloud
+  REPO_NAME: bisync
+  SQL_INSTANCE: bisync-pg
+  DB_USER: postgres
+  DEV_CONSOLE_PATH: /dev/console
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve image tags & Cloud SQL connection
+        id: meta
+        run: |
+          set -euo pipefail
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${SERVICE_NAME}"
+          SHA_SHORT="${GITHUB_SHA::7}"
+          echo "image_latest=${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+          echo "image_sha=${IMAGE}:${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+
+          CONN="$(gcloud sql instances describe "${SQL_INSTANCE}" \
+            --project="${PROJECT_ID}" \
+            --format='value(connectionName)')"
+          if [[ -z "${CONN}" ]]; then
+            echo "Cloud SQL instance '${SQL_INSTANCE}' not found in project ${PROJECT_ID}" >&2
+            exit 1
+          fi
+          echo "sql_connection=${CONN}" >> "$GITHUB_OUTPUT"
+          echo "Using Cloud SQL: ${CONN}"
+          echo "Images: ${IMAGE}:latest and ${IMAGE}:${SHA_SHORT}"
+
+      - name: Build & push container (Cloud Build)
+        run: |
+          set -euo pipefail
+          gcloud builds submit \
+            --project="${PROJECT_ID}" \
+            --config=cloudbuild.yaml \
+            --substitutions="_IMAGE=${{ steps.meta.outputs.image_latest }},_IMAGE_SHA=${{ steps.meta.outputs.image_sha }},_VITE_DEV_CONSOLE_PATH=${DEV_CONSOLE_PATH}" \
+            .
+
+      - name: Deploy to Cloud Run
+        env:
+          SQL_CONNECTION: ${{ steps.meta.outputs.sql_connection }}
+          IMAGE: ${{ steps.meta.outputs.image_sha }}
+        run: |
+          set -euo pipefail
+          DEFAULT_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync;Username=${DB_USER}"
+          ARCHIVE_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_archive;Username=${DB_USER}"
+          AUDIT_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_audit;Username=${DB_USER}"
+
+          gcloud run deploy "${SERVICE_NAME}" \
+            --project="${PROJECT_ID}" \
+            --image="${IMAGE}" \
+            --region="${REGION}" \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=1Gi \
+            --cpu=1 \
+            --min-instances=1 \
+            --max-instances=2 \
+            --timeout=600 \
+            --cpu-boost \
+            --add-cloudsql-instances="${SQL_CONNECTION}" \
+            --set-secrets="DB_PASSWORD=bisync-db-password:latest" \
+            --set-env-vars="ASPNETCORE_ENVIRONMENT=Production" \
+            --set-env-vars="ConnectionStrings__DefaultConnection=${DEFAULT_CONN}" \
+            --set-env-vars="ConnectionStrings__ArchiveConnection=${ARCHIVE_CONN}" \
+            --set-env-vars="ConnectionStrings__AuditConnection=${AUDIT_CONN}" \
+            --set-env-vars="DEV_CONSOLE_ENABLED=true"
+
+      - name: Verify health
+        run: |
+          set -euo pipefail
+          URL="$(gcloud run services describe "${SERVICE_NAME}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --format='value(status.url)')"
+          echo "Live URL: ${URL}"
+          echo "Commit: ${GITHUB_SHA}"
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "${URL}/api/health" | tee /tmp/health.json; then
+              echo ""
+              echo "Health OK"
+              exit 0
+            fi
+            echo "Health not ready yet (attempt ${i}/6), waiting 10s..."
+            sleep 10
+          done
+          echo "Health check failed" >&2
+          exit 1
