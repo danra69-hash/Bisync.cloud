@@ -37,7 +37,13 @@ type EditableLine = {
   componentId: string;
   componentName: string;
   productName: string;
+  /** Ordered qty (immutable on receive). */
+  orderedQuantity: string;
+  /** Received qty — defaults to ordered; user may adjust on receive/reconcile. */
   quantity: string;
+  /** Ordered unit price (immutable on receive). */
+  orderedUnitPrice: string;
+  /** Received unit price — defaults to ordered; user may adjust on receive/reconcile. */
   unitPrice: string;
   taxAmount: string;
   issuedUnitPrice: number;
@@ -49,12 +55,15 @@ type EditableLine = {
 function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 'reconcile' | 'view'): EditableLine[] {
   return order.items.map(item => {
     const issued = item.issuedUnitPrice ?? item.unitPrice;
-    const qty = mode === 'reconcile'
-      ? (item.receivedQuantity ?? item.quantity)
-      : item.quantity;
-    const price = mode === 'reconcile'
-      ? (item.receivedUnitPrice ?? item.unitPrice)
-      : item.unitPrice;
+    const orderedQty = item.quantity;
+    const orderedPrice = item.unitPrice;
+    // On receive/view/reconcile, quantity/unitPrice are the physical receipt values.
+    const qty = mode === 'approve'
+      ? orderedQty
+      : (item.receivedQuantity ?? orderedQty);
+    const price = mode === 'approve'
+      ? orderedPrice
+      : (item.receivedUnitPrice ?? orderedPrice);
     const tax = item.taxAmount ?? 0;
 
     return {
@@ -62,7 +71,9 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       componentId: item.componentId ?? '',
       componentName: item.componentName || item.name,
       productName: item.name,
+      orderedQuantity: String(orderedQty),
       quantity: String(qty),
+      orderedUnitPrice: String(orderedPrice),
       unitPrice: String(price),
       taxAmount: tax > 0 ? String(tax) : '',
       issuedUnitPrice: issued,
@@ -190,18 +201,26 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   const showExpiryColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
   const showReceiveDocs = mode === 'receive' || mode === 'reconcile' || mode === 'view';
-  const lineColSpan = [
+  /** Receive / reconcile / view: ordered vs received qty & price + variances. */
+  const showOrderedReceivedColumns = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  const canEditReceived = (mode === 'receive' || mode === 'reconcile') && !readOnly;
+  const lineHeaders = [
     'Component',
     'Product',
-    'Qty',
+    showOrderedReceivedColumns ? 'QTY Ordered' : 'Qty',
+    showOrderedReceivedColumns ? 'QTY Received' : null,
     'UOM',
     mode === 'reconcile' ? 'Issued price' : null,
-    'Unit price',
+    showOrderedReceivedColumns ? 'Unit Price Ordered' : 'Unit price',
+    showOrderedReceivedColumns ? 'Unit Price Received' : null,
+    showOrderedReceivedColumns ? 'QTY Variance' : null,
+    showOrderedReceivedColumns ? 'Unit Price Variance' : null,
     showTaxColumn ? 'Tax' : null,
     showHalalCertColumn ? 'Halal cert no.' : null,
     showExpiryColumn ? 'Expiry date' : null,
     'Line total',
-  ].filter(Boolean).length;
+  ].filter(Boolean) as string[];
+  const lineColSpan = lineHeaders.length;
 
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -496,27 +515,20 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {[
-                      'Component',
-                      'Product',
-                      'Qty',
-                      'UOM',
-                      mode === 'reconcile' ? 'Issued price' : null,
-                      'Unit price',
-                      showTaxColumn ? 'Tax' : null,
-                      showHalalCertColumn ? 'Halal cert no.' : null,
-                      showExpiryColumn ? 'Expiry date' : null,
-                      'Line total',
-                    ].filter(Boolean).map(h => (
+                    {lineHeaders.map(h => (
                       <th key={h} className="text-left px-3 py-2 text-muted-foreground font-normal uppercase text-[10px]">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {pagedLines.map(line => {
+                    const orderedQty = parseFloat(line.orderedQuantity) || 0;
                     const qty = parseFloat(line.quantity) || 0;
+                    const orderedPrice = parseFloat(line.orderedUnitPrice) || 0;
                     const price = parseFloat(line.unitPrice) || 0;
                     const tax = parseFloat(line.taxAmount) || 0;
+                    const qtyVariance = qty - orderedQty;
+                    const priceVariance = price - orderedPrice;
                     const lineTotal = qty * price + tax;
                     return (
                       <tr key={line.itemId} className="border-b border-border last:border-0">
@@ -525,20 +537,42 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           <p className="text-[10px] font-sans text-muted-foreground">{line.componentId || '—'}</p>
                         </td>
                         <td className="px-3 py-2">{line.productName}</td>
-                        <td className="px-3 py-2">
-                          {readOnly ? (
-                            <span className="font-sans">{line.quantity}</span>
-                          ) : (
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              value={line.quantity}
-                              onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
-                              className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
-                            />
-                          )}
-                        </td>
+                        {showOrderedReceivedColumns ? (
+                          <>
+                            <td className="px-3 py-2">
+                              <span className="font-sans text-muted-foreground">{line.orderedQuantity}</span>
+                            </td>
+                            <td className="px-3 py-2">
+                              {canEditReceived ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={line.quantity}
+                                  onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
+                                  className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                />
+                              ) : (
+                                <span className="font-sans">{line.quantity}</span>
+                              )}
+                            </td>
+                          </>
+                        ) : (
+                          <td className="px-3 py-2">
+                            {readOnly ? (
+                              <span className="font-sans">{line.quantity}</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={line.quantity}
+                                onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
+                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                              />
+                            )}
+                          </td>
+                        )}
                         <td className="px-3 py-2">
                           {readOnly ? (
                             <span>{line.componentUom}</span>
@@ -554,20 +588,52 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                         {mode === 'reconcile' && (
                           <td className="px-3 py-2 font-sans text-muted-foreground">{rm(line.issuedUnitPrice)}</td>
                         )}
-                        <td className="px-3 py-2">
-                          {readOnly ? (
-                            <span className="font-sans">{rm(price)}</span>
-                          ) : (
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.unitPrice}
-                              onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
-                              className="w-24 rounded border border-border bg-background px-2 py-1 font-sans"
-                            />
-                          )}
-                        </td>
+                        {showOrderedReceivedColumns ? (
+                          <>
+                            <td className="px-3 py-2">
+                              <span className="font-sans text-muted-foreground">{rm(orderedPrice)}</span>
+                            </td>
+                            <td className="px-3 py-2">
+                              {canEditReceived ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={line.unitPrice}
+                                  onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
+                                  className="w-24 rounded border border-border bg-background px-2 py-1 font-sans"
+                                />
+                              ) : (
+                                <span className="font-sans">{rm(price)}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 font-sans">
+                              <span className={qtyVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
+                                {qtyVariance === 0 ? '0' : (qtyVariance > 0 ? `+${qtyVariance}` : String(qtyVariance))}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 font-sans">
+                              <span className={priceVariance !== 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}>
+                                {priceVariance === 0 ? rm(0) : `${priceVariance > 0 ? '+' : ''}${rm(priceVariance)}`}
+                              </span>
+                            </td>
+                          </>
+                        ) : (
+                          <td className="px-3 py-2">
+                            {readOnly ? (
+                              <span className="font-sans">{rm(price)}</span>
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={line.unitPrice}
+                                onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
+                                className="w-24 rounded border border-border bg-background px-2 py-1 font-sans"
+                              />
+                            )}
+                          </td>
+                        )}
                         {showTaxColumn && (
                           <td className="px-3 py-2">
                             {mode === 'receive' && !readOnly ? (

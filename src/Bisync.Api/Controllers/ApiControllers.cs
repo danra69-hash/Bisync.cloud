@@ -932,10 +932,9 @@ public class PurchaseOrdersController(
 
             if (workflow == "receive")
             {
+                // Keep Quantity / UnitPrice as ordered; store physical receipt separately.
                 item.ReceivedQuantity = line.Quantity;
                 item.ReceivedUnitPrice = line.UnitPrice;
-                item.Quantity = line.Quantity;
-                item.UnitPrice = line.UnitPrice;
                 item.TaxAmount = line.TaxAmount;
                 item.HalalCertNo = line.HalalCertNo?.Trim() ?? string.Empty;
                 item.ProductExpiryDate = NormalizeOptionalDate(line.ProductExpiryDate);
