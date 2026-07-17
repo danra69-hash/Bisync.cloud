@@ -71,14 +71,40 @@ jobs:
       - name: Build & push container (Cloud Build)
         run: |
           set -euo pipefail
-          # --suppress-logs: GitHub deploy SA cannot stream the default Cloud Build
-          # logs bucket; without this, gcloud exits 1 even while the build succeeds.
-          gcloud builds submit \
+          # Async + poll: streaming default Cloud Build logs fails for the
+          # GitHub deploy SA (VPC-SC / logs bucket), which makes gcloud exit 1
+          # even when the build is fine. Poll status via the Builds API instead.
+          BUILD_ID="$(gcloud builds submit \
             --project="${PROJECT_ID}" \
             --config=cloudbuild.yaml \
-            --suppress-logs \
+            --async \
+            --format='value(id)' \
             --substitutions="_IMAGE=${{ steps.meta.outputs.image_latest }},_IMAGE_SHA=${{ steps.meta.outputs.image_sha }},_VITE_DEV_CONSOLE_PATH=${DEV_CONSOLE_PATH}" \
-            .
+            .)"
+          echo "Cloud Build id: ${BUILD_ID}"
+          echo "Logs: https://console.cloud.google.com/cloud-build/builds/${BUILD_ID}?project=${PROJECT_ID}"
+
+          for i in $(seq 1 90); do
+            STATUS="$(gcloud builds describe "${BUILD_ID}" \
+              --project="${PROJECT_ID}" \
+              --format='value(status)')"
+            echo "[${i}] status=${STATUS}"
+            case "${STATUS}" in
+              SUCCESS)
+                echo "Cloud Build succeeded"
+                exit 0
+                ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+                echo "Cloud Build failed: ${STATUS}" >&2
+                gcloud builds describe "${BUILD_ID}" --project="${PROJECT_ID}" --format=json >&2 || true
+                exit 1
+                ;;
+            esac
+            sleep 20
+          done
+          echo "Timed out waiting for Cloud Build ${BUILD_ID}" >&2
+          exit 1
+
 
       - name: Deploy to Cloud Run
         env:
