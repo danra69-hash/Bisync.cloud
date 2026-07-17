@@ -23,7 +23,8 @@ When you finish **implementing** changes in this repo, or after **any successful
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-deploy.ps1
    ```
-   Creates the deploy service account and sets GitHub secret `GCP_SA_KEY`.
+   Creates Workload Identity Federation + deploy SA, and sets GitHub variables
+   `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_SERVICE_ACCOUNT` (no JSON keys).
 6. **Verify cloud** — After master deploy finishes, confirm `GET /api/health` returns 200 on the live URL.
 
 ## Skip deploy only when

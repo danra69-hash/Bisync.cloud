@@ -1,20 +1,22 @@
-# One-time setup: create a GCP service account for GitHub Actions CD and print
-# the steps to add it as the GCP_SA_KEY repo secret.
+# One-time setup: Workload Identity Federation so GitHub Actions can deploy
+# to Cloud Run WITHOUT creating a service-account JSON key
+# (org policy constraints/iam.disableServiceAccountKeyCreation).
 #
 # Prerequisites:
 #   - gcloud installed and logged in (gcloud auth login)
-#   - Permission to create service accounts and grant IAM on the project
-#   - gh CLI logged in (optional; script can print the secret command)
+#   - Permission to create WI pools and bind IAM on the project
+#   - gh CLI logged in (optional; can set GitHub variables manually)
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-deploy.ps1
-#   powershell -ExecutionPolicy Bypass -File .\scripts\setup-github-deploy.ps1 -ProjectId project-8d670aa9-f439-44d9-8e1
 
 param(
     [string]$ProjectId = "project-8d670aa9-f439-44d9-8e1",
-    [string]$Region = "asia-southeast1",
     [string]$SaName = "github-deploy",
-    [string]$Repo = "danra69-hash/Bisync.cloud"
+    [string]$PoolId = "github-pool",
+    [string]$ProviderId = "github-provider",
+    [string]$Repo = "danra69-hash/Bisync.cloud",
+    [string]$RepoOwner = "danra69-hash"
 )
 
 $ErrorActionPreference = "Continue"
@@ -28,10 +30,17 @@ if (-not (Test-Path $Gcloud)) {
     $Gcloud = $GcloudCmd.Source
 }
 
+function Invoke-GcloudQuiet {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+    & $Gcloud @Args 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
 Write-Host ""
-Write-Host "=== Bisync GitHub Actions deploy setup ===" -ForegroundColor Cyan
+Write-Host "=== Bisync GitHub Actions deploy setup (Workload Identity) ===" -ForegroundColor Cyan
 Write-Host "Project: $ProjectId"
 Write-Host "SA:      $SaName@$ProjectId.iam.gserviceaccount.com"
+Write-Host "Repo:    $Repo"
 Write-Host ""
 
 & $Gcloud config set project $ProjectId
@@ -44,14 +53,15 @@ Write-Host "==> Enabling APIs..." -ForegroundColor Cyan
     cloudbuild.googleapis.com `
     sqladmin.googleapis.com `
     secretmanager.googleapis.com `
-    iam.googleapis.com
+    iam.googleapis.com `
+    iamcredentials.googleapis.com `
+    cloudresourcemanager.googleapis.com
 if ($LASTEXITCODE -ne 0) { throw "Failed to enable APIs." }
 
 $SaEmail = "$SaName@$ProjectId.iam.gserviceaccount.com"
 
 Write-Host "==> Ensuring service account $SaEmail ..." -ForegroundColor Cyan
-& $Gcloud iam service-accounts describe $SaEmail --project $ProjectId *> $null
-if ($LASTEXITCODE -ne 0) {
+if (-not (Invoke-GcloudQuiet iam service-accounts describe $SaEmail --project $ProjectId)) {
     & $Gcloud iam service-accounts create $SaName `
         --project $ProjectId `
         --display-name "GitHub Actions Cloud Run deploy"
@@ -71,7 +81,7 @@ $Roles = @(
     "roles/secretmanager.secretAccessor"
 )
 
-Write-Host "==> Granting IAM roles..." -ForegroundColor Cyan
+Write-Host "==> Granting IAM roles on project..." -ForegroundColor Cyan
 foreach ($role in $Roles) {
     Write-Host "  $role"
     & $Gcloud projects add-iam-policy-binding $ProjectId `
@@ -81,8 +91,8 @@ foreach ($role in $Roles) {
         *> $null
 }
 
-# Cloud Build runs as the project's Cloud Build SA; grant it Artifact Registry writer.
 $ProjectNumber = & $Gcloud projects describe $ProjectId --format="value(projectNumber)"
+if (-not $ProjectNumber) { throw "Could not resolve project number." }
 $CloudBuildSa = "$ProjectNumber@cloudbuild.gserviceaccount.com"
 $ComputeSa = "$ProjectNumber-compute@developer.gserviceaccount.com"
 
@@ -112,46 +122,93 @@ Write-Host "==> Ensuring Cloud Run runtime SA can read DB secret + Cloud SQL..."
     --condition=None `
     *> $null
 
-$KeyDir = Join-Path $env:TEMP "bisync-github-deploy"
-New-Item -ItemType Directory -Force -Path $KeyDir | Out-Null
-$KeyPath = Join-Path $KeyDir "gcp-sa-key.json"
+Write-Host "==> Ensuring Workload Identity Pool '$PoolId'..." -ForegroundColor Cyan
+$PoolFull = "projects/$ProjectNumber/locations/global/workloadIdentityPools/$PoolId"
+if (-not (Invoke-GcloudQuiet iam workload-identity-pools describe $PoolId --project $ProjectId --location=global)) {
+    & $Gcloud iam workload-identity-pools create $PoolId `
+        --project $ProjectId `
+        --location=global `
+        --display-name="GitHub Actions"
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create workload identity pool." }
+} else {
+    Write-Host "Pool already exists." -ForegroundColor Green
+}
 
-Write-Host "==> Creating JSON key at $KeyPath ..." -ForegroundColor Cyan
-if (Test-Path $KeyPath) { Remove-Item $KeyPath -Force }
-& $Gcloud iam service-accounts keys create $KeyPath `
-    --iam-account $SaEmail `
-    --project $ProjectId
-if ($LASTEXITCODE -ne 0) { throw "Failed to create service account key." }
+Write-Host "==> Ensuring OIDC provider '$ProviderId' for GitHub..." -ForegroundColor Cyan
+$ProviderFull = "$PoolFull/providers/$ProviderId"
+$AttributeMapping = "google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner"
+$AttributeCondition = "assertion.repository_owner == '$RepoOwner'"
+
+if (-not (Invoke-GcloudQuiet iam workload-identity-pools providers describe $ProviderId --project $ProjectId --location=global --workload-identity-pool=$PoolId)) {
+    & $Gcloud iam workload-identity-pools providers create-oidc $ProviderId `
+        --project $ProjectId `
+        --location=global `
+        --workload-identity-pool=$PoolId `
+        --display-name="GitHub OIDC" `
+        --issuer-uri="https://token.actions.githubusercontent.com" `
+        --attribute-mapping=$AttributeMapping `
+        --attribute-condition=$AttributeCondition
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create workload identity provider." }
+} else {
+    Write-Host "Provider already exists - updating attribute condition/mapping..." -ForegroundColor Green
+    & $Gcloud iam workload-identity-pools providers update-oidc $ProviderId `
+        --project $ProjectId `
+        --location=global `
+        --workload-identity-pool=$PoolId `
+        --attribute-mapping=$AttributeMapping `
+        --attribute-condition=$AttributeCondition `
+        *> $null
+}
+
+Write-Host "==> Binding repo $Repo to impersonate $SaEmail ..." -ForegroundColor Cyan
+$Member = "principalSet://iam.googleapis.com/$PoolFull/attribute.repository/$Repo"
+& $Gcloud iam service-accounts add-iam-policy-binding $SaEmail `
+    --project $ProjectId `
+    --role="roles/iam.workloadIdentityUser" `
+    --member=$Member `
+    *> $null
+if ($LASTEXITCODE -ne 0) { throw "Failed to bind workloadIdentityUser on service account." }
+
+# Resolve canonical provider resource name (needed by google-github-actions/auth)
+$ProviderName = & $Gcloud iam workload-identity-pools providers describe $ProviderId `
+    --project $ProjectId `
+    --location=global `
+    --workload-identity-pool=$PoolId `
+    --format="value(name)"
+if (-not $ProviderName) { throw "Could not resolve provider resource name." }
 
 Write-Host ""
-Write-Host "=== Add the GitHub secret ===" -ForegroundColor Green
+Write-Host "=== Add these GitHub repository VARIABLES ===" -ForegroundColor Green
+Write-Host "(Settings -> Secrets and variables -> Actions -> Variables tab)" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Option A - GitHub CLI (recommended):" -ForegroundColor Yellow
-Write-Host ('  Get-Content -Raw "{0}" | gh secret set GCP_SA_KEY --repo {1}' -f $KeyPath, $Repo)
+Write-Host "  GCP_WORKLOAD_IDENTITY_PROVIDER ="
+Write-Host "    $ProviderName" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Option B - GitHub website:" -ForegroundColor Yellow
-Write-Host "  1. Open https://github.com/$Repo/settings/secrets/actions"
-Write-Host "  2. New repository secret"
-Write-Host "  3. Name:  GCP_SA_KEY"
-Write-Host "  4. Value: paste the full contents of:"
-Write-Host "           $KeyPath"
+Write-Host "  GCP_SERVICE_ACCOUNT ="
+Write-Host "    $SaEmail" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Then merge to master (or run Actions -> Deploy Cloud Run -> Run workflow)." -ForegroundColor Cyan
-Write-Host "Delete the local key file after the secret is saved:" -ForegroundColor Yellow
-Write-Host ('  Remove-Item "{0}"' -f $KeyPath)
+Write-Host "Option A - GitHub CLI:" -ForegroundColor Cyan
+Write-Host ('  gh variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo {0} --body "{1}"' -f $Repo, $ProviderName)
+Write-Host ('  gh variable set GCP_SERVICE_ACCOUNT --repo {0} --body "{1}"' -f $Repo, $SaEmail)
+Write-Host ""
+Write-Host "Then merge the auto-deploy PR (or Actions -> Deploy Cloud Run -> Run workflow)." -ForegroundColor Cyan
+Write-Host "No JSON key is created (org policy safe)." -ForegroundColor Green
+Write-Host ""
+Write-Host "Note: the 'Python was not found' line from gcloud on Windows is harmless - ignore it." -ForegroundColor Gray
 Write-Host ""
 
 $Gh = Get-Command gh -ErrorAction SilentlyContinue
 if ($null -ne $Gh) {
-    $answer = Read-Host "Set GCP_SA_KEY on $Repo now with gh? (y/N)"
+    $answer = Read-Host "Set the two GitHub variables on $Repo now with gh? (y/N)"
     if ($answer -eq "y" -or $answer -eq "Y") {
-        Get-Content -Raw $KeyPath | & $Gh.Source secret set GCP_SA_KEY --repo $Repo
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Secret GCP_SA_KEY set on $Repo." -ForegroundColor Green
-            Remove-Item $KeyPath -Force
-            Write-Host "Local key file deleted." -ForegroundColor Green
+        & $Gh.Source variable set GCP_WORKLOAD_IDENTITY_PROVIDER --repo $Repo --body $ProviderName
+        $ok1 = ($LASTEXITCODE -eq 0)
+        & $Gh.Source variable set GCP_SERVICE_ACCOUNT --repo $Repo --body $SaEmail
+        $ok2 = ($LASTEXITCODE -eq 0)
+        if ($ok1 -and $ok2) {
+            Write-Host "GitHub variables set on $Repo." -ForegroundColor Green
         } else {
-            Write-Host "gh secret set failed - set it manually from $KeyPath" -ForegroundColor Red
+            Write-Host "gh variable set failed - set them manually from the values above." -ForegroundColor Red
         }
     }
 }
