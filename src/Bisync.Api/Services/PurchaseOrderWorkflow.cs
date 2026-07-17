@@ -117,6 +117,8 @@ public static class PurchaseOrderWorkflow
         vendorShareToken = order.VendorShareToken,
         vendorAcceptedAt = order.VendorAcceptedAt,
         vendorAcceptedBy = order.VendorAcceptedBy,
+        vendorDoNumber = order.VendorDoNumber,
+        vendorInvoiceNumber = order.VendorInvoiceNumber,
         canApprove = CanApprove(order),
         canReceive = CanReceive(order),
         canReconcile = CanReconcile(order),
@@ -143,6 +145,7 @@ public static class PurchaseOrderWorkflow
         reconciledUnitPrice = item.ReconciledUnitPrice,
         taxAmount = item.TaxAmount,
         halalCertNo = item.HalalCertNo,
+        productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,
     };
 
     public static List<string> DeserializeLocationIds(string? json)

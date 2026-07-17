@@ -35,6 +35,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "ProductPolicyTag", "TEXT NOT NULL DEFAULT 'non-halal'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "HalalCertNo", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrderItems", "ProductExpiryDate", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorDoNumber", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorInvoiceNumber", "TEXT NOT NULL DEFAULT ''");
 
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "Vendors"

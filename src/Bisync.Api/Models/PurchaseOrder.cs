@@ -21,6 +21,10 @@ public class PurchaseOrder
     public string VendorShareToken { get; set; } = string.Empty;
     public DateTime? VendorAcceptedAt { get; set; }
     public string VendorAcceptedBy { get; set; } = string.Empty;
+    /// <summary>Vendor delivery order (DO) number captured at receive. Optional if invoice number is provided.</summary>
+    public string VendorDoNumber { get; set; } = string.Empty;
+    /// <summary>Vendor invoice number captured at receive. Optional if DO number is provided.</summary>
+    public string VendorInvoiceNumber { get; set; } = string.Empty;
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 
@@ -46,4 +50,6 @@ public class PurchaseOrderItem
     public decimal? ReconciledUnitPrice { get; set; }
     public decimal TaxAmount { get; set; }
     public string HalalCertNo { get; set; } = string.Empty;
+    /// <summary>Optional vendor product expiry date (yyyy-MM-dd) captured at receive.</summary>
+    public string ProductExpiryDate { get; set; } = string.Empty;
 }

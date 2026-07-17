@@ -779,30 +779,22 @@ public class PurchaseOrdersController(
         if (request.Items is null || request.Items.Count == 0)
             return BadRequest(new { message = "At least one line item is required to receive." });
 
-        var company = order.CompanyId.HasValue
-            ? await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == order.CompanyId.Value)
-            : null;
-        var locationExternalIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
-        var locations = locationExternalIds.Count == 0
-            ? []
-            : await db.Locations.AsNoTracking()
-                .Where(l => locationExternalIds.Contains(l.ExternalId))
-                .ToListAsync();
-        var orgTags = VendorPolicyRules.ResolveStrictestOrgVendorPolicyTags(company, locations);
-        if (VendorPolicyRules.OrgRequiresHalalCertOnReceive(orgTags))
+        var vendorDoNumber = request.VendorDoNumber?.Trim() ?? string.Empty;
+        var vendorInvoiceNumber = request.VendorInvoiceNumber?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(vendorDoNumber) && string.IsNullOrWhiteSpace(vendorInvoiceNumber))
+            return BadRequest(new { message = "Enter a Vendor DO number and/or Vendor Invoice number for the documents received." });
+
+        foreach (var line in request.Items)
         {
-            var certError = VendorPolicyRules.ValidateHalalCertNumbers(
-                true,
-                request.Items.Select(line =>
-                {
-                    var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
-                    return (item?.Name ?? $"Item {line.ItemId}", line.HalalCertNo);
-                }));
-            if (certError is not null)
-                return BadRequest(new { error = certError });
+            var expiry = line.ProductExpiryDate?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(expiry) && !DateOnly.TryParse(expiry, out _))
+                return BadRequest(new { message = "Product expiry date must be a valid calendar date (yyyy-MM-dd)." });
         }
 
+        // Halal certificate number is optional even under a halal org policy.
         ApplyWorkflowLines(order, request.Items, workflow: "receive");
+        order.VendorDoNumber = vendorDoNumber;
+        order.VendorInvoiceNumber = vendorInvoiceNumber;
         order.Status = PurchaseOrderWorkflow.StatusReceived;
         order.ReceivedAt = DateTime.UtcNow;
 
@@ -940,12 +932,12 @@ public class PurchaseOrdersController(
 
             if (workflow == "receive")
             {
+                // Keep Quantity / UnitPrice as ordered; store physical receipt separately.
                 item.ReceivedQuantity = line.Quantity;
                 item.ReceivedUnitPrice = line.UnitPrice;
-                item.Quantity = line.Quantity;
-                item.UnitPrice = line.UnitPrice;
                 item.TaxAmount = line.TaxAmount;
                 item.HalalCertNo = line.HalalCertNo?.Trim() ?? string.Empty;
+                item.ProductExpiryDate = NormalizeOptionalDate(line.ProductExpiryDate);
                 if (!string.IsNullOrWhiteSpace(line.ComponentUom))
                     item.ComponentUom = line.ComponentUom.Trim();
             }
@@ -957,6 +949,13 @@ public class PurchaseOrdersController(
                     item.ComponentUom = line.ComponentUom.Trim();
             }
         }
+    }
+
+    static string NormalizeOptionalDate(string? raw)
+    {
+        var value = raw?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        return DateOnly.TryParse(value, out var parsed) ? parsed.ToString("yyyy-MM-dd") : value;
     }
 }
 
