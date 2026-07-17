@@ -126,19 +126,19 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to create service account key." }
 Write-Host ""
 Write-Host "=== Add the GitHub secret ===" -ForegroundColor Green
 Write-Host ""
-Write-Host "Option A — GitHub CLI (recommended):" -ForegroundColor Yellow
-Write-Host "  gh secret set GCP_SA_KEY --repo $Repo < `"$KeyPath`""
+Write-Host "Option A - GitHub CLI (recommended):" -ForegroundColor Yellow
+Write-Host ('  Get-Content -Raw "{0}" | gh secret set GCP_SA_KEY --repo {1}' -f $KeyPath, $Repo)
 Write-Host ""
-Write-Host "Option B — GitHub website:" -ForegroundColor Yellow
+Write-Host "Option B - GitHub website:" -ForegroundColor Yellow
 Write-Host "  1. Open https://github.com/$Repo/settings/secrets/actions"
 Write-Host "  2. New repository secret"
 Write-Host "  3. Name:  GCP_SA_KEY"
 Write-Host "  4. Value: paste the full contents of:"
 Write-Host "           $KeyPath"
 Write-Host ""
-Write-Host "Then merge to master (or run Actions → Deploy Cloud Run → Run workflow)." -ForegroundColor Cyan
+Write-Host "Then merge to master (or run Actions -> Deploy Cloud Run -> Run workflow)." -ForegroundColor Cyan
 Write-Host "Delete the local key file after the secret is saved:" -ForegroundColor Yellow
-Write-Host "  Remove-Item `"$KeyPath`""
+Write-Host ('  Remove-Item "{0}"' -f $KeyPath)
 Write-Host ""
 
 $Gh = Get-Command gh -ErrorAction SilentlyContinue
@@ -151,7 +151,7 @@ if ($null -ne $Gh) {
             Remove-Item $KeyPath -Force
             Write-Host "Local key file deleted." -ForegroundColor Green
         } else {
-            Write-Host "gh secret set failed — set it manually from $KeyPath" -ForegroundColor Red
+            Write-Host "gh secret set failed - set it manually from $KeyPath" -ForegroundColor Red
         }
     }
 }
