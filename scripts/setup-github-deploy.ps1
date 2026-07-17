@@ -78,6 +78,8 @@ $Roles = @(
     "roles/storage.admin",
     "roles/iam.serviceAccountUser",
     "roles/cloudsql.viewer",
+    "roles/logging.viewer",
+    "roles/browser",
     "roles/secretmanager.secretAccessor"
 )
 
