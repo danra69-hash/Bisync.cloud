@@ -358,10 +358,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
   }, [selectedCompanyId, selected, fromLocationId, uom, pendingInbound.length]);
 
   const historyScrollRef = useRef<HTMLDivElement | null>(null);
-  const { visibleItems, sentinelRef, hasMore } = useInfiniteScrollSlice(rows, {
-    pageSize: 40,
-    scrollRootRef: historyScrollRef,
-  });
+  const { visibleItems, sentinelRef, hasMore, nextPageSize, loadMore } = useInfiniteScrollSlice(rows, { scrollRootRef: historyScrollRef });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -911,7 +908,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
               })}
             </tbody>
           </table>
-          <InfiniteScrollDivSentinel hasMore={hasMore} sentinelRef={sentinelRef} />
+          <InfiniteScrollDivSentinel hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
         </div>
       </div>
     </div>

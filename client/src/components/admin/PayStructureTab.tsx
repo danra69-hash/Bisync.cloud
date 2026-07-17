@@ -432,8 +432,7 @@ export function PayStructureTab() {
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedStructures, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedStructures, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -506,7 +505,7 @@ export function PayStructureTab() {
                   </td>
                 </tr>
               )}
-              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
           </TableScrollContainer>

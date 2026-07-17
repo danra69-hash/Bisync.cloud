@@ -103,8 +103,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(filteredRows, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(filteredRows, { scrollRootRef });
 
   async function openDetail(row: CogsAuditIngredientRow) {
     if (!selectedCompanyId || selectedLocationIds.length === 0) return;
@@ -440,7 +439,7 @@ export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) 
                 ))}
               </tbody>
             </table>
-            <InfiniteScrollTableSentinel colSpan={16} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={16} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </TableScrollContainer>
         </>
       )}

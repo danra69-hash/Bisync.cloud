@@ -168,8 +168,7 @@ export function EmployeeDirectoryTab({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedEmployees, { scrollRootRef });
 
   const setField = <K extends keyof EmployeeFormData>(key: K, value: EmployeeFormData[K]) => {
     onFormChange({ ...formData, [key]: value });
@@ -397,7 +396,7 @@ export function EmployeeDirectoryTab({
                 </td>
               </tr>
             )}
-            <InfiniteScrollTableSentinel colSpan={12} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={12} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>

@@ -206,8 +206,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds, onO
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedPendingOrders, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedPendingOrders, { scrollRootRef });
 
   const activityItems = useMemo(
     () => buildActivityToday(actionableOrders, pendingOrders.length),
@@ -500,7 +499,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds, onO
                       </td>
                     </tr>
                   ))}
-                  <InfiniteScrollTableSentinel colSpan={5} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={5} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
             )}

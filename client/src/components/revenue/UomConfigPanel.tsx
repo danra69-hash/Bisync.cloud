@@ -37,8 +37,7 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(rows, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(rows, { scrollRootRef });
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
@@ -69,7 +68,7 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
                 <td className="px-3 py-2.5 text-muted-foreground">{exampleText(row)}</td>
               </tr>
             ))}
-            <InfiniteScrollTableSentinel colSpan={colSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={colSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>
@@ -197,7 +196,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
                     </tr>
                   );
                 })}
-                <InfiniteScrollTableSentinel colSpan={1} hasMore={allUomsScroll.hasMore} sentinelRef={allUomsScroll.sentinelRef} totalCount={allUomsScroll.totalCount} visibleCount={allUomsScroll.visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={1} hasMore={allUomsScroll.hasMore} onLoadMore={allUomsScroll.loadMore} nextPageSize={allUomsScroll.nextPageSize} sentinelRef={allUomsScroll.sentinelRef} totalCount={allUomsScroll.totalCount} visibleCount={allUomsScroll.visibleCount} />
               </tbody>
             </table>
             </TableScrollContainer>
@@ -236,7 +235,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
                     </td>
                   </tr>
                 )}
-                <InfiniteScrollTableSentinel colSpan={1} hasMore={myUomsScroll.hasMore} sentinelRef={myUomsScroll.sentinelRef} totalCount={myUomsScroll.totalCount} visibleCount={myUomsScroll.visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={1} hasMore={myUomsScroll.hasMore} onLoadMore={myUomsScroll.loadMore} nextPageSize={myUomsScroll.nextPageSize} sentinelRef={myUomsScroll.sentinelRef} totalCount={myUomsScroll.totalCount} visibleCount={myUomsScroll.visibleCount} />
               </tbody>
             </table>
             </TableScrollContainer>

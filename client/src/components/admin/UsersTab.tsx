@@ -602,8 +602,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedUsers, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedUsers, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -686,7 +685,7 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
               {users.length === 0 && (
                 <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No platform access granted yet. Create employees in Human Resources, then grant access here.</td></tr>
               )}
-              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
           </TableScrollContainer>

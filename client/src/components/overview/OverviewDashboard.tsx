@@ -283,7 +283,7 @@ export function OverviewDashboard({
                         <td className="px-4 py-3 font-sans">{m.marginPercent}%</td>
                       </tr>
                     ))}
-                    <InfiniteScrollTableSentinel colSpan={4} hasMore={menuScroll.hasMore} sentinelRef={menuScroll.sentinelRef} totalCount={menuScroll.totalCount} visibleCount={menuScroll.visibleCount} />
+                    <InfiniteScrollTableSentinel colSpan={4} hasMore={menuScroll.hasMore} onLoadMore={menuScroll.loadMore} nextPageSize={menuScroll.nextPageSize} sentinelRef={menuScroll.sentinelRef} totalCount={menuScroll.totalCount} visibleCount={menuScroll.visibleCount} />
                   </tbody>
                 </table>
               </TableScrollContainer>
@@ -340,7 +340,7 @@ export function OverviewDashboard({
                       </tr>
                     );
                   })}
-                  <InfiniteScrollTableSentinel colSpan={5} hasMore={ordersScroll.hasMore} sentinelRef={ordersScroll.sentinelRef} totalCount={ordersScroll.totalCount} visibleCount={ordersScroll.visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={5} hasMore={ordersScroll.hasMore} onLoadMore={ordersScroll.loadMore} nextPageSize={ordersScroll.nextPageSize} sentinelRef={ordersScroll.sentinelRef} totalCount={ordersScroll.totalCount} visibleCount={ordersScroll.visibleCount} />
                 </tbody>
               </table>
             </TableScrollContainer>

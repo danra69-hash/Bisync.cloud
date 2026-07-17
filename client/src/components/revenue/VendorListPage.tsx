@@ -223,8 +223,7 @@ export function VendorListPage({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(vendorTableRows, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(vendorTableRows, { scrollRootRef });
 
   const vendorOptions = useMemo(
     () => [...vendors]
@@ -484,7 +483,7 @@ export function VendorListPage({
                     return renderRow(row.vendor);
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={7} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={7} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>

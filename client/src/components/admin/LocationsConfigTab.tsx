@@ -588,8 +588,7 @@ export function LocationsConfigTab({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedLocations, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedLocations, { scrollRootRef });
 
   return (
     <div className="space-y-4">
@@ -657,7 +656,7 @@ export function LocationsConfigTab({
                   <td className="px-4 py-3">{getCountry(loc.countryCode).name}</td>
                 </tr>
               );})}
-              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
           </TableScrollContainer>

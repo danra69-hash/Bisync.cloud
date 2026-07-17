@@ -285,8 +285,7 @@ export function VendorProductsList({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
 
   const modalRoot = typeof document !== 'undefined' ? document.body : null;
 
@@ -469,7 +468,7 @@ export function VendorProductsList({
                   </tr>
                 );
               })}
-              <InfiniteScrollTableSentinel colSpan={productColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={productColSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
         </TableScrollContainer>

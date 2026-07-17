@@ -336,8 +336,7 @@ export function ComparePricePage({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedFilteredComponents, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedFilteredComponents, { scrollRootRef });
 
   useEffect(() => {
     const table = tableRef.current;
@@ -661,7 +660,7 @@ export function ComparePricePage({
                         </tr>
                       );
                     })}
-                    <InfiniteScrollTableSentinel colSpan={compareColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                    <InfiniteScrollTableSentinel colSpan={compareColSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                   </tbody>
                 </table>
               </TableScrollContainer>

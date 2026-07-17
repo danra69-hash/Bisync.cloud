@@ -782,7 +782,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                         })}
                       </tr>
                     ))}
-                    <InfiniteScrollTableSentinel colSpan={shiftAttendanceColSpan} hasMore={shiftEmployeesScroll.hasMore} sentinelRef={shiftEmployeesScroll.sentinelRef} totalCount={shiftEmployeesScroll.totalCount} visibleCount={shiftEmployeesScroll.visibleCount} />
+                    <InfiniteScrollTableSentinel colSpan={shiftAttendanceColSpan} hasMore={shiftEmployeesScroll.hasMore} onLoadMore={shiftEmployeesScroll.loadMore} nextPageSize={shiftEmployeesScroll.nextPageSize} sentinelRef={shiftEmployeesScroll.sentinelRef} totalCount={shiftEmployeesScroll.totalCount} visibleCount={shiftEmployeesScroll.visibleCount} />
                   </tbody>
                 </table>
               </div>
@@ -844,7 +844,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                         })}
                       </tr>
                     ))}
-                    <InfiniteScrollTableSentinel colSpan={nonShiftAttendanceColSpan} hasMore={nonShiftEmployeesScroll.hasMore} sentinelRef={nonShiftEmployeesScroll.sentinelRef} totalCount={nonShiftEmployeesScroll.totalCount} visibleCount={nonShiftEmployeesScroll.visibleCount} />
+                    <InfiniteScrollTableSentinel colSpan={nonShiftAttendanceColSpan} hasMore={nonShiftEmployeesScroll.hasMore} onLoadMore={nonShiftEmployeesScroll.loadMore} nextPageSize={nonShiftEmployeesScroll.nextPageSize} sentinelRef={nonShiftEmployeesScroll.sentinelRef} totalCount={nonShiftEmployeesScroll.totalCount} visibleCount={nonShiftEmployeesScroll.visibleCount} />
                   </tbody>
                 </table>
               </div>
@@ -972,7 +972,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                           <td className="px-6 py-4 text-center text-sm text-gray-900">{balance.alBalance}</td>
                         </tr>
                       ))}
-                      <InfiniteScrollTableSentinel colSpan={4} hasMore={leaveBalancesScroll.hasMore} sentinelRef={leaveBalancesScroll.sentinelRef} totalCount={leaveBalancesScroll.totalCount} visibleCount={leaveBalancesScroll.visibleCount} />
+                      <InfiniteScrollTableSentinel colSpan={4} hasMore={leaveBalancesScroll.hasMore} onLoadMore={leaveBalancesScroll.loadMore} nextPageSize={leaveBalancesScroll.nextPageSize} sentinelRef={leaveBalancesScroll.sentinelRef} totalCount={leaveBalancesScroll.totalCount} visibleCount={leaveBalancesScroll.visibleCount} />
                     </tbody>
                   </table>
                 </div>

@@ -187,7 +187,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
     [filteredRows, sortColumn, sortDirection],
   );
 
-  const { visibleItems, hasMore, sentinelRef } = useInfiniteScrollSlice(sortedRows, { scrollRootRef });
+  const { visibleItems, hasMore, sentinelRef, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedRows, { scrollRootRef });
 
   if (!selectedCompanyId || selectedLocationIds.length === 0) {
     return (
@@ -292,7 +292,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
                 </tr>
               ))
             )}
-            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} />
+            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
           </tbody>
         </table>
       </TableScrollContainer>

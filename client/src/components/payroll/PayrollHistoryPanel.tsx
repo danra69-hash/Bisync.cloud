@@ -69,8 +69,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(runListRows, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(runListRows, { scrollRootRef });
 
   const toggleRun = async (runId: number) => {
     if (expandedRunId === runId) {
@@ -202,7 +201,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
               </div>
             );
           })}
-          <InfiniteScrollDivSentinel hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+          <InfiniteScrollDivSentinel hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
         </div>
       </aside>
     </div>

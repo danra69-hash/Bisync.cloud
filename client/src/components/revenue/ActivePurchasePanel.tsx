@@ -187,8 +187,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(lines, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(lines, { scrollRootRef });
 
   function updateLine(itemId: number, patch: Partial<EditableLine>) {
     setLines(prev => prev.map(line => (line.itemId === itemId ? { ...line, ...patch } : line)));
@@ -522,7 +521,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                       </tr>
                     );
                   })}
-                  <InfiniteScrollTableSentinel colSpan={lineColSpan} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                  <InfiniteScrollTableSentinel colSpan={lineColSpan} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
                 </tbody>
               </table>
             </TableScrollContainer>

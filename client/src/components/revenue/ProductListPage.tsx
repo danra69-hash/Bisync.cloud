@@ -248,8 +248,7 @@ export function ProductListPage({
     hasMore,
     sentinelRef,
     totalCount,
-    visibleCount,
-  } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
+    visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedVisibleProducts, { scrollRootRef });
 
   function replaceProduct(updated: Product) {
     setProducts(prev => prev.map(p => (p.id === updated.id ? updated : p)));
@@ -529,7 +528,7 @@ export function ProductListPage({
                     );
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
