@@ -127,11 +127,11 @@ function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
 
     case 'split_use':
 
-      return 'Split';
+      return 'Sub-Component';
 
     case 'split_use_in':
 
-      return 'Split';
+      return 'Sub-Component';
 
     case 'production':
 
@@ -176,6 +176,109 @@ function entryInboundOutbound(entry: StockCardLedgerEntry, countryCode: string):
   if (entry.signedQty > 0) return { inbound: qty, outbound: '—' };
   if (entry.signedQty < 0) return { inbound: '—', outbound: qty };
   return { inbound: '—', outbound: '—' };
+}
+
+type LedgerDisplayGroup =
+  | { kind: 'inbound_with_subs'; parent: StockCardLedgerEntry; parentIndex: number; children: Array<{ entry: StockCardLedgerEntry; index: number }> }
+  | { kind: 'single'; entry: StockCardLedgerEntry; index: number };
+
+/** Group purchase inbound with following Split Use composition lines (sub-components). */
+function groupLedgerEntries(entries: StockCardLedgerEntry[]): LedgerDisplayGroup[] {
+  const groups: LedgerDisplayGroup[] = [];
+  let i = 0;
+  while (i < entries.length) {
+    const entry = entries[i];
+    if (entry.entryType === 'purchase' || entry.entryType === 'cash_purchase') {
+      const children: Array<{ entry: StockCardLedgerEntry; index: number }> = [];
+      let j = i + 1;
+      while (j < entries.length && entries[j].entryType === 'split_use') {
+        children.push({ entry: entries[j], index: j });
+        j += 1;
+      }
+      groups.push({ kind: 'inbound_with_subs', parent: entry, parentIndex: i, children });
+      i = j;
+      continue;
+    }
+    groups.push({ kind: 'single', entry, index: i });
+    i += 1;
+  }
+  return groups;
+}
+
+function subComponentLabel(entry: StockCardLedgerEntry): string {
+  const reason = entry.reason?.trim() ?? '';
+  const arrow = reason.match(/→\s*(.+)$/);
+  if (arrow?.[1]) return arrow[1].trim();
+  const from = reason.match(/Split from\s+(.+?)(?:\s+—|$)/i);
+  if (from?.[1]) return from[1].trim();
+  return entry.reason || 'Sub-component';
+}
+
+function LedgerEntryRow({
+  entry,
+  countryCode,
+  rm,
+  nested = false,
+  groupStart = false,
+}: {
+  entry: StockCardLedgerEntry;
+  countryCode: string;
+  rm: (value: number) => string;
+  nested?: boolean;
+  groupStart?: boolean;
+}) {
+  const { inbound, outbound } = entryInboundOutbound(entry, countryCode);
+  const rowTone = entry.isShortage
+    ? 'bg-destructive/5'
+    : entry.isCogsBackfilled
+      ? 'bg-amber-500/5'
+      : entry.isNegativeBalance
+        ? 'bg-destructive/5'
+        : groupStart
+          ? 'bg-muted/15'
+          : '';
+  const textSize = nested ? 'text-xs' : '';
+
+  return (
+    <tr className={`border-t border-border/60 hover:bg-muted/30 align-top ${rowTone} ${textSize}`}>
+      <td className={`px-5 py-2.5 whitespace-nowrap ${nested ? 'pl-10 text-muted-foreground' : ''}`}>
+        {fmtDateTime(entry.occurredAt)}
+      </td>
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        {entryTypeLabel(entry.entryType)}
+        {entry.isShortage ? (
+          <span className="ml-1 text-[10px] uppercase tracking-wide text-destructive">Neg / short</span>
+        ) : null}
+        {entry.isCogsBackfilled ? (
+          <span className="ml-1 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400">Backfill</span>
+        ) : null}
+      </td>
+      <td className="px-3 py-2.5 text-right tabular-nums">{inbound}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums">{outbound}</td>
+      <td className="px-3 py-2.5">{entry.uom}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums">
+        {entry.unitPrice > 0 ? rm(entry.unitPrice) : '—'}
+      </td>
+      <td className="px-3 py-2.5 text-right tabular-nums">
+        {entry.subtotal > 0 ? rm(entry.subtotal) : '—'}
+      </td>
+      <td className="px-5 py-2.5 text-muted-foreground">
+        <div>{entry.reason}</div>
+        {entry.referenceNumber ? (
+          <div className="text-xs text-foreground/70 mt-0.5">Ref: {entry.referenceNumber}</div>
+        ) : null}
+      </td>
+      <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[220px]">
+        {entry.fifoDetail || '—'}
+      </td>
+      <td
+        className={`px-3 py-2.5 text-right tabular-nums font-medium ${entry.isNegativeBalance || entry.runningBalance < 0 ? 'text-destructive' : ''}`}
+        title="Stock quantity remaining after this line"
+      >
+        {fmtQty(entry.runningBalance, countryCode)}
+      </td>
+    </tr>
+  );
 }
 
 
@@ -484,81 +587,81 @@ export function StockCardDetailPanel({
                     <th className={tableHeaderCls('right')}>Subtotal</th>
                     <th className={tableHeaderCls('left')}>Reference / reason</th>
                     <th className={tableHeaderCls('left')}>FIFO detail</th>
-                    <th className={tableHeaderCls('right')}>Balance</th>
+                    <th
+                      className={tableHeaderCls('right')}
+                      title="Stock quantity remaining after this line (running on-hand)"
+                    >
+                      On-hand
+                    </th>
                   </tr>
 
                 </thead>
 
                 <tbody>
 
-                  {detail.entries.map((entry, index) => {
-                    const { inbound, outbound } = entryInboundOutbound(entry, countryCode);
-                    const rowTone = entry.isShortage
-                      ? 'bg-destructive/5'
-                      : entry.isCogsBackfilled
-                        ? 'bg-amber-500/5'
-                        : entry.isNegativeBalance
-                          ? 'bg-destructive/5'
-                          : '';
-                    return (
-                    <tr key={`${entry.id}-${entry.splitIndex ?? 0}-${index}`} className={`border-t border-border/60 hover:bg-muted/30 align-top ${rowTone}`}>
+                  {groupLedgerEntries(detail.entries).flatMap(group => {
+                    if (group.kind === 'single') {
+                      return [
+                        <LedgerEntryRow
+                          key={`${group.entry.id}-${group.entry.splitIndex ?? 0}-${group.index}`}
+                          entry={group.entry}
+                          countryCode={countryCode}
+                          rm={rm}
+                          nested={group.entry.entryType === 'split_use' || group.entry.entryType === 'split_use_in'}
+                        />,
+                      ];
+                    }
 
-                      <td className="px-5 py-2.5 whitespace-nowrap">{fmtDateTime(entry.occurredAt)}</td>
-
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        {entryTypeLabel(entry.entryType)}
-                        {entry.isShortage ? (
-                          <span className="ml-1 text-[10px] uppercase tracking-wide text-destructive">Neg / short</span>
-                        ) : null}
-                        {entry.isCogsBackfilled ? (
-                          <span className="ml-1 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400">Backfill</span>
-                        ) : null}
-                      </td>
-
-                      <td className="px-3 py-2.5 text-right tabular-nums">{inbound}</td>
-
-                      <td className="px-3 py-2.5 text-right tabular-nums">{outbound}</td>
-
-                      <td className="px-3 py-2.5">{entry.uom}</td>
-
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-
-                        {entry.unitPrice > 0 ? rm(entry.unitPrice) : '—'}
-
-                      </td>
-
-                      <td className="px-3 py-2.5 text-right tabular-nums">
-
-                        {entry.subtotal > 0 ? rm(entry.subtotal) : '—'}
-
-                      </td>
-
-                      <td className="px-5 py-2.5 text-muted-foreground">
-
-                        <div>{entry.reason}</div>
-
-                        {entry.referenceNumber ? (
-
-                          <div className="text-xs text-foreground/70 mt-0.5">Ref: {entry.referenceNumber}</div>
-
-                        ) : null}
-
-                      </td>
-
-                      <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[220px]">
-
-                        {entry.fifoDetail || '—'}
-
-                      </td>
-
-                      <td className={`px-3 py-2.5 text-right tabular-nums font-medium ${entry.isNegativeBalance || entry.runningBalance < 0 ? 'text-destructive' : ''}`}>
-
-                        {fmtQty(entry.runningBalance, countryCode)}
-
-                      </td>
-
-                    </tr>
-                    );
+                    const { parent, children, parentIndex } = group;
+                    const rows = [
+                      <LedgerEntryRow
+                        key={`parent-${parent.id}-${parentIndex}`}
+                        entry={parent}
+                        countryCode={countryCode}
+                        rm={rm}
+                        nested={false}
+                        groupStart={children.length > 0}
+                      />,
+                    ];
+                    if (children.length > 0) {
+                      rows.push(
+                        <tr key={`subs-${parent.id}-${parentIndex}`} className="border-t border-border/40 bg-muted/25">
+                          <td className="px-5 py-2 align-top">
+                            <div className="h-full min-h-[1rem] border-l-2 border-primary/30 ml-1" />
+                          </td>
+                          <td colSpan={9} className="px-3 py-2.5">
+                            <div className="rounded-md border border-border/70 bg-background/60 px-3 py-2 space-y-1.5">
+                              <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+                                Sub-components (make up this inbound)
+                              </p>
+                              {children.map(({ entry, index }) => {
+                                const qty = fmtQty(Math.abs(entry.signedQty), countryCode);
+                                return (
+                                  <div
+                                    key={`${entry.id}-${entry.splitIndex ?? 0}-${index}`}
+                                    className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted-foreground"
+                                  >
+                                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                                      Sub-Component
+                                    </span>
+                                    <span className="font-medium text-foreground/85">
+                                      {subComponentLabel(entry)}
+                                    </span>
+                                    <span className="tabular-nums">
+                                      {qty} {entry.uom}
+                                    </span>
+                                    {entry.unitPrice > 0 ? (
+                                      <span className="tabular-nums">{rm(entry.unitPrice)} / {entry.uom}</span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        </tr>,
+                      );
+                    }
+                    return rows;
                   })}
                 </tbody>
 
