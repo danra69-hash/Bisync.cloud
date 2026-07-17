@@ -71,9 +71,12 @@ jobs:
       - name: Build & push container (Cloud Build)
         run: |
           set -euo pipefail
+          # --suppress-logs: GitHub deploy SA cannot stream the default Cloud Build
+          # logs bucket; without this, gcloud exits 1 even while the build succeeds.
           gcloud builds submit \
             --project="${PROJECT_ID}" \
             --config=cloudbuild.yaml \
+            --suppress-logs \
             --substitutions="_IMAGE=${{ steps.meta.outputs.image_latest }},_IMAGE_SHA=${{ steps.meta.outputs.image_sha }},_VITE_DEV_CONSOLE_PATH=${DEV_CONSOLE_PATH}" \
             .
 
