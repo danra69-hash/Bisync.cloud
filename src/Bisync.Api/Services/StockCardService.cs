@@ -1312,7 +1312,7 @@ public class StockCardService(
             "online_order" => "Online order sales depletion",
             "offline_order" => "Offline order sales depletion",
             "wastage" => "Wastage",
-            "split_use" => "Split composition",
+            "split_use" => "Sub-component composition",
             "production" => productionProduct is null
                 ? "Production"
                 : FormatProductionDeductionReason(productionProduct, movement),
