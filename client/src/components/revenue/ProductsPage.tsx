@@ -82,19 +82,18 @@ import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredie
 import { SmartComponentPicker } from './SmartComponentPicker';
 import { ProductComponentPicker } from './ProductComponentPicker';
 import {
-  emptyYieldPackaging,
   loadYieldAltUnitsFromProduct,
-  loadYieldPackagingFromProduct,
   refreshBatchAdditionalUoms,
   serializeYieldAltUnits,
-  serializeYieldAltUnitsPayload,
-  type YieldPackagingLevels,
 } from '../../data/productBatchUom';
 import {
   createDefaultBatchAdditionalEntry,
   SubProductBatchAdditionalUoms,
 } from './SubProductBatchUomSection';
-import { SubProductDeliveryUnitFields } from './SubProductDeliveryUnitFields';
+import {
+  clampSubProductAltUnits,
+  SubProductBatchProduceFields,
+} from './SubProductBatchProduceFields';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -467,7 +466,6 @@ export function ProductsPage({
   const [rrp, setRrp] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('');
   const [yieldUom, setYieldUom] = useState('');
-  const [yieldPackaging, setYieldPackaging] = useState<YieldPackagingLevels>(() => emptyYieldPackaging());
   const [yieldAltUnits, setYieldAltUnits] = useState<AltUnitEntry[]>([]);
   const [expiryPeriodDays, setExpiryPeriodDays] = useState('');
   const [activationPeriodHours, setActivationPeriodHours] = useState('');
@@ -764,7 +762,6 @@ export function ProductsPage({
       setB2bEnabled(false);
       setYieldQuantity('');
       setYieldUom('');
-      setYieldPackaging(emptyYieldPackaging());
       setYieldAltUnits([]);
       setActivationPeriodHours('');
     }
@@ -782,7 +779,6 @@ export function ProductsPage({
     setRrp('');
     setYieldQuantity('');
     setYieldUom('');
-    setYieldPackaging(emptyYieldPackaging());
     setYieldAltUnits([]);
     setExpiryPeriodDays('');
     setActivationPeriodHours('');
@@ -818,14 +814,12 @@ export function ProductsPage({
           || formatDeliveryUnitPath(parsedB2bSales.principal.delivery).trim())
         : '');
     const loadedBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
-    setYieldPackaging(product.isSubProduct
-      ? loadYieldPackagingFromProduct(product.yieldAltUnitsJson)
-      : emptyYieldPackaging());
-    setYieldAltUnits(refreshBatchAdditionalUoms(
+    const loadedAlt = refreshBatchAdditionalUoms(
       loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedBatchUom),
       loadedBatchQty,
       loadedBatchUom,
-    ));
+    );
+    setYieldAltUnits(product.isSubProduct ? clampSubProductAltUnits(loadedAlt) : loadedAlt);
     setExpiryPeriodDays(product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '');
     setActivationPeriodHours(product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '');
     setParStock((product.parStock ?? 0) > 0 ? String(product.parStock) : '');
@@ -1280,9 +1274,7 @@ export function ProductsPage({
       yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
       yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
       yieldAltUnitsJson: supportsBatchAdditionalUom
-        ? (isSubProduct
-          ? serializeYieldAltUnitsPayload(yieldPackaging, yieldAltUnits)
-          : serializeYieldAltUnits(yieldAltUnits))
+        ? serializeYieldAltUnits(isSubProduct ? clampSubProductAltUnits(yieldAltUnits) : yieldAltUnits)
         : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
       activationPeriodHours: supportsBatchAdditionalUom
@@ -1551,11 +1543,11 @@ export function ProductsPage({
 
           <section className="rounded-lg border border-border bg-card p-4 space-y-4">
             <h3 className="text-sm font-semibold">
-              {isSubProduct ? 'Delivery unit (Production unit)' : 'Pricing, Par Stock & Location'}
+              {isSubProduct ? 'Batch produce & Location' : 'Pricing, Par Stock & Location'}
             </h3>
             <p className="text-[11px] text-muted-foreground -mt-2">
               {isSubProduct
-                ? 'Sub-products use the same Delivery Unit model as Vendor Products and B2B Products: Order UOM with optional Primary / Secondary Packaging. Enter Order Qty and UOM so unit COGS is measurable.'
+                ? 'Sub-products are made in batches for use as components inside a Product recipe. Set batch yield quantity and UOM so unit COGS is measurable.'
                 : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
             </p>
 
@@ -1573,25 +1565,19 @@ export function ProductsPage({
                   />
                 </div>
 
-                <SubProductDeliveryUnitFields
-                  orderQty={yieldQuantity}
-                  orderUnit={yieldUom}
-                  packaging={yieldPackaging}
-                  onOrderQtyChange={setYieldQuantity}
-                  onOrderUnitChange={setYieldUom}
-                  onPackagingChange={setYieldPackaging}
+                <SubProductBatchProduceFields
+                  batchQty={yieldQuantity}
+                  batchUom={yieldUom}
+                  altUnits={yieldAltUnits}
+                  onBatchQtyChange={setYieldQuantity}
+                  onBatchUomChange={setYieldUom}
+                  onAltUnitsChange={entries => setYieldAltUnits(clampSubProductAltUnits(entries))}
                   cogsLabel={
                     yieldUom && (parseFloat(yieldQuantity) || 0) > 0
                       ? `${rm(subProductUnitCost)} / ${yieldUom}`
                       : '—'
                   }
-                  cogsHint={`Product COGS ${rm(effectiveProductCogs)} ÷ ${yieldQuantity || '—'}`}
-                />
-                <SubProductBatchAdditionalUoms
-                  yieldQuantity={yieldQuantity}
-                  yieldUom={yieldUom}
-                  altUnits={yieldAltUnits}
-                  onAltUnitsChange={setYieldAltUnits}
+                  cogsHint={`Batch COGS ${rm(effectiveProductCogs)} ÷ ${yieldQuantity || '—'}`}
                 />
               </>
             ) : (
@@ -1790,7 +1776,7 @@ export function ProductsPage({
                 <div className="space-y-1.5">
                   <label className={labelCls}>UOM</label>
                   <p className={fieldCls}>{yieldUom || '—'}</p>
-                  <p className="text-[10px] text-muted-foreground">Follows Delivery Unit.</p>
+                  <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
                 </div>
               </div>
             ) : (

@@ -104,7 +104,7 @@ function DeliveryUnitEditor({
     <div className="space-y-2 min-w-0">
       {batchLabel && batchLabel !== '—' ? (
         <p className="text-[11px] text-muted-foreground">
-          Sub-product delivery unit: <span className="font-medium text-foreground">{batchLabel}</span>
+          Sub-product batch: <span className="font-medium text-foreground">{batchLabel}</span>
           {' '}· break down via Primary / Secondary Packaging into smaller sellable units.
         </p>
       ) : null}
