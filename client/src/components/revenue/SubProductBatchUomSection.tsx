@@ -66,10 +66,10 @@ export function SubProductBatchAdditionalUoms({
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Packaging / Alternate UOM
+            Alternate UOM
           </p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Auto-converted units show the full Order UOM total. Pack-style units divide by Primary Packaging count.
+            Optional conversions from Order UOM. Primary / Secondary Packaging are set in the Delivery unit breakdown above.
           </p>
         </div>
         {altUnits.length < MAX_BATCH_ADDITIONAL_UOMS ? (
@@ -85,7 +85,7 @@ export function SubProductBatchAdditionalUoms({
       </div>
 
       {altUnits.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">No packaging UOM yet. Use + next to Order UOM to add Primary / Secondary Packaging.</p>
+        <p className="text-[11px] text-muted-foreground">No alternate UOM yet. Use Add to convert Order UOM into another unit.</p>
       ) : (
         <div className="space-y-2">
           {altUnits.map((entry, index) => {

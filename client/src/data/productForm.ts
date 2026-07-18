@@ -4,6 +4,10 @@ import type { Product } from '../api';
 import { formatCountryPercent } from '../utils/numberFormat';
 import type { B2bSalesConfig } from './productB2bSales';
 import { blankB2bSalesConfig } from './productB2bSales';
+import {
+  formatSubProductDeliveryUnitPath,
+  loadYieldPackagingFromProduct,
+} from './productBatchUom';
 
 export type ProductAliasLine = {
   key: string;
@@ -118,13 +122,20 @@ export function calcSubProductUnitCost(productCogs: number, yieldQuantity: strin
   return productCogs / qty;
 }
 
-/** Delivery Unit label from sub-product yield, e.g. "1kg" or "10each". */
+/** Delivery Unit label from sub-product yield, e.g. "1kg", "10each", or "1box/12tin/400gr". */
 export function formatSubProductBatchPackageUnit(product: {
   yieldQuantity: number;
   yieldUom: string;
+  yieldAltUnitsJson?: string;
 }): string {
   if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
   const uom = fromApiUom(product.yieldUom);
+  if (product.yieldAltUnitsJson) {
+    const packaging = loadYieldPackagingFromProduct(product.yieldAltUnitsJson);
+    if (packaging.primaryUnit || packaging.secondaryUnit) {
+      return formatSubProductDeliveryUnitPath(product.yieldQuantity, uom, packaging);
+    }
+  }
   const qty = Number.isInteger(product.yieldQuantity)
     ? product.yieldQuantity
     : Number(product.yieldQuantity.toFixed(2).replace(/\.?0+$/, ''));
