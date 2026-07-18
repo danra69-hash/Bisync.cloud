@@ -1916,8 +1916,8 @@ export function ProductsPage({
           <ComponentLinesSection
             title="Product Component"
             description={!isSubProduct && b2bEnabled
-              ? 'Add smart components or sub-products. Include at least one sub-product for B2B sales COGS.'
-              : 'Add smart components, sub-products, and quantities to calculate product cost'}
+              ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
+              : 'Add smart components or sub-products from batch produce into this product recipe mix'}
             lines={lines}
             totalCost={totalCost}
             totalLabel="Total cost"

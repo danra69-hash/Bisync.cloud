@@ -119,25 +119,37 @@ export function calcSubProductUnitCost(productCogs: number, yieldQuantity: strin
   return productCogs / qty;
 }
 
-/** Batch yield label from sub-product, e.g. "10each", "1000gr", or "10each / 1kg". */
+function formatBatchQty(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (Number.isInteger(value)) return String(value);
+  return String(Number(value.toFixed(2).replace(/\.?0+$/, '')));
+}
+
+/** Primary batch yield label for recipe lines, e.g. "10each" or "1000gr". */
+export function formatSubProductPrimaryBatchUnit(product: {
+  yieldQuantity: number;
+  yieldUom: string;
+}): string {
+  if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
+  const qty = formatBatchQty(product.yieldQuantity);
+  const uom = fromApiUom(product.yieldUom);
+  return qty ? `${qty}${uom.toLowerCase()}` : '—';
+}
+
+/** Batch yield label, with optional alternative: "10each" or "10each / 1kg". */
 export function formatSubProductBatchPackageUnit(product: {
   yieldQuantity: number;
   yieldUom: string;
   yieldAltUnitsJson?: string;
 }): string {
-  if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
-  const uom = fromApiUom(product.yieldUom);
-  const qty = Number.isInteger(product.yieldQuantity)
-    ? product.yieldQuantity
-    : Number(product.yieldQuantity.toFixed(2).replace(/\.?0+$/, ''));
-  const primary = `${qty}${uom.toLowerCase()}`;
+  const primary = formatSubProductPrimaryBatchUnit(product);
+  if (primary === '—') return '—';
   const alt = parseYieldAltUnitsJson(product.yieldAltUnitsJson)[0];
   if (!alt?.unit?.trim() || !alt.qty?.trim()) return primary;
   const altUnit = fromApiUom(alt.unit) || alt.unit;
   const altQtyNum = parseFloat(alt.qty);
-  const altQty = Number.isFinite(altQtyNum)
-    ? (Number.isInteger(altQtyNum) ? String(altQtyNum) : String(Number(altQtyNum.toFixed(2).replace(/\.?0+$/, ''))))
-    : alt.qty.trim();
+  const altQty = Number.isFinite(altQtyNum) ? formatBatchQty(altQtyNum) : alt.qty.trim();
+  if (!altQty) return primary;
   return `${primary} / ${altQty}${altUnit.toLowerCase()}`;
 }
 
@@ -286,7 +298,7 @@ export function productLineFromSubProduct(product: {
     b2bEnabled: false,
     b2cEnabled: false,
   });
-  const batchLabel = formatSubProductBatchPackageUnit(product);
+  const batchLabel = formatSubProductPrimaryBatchUnit(product);
   return {
     key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     componentId: product.productId,
