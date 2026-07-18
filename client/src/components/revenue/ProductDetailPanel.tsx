@@ -4,11 +4,14 @@ import { Pencil, X } from 'lucide-react';
 import { api, type PatchProductPayload, type Product } from '../../api';
 import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
 import {
+  emptyYieldPackaging,
   loadYieldAltUnitsFromProduct,
+  loadYieldPackagingFromProduct,
   normalizedYieldAltUnitsFromEntries,
   normalizedYieldAltUnitsJson,
   parseYieldAltUnitsJson,
   refreshBatchAdditionalUoms,
+  type YieldPackagingLevels,
 } from '../../data/productBatchUom';
 import { serializeProductParStockUom } from '../../data/productParStock';
 import { configLocationToDropdown } from '../../utils/orgFilters';
@@ -42,6 +45,7 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
     (product.parStock ?? 0) > 0 ? String(product.parStock) : '',
   );
   const [yieldAltUnits, setYieldAltUnits] = useState<AltUnitEntry[]>([]);
+  const [yieldPackaging, setYieldPackaging] = useState<YieldPackagingLevels>(() => emptyYieldPackaging());
   const initializedProductIdRef = useRef<number | null>(null);
   const [locationIds, setLocationIds] = useState<string[]>(product.locationExternalIds ?? []);
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
@@ -58,6 +62,9 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
         ? (product.yieldUom ? fromApiUom(product.yieldUom) : '')
         : (product.b2bPackageUnit?.trim() || '');
       const initialBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
+      setYieldPackaging(product.isSubProduct
+        ? loadYieldPackagingFromProduct(product.yieldAltUnitsJson)
+        : emptyYieldPackaging());
       setYieldAltUnits(refreshBatchAdditionalUoms(
         loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, initialBatchUom),
         initialBatchQty,
@@ -109,10 +116,11 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
       yieldAltUnits,
       batchQtyForAdditional,
       batchUomForAdditional,
+      product.isSubProduct ? yieldPackaging : emptyYieldPackaging(),
     );
     const altChanged = supportsBatchAdditionalUom && nextAlt !== serverAlt;
     return rrpChanged || parChanged || altChanged;
-  }, [rrpDraft, parStockDraft, yieldAltUnits, product, batchUomForAdditional, batchQtyForAdditional, supportsBatchAdditionalUom]);
+  }, [rrpDraft, parStockDraft, yieldAltUnits, yieldPackaging, product, batchUomForAdditional, batchQtyForAdditional, supportsBatchAdditionalUom]);
 
   async function patchProduct(payload: PatchProductPayload): Promise<boolean> {
     setSaving(true);
@@ -127,6 +135,9 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
           unit: fromApiUom(entry.unit) || entry.unit,
         }));
         const entries = fromServer.length > 0 ? fromServer : fallback;
+        setYieldPackaging(updated.isSubProduct
+          ? loadYieldPackagingFromProduct(updated.yieldAltUnitsJson || payload.yieldAltUnitsJson)
+          : emptyYieldPackaging());
         setYieldAltUnits(refreshBatchAdditionalUoms(
           entries,
           updated.yieldQuantity,
@@ -182,6 +193,7 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
         yieldAltUnits,
         batchQtyForAdditional,
         batchUomForAdditional,
+        product.isSubProduct ? yieldPackaging : emptyYieldPackaging(),
       );
       if (nextAlt !== serverAlt) {
         payload.yieldAltUnitsJson = nextAlt;
@@ -199,6 +211,10 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
 
   function handleYieldAltUnitsChange(entries: AltUnitEntry[]) {
     setYieldAltUnits(entries);
+  }
+
+  function handleYieldPackagingChange(packaging: YieldPackagingLevels) {
+    setYieldPackaging(packaging);
   }
 
   function addBatchAdditionalUom() {
@@ -282,6 +298,8 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
             onParStockChange={setParStockDraft}
             yieldAltUnits={yieldAltUnits}
             onYieldAltUnitsChange={handleYieldAltUnitsChange}
+            yieldPackaging={yieldPackaging}
+            onYieldPackagingChange={product.isSubProduct ? handleYieldPackagingChange : undefined}
             onAddBatchAdditionalUom={supportsBatchAdditionalUom ? addBatchAdditionalUom : undefined}
             addBatchUomButtonCls={addBtnCls}
             onToggleLocation={externalId => void toggleLocation(externalId)}

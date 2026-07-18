@@ -82,14 +82,19 @@ import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredie
 import { SmartComponentPicker } from './SmartComponentPicker';
 import { ProductComponentPicker } from './ProductComponentPicker';
 import {
+  emptyYieldPackaging,
   loadYieldAltUnitsFromProduct,
+  loadYieldPackagingFromProduct,
   refreshBatchAdditionalUoms,
   serializeYieldAltUnits,
+  serializeYieldAltUnitsPayload,
+  type YieldPackagingLevels,
 } from '../../data/productBatchUom';
 import {
   createDefaultBatchAdditionalEntry,
   SubProductBatchAdditionalUoms,
 } from './SubProductBatchUomSection';
+import { SubProductDeliveryUnitFields } from './SubProductDeliveryUnitFields';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -462,6 +467,7 @@ export function ProductsPage({
   const [rrp, setRrp] = useState('');
   const [yieldQuantity, setYieldQuantity] = useState('');
   const [yieldUom, setYieldUom] = useState('');
+  const [yieldPackaging, setYieldPackaging] = useState<YieldPackagingLevels>(() => emptyYieldPackaging());
   const [yieldAltUnits, setYieldAltUnits] = useState<AltUnitEntry[]>([]);
   const [expiryPeriodDays, setExpiryPeriodDays] = useState('');
   const [activationPeriodHours, setActivationPeriodHours] = useState('');
@@ -758,7 +764,8 @@ export function ProductsPage({
       setB2bEnabled(false);
       setYieldQuantity('');
       setYieldUom('');
-    setYieldAltUnits([]);
+      setYieldPackaging(emptyYieldPackaging());
+      setYieldAltUnits([]);
       setActivationPeriodHours('');
     }
   }
@@ -775,6 +782,7 @@ export function ProductsPage({
     setRrp('');
     setYieldQuantity('');
     setYieldUom('');
+    setYieldPackaging(emptyYieldPackaging());
     setYieldAltUnits([]);
     setExpiryPeriodDays('');
     setActivationPeriodHours('');
@@ -810,6 +818,9 @@ export function ProductsPage({
           || formatDeliveryUnitPath(parsedB2bSales.principal.delivery).trim())
         : '');
     const loadedBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
+    setYieldPackaging(product.isSubProduct
+      ? loadYieldPackagingFromProduct(product.yieldAltUnitsJson)
+      : emptyYieldPackaging());
     setYieldAltUnits(refreshBatchAdditionalUoms(
       loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedBatchUom),
       loadedBatchQty,
@@ -1268,7 +1279,11 @@ export function ProductsPage({
       rrp: effectiveRrp,
       yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
       yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
-      yieldAltUnitsJson: supportsBatchAdditionalUom ? serializeYieldAltUnits(yieldAltUnits) : undefined,
+      yieldAltUnitsJson: supportsBatchAdditionalUom
+        ? (isSubProduct
+          ? serializeYieldAltUnitsPayload(yieldPackaging, yieldAltUnits)
+          : serializeYieldAltUnits(yieldAltUnits))
+        : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
       activationPeriodHours: supportsBatchAdditionalUom
         ? parseOptionalActivationPeriodHours(activationPeriodHours).hours
@@ -1536,11 +1551,11 @@ export function ProductsPage({
 
           <section className="rounded-lg border border-border bg-card p-4 space-y-4">
             <h3 className="text-sm font-semibold">
-              {isSubProduct ? 'Delivery Unit & Location' : 'Pricing, Par Stock & Location'}
+              {isSubProduct ? 'Delivery unit (Production unit)' : 'Pricing, Par Stock & Location'}
             </h3>
             <p className="text-[11px] text-muted-foreground -mt-2">
               {isSubProduct
-                ? 'Sub-products use the same Delivery Unit model as Vendor Products and B2B Products: Order UOM with optional Primary / Secondary Packaging. Enter yield quantity and UOM (Order UOM) so unit COGS is measurable.'
+                ? 'Sub-products use the same Delivery Unit model as Vendor Products and B2B Products: Order UOM with optional Primary / Secondary Packaging. Enter Order Qty and UOM so unit COGS is measurable.'
                 : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
             </p>
 
@@ -1558,58 +1573,20 @@ export function ProductsPage({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={labelCls} htmlFor="yield-quantity">Order Qty</label>
-                    <input
-                      id="yield-quantity"
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={yieldQuantity}
-                      onChange={e => setYieldQuantity(e.target.value)}
-                      placeholder="e.g. 10"
-                      className={fieldCls}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={labelCls} htmlFor="yield-uom">Order UOM</label>
-                    <div className="flex gap-1.5 items-center">
-                      <select
-                        id="yield-uom"
-                        value={yieldUom}
-                        onChange={e => setYieldUom(e.target.value)}
-                        className={`${fieldCls} flex-1`}
-                      >
-                        <option value="">Select UOM…</option>
-                        {getKnownRecipeUnits().map(unit => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setYieldAltUnits(prev => createDefaultBatchAdditionalEntry(prev, yieldQuantity, yieldUom))}
-                        disabled={!yieldUom}
-                        className={addBtnCls}
-                        title="Add packaging / alternate UOM"
-                        aria-label="Add packaging / alternate UOM"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">COGS</p>
-                    <p className="text-sm font-semibold mt-1">
-                      {yieldUom && (parseFloat(yieldQuantity) || 0) > 0
-                        ? `${rm(subProductUnitCost)} / ${yieldUom}`
-                        : '—'}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Product COGS {rm(effectiveProductCogs)} ÷ {yieldQuantity || '—'}
-                    </p>
-                  </div>
-                </div>
+                <SubProductDeliveryUnitFields
+                  orderQty={yieldQuantity}
+                  orderUnit={yieldUom}
+                  packaging={yieldPackaging}
+                  onOrderQtyChange={setYieldQuantity}
+                  onOrderUnitChange={setYieldUom}
+                  onPackagingChange={setYieldPackaging}
+                  cogsLabel={
+                    yieldUom && (parseFloat(yieldQuantity) || 0) > 0
+                      ? `${rm(subProductUnitCost)} / ${yieldUom}`
+                      : '—'
+                  }
+                  cogsHint={`Product COGS ${rm(effectiveProductCogs)} ÷ ${yieldQuantity || '—'}`}
+                />
                 <SubProductBatchAdditionalUoms
                   yieldQuantity={yieldQuantity}
                   yieldUom={yieldUom}
