@@ -4,10 +4,7 @@ import type { Product } from '../api';
 import { formatCountryPercent } from '../utils/numberFormat';
 import type { B2bSalesConfig } from './productB2bSales';
 import { blankB2bSalesConfig } from './productB2bSales';
-import {
-  formatSubProductDeliveryUnitPath,
-  loadYieldPackagingFromProduct,
-} from './productBatchUom';
+import { parseYieldAltUnitsJson } from './productBatchUom';
 
 export type ProductAliasLine = {
   key: string;
@@ -122,7 +119,7 @@ export function calcSubProductUnitCost(productCogs: number, yieldQuantity: strin
   return productCogs / qty;
 }
 
-/** Delivery Unit label from sub-product yield, e.g. "1kg", "10each", or "1box/12tin/400gr". */
+/** Batch yield label from sub-product, e.g. "10each", "1000gr", or "10each / 1kg". */
 export function formatSubProductBatchPackageUnit(product: {
   yieldQuantity: number;
   yieldUom: string;
@@ -130,16 +127,18 @@ export function formatSubProductBatchPackageUnit(product: {
 }): string {
   if (product.yieldQuantity <= 0 || !product.yieldUom) return '—';
   const uom = fromApiUom(product.yieldUom);
-  if (product.yieldAltUnitsJson) {
-    const packaging = loadYieldPackagingFromProduct(product.yieldAltUnitsJson);
-    if (packaging.primaryUnit || packaging.secondaryUnit) {
-      return formatSubProductDeliveryUnitPath(product.yieldQuantity, uom, packaging);
-    }
-  }
   const qty = Number.isInteger(product.yieldQuantity)
     ? product.yieldQuantity
     : Number(product.yieldQuantity.toFixed(2).replace(/\.?0+$/, ''));
-  return `${qty}${uom.toLowerCase()}`;
+  const primary = `${qty}${uom.toLowerCase()}`;
+  const alt = parseYieldAltUnitsJson(product.yieldAltUnitsJson)[0];
+  if (!alt?.unit?.trim() || !alt.qty?.trim()) return primary;
+  const altUnit = fromApiUom(alt.unit) || alt.unit;
+  const altQtyNum = parseFloat(alt.qty);
+  const altQty = Number.isFinite(altQtyNum)
+    ? (Number.isInteger(altQtyNum) ? String(altQtyNum) : String(Number(altQtyNum.toFixed(2).replace(/\.?0+$/, ''))))
+    : alt.qty.trim();
+  return `${primary} / ${altQty}${altUnit.toLowerCase()}`;
 }
 
 export function getSubProductBatchSize(product: { yieldQuantity: number }): number {

@@ -14,12 +14,7 @@ import {
 } from '../../data/productForm';
 import { formatProductParStock } from '../../data/productParStock';
 import { SubProductBatchAdditionalUoms } from './SubProductBatchUomSection';
-import { SubProductDeliveryUnitFields } from './SubProductDeliveryUnitFields';
-import {
-  emptyYieldPackaging,
-  loadYieldPackagingFromProduct,
-  type YieldPackagingLevels,
-} from '../../data/productBatchUom';
+import { SubProductBatchProduceFields } from './SubProductBatchProduceFields';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 const fieldCls =
@@ -42,8 +37,6 @@ type Props = {
   onParStockBlur?: () => void;
   yieldAltUnits?: AltUnitEntry[];
   onYieldAltUnitsChange?: (entries: AltUnitEntry[]) => void;
-  yieldPackaging?: YieldPackagingLevels;
-  onYieldPackagingChange?: (packaging: YieldPackagingLevels) => void;
   onAddBatchAdditionalUom?: () => void;
   addBatchUomButtonCls?: string;
   onToggleLocation: (externalId: string) => void;
@@ -148,8 +141,6 @@ export function ProductReadOnlyView({
   onParStockBlur,
   yieldAltUnits = [],
   onYieldAltUnitsChange,
-  yieldPackaging,
-  onYieldPackagingChange,
   onAddBatchAdditionalUom,
   addBatchUomButtonCls = '',
   onToggleLocation,
@@ -177,10 +168,6 @@ export function ProductReadOnlyView({
   const batchQtyForAdditional = product.isSubProduct
     ? (product.yieldQuantity > 0 ? String(product.yieldQuantity) : '')
     : '1';
-  const resolvedYieldPackaging = yieldPackaging
-    ?? (product.isSubProduct
-      ? loadYieldPackagingFromProduct(product.yieldAltUnitsJson)
-      : emptyYieldPackaging());
   const subProductUnitCost = product.isSubProduct && product.yieldQuantity > 0
     ? calcSubProductUnitCost(productCogs, String(product.yieldQuantity))
     : 0;
@@ -260,11 +247,11 @@ export function ProductReadOnlyView({
 
       <section className="rounded-lg border border-border bg-card p-4 space-y-4">
         <h3 className="text-sm font-semibold">
-          {product.isSubProduct ? 'Delivery unit (Production unit)' : 'Pricing, Par Stock & Location'}
+          {product.isSubProduct ? 'Batch produce & Location' : 'Pricing, Par Stock & Location'}
         </h3>
         <p className="text-[11px] text-muted-foreground -mt-2">
           {product.isSubProduct
-            ? 'Sub-products use Order UOM with optional Primary / Secondary Packaging. Order Qty and UOM drive unit COGS.'
+            ? 'Sub-products are made in batches for use as components inside a Product recipe. Batch yield drives unit COGS.'
             : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
         </p>
 
@@ -274,26 +261,19 @@ export function ProductReadOnlyView({
               <p className={labelCls}>Sub-Product Name</p>
               <p className={fieldCls}>{product.name}</p>
             </div>
-            <SubProductDeliveryUnitFields
-              orderQty={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
-              orderUnit={yieldUomLabel}
-              packaging={resolvedYieldPackaging}
-              onPackagingChange={saving ? undefined : onYieldPackagingChange}
+            <SubProductBatchProduceFields
+              batchQty={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
+              batchUom={yieldUomLabel}
+              altUnits={yieldAltUnits}
+              batchReadOnly
+              onAltUnitsChange={saving ? undefined : onYieldAltUnitsChange}
               cogsLabel={
                 yieldUomLabel && product.yieldQuantity > 0
                   ? `${rm(subProductUnitCost)} / ${yieldUomLabel}`
                   : '—'
               }
-              cogsHint={`Product COGS ${rm(productCogs)} ÷ ${product.yieldQuantity > 0 ? product.yieldQuantity : '—'}`}
+              cogsHint={`Batch COGS ${rm(productCogs)} ÷ ${product.yieldQuantity > 0 ? product.yieldQuantity : '—'}`}
             />
-            {onYieldAltUnitsChange ? (
-              <SubProductBatchAdditionalUoms
-                yieldQuantity={product.yieldQuantity > 0 ? String(product.yieldQuantity) : ''}
-                yieldUom={yieldUomLabel}
-                altUnits={yieldAltUnits}
-                onAltUnitsChange={onYieldAltUnitsChange}
-              />
-            ) : null}
           </>
         ) : (
           <>
@@ -431,7 +411,7 @@ export function ProductReadOnlyView({
             <div className="space-y-1.5">
               <p className={labelCls}>UOM</p>
               <p className={fieldCls}>{yieldUomLabel || parStockUomLabel || '—'}</p>
-              <p className="text-[10px] text-muted-foreground">Follows Delivery Unit.</p>
+              <p className="text-[10px] text-muted-foreground">Follows batch UOM.</p>
             </div>
           </div>
         ) : (
