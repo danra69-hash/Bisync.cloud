@@ -48,6 +48,7 @@ import {
 } from '../../data/componentParStock';
 import { VENDOR_PRODUCT_CATALOG, calcComponentPrincipalUomPrice, calcNettUomPrice, calcNettUomQty, resolveComponentUomQty, type VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { ComponentSplitUseSection } from './ComponentSplitUseSection';
+import { SearchableSelect } from './SearchableSelect';
 import {
   calcSplitUseNettUnitCost,
   createSplitUseLine,
@@ -110,8 +111,9 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 
 const COMPACT_INPUT_CLS =
   'bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary shrink-0';
-const COMPACT_FROM_QTY_CLS = `${COMPACT_INPUT_CLS} w-12 min-w-[3rem]`;
-const COMPACT_TO_QTY_CLS = `${COMPACT_INPUT_CLS} w-24 min-w-[5.5rem]`;
+// Qty inputs are intentionally large enough for multi-digit conversions (2× prior widths).
+const COMPACT_FROM_QTY_CLS = `${COMPACT_INPUT_CLS} w-24 min-w-[6rem]`;
+const COMPACT_TO_QTY_CLS = `${COMPACT_INPUT_CLS} w-48 min-w-[11rem]`;
 const COMPACT_SELECT_CLS =
   'bg-background border border-border rounded px-1 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer w-[3.25rem] shrink-0';
 
@@ -953,13 +955,17 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 </select>
               </FormField>
               <FormField label="Group">
-                <select className={selectCls} value={form.group} onChange={e => set('group', e.target.value)}>
-                  {groupOptions.map(group => <option key={group}>{group}</option>)}
-                </select>
+                <SearchableSelect
+                  value={form.group}
+                  options={groupOptions}
+                  placeholder="Select group…"
+                  emptyLabel="No matching groups"
+                  onChange={group => set('group', group)}
+                />
               </FormField>
             </div>
 
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mt-3 space-y-3">
               <FormField label="Storage Location">
                 <div className="space-y-1.5">
                   {form.storages.map((s, i) => (
@@ -971,7 +977,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                           updated[i] = e.target.value;
                           set('storages', updated);
                         }}
-                        className={`${selectCls} flex-1`}
+                        className={`${selectCls} flex-1 max-w-md`}
                       >
                         {storageOptions.map(option => <option key={option}>{option}</option>)}
                       </select>
@@ -996,14 +1002,28 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
                 </div>
               </FormField>
 
-              <FormField label="Storage Note">
-                <textarea
-                  className={`${inputCls} min-h-[88px] resize-y`}
-                  value={form.storageNote}
-                  onChange={e => set('storageNote', e.target.value)}
-                  placeholder="Optional storage instructions or notes…"
-                />
-              </FormField>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField label="Expiry (days)">
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={form.expiryPeriodDays}
+                    onChange={e => set('expiryPeriodDays', e.target.value)}
+                    placeholder="e.g. 7"
+                  />
+                </FormField>
+                <FormField label="Storage Suggestion">
+                  <input
+                    className={inputCls}
+                    type="text"
+                    value={form.storageNote}
+                    onChange={e => set('storageNote', e.target.value)}
+                    placeholder="e.g. Keep chilled below 4°C"
+                  />
+                </FormField>
+              </div>
             </div>
 
             <div className="mt-3 flex items-center gap-3">
