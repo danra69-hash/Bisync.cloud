@@ -12,7 +12,11 @@ import {
   refreshBatchAdditionalUoms,
   resolveBatchAdditionalEntry,
 } from './productBatchUom';
-import { calcProductCogs, formatSubProductBatchPackageUnit, type ProductLine } from './productForm';
+import {
+  calcProductCogs,
+  formatSubProductPrimaryBatchUnit,
+  type ProductLine,
+} from './productForm';
 
 export type ProductComponentUomOption = {
   label: string;
@@ -27,6 +31,15 @@ function subProductBatchCogs(product: Product): number {
   });
 }
 
+function formatAltBatchLabel(qtyText: string, unit: string): string {
+  const qtyNum = parseFloat(qtyText);
+  if (!Number.isFinite(qtyNum) || qtyNum <= 0 || !unit.trim()) return '';
+  const qty = Number.isInteger(qtyNum)
+    ? String(qtyNum)
+    : String(Number(qtyNum.toFixed(2).replace(/\.?0+$/, '')));
+  return `${qty}${unit.trim().toLowerCase()}`;
+}
+
 function subProductAltUomLabel(
   entry: AltUnitEntry,
   resolved: ReturnType<typeof resolveBatchAdditionalEntry>,
@@ -34,7 +47,7 @@ function subProductAltUomLabel(
   if (resolved.packStyle) {
     return entry.unit;
   }
-  return `${resolved.qty} ${entry.unit}`;
+  return formatAltBatchLabel(resolved.qty || entry.qty, entry.unit);
 }
 
 function subProductAltUomPrice(
@@ -46,13 +59,15 @@ function subProductAltUomPrice(
     const packs = parseFloat(entry.fromQty) || 0;
     return packs > 0 ? batchCogs / packs : batchCogs;
   }
+  // Alt expresses the same batch (e.g. 10each = 1kg), so recipe qty 1 costs one batch.
   return batchCogs;
 }
 
+/** UOM choices when attaching a Sub-Product into a Product recipe mix. */
 export function subProductComponentUomOptions(product: Product): ProductComponentUomOption[] {
   const batchUom = fromApiUom(product.yieldUom);
   const batchQty = product.yieldQuantity;
-  const batchLabel = formatSubProductBatchPackageUnit(product);
+  const batchLabel = formatSubProductPrimaryBatchUnit(product);
   const batchCogs = subProductBatchCogs(product);
   const options: ProductComponentUomOption[] = [];
 
@@ -68,7 +83,8 @@ export function subProductComponentUomOptions(product: Product): ProductComponen
     ? refreshBatchAdditionalUoms(parsed, batchQty, batchUom)
     : parsed;
 
-  for (const entry of altEntries) {
+  // Sub-products expose at most one alternative batch expression in the recipe picker.
+  for (const entry of altEntries.slice(0, 1)) {
     const resolved = resolveBatchAdditionalEntry(entry, batchQty, batchUom);
     const label = subProductAltUomLabel(entry, resolved);
     if (!label || options.some(option => option.label === label)) continue;
