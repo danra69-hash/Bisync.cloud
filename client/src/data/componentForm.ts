@@ -176,6 +176,8 @@ export type ComponentDetailConfig = {
   vendor: string;
   vendorProduct: string;
   deliveryUnitPrice: string;
+  /** Shelf-life hint in days after receipt / open. */
+  expiryPeriodDays?: string;
   splitUse?: ComponentSplitUseConfig;
 };
 
@@ -192,6 +194,7 @@ export const EMPTY_COMPONENT_DETAIL_CONFIG: ComponentDetailConfig = {
   vendor: '',
   vendorProduct: '',
   deliveryUnitPrice: '',
+  expiryPeriodDays: '',
   splitUse: { ...EMPTY_SPLIT_USE_CONFIG },
 };
 
@@ -209,6 +212,7 @@ export function detailConfigFromForm(form: ComponentForm): ComponentDetailConfig
     vendor: form.vendor,
     vendorProduct: form.vendorProduct,
     deliveryUnitPrice: form.deliveryUnitPrice,
+    expiryPeriodDays: form.expiryPeriodDays.trim(),
     splitUse: form.splitUse,
   };
 }
@@ -227,6 +231,7 @@ export function parseDetailConfigJson(json: string | null | undefined): Componen
       vendorProductLossYield: parsed.vendorProductLossYield ?? {},
       vendorProductComponentUom: parsed.vendorProductComponentUom ?? {},
       vendorProductLocations: parsed.vendorProductLocations ?? {},
+      expiryPeriodDays: parsed.expiryPeriodDays?.trim() ?? '',
       splitUse: parseSplitUseConfig(parsed.splitUse),
     };
   } catch {
@@ -272,6 +277,7 @@ export type ComponentForm = {
   group: string;
   storages: string[];
   storageNote: string;
+  expiryPeriodDays: string;
   active: boolean;
   recipeUnit: string;
   altRecipeUnits: AltUnitEntry[];
@@ -396,6 +402,7 @@ export function toForm(
     group: row.group,
     storages: [...row.storage],
     storageNote: row.storageNote ?? '',
+    expiryPeriodDays: detail.expiryPeriodDays?.trim() || '',
     active: row.active,
     recipeUnit,
     altRecipeUnits: detail.altRecipeUnits.map(au => ({ ...au, fromQty: au.fromQty ?? '1' })),
