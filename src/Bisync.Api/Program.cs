@@ -178,8 +178,27 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
+    // Never cache the SPA shell — stale index.html keeps old JS without Dev Console routing.
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = ctx =>
+        {
+            var path = ctx.File.Name;
+            if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+                ctx.Context.Response.Headers.Pragma = "no-cache";
+                ctx.Context.Response.Headers.Expires = "0";
+            }
+            else if (path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+            {
+                // Hashed Vite assets are immutable.
+                ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            }
+        },
+    });
 }
 
 app.UseHttpsRedirection();
@@ -235,7 +254,14 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.MapFallbackToFile("index.html");
+    app.MapFallback(async context =>
+    {
+        context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers.Expires = "0";
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.SendFileAsync(Path.Combine(app.Environment.WebRootPath, "index.html"));
+    });
 }
 
 app.Run();
