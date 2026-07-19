@@ -37,6 +37,11 @@ export function AppRoot() {
   const [forceLocation, setForceLocation] = useState(false);
   const [forcePayment, setForcePayment] = useState(false);
 
+  // Dev Console must win before customer portal / share-link routing.
+  if (isDevConsole) {
+    return <DevConsolePage />;
+  }
+
   if (vendorShare) {
     return <VendorOrderPortalPage token={vendorShare.token} pdfOnly={vendorShare.pdfOnly} />;
   }
@@ -51,9 +56,6 @@ export function AppRoot() {
   }
   if (salesOrderShare) {
     return <SalesOrderPortalPage token={salesOrderShare.token} pdfOnly={salesOrderShare.pdfOnly} />;
-  }
-  if (isDevConsole) {
-    return <DevConsolePage />;
   }
   if (loading) {
     return <MillstoneLoader layout="screen" size="lg" label="Loading Bisync.cloud…" />;
