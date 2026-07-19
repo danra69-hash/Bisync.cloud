@@ -1,11 +1,11 @@
 /**
  * Hidden Dev Team console — only reachable via a deploy-time URL path.
  *
- * Set at build time:
- *   VITE_DEV_CONSOLE_PATH=/dev/ops-<secret>
+ * Set at build time (Docker / Cloud Build):
+ *   VITE_DEV_CONSOLE_PATH=/dev/console
  *
- * Local Development defaults to `/dev/console` when the env var is unset.
- * Production builds with an empty path disable the console entirely.
+ * Local `npm run dev` defaults to `/dev/console` when the env var is unset.
+ * Production images must pass the build-arg (Dockerfile defaults to /dev/console).
  */
 
 const RAW_PATH = (import.meta.env.VITE_DEV_CONSOLE_PATH as string | undefined)?.trim() ?? '';

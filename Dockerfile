@@ -1,6 +1,9 @@
 # ── Stage 1: Build React client ──────────────────────────────────────────────
 FROM node:22-alpine AS client-build
 WORKDIR /src/client
+# Bake Dev Console SPA path into the production bundle (must match Cloud Run URL).
+ARG VITE_DEV_CONSOLE_PATH=/dev/console
+ENV VITE_DEV_CONSOLE_PATH=$VITE_DEV_CONSOLE_PATH
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
 COPY client/ ./
