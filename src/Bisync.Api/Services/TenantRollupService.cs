@@ -31,8 +31,14 @@ public sealed class TenantRollupLocationRow
     public string LocationName { get; set; } = string.Empty;
     public int? CompanyId { get; set; }
     public string CompanyName { get; set; } = string.Empty;
+    public DateTime? RegisteredAt { get; set; }
     public int InventoryMovements { get; set; }
     public int ApiCalls30d { get; set; }
+    public string Status { get; set; } = LocationSubscription.StatusFreeTrial;
+    public string StatusLabel { get; set; } = "Free Trial";
+    public DateTime? StatusDate { get; set; }
+    public DateTime? ExpiryDate { get; set; }
+    public int YearsRenewed { get; set; }
     /// <summary>UTC date when the location subscription was first activated.</summary>
     public DateTime? SubscribedSince { get; set; }
     public DateTime? LastPaymentDate { get; set; }
@@ -40,6 +46,7 @@ public sealed class TenantRollupLocationRow
     public string? Currency { get; set; }
     public DateTime? RenewalDate { get; set; }
     public bool SubscriptionActive { get; set; }
+    public bool Locked { get; set; }
 }
 
 public sealed class TenantRollupResult
@@ -65,6 +72,7 @@ public sealed class TenantRollupResult
 /// </summary>
 public class TenantRollupService(
     ITenantConnectionResolver resolver,
+    LocationSubscriptionService subscriptions,
     ILogger<TenantRollupService> logger)
 {
     static readonly JsonSerializerOptions JsonOpts = new()
@@ -200,26 +208,47 @@ public class TenantRollupService(
 
         companyRows = companyRows.OrderByDescending(c => c.InventoryMovements).ThenBy(c => c.CompanyName).ToList();
 
-        await EnsureSubscriptionTableAsync(control, ct);
-        var subscriptions = await control.LocationSubscriptions.AsNoTracking()
-            .Where(s => s.Active)
-            .ToListAsync(ct);
-        var subByKey = subscriptions.ToDictionary(
+        await LocationSubscriptionService.EnsureSchemaAsync(control, ct);
+        await subscriptions.EnsureDefaultsForAllAsync(control, ct);
+        await subscriptions.ApplyExpiryLocksAsync(control, null, ct);
+
+        var companyRegistered = await control.Companies.AsNoTracking()
+            .ToDictionaryAsync(c => c.Id, c => c.RegisteredAt, ct);
+
+        var allSubs = await control.LocationSubscriptions.AsNoTracking().ToListAsync(ct);
+        var subByKey = allSubs.ToDictionary(
             s => SubscriptionKey(s.CompanyId, s.LocationExternalId),
             StringComparer.OrdinalIgnoreCase);
 
         foreach (var loc in locationRows)
         {
             loc.ApiCalls30d = EstimateActivity(HashCode.Combine(loc.LocationExternalId), 1, 0, loc.InventoryMovements);
-            if (loc.CompanyId is int cid
-                && subByKey.TryGetValue(SubscriptionKey(cid, loc.LocationExternalId), out var sub))
+            if (loc.CompanyId is int cid)
             {
-                loc.SubscribedSince = sub.SubscribedSince;
-                loc.LastPaymentDate = sub.LastPaymentDate;
-                loc.Amount = sub.Amount;
-                loc.Currency = string.IsNullOrWhiteSpace(sub.Currency) ? null : sub.Currency;
-                loc.RenewalDate = sub.RenewalDate;
-                loc.SubscriptionActive = true;
+                if (companyRegistered.TryGetValue(cid, out var registered))
+                    loc.RegisteredAt = registered;
+
+                if (subByKey.TryGetValue(SubscriptionKey(cid, loc.LocationExternalId), out var sub))
+                {
+                    loc.Status = sub.Status;
+                    loc.YearsRenewed = sub.YearsRenewed;
+                    loc.StatusLabel = LocationSubscriptionService.FormatStatusLabel(sub.Status, sub.YearsRenewed);
+                    loc.StatusDate = sub.StatusDate;
+                    loc.ExpiryDate = sub.ExpiryDate ?? sub.RenewalDate;
+                    loc.SubscribedSince = sub.SubscribedSince;
+                    loc.LastPaymentDate = sub.LastPaymentDate;
+                    loc.Amount = sub.Amount;
+                    loc.Currency = string.IsNullOrWhiteSpace(sub.Currency) ? null : sub.Currency;
+                    loc.RenewalDate = sub.RenewalDate ?? sub.ExpiryDate;
+                    loc.SubscriptionActive = sub.Active
+                        && !string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase);
+                    loc.Locked = string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase);
+                }
+                else
+                {
+                    loc.Status = LocationSubscription.StatusFreeTrial;
+                    loc.StatusLabel = "Free Trial";
+                }
             }
         }
 
@@ -367,26 +396,6 @@ public class TenantRollupService(
                 "PayloadJson" TEXT NOT NULL DEFAULT '{{}}',
                 "ErrorsJson" TEXT NOT NULL DEFAULT '[]'
             );
-            """, ct);
-    }
-
-    static async Task EnsureSubscriptionTableAsync(BisyncDbContext db, CancellationToken ct)
-    {
-        await db.Database.ExecuteSqlRawAsync("""
-            CREATE TABLE IF NOT EXISTS "LocationSubscriptions" (
-                "Id" INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                "CompanyId" INTEGER NOT NULL,
-                "LocationExternalId" TEXT NOT NULL DEFAULT '',
-                "SubscribedSince" TIMESTAMP NULL,
-                "LastPaymentDate" TIMESTAMP NULL,
-                "Amount" NUMERIC(18,2) NULL,
-                "Currency" TEXT NOT NULL DEFAULT 'MYR',
-                "RenewalDate" TIMESTAMP NULL,
-                "Active" BOOLEAN NOT NULL DEFAULT TRUE,
-                "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_LocationSubscriptions_CompanyId_LocationExternalId"
-                ON "LocationSubscriptions" ("CompanyId", "LocationExternalId");
             """, ct);
     }
 

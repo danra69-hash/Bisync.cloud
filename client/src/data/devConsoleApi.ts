@@ -48,13 +48,45 @@ export type DevUsageResponse = {
     companyName: string;
     apiCalls30d: number;
     inventoryMovements?: number;
+    registeredAt?: string | null;
+    status?: string;
+    statusLabel?: string;
+    statusDate?: string | null;
+    expiryDate?: string | null;
+    yearsRenewed?: number;
     subscribedSince?: string | null;
     lastPaymentDate?: string | null;
     amount?: number | null;
     currency?: string | null;
     renewalDate?: string | null;
     subscriptionActive?: boolean;
+    locked?: boolean;
   }[];
+};
+
+export type CompanySubscriptionLocation = {
+  locationExternalId: string;
+  locationName: string;
+  status: string;
+  statusLabel: string;
+  statusDate?: string | null;
+  expiryDate?: string | null;
+  registeredAt?: string | null;
+  yearsRenewed: number;
+  locked: boolean;
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+  bankName?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+};
+
+export type CompanySubscriptionPanel = {
+  companyId: number;
+  companyName: string;
+  registeredAt?: string | null;
+  companyLocked: boolean;
+  locations: CompanySubscriptionLocation[];
 };
 
 export type DevQaHistoryRow = {
@@ -108,6 +140,27 @@ export const devConsoleApi = {
   rollups: () => fetchJson<DevUsageResponse>('/api/dev-console/rollups'),
   refreshRollups: () =>
     fetchJson<DevUsageResponse>('/api/dev-console/rollups/refresh', { method: 'POST' }),
+  companySubscriptionPanel: (companyId: number) =>
+    fetchJson<CompanySubscriptionPanel>(`/api/dev-console/subscriptions/company/${companyId}`),
+  extendFreeTrial: (payload: { companyId: number; locationExternalId: string; months: number }) =>
+    fetchJson<{ panel?: CompanySubscriptionPanel }>('/api/dev-console/subscriptions/extend-trial', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  activateYearSubscription: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    commencementDate: string;
+    paymentMethod: 'check' | 'bank-transfer';
+    paymentReference: string;
+    bankName?: string | null;
+    amount?: number | null;
+    currency?: string | null;
+  }) =>
+    fetchJson<{ panel?: CompanySubscriptionPanel }>('/api/dev-console/subscriptions/activate-year', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   launchSettings: () => fetchJson<DevLaunchSettings>('/api/dev-console/launch-settings'),
   updateLaunchSettings: (payload: { demoMode: boolean; goLive: boolean }) =>
     fetchJson<DevLaunchSettings>('/api/dev-console/launch-settings', {
