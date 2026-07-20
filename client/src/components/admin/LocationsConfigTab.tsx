@@ -11,7 +11,6 @@ import { api, type Company, type LocationConfig, type AppUser } from '../../api'
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
 import type { AddressParts } from '../../utils/countryFormat';
-import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 import { CompanyProfileFields } from './CompanyProfileFields';
 import {
   buildLocationProfilePayload,
@@ -198,7 +197,9 @@ function LocationPanel({
       setModules(initial ? locationModulesFromCompany(initial) : []);
     }
     setError(null);
-  }, [location, isNew, companies]);
+    // Only re-hydrate when the edited location (or create/edit mode) changes — not when
+    // the companies list is refreshed, which would wipe in-progress edits and clear errors.
+  }, [location.id, isNew]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional
 
   useEffect(() => {
     if (!inheritsCompanyProfile || !form.companyId) return;
@@ -211,7 +212,7 @@ function LocationPanel({
   }, [form.companyId, inheritsCompanyProfile, companies]);
 
   useEffect(() => {
-    if (!company) return;
+    if (!company || inheritsCompanyProfile) return;
     const companyTypes = profileArraysFromCompany(company).businessTypes;
     // Do not wipe location selections when the company profile has not been configured yet.
     if (companyTypes.length > 0) {
@@ -223,7 +224,7 @@ function LocationPanel({
     } else {
       setModules(prev => toLocationModules(prev));
     }
-  }, [company?.businessTypesJson, company?.modulesJson]);
+  }, [company?.businessTypesJson, company?.modulesJson, inheritsCompanyProfile]);
 
   function set<K extends keyof LocationConfig>(key: K, val: LocationConfig[K]) {
     setForm(f => ({ ...f, [key]: val }));
@@ -243,6 +244,17 @@ function LocationPanel({
     setModules(locationModulesFromCompany(company));
     setInheritsCompanyProfile(true);
     setError(null);
+  }
+
+  function onBusinessTypesChange(values: CompanyBusinessType[]) {
+    setBusinessTypes(values);
+    // Keep vendor policy usable when switching off company inheritance.
+    setVendorPolicyTags(prev => {
+      if (prev.length > 0) return prev;
+      if (!company) return prev;
+      return profileArraysFromCompany(company).vendorPolicyTags;
+    });
+    markProfileOverridden();
   }
 
   const addressParts: AddressParts = {
@@ -266,74 +278,80 @@ function LocationPanel({
   }
 
   async function save() {
-    if (!form.companyId) {
-      showError('Select a company.');
-      return;
-    }
-    if (!form.name.trim()) {
-      showError('Location name is required.');
-      return;
-    }
-
-    const addressError = getAddressValidationError(company?.countryCode ?? form.countryCode, addressParts);
-    if (addressError) {
-      showError(addressError);
-      return;
-    }
-
-    if (!company) {
-      showError('Selected company could not be found.');
-      return;
-    }
-
-    if (companyProfileIncomplete && inheritsCompanyProfile) {
-      showError('Configure the company Type of Business and vendor policy in Companies first, or set a custom location policy below.');
-      return;
-    }
-
-    const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
-    if (profileError) {
-      showError(profileError);
-      return;
-    }
-    const subsetError = companyBusinessTypes.length === 0
-      ? null
-      : validateLocationBusinessTypesSubset(businessTypes, companyBusinessTypes);
-    if (subsetError) {
-      showError(subsetError);
-      return;
-    }
-    const modulesError = validateLocationModules(modules, companyLocationModules);
-    if (modulesError) {
-      showError(modulesError);
-      return;
-    }
-
-    const profilePayload = buildLocationProfilePayload(
-      company,
-      businessTypes,
-      vendorPolicyTags,
-      inheritsCompanyProfile,
-    );
-    const modulesPayload = buildLocationModulesPayload(company, modules, inheritsCompanyProfile);
-
-    const payload = {
-      companyId: form.companyId,
-      name: form.name.trim(),
-      addressLine1: form.addressLine1,
-      addressLine2: form.addressLine2,
-      city: form.city,
-      stateProvince: form.stateProvince,
-      postcode: form.postcode,
-      principalContactUserId: form.principalContactUserId,
-      businessTypesJson: profilePayload.businessTypesJson,
-      vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
-      modulesJson: modulesPayload.modulesJson,
-    };
-
-    setSaving(true);
-    setError(null);
+    if (saving) return;
     try {
+      if (!form.companyId) {
+        showError('Select a company.');
+        return;
+      }
+      if (!form.name.trim()) {
+        showError('Location name is required.');
+        return;
+      }
+
+      const addressError = getAddressValidationError(company?.countryCode ?? form.countryCode, addressParts);
+      if (addressError) {
+        showError(addressError);
+        return;
+      }
+
+      if (!company) {
+        showError('Selected company could not be found.');
+        return;
+      }
+
+      if (companyProfileIncomplete && inheritsCompanyProfile) {
+        showError('Configure the company Type of Business and vendor policy in Companies first, or set a custom location policy below.');
+        return;
+      }
+
+      // Prefer explicit tags; if empty after an override, fall back to company policy.
+      const effectiveVendorTags = vendorPolicyTags.length > 0
+        ? vendorPolicyTags
+        : profileArraysFromCompany(company).vendorPolicyTags;
+
+      const profileError = validateCompanyProfile(businessTypes, effectiveVendorTags);
+      if (profileError) {
+        showError(profileError);
+        return;
+      }
+      const subsetError = companyBusinessTypes.length === 0
+        ? null
+        : validateLocationBusinessTypesSubset(businessTypes, companyBusinessTypes);
+      if (subsetError) {
+        showError(subsetError);
+        return;
+      }
+      const modulesError = validateLocationModules(modules, companyLocationModules);
+      if (modulesError) {
+        showError(modulesError);
+        return;
+      }
+
+      const profilePayload = buildLocationProfilePayload(
+        company,
+        businessTypes,
+        effectiveVendorTags,
+        inheritsCompanyProfile,
+      );
+      const modulesPayload = buildLocationModulesPayload(company, modules, inheritsCompanyProfile);
+
+      const payload = {
+        companyId: form.companyId,
+        name: form.name.trim(),
+        addressLine1: form.addressLine1,
+        addressLine2: form.addressLine2,
+        city: form.city,
+        stateProvince: form.stateProvince,
+        postcode: form.postcode,
+        principalContactUserId: form.principalContactUserId,
+        businessTypesJson: profilePayload.businessTypesJson,
+        vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
+        modulesJson: modulesPayload.modulesJson,
+      };
+
+      setSaving(true);
+      setError(null);
       const saved = isNew
         ? await api.createLocationConfig(payload)
         : await api.updateLocationConfig(form.id, payload);
@@ -358,9 +376,20 @@ function LocationPanel({
   }
 
   return createPortal(
-    <>
-      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={() => !saving && onClose()} />
-      <div className={SIDE_PANEL_SHELL_CLS}>
+    <div className="fixed inset-0 z-[105] flex items-stretch justify-end">
+      <div
+        className="absolute inset-0 bg-foreground/10"
+        onClick={() => !saving && onClose()}
+        aria-hidden
+      />
+      <form
+        className="relative z-[1] h-full w-[min(119vw,96vw)] max-w-[min(119vw,96vw)] bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden"
+        onSubmit={e => {
+          e.preventDefault();
+          void save();
+        }}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Location</p>
@@ -371,7 +400,7 @@ function LocationPanel({
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {error && (
-            <div ref={errorBannerRef} className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs">
+            <div ref={errorBannerRef} role="alert" className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs font-medium">
               {error}
             </div>
           )}
@@ -411,10 +440,7 @@ function LocationPanel({
             availableBusinessTypes={companyBusinessTypes.length > 0 ? companyBusinessTypes : undefined}
             availableModules={company ? companyLocationModules : undefined}
             moduleScope="location"
-            onBusinessTypesChange={values => {
-              setBusinessTypes(values);
-              markProfileOverridden();
-            }}
+            onBusinessTypesChange={onBusinessTypesChange}
             onVendorPolicyTagsChange={values => {
               setVendorPolicyTags(values);
               markProfileOverridden();
@@ -441,17 +467,16 @@ function LocationPanel({
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
+        <div className="relative z-20 px-5 py-4 border-t border-border shrink-0 space-y-2 bg-card">
           {error && (
-            <div className="px-3 py-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-md text-xs">
+            <div role="alert" className="px-3 py-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-md text-xs font-medium">
               {error}
             </div>
           )}
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
             <button
-              type="button"
-              onClick={() => void save()}
+              type="submit"
               disabled={saving}
               className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
             >
@@ -462,8 +487,8 @@ function LocationPanel({
             Required: company, location name, address, and business/policy settings (inherited from company is fine).
           </p>
         </div>
-      </div>
-    </>,
+      </form>
+    </div>,
     document.body,
   );
 }
