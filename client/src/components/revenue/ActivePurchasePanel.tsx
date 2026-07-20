@@ -566,7 +566,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             <div className="px-4 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">Line items</p>
             </div>
-            <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+            <TableScrollContainer ref={scrollRootRef} className="max-h-[min(42vh,24rem)] overflow-y-auto">
               <table className="w-full table-fixed text-xs">
                 <thead>
                   <tr className="border-b border-border">
