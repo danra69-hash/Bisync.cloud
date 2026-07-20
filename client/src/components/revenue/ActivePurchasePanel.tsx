@@ -142,10 +142,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const [vendorInvoiceNumber, setVendorInvoiceNumber] = useState(order.vendorInvoiceNumber?.trim() ?? '');
   const [productQualityRating, setProductQualityRating] = useState(order.productQualityRating?.trim() ?? '');
   const [hygieneRating, setHygieneRating] = useState(order.hygieneRating?.trim() ?? '');
+  const [ratingHighlight, setRatingHighlight] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shareToken, setShareToken] = useState(order.vendorShareToken?.trim() ?? '');
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
+  const vendorRatingRef = useRef<HTMLDivElement>(null);
+  const panelScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLines(buildEditableLines(order, mode));
@@ -153,6 +156,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     setVendorInvoiceNumber(order.vendorInvoiceNumber?.trim() ?? '');
     setProductQualityRating(order.productQualityRating?.trim() ?? '');
     setHygieneRating(order.hygieneRating?.trim() ?? '');
+    setRatingHighlight(false);
     setError(null);
     setShareToken(order.vendorShareToken?.trim() ?? '');
     setShareLinkCopied(false);
@@ -286,6 +290,14 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     }
   }
 
+  function focusVendorRating(message: string) {
+    setError(message);
+    setRatingHighlight(true);
+    window.requestAnimationFrame(() => {
+      vendorRatingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
   async function handleReceive() {
     if (!canReceive) return;
     const payload = linePayload(lines);
@@ -300,15 +312,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       return;
     }
     if (!productQualityRating) {
-      setError('Select product quality (Satisfied, Acceptable, or Poor).');
+      focusVendorRating('Select product quality (Satisfied, Acceptable, or Poor).');
       return;
     }
     if (!hygieneRating) {
-      setError('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
+      focusVendorRating('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
       return;
     }
     setSaving(true);
     setError(null);
+    setRatingHighlight(false);
     try {
       const updated = await api.receivePurchaseOrder(order.id, {
         items: payload,
@@ -333,15 +346,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       return;
     }
     if (!productQualityRating) {
-      setError('Select product quality (Satisfied, Acceptable, or Poor).');
+      focusVendorRating('Select product quality (Satisfied, Acceptable, or Poor).');
       return;
     }
     if (!hygieneRating) {
-      setError('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
+      focusVendorRating('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
       return;
     }
     setSaving(true);
     setError(null);
+    setRatingHighlight(false);
     try {
       const result = await api.reconcilePurchaseOrder(order.id, {
         items: payload,
@@ -398,7 +412,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div ref={panelScrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div>
               <p className="text-muted-foreground">Number</p>
@@ -545,76 +559,6 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                   Enter at least one of Vendor DO number or Vendor Invoice number (or both), matching the document(s) received.
                 </p>
               ) : null}
-            </div>
-          )}
-
-          {showVendorRatingInputs && (
-            <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-3">
-              <div>
-                <p className="text-xs font-semibold text-foreground">Vendor rating (customer input)</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Captured at receive; can be updated at consolidate. Feeds vendor rating.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">Product quality</p>
-                  {canEditVendorRating ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {([
-                        ['satisfied', 'Satisfied', '100%'],
-                        ['acceptable', 'Acceptable', '80%'],
-                        ['poor', 'Poor', '50%'],
-                      ] as const).map(([id, label, score]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => setProductQualityRating(id)}
-                          className={`px-2.5 py-1 rounded-md text-[11px] border ${
-                            productQualityRating === id
-                              ? 'border-primary bg-primary/10 text-foreground font-medium'
-                              : 'border-border text-muted-foreground hover:border-primary/40'
-                          }`}
-                        >
-                          {label} ({score})
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs font-medium capitalize">{productQualityRating || '—'}</p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">Hygiene &amp; cleanliness</p>
-                  {canEditVendorRating ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {([
-                        ['satisfied', 'Satisfied', '100%'],
-                        ['acceptable', 'Acceptable', '80%'],
-                        ['poor', 'Poor', '50%'],
-                      ] as const).map(([id, label, score]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => setHygieneRating(id)}
-                          className={`px-2.5 py-1 rounded-md text-[11px] border ${
-                            hygieneRating === id
-                              ? 'border-primary bg-primary/10 text-foreground font-medium'
-                              : 'border-border text-muted-foreground hover:border-primary/40'
-                          }`}
-                        >
-                          {label} ({score})
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs font-medium capitalize">{hygieneRating || '—'}</p>
-                  )}
-                </div>
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                Optional: enter product temperature (°C) on each line under Temp °C.
-              </p>
             </div>
           )}
 
@@ -819,6 +763,98 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               </table>
             </TableScrollContainer>
           </div>
+
+          {showVendorRatingInputs && (
+            <div
+              ref={vendorRatingRef}
+              className={`rounded-lg border p-4 space-y-3 ${
+                ratingHighlight
+                  ? 'border-destructive bg-destructive/5'
+                  : 'border-border bg-muted/10'
+              }`}
+            >
+              <div>
+                <p className="text-xs font-semibold text-foreground flex items-center gap-2">
+                  <PackageCheck size={14} className="text-muted-foreground" />
+                  Vendor rating (required)
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Record product quality and hygiene when receiving. You can change these at consolidate.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+                    Product quality <span className="text-destructive">*</span>
+                  </p>
+                  {canEditVendorRating ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        ['satisfied', 'Satisfied', '100%'],
+                        ['acceptable', 'Acceptable', '80%'],
+                        ['poor', 'Poor', '50%'],
+                      ] as const).map(([id, label, score]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setProductQualityRating(id);
+                            setRatingHighlight(false);
+                            setError(null);
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs border ${
+                            productQualityRating === id
+                              ? 'border-primary bg-primary/10 text-foreground font-medium'
+                              : 'border-border text-muted-foreground hover:border-primary/40'
+                          }`}
+                        >
+                          {label} ({score})
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-medium capitalize">{productQualityRating || '—'}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">
+                    Hygiene &amp; cleanliness <span className="text-destructive">*</span>
+                  </p>
+                  {canEditVendorRating ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        ['satisfied', 'Satisfied', '100%'],
+                        ['acceptable', 'Acceptable', '80%'],
+                        ['poor', 'Poor', '50%'],
+                      ] as const).map(([id, label, score]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setHygieneRating(id);
+                            setRatingHighlight(false);
+                            setError(null);
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs border ${
+                            hygieneRating === id
+                              ? 'border-primary bg-primary/10 text-foreground font-medium'
+                              : 'border-border text-muted-foreground hover:border-primary/40'
+                          }`}
+                        >
+                          {label} ({score})
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-medium capitalize">{hygieneRating || '—'}</p>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Optional: enter product temperature (°C) on each line under Temp °C.
+              </p>
+            </div>
+          )}
 
           {requiresHalalCert && mode === 'receive' && (
             <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
