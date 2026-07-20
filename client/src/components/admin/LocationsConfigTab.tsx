@@ -28,9 +28,10 @@ import {
 import {
   buildLocationModulesPayload,
   LOCATION_ACCESS_COLUMN_MODULES,
+  locationModulesFromCompany,
   locationModulesInheritFromCompany,
-  modulesFromCompany,
   resolveLocationModulesForDisplay,
+  toLocationModules,
   validateLocationModules,
 } from '../../data/companyModules';
 import type { AccessModule } from '../../data/userAccess';
@@ -70,7 +71,7 @@ function LocationAccessControlCell({
   onToggle: (moduleId: AccessModule) => void;
 }) {
   const enabled = resolveLocationModulesForDisplay(location, company ?? null);
-  const companyModules = company ? modulesFromCompany(company) : [];
+  const companyModules = company ? locationModulesFromCompany(company) : [];
   const inherits = locationModulesInheritFromCompany(location);
 
   return (
@@ -157,15 +158,29 @@ function LocationPanel({
     return profileArraysFromCompany(initialCompany ?? location).vendorPolicyTags;
   });
   const [modules, setModules] = useState<AccessModule[]>(() => {
-    if (!isNew && location.profileOverridden) {
+    if (!isNew) {
       return resolveLocationModulesForDisplay(location, initialCompany ?? null);
     }
-    return initialCompany ? modulesFromCompany(initialCompany) : [];
+    return initialCompany ? locationModulesFromCompany(initialCompany) : [];
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const errorBannerRef = useRef<HTMLDivElement>(null);
   const company = companies.find(c => c.id === form.companyId);
   const country = getCountry(company?.countryCode ?? form.countryCode);
+  const companyBusinessTypes = company ? profileArraysFromCompany(company).businessTypes : [];
+  const companyLocationModules = company ? locationModulesFromCompany(company) : [];
+  const companyProfileIncomplete = !!company && (
+    companyBusinessTypes.length === 0
+    || profileArraysFromCompany(company).vendorPolicyTags.length === 0
+  );
+
+  function showError(message: string) {
+    setError(message);
+    requestAnimationFrame(() => {
+      errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
 
   useEffect(() => {
     setForm(location);
@@ -180,7 +195,7 @@ function LocationPanel({
       const profile = profileArraysFromCompany(initial ?? location);
       setBusinessTypes(profile.businessTypes);
       setVendorPolicyTags(profile.vendorPolicyTags);
-      setModules(initial ? modulesFromCompany(initial) : []);
+      setModules(initial ? locationModulesFromCompany(initial) : []);
     }
     setError(null);
   }, [location, isNew, companies]);
@@ -192,14 +207,22 @@ function LocationPanel({
     const profile = profileArraysFromCompany(selectedCompany);
     setBusinessTypes(profile.businessTypes);
     setVendorPolicyTags(profile.vendorPolicyTags);
-    setModules(modulesFromCompany(selectedCompany));
+    setModules(locationModulesFromCompany(selectedCompany));
   }, [form.companyId, inheritsCompanyProfile, companies]);
 
   useEffect(() => {
     if (!company) return;
     const companyTypes = profileArraysFromCompany(company).businessTypes;
-    setBusinessTypes(prev => prev.filter(type => companyTypes.includes(type)));
-    setModules(prev => prev.filter(module => modulesFromCompany(company).includes(module)));
+    // Do not wipe location selections when the company profile has not been configured yet.
+    if (companyTypes.length > 0) {
+      setBusinessTypes(prev => prev.filter(type => companyTypes.includes(type)));
+    }
+    const allowedModules = locationModulesFromCompany(company);
+    if (allowedModules.length > 0) {
+      setModules(prev => toLocationModules(prev).filter(module => allowedModules.includes(module)));
+    } else {
+      setModules(prev => toLocationModules(prev));
+    }
   }, [company?.businessTypesJson, company?.modulesJson]);
 
   function set<K extends keyof LocationConfig>(key: K, val: LocationConfig[K]) {
@@ -217,7 +240,7 @@ function LocationPanel({
     const profile = profileArraysFromCompany(company);
     setBusinessTypes(profile.businessTypes);
     setVendorPolicyTags(profile.vendorPolicyTags);
-    setModules(modulesFromCompany(company));
+    setModules(locationModulesFromCompany(company));
     setInheritsCompanyProfile(true);
     setError(null);
   }
@@ -244,40 +267,45 @@ function LocationPanel({
 
   async function save() {
     if (!form.companyId) {
-      setError('Select a company.');
+      showError('Select a company.');
       return;
     }
     if (!form.name.trim()) {
-      setError('Location name is required.');
+      showError('Location name is required.');
       return;
     }
 
     const addressError = getAddressValidationError(company?.countryCode ?? form.countryCode, addressParts);
     if (addressError) {
-      setError(addressError);
+      showError(addressError);
       return;
     }
 
     if (!company) {
-      setError('Selected company could not be found.');
+      showError('Selected company could not be found.');
+      return;
+    }
+
+    if (companyProfileIncomplete && inheritsCompanyProfile) {
+      showError('Configure the company Type of Business and vendor policy in Companies first, or set a custom location policy below.');
       return;
     }
 
     const profileError = validateCompanyProfile(businessTypes, vendorPolicyTags);
     if (profileError) {
-      setError(profileError);
+      showError(profileError);
       return;
     }
-    const companyBusinessTypes = profileArraysFromCompany(company).businessTypes;
-    const companyModules = modulesFromCompany(company);
-    const subsetError = validateLocationBusinessTypesSubset(businessTypes, companyBusinessTypes);
+    const subsetError = companyBusinessTypes.length === 0
+      ? null
+      : validateLocationBusinessTypesSubset(businessTypes, companyBusinessTypes);
     if (subsetError) {
-      setError(subsetError);
+      showError(subsetError);
       return;
     }
-    const modulesError = validateLocationModules(modules, companyModules);
+    const modulesError = validateLocationModules(modules, companyLocationModules);
     if (modulesError) {
-      setError(modulesError);
+      showError(modulesError);
       return;
     }
 
@@ -323,7 +351,7 @@ function LocationPanel({
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save location.');
+      showError(err instanceof Error ? err.message : 'Failed to save location.');
     } finally {
       setSaving(false);
     }
@@ -343,8 +371,13 @@ function LocationPanel({
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {error && (
-            <div className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs">
+            <div ref={errorBannerRef} className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs">
               {error}
+            </div>
+          )}
+          {companyProfileIncomplete && (
+            <div className="px-4 py-3 bg-amber-500/10 border border-amber-500/25 text-amber-900 dark:text-amber-100 rounded-lg text-xs">
+              This company has no Type of Business / vendor policy yet. Configure them under Companies, or set a custom policy for this location below.
             </div>
           )}
           <div>
@@ -375,8 +408,8 @@ function LocationPanel({
             businessTypes={businessTypes}
             vendorPolicyTags={vendorPolicyTags}
             modules={modules}
-            availableBusinessTypes={company ? profileArraysFromCompany(company).businessTypes : undefined}
-            availableModules={company ? modulesFromCompany(company) : undefined}
+            availableBusinessTypes={companyBusinessTypes.length > 0 ? companyBusinessTypes : undefined}
+            availableModules={company ? companyLocationModules : undefined}
             moduleScope="location"
             onBusinessTypesChange={values => {
               setBusinessTypes(values);
@@ -387,7 +420,7 @@ function LocationPanel({
               markProfileOverridden();
             }}
             onModulesChange={values => {
-              setModules(values);
+              setModules(toLocationModules(values));
               markProfileOverridden();
             }}
             hint={inheritsCompanyProfile
@@ -409,6 +442,11 @@ function LocationPanel({
         </div>
 
         <div className="px-5 py-4 border-t border-border shrink-0 space-y-2">
+          {error && (
+            <div className="px-3 py-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-md text-xs">
+              {error}
+            </div>
+          )}
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
             <button
@@ -493,7 +531,7 @@ export function LocationsConfigTab({
     const company = companies.find(c => c.id === location.companyId);
     if (!company) return;
 
-    const companyModules = modulesFromCompany(company);
+    const companyModules = locationModulesFromCompany(company);
     const current = resolveLocationModulesForDisplay(location, company);
     const next = current.includes(moduleId)
       ? current.filter(value => value !== moduleId)
