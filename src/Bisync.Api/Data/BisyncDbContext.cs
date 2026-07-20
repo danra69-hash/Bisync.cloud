@@ -61,6 +61,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<DevelopmentMilestone> DevelopmentMilestones => Set<DevelopmentMilestone>();
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<AccessControlSettings> AccessControlSettings => Set<AccessControlSettings>();
+    public DbSet<PlatformLaunchSettings> PlatformLaunchSettings => Set<PlatformLaunchSettings>();
     public DbSet<RevMgmtCompanyConfig> RevMgmtCompanyConfigs => Set<RevMgmtCompanyConfig>();
     public DbSet<VendorProduct> VendorProducts => Set<VendorProduct>();
     public DbSet<QuoteRequest> QuoteRequests => Set<QuoteRequest>();

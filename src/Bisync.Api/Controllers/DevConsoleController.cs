@@ -18,7 +18,9 @@ public class DevConsoleController(
     BisyncDbContext db,
     IConfiguration config,
     IWebHostEnvironment env,
-    TenantRollupService rollupService) : ControllerBase
+    TenantRollupService rollupService,
+    PlatformLaunchService platformLaunch,
+    DevConsoleAuthService devConsoleAuth) : ControllerBase
 {
     bool IsEnabled()
     {
@@ -33,6 +35,55 @@ public class DevConsoleController(
     }
 
     ActionResult? Guard() => IsEnabled() ? null : NotFound();
+
+    async Task<(ActionResult? Error, DevTeamUser? User)> RequireSessionAsync(CancellationToken ct)
+    {
+        var blocked = Guard();
+        if (blocked is not null) return (blocked, null);
+        await devConsoleAuth.EnsureRootUserAsync(ct);
+        var token = Request.Headers[DevConsoleAuthService.TokenHeader].FirstOrDefault();
+        var (user, _) = await devConsoleAuth.ResolveSessionAsync(token, ct);
+        if (user is null)
+            return (Unauthorized(new { message = "Dev Console session required." }), null);
+        return (null, user);
+    }
+
+    async Task<(ActionResult? Error, DevTeamUser? User)> RequireRootAsync(CancellationToken ct)
+    {
+        var (err, user) = await RequireSessionAsync(ct);
+        if (err is not null) return (err, null);
+        if (!user!.IsRoot && !string.Equals(user.Email, devConsoleAuth.RootEmail, StringComparison.OrdinalIgnoreCase))
+            return (StatusCode(403, new { message = "Only the root Dev Console account can change Demo / Go live." }), null);
+        return (null, user);
+    }
+
+    public class LaunchSettingsUpdateRequest
+    {
+        public bool DemoMode { get; set; }
+        public bool GoLive { get; set; }
+    }
+
+    [HttpGet("launch-settings")]
+    public async Task<ActionResult<object>> GetLaunchSettings(CancellationToken ct)
+    {
+        var (err, _) = await RequireSessionAsync(ct);
+        if (err is not null) return err;
+
+        var status = await platformLaunch.GetStatusAsync(ct);
+        return Ok(status);
+    }
+
+    [HttpPut("launch-settings")]
+    public async Task<ActionResult<object>> UpdateLaunchSettings(
+        [FromBody] LaunchSettingsUpdateRequest body,
+        CancellationToken ct)
+    {
+        var (err, user) = await RequireRootAsync(ct);
+        if (err is not null) return err;
+
+        var status = await platformLaunch.UpdateAsync(body.DemoMode, body.GoLive, user!.Email, ct);
+        return Ok(status);
+    }
 
     [HttpGet("status")]
     public ActionResult<object> Status()

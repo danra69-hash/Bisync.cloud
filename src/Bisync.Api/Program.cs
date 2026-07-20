@@ -92,6 +92,7 @@ builder.Services.AddScoped<LocationPartitionService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
 builder.Services.AddScoped<TenantRollupService>();
 builder.Services.AddScoped<VendorRatingService>();
+builder.Services.AddScoped<PlatformLaunchService>();
 builder.Services.Configure<DevConsoleAuthOptions>(
     builder.Configuration.GetSection(DevConsoleAuthOptions.SectionName));
 builder.Services.AddHttpClient("google-oauth");
