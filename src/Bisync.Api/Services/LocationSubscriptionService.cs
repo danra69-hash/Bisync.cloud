@@ -60,32 +60,78 @@ public class LocationSubscriptionService(
                 "CompanyId" INTEGER NOT NULL,
                 "LocationExternalId" TEXT NOT NULL DEFAULT '',
                 "Status" TEXT NOT NULL DEFAULT 'free-trial',
-                "StatusDate" TIMESTAMP NULL,
-                "ExpiryDate" TIMESTAMP NULL,
-                "SubscribedSince" TIMESTAMP NULL,
-                "LastPaymentDate" TIMESTAMP NULL,
+                "StatusDate" timestamp with time zone NULL,
+                "ExpiryDate" timestamp with time zone NULL,
+                "SubscribedSince" timestamp with time zone NULL,
+                "LastPaymentDate" timestamp with time zone NULL,
                 "Amount" NUMERIC(18,2) NULL,
                 "Currency" TEXT NOT NULL DEFAULT 'MYR',
-                "RenewalDate" TIMESTAMP NULL,
+                "RenewalDate" timestamp with time zone NULL,
                 "YearsRenewed" INTEGER NOT NULL DEFAULT 0,
                 "PaymentMethod" TEXT NULL,
                 "PaymentReference" TEXT NULL,
                 "BankName" TEXT NULL,
                 "Active" BOOLEAN NOT NULL DEFAULT TRUE,
-                "UpdatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
             );
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_LocationSubscriptions_CompanyId_LocationExternalId"
                 ON "LocationSubscriptions" ("CompanyId", "LocationExternalId");
             """, ct);
 
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "Status", "TEXT NOT NULL DEFAULT 'free-trial'");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "StatusDate", "TIMESTAMP NULL");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "ExpiryDate", "TIMESTAMP NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "StatusDate", "timestamp with time zone NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "ExpiryDate", "timestamp with time zone NULL");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "YearsRenewed", "INTEGER NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "PaymentMethod", "TEXT NULL");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "PaymentReference", "TEXT NULL");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "LocationSubscriptions", "BankName", "TEXT NULL");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "RegisteredAt", "TIMESTAMP NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "RegisteredAt", "timestamp with time zone NULL");
+
+        // Legacy columns were created as timestamp without time zone; Npgsql rejects DateTime Kind=UTC on those.
+        await PromoteTimestampColumnsToTimestamptzAsync(db, ct);
+    }
+
+    static async Task PromoteTimestampColumnsToTimestamptzAsync(BisyncDbContext db, CancellationToken ct)
+    {
+        string[][] columns =
+        [
+            ["LocationSubscriptions", "StatusDate"],
+            ["LocationSubscriptions", "ExpiryDate"],
+            ["LocationSubscriptions", "SubscribedSince"],
+            ["LocationSubscriptions", "LastPaymentDate"],
+            ["LocationSubscriptions", "RenewalDate"],
+            ["LocationSubscriptions", "UpdatedAt"],
+            ["Companies", "RegisteredAt"],
+        ];
+
+        foreach (var pair in columns)
+        {
+            var table = pair[0];
+            var column = pair[1];
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync($"""
+                    DO $$
+                    BEGIN
+                      IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = '{table}'
+                          AND column_name = '{column}'
+                          AND data_type = 'timestamp without time zone'
+                      ) THEN
+                        EXECUTE format(
+                          'ALTER TABLE %I ALTER COLUMN %I TYPE timestamp with time zone USING %I AT TIME ZONE ''UTC''',
+                          '{table}', '{column}', '{column}');
+                      END IF;
+                    END $$;
+                    """, ct);
+            }
+            catch
+            {
+                // Best-effort upgrade for already-deployed control-plane DBs.
+            }
+        }
     }
 
     public static string FormatStatusLabel(string? status, int yearsRenewed)
@@ -297,7 +343,7 @@ public class LocationSubscriptionService(
                 .Where(t => t.CompanyId == companyId)
                 .Select(t => (DateTime?)t.CreatedAt)
                 .FirstOrDefaultAsync(ct);
-            company.RegisteredAt = tenantCreated ?? DateTime.UtcNow;
+            company.RegisteredAt = AsUtc(tenantCreated) ?? DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
         }
 
@@ -310,16 +356,18 @@ public class LocationSubscriptionService(
             .Select(s => s.LocationExternalId)
             .ToListAsync(ct);
         var existingSet = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
-        var registered = company.RegisteredAt?.Date ?? DateTime.UtcNow.Date;
+        var registered = AsUtcDate(company.RegisteredAt) ?? DateTime.UtcNow.Date;
         var added = false;
         foreach (var externalId in locations)
         {
             if (string.IsNullOrWhiteSpace(externalId) || existingSet.Contains(externalId))
                 continue;
+            var key = externalId.Trim();
+            existingSet.Add(key);
             db.LocationSubscriptions.Add(new LocationSubscription
             {
                 CompanyId = companyId,
-                LocationExternalId = externalId.Trim(),
+                LocationExternalId = key,
                 Status = LocationSubscription.StatusFreeTrial,
                 StatusDate = registered,
                 ExpiryDate = registered.AddMonths(DefaultTrialMonths),
@@ -432,5 +480,23 @@ public class LocationSubscriptionService(
             return panel?.CompanyLocked == true;
         }
         return false;
+    }
+
+    static DateTime? AsUtc(DateTime? value)
+    {
+        if (value is null) return null;
+        var dt = value.Value;
+        return dt.Kind switch
+        {
+            DateTimeKind.Utc => dt,
+            DateTimeKind.Local => dt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc),
+        };
+    }
+
+    static DateTime? AsUtcDate(DateTime? value)
+    {
+        var utc = AsUtc(value);
+        return utc?.Date is DateTime d ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
     }
 }

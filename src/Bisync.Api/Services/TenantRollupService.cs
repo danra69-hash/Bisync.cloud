@@ -208,43 +208,61 @@ public class TenantRollupService(
 
         companyRows = companyRows.OrderByDescending(c => c.InventoryMovements).ThenBy(c => c.CompanyName).ToList();
 
-        await LocationSubscriptionService.EnsureSchemaAsync(control, ct);
-        await subscriptions.EnsureDefaultsForAllAsync(control, ct);
-        await subscriptions.ApplyExpiryLocksAsync(control, null, ct);
-
-        var companyRegistered = await control.Companies.AsNoTracking()
-            .ToDictionaryAsync(c => c.Id, c => c.RegisteredAt, ct);
-
-        var allSubs = await control.LocationSubscriptions.AsNoTracking().ToListAsync(ct);
-        var subByKey = allSubs.ToDictionary(
-            s => SubscriptionKey(s.CompanyId, s.LocationExternalId),
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var loc in locationRows)
+        // Subscription sync must not break System Usage / rollup refresh.
+        try
         {
-            loc.ApiCalls30d = EstimateActivity(HashCode.Combine(loc.LocationExternalId), 1, 0, loc.InventoryMovements);
-            if (loc.CompanyId is int cid)
-            {
-                if (companyRegistered.TryGetValue(cid, out var registered))
-                    loc.RegisteredAt = registered;
+            await LocationSubscriptionService.EnsureSchemaAsync(control, ct);
+            await subscriptions.EnsureDefaultsForAllAsync(control, ct);
+            await subscriptions.ApplyExpiryLocksAsync(control, null, ct);
 
-                if (subByKey.TryGetValue(SubscriptionKey(cid, loc.LocationExternalId), out var sub))
+            var companyRegistered = await control.Companies.AsNoTracking()
+                .ToDictionaryAsync(c => c.Id, c => c.RegisteredAt, ct);
+
+            var allSubs = await control.LocationSubscriptions.AsNoTracking().ToListAsync(ct);
+            var subByKey = allSubs
+                .GroupBy(s => SubscriptionKey(s.CompanyId, s.LocationExternalId), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.UpdatedAt).First(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var loc in locationRows)
+            {
+                loc.ApiCalls30d = EstimateActivity(HashCode.Combine(loc.LocationExternalId), 1, 0, loc.InventoryMovements);
+                if (loc.CompanyId is int cid)
                 {
-                    loc.Status = sub.Status;
-                    loc.YearsRenewed = sub.YearsRenewed;
-                    loc.StatusLabel = LocationSubscriptionService.FormatStatusLabel(sub.Status, sub.YearsRenewed);
-                    loc.StatusDate = sub.StatusDate;
-                    loc.ExpiryDate = sub.ExpiryDate ?? sub.RenewalDate;
-                    loc.SubscribedSince = sub.SubscribedSince;
-                    loc.LastPaymentDate = sub.LastPaymentDate;
-                    loc.Amount = sub.Amount;
-                    loc.Currency = string.IsNullOrWhiteSpace(sub.Currency) ? null : sub.Currency;
-                    loc.RenewalDate = sub.RenewalDate ?? sub.ExpiryDate;
-                    loc.SubscriptionActive = sub.Active
-                        && !string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase);
-                    loc.Locked = string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase);
+                    if (companyRegistered.TryGetValue(cid, out var registered))
+                        loc.RegisteredAt = registered;
+
+                    if (subByKey.TryGetValue(SubscriptionKey(cid, loc.LocationExternalId), out var sub))
+                    {
+                        loc.Status = sub.Status;
+                        loc.YearsRenewed = sub.YearsRenewed;
+                        loc.StatusLabel = LocationSubscriptionService.FormatStatusLabel(sub.Status, sub.YearsRenewed);
+                        loc.StatusDate = sub.StatusDate;
+                        loc.ExpiryDate = sub.ExpiryDate ?? sub.RenewalDate;
+                        loc.SubscribedSince = sub.SubscribedSince;
+                        loc.LastPaymentDate = sub.LastPaymentDate;
+                        loc.Amount = sub.Amount;
+                        loc.Currency = string.IsNullOrWhiteSpace(sub.Currency) ? null : sub.Currency;
+                        loc.RenewalDate = sub.RenewalDate ?? sub.ExpiryDate;
+                        loc.SubscriptionActive = sub.Active
+                            && !string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase);
+                        loc.Locked = string.Equals(sub.Status, LocationSubscription.StatusLocked, StringComparison.OrdinalIgnoreCase);
+                    }
+                    else
+                    {
+                        loc.Status = LocationSubscription.StatusFreeTrial;
+                        loc.StatusLabel = "Free Trial";
+                    }
                 }
-                else
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Subscription enrichment failed during tenant rollup; continuing with usage counts.");
+            result.Errors.Add($"Subscription sync: {ex.Message}");
+            foreach (var loc in locationRows)
+            {
+                loc.ApiCalls30d = EstimateActivity(HashCode.Combine(loc.LocationExternalId), 1, 0, loc.InventoryMovements);
+                if (string.IsNullOrWhiteSpace(loc.StatusLabel))
                 {
                     loc.Status = LocationSubscription.StatusFreeTrial;
                     loc.StatusLabel = "Free Trial";
