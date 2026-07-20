@@ -43,16 +43,20 @@ export function validateCompanyModules(modules: AccessModule[]): string | null {
   return null;
 }
 
+/** Location panels never edit Accounting — it stays company-scoped. */
+export function toLocationModules(modules: AccessModule[]): AccessModule[] {
+  return modules.filter(module => module !== 'Accounting');
+}
+
 export function validateLocationModules(
   modules: AccessModule[],
   companyModules: AccessModule[],
 ): string | null {
-  if (modules.length === 0) return null;
-  if (modules.some(module => !companyModules.includes(module))) {
+  const locationModules = toLocationModules(modules);
+  if (locationModules.length === 0) return null;
+  const companyLocationModules = toLocationModules(companyModules);
+  if (locationModules.some(module => !companyLocationModules.includes(module))) {
     return 'Location modules must be enabled at the company level first.';
-  }
-  if (modules.includes('Accounting')) {
-    return 'Accounting is only available at the company level.';
   }
   return null;
 }
@@ -72,6 +76,11 @@ export function modulesFromCompany(company: Pick<Company, 'modulesJson'>): Acces
   return parseCompanyModules(company.modulesJson);
 }
 
+/** Company modules available to pick on a location (excludes Accounting). */
+export function locationModulesFromCompany(company: Pick<Company, 'modulesJson'>): AccessModule[] {
+  return toLocationModules(modulesFromCompany(company));
+}
+
 export function locationModulesInheritFromCompany(
   location: Pick<LocationConfig, 'modulesOverridden' | 'profileOverridden'>,
 ): boolean {
@@ -80,13 +89,16 @@ export function locationModulesInheritFromCompany(
 }
 
 export function resolveLocationModulesForDisplay(
-  location: Pick<LocationConfig, 'modulesJson' | 'profileOverridden'>,
+  location: Pick<LocationConfig, 'modulesJson' | 'modulesOverridden' | 'profileOverridden'>,
   company?: Pick<Company, 'modulesJson'> | null,
 ): AccessModule[] {
-  const inherits = location.profileOverridden !== true;
+  const inherits = locationModulesInheritFromCompany(location);
+  if (inherits && company) return locationModulesFromCompany(company);
   const modulesJson = location.modulesJson ?? (inherits && company ? company.modulesJson : '[]');
-  if (inherits && company) return parseCompanyModules(company.modulesJson);
-  return parseCompanyModules(modulesJson);
+  const parsed = parseCompanyModules(modulesJson);
+  // Empty override JSON means inherit company location modules.
+  if (parsed.length === 0 && company) return locationModulesFromCompany(company);
+  return toLocationModules(parsed);
 }
 
 export function buildLocationModulesPayload(
@@ -94,8 +106,14 @@ export function buildLocationModulesPayload(
   modules: AccessModule[],
   forceInherit: boolean,
 ) {
-  const modulesJson = serializeStringArray(modules);
-  const inheritModules = forceInherit || profilesEquivalent(modulesJson, company.modulesJson);
+  const locationModules = toLocationModules(modules);
+  const companyLocationModules = locationModulesFromCompany(company);
+  const modulesJson = serializeStringArray(locationModules);
+  const companyLocationJson = serializeStringArray(companyLocationModules);
+  // Compare against location-scoped company modules so Accounting does not force a false override.
+  const inheritModules = forceInherit
+    || profilesEquivalent(modulesJson, company.modulesJson)
+    || profilesEquivalent(modulesJson, companyLocationJson);
   return {
     modulesJson: inheritModules ? '[]' : modulesJson,
     effectiveModulesJson: inheritModules ? company.modulesJson : modulesJson,
@@ -127,9 +145,11 @@ export function resolveOrgEnabledModules(
     );
     if (selectedLocations.length > 0) {
       enabled = new Set(
-        [...enabled].filter(module =>
-          selectedLocations.every(loc => resolveLocationModulesForDisplay(loc, company).includes(module)),
-        ),
+        [...enabled].filter(module => {
+          // Accounting is company-scoped and is not part of location module overrides.
+          if (module === 'Accounting') return true;
+          return selectedLocations.every(loc => resolveLocationModulesForDisplay(loc, company).includes(module));
+        }),
       );
     }
   }
