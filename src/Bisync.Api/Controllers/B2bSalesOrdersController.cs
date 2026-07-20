@@ -297,6 +297,7 @@ public class B2bSalesOrdersController(
         customerExternalId = order.CustomerExternalId,
         customerName = order.CustomerName,
         source = order.Source,
+        sourcePurchaseOrderId = order.SourcePurchaseOrderId,
         status = order.Status,
         lockPeriodDays = order.LockPeriodDays,
         issuedDate = order.IssuedDate,

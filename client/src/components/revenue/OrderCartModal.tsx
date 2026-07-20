@@ -227,6 +227,7 @@ export function OrderCartModal({
         approvedBy: signatories.approvedBy,
         orders: groups.map(group => ({
           vendorName: group.vendorName,
+          vendorExternalId: group.vendorExternalId,
           documentType,
           orderDate: orderDateStr,
           deliveryDate: deliveryDateStr,

@@ -7,8 +7,10 @@ public class B2bSalesOrder
     public string OrderNumber { get; set; } = string.Empty;
     public string CustomerExternalId { get; set; } = string.Empty;
     public string CustomerName { get; set; } = string.Empty;
-    /// <summary>sales_order | online_order (future)</summary>
+    /// <summary>sales_order | online_order</summary>
     public string Source { get; set; } = "sales_order";
+    /// <summary>When Source=online_order, the operator purchase order that produced this sales summary.</summary>
+    public int? SourcePurchaseOrderId { get; set; }
     /// <summary>draft | issued | confirmed | fulfilled | expired | cancelled</summary>
     public string Status { get; set; } = "draft";
     public int LockPeriodDays { get; set; }

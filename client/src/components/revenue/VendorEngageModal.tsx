@@ -127,7 +127,9 @@ export function VendorEngageModal({ vendor, saving, serverError, onClose, onConf
         >
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
             <p className="text-xs text-muted-foreground">
-              Review known sales contact details below. Edit as needed or add another account manager before engaging.
+              {vendor.type?.toLowerCase() === 'online'
+                ? 'This is an Online (Cloud) vendor. Confirming engage sends a request they must approve, including minimum order, delivery charge, and payment terms.'
+                : 'Review known sales contact details below. Edit as needed or add another account manager before engaging.'}
             </p>
 
             {contacts.map((contact, index) => (
@@ -225,7 +227,11 @@ export function VendorEngageModal({ vendor, saving, serverError, onClose, onConf
                 disabled={saving}
                 className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
-                {saving ? 'Engaging…' : 'Confirm Engage'}
+                {saving
+                  ? 'Sending…'
+                  : vendor.type?.toLowerCase() === 'online'
+                    ? 'Request Engage'
+                    : 'Confirm Engage'}
               </button>
             </div>
           </div>

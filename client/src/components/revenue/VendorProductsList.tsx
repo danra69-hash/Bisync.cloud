@@ -155,9 +155,9 @@ export function VendorProductsList({
     setEngaging(true);
     setEngageError(null);
     try {
-      const updated = await api.engageVendor(vendor.externalId, { contacts });
-      setVendorMap(prev => new Map(prev).set(updated.externalId, updated));
-      onVendorUpdated?.(updated);
+      const updated = await api.engageVendor(vendor.externalId, { contacts, requestedBy: undefined });
+      setVendorMap(prev => new Map(prev).set(updated.externalId, { ...vendor, ...updated }));
+      onVendorUpdated?.({ ...vendor, ...updated });
       setEngageVendor(null);
       if (pendingTagProduct) {
         setTagProduct(pendingTagProduct);

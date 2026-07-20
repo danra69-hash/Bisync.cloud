@@ -348,14 +348,14 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
     }
 
     [HttpPost("{externalId}/engage")]
-    public async Task<ActionResult<Vendor>> Engage(string externalId, [FromBody] EngageVendorRequest? body = null)
+    public async Task<ActionResult<object>> Engage(string externalId, [FromBody] EngageVendorRequest? body = null)
     {
         var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
         if (vendor is null) return NotFound();
 
         var contacts = NormalizeContacts(body?.Contacts, vendor);
         if (contacts.Count == 0)
-            return BadRequest("At least one sales contact is required.");
+            return BadRequest(new { message = "At least one sales contact is required." });
 
         var defaultContact = contacts.FirstOrDefault(c => c.IsDefault) ?? contacts[0];
         vendor.ContactsJson = JsonSerializer.Serialize(contacts, ContactJsonOptions);
@@ -363,9 +363,137 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         vendor.ContactPosition = defaultContact.Position;
         vendor.Mobile = defaultContact.Mobile;
         vendor.Email = defaultContact.Email;
+
+        var requestedBy = body?.RequestedBy?.Trim() ?? string.Empty;
+
+        if (VendorEngagementService.IsOnlineVendor(vendor))
+        {
+            var linkedCompanyId = await VendorEngagementService.ResolveLinkedCompanyIdAsync(db, vendor);
+            if (linkedCompanyId is null)
+            {
+                return BadRequest(new
+                {
+                    message = "Online vendors must have a BRN that matches a Bisync company before engage can be requested.",
+                });
+            }
+
+            vendor.LinkedCompanyId = linkedCompanyId;
+            vendor.EngagementStatus = VendorEngagementService.StatusPending;
+            vendor.Engaged = false;
+            vendor.EngageRequestedAt = DateTime.UtcNow;
+            vendor.EngageRequestedBy = requestedBy;
+            vendor.EngageApprovedAt = null;
+            vendor.EngageApprovedBy = string.Empty;
+            vendor.MinOrderAmount = null;
+            vendor.DeliveryChargeBelowMin = null;
+            vendor.PaymentTerms = string.Empty;
+            await db.SaveChangesAsync();
+
+            await UserNotificationService.NotifyCompanyUsersAsync(
+                db,
+                linkedCompanyId.Value,
+                UserNotificationService.TypeVendorEngageRequest,
+                $"Engage request from {(string.IsNullOrWhiteSpace(requestedBy) ? "an operator" : requestedBy)}",
+                $"{requestedBy} requested to engage {vendor.Name}. Open Operation → Active Sales to approve and set trading conditions.");
+
+            return Ok(vendor);
+        }
+
         vendor.Engaged = true;
+        vendor.EngagementStatus = VendorEngagementService.StatusApproved;
+        vendor.EngageRequestedAt = DateTime.UtcNow;
+        vendor.EngageRequestedBy = requestedBy;
+        vendor.EngageApprovedAt = DateTime.UtcNow;
+        vendor.EngageApprovedBy = requestedBy;
         await db.SaveChangesAsync();
         return Ok(vendor);
+    }
+
+    [HttpGet("engagements/pending")]
+    public async Task<ActionResult<IEnumerable<object>>> PendingEngagements([FromQuery] int companyId)
+    {
+        if (companyId <= 0)
+            return BadRequest(new { message = "companyId is required." });
+
+        var rows = await db.Vendors.AsNoTracking()
+            .Where(v => v.LinkedCompanyId == companyId
+                && v.Type.ToLower() == "online"
+                && v.EngagementStatus == VendorEngagementService.StatusPending)
+            .OrderByDescending(v => v.EngageRequestedAt)
+            .ToListAsync();
+
+        return Ok(rows.Select(VendorEngagementService.MapEngagement));
+    }
+
+    [HttpPost("{externalId}/approve-engagement")]
+    public async Task<ActionResult<object>> ApproveEngagement(
+        string externalId,
+        [FromBody] ApproveVendorEngagementRequest request)
+    {
+        var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
+        if (vendor is null) return NotFound();
+        if (!VendorEngagementService.IsOnlineVendor(vendor))
+            return BadRequest(new { message = "Only online vendors require engagement approval." });
+        if (!string.Equals(vendor.EngagementStatus, VendorEngagementService.StatusPending, StringComparison.OrdinalIgnoreCase))
+            return Conflict(new { message = "No pending engage request for this vendor." });
+
+        var paymentError = VendorEngagementService.ValidatePaymentTerms(request.PaymentTerms);
+        if (paymentError is not null)
+            return BadRequest(new { message = paymentError });
+
+        if (request.MinOrderAmount < 0)
+            return BadRequest(new { message = "Minimum order amount cannot be negative." });
+        if (request.DeliveryChargeBelowMin < 0)
+            return BadRequest(new { message = "Delivery charge cannot be negative." });
+
+        var approvedBy = request.ApprovedBy?.Trim() ?? string.Empty;
+        vendor.MinOrderAmount = request.MinOrderAmount;
+        vendor.DeliveryChargeBelowMin = request.DeliveryChargeBelowMin;
+        vendor.PaymentTerms = VendorEngagementService.NormalizePaymentTerms(request.PaymentTerms);
+        vendor.EngagementStatus = VendorEngagementService.StatusApproved;
+        vendor.Engaged = true;
+        vendor.EngageApprovedAt = DateTime.UtcNow;
+        vendor.EngageApprovedBy = approvedBy;
+        vendor.LinkedCompanyId ??= await VendorEngagementService.ResolveLinkedCompanyIdAsync(db, vendor);
+
+        await db.SaveChangesAsync();
+
+        var termsLabel = vendor.PaymentTerms.ToUpperInvariant();
+        await UserNotificationService.NotifyEngageRequesterAsync(
+            db,
+            vendor,
+            $"Engage approved · {vendor.Name}",
+            $"{vendor.Name} approved engagement. Min order {vendor.MinOrderAmount:0.##}, delivery charge if below min {vendor.DeliveryChargeBelowMin:0.##}, payment {termsLabel}.");
+
+        return Ok(VendorEngagementService.MapEngagement(vendor));
+    }
+
+    [HttpPost("{externalId}/reject-engagement")]
+    public async Task<ActionResult<object>> RejectEngagement(
+        string externalId,
+        [FromBody] RejectVendorEngagementRequest? request)
+    {
+        var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
+        if (vendor is null) return NotFound();
+        if (!string.Equals(vendor.EngagementStatus, VendorEngagementService.StatusPending, StringComparison.OrdinalIgnoreCase))
+            return Conflict(new { message = "No pending engage request for this vendor." });
+
+        vendor.EngagementStatus = VendorEngagementService.StatusRejected;
+        vendor.Engaged = false;
+        vendor.EngageApprovedAt = DateTime.UtcNow;
+        vendor.EngageApprovedBy = request?.RejectedBy?.Trim() ?? string.Empty;
+        await db.SaveChangesAsync();
+
+        var reason = string.IsNullOrWhiteSpace(request?.Reason)
+            ? "No reason provided."
+            : request!.Reason.Trim();
+        await UserNotificationService.NotifyEngageRequesterAsync(
+            db,
+            vendor,
+            $"Engage declined · {vendor.Name}",
+            $"{vendor.Name} declined the engage request. {reason}");
+
+        return Ok(VendorEngagementService.MapEngagement(vendor));
     }
 
     static List<VendorContactRequest> SyncDefaultContact(Vendor vendor)
@@ -614,6 +742,96 @@ public class PurchaseOrdersController(
         return Ok(orders.Select(PurchaseOrderWorkflow.MapOrder));
     }
 
+    /// <summary>
+    /// Inbound purchase orders for an online vendor company (shown on Active Sales).
+    /// </summary>
+    [HttpGet("inbound-sales")]
+    public async Task<ActionResult<IEnumerable<object>>> GetInboundSales([FromQuery] int companyId)
+    {
+        if (companyId <= 0)
+            return BadRequest(new { message = "companyId is required." });
+
+        var orders = await OnlineVendorOrderBridge.ListInboundForVendorCompanyAsync(db, companyId);
+        return Ok(orders.Select(PurchaseOrderWorkflow.MapOrder));
+    }
+
+    /// <summary>
+    /// In-app vendor approval of an inbound PO (with optional qty/price adjustments).
+    /// </summary>
+    [HttpPost("{id:int}/vendor-approve")]
+    public async Task<ActionResult<object>> VendorApprove(int id, [FromBody] VendorOrderAcceptRequest? request)
+    {
+        var order = await LoadOrderAsync(id, tracking: true);
+        if (order is null) return NotFound();
+
+        if (order.VendorAcceptedAt is not null)
+            return Ok(PurchaseOrderWorkflow.MapOrder(order));
+
+        if (!PurchaseOrderWorkflow.CanVendorAccept(order))
+            return Conflict(new { message = "This purchase order can no longer be accepted." });
+
+        var acceptedBy = request?.AcceptedBy?.Trim();
+        if (string.IsNullOrWhiteSpace(acceptedBy))
+            acceptedBy = order.VendorName;
+
+        var notes = new List<string>();
+        if (request?.Lines is { Count: > 0 })
+        {
+            var byId = order.Items.ToDictionary(i => i.Id);
+            foreach (var patch in request.Lines)
+            {
+                if (!byId.TryGetValue(patch.Id, out var item)) continue;
+                if (patch.Quantity is decimal qty && qty > 0 && qty != item.Quantity)
+                {
+                    notes.Add($"{item.Name}: qty {item.Quantity:0.####} → {qty:0.####}");
+                    item.Quantity = qty;
+                }
+                if (patch.UnitPrice is decimal price && price >= 0 && price != item.UnitPrice)
+                {
+                    notes.Add($"{item.Name}: price {item.UnitPrice:0.####} → {price:0.####}");
+                    item.UnitPrice = price;
+                }
+            }
+        }
+
+        order.VendorAcceptedAt = DateTime.UtcNow;
+        order.VendorAcceptedBy = acceptedBy;
+        if (string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReceived, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
+        {
+            order.Status = PurchaseOrderWorkflow.StatusAccepted;
+        }
+
+        await db.SaveChangesAsync();
+
+        if (notes.Count > 0)
+        {
+            await UserNotificationService.NotifyPurchaseOrderAdjustedAsync(
+                db,
+                order,
+                $"Accepted by {acceptedBy} with changes: {string.Join("; ", notes)}");
+        }
+        else
+        {
+            await UserNotificationService.NotifyPurchaseOrderAcceptedAsync(db, order);
+        }
+
+        var vendor = await OnlineVendorOrderBridge.FindOperatorVendorAsync(db, order);
+        if (vendor is not null && VendorEngagementService.IsOnlineVendor(vendor))
+        {
+            var linkedCompanyId = vendor.LinkedCompanyId
+                ?? await VendorEngagementService.ResolveLinkedCompanyIdAsync(db, vendor);
+            if (linkedCompanyId is int vendorCompanyId)
+            {
+                vendor.LinkedCompanyId ??= vendorCompanyId;
+                await OnlineVendorOrderBridge.MaterializeSalesSummaryAsync(db, order, vendorCompanyId);
+            }
+        }
+
+        return Ok(PurchaseOrderWorkflow.MapOrder(order));
+    }
+
     [HttpPost("{id:int}/ensure-share-token")]
     public async Task<ActionResult<object>> EnsureShareToken(int id)
     {
@@ -716,6 +934,7 @@ public class PurchaseOrdersController(
             {
                 PoNumber = poNumber,
                 VendorName = vendorName,
+                VendorExternalId = orderRequest.VendorExternalId?.Trim() ?? string.Empty,
                 OrderDate = orderDate,
                 DeliveryDate = orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3)),
                 DocumentType = documentType,
@@ -746,6 +965,13 @@ public class PurchaseOrdersController(
             .Where(p => ids.Contains(p.Id))
             .ToListAsync();
 
+        foreach (var order in saved)
+        {
+            // Notify online vendors only for issued POs (not pending PR approval).
+            if (!PurchaseOrderWorkflow.IsPendingApprovalStatus(order.Status))
+                await OnlineVendorOrderBridge.NotifyOnlineVendorOfPurchaseOrderAsync(db, order);
+        }
+
         return Ok(saved.Select(PurchaseOrderWorkflow.MapOrder));
     }
 
@@ -764,6 +990,7 @@ public class PurchaseOrdersController(
 
         await db.SaveChangesAsync();
         await UserNotificationService.NotifyPurchaseRequestApprovedAsync(db, order, order.ApprovedBy);
+        await OnlineVendorOrderBridge.NotifyOnlineVendorOfPurchaseOrderAsync(db, order);
 
         return Ok(PurchaseOrderWorkflow.MapOrder(order));
     }

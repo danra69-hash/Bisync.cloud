@@ -7,6 +7,8 @@ public class PurchaseOrder
     public int Id { get; set; }
     public string PoNumber { get; set; } = string.Empty;
     public string VendorName { get; set; } = string.Empty;
+    /// <summary>Operator-side vendor catalog id when known (preferred over name matching).</summary>
+    public string VendorExternalId { get; set; } = string.Empty;
     public DateOnly OrderDate { get; set; }
     public DateOnly DeliveryDate { get; set; }
     public string DocumentType { get; set; } = "PO";

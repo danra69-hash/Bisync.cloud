@@ -8,9 +8,113 @@ public static class UserNotificationService
 {
     public const string TypePurchaseRequestApproved = "purchase_request_approved";
     public const string TypePurchaseOrderAccepted = "purchase_order_accepted";
+    public const string TypePurchaseOrderAdjusted = "purchase_order_adjusted";
+    public const string TypeVendorEngageRequest = "vendor_engage_request";
+    public const string TypeVendorEngageApproved = "vendor_engage_approved";
+    public const string TypeInboundPurchaseOrder = "inbound_purchase_order";
     public const string TypeTransferInitiated = "transfer_initiated";
     public const string TypeTransferReceived = "transfer_received";
     public const string TypeTransferRejected = "transfer_rejected";
+
+    public static async Task NotifyCompanyUsersAsync(
+        BisyncDbContext db,
+        int companyId,
+        string type,
+        string title,
+        string body,
+        int? purchaseOrderId = null)
+    {
+        var users = await db.AppUsers.AsNoTracking()
+            .Where(u => u.Active && u.CompanyId == companyId)
+            .ToListAsync();
+
+        if (users.Count == 0)
+        {
+            db.UserNotifications.Add(new UserNotification
+            {
+                RecipientName = $"Company:{companyId}",
+                PurchaseOrderId = purchaseOrderId,
+                Type = type,
+                Title = title,
+                Body = body,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+            return;
+        }
+
+        foreach (var user in users)
+        {
+            db.UserNotifications.Add(new UserNotification
+            {
+                UserId = user.Id,
+                RecipientName = user.FullName,
+                PurchaseOrderId = purchaseOrderId,
+                Type = type,
+                Title = title,
+                Body = body,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    public static async Task NotifyPurchaseOrderAdjustedAsync(
+        BisyncDbContext db,
+        PurchaseOrder order,
+        string summary)
+    {
+        var recipientName = order.InitiatedBy?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(recipientName))
+            return;
+
+        var user = await db.AppUsers
+            .AsNoTracking()
+            .Where(u => u.Active)
+            .FirstOrDefaultAsync(u => u.FullName.ToLower() == recipientName.ToLower());
+
+        db.UserNotifications.Add(new UserNotification
+        {
+            UserId = user?.Id,
+            RecipientName = recipientName,
+            PurchaseOrderId = order.Id,
+            Type = TypePurchaseOrderAdjusted,
+            Title = $"Purchase order {order.PoNumber} updated by vendor",
+            Body = summary,
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    public static async Task NotifyEngageRequesterAsync(
+        BisyncDbContext db,
+        Vendor vendor,
+        string title,
+        string body)
+    {
+        var recipientName = vendor.EngageRequestedBy?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(recipientName))
+            return;
+
+        var user = await db.AppUsers
+            .AsNoTracking()
+            .Where(u => u.Active)
+            .FirstOrDefaultAsync(u => u.FullName.ToLower() == recipientName.ToLower());
+
+        db.UserNotifications.Add(new UserNotification
+        {
+            UserId = user?.Id,
+            RecipientName = recipientName,
+            Type = TypeVendorEngageApproved,
+            Title = title,
+            Body = body,
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        await db.SaveChangesAsync();
+    }
 
     public static async Task NotifyPurchaseRequestApprovedAsync(
         BisyncDbContext db,

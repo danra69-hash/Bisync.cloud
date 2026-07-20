@@ -338,6 +338,38 @@ export interface EngageVendorContact {
 
 export interface EngageVendorPayload {
   contacts: EngageVendorContact[];
+  requestedBy?: string;
+}
+
+export type VendorPaymentTerms = 'cod' | 'prepaid' | 'postpaid';
+
+export interface VendorEngagement {
+  id: number;
+  externalId: string;
+  name: string;
+  type: string;
+  brn: string;
+  engaged: boolean;
+  engagementStatus: 'none' | 'pending' | 'approved' | 'rejected' | string;
+  linkedCompanyId?: number | null;
+  minOrderAmount?: number | null;
+  deliveryChargeBelowMin?: number | null;
+  paymentTerms?: string;
+  engageRequestedAt?: string | null;
+  engageRequestedBy?: string;
+  engageApprovedAt?: string | null;
+  engageApprovedBy?: string;
+  contactPerson?: string;
+  mobile?: string;
+  email?: string;
+  companyId?: number | null;
+}
+
+export interface ApproveVendorEngagementPayload {
+  minOrderAmount: number;
+  deliveryChargeBelowMin: number;
+  paymentTerms: VendorPaymentTerms | string;
+  approvedBy?: string;
 }
 
 export interface Vendor {
@@ -357,6 +389,15 @@ export interface Vendor {
   email: string;
   contactsJson: string;
   engaged: boolean;
+  engagementStatus?: string;
+  linkedCompanyId?: number | null;
+  minOrderAmount?: number | null;
+  deliveryChargeBelowMin?: number | null;
+  paymentTerms?: string;
+  engageRequestedAt?: string | null;
+  engageRequestedBy?: string;
+  engageApprovedAt?: string | null;
+  engageApprovedBy?: string;
   productPolicyTag?: VendorProductPolicyTag;
 }
 
@@ -564,6 +605,7 @@ export interface B2bSalesOrder {
   customerExternalId: string;
   customerName: string;
   source: string;
+  sourcePurchaseOrderId?: number | null;
   status: string;
   lockPeriodDays: number;
   issuedDate?: string | null;
@@ -733,6 +775,7 @@ export interface PurchaseOrder {
   id: number;
   poNumber: string;
   vendorName: string;
+  vendorExternalId?: string;
   orderDate: string;
   deliveryDate: string;
   documentType: 'PR' | 'PO' | string;
@@ -773,6 +816,7 @@ export interface CreatePurchaseOrderItemPayload {
 
 export interface CreatePurchaseOrderPayload {
   vendorName: string;
+  vendorExternalId?: string;
   poNumber?: string;
   documentType?: 'PR' | 'PO';
   orderDate?: string;
@@ -830,10 +874,12 @@ export interface UserNotification {
 }
 
 export interface VendorOrderPortalItem {
+  id?: number;
   name: string;
   deliveryPackage: string;
   quantity: number;
   unitPrice: number;
+  issuedUnitPrice?: number;
 }
 
 export interface QuoteLineVendorResponse {
@@ -1156,6 +1202,8 @@ export interface VendorOrderPortal {
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;
   canAccept: boolean;
+  allowLineAdjustments?: boolean;
+  vendorExternalId?: string;
   company: {
     name: string;
     brn: string;
@@ -2129,6 +2177,12 @@ export const api = {
     fetchJsonWithMethod<PosCustomer>(`/api/pos-customers/${externalId}`, 'PUT', data),
   engageVendor: (externalId: string, data: EngageVendorPayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}/engage`, 'POST', data),
+  pendingVendorEngagements: (companyId: number) =>
+    fetchJson<VendorEngagement[]>(`/api/vendors/engagements/pending?companyId=${companyId}`),
+  approveVendorEngagement: (externalId: string, data: ApproveVendorEngagementPayload) =>
+    fetchJsonWithMethod<VendorEngagement>(`/api/vendors/${externalId}/approve-engagement`, 'POST', data),
+  rejectVendorEngagement: (externalId: string, data?: { rejectedBy?: string; reason?: string }) =>
+    fetchJsonWithMethod<VendorEngagement>(`/api/vendors/${externalId}/reject-engagement`, 'POST', data ?? {}),
   ingredients: (companyId?: number) =>
     fetchJson<Ingredient[]>(`/api/ingredients${companyId ? `?companyId=${companyId}` : ''}`),
   createIngredient: (data: Omit<Ingredient, 'id'>) => fetchJsonWithMethod<Ingredient>('/api/ingredients', 'POST', data),
@@ -2136,6 +2190,15 @@ export const api = {
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),
   activePurchaseOrders: (companyId?: number) =>
     fetchJson<PurchaseOrder[]>(`/api/purchaseorders/active${companyId ? `?companyId=${companyId}` : ''}`),
+  inboundSalesOrders: (companyId: number) =>
+    fetchJson<PurchaseOrder[]>(`/api/purchaseorders/inbound-sales?companyId=${companyId}`),
+  vendorApprovePurchaseOrder: (
+    id: number,
+    payload: {
+      acceptedBy?: string;
+      lines?: { id: number; quantity?: number; unitPrice?: number }[];
+    },
+  ) => fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/vendor-approve`, 'POST', payload),
   purchaseOrder: (id: number) => fetchJson<PurchaseOrder>(`/api/purchaseorders/${id}`),
   ensureVendorShareToken: (id: number) =>
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/ensure-share-token`, 'POST'),
@@ -2158,8 +2221,15 @@ export const api = {
   markNotificationRead: (id: number) =>
     fetchJsonWithMethod<UserNotification>(`/api/notifications/${id}/read`, 'POST'),
   vendorOrderPortal: (token: string) => fetchJson<VendorOrderPortal>(`/api/vendor-orders/${token}`),
-  acceptVendorOrder: (token: string, acceptedBy?: string) =>
-    fetchJsonWithMethod<VendorOrderPortal>(`/api/vendor-orders/${token}/accept`, 'POST', { acceptedBy }),
+  acceptVendorOrder: (
+    token: string,
+    acceptedBy?: string,
+    lines?: { id: number; quantity?: number; unitPrice?: number }[],
+  ) =>
+    fetchJsonWithMethod<VendorOrderPortal>(`/api/vendor-orders/${token}/accept`, 'POST', {
+      acceptedBy,
+      lines,
+    }),
   quoteRequests: (companyId?: number) =>
     fetchJson<QuoteRequestSummary[]>(`/api/quote-requests${companyId ? `?companyId=${companyId}` : ''}`),
   quoteRequest: (id: number) => fetchJson<QuoteRequestDetail>(`/api/quote-requests/${id}`),
