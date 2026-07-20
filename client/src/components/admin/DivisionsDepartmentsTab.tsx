@@ -43,7 +43,11 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
   useEffect(() => { void load().catch(e => setError(e instanceof Error ? e.message : String(e))); }, [load]);
 
   async function submitDivision() {
-    if (!divisionForm.name.trim()) return;
+    if (!divisionForm.name.trim()) {
+      setError('Division name is required.');
+      return;
+    }
+    setError(null);
     const payload = { name: divisionForm.name.trim(), code: divisionForm.code.trim() || null };
     if (editingDivision) await hrApi.org.divisions.update(editingDivision.id, payload);
     else await hrApi.org.divisions.create(payload);
@@ -55,7 +59,11 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
   }
 
   async function submitDepartment() {
-    if (!departmentForm.name.trim() || !departmentForm.divisionId) return;
+    if (!departmentForm.name.trim() || !departmentForm.divisionId) {
+      setError(!departmentForm.name.trim() ? 'Department name is required.' : 'Select a division.');
+      return;
+    }
+    setError(null);
     const payload = { name: departmentForm.name.trim(), divisionId: departmentForm.divisionId };
     if (editingDepartment) await hrApi.org.departments.update(editingDepartment.id, payload);
     else await hrApi.org.departments.create(payload);
@@ -189,7 +197,12 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => void submitDivision()} className="text-xs font-semibold bg-primary text-primary-foreground px-4 py-2 rounded-md">
+            <button
+              type="button"
+              onClick={() => void submitDivision()}
+              disabled={!divisionForm.name.trim()}
+              className="text-xs font-semibold bg-primary text-primary-foreground px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {editingDivision ? 'Save Changes' : 'Add Division'}
             </button>
             <button type="button" onClick={() => { setShowDivisionForm(false); setEditingDivision(null); }} className="text-xs px-4 py-2 rounded-md border border-border hover:bg-muted">
@@ -225,7 +238,12 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => void submitDepartment()} className="text-xs font-semibold bg-primary text-primary-foreground px-4 py-2 rounded-md">
+            <button
+              type="button"
+              onClick={() => void submitDepartment()}
+              disabled={!departmentForm.name.trim() || !departmentForm.divisionId}
+              className="text-xs font-semibold bg-primary text-primary-foreground px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               {editingDepartment ? 'Save Changes' : 'Add Department'}
             </button>
             <button type="button" onClick={() => { setShowDepartmentForm(false); setEditingDepartment(null); }} className="text-xs px-4 py-2 rounded-md border border-border hover:bg-muted">

@@ -16,8 +16,8 @@ export function LanguageSelector() {
         setOpen(false);
       }
     }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    document.addEventListener('click', onClickOutside);
+    return () => document.removeEventListener('click', onClickOutside);
   }, []);
 
   async function choose(code: AppLocale) {

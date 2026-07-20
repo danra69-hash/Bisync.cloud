@@ -110,7 +110,11 @@ export function PhSettingTab({ selectedCompanyId }: Props) {
   }
 
   async function saveRate(field: 'gazettedPhNormalHoursRate' | 'gazettedPhOvertimeHoursRate', value: number) {
-    if (!Number.isFinite(value) || value < 0.1) return;
+    if (!Number.isFinite(value) || value < 0.1) {
+      setError('PH rate must be a number of at least 0.1.');
+      return;
+    }
+    setError(null);
     await patchSettings({ [field]: value });
   }
 

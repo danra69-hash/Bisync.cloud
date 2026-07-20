@@ -295,7 +295,14 @@ export function ComponentConfigPage({
             </p>
             <button
               type="button"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
+              onClick={() => {
+                locationStorageScrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                const first = locationStorage[0];
+                if (first) openStorageAreaPicker(first);
+              }}
+              disabled={locationStorage.length === 0}
+              title={locationStorage.length === 0 ? 'No storage areas available for this location' : 'Pick a storage area to add to My Storage'}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus size={11} /> Add Storage
             </button>

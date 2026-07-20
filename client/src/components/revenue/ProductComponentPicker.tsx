@@ -89,15 +89,16 @@ export function ProductComponentPicker({
   }, [open, query, filteredComponents.length, filteredSubProducts.length]);
 
   useEffect(() => {
+    if (!open) return;
     function handlePointerDown(event: MouseEvent) {
       const target = event.target as Node;
       if (rootRef.current?.contains(target)) return;
       if ((target as Element).closest?.('[data-product-component-picker-menu]')) return;
       setOpen(false);
     }
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
+    document.addEventListener('click', handlePointerDown);
+    return () => document.removeEventListener('click', handlePointerDown);
+  }, [open]);
 
   function clearSelection() {
     if (selectedSubProduct) {

@@ -68,15 +68,16 @@ export function SmartComponentPicker({
   }, [open, query, filtered.length]);
 
   useEffect(() => {
+    if (!open) return;
     function handlePointerDown(event: MouseEvent) {
       const target = event.target as Node;
       if (rootRef.current?.contains(target)) return;
       if ((target as Element).closest?.('[data-smart-component-picker-menu]')) return;
       setOpen(false);
     }
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
+    document.addEventListener('click', handlePointerDown);
+    return () => document.removeEventListener('click', handlePointerDown);
+  }, [open]);
 
   return (
     <div ref={rootRef} className="relative min-w-[12rem]">

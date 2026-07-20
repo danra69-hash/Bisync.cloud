@@ -154,7 +154,28 @@ export const posItems = [
   'Promotion Scheduler',
   'Device Management',
   'E-Invoice',
-];
+] as const;
+
+/** Sidebar nav items that are not productized yet (show as disabled). */
+export const COMING_SOON_NAV_ITEMS = new Set<string>(['Report']);
+
+/** Rev Mgmt submenu labels that still route to ModuleContent placeholders. */
+export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
+  'Inventory Config',
+  'Account Mapping',
+  'External POS Mapping',
+  'Customer Group',
+  'Customer Management',
+  'Promotion Scheduler',
+  'Itemized Sales Summary',
+  'Inventory Summary',
+  'Detailed Purchase Summary',
+  'Production Report',
+  'Wastage Report',
+]);
+
+/** All current POS bar items are placeholders. */
+export const COMING_SOON_POS_ITEMS = new Set<string>(posItems);
 
 export const NAV_ITEMS = [
   'Overview',
