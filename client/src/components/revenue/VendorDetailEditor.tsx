@@ -171,9 +171,12 @@ export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Pro
             <div>
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Type</p>
               <select value={form.type} onChange={e => setField('type', e.target.value)} className={selectCls}>
-                <option value="offline">offline</option>
-                <option value="online">online</option>
+                <option value="offline">Offline Vendor</option>
+                <option value="online">Online Vendor</option>
               </select>
+              <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                Offline = virtual (operator-controlled). Online = cloud vendor (vendor-controlled; relationship later).
+              </p>
             </div>
             <div>
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">BRN</p>

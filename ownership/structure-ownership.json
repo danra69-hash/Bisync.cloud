@@ -310,6 +310,16 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.vendor-rating-detail",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/VendorRatingDetailPage.tsx",
+      "symbol": "VendorRatingDetailPage",
+      "route": "/revenue/vendors/rating",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-20"
+    },
+    {
       "id": "dr.page.customer-list",
       "kind": "client-page",
       "path": "client/src/components/revenue/CustomerListPage.tsx",
@@ -458,6 +468,16 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.vendor-ratings",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/VendorRatingsController.cs",
+      "symbol": "VendorRatingsController",
+      "route": "api/vendor-ratings",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-20"
     },
     {
       "id": "dr.api.ingredients",
