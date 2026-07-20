@@ -24,8 +24,8 @@ import { useAppTranslation } from '../../i18n/useAppTranslation';
 import { setComponentCatalogCompanyId } from '../../data/componentCatalogConfig';
 import { ensureRevMgmtConfig } from '../../data/revMgmtConfigStore';
 import { refreshVendorProductCatalog } from '../../data/vendorProductCatalog';
-import { isSupplySideNavLabel } from '../../data/revenueManagement';
-import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
+import { isB2bProductNavLabel, isSupplySideNavLabel } from '../../data/revenueManagement';
+import { useOrgBusinessCapabilities } from '../../hooks/useOrgSupplyCapability';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
@@ -39,6 +39,7 @@ function renderRevMgmtContent(
   selectedLocationIds: string[],
   onSelectItem?: (id: string | null) => void,
   hasSupplyCapability = true,
+  hasB2bProductCapability = true,
 ) {
   if (!selectedItem) {
     return (
@@ -52,11 +53,14 @@ function renderRevMgmtContent(
 
   const [section, subtitle, label] = selectedItem.split('||');
 
-  if (!hasSupplyCapability && isSupplySideNavLabel(label)) {
+  if ((!hasSupplyCapability && isSupplySideNavLabel(label))
+    || (!hasB2bProductCapability && isB2bProductNavLabel(label))) {
     return (
       <div className="p-2 sm:p-3 w-full min-w-0">
         <p className="text-sm text-muted-foreground">
-          Active Sales and B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer locations.
+          {isB2bProductNavLabel(label)
+            ? 'B2B products are available for Central Kitchen / Warehouse and Manufacturer.'
+            : 'Active Sales is available for Central Kitchen / Warehouse, Distributor, and Manufacturer.'}
         </p>
       </div>
     );
@@ -209,7 +213,10 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
   const { t } = useAppTranslation();
   const [revItem, setRevItem] = useState<string | null>(null);
   const [posItem, setPosItem] = useState<string | null>(null);
-  const hasSupplyCapability = useOrgSupplyCapability(selectedCompanyId, selectedLocationIds);
+  const { hasSupplyCapability, hasB2bProductCapability } = useOrgBusinessCapabilities(
+    selectedCompanyId,
+    selectedLocationIds,
+  );
 
   useEffect(() => {
     void refreshVendorProductCatalog();
@@ -222,12 +229,13 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
   }, [selectedCompanyId]);
 
   useEffect(() => {
-    if (!revItem || hasSupplyCapability) return;
+    if (!revItem) return;
     const label = revItem.split('||')[2];
-    if (isSupplySideNavLabel(label)) {
+    if ((!hasSupplyCapability && isSupplySideNavLabel(label))
+      || (!hasB2bProductCapability && isB2bProductNavLabel(label))) {
       setRevItem(null);
     }
-  }, [revItem, hasSupplyCapability]);
+  }, [revItem, hasSupplyCapability, hasB2bProductCapability]);
 
   if (section === 'Point-of-Sales') {
     return (
@@ -250,6 +258,7 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
         selectedItem={revItem}
         onSelectItem={setRevItem}
         hasSupplyCapability={hasSupplyCapability}
+        hasB2bProductCapability={hasB2bProductCapability}
       />
       {revItem && <RevMgmtPageTitle revItem={revItem} />}
       {renderRevMgmtContent(
@@ -258,6 +267,7 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
         selectedLocationIds,
         setRevItem,
         hasSupplyCapability,
+        hasB2bProductCapability,
       )}
     </RevMgmtTitleProvider>
   );
