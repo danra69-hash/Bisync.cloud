@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { pageShellClass } from '../layout/pageLayout';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { ActivePurchasePage } from './ActivePurchasePage';
+import { B2bActiveOrderPage } from './B2bActiveOrderPage';
 import { CreateOrderPage } from './CreateOrderPage';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 
 const ORDER_TABS = [
   { id: 'create', label: 'My Order' },
   { id: 'active', label: 'Active Purchase' },
+  { id: 'active-sales', label: 'Active Sales' },
 ] as const;
 
 export type OrderTabId = (typeof ORDER_TABS)[number]['id'];
@@ -34,6 +36,12 @@ export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLo
 
       {tab === 'create' ? (
         <CreateOrderPage
+          embedded
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      ) : tab === 'active-sales' ? (
+        <B2bActiveOrderPage
           embedded
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
