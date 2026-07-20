@@ -39,7 +39,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorDoNumber", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorInvoiceNumber", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "ProductQualityRating", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "ProductQualityComment", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "HygieneRating", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "HygieneComment", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PurchaseOrderItems", "ReceivedTemperature", "numeric");
 
         await db.Database.ExecuteSqlRawAsync("""

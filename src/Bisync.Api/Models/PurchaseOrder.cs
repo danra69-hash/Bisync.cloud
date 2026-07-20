@@ -27,8 +27,12 @@ public class PurchaseOrder
     public string VendorInvoiceNumber { get; set; } = string.Empty;
     /// <summary>Customer input at receive/consolidate: satisfied | acceptable | poor.</summary>
     public string ProductQualityRating { get; set; } = string.Empty;
+    /// <summary>Optional comment for product quality rating.</summary>
+    public string ProductQualityComment { get; set; } = string.Empty;
     /// <summary>Customer input at receive/consolidate: satisfied | acceptable | poor.</summary>
     public string HygieneRating { get; set; } = string.Empty;
+    /// <summary>Optional comment for hygiene & cleanliness rating.</summary>
+    public string HygieneComment { get; set; } = string.Empty;
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 

@@ -750,7 +750,9 @@ export interface PurchaseOrder {
   vendorDoNumber?: string | null;
   vendorInvoiceNumber?: string | null;
   productQualityRating?: string | null;
+  productQualityComment?: string | null;
   hygieneRating?: string | null;
+  hygieneComment?: string | null;
   canApprove?: boolean;
   canReceive?: boolean;
   canReconcile?: boolean;
@@ -803,7 +805,9 @@ export interface PurchaseOrderWorkflowPayload {
   vendorDoNumber?: string;
   vendorInvoiceNumber?: string;
   productQualityRating?: string;
+  productQualityComment?: string;
   hygieneRating?: string;
+  hygieneComment?: string;
 }
 
 export interface ReconcilePurchaseOrderResult {

@@ -141,7 +141,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const [vendorDoNumber, setVendorDoNumber] = useState(order.vendorDoNumber?.trim() ?? '');
   const [vendorInvoiceNumber, setVendorInvoiceNumber] = useState(order.vendorInvoiceNumber?.trim() ?? '');
   const [productQualityRating, setProductQualityRating] = useState(order.productQualityRating?.trim() ?? '');
+  const [productQualityComment, setProductQualityComment] = useState(order.productQualityComment?.trim() ?? '');
   const [hygieneRating, setHygieneRating] = useState(order.hygieneRating?.trim() ?? '');
+  const [hygieneComment, setHygieneComment] = useState(order.hygieneComment?.trim() ?? '');
   const [ratingHighlight, setRatingHighlight] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,7 +157,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     setVendorDoNumber(order.vendorDoNumber?.trim() ?? '');
     setVendorInvoiceNumber(order.vendorInvoiceNumber?.trim() ?? '');
     setProductQualityRating(order.productQualityRating?.trim() ?? '');
+    setProductQualityComment(order.productQualityComment?.trim() ?? '');
     setHygieneRating(order.hygieneRating?.trim() ?? '');
+    setHygieneComment(order.hygieneComment?.trim() ?? '');
     setRatingHighlight(false);
     setError(null);
     setShareToken(order.vendorShareToken?.trim() ?? '');
@@ -328,7 +332,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         vendorDoNumber: doNumber || undefined,
         vendorInvoiceNumber: invoiceNumber || undefined,
         productQualityRating,
+        productQualityComment: productQualityComment.trim() || undefined,
         hygieneRating,
+        hygieneComment: hygieneComment.trim() || undefined,
       });
       onUpdated(updated);
     } catch (e) {
@@ -360,7 +366,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       const result = await api.reconcilePurchaseOrder(order.id, {
         items: payload,
         productQualityRating,
+        productQualityComment: productQualityComment.trim() || undefined,
         hygieneRating,
+        hygieneComment: hygieneComment.trim() || undefined,
       });
       if (result.updatedVendorProductPrices.length > 0) {
         applyVendorProductPriceUpdates(result.updatedVendorProductPrices);
@@ -788,32 +796,47 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                     Product quality <span className="text-destructive">*</span>
                   </p>
                   {canEditVendorRating ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {([
-                        ['satisfied', 'Satisfied', '100%'],
-                        ['acceptable', 'Acceptable', '80%'],
-                        ['poor', 'Poor', '50%'],
-                      ] as const).map(([id, label, score]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => {
-                            setProductQualityRating(id);
-                            setRatingHighlight(false);
-                            setError(null);
-                          }}
-                          className={`px-3 py-1.5 rounded-md text-xs border ${
-                            productQualityRating === id
-                              ? 'border-primary bg-primary/10 text-foreground font-medium'
-                              : 'border-border text-muted-foreground hover:border-primary/40'
-                          }`}
-                        >
-                          {label} ({score})
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          ['satisfied', 'Satisfied', '100%'],
+                          ['acceptable', 'Acceptable', '80%'],
+                          ['poor', 'Poor', '50%'],
+                        ] as const).map(([id, label, score]) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => {
+                              setProductQualityRating(id);
+                              setRatingHighlight(false);
+                              setError(null);
+                            }}
+                            className={`px-3 py-1.5 rounded-md text-xs border ${
+                              productQualityRating === id
+                                ? 'border-primary bg-primary/10 text-foreground font-medium'
+                                : 'border-border text-muted-foreground hover:border-primary/40'
+                            }`}
+                          >
+                            {label} ({score})
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={productQualityComment}
+                        onChange={e => setProductQualityComment(e.target.value)}
+                        rows={2}
+                        maxLength={2000}
+                        placeholder="Comment on product quality (optional)"
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs resize-y min-h-[2.5rem]"
+                      />
+                    </>
                   ) : (
-                    <p className="text-xs font-medium capitalize">{productQualityRating || '—'}</p>
+                    <>
+                      <p className="text-xs font-medium capitalize">{productQualityRating || '—'}</p>
+                      {productQualityComment ? (
+                        <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{productQualityComment}</p>
+                      ) : null}
+                    </>
                   )}
                 </div>
                 <div className="space-y-2">
@@ -821,32 +844,47 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                     Hygiene &amp; cleanliness <span className="text-destructive">*</span>
                   </p>
                   {canEditVendorRating ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {([
-                        ['satisfied', 'Satisfied', '100%'],
-                        ['acceptable', 'Acceptable', '80%'],
-                        ['poor', 'Poor', '50%'],
-                      ] as const).map(([id, label, score]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => {
-                            setHygieneRating(id);
-                            setRatingHighlight(false);
-                            setError(null);
-                          }}
-                          className={`px-3 py-1.5 rounded-md text-xs border ${
-                            hygieneRating === id
-                              ? 'border-primary bg-primary/10 text-foreground font-medium'
-                              : 'border-border text-muted-foreground hover:border-primary/40'
-                          }`}
-                        >
-                          {label} ({score})
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          ['satisfied', 'Satisfied', '100%'],
+                          ['acceptable', 'Acceptable', '80%'],
+                          ['poor', 'Poor', '50%'],
+                        ] as const).map(([id, label, score]) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => {
+                              setHygieneRating(id);
+                              setRatingHighlight(false);
+                              setError(null);
+                            }}
+                            className={`px-3 py-1.5 rounded-md text-xs border ${
+                              hygieneRating === id
+                                ? 'border-primary bg-primary/10 text-foreground font-medium'
+                                : 'border-border text-muted-foreground hover:border-primary/40'
+                            }`}
+                          >
+                            {label} ({score})
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={hygieneComment}
+                        onChange={e => setHygieneComment(e.target.value)}
+                        rows={2}
+                        maxLength={2000}
+                        placeholder="Comment on hygiene & cleanliness (optional)"
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs resize-y min-h-[2.5rem]"
+                      />
+                    </>
                   ) : (
-                    <p className="text-xs font-medium capitalize">{hygieneRating || '—'}</p>
+                    <>
+                      <p className="text-xs font-medium capitalize">{hygieneRating || '—'}</p>
+                      {hygieneComment ? (
+                        <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{hygieneComment}</p>
+                      ) : null}
+                    </>
                   )}
                 </div>
               </div>
