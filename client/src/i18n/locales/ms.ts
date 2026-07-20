@@ -109,6 +109,8 @@ export const ms = {
     },
     items: {
       myOrder: 'Pesanan Saya',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: 'Pembelian Tunai',
       orderTemplate: 'Templat Pesanan',
       production: 'Pengeluaran',

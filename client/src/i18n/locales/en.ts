@@ -107,6 +107,8 @@ export const en = {
     },
     items: {
       myOrder: 'My Order',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: 'Cash Purchase',
       orderTemplate: 'Order Template',
       production: 'Production',

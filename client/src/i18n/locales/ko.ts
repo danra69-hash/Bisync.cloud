@@ -109,6 +109,8 @@ export const ko = {
     },
     items: {
       myOrder: '내 주문',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: '현금 구매',
       orderTemplate: '주문 템플릿',
       production: '생산',

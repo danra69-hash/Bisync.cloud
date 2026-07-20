@@ -109,6 +109,8 @@ export const fr = {
     },
     items: {
       myOrder: 'Ma commande',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: 'Achat comptant',
       orderTemplate: 'Modèle de commande',
       production: 'Production',
