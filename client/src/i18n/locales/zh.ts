@@ -109,6 +109,8 @@ export const zh = {
     },
     items: {
       myOrder: '我的订单',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: '现金采购',
       orderTemplate: '订单模板',
       production: '生产',

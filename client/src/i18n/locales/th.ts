@@ -109,6 +109,8 @@ export const th = {
     },
     items: {
       myOrder: 'คำสั่งซื้อของฉัน',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: 'ซื้อเงินสด',
       orderTemplate: 'เทมเพลตคำสั่งซื้อ',
       production: 'การผลิต',

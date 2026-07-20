@@ -109,6 +109,8 @@ export const id = {
     },
     items: {
       myOrder: 'Pesanan Saya',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: 'Pembelian Tunai',
       orderTemplate: 'Template Pesanan',
       production: 'Produksi',

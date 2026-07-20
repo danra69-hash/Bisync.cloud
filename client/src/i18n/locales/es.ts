@@ -109,6 +109,8 @@ export const es = {
     },
     items: {
       myOrder: 'Mi pedido',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: 'Compra al contado',
       orderTemplate: 'Plantilla de pedido',
       production: 'Producción',

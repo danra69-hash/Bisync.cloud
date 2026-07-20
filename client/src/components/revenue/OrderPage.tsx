@@ -32,7 +32,9 @@ export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLo
 
   return (
     <div className={pageShellClass()}>
-      <HrConfigTabBar tabs={ORDER_TABS} active={tab} onChange={setTab} />
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+        <HrConfigTabBar tabs={ORDER_TABS} active={tab} onChange={setTab} />
+      </div>
 
       {tab === 'create' ? (
         <CreateOrderPage

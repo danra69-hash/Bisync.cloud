@@ -109,6 +109,8 @@ export const ja = {
     },
     items: {
       myOrder: 'マイオーダー',
+      activePurchase: 'Active Purchase',
+      activeSales: 'Active Sales',
       cashPurchase: '現金仕入',
       orderTemplate: '発注テンプレート',
       production: '生産',
