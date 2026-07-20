@@ -28,11 +28,13 @@ export function BusinessTypeMultiSelect({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Use click (not mousedown) so Save / footer buttons still receive their click
+    // after the menu closes — mousedown-outside + re-render can swallow the click.
     function onClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    document.addEventListener('click', onClickOutside);
+    return () => document.removeEventListener('click', onClickOutside);
   }, []);
 
   const label = selected.length === 0
