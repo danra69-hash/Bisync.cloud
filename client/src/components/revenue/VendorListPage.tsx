@@ -9,6 +9,7 @@ import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { FileText, PackageOpen, Search, UserPlus } from 'lucide-react';
 import { api, type Company, type EngageVendorContact, type LocationConfig, type Vendor, type VendorRatingSummary } from '../../api';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import {
   applyVendorProductOverrides,
   filterVendorProductsByLocationVisibility,
@@ -77,6 +78,7 @@ export function VendorListPage({
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 }) {
+  const { currentUser } = useCurrentUser();
   const [tab, setTab] = useState<'vendors' | 'products' | 'rfq'>('vendors');
 
   const activeTabLabel = VENDOR_TABS.find(t => t.id === tab)?.label ?? 'Vendors';
@@ -280,9 +282,15 @@ export function VendorListPage({
     setEngaging(true);
     setEngageError(null);
     try {
-      const updated = await api.engageVendor(vendor.externalId, { contacts });
-      setVendors(prev => prev.map(v => v.externalId === vendor.externalId ? updated : v));
+      const updated = await api.engageVendor(vendor.externalId, {
+        contacts,
+        requestedBy: currentUser?.fullName,
+      });
+      setVendors(prev => prev.map(v => v.externalId === vendor.externalId ? { ...v, ...updated } : v));
       setEngageTarget(null);
+      if (updated.engagementStatus === 'pending') {
+        // Online vendors stay unengaged until they approve conditions on Active Sales.
+      }
     } catch (err) {
       setEngageError(
         err instanceof Error

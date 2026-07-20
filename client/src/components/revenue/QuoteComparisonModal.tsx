@@ -187,8 +187,8 @@ export function QuoteComparisonModal({
     setEngageError(null);
     try {
       const updated = await api.engageVendor(vendor.externalId, { contacts });
-      setLocalVendors(prev => prev.map(v => (v.externalId === updated.externalId ? updated : v)));
-      onVendorUpdated?.(updated);
+      setLocalVendors(prev => prev.map(v => (v.externalId === updated.externalId ? { ...v, ...updated } : v)));
+      onVendorUpdated?.({ ...vendor, ...updated });
       setEngageVendor(null);
 
       if (pendingTag) {

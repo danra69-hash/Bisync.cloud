@@ -136,6 +136,17 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "EngagementStatus", "TEXT NOT NULL DEFAULT 'none'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "LinkedCompanyId", "INTEGER");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "MinOrderAmount", "numeric");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "DeliveryChargeBelowMin", "numeric");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "PaymentTerms", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "EngageRequestedAt", "timestamp with time zone");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "EngageRequestedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "EngageApprovedAt", "timestamp with time zone");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "EngageApprovedBy", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PurchaseOrders", "VendorExternalId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "B2bSalesOrders", "SourcePurchaseOrderId", "INTEGER");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Companies", "Code", "TEXT NOT NULL DEFAULT ''");
         await BackfillIngredientComponentIdsAsync(db);
         await BackfillCatalogCompanyIdsAsync(db);

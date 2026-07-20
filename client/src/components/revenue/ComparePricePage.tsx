@@ -373,7 +373,7 @@ export function ComparePricePage({
     setEngageError(null);
     try {
       const updated = await api.engageVendor(vendor.externalId, { contacts });
-      setVendors(prev => prev.map(v => v.externalId === updated.externalId ? updated : v));
+      setVendors(prev => prev.map(v => v.externalId === updated.externalId ? { ...v, ...updated } : v));
       setEngageVendor(null);
       if (pendingTag) {
         setTagRequest(pendingTag);

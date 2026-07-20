@@ -24,6 +24,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [acceptedBy, setAcceptedBy] = useState('');
+  const [lineDrafts, setLineDrafts] = useState<{ id: number; quantity: string; unitPrice: string }[]>([]);
   const [pdfObjectUrl, setPdfObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,6 +34,15 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
       .then(data => {
         setPortal(data);
         setAcceptedBy(data.vendor.contactPerson || data.vendorName);
+        setLineDrafts(
+          (data.items ?? [])
+            .filter(item => typeof item.id === 'number')
+            .map(item => ({
+              id: item.id as number,
+              quantity: String(item.quantity),
+              unitPrice: String(item.unitPrice),
+            })),
+        );
       })
       .catch(err => {
         setPortal(null);
@@ -82,8 +92,26 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
     setAccepting(true);
     setError(null);
     try {
-      const updated = await api.acceptVendorOrder(token, acceptedBy.trim() || portal.vendorName);
+      const lines = lineDrafts.map(d => ({
+        id: d.id,
+        quantity: Number(d.quantity),
+        unitPrice: Number(d.unitPrice),
+      }));
+      const updated = await api.acceptVendorOrder(
+        token,
+        acceptedBy.trim() || portal.vendorName,
+        lines,
+      );
       setPortal(updated);
+      setLineDrafts(
+        (updated.items ?? [])
+          .filter(item => typeof item.id === 'number')
+          .map(item => ({
+            id: item.id as number,
+            quantity: String(item.quantity),
+            unitPrice: String(item.unitPrice),
+          })),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept purchase order.');
     } finally {
@@ -283,8 +311,54 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
                 <p className="text-sm font-semibold">Accept this order</p>
                 <p className="text-xs text-muted-foreground">
                   Confirm that you accept this {portal.documentKind === 'purchase_request' ? 'purchase request' : 'purchase order'}.
-                  The buyer will be notified in Bisync.cloud.
+                  You may adjust quantity or unit price before accepting — the buyer will be notified of any changes.
                 </p>
+
+                {lineDrafts.length > 0 ? (
+                  <div className="overflow-x-auto rounded-md border border-border">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40">
+                        <tr className="text-left border-b border-border">
+                          <th className="px-2 py-1.5 font-medium">Product</th>
+                          <th className="px-2 py-1.5 font-medium text-right">Qty</th>
+                          <th className="px-2 py-1.5 font-medium text-right">Unit price</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {portal.items.map((item, index) => {
+                          const draft = lineDrafts[index];
+                          if (!draft) return null;
+                          return (
+                            <tr key={draft.id} className="border-b border-border/60">
+                              <td className="px-2 py-1.5 font-medium">{item.name}</td>
+                              <td className="px-2 py-1.5 text-right">
+                                <input
+                                  className="w-24 ml-auto px-2 py-1 rounded border border-border bg-background text-right"
+                                  value={draft.quantity}
+                                  onChange={e => {
+                                    const value = e.target.value;
+                                    setLineDrafts(prev => prev.map((row, i) => (i === index ? { ...row, quantity: value } : row)));
+                                  }}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 text-right">
+                                <input
+                                  className="w-28 ml-auto px-2 py-1 rounded border border-border bg-background text-right"
+                                  value={draft.unitPrice}
+                                  onChange={e => {
+                                    const value = e.target.value;
+                                    setLineDrafts(prev => prev.map((row, i) => (i === index ? { ...row, unitPrice: value } : row)));
+                                  }}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
                 <div>
                   <label htmlFor="accepted-by" className="text-xs font-sans uppercase tracking-wider text-muted-foreground">
                     Your name

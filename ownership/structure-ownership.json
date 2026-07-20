@@ -350,6 +350,26 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.active-sales-inbound",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ActiveSalesInboundPanel.tsx",
+      "symbol": "ActiveSalesInboundPanel",
+      "route": "/revenue/active-sales-inbound",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-20"
+    },
+    {
+      "id": "dr.page.vendor-engage-approve",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/VendorEngageApproveModal.tsx",
+      "symbol": "VendorEngageApproveModal",
+      "route": "/revenue/vendor-engage-approve",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-20"
+    },
+    {
       "id": "dr.page.active-sales-order",
       "kind": "client-page",
       "path": "client/src/components/revenue/ActiveSalesOrderPage.tsx",

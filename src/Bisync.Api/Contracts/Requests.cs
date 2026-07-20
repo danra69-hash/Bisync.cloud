@@ -548,6 +548,37 @@ public class VendorContactRequest
 public class EngageVendorRequest
 {
     public List<VendorContactRequest> Contacts { get; set; } = [];
+    [MaxLength(200)]
+    public string? RequestedBy { get; set; }
+}
+
+public class ApproveVendorEngagementRequest
+{
+    [Range(0, 999999999)]
+    public decimal MinOrderAmount { get; set; }
+    [Range(0, 999999999)]
+    public decimal DeliveryChargeBelowMin { get; set; }
+    [Required, MaxLength(20)]
+    public string PaymentTerms { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ApprovedBy { get; set; }
+}
+
+public class RejectVendorEngagementRequest
+{
+    [MaxLength(200)]
+    public string? RejectedBy { get; set; }
+    [MaxLength(500)]
+    public string? Reason { get; set; }
+}
+
+public class VendorOrderLineAdjustRequest
+{
+    public int Id { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal? Quantity { get; set; }
+    [Range(0, 999999999)]
+    public decimal? UnitPrice { get; set; }
 }
 
 public class CreateVendorRequest
@@ -635,6 +666,8 @@ public class CreatePurchaseOrderRequest
 {
     [Required, MaxLength(200)]
     public string VendorName { get; set; } = string.Empty;
+    [MaxLength(32)]
+    public string? VendorExternalId { get; set; }
     [MaxLength(50)]
     public string? PoNumber { get; set; }
     [MaxLength(10)]

@@ -1,3 +1,4 @@
+using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
@@ -38,6 +39,9 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(acceptedBy))
             acceptedBy = order.VendorName;
 
+        var adjustmentNotes = ApplyLineAdjustments(order, request?.Lines);
+        var hadAdjustments = !string.IsNullOrWhiteSpace(adjustmentNotes);
+
         order.VendorAcceptedAt = DateTime.UtcNow;
         order.VendorAcceptedBy = acceptedBy;
 
@@ -49,8 +53,65 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
         }
 
         await db.SaveChangesAsync();
-        await UserNotificationService.NotifyPurchaseOrderAcceptedAsync(db, order);
+
+        if (hadAdjustments)
+        {
+            await UserNotificationService.NotifyPurchaseOrderAdjustedAsync(
+                db,
+                order,
+                $"Accepted by {acceptedBy} with changes: {adjustmentNotes}");
+        }
+        else
+        {
+            await UserNotificationService.NotifyPurchaseOrderAcceptedAsync(db, order);
+        }
+
+        var vendor = await OnlineVendorOrderBridge.FindOperatorVendorAsync(db, order);
+        if (vendor is not null && VendorEngagementService.IsOnlineVendor(vendor))
+        {
+            var linkedCompanyId = vendor.LinkedCompanyId
+                ?? await VendorEngagementService.ResolveLinkedCompanyIdAsync(db, vendor);
+            if (linkedCompanyId is int vendorCompanyId)
+            {
+                vendor.LinkedCompanyId ??= vendorCompanyId;
+                await OnlineVendorOrderBridge.MaterializeSalesSummaryAsync(db, order, vendorCompanyId);
+            }
+        }
+
         return Ok(await BuildPortalViewAsync(order));
+    }
+
+    static string ApplyLineAdjustments(PurchaseOrder order, List<VendorOrderLineAdjustRequest>? lines)
+    {
+        if (lines is null || lines.Count == 0)
+            return string.Empty;
+
+        var notes = new List<string>();
+        var byId = order.Items.ToDictionary(i => i.Id);
+        foreach (var patch in lines)
+        {
+            if (!byId.TryGetValue(patch.Id, out var item))
+                continue;
+
+            var changed = false;
+            if (patch.Quantity is decimal qty && qty > 0 && qty != item.Quantity)
+            {
+                notes.Add($"{item.Name}: qty {item.Quantity:0.####} → {qty:0.####}");
+                item.Quantity = qty;
+                changed = true;
+            }
+
+            if (patch.UnitPrice is decimal price && price >= 0 && price != item.UnitPrice)
+            {
+                notes.Add($"{item.Name}: price {item.UnitPrice:0.####} → {price:0.####}");
+                item.UnitPrice = price;
+                changed = true;
+            }
+
+            _ = changed;
+        }
+
+        return string.Join("; ", notes);
     }
 
     async Task<PurchaseOrder?> LoadByTokenAsync(string token, bool tracking)
@@ -85,7 +146,9 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 .ToListAsync();
 
         var vendor = await db.Vendors.AsNoTracking()
-            .FirstOrDefaultAsync(v => v.Name == order.VendorName);
+            .FirstOrDefaultAsync(v =>
+                (!string.IsNullOrWhiteSpace(order.VendorExternalId) && v.ExternalId == order.VendorExternalId)
+                || v.Name == order.VendorName);
 
         var documentKind = string.Equals(order.DocumentType, PurchaseOrderWorkflow.DocumentTypePr, StringComparison.OrdinalIgnoreCase)
             ? "purchase_request"
@@ -96,6 +159,7 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
             order.Id,
             poNumber = order.PoNumber,
             vendorName = order.VendorName,
+            vendorExternalId = order.VendorExternalId,
             documentType = order.DocumentType,
             documentKind,
             status = order.Status,
@@ -106,6 +170,7 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
             vendorAcceptedAt = order.VendorAcceptedAt,
             vendorAcceptedBy = order.VendorAcceptedBy,
             canAccept = PurchaseOrderWorkflow.CanVendorAccept(order),
+            allowLineAdjustments = true,
             company = company is null ? null : new
             {
                 company.Name,
@@ -143,10 +208,12 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
             }),
             items = order.Items.Select(i => new
             {
+                i.Id,
                 i.Name,
                 deliveryPackage = i.DeliveryPackage,
                 quantity = i.Quantity,
                 unitPrice = i.UnitPrice,
+                issuedUnitPrice = i.IssuedUnitPrice > 0 ? i.IssuedUnitPrice : i.UnitPrice,
             }),
         };
     }
@@ -155,4 +222,5 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
 public class VendorOrderAcceptRequest
 {
     public string? AcceptedBy { get; set; }
+    public List<VendorOrderLineAdjustRequest>? Lines { get; set; }
 }

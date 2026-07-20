@@ -103,6 +103,7 @@ public static class PurchaseOrderWorkflow
         order.Id,
         poNumber = order.PoNumber,
         vendorName = order.VendorName,
+        vendorExternalId = order.VendorExternalId,
         orderDate = order.OrderDate,
         deliveryDate = order.DeliveryDate,
         documentType,
