@@ -360,6 +360,60 @@ export interface Vendor {
   productPolicyTag?: VendorProductPolicyTag;
 }
 
+export type VendorRatingLevel = 'satisfied' | 'acceptable' | 'unsatisfied';
+
+export interface VendorRatingSummary {
+  vendorExternalId: string;
+  vendorType: string;
+  vendorKind: string;
+  overallRating: number | null;
+  hasRating: boolean;
+  control: string;
+}
+
+export interface VendorRatingDetail {
+  vendorExternalId: string;
+  vendorName: string;
+  vendorType: string;
+  vendorKindLabel: string;
+  control: string;
+  controlNote: string;
+  overallRating: number | null;
+  hasRating: boolean;
+  updatedAt?: string | null;
+  updatedBy?: string;
+  delivery?: string | null;
+  productAccuracy?: string | null;
+  productQuality?: string | null;
+  hygieneCleanliness?: string | null;
+  notes?: string;
+  orderAccepted?: {
+    within4Hours: number;
+    within8Hours: number;
+    beyond9Hours: number;
+    total: number;
+  } | null;
+  poAcceptance?: {
+    yes: number;
+    no: number;
+    acceptWithQuantityChange: number;
+    acceptWithPriceChange: number;
+    acceptWithoutChanges: number;
+    total: number;
+  } | null;
+  onlineRelationshipPending?: boolean;
+}
+
+export interface UpsertVendorRatingPayload {
+  delivery: VendorRatingLevel;
+  productAccuracy: VendorRatingLevel;
+  productQuality: VendorRatingLevel;
+  hygieneCleanliness: VendorRatingLevel;
+  notes?: string;
+  updatedBy?: string;
+  companyId?: number;
+}
+
 export type VendorProductPolicyTag = 'halal' | 'muslim-friendly' | 'non-halal';
 
 export interface VendorCreatePayload {
@@ -1979,6 +2033,15 @@ export const api = {
   createVendor: (data: VendorCreatePayload) => fetchJsonWithMethod<Vendor>('/api/vendors', 'POST', data),
   updateVendor: (externalId: string, data: VendorUpdatePayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}`, 'PUT', data),
+  vendorRatingSummaries: () => fetchJson<VendorRatingSummary[]>('/api/vendor-ratings'),
+  vendorRating: (vendorExternalId: string) =>
+    fetchJson<VendorRatingDetail>(`/api/vendor-ratings/${encodeURIComponent(vendorExternalId)}`),
+  upsertVendorRating: (vendorExternalId: string, data: UpsertVendorRatingPayload) =>
+    fetchJsonWithMethod<VendorRatingDetail>(
+      `/api/vendor-ratings/${encodeURIComponent(vendorExternalId)}`,
+      'PUT',
+      data,
+    ),
   b2bCustomers: (companyId?: number) =>
     fetchJson<B2bCustomer[]>(`/api/b2b-customers${companyId ? `?companyId=${companyId}` : ''}`),
   createB2bCustomer: (data: UpsertB2bCustomerPayload) =>

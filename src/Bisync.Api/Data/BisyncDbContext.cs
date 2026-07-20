@@ -34,6 +34,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<IncomeTaxRebate> IncomeTaxRebates => Set<IncomeTaxRebate>();
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
     public DbSet<Vendor> Vendors => Set<Vendor>();
+    public DbSet<VendorRating> VendorRatings => Set<VendorRating>();
     public DbSet<B2bCustomer> B2bCustomers => Set<B2bCustomer>();
     public DbSet<PosCustomer> PosCustomers => Set<PosCustomer>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
@@ -107,6 +108,16 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.HasIndex(v => new { v.CompanyId, v.ExternalId }).IsUnique();
             e.HasIndex(v => v.CompanyId);
+        });
+        modelBuilder.Entity<VendorRating>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.VendorExternalId });
+            e.HasIndex(x => x.VendorExternalId);
+            e.Property(x => x.VendorExternalId).HasMaxLength(64);
+            e.Property(x => x.Delivery).HasMaxLength(32);
+            e.Property(x => x.ProductAccuracy).HasMaxLength(32);
+            e.Property(x => x.ProductQuality).HasMaxLength(32);
+            e.Property(x => x.HygieneCleanliness).HasMaxLength(32);
         });
         modelBuilder.Entity<B2bCustomer>(e =>
         {

@@ -254,8 +254,8 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
             <div className="col-span-1">
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">Type</p>
               <select value={form.type} onChange={e => setField('type', e.target.value)} className={selectCls}>
-                <option value="offline">offline</option>
-                <option value="online">online</option>
+                <option value="offline">Offline Vendor</option>
+                <option value="online">Online Vendor</option>
               </select>
             </div>
             <div className="col-span-1" />

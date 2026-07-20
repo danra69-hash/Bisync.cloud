@@ -8,7 +8,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { FileText, PackageOpen, Search, UserPlus } from 'lucide-react';
-import { api, type Company, type EngageVendorContact, type LocationConfig, type Vendor } from '../../api';
+import { api, type Company, type EngageVendorContact, type LocationConfig, type Vendor, type VendorRatingSummary } from '../../api';
 import {
   applyVendorProductOverrides,
   filterVendorProductsByLocationVisibility,
@@ -28,6 +28,7 @@ import { VendorEngageModal } from './VendorEngageModal';
 import { VendorCreatePanel } from './VendorCreatePanel';
 import { VendorProductsList } from './VendorProductsList';
 import { VendorProductsPanel } from './VendorProductsPanel';
+import { VendorRatingDetailPage } from './VendorRatingDetailPage';
 import { RequestForQuotePanel } from './RequestForQuotePanel';
 import { RequestForQuoteList } from './RequestForQuoteList';
 import { RequestForSamplePanel } from './RequestForSamplePanel';
@@ -37,13 +38,15 @@ import { SampleRequestList } from './SampleRequestList';
 import type { SampleQuoteTemplateId } from '../../data/requestForSample';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { formatOverallRating } from '../../data/vendorRating';
 
-type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'action';
+type VendorSortColumn = 'name' | 'products' | 'policy' | 'rating' | 'address' | 'phone' | 'email' | 'action';
 
 const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
   { key: 'name', label: 'Vendor Name' },
   { key: 'products', label: 'Type of Product Supplied' },
   { key: 'policy', label: 'Product Policy' },
+  { key: 'rating', label: 'Vendor Rating' },
   { key: 'address', label: 'Address' },
   { key: 'phone', label: 'Phone Number' },
   { key: 'email', label: 'Email' },
@@ -91,6 +94,8 @@ export function VendorListPage({
   const [engageTarget, setEngageTarget] = useState<Vendor | null>(null);
   const [engageError, setEngageError] = useState<string | null>(null);
   const [productsVendor, setProductsVendor] = useState<Vendor | null>(null);
+  const [ratingVendor, setRatingVendor] = useState<Vendor | null>(null);
+  const [ratingSummaries, setRatingSummaries] = useState<Record<string, VendorRatingSummary>>({});
   const [catalogRefresh, setCatalogRefresh] = useState(0);
   const [rfqRefresh, setRfqRefresh] = useState(0);
   const [sampleRefresh, setSampleRefresh] = useState(0);
@@ -115,16 +120,20 @@ export function VendorListPage({
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([api.vendors(), api.companies(), api.locationsConfig()])
-      .then(([vendorRows, companyRows, locationRows]) => {
+    Promise.all([api.vendors(), api.companies(), api.locationsConfig(), api.vendorRatingSummaries()])
+      .then(([vendorRows, companyRows, locationRows, ratingRows]) => {
         setVendors(vendorRows);
         setCompanies(companyRows);
         setConfigLocations(locationRows);
+        const map: Record<string, VendorRatingSummary> = {};
+        for (const row of ratingRows) map[row.vendorExternalId] = row;
+        setRatingSummaries(map);
       })
       .catch(() => {
         setVendors([]);
         setCompanies([]);
         setConfigLocations([]);
+        setRatingSummaries({});
       })
       .finally(() => setLoading(false));
   }, []);
@@ -148,6 +157,7 @@ export function VendorListPage({
     if (!selectedCompanyId) {
       setEngageTarget(null);
       setProductsVendor(null);
+      setRatingVendor(null);
     }
   }, [selectedCompanyId]);
 
@@ -177,11 +187,12 @@ export function VendorListPage({
       name: (v: Vendor) => v.name,
       products: (v: Vendor) => v.products || '',
       policy: (v: Vendor) => formatVendorPolicyLabel(inferVendorPolicyTag(v)),
+      rating: (v: Vendor) => ratingSummaries[v.externalId]?.overallRating ?? -1,
       address: (v: Vendor) => v.address || [v.city, v.state].filter(Boolean).join(', '),
       phone: (v: Vendor) => getDefaultVendorContact(v)?.mobile || v.mobile || '',
       email: (v: Vendor) => getDefaultVendorContact(v)?.email || v.email || '',
     }),
-    [],
+    [ratingSummaries],
   );
 
   const sortedFiltered = useMemo(() => {
@@ -288,12 +299,27 @@ export function VendorListPage({
     if (productsVendor?.externalId === updated.externalId) {
       setProductsVendor(updated);
     }
+    if (ratingVendor?.externalId === updated.externalId) {
+      setRatingVendor(updated);
+    }
+  }
+
+  async function refreshRatingSummaries() {
+    try {
+      const rows = await api.vendorRatingSummaries();
+      const map: Record<string, VendorRatingSummary> = {};
+      for (const row of rows) map[row.vendorExternalId] = row;
+      setRatingSummaries(map);
+    } catch {
+      // keep existing summaries
+    }
   }
 
   function renderRow(v: Vendor) {
     const defaultContact = getDefaultVendorContact(v);
     const displayMobile = defaultContact?.mobile || v.mobile || '—';
     const displayEmail = defaultContact?.email || v.email;
+    const rating = ratingSummaries[v.externalId];
     return (
       <tr
         key={v.id}
@@ -320,6 +346,20 @@ export function VendorListPage({
         </td>
         <td className="px-4 py-3 text-foreground ">{v.products || '—'}</td>
         <td className="px-4 py-3 text-foreground whitespace-nowrap">{formatVendorPolicyLabel(inferVendorPolicyTag(v))}</td>
+        <td className="px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setRatingVendor(v)}
+            className="text-left group inline-flex flex-col"
+            title="Open vendor rating detail"
+          >
+            <span className="font-sans tabular-nums font-medium text-foreground group-hover:text-primary group-hover:underline">
+              {formatOverallRating(rating?.overallRating)}
+              {rating?.hasRating ? <span className="text-[10px] text-muted-foreground font-normal"> / 5</span> : null}
+            </span>
+            <span className="text-[10px] text-muted-foreground">Overall</span>
+          </button>
+        </td>
         <td className="px-4 py-3 text-muted-foreground ">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>
@@ -346,6 +386,19 @@ export function VendorListPage({
           )}
         </td>
       </tr>
+    );
+  }
+
+  if (ratingVendor) {
+    return (
+      <VendorRatingDetailPage
+        vendor={ratingVendor}
+        selectedCompanyId={selectedCompanyId}
+        onBack={() => {
+          setRatingVendor(null);
+          void refreshRatingSummaries();
+        }}
+      />
     );
   }
 
@@ -465,7 +518,7 @@ export function VendorListPage({
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
+                    <td colSpan={8} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No vendors match your filters.
                     </td>
                   </tr>
@@ -474,7 +527,7 @@ export function VendorListPage({
                     if (row.kind === 'header') {
                       return (
                         <tr key={row.id} className="bg-muted/20">
-                          <td colSpan={7} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
+                          <td colSpan={8} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
                             {row.label}
                           </td>
                         </tr>
@@ -483,7 +536,7 @@ export function VendorListPage({
                     return renderRow(row.vendor);
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={7} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
