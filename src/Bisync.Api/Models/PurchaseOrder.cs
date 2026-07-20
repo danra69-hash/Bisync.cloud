@@ -25,6 +25,10 @@ public class PurchaseOrder
     public string VendorDoNumber { get; set; } = string.Empty;
     /// <summary>Vendor invoice number captured at receive. Optional if DO number is provided.</summary>
     public string VendorInvoiceNumber { get; set; } = string.Empty;
+    /// <summary>Customer input at receive/consolidate: satisfied | acceptable | poor.</summary>
+    public string ProductQualityRating { get; set; } = string.Empty;
+    /// <summary>Customer input at receive/consolidate: satisfied | acceptable | poor.</summary>
+    public string HygieneRating { get; set; } = string.Empty;
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 
@@ -52,4 +56,6 @@ public class PurchaseOrderItem
     public string HalalCertNo { get; set; } = string.Empty;
     /// <summary>Optional vendor product expiry date (yyyy-MM-dd) captured at receive.</summary>
     public string ProductExpiryDate { get; set; } = string.Empty;
+    /// <summary>Optional temperature check (°C) captured at receive/consolidate.</summary>
+    public decimal? ReceivedTemperature { get; set; }
 }

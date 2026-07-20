@@ -792,9 +792,18 @@ public class PurchaseOrdersController(
         }
 
         // Halal certificate number is optional even under a halal org policy.
+        var quality = VendorRatingRules.NormalizeCustomerLevel(request.ProductQualityRating);
+        var hygiene = VendorRatingRules.NormalizeCustomerLevel(request.HygieneRating);
+        if (quality is null)
+            return BadRequest(new { message = "Product quality rating is required (Satisfied, Acceptable, or Poor)." });
+        if (hygiene is null)
+            return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
+
         ApplyWorkflowLines(order, request.Items, workflow: "receive");
         order.VendorDoNumber = vendorDoNumber;
         order.VendorInvoiceNumber = vendorInvoiceNumber;
+        order.ProductQualityRating = quality;
+        order.HygieneRating = hygiene;
         order.Status = PurchaseOrderWorkflow.StatusReceived;
         order.ReceivedAt = DateTime.UtcNow;
 
@@ -813,8 +822,18 @@ public class PurchaseOrdersController(
         if (request.Items is null || request.Items.Count == 0)
             return BadRequest(new { message = "At least one line item is required to reconcile." });
 
+        // Quality/hygiene can be updated at consolidate if provided; otherwise keep receive values.
+        var quality = VendorRatingRules.NormalizeCustomerLevel(request.ProductQualityRating);
+        var hygiene = VendorRatingRules.NormalizeCustomerLevel(request.HygieneRating);
+        if (quality is null && string.IsNullOrWhiteSpace(order.ProductQualityRating))
+            return BadRequest(new { message = "Product quality rating is required (Satisfied, Acceptable, or Poor)." });
+        if (hygiene is null && string.IsNullOrWhiteSpace(order.HygieneRating))
+            return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
+
         await using var transaction = await db.Database.BeginTransactionAsync();
         ApplyWorkflowLines(order, request.Items, workflow: "reconcile");
+        if (quality is not null) order.ProductQualityRating = quality;
+        if (hygiene is not null) order.HygieneRating = hygiene;
 
         var updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
             db, order.Items, order.Id);
@@ -838,6 +857,7 @@ public class PurchaseOrdersController(
 
             var qty = item.ReconciledQuantity ?? line.Quantity;
             var price = item.ReconciledUnitPrice ?? line.UnitPrice;
+            if (qty <= 0) continue; // out-of-stock / zero receipt — no inventory post
             var uom = string.IsNullOrWhiteSpace(line.ComponentUom)
                 ? (string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom)
                 : line.ComponentUom.Trim();
@@ -938,6 +958,7 @@ public class PurchaseOrdersController(
                 item.TaxAmount = line.TaxAmount;
                 item.HalalCertNo = line.HalalCertNo?.Trim() ?? string.Empty;
                 item.ProductExpiryDate = NormalizeOptionalDate(line.ProductExpiryDate);
+                item.ReceivedTemperature = line.ReceivedTemperature;
                 if (!string.IsNullOrWhiteSpace(line.ComponentUom))
                     item.ComponentUom = line.ComponentUom.Trim();
             }
@@ -945,6 +966,8 @@ public class PurchaseOrdersController(
             {
                 item.ReconciledQuantity = line.Quantity;
                 item.ReconciledUnitPrice = line.UnitPrice;
+                if (line.ReceivedTemperature.HasValue)
+                    item.ReceivedTemperature = line.ReceivedTemperature;
                 if (!string.IsNullOrWhiteSpace(line.ComponentUom))
                     item.ComponentUom = line.ComponentUom.Trim();
             }

@@ -360,7 +360,13 @@ export interface Vendor {
   productPolicyTag?: VendorProductPolicyTag;
 }
 
-export type VendorRatingLevel = 'satisfied' | 'acceptable' | 'unsatisfied';
+export type VendorRatingLevel = 'satisfied' | 'acceptable' | 'poor';
+
+export interface VendorRatingScoreBucket {
+  count: number;
+  scorePercent: number;
+  weight?: number;
+}
 
 export interface VendorRatingSummary {
   vendorExternalId: string;
@@ -369,6 +375,7 @@ export interface VendorRatingSummary {
   overallRating: number | null;
   hasRating: boolean;
   control: string;
+  overallMood?: string;
 }
 
 export interface VendorRatingDetail {
@@ -379,36 +386,62 @@ export interface VendorRatingDetail {
   control: string;
   controlNote: string;
   overallRating: number | null;
+  overallMood?: string;
   hasRating: boolean;
   updatedAt?: string | null;
   updatedBy?: string;
   delivery?: string | null;
-  productAccuracy?: string | null;
-  productQuality?: string | null;
-  hygieneCleanliness?: string | null;
   notes?: string;
-  orderAccepted?: {
-    within4Hours: number;
-    within8Hours: number;
-    beyond9Hours: number;
-    total: number;
+  orderAcceptance?: {
+    orderCount: number;
+    within4Hours: VendorRatingScoreBucket;
+    within8Hours: VendorRatingScoreBucket;
+    beyond9Hours: VendorRatingScoreBucket;
+    averagePercent: number | null;
+    mood: string;
   } | null;
   poAcceptance?: {
-    yes: number;
-    no: number;
-    acceptWithQuantityChange: number;
-    acceptWithPriceChange: number;
-    acceptWithoutChanges: number;
-    total: number;
+    orderCount: number;
+    withoutChanges: VendorRatingScoreBucket;
+    withQuantityOrPriceChange: VendorRatingScoreBucket;
+    quantityZeroOutOfStock: VendorRatingScoreBucket;
+    averagePercent: number | null;
   } | null;
-  onlineRelationshipPending?: boolean;
+  productAccuracy?: {
+    orderCount: number;
+    withoutChanges: VendorRatingScoreBucket;
+    changedLinesUnder30Pct: VendorRatingScoreBucket;
+    changedLinesOver30Pct: VendorRatingScoreBucket;
+    averagePercent: number | null;
+  } | null;
+  productQuality?: {
+    responseCount: number;
+    averagePercent: number | null;
+    satisfied: number;
+    acceptable: number;
+    poor: number;
+  } | null;
+  hygieneCleanliness?: {
+    responseCount: number;
+    averagePercent: number | null;
+    satisfied: number;
+    acceptable: number;
+    poor: number;
+  } | null;
+  temperatureReadings?: {
+    poNumber: string;
+    productName: string;
+    vendorProductId: string;
+    temperature: number;
+    recordedAt?: string | null;
+  }[];
 }
 
 export interface UpsertVendorRatingPayload {
   delivery: VendorRatingLevel;
-  productAccuracy: VendorRatingLevel;
-  productQuality: VendorRatingLevel;
-  hygieneCleanliness: VendorRatingLevel;
+  productAccuracy?: VendorRatingLevel;
+  productQuality?: VendorRatingLevel;
+  hygieneCleanliness?: VendorRatingLevel;
   notes?: string;
   updatedBy?: string;
   companyId?: number;
@@ -693,6 +726,7 @@ export interface PurchaseOrderItem {
   taxAmount?: number;
   halalCertNo?: string;
   productExpiryDate?: string | null;
+  receivedTemperature?: number | null;
 }
 
 export interface PurchaseOrder {
@@ -715,6 +749,8 @@ export interface PurchaseOrder {
   vendorAcceptedBy?: string | null;
   vendorDoNumber?: string | null;
   vendorInvoiceNumber?: string | null;
+  productQualityRating?: string | null;
+  hygieneRating?: string | null;
   canApprove?: boolean;
   canReceive?: boolean;
   canReconcile?: boolean;
@@ -759,12 +795,15 @@ export interface PurchaseOrderLineWorkflowPayload {
   taxAmount?: number;
   halalCertNo?: string;
   productExpiryDate?: string;
+  receivedTemperature?: number | null;
 }
 
 export interface PurchaseOrderWorkflowPayload {
   items: PurchaseOrderLineWorkflowPayload[];
   vendorDoNumber?: string;
   vendorInvoiceNumber?: string;
+  productQualityRating?: string;
+  hygieneRating?: string;
 }
 
 export interface ReconcilePurchaseOrderResult {

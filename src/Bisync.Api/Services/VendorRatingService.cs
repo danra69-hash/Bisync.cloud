@@ -8,56 +8,59 @@ public static class VendorRatingRules
 {
     public const string LevelSatisfied = "satisfied";
     public const string LevelAcceptable = "acceptable";
+    public const string LevelPoor = "poor";
+    /// <summary>Legacy alias stored before "poor" rename.</summary>
     public const string LevelUnsatisfied = "unsatisfied";
 
-    public static readonly string[] Levels = [LevelSatisfied, LevelAcceptable, LevelUnsatisfied];
+    public static readonly string[] CustomerLevels = [LevelSatisfied, LevelAcceptable, LevelPoor];
+
+    public const decimal ScoreFull = 100m;
+    public const decimal ScoreGood = 80m;
+    public const decimal ScoreLow = 50m;
 
     public static bool IsOnlineVendor(string? type) =>
         string.Equals((type ?? "").Trim(), "online", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsOfflineVendor(string? type) => !IsOnlineVendor(type);
 
-    public static string? NormalizeLevel(string? raw)
+    public static string? NormalizeCustomerLevel(string? raw)
     {
         var v = (raw ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(v)) return null;
-        return Levels.Contains(v) ? v : null;
+        if (v == LevelUnsatisfied) return LevelPoor;
+        return CustomerLevels.Contains(v) ? v : null;
     }
 
-    public static decimal? LevelScore(string? level) => NormalizeLevel(level) switch
+    public static decimal? CustomerLevelScore(string? level) => NormalizeCustomerLevel(level) switch
     {
-        LevelSatisfied => 5m,
-        LevelAcceptable => 3m,
-        LevelUnsatisfied => 1m,
+        LevelSatisfied => ScoreFull,
+        LevelAcceptable => ScoreGood,
+        LevelPoor => ScoreLow,
         _ => null,
     };
 
-    public static decimal? AverageOverall(params string?[] levels)
+    public static decimal? AverageScores(IEnumerable<decimal> scores)
     {
-        var scores = levels.Select(LevelScore).Where(s => s.HasValue).Select(s => s!.Value).ToList();
-        if (scores.Count == 0) return null;
-        return Math.Round(scores.Average(), 1, MidpointRounding.AwayFromZero);
+        var list = scores.Where(s => s >= 0).ToList();
+        if (list.Count == 0) return null;
+        return Math.Round(list.Average(), 1, MidpointRounding.AwayFromZero);
     }
 
-    public static decimal? OnlineOverallFromBuckets(
-        int within4h, int within8h, int beyond9h,
-        int acceptYes, int acceptNo, int qtyChange, int priceChange, int withoutChanges)
+    public static string MoodFromAverage(decimal? average)
     {
-        var speedScores = new List<decimal>();
-        for (var i = 0; i < within4h; i++) speedScores.Add(5m);
-        for (var i = 0; i < within8h; i++) speedScores.Add(3m);
-        for (var i = 0; i < beyond9h; i++) speedScores.Add(1m);
+        if (average is null) return "none";
+        if (average >= 90m) return "green";
+        if (average >= 70m) return "yellow";
+        return "red";
+    }
 
-        var acceptScores = new List<decimal>();
-        for (var i = 0; i < withoutChanges; i++) acceptScores.Add(5m);
-        for (var i = 0; i < acceptYes; i++) acceptScores.Add(5m);
-        for (var i = 0; i < qtyChange; i++) acceptScores.Add(3m);
-        for (var i = 0; i < priceChange; i++) acceptScores.Add(3m);
-        for (var i = 0; i < acceptNo; i++) acceptScores.Add(1m);
-
-        var all = speedScores.Concat(acceptScores).ToList();
-        if (all.Count == 0) return null;
-        return Math.Round(all.Average(), 1, MidpointRounding.AwayFromZero);
+    /// <summary>Classify a received PO's line changes for product accuracy.</summary>
+    public static decimal ProductAccuracyScore(int totalLines, int changedLines)
+    {
+        if (totalLines <= 0) return ScoreFull;
+        if (changedLines <= 0) return ScoreFull;
+        var ratio = (decimal)changedLines / totalLines;
+        return ratio <= 0.30m ? ScoreGood : ScoreLow;
     }
 }
 
@@ -65,10 +68,65 @@ public sealed class VendorRatingSummaryDto
 {
     public string VendorExternalId { get; set; } = string.Empty;
     public string VendorType { get; set; } = "offline";
-    public string VendorKind { get; set; } = "offline"; // online | offline (API alias)
+    public string VendorKind { get; set; } = "offline";
+    /// <summary>Overall score as 0–100 percent.</summary>
     public decimal? OverallRating { get; set; }
     public bool HasRating { get; set; }
-    public string Control { get; set; } = "operator"; // vendor | operator
+    public string Control { get; set; } = "operator";
+    public string OverallMood { get; set; } = "none";
+}
+
+public sealed class ScoredBucketDto
+{
+    public int Count { get; set; }
+    public decimal ScorePercent { get; set; }
+    public int Weight { get; set; }
+}
+
+public sealed class OnlineOrderAcceptanceDto
+{
+    public int OrderCount { get; set; }
+    public ScoredBucketDto Within4Hours { get; set; } = new() { ScorePercent = 100 };
+    public ScoredBucketDto Within8Hours { get; set; } = new() { ScorePercent = 80 };
+    public ScoredBucketDto Beyond9Hours { get; set; } = new() { ScorePercent = 50 };
+    public decimal? AveragePercent { get; set; }
+    public string Mood { get; set; } = "none"; // green | yellow | red | none
+}
+
+public sealed class OnlinePoAcceptanceDto
+{
+    public int OrderCount { get; set; }
+    public ScoredBucketDto WithoutChanges { get; set; } = new() { ScorePercent = 100 };
+    public ScoredBucketDto WithQuantityOrPriceChange { get; set; } = new() { ScorePercent = 80 };
+    public ScoredBucketDto QuantityZeroOutOfStock { get; set; } = new() { ScorePercent = 50 };
+    public decimal? AveragePercent { get; set; }
+}
+
+public sealed class OnlineProductAccuracyDto
+{
+    public int OrderCount { get; set; }
+    public ScoredBucketDto WithoutChanges { get; set; } = new() { ScorePercent = 100 };
+    public ScoredBucketDto ChangedLinesUnder30Pct { get; set; } = new() { ScorePercent = 80 };
+    public ScoredBucketDto ChangedLinesOver30Pct { get; set; } = new() { ScorePercent = 50 };
+    public decimal? AveragePercent { get; set; }
+}
+
+public sealed class CustomerInputAverageDto
+{
+    public int ResponseCount { get; set; }
+    public decimal? AveragePercent { get; set; }
+    public int Satisfied { get; set; }
+    public int Acceptable { get; set; }
+    public int Poor { get; set; }
+}
+
+public sealed class TemperatureReadingDto
+{
+    public string PoNumber { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
+    public string VendorProductId { get; set; } = string.Empty;
+    public decimal Temperature { get; set; }
+    public DateTime? RecordedAt { get; set; }
 }
 
 public sealed class VendorRatingDetailDto
@@ -80,39 +138,21 @@ public sealed class VendorRatingDetailDto
     public string Control { get; set; } = "operator";
     public string ControlNote { get; set; } = string.Empty;
     public decimal? OverallRating { get; set; }
+    public string OverallMood { get; set; } = "none";
     public bool HasRating { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public string UpdatedBy { get; set; } = string.Empty;
 
-    // Offline / Virtual — client input
+    // Offline manual (virtual) — delivery still operator-entered when no receive history
     public string? Delivery { get; set; }
-    public string? ProductAccuracy { get; set; }
-    public string? ProductQuality { get; set; }
-    public string? HygieneCleanliness { get; set; }
     public string Notes { get; set; } = string.Empty;
 
-    // Online / Cloud — system generated
-    public OnlineOrderAcceptedDto? OrderAccepted { get; set; }
+    public OnlineOrderAcceptanceDto? OrderAcceptance { get; set; }
     public OnlinePoAcceptanceDto? PoAcceptance { get; set; }
-    public bool OnlineRelationshipPending { get; set; }
-}
-
-public sealed class OnlineOrderAcceptedDto
-{
-    public int Within4Hours { get; set; }
-    public int Within8Hours { get; set; }
-    public int Beyond9Hours { get; set; }
-    public int Total { get; set; }
-}
-
-public sealed class OnlinePoAcceptanceDto
-{
-    public int Yes { get; set; }
-    public int No { get; set; }
-    public int AcceptWithQuantityChange { get; set; }
-    public int AcceptWithPriceChange { get; set; }
-    public int AcceptWithoutChanges { get; set; }
-    public int Total { get; set; }
+    public OnlineProductAccuracyDto? ProductAccuracy { get; set; }
+    public CustomerInputAverageDto? ProductQuality { get; set; }
+    public CustomerInputAverageDto? HygieneCleanliness { get; set; }
+    public List<TemperatureReadingDto> TemperatureReadings { get; set; } = [];
 }
 
 public class VendorRatingService(BisyncDbContext db)
@@ -122,34 +162,37 @@ public class VendorRatingService(BisyncDbContext db)
         var vendors = await db.Vendors.AsNoTracking()
             .Select(v => new { v.ExternalId, v.Name, v.Type })
             .ToListAsync(ct);
-        var ratings = await db.VendorRatings.AsNoTracking().ToListAsync(ct);
-        var ratingsByVendor = ratings
+
+        var metricsByName = await BuildVendorMetricsAsync(vendors.Select(v => v.Name).ToList(), ct);
+        var offlineRows = await db.VendorRatings.AsNoTracking().ToListAsync(ct);
+        var offlineByVendor = offlineRows
             .GroupBy(r => r.VendorExternalId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.UpdatedAt).First(), StringComparer.OrdinalIgnoreCase);
-
-        var onlineBuckets = await BuildOnlineBucketsAsync(vendors.Select(v => v.Name).ToList(), ct);
 
         var result = new List<VendorRatingSummaryDto>();
         foreach (var v in vendors)
         {
             var online = VendorRatingRules.IsOnlineVendor(v.Type);
-            decimal? overall = null;
-            var has = false;
+            metricsByName.TryGetValue(NormalizeName(v.Name), out var metrics);
+            metrics ??= VendorMetrics.Empty;
 
+            decimal? overall;
             if (online)
             {
-                onlineBuckets.TryGetValue(NormalizeName(v.Name), out var bucket);
-                bucket ??= OnlineBucket.Empty;
-                overall = VendorRatingRules.OnlineOverallFromBuckets(
-                    bucket.Within4h, bucket.Within8h, bucket.Beyond9h,
-                    bucket.Yes, bucket.No, bucket.QtyChange, bucket.PriceChange, bucket.WithoutChanges);
-                has = overall.HasValue;
+                overall = metrics.OverallPercent;
             }
-            else if (ratingsByVendor.TryGetValue(v.ExternalId, out var row))
+            else
             {
-                overall = VendorRatingRules.AverageOverall(
-                    row.Delivery, row.ProductAccuracy, row.ProductQuality, row.HygieneCleanliness);
-                has = overall.HasValue;
+                var scores = new List<decimal>();
+                if (offlineByVendor.TryGetValue(v.ExternalId, out var row))
+                {
+                    var d = VendorRatingRules.CustomerLevelScore(row.Delivery);
+                    if (d.HasValue) scores.Add(d.Value);
+                }
+                if (metrics.ProductQuality.AveragePercent is decimal q) scores.Add(q);
+                if (metrics.Hygiene.AveragePercent is decimal h) scores.Add(h);
+                if (metrics.ProductAccuracy.AveragePercent is decimal a) scores.Add(a);
+                overall = VendorRatingRules.AverageScores(scores);
             }
 
             result.Add(new VendorRatingSummaryDto
@@ -158,8 +201,9 @@ public class VendorRatingService(BisyncDbContext db)
                 VendorType = (v.Type ?? "offline").Trim().ToLowerInvariant(),
                 VendorKind = online ? "online" : "offline",
                 OverallRating = overall,
-                HasRating = has,
+                HasRating = overall.HasValue,
                 Control = online ? "vendor" : "operator",
+                OverallMood = VendorRatingRules.MoodFromAverage(overall),
             });
         }
 
@@ -172,16 +216,13 @@ public class VendorRatingService(BisyncDbContext db)
             .FirstOrDefaultAsync(v => v.ExternalId == vendorExternalId, ct);
         if (vendor is null) return null;
 
+        var metricsByName = await BuildVendorMetricsAsync([vendor.Name], ct);
+        metricsByName.TryGetValue(NormalizeName(vendor.Name), out var metrics);
+        metrics ??= VendorMetrics.Empty;
+
         var online = VendorRatingRules.IsOnlineVendor(vendor.Type);
         if (online)
         {
-            var buckets = await BuildOnlineBucketsAsync([vendor.Name], ct);
-            buckets.TryGetValue(NormalizeName(vendor.Name), out var bucket);
-            bucket ??= OnlineBucket.Empty;
-            var overall = VendorRatingRules.OnlineOverallFromBuckets(
-                bucket.Within4h, bucket.Within8h, bucket.Beyond9h,
-                bucket.Yes, bucket.No, bucket.QtyChange, bucket.PriceChange, bucket.WithoutChanges);
-
             return new VendorRatingDetailDto
             {
                 VendorExternalId = vendor.ExternalId,
@@ -189,26 +230,16 @@ public class VendorRatingService(BisyncDbContext db)
                 VendorType = "online",
                 VendorKindLabel = "Online Vendor",
                 Control = "vendor",
-                ControlNote = "Cloud vendor — control is in the vendor's hands. Order acceptance measures are system-generated. Full cloud-vendor relationship will be wired later.",
-                OverallRating = overall,
-                HasRating = overall.HasValue,
-                OnlineRelationshipPending = true,
-                OrderAccepted = new OnlineOrderAcceptedDto
-                {
-                    Within4Hours = bucket.Within4h,
-                    Within8Hours = bucket.Within8h,
-                    Beyond9Hours = bucket.Beyond9h,
-                    Total = bucket.Within4h + bucket.Within8h + bucket.Beyond9h,
-                },
-                PoAcceptance = new OnlinePoAcceptanceDto
-                {
-                    Yes = bucket.Yes,
-                    No = bucket.No,
-                    AcceptWithQuantityChange = bucket.QtyChange,
-                    AcceptWithPriceChange = bucket.PriceChange,
-                    AcceptWithoutChanges = bucket.WithoutChanges,
-                    Total = bucket.Yes + bucket.No + bucket.QtyChange + bucket.PriceChange + bucket.WithoutChanges,
-                },
+                ControlNote = "Online (cloud) vendor — order/PO/product accuracy are system-tracked. Product quality, hygiene, and temperature are captured on receive / consolidate.",
+                OverallRating = metrics.OverallPercent,
+                OverallMood = VendorRatingRules.MoodFromAverage(metrics.OverallPercent),
+                HasRating = metrics.OverallPercent.HasValue,
+                OrderAcceptance = metrics.OrderAcceptance,
+                PoAcceptance = metrics.PoAcceptance,
+                ProductAccuracy = metrics.ProductAccuracy,
+                ProductQuality = metrics.ProductQuality,
+                HygieneCleanliness = metrics.Hygiene,
+                TemperatureReadings = metrics.Temperatures,
             };
         }
 
@@ -217,9 +248,13 @@ public class VendorRatingService(BisyncDbContext db)
             .OrderByDescending(r => r.UpdatedAt)
             .FirstOrDefaultAsync(ct);
 
-        var overallOffline = row is null
-            ? null
-            : VendorRatingRules.AverageOverall(row.Delivery, row.ProductAccuracy, row.ProductQuality, row.HygieneCleanliness);
+        var scores = new List<decimal>();
+        var deliveryScore = VendorRatingRules.CustomerLevelScore(row?.Delivery);
+        if (deliveryScore.HasValue) scores.Add(deliveryScore.Value);
+        if (metrics.ProductQuality.AveragePercent is decimal q) scores.Add(q);
+        if (metrics.Hygiene.AveragePercent is decimal h) scores.Add(h);
+        if (metrics.ProductAccuracy.AveragePercent is decimal a) scores.Add(a);
+        var overall = VendorRatingRules.AverageScores(scores);
 
         return new VendorRatingDetailDto
         {
@@ -228,16 +263,18 @@ public class VendorRatingService(BisyncDbContext db)
             VendorType = "offline",
             VendorKindLabel = "Offline Vendor",
             Control = "operator",
-            ControlNote = "Virtual vendor — not on Bisync Cloud. Control is in the operator's hands; enter client-input measures below.",
-            OverallRating = overallOffline,
-            HasRating = overallOffline.HasValue,
+            ControlNote = "Offline (virtual) vendor — delivery can be set manually; quality, hygiene, and temperature come from receive / consolidate.",
+            OverallRating = overall,
+            OverallMood = VendorRatingRules.MoodFromAverage(overall),
+            HasRating = overall.HasValue,
             UpdatedAt = row?.UpdatedAt,
             UpdatedBy = row?.UpdatedBy ?? string.Empty,
             Delivery = string.IsNullOrWhiteSpace(row?.Delivery) ? null : row!.Delivery,
-            ProductAccuracy = string.IsNullOrWhiteSpace(row?.ProductAccuracy) ? null : row!.ProductAccuracy,
-            ProductQuality = string.IsNullOrWhiteSpace(row?.ProductQuality) ? null : row!.ProductQuality,
-            HygieneCleanliness = string.IsNullOrWhiteSpace(row?.HygieneCleanliness) ? null : row!.HygieneCleanliness,
             Notes = row?.Notes ?? string.Empty,
+            ProductAccuracy = metrics.ProductAccuracy,
+            ProductQuality = metrics.ProductQuality,
+            HygieneCleanliness = metrics.Hygiene,
+            TemperatureReadings = metrics.Temperatures,
         };
     }
 
@@ -255,21 +292,12 @@ public class VendorRatingService(BisyncDbContext db)
         var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == vendorExternalId, ct);
         if (vendor is null) return null;
         if (VendorRatingRules.IsOnlineVendor(vendor.Type))
-            throw new InvalidOperationException("Online (cloud) vendor ratings are system-generated and cannot be edited by operators.");
+            throw new InvalidOperationException("Online (cloud) vendor ratings are system-tracked and cannot be edited here.");
 
-        string RequireLevel(string? raw, string field)
-        {
-            var n = VendorRatingRules.NormalizeLevel(raw);
-            if (n is null)
-                throw new ArgumentException($"{field} must be satisfied, acceptable, or unsatisfied.");
-            return n;
-        }
+        var d = VendorRatingRules.NormalizeCustomerLevel(delivery)
+            ?? throw new ArgumentException("Delivery must be satisfied, acceptable, or poor.");
 
-        var d = RequireLevel(delivery, "Delivery");
-        var a = RequireLevel(productAccuracy, "Product accuracy");
-        var q = RequireLevel(productQuality, "Product quality");
-        var h = RequireLevel(hygieneCleanliness, "Hygiene & cleanliness");
-
+        // Quality/hygiene are captured on receive; keep optional legacy fields if still posted.
         var row = await db.VendorRatings
             .Where(r => r.VendorExternalId == vendorExternalId)
             .OrderByDescending(r => r.UpdatedAt)
@@ -286,9 +314,12 @@ public class VendorRatingService(BisyncDbContext db)
         }
 
         row.Delivery = d;
-        row.ProductAccuracy = a;
-        row.ProductQuality = q;
-        row.HygieneCleanliness = h;
+        var pq = VendorRatingRules.NormalizeCustomerLevel(productQuality);
+        var hy = VendorRatingRules.NormalizeCustomerLevel(hygieneCleanliness);
+        var pa = VendorRatingRules.NormalizeCustomerLevel(productAccuracy);
+        if (pq is not null) row.ProductQuality = pq;
+        if (hy is not null) row.HygieneCleanliness = hy;
+        if (pa is not null) row.ProductAccuracy = pa;
         row.Notes = (notes ?? string.Empty).Trim();
         row.UpdatedBy = (updatedBy ?? string.Empty).Trim();
         row.UpdatedAt = DateTime.UtcNow;
@@ -298,59 +329,215 @@ public class VendorRatingService(BisyncDbContext db)
         return await GetDetailAsync(vendorExternalId, ct);
     }
 
-    sealed class OnlineBucket
+    sealed class VendorMetrics
     {
-        public static OnlineBucket Empty { get; } = new();
-        public int Within4h { get; set; }
-        public int Within8h { get; set; }
-        public int Beyond9h { get; set; }
-        public int Yes { get; set; }
-        public int No { get; set; }
-        public int QtyChange { get; set; }
-        public int PriceChange { get; set; }
-        public int WithoutChanges { get; set; }
+        public static VendorMetrics Empty { get; } = new();
+        public OnlineOrderAcceptanceDto OrderAcceptance { get; set; } = new();
+        public OnlinePoAcceptanceDto PoAcceptance { get; set; } = new();
+        public OnlineProductAccuracyDto ProductAccuracy { get; set; } = new();
+        public CustomerInputAverageDto ProductQuality { get; set; } = new();
+        public CustomerInputAverageDto Hygiene { get; set; } = new();
+        public List<TemperatureReadingDto> Temperatures { get; set; } = [];
+        public decimal? OverallPercent { get; set; }
     }
 
     static string NormalizeName(string name) => name.Trim().ToLowerInvariant();
 
-    async Task<Dictionary<string, OnlineBucket>> BuildOnlineBucketsAsync(List<string> vendorNames, CancellationToken ct)
+    async Task<Dictionary<string, VendorMetrics>> BuildVendorMetricsAsync(List<string> vendorNames, CancellationToken ct)
     {
-        var result = new Dictionary<string, OnlineBucket>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, VendorMetrics>(StringComparer.OrdinalIgnoreCase);
         if (vendorNames.Count == 0) return result;
 
         var nameSet = vendorNames.Select(NormalizeName).Where(n => n.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var orders = await db.PurchaseOrders.AsNoTracking()
-            .Where(o => o.VendorAcceptedAt != null)
-            .Select(o => new
-            {
-                o.VendorName,
-                o.ApprovedAt,
-                o.VendorAcceptedAt,
-                o.ReceivedAt,
-            })
+            .Include(o => o.Items)
+            .Where(o => o.DocumentType == "PO")
             .ToListAsync(ct);
 
-        foreach (var o in orders)
+        foreach (var order in orders)
         {
-            var key = NormalizeName(o.VendorName);
+            var key = NormalizeName(order.VendorName);
             if (!nameSet.Contains(key)) continue;
-            if (!result.TryGetValue(key, out var bucket))
+            if (!result.TryGetValue(key, out var metrics))
             {
-                bucket = new OnlineBucket();
-                result[key] = bucket;
+                metrics = new VendorMetrics();
+                result[key] = metrics;
             }
 
-            // Order accepted timing from approval (or order fallback) to vendor accept.
-            var start = o.ApprovedAt ?? o.VendorAcceptedAt!.Value.AddHours(-1);
-            var hours = (o.VendorAcceptedAt!.Value - start).TotalHours;
-            if (hours <= 4) bucket.Within4h++;
-            else if (hours <= 8) bucket.Within8h++;
-            else bucket.Beyond9h++;
+            AccumulateOrderAcceptance(metrics.OrderAcceptance, order);
+            AccumulatePoAndAccuracy(metrics, order);
+            AccumulateCustomerInput(metrics, order);
+            AccumulateTemperatures(metrics, order);
+        }
 
-            // Until cloud relationship supports qty/price change acceptances, treat plain accept as Yes.
-            bucket.Yes++;
+        foreach (var metrics in result.Values)
+        {
+            FinalizeOrderAcceptance(metrics.OrderAcceptance);
+            FinalizePoAcceptance(metrics.PoAcceptance);
+            FinalizeProductAccuracy(metrics.ProductAccuracy);
+            FinalizeCustomerInput(metrics.ProductQuality);
+            FinalizeCustomerInput(metrics.Hygiene);
+
+            var scores = new List<decimal>();
+            if (metrics.OrderAcceptance.AveragePercent is decimal oa) scores.Add(oa);
+            if (metrics.PoAcceptance.AveragePercent is decimal pa) scores.Add(pa);
+            if (metrics.ProductAccuracy.AveragePercent is decimal acc) scores.Add(acc);
+            if (metrics.ProductQuality.AveragePercent is decimal q) scores.Add(q);
+            if (metrics.Hygiene.AveragePercent is decimal h) scores.Add(h);
+            metrics.OverallPercent = VendorRatingRules.AverageScores(scores);
+            metrics.Temperatures = metrics.Temperatures
+                .OrderByDescending(t => t.RecordedAt)
+                .Take(40)
+                .ToList();
         }
 
         return result;
+    }
+
+    static void AccumulateOrderAcceptance(OnlineOrderAcceptanceDto dto, PurchaseOrder order)
+    {
+        if (order.VendorAcceptedAt is null) return;
+        dto.OrderCount++;
+        var start = order.ApprovedAt ?? order.VendorAcceptedAt.Value.AddHours(-1);
+        var hours = (order.VendorAcceptedAt.Value - start).TotalHours;
+        if (hours <= 4) dto.Within4Hours.Count++;
+        else if (hours <= 8) dto.Within8Hours.Count++;
+        else dto.Beyond9Hours.Count++;
+    }
+
+    static void FinalizeOrderAcceptance(OnlineOrderAcceptanceDto dto)
+    {
+        dto.Within4Hours.ScorePercent = VendorRatingRules.ScoreFull;
+        dto.Within4Hours.Weight = dto.Within4Hours.Count;
+        dto.Within8Hours.ScorePercent = VendorRatingRules.ScoreGood;
+        dto.Within8Hours.Weight = dto.Within8Hours.Count;
+        dto.Beyond9Hours.ScorePercent = VendorRatingRules.ScoreLow;
+        dto.Beyond9Hours.Weight = dto.Beyond9Hours.Count;
+
+        var scores = new List<decimal>();
+        for (var i = 0; i < dto.Within4Hours.Count; i++) scores.Add(VendorRatingRules.ScoreFull);
+        for (var i = 0; i < dto.Within8Hours.Count; i++) scores.Add(VendorRatingRules.ScoreGood);
+        for (var i = 0; i < dto.Beyond9Hours.Count; i++) scores.Add(VendorRatingRules.ScoreLow);
+        dto.AveragePercent = VendorRatingRules.AverageScores(scores);
+        dto.Mood = VendorRatingRules.MoodFromAverage(dto.AveragePercent);
+    }
+
+    static void AccumulatePoAndAccuracy(VendorMetrics metrics, PurchaseOrder order)
+    {
+        if (order.ReceivedAt is null && order.ReconciledAt is null) return;
+        var items = order.Items?.ToList() ?? [];
+        if (items.Count == 0) return;
+
+        metrics.PoAcceptance.OrderCount++;
+        metrics.ProductAccuracy.OrderCount++;
+
+        var anyZeroQty = false;
+        var anyQtyOrPriceChange = false;
+        var changedLines = 0;
+
+        foreach (var item in items)
+        {
+            var receivedQty = item.ReconciledQuantity ?? item.ReceivedQuantity ?? item.Quantity;
+            var receivedPrice = item.ReconciledUnitPrice ?? item.ReceivedUnitPrice ?? item.UnitPrice;
+            var qtyChanged = Math.Abs(receivedQty - item.Quantity) > 0.0001m;
+            var priceChanged = Math.Abs(receivedPrice - item.UnitPrice) > 0.0001m;
+
+            if (receivedQty == 0) anyZeroQty = true;
+            if (qtyChanged || priceChanged)
+            {
+                anyQtyOrPriceChange = true;
+                changedLines++;
+            }
+        }
+
+        if (anyZeroQty)
+            metrics.PoAcceptance.QuantityZeroOutOfStock.Count++;
+        else if (anyQtyOrPriceChange)
+            metrics.PoAcceptance.WithQuantityOrPriceChange.Count++;
+        else
+            metrics.PoAcceptance.WithoutChanges.Count++;
+
+        var accuracyScore = VendorRatingRules.ProductAccuracyScore(items.Count, changedLines);
+        if (accuracyScore == VendorRatingRules.ScoreFull)
+            metrics.ProductAccuracy.WithoutChanges.Count++;
+        else if (accuracyScore == VendorRatingRules.ScoreGood)
+            metrics.ProductAccuracy.ChangedLinesUnder30Pct.Count++;
+        else
+            metrics.ProductAccuracy.ChangedLinesOver30Pct.Count++;
+    }
+
+    static void FinalizePoAcceptance(OnlinePoAcceptanceDto dto)
+    {
+        dto.WithoutChanges.ScorePercent = VendorRatingRules.ScoreFull;
+        dto.WithQuantityOrPriceChange.ScorePercent = VendorRatingRules.ScoreGood;
+        dto.QuantityZeroOutOfStock.ScorePercent = VendorRatingRules.ScoreLow;
+
+        var scores = new List<decimal>();
+        for (var i = 0; i < dto.WithoutChanges.Count; i++) scores.Add(VendorRatingRules.ScoreFull);
+        for (var i = 0; i < dto.WithQuantityOrPriceChange.Count; i++) scores.Add(VendorRatingRules.ScoreGood);
+        for (var i = 0; i < dto.QuantityZeroOutOfStock.Count; i++) scores.Add(VendorRatingRules.ScoreLow);
+        dto.AveragePercent = VendorRatingRules.AverageScores(scores);
+    }
+
+    static void FinalizeProductAccuracy(OnlineProductAccuracyDto dto)
+    {
+        dto.WithoutChanges.ScorePercent = VendorRatingRules.ScoreFull;
+        dto.ChangedLinesUnder30Pct.ScorePercent = VendorRatingRules.ScoreGood;
+        dto.ChangedLinesOver30Pct.ScorePercent = VendorRatingRules.ScoreLow;
+
+        var scores = new List<decimal>();
+        for (var i = 0; i < dto.WithoutChanges.Count; i++) scores.Add(VendorRatingRules.ScoreFull);
+        for (var i = 0; i < dto.ChangedLinesUnder30Pct.Count; i++) scores.Add(VendorRatingRules.ScoreGood);
+        for (var i = 0; i < dto.ChangedLinesOver30Pct.Count; i++) scores.Add(VendorRatingRules.ScoreLow);
+        dto.AveragePercent = VendorRatingRules.AverageScores(scores);
+    }
+
+    static void AccumulateCustomerInput(VendorMetrics metrics, PurchaseOrder order)
+    {
+        if (order.ReceivedAt is null && order.ReconciledAt is null) return;
+
+        var quality = VendorRatingRules.NormalizeCustomerLevel(order.ProductQualityRating);
+        if (quality is not null)
+        {
+            metrics.ProductQuality.ResponseCount++;
+            if (quality == VendorRatingRules.LevelSatisfied) metrics.ProductQuality.Satisfied++;
+            else if (quality == VendorRatingRules.LevelAcceptable) metrics.ProductQuality.Acceptable++;
+            else metrics.ProductQuality.Poor++;
+        }
+
+        var hygiene = VendorRatingRules.NormalizeCustomerLevel(order.HygieneRating);
+        if (hygiene is not null)
+        {
+            metrics.Hygiene.ResponseCount++;
+            if (hygiene == VendorRatingRules.LevelSatisfied) metrics.Hygiene.Satisfied++;
+            else if (hygiene == VendorRatingRules.LevelAcceptable) metrics.Hygiene.Acceptable++;
+            else metrics.Hygiene.Poor++;
+        }
+    }
+
+    static void FinalizeCustomerInput(CustomerInputAverageDto dto)
+    {
+        var scores = new List<decimal>();
+        for (var i = 0; i < dto.Satisfied; i++) scores.Add(VendorRatingRules.ScoreFull);
+        for (var i = 0; i < dto.Acceptable; i++) scores.Add(VendorRatingRules.ScoreGood);
+        for (var i = 0; i < dto.Poor; i++) scores.Add(VendorRatingRules.ScoreLow);
+        dto.AveragePercent = VendorRatingRules.AverageScores(scores);
+    }
+
+    static void AccumulateTemperatures(VendorMetrics metrics, PurchaseOrder order)
+    {
+        if (order.Items is null) return;
+        foreach (var item in order.Items)
+        {
+            if (item.ReceivedTemperature is null) continue;
+            metrics.Temperatures.Add(new TemperatureReadingDto
+            {
+                PoNumber = order.PoNumber,
+                ProductName = string.IsNullOrWhiteSpace(item.Name) ? item.ComponentName : item.Name,
+                VendorProductId = item.VendorProductId,
+                Temperature = item.ReceivedTemperature.Value,
+                RecordedAt = order.ReconciledAt ?? order.ReceivedAt,
+            });
+        }
     }
 }

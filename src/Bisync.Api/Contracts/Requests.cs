@@ -666,7 +666,7 @@ public class ApprovePurchaseOrderRequest
 public class PurchaseOrderLineWorkflowRequest
 {
     public int ItemId { get; set; }
-    [Range(0.0001, 999999999)]
+    [Range(0, 999999999)]
     public decimal Quantity { get; set; }
     [Range(0, 999999999)]
     public decimal UnitPrice { get; set; }
@@ -679,6 +679,8 @@ public class PurchaseOrderLineWorkflowRequest
     /// <summary>Optional product expiry date as yyyy-MM-dd.</summary>
     [MaxLength(20)]
     public string? ProductExpiryDate { get; set; }
+    /// <summary>Optional temperature check (°C) at receive/consolidate.</summary>
+    public decimal? ReceivedTemperature { get; set; }
 }
 
 public class CreateCashPurchaseRequest
@@ -926,6 +928,12 @@ public class PurchaseOrderWorkflowRequest
     /// <summary>Vendor invoice number. Required on receive unless DO number is set.</summary>
     [MaxLength(100)]
     public string? VendorInvoiceNumber { get; set; }
+    /// <summary>Customer input: satisfied | acceptable | poor.</summary>
+    [MaxLength(32)]
+    public string? ProductQualityRating { get; set; }
+    /// <summary>Customer input: satisfied | acceptable | poor.</summary>
+    [MaxLength(32)]
+    public string? HygieneRating { get; set; }
 }
 
 public class B2bCustomerContactRequest
