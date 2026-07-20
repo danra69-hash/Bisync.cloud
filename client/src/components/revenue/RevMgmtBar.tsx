@@ -1,18 +1,31 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { revMgmtNav } from '../../data/revenueManagement';
+import {
+  filterRevMgmtNavForSupplyCapability,
+  revMgmtNav,
+} from '../../data/revenueManagement';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 type Props = {
   selectedItem: string | null;
   onSelectItem: (id: string | null) => void;
+  hasSupplyCapability?: boolean;
 };
 
-export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
+export function RevMgmtBar({
+  selectedItem,
+  onSelectItem,
+  hasSupplyCapability = true,
+}: Props) {
   const { revMgmtSection, revMgmtSubtitle, revMgmtItem } = useAppTranslation();
   const [openSection, setOpenSection] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const activeSection = selectedItem ? selectedItem.split('||')[0] : null;
+
+  const nav = useMemo(
+    () => filterRevMgmtNavForSupplyCapability(revMgmtNav, hasSupplyCapability),
+    [hasSupplyCapability],
+  );
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -27,7 +40,7 @@ export function RevMgmtBar({ selectedItem, onSelectItem }: Props) {
   return (
     <div ref={barRef} className="bg-card border-b border-border px-2 sm:px-3 py-1.5">
       <div className="flex items-center gap-2 flex-wrap">
-        {revMgmtNav.map(section => {
+        {nav.map(section => {
           const isOpen = openSection === section.title;
           const isActive = activeSection === section.title;
           return (

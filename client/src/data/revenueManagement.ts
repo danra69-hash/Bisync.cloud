@@ -4,6 +4,13 @@ export type RevMgmtItem = { label: string };
 export type RevMgmtSubSection = { subtitle?: string; items: RevMgmtItem[] };
 export type RevMgmtSection = { title: string; subs: RevMgmtSubSection[] };
 
+/** Nav labels only available for supply-side business types (CK / warehouse / distributor / manufacturer). */
+export const SUPPLY_SIDE_NAV_LABELS = new Set([
+  'Active Sales',
+  'Sales Order',
+  'B2B Product',
+]);
+
 export const revMgmtNav: RevMgmtSection[] = [
   {
     title: 'Operation',
@@ -102,6 +109,30 @@ export const revMgmtNav: RevMgmtSection[] = [
     ],
   },
 ];
+
+/** Hide Active Sales / Sales Order / B2B Product nav when org is not supply-side. */
+export function filterRevMgmtNavForSupplyCapability(
+  sections: RevMgmtSection[],
+  hasSupplyCapability: boolean,
+): RevMgmtSection[] {
+  if (hasSupplyCapability) return sections;
+
+  return sections
+    .map(section => ({
+      ...section,
+      subs: section.subs
+        .map(sub => ({
+          ...sub,
+          items: sub.items.filter(item => !SUPPLY_SIDE_NAV_LABELS.has(item.label)),
+        }))
+        .filter(sub => sub.items.length > 0),
+    }))
+    .filter(section => section.subs.length > 0);
+}
+
+export function isSupplySideNavLabel(label: string | null | undefined): boolean {
+  return Boolean(label && SUPPLY_SIDE_NAV_LABELS.has(label));
+}
 
 export const posItems = [
   'POS Menu',
