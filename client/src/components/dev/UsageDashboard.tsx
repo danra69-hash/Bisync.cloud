@@ -133,16 +133,20 @@ export function UsageDashboard() {
       ) : data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="API calls (30d)" value={data.overall.apiCalls30d} icon={Activity} />
-            <StatCard label="Companies" value={`${data.overall.activeCompanies}/${data.overall.companies}`} icon={Building2} />
-            <StatCard label="Locations" value={data.overall.locations} icon={MapPin} />
-            <StatCard label="Active users" value={data.overall.activeUsers} icon={Users} />
+            <StatCard label="API calls (30d)" value={data.overall?.apiCalls30d ?? 0} icon={Activity} />
+            <StatCard
+              label="Companies"
+              value={`${data.overall?.activeCompanies ?? 0}/${data.overall?.companies ?? 0}`}
+              icon={Building2}
+            />
+            <StatCard label="Locations" value={data.overall?.locations ?? 0} icon={MapPin} />
+            <StatCard label="Active users" value={data.overall?.activeUsers ?? 0} icon={Users} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="rounded-lg border border-border bg-card p-4 lg:col-span-1">
               <h3 className="text-xs font-medium mb-3">14-day trend</h3>
-              <TrendChart points={data.trend14d} />
+              <TrendChart points={data.trend14d ?? []} />
             </div>
             <div className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-xs font-medium mb-3">By company (inventory movements)</h3>

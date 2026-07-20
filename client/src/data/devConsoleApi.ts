@@ -7,7 +7,7 @@ export type DevUsageResponse = {
   provisionedCount?: number;
   sharedCount?: number;
   errors?: string[];
-  overall: {
+  overall?: {
     companies: number;
     activeCompanies: number;
     locations: number;
