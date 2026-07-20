@@ -135,6 +135,11 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         modelBuilder.Entity<Company>(e =>
         {
             e.Property(x => x.Code).HasMaxLength(4);
+            e.Property(x => x.SmtpHost).HasMaxLength(256);
+            e.Property(x => x.SmtpUsername).HasMaxLength(256);
+            e.Property(x => x.SmtpPassword).HasMaxLength(512);
+            e.Property(x => x.SmtpFromEmail).HasMaxLength(256);
+            e.Property(x => x.SmtpFromName).HasMaxLength(256);
         });
         modelBuilder.Entity<Ingredient>(e =>
         {

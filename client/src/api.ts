@@ -112,6 +112,16 @@ export interface Company {
   vendorPolicyTagsJson: string;
   modulesJson: string;
   locationCount?: number;
+  /** Outbound SMTP for purchase-order email (per company). */
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUseSsl?: boolean;
+  smtpUsername?: string;
+  /** Write-only; leave empty to keep the saved password. */
+  smtpPassword?: string;
+  smtpFromEmail?: string;
+  smtpFromName?: string;
+  smtpPasswordSet?: boolean;
 }
 
 export interface AccessControlSettings {
@@ -2052,6 +2062,24 @@ export const api = {
   companies: () => fetchJson<Company[]>('/api/companies'),
   createCompany: (data: Omit<Company, 'id' | 'locationCount'>) => fetchJsonWithMethod<Company>('/api/companies', 'POST', data),
   updateCompany: (id: number, data: Company) => fetchJsonWithMethod<Company>(`/api/companies/${id}`, 'PUT', data),
+  testCompanyOutboundEmail: (
+    id: number,
+    payload: {
+      toEmail: string;
+      smtpHost?: string;
+      smtpPort?: number;
+      smtpUseSsl?: boolean;
+      smtpUsername?: string;
+      smtpPassword?: string;
+      smtpFromEmail?: string;
+      smtpFromName?: string;
+    },
+  ) =>
+    fetchJsonWithMethod<{ sent: boolean; to: string; message: string }>(
+      `/api/companies/${id}/outbound-email/test`,
+      'POST',
+      payload,
+    ),
   users: () => fetchJson<AppUser[]>('/api/users'),
   login: (email: string, password: string) =>
     fetchJsonWithMethod<AppUser>('/api/auth/login', 'POST', { email, password }),

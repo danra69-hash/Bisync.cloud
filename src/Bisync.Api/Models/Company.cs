@@ -20,6 +20,17 @@ public class Company
     public bool Active { get; set; } = true;
     /// <summary>UTC timestamp when the company tenant was first registered.</summary>
     public DateTime? RegisteredAt { get; set; }
+
+    // --- Outbound email (SMTP) for Purchase Order / vendor mail ---
+    public string SmtpHost { get; set; } = string.Empty;
+    public int SmtpPort { get; set; } = 587;
+    public bool SmtpUseSsl { get; set; } = true;
+    public string SmtpUsername { get; set; } = string.Empty;
+    /// <summary>SMTP auth password. Never return plaintext on GET; only update when a new value is posted.</summary>
+    public string SmtpPassword { get; set; } = string.Empty;
+    public string SmtpFromEmail { get; set; } = string.Empty;
+    public string SmtpFromName { get; set; } = string.Empty;
+
     /// <summary>JSON array of business type labels.</summary>
     public string BusinessTypesJson { get; set; } = "[]";
     /// <summary>JSON array of vendor policy tag ids: halal, muslim-friendly, non-halal.</summary>
