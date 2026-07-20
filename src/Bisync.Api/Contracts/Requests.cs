@@ -931,9 +931,13 @@ public class PurchaseOrderWorkflowRequest
     /// <summary>Customer input: satisfied | acceptable | poor.</summary>
     [MaxLength(32)]
     public string? ProductQualityRating { get; set; }
+    [MaxLength(2000)]
+    public string? ProductQualityComment { get; set; }
     /// <summary>Customer input: satisfied | acceptable | poor.</summary>
     [MaxLength(32)]
     public string? HygieneRating { get; set; }
+    [MaxLength(2000)]
+    public string? HygieneComment { get; set; }
 }
 
 public class B2bCustomerContactRequest

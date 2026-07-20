@@ -804,6 +804,8 @@ public class PurchaseOrdersController(
         order.VendorInvoiceNumber = vendorInvoiceNumber;
         order.ProductQualityRating = quality;
         order.HygieneRating = hygiene;
+        order.ProductQualityComment = request.ProductQualityComment?.Trim() ?? string.Empty;
+        order.HygieneComment = request.HygieneComment?.Trim() ?? string.Empty;
         order.Status = PurchaseOrderWorkflow.StatusReceived;
         order.ReceivedAt = DateTime.UtcNow;
 
@@ -834,6 +836,10 @@ public class PurchaseOrdersController(
         ApplyWorkflowLines(order, request.Items, workflow: "reconcile");
         if (quality is not null) order.ProductQualityRating = quality;
         if (hygiene is not null) order.HygieneRating = hygiene;
+        if (request.ProductQualityComment is not null)
+            order.ProductQualityComment = request.ProductQualityComment.Trim();
+        if (request.HygieneComment is not null)
+            order.HygieneComment = request.HygieneComment.Trim();
 
         var updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
             db, order.Items, order.Id);
