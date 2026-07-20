@@ -107,22 +107,6 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
-    case 'Active Purchase':
-      return (
-        <OrderPage
-          initialTab="active"
-          selectedCompanyId={selectedCompanyId}
-          selectedLocationIds={selectedLocationIds}
-        />
-      );
-    case 'Active Sales':
-      return (
-        <OrderPage
-          initialTab="active-sales"
-          selectedCompanyId={selectedCompanyId}
-          selectedLocationIds={selectedLocationIds}
-        />
-      );
     case 'Cash Purchase':
       return (
         <CashPurchasePage
