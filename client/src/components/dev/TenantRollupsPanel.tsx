@@ -457,13 +457,20 @@ export function TenantRollupsPanel() {
   const trialCount = rows.filter(r => r.status === 'free-trial').length;
   const paidCount = rows.filter(r => r.status === 'subscribed' || r.status === 'renewed').length;
 
-  // First row index per company for Edit Status button placement
-  const firstRowByCompany = new Map<number, number>();
-  rows.forEach((row, idx) => {
-    if (row.companyId != null && !firstRowByCompany.has(row.companyId)) {
-      firstRowByCompany.set(row.companyId, idx);
+  // Merge consecutive same-company rows into one Company cell (rowSpan).
+  const companyRowSpanByIndex = new Map<number, number>();
+  for (let i = 0; i < rows.length; ) {
+    const key = rows[i].companyId ?? `name:${rows[i].companyName ?? ''}`;
+    let end = i + 1;
+    while (
+      end < rows.length
+      && (rows[end].companyId ?? `name:${rows[end].companyName ?? ''}`) === key
+    ) {
+      end += 1;
     }
-  });
+    companyRowSpanByIndex.set(i, end - i);
+    i = end;
+  }
 
   return (
     <section className="space-y-4">
@@ -532,28 +539,35 @@ export function TenantRollupsPanel() {
                 </tr>
               ) : (
                 rows.map((row, idx) => {
-                  const isFirstCompanyRow =
-                    row.companyId != null && firstRowByCompany.get(row.companyId) === idx;
+                  const companyRowSpan = companyRowSpanByIndex.get(idx);
+                  const isCompanyGroupStart = companyRowSpan != null;
+                  const endsGroup =
+                    idx === rows.length - 1 || companyRowSpanByIndex.has(idx + 1);
                   return (
                     <tr
                       key={`${row.companyId ?? 'x'}:${row.locationExternalId}`}
-                      className="border-b border-border/60 last:border-0"
+                      className={endsGroup ? 'border-b border-border' : 'border-b border-border/40'}
                     >
-                      <td className="px-3 py-2 align-top">
-                        <div className="flex flex-col gap-1.5 items-start">
-                          <span className="font-medium">{row.companyName || '—'}</span>
-                          {isFirstCompanyRow && row.companyId != null ? (
-                            <button
-                              type="button"
-                              onClick={() => setEditCompanyId(row.companyId)}
-                              className="inline-flex items-center gap-1 text-[11px] border border-border rounded-md px-2 py-1 hover:bg-muted"
-                            >
-                              <Pencil size={11} />
-                              Edit status
-                            </button>
-                          ) : null}
-                        </div>
-                      </td>
+                      {isCompanyGroupStart ? (
+                        <td
+                          className="px-3 py-2 align-middle border-r border-border/60 bg-muted/20"
+                          rowSpan={companyRowSpan}
+                        >
+                          <div className="flex flex-col gap-1.5 items-start min-h-full justify-center">
+                            <span className="font-medium">{row.companyName || '—'}</span>
+                            {row.companyId != null ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditCompanyId(row.companyId)}
+                                className="inline-flex items-center gap-1 text-[11px] border border-border rounded-md px-2 py-1 hover:bg-muted bg-card"
+                              >
+                                <Pencil size={11} />
+                                Edit status
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      ) : null}
                       <td className="px-3 py-2 align-top">
                         {row.locationName || row.locationExternalId || '—'}
                       </td>
