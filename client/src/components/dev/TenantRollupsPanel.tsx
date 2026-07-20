@@ -1,7 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Database, RefreshCw } from 'lucide-react';
+import { CreditCard, Database, RefreshCw } from 'lucide-react';
 import { devConsoleApi, type DevUsageResponse } from '../../data/devConsoleApi';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatAmount(amount: number | null | undefined, currency: string | null | undefined): string {
+  if (amount == null || !Number.isFinite(amount)) return '—';
+  const cur = (currency ?? 'MYR').trim().toUpperCase();
+  if (cur === 'USD') return `USD ${amount.toFixed(2)}`;
+  if (cur === 'MYR') return `MYR ${amount.toFixed(2)}`;
+  return `${cur} ${amount.toFixed(2)}`;
+}
 
 export function TenantRollupsPanel() {
   const [data, setData] = useState<DevUsageResponse | null>(null);
@@ -35,33 +50,46 @@ export function TenantRollupsPanel() {
 
   useEffect(() => { void load(); }, []);
 
-  const rows = data?.byCompany ?? [];
+  const rows = data?.byLocation ?? [];
   const busy = loading || refreshing;
+  const activeSubs = rows.filter(r => r.subscriptionActive).length;
 
   return (
     <section className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Database size={14} className="text-muted-foreground" />
             Tenant rollups
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Fan-out counts across shared and provisioned company databases.
+            Current subscription detail by company location.
             {data?.generatedAt ? (
               <> Last generated {new Date(data.generatedAt).toLocaleString()}.</>
             ) : null}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw size={12}  />
-          Refresh rollup
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              // Placeholder — Manual Subscription Activation flow to be built next.
+            }}
+            className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted"
+          >
+            <CreditCard size={12} />
+            Manual Subscription Activation
+          </button>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw size={12} />
+            Refresh rollup
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -87,48 +115,36 @@ export function TenantRollupsPanel() {
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <th className="px-3 py-2 font-medium">Company</th>
-                <th className="px-3 py-2 font-medium">Mode</th>
-                <th className="px-3 py-2 font-medium">Database</th>
-                <th className="px-3 py-2 font-medium text-right">Locs</th>
-                <th className="px-3 py-2 font-medium text-right">Products</th>
-                <th className="px-3 py-2 font-medium text-right">POs</th>
-                <th className="px-3 py-2 font-medium text-right">Sales</th>
-                <th className="px-3 py-2 font-medium text-right">Moves</th>
-                <th className="px-3 py-2 font-medium">Error</th>
+                <th className="px-3 py-2 font-medium">Location</th>
+                <th className="px-3 py-2 font-medium">Subscribe since</th>
+                <th className="px-3 py-2 font-medium">Last payment date</th>
+                <th className="px-3 py-2 font-medium text-right">Amount</th>
+                <th className="px-3 py-2 font-medium">Subscription renewal date</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
-                    No tenants in rollup yet.
+                  <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                    No locations in rollup yet. Refresh to fan out tenant databases.
                   </td>
                 </tr>
               ) : (
                 rows.map(row => (
-                  <tr key={row.companyId} className="border-b border-border/60 last:border-0">
+                  <tr
+                    key={`${row.companyId ?? 'x'}:${row.locationExternalId}`}
+                    className="border-b border-border/60 last:border-0"
+                  >
                     <td className="px-3 py-2">
-                      <span className="font-medium">{row.companyName}</span>
-                      {!row.active && (
-                        <span className="ml-1.5 text-[10px] text-muted-foreground">inactive</span>
-                      )}
+                      <span className="font-medium">{row.companyName || '—'}</span>
                     </td>
-                    <td className="px-3 py-2 font-sans tabular-nums">
-                      <span className={row.databaseMode === 'provisioned' ? 'text-primary' : 'text-muted-foreground'}>
-                        {row.databaseMode ?? 'shared'}
-                      </span>
+                    <td className="px-3 py-2">{row.locationName || row.locationExternalId || '—'}</td>
+                    <td className="px-3 py-2 font-sans tabular-nums">{formatDate(row.subscribedSince)}</td>
+                    <td className="px-3 py-2 font-sans tabular-nums">{formatDate(row.lastPaymentDate)}</td>
+                    <td className="px-3 py-2 text-right font-sans tabular-nums">
+                      {formatAmount(row.amount, row.currency)}
                     </td>
-                    <td className="px-3 py-2 font-sans text-muted-foreground truncate max-w-[10rem]" title={row.databaseName}>
-                      {row.databaseName ?? '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right font-sans tabular-nums">{row.locations}</td>
-                    <td className="px-3 py-2 text-right font-sans tabular-nums">{row.products ?? 0}</td>
-                    <td className="px-3 py-2 text-right font-sans tabular-nums">{row.purchaseOrders ?? 0}</td>
-                    <td className="px-3 py-2 text-right font-sans tabular-nums">{row.salesOrders ?? 0}</td>
-                    <td className="px-3 py-2 text-right font-sans tabular-nums">{row.inventoryMovements ?? 0}</td>
-                    <td className="px-3 py-2 text-destructive truncate max-w-[12rem]" title={row.error ?? undefined}>
-                      {row.error ?? ''}
-                    </td>
+                    <td className="px-3 py-2 font-sans tabular-nums">{formatDate(row.renewalDate)}</td>
                   </tr>
                 ))
               )}
@@ -136,9 +152,9 @@ export function TenantRollupsPanel() {
           </table>
           {data && (
             <div className="px-3 py-2 border-t border-border text-[11px] text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
-              <span>Tenants: {data.tenantCount ?? rows.length}</span>
-              <span>Provisioned: {data.provisionedCount ?? '—'}</span>
-              <span>Shared: {data.sharedCount ?? '—'}</span>
+              <span>Locations: {rows.length}</span>
+              <span>Active subscriptions: {activeSubs}</span>
+              <span>Tenants: {data.tenantCount ?? '—'}</span>
               <span>Status: {data.status ?? 'ok'}</span>
             </div>
           )}

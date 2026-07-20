@@ -72,6 +72,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<DevConsolePasswordTicket> DevConsolePasswordTickets => Set<DevConsolePasswordTicket>();
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
     public DbSet<TenantRollupSnapshot> TenantRollupSnapshots => Set<TenantRollupSnapshot>();
+    public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
 
@@ -294,6 +295,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
                 .WithMany()
                 .HasForeignKey(x => x.DevTeamUserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<LocationSubscription>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId }).IsUnique();
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.Currency).HasMaxLength(8);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
         });
     }
 }

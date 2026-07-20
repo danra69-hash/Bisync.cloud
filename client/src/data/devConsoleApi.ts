@@ -48,6 +48,12 @@ export type DevUsageResponse = {
     companyName: string;
     apiCalls30d: number;
     inventoryMovements?: number;
+    subscribedSince?: string | null;
+    lastPaymentDate?: string | null;
+    amount?: number | null;
+    currency?: string | null;
+    renewalDate?: string | null;
+    subscriptionActive?: boolean;
   }[];
 };
 

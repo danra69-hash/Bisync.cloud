@@ -16,10 +16,11 @@ import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 /** Dev Console always requires its own login (separate from customer Access Control). */
 const REQUIRE_DEV_CONSOLE_LOGIN = true;
 
-type DevConsoleTab = 'overview' | 'automated-qa' | 'qa-history' | 'audit-trail' | 'ghost-support';
+type DevConsoleTab = 'overview' | 'tenant-rollups' | 'automated-qa' | 'qa-history' | 'audit-trail' | 'ghost-support';
 
 const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'tenant-rollups', label: 'Tenant Rollups' },
   { id: 'automated-qa', label: 'Power-user Automated QA' },
   { id: 'qa-history', label: 'QA History' },
   { id: 'audit-trail', label: 'Audit Trail' },
@@ -146,10 +147,10 @@ export function DevConsolePage() {
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-10">
         <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
-          <>
-            <UsageDashboard />
-            <TenantRollupsPanel />
-          </>
+          <UsageDashboard />
+        )}
+        {tab === 'tenant-rollups' && (
+          <TenantRollupsPanel />
         )}
         {tab === 'automated-qa' && (
           <AutomatedQaPanel triggeredBy={triggeredBy} />
