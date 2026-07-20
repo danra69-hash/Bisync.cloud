@@ -119,6 +119,8 @@ public static class PurchaseOrderWorkflow
         vendorAcceptedBy = order.VendorAcceptedBy,
         vendorDoNumber = order.VendorDoNumber,
         vendorInvoiceNumber = order.VendorInvoiceNumber,
+        productQualityRating = string.IsNullOrWhiteSpace(order.ProductQualityRating) ? null : order.ProductQualityRating,
+        hygieneRating = string.IsNullOrWhiteSpace(order.HygieneRating) ? null : order.HygieneRating,
         canApprove = CanApprove(order),
         canReceive = CanReceive(order),
         canReconcile = CanReconcile(order),
@@ -146,6 +148,7 @@ public static class PurchaseOrderWorkflow
         taxAmount = item.TaxAmount,
         halalCertNo = item.HalalCertNo,
         productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,
+        receivedTemperature = item.ReceivedTemperature,
     };
 
     public static List<string> DeserializeLocationIds(string? json)

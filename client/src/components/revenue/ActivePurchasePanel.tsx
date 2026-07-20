@@ -37,6 +37,7 @@ type EditableLine = {
   componentId: string;
   componentName: string;
   productName: string;
+  vendorProductId: string;
   /** Ordered qty (immutable on receive). */
   orderedQuantity: string;
   /** Received qty — defaults to ordered; user may adjust on receive/reconcile. */
@@ -50,6 +51,8 @@ type EditableLine = {
   componentUom: string;
   halalCertNo: string;
   productExpiryDate: string;
+  /** Optional temperature °C at receive/consolidate. */
+  receivedTemperature: string;
 };
 
 function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 'reconcile' | 'view'): EditableLine[] {
@@ -71,6 +74,7 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       componentId: item.componentId ?? '',
       componentName: item.componentName || item.name,
       productName: item.name,
+      vendorProductId: item.vendorProductId ?? '',
       orderedQuantity: String(orderedQty),
       quantity: String(qty),
       orderedUnitPrice: String(orderedPrice),
@@ -80,20 +84,28 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       componentUom: item.componentUom || item.unit,
       halalCertNo: item.halalCertNo ?? '',
       productExpiryDate: item.productExpiryDate?.trim() ?? '',
+      receivedTemperature: item.receivedTemperature != null && Number.isFinite(item.receivedTemperature)
+        ? String(item.receivedTemperature)
+        : '',
     };
   });
 }
 
 function linePayload(lines: EditableLine[]): PurchaseOrderLineWorkflowPayload[] {
-  return lines.map(line => ({
-    itemId: line.itemId,
-    quantity: parseFloat(line.quantity) || 0,
-    unitPrice: parseFloat(line.unitPrice) || 0,
-    componentUom: line.componentUom,
-    taxAmount: parseFloat(line.taxAmount) || 0,
-    halalCertNo: line.halalCertNo.trim() || undefined,
-    productExpiryDate: line.productExpiryDate.trim() || undefined,
-  }));
+  return lines.map(line => {
+    const tempRaw = line.receivedTemperature.trim();
+    const temp = tempRaw === '' ? null : Number(tempRaw);
+    return {
+      itemId: line.itemId,
+      quantity: parseFloat(line.quantity) || 0,
+      unitPrice: parseFloat(line.unitPrice) || 0,
+      componentUom: line.componentUom,
+      taxAmount: parseFloat(line.taxAmount) || 0,
+      halalCertNo: line.halalCertNo.trim() || undefined,
+      productExpiryDate: line.productExpiryDate.trim() || undefined,
+      receivedTemperature: temp != null && Number.isFinite(temp) ? temp : null,
+    };
+  });
 }
 
 export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
@@ -128,6 +140,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const [lines, setLines] = useState(() => buildEditableLines(order, mode));
   const [vendorDoNumber, setVendorDoNumber] = useState(order.vendorDoNumber?.trim() ?? '');
   const [vendorInvoiceNumber, setVendorInvoiceNumber] = useState(order.vendorInvoiceNumber?.trim() ?? '');
+  const [productQualityRating, setProductQualityRating] = useState(order.productQualityRating?.trim() ?? '');
+  const [hygieneRating, setHygieneRating] = useState(order.hygieneRating?.trim() ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shareToken, setShareToken] = useState(order.vendorShareToken?.trim() ?? '');
@@ -137,6 +151,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     setLines(buildEditableLines(order, mode));
     setVendorDoNumber(order.vendorDoNumber?.trim() ?? '');
     setVendorInvoiceNumber(order.vendorInvoiceNumber?.trim() ?? '');
+    setProductQualityRating(order.productQualityRating?.trim() ?? '');
+    setHygieneRating(order.hygieneRating?.trim() ?? '');
     setError(null);
     setShareToken(order.vendorShareToken?.trim() ?? '');
     setShareLinkCopied(false);
@@ -200,10 +216,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const showHalalCertColumn = (requiresHalalCert || lines.some(line => line.halalCertNo.trim()))
     && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   const showExpiryColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  const showTempColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
   const showReceiveDocs = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  const showVendorRatingInputs = mode === 'receive' || mode === 'reconcile' || mode === 'view';
   /** Receive / reconcile / view: ordered vs received qty & price + variances. */
   const showOrderedReceivedColumns = mode === 'receive' || mode === 'reconcile' || mode === 'view';
   const canEditReceived = (mode === 'receive' || mode === 'reconcile') && !readOnly;
+  const canEditVendorRating = (mode === 'receive' || mode === 'reconcile') && !readOnly;
   const lineHeaders = [
     'Component',
     'Product',
@@ -218,6 +237,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     showTaxColumn ? 'Tax' : null,
     showHalalCertColumn ? 'Halal cert no.' : null,
     showExpiryColumn ? 'Expiry date' : null,
+    showTempColumn ? 'Temp °C' : null,
     'Line total',
   ].filter(Boolean) as string[];
   const lineColSpan = lineHeaders.length;
@@ -269,14 +289,22 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   async function handleReceive() {
     if (!canReceive) return;
     const payload = linePayload(lines);
-    if (payload.some(line => line.quantity <= 0)) {
-      setError('Each line must have a quantity greater than zero.');
+    if (payload.some(line => line.quantity < 0)) {
+      setError('Received quantity cannot be negative. Use 0 for out of stock.');
       return;
     }
     const doNumber = vendorDoNumber.trim();
     const invoiceNumber = vendorInvoiceNumber.trim();
     if (!doNumber && !invoiceNumber) {
       setError('Enter a Vendor DO number and/or Vendor Invoice number for the documents received.');
+      return;
+    }
+    if (!productQualityRating) {
+      setError('Select product quality (Satisfied, Acceptable, or Poor).');
+      return;
+    }
+    if (!hygieneRating) {
+      setError('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
       return;
     }
     setSaving(true);
@@ -286,6 +314,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         items: payload,
         vendorDoNumber: doNumber || undefined,
         vendorInvoiceNumber: invoiceNumber || undefined,
+        productQualityRating,
+        hygieneRating,
       });
       onUpdated(updated);
     } catch (e) {
@@ -298,14 +328,26 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   async function handleReconcile() {
     if (!canReconcile) return;
     const payload = linePayload(lines);
-    if (payload.some(line => line.quantity <= 0)) {
-      setError('Each line must have a quantity greater than zero.');
+    if (payload.some(line => line.quantity < 0)) {
+      setError('Reconciled quantity cannot be negative. Use 0 for out of stock.');
+      return;
+    }
+    if (!productQualityRating) {
+      setError('Select product quality (Satisfied, Acceptable, or Poor).');
+      return;
+    }
+    if (!hygieneRating) {
+      setError('Select hygiene & cleanliness (Satisfied, Acceptable, or Poor).');
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const result = await api.reconcilePurchaseOrder(order.id, { items: payload });
+      const result = await api.reconcilePurchaseOrder(order.id, {
+        items: payload,
+        productQualityRating,
+        hygieneRating,
+      });
       if (result.updatedVendorProductPrices.length > 0) {
         applyVendorProductPriceUpdates(result.updatedVendorProductPrices);
       }
@@ -506,6 +548,76 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             </div>
           )}
 
+          {showVendorRatingInputs && (
+            <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-foreground">Vendor rating (customer input)</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Captured at receive; can be updated at consolidate. Feeds vendor rating.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">Product quality</p>
+                  {canEditVendorRating ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        ['satisfied', 'Satisfied', '100%'],
+                        ['acceptable', 'Acceptable', '80%'],
+                        ['poor', 'Poor', '50%'],
+                      ] as const).map(([id, label, score]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setProductQualityRating(id)}
+                          className={`px-2.5 py-1 rounded-md text-[11px] border ${
+                            productQualityRating === id
+                              ? 'border-primary bg-primary/10 text-foreground font-medium'
+                              : 'border-border text-muted-foreground hover:border-primary/40'
+                          }`}
+                        >
+                          {label} ({score})
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-medium capitalize">{productQualityRating || '—'}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-sans uppercase tracking-wider text-muted-foreground">Hygiene &amp; cleanliness</p>
+                  {canEditVendorRating ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        ['satisfied', 'Satisfied', '100%'],
+                        ['acceptable', 'Acceptable', '80%'],
+                        ['poor', 'Poor', '50%'],
+                      ] as const).map(([id, label, score]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setHygieneRating(id)}
+                          className={`px-2.5 py-1 rounded-md text-[11px] border ${
+                            hygieneRating === id
+                              ? 'border-primary bg-primary/10 text-foreground font-medium'
+                              : 'border-border text-muted-foreground hover:border-primary/40'
+                          }`}
+                        >
+                          {label} ({score})
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-medium capitalize">{hygieneRating || '—'}</p>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Optional: enter product temperature (°C) on each line under Temp °C.
+              </p>
+            </div>
+          )}
+
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">Line items</p>
@@ -676,6 +788,25 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 onChange={e => updateLine(line.itemId, { productExpiryDate: e.target.value })}
                                 className="w-36 rounded border border-border bg-background px-2 py-1 font-sans"
                               />
+                            )}
+                          </td>
+                        )}
+                        {showTempColumn && (
+                          <td className="px-3 py-2">
+                            {canEditReceived ? (
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={line.receivedTemperature}
+                                onChange={e => updateLine(line.itemId, { receivedTemperature: e.target.value })}
+                                placeholder="—"
+                                title="Optional temperature check (°C)"
+                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                              />
+                            ) : (
+                              <span className="font-sans">
+                                {line.receivedTemperature.trim() ? `${line.receivedTemperature}°C` : '—'}
+                              </span>
                             )}
                           </td>
                         )}

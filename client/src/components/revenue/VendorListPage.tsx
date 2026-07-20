@@ -355,7 +355,6 @@ export function VendorListPage({
           >
             <span className="font-sans tabular-nums font-medium text-foreground group-hover:text-primary group-hover:underline">
               {formatOverallRating(rating?.overallRating)}
-              {rating?.hasRating ? <span className="text-[10px] text-muted-foreground font-normal"> / 5</span> : null}
             </span>
             <span className="text-[10px] text-muted-foreground">Overall</span>
           </button>
@@ -389,21 +388,18 @@ export function VendorListPage({
     );
   }
 
-  if (ratingVendor) {
-    return (
-      <VendorRatingDetailPage
-        vendor={ratingVendor}
-        selectedCompanyId={selectedCompanyId}
-        onBack={() => {
-          setRatingVendor(null);
-          void refreshRatingSummaries();
-        }}
-      />
-    );
-  }
-
   return (
     <div className={pageShellClass()}>
+      {ratingVendor ? (
+        <VendorRatingDetailPage
+          vendor={ratingVendor}
+          selectedCompanyId={selectedCompanyId}
+          onClose={() => {
+            setRatingVendor(null);
+            void refreshRatingSummaries();
+          }}
+        />
+      ) : null}
       {!selectedCompanyId && (
         <p className="text-sm text-muted-foreground border border-dashed border-border rounded-lg px-4 py-3">
           Select a company in the header to create vendors, engage suppliers, or tag products. Vendor data below is still visible.
