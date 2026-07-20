@@ -339,6 +339,7 @@ public class AuthController(
             Fax = dto.Fax?.Trim() ?? string.Empty,
             Email = dto.Email?.Trim() ?? string.Empty,
             Active = true,
+            RegisteredAt = DateTime.UtcNow,
             BusinessTypesJson = dto.BusinessTypesJson ?? "[]",
             VendorPolicyTagsJson = dto.VendorPolicyTagsJson ?? "[]",
             ModulesJson = dto.ModulesJson ?? "[]",
@@ -448,6 +449,15 @@ public class AuthController(
         catch
         {
             // Provision may be deferred to payment Continue; do not fail onboarding.
+        }
+
+        try
+        {
+            await locationSubscriptions.ActivateFreeTrialForCompanyAsync(company.Id);
+        }
+        catch
+        {
+            // Trial activation is best-effort; Dev Console / next login path can backfill.
         }
 
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);

@@ -332,6 +332,17 @@ public class LocationSubscriptionService(
             await EnsureDefaultsForCompanyAsync(db, id, ct);
     }
 
+    /// <summary>
+    /// Ensures schema + 1-month free-trial rows for every location under the company.
+    /// Safe to call after company/location onboarding and when adding locations later.
+    /// </summary>
+    public async Task ActivateFreeTrialForCompanyAsync(int companyId, CancellationToken ct = default)
+    {
+        await using var db = CreateControlDb();
+        await EnsureSchemaAsync(db, ct);
+        await EnsureDefaultsForCompanyAsync(db, companyId, ct);
+    }
+
     async Task EnsureDefaultsForCompanyAsync(BisyncDbContext db, int companyId, CancellationToken ct)
     {
         var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId, ct);
@@ -356,7 +367,9 @@ public class LocationSubscriptionService(
             .Select(s => s.LocationExternalId)
             .ToListAsync(ct);
         var existingSet = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
-        var registered = AsUtcDate(company.RegisteredAt) ?? DateTime.UtcNow.Date;
+        // Fresh trial clock from activation time (not a stale company RegisteredAt).
+        var trialStart = DateTime.UtcNow.Date;
+        trialStart = DateTime.SpecifyKind(trialStart, DateTimeKind.Utc);
         var added = false;
         foreach (var externalId in locations)
         {
@@ -369,9 +382,9 @@ public class LocationSubscriptionService(
                 CompanyId = companyId,
                 LocationExternalId = key,
                 Status = LocationSubscription.StatusFreeTrial,
-                StatusDate = registered,
-                ExpiryDate = registered.AddMonths(DefaultTrialMonths),
-                RenewalDate = registered.AddMonths(DefaultTrialMonths),
+                StatusDate = trialStart,
+                ExpiryDate = trialStart.AddMonths(DefaultTrialMonths),
+                RenewalDate = trialStart.AddMonths(DefaultTrialMonths),
                 Active = true,
                 UpdatedAt = DateTime.UtcNow,
             });
