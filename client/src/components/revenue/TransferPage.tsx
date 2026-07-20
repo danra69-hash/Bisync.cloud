@@ -231,10 +231,10 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         setCatalogOpen(false);
       }
     }
-    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('click', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('click', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [catalogOpen]);

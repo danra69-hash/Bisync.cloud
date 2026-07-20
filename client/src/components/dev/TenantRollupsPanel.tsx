@@ -72,10 +72,9 @@ export function TenantRollupsPanel() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => {
-              // Placeholder — Manual Subscription Activation flow to be built next.
-            }}
-            className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted"
+            disabled
+            title="Coming soon"
+            className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 opacity-50 cursor-not-allowed text-muted-foreground"
           >
             <CreditCard size={12} />
             Manual Subscription Activation

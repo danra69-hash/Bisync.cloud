@@ -62,10 +62,10 @@ export function NotificationBell() {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') setOpen(false);
     }
-    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('click', onClickOutside);
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('click', onClickOutside);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, []);

@@ -348,12 +348,19 @@ export default function ShiftScheduleType2View({
     setDraft((prev) => ({ ...prev, [key]: cell }));
   }, []);
 
+  const pendingChanges = useMemo(
+    () => buildChanges(draft, serverDraft),
+    [draft, serverDraft],
+  );
+
   const handleSave = async () => {
-    const changes = buildChanges(draft, serverDraft);
-    if (changes.length === 0) return;
+    if (pendingChanges.length === 0) {
+      setCopyMessage('No schedule changes to save.');
+      return;
+    }
     setSaving(true);
     try {
-      await onSave(changes);
+      await onSave(pendingChanges);
       setCopyMessage(null);
     } finally {
       setSaving(false);
@@ -422,7 +429,7 @@ export default function ShiftScheduleType2View({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || pendingChanges.length === 0}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-herme hover:bg-herme-dark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <Save className="w-3.5 h-3.5" />

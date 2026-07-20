@@ -64,18 +64,24 @@ function ComparePriceCellView({
   onDragEnd: () => void;
 }) {
   const [draftCost, setDraftCost] = useState('');
+  const [costError, setCostError] = useState<string | null>(null);
   const { product } = slot;
   const cell = slot.pricing;
   const needsManual = cell ? !cell.autoResolvable && cell.principalQty <= 0 : false;
 
   useEffect(() => {
     setDraftCost('');
+    setCostError(null);
   }, [product.id, slot.componentRow.id, cell?.principalQty, cell?.uomCost]);
 
   async function commitManualCost() {
     if (!cell) return;
     const value = parseFloat(draftCost);
-    if (!Number.isFinite(value) || value <= 0) return;
+    if (!Number.isFinite(value) || value <= 0) {
+      setCostError('Enter a valid UOM cost greater than 0.');
+      return;
+    }
+    setCostError(null);
     await onSaveUomCost(cell, value);
   }
 
@@ -136,7 +142,10 @@ function ComparePriceCellView({
                 min={0}
                 step={0.0001}
                 value={draftCost}
-                onChange={e => setDraftCost(e.target.value)}
+                onChange={e => {
+                  setDraftCost(e.target.value);
+                  setCostError(null);
+                }}
                 onKeyDown={e => { if (e.key === 'Enter') void commitManualCost(); }}
                 disabled={saving}
                 placeholder={`/${cell.componentUom.toLowerCase()}`}
@@ -151,6 +160,7 @@ function ComparePriceCellView({
                 Save
               </button>
             </div>
+            {costError && <p className="text-[11px] text-destructive">{costError}</p>}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground font-sans">UOM cost unavailable</p>
@@ -423,6 +433,7 @@ export function ComparePricePage({
     );
     if (!principalQty) {
       setSavingKey(null);
+      setEngageError('Could not derive principal qty from that UOM cost. Check delivery price and loss/yield.');
       return;
     }
 

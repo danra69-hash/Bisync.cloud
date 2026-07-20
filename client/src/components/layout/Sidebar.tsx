@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { NAV_ITEMS, type NavItem } from '../../data/revenueManagement';
+import { NAV_ITEMS, COMING_SOON_NAV_ITEMS, type NavItem } from '../../data/revenueManagement';
 import { isNavItemEnabled } from '../../data/companyModules';
 import type { AccessModule } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
@@ -37,7 +37,9 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map(item => {
-            const enabled = isNavItemEnabled(item, enabledModules);
+            const moduleEnabled = isNavItemEnabled(item, enabledModules);
+            const comingSoon = COMING_SOON_NAV_ITEMS.has(item);
+            const enabled = moduleEnabled && !comingSoon;
             const isActive = activeNav === item;
             return (
             <button
@@ -45,7 +47,7 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
               type="button"
               disabled={!enabled}
               onClick={() => { if (enabled) onNavigate(item); onClose(); }}
-              title={!enabled ? t('common.moduleNotEnabled') : undefined}
+              title={!moduleEnabled ? t('common.moduleNotEnabled') : comingSoon ? t('common.comingSoon') : undefined}
               className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               style={{
                 background: isActive && enabled ? '#E87722' : 'transparent',
@@ -53,7 +55,12 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
                 fontWeight: isActive && enabled ? 700 : 500,
               }}
             >
-              {navLabel(item)}
+              <span className="inline-flex items-center gap-1.5">
+                {navLabel(item)}
+                {comingSoon ? (
+                  <span className="text-[10px] opacity-70 capitalize">{t('common.comingSoon')}</span>
+                ) : null}
+              </span>
             </button>
             );
           })}

@@ -3,6 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import {
   filterRevMgmtNavForSupplyCapability,
   revMgmtNav,
+  COMING_SOON_REV_MGMT_LABELS,
 } from '../../data/revenueManagement';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 
@@ -19,7 +20,7 @@ export function RevMgmtBar({
   hasSupplyCapability = true,
   hasB2bProductCapability = true,
 }: Props) {
-  const { revMgmtSection, revMgmtSubtitle, revMgmtItem } = useAppTranslation();
+  const { revMgmtSection, revMgmtSubtitle, revMgmtItem, t } = useAppTranslation();
   const [openSection, setOpenSection] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const activeSection = selectedItem ? selectedItem.split('||')[0] : null;
@@ -39,8 +40,8 @@ export function RevMgmtBar({
         setOpenSection(null);
       }
     }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
   }, []);
 
   return (
@@ -77,15 +78,28 @@ export function RevMgmtBar({
                       {sub.items.map(item => {
                         const id = `${section.title}||${sub.subtitle ?? ''}||${item.label}`;
                         const isSelected = selectedItem === id;
+                        const comingSoon = COMING_SOON_REV_MGMT_LABELS.has(item.label);
                         return (
                           <button
                             key={item.label}
-                            onClick={() => { onSelectItem(isSelected ? null : id); setOpenSection(null); }}
-                            className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                            type="button"
+                            disabled={comingSoon}
+                            title={comingSoon ? t('common.comingSoon') : undefined}
+                            onClick={() => {
+                              if (comingSoon) return;
+                              onSelectItem(isSelected ? null : id);
+                              setOpenSection(null);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${
                               isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'
                             }`}
                           >
-                            {revMgmtItem(item.label)}
+                            <span className="inline-flex items-center gap-1.5">
+                              {revMgmtItem(item.label)}
+                              {comingSoon ? (
+                                <span className="text-[10px] text-muted-foreground capitalize">{t('common.comingSoon')}</span>
+                              ) : null}
+                            </span>
                           </button>
                         );
                       })}

@@ -35,7 +35,7 @@ function PlaceholderModule({ title }: { title: NavItem | string }) {
           <FileText size={18} className="text-muted-foreground" />
         </div>
         <p className="text-sm font-medium">{displayTitle}</p>
-        <p className="text-xs text-muted-foreground font-sans max-w-xs">{t('common.moduleReady')}</p>
+        <p className="text-xs text-muted-foreground font-sans max-w-xs capitalize">{t('common.comingSoon')}</p>
       </div>
     </div>
   );

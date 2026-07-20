@@ -96,12 +96,15 @@ export function Header({
           </button>
         )}
 
-        <div className="relative hidden md:block">
+        <div className="relative hidden md:block" title={t('common.comingSoon')}>
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
           <input
             placeholder={t('common.search')}
-            className="rounded-md pl-8 pr-4 py-1.5 text-xs w-40 focus:outline-none focus:ring-1 focus:ring-primary text-white"
-            style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}
+            disabled
+            readOnly
+            aria-disabled="true"
+            className="rounded-md pl-8 pr-4 py-1.5 text-xs w-40 text-white/50 cursor-not-allowed"
+            style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
           />
         </div>
 
