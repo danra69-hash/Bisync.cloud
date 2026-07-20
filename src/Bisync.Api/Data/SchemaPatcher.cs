@@ -31,6 +31,13 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "RegisteredAt", "timestamp with time zone NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpHost", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpPort", "INTEGER NOT NULL DEFAULT 587");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpUseSsl", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpUsername", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpPassword", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpFromEmail", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpFromName", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");

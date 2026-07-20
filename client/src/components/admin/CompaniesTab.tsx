@@ -6,7 +6,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Mail } from 'lucide-react';
 import { api, type Company } from '../../api';
 import {
   parseStringArrayJson,
@@ -103,7 +103,24 @@ const blankCompany = (): CompanyDraft => ({
   businessTypesJson: '[]',
   vendorPolicyTagsJson: '[]',
   modulesJson: '[]',
+  smtpHost: '',
+  smtpPort: 587,
+  smtpUseSsl: true,
+  smtpUsername: '',
+  smtpPassword: '',
+  smtpFromEmail: '',
+  smtpFromName: '',
+  smtpPasswordSet: false,
 });
+
+function outboundEmailReady(form: Company | CompanyDraft, passwordDraft: string): boolean {
+  const host = (form.smtpHost ?? '').trim();
+  const from = (form.smtpFromEmail ?? '').trim();
+  const user = (form.smtpUsername ?? '').trim();
+  const port = form.smtpPort ?? 0;
+  const hasPassword = passwordDraft.trim().length > 0 || Boolean(form.smtpPasswordSet);
+  return Boolean(host && from.includes('@') && user && port > 0 && port <= 65535 && hasPassword);
+}
 
 function CompanyPanel({
   company, isNew, onClose, onSave,
@@ -125,18 +142,26 @@ function CompanyPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [smtpPasswordDraft, setSmtpPasswordDraft] = useState('');
+  const [testToEmail, setTestToEmail] = useState(() => company.email || company.smtpFromEmail || '');
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setForm(company);
     setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
     setVendorPolicyTags(parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
     setModules(parseCompanyModules(company.modulesJson));
+    setSmtpPasswordDraft('');
+    setTestToEmail(company.email || company.smtpFromEmail || '');
+    setTestMessage(null);
     setError(null);
   }, [company]);
 
   function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: val }));
     setError(null);
+    setTestMessage(null);
   }
 
   const addressParts: AddressParts = {
@@ -166,8 +191,18 @@ function CompanyPanel({
       businessTypesJson: serializeStringArray(businessTypes),
       vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
       modulesJson: serializeStringArray(modules),
+      smtpHost: (form.smtpHost ?? '').trim(),
+      smtpPort: form.smtpPort && form.smtpPort > 0 ? form.smtpPort : 587,
+      smtpUseSsl: form.smtpUseSsl ?? true,
+      smtpUsername: (form.smtpUsername ?? '').trim(),
+      // Empty keeps the previously saved password on update.
+      smtpPassword: smtpPasswordDraft.trim(),
+      smtpFromEmail: (form.smtpFromEmail ?? '').trim(),
+      smtpFromName: (form.smtpFromName ?? '').trim(),
     };
   }
+
+  const canTestOutbound = !isNew && 'id' in form && outboundEmailReady(form, smtpPasswordDraft);
 
   async function toggleActive() {
     if (isNew || !('id' in form)) return;
@@ -218,13 +253,72 @@ function CompanyPanel({
     setError(null);
     try {
       if (isNew) await api.createCompany(payload);
-      else if ('id' in form) await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
+      else if ('id' in form) {
+        const saved = await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
+        setForm(f => ({
+          ...f,
+          ...saved,
+          smtpPassword: '',
+          smtpPasswordSet: saved.smtpPasswordSet
+            ?? (smtpPasswordDraft.trim().length > 0 || Boolean(f.smtpPasswordSet)),
+        }));
+        setSmtpPasswordDraft('');
+      }
       onSave();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save company.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function sendTestEmail() {
+    if (!('id' in form)) {
+      setError('Save the company first, then send a test email.');
+      return;
+    }
+    if (!outboundEmailReady(form, smtpPasswordDraft)) {
+      setError('Fill in SMTP host, port, username, password, and From email before testing.');
+      return;
+    }
+    const to = testToEmail.trim();
+    if (!to.includes('@')) {
+      setError('Enter a valid test recipient email.');
+      return;
+    }
+
+    setTestingEmail(true);
+    setError(null);
+    setTestMessage(null);
+    try {
+      // Persist SMTP settings first so the test uses the same values you configured.
+      const payload = buildPayload();
+      const saved = await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
+      setForm(f => ({
+        ...f,
+        ...saved,
+        smtpPassword: '',
+        smtpPasswordSet: true,
+      }));
+      setSmtpPasswordDraft('');
+      onSave();
+
+      const result = await api.testCompanyOutboundEmail(form.id, {
+        toEmail: to,
+        smtpHost: saved.smtpHost,
+        smtpPort: saved.smtpPort,
+        smtpUseSsl: saved.smtpUseSsl,
+        smtpUsername: saved.smtpUsername,
+        smtpFromEmail: saved.smtpFromEmail,
+        smtpFromName: saved.smtpFromName,
+        // Password already saved; omit so API uses stored secret.
+      });
+      setTestMessage(result.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Test email failed.');
+    } finally {
+      setTestingEmail(false);
     }
   }
 
@@ -310,6 +404,143 @@ function CompanyPanel({
 
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">General Email</label>
             <input type="email" className={inputCls} value={form.email} onChange={e => set('email', e.target.value)} placeholder="hq@company.com" />
+
+            <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <Mail size={14} className="mt-0.5 text-muted-foreground shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold">Outbound email (SMTP)</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Used to email purchase orders to vendors. Fill all required fields, then send a test message to confirm delivery.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">SMTP host *</label>
+                  <input
+                    className={inputCls}
+                    value={form.smtpHost ?? ''}
+                    onChange={e => set('smtpHost', e.target.value)}
+                    placeholder="smtp.example.com"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Port *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    className={inputCls}
+                    value={form.smtpPort ?? 587}
+                    onChange={e => set('smtpPort', Number(e.target.value) || 587)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-xs cursor-pointer pb-2">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border"
+                      checked={form.smtpUseSsl ?? true}
+                      onChange={e => set('smtpUseSsl', e.target.checked)}
+                    />
+                    Use SSL / TLS
+                  </label>
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Username *</label>
+                  <input
+                    className={inputCls}
+                    value={form.smtpUsername ?? ''}
+                    onChange={e => set('smtpUsername', e.target.value)}
+                    placeholder="mail@company.com"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Password *{form.smtpPasswordSet ? ' (saved)' : ''}
+                  </label>
+                  <input
+                    type="password"
+                    className={inputCls}
+                    value={smtpPasswordDraft}
+                    onChange={e => {
+                      setSmtpPasswordDraft(e.target.value);
+                      setError(null);
+                      setTestMessage(null);
+                    }}
+                    placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'SMTP password'}
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">From email *</label>
+                  <input
+                    type="email"
+                    className={inputCls}
+                    value={form.smtpFromEmail ?? ''}
+                    onChange={e => set('smtpFromEmail', e.target.value)}
+                    placeholder="orders@company.com"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">From name</label>
+                  <input
+                    className={inputCls}
+                    value={form.smtpFromName ?? ''}
+                    onChange={e => set('smtpFromName', e.target.value)}
+                    placeholder="Company Purchasing"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-3 space-y-2">
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                  Test recipient email
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="email"
+                    className={inputCls}
+                    value={testToEmail}
+                    onChange={e => {
+                      setTestToEmail(e.target.value);
+                      setError(null);
+                      setTestMessage(null);
+                    }}
+                    placeholder="you@company.com"
+                    disabled={isNew || testingEmail || saving}
+                  />
+                  <button
+                    type="button"
+                    disabled={!canTestOutbound || testingEmail || saving}
+                    onClick={() => void sendTestEmail()}
+                    title={
+                      isNew
+                        ? 'Save the company first'
+                        : canTestOutbound
+                          ? 'Save settings and send a test email'
+                          : 'Fill all required SMTP fields first'
+                    }
+                    className="inline-flex items-center justify-center gap-1.5 shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Mail size={12} />
+                    {testingEmail ? 'Sending…' : 'Send test email'}
+                  </button>
+                </div>
+                {isNew && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Save the company once, then reopen to send a test email.
+                  </p>
+                )}
+                {testMessage && (
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400">{testMessage}</p>
+                )}
+              </div>
+            </div>
 
             <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
               <div>
