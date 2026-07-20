@@ -126,6 +126,12 @@ public class DevConsoleController(
             companyName = l.CompanyName,
             inventoryMovements = l.InventoryMovements,
             apiCalls30d = l.ApiCalls30d,
+            subscribedSince = l.SubscribedSince,
+            lastPaymentDate = l.LastPaymentDate,
+            amount = l.Amount,
+            currency = l.Currency,
+            renewalDate = l.RenewalDate,
+            subscriptionActive = l.SubscriptionActive,
         }),
     };
 
