@@ -5,7 +5,7 @@ import { useAppTranslation } from '../i18n/useAppTranslation';
 import { CountryAddressFields, getAddressValidationError } from '../components/shared/CountryAddressFields';
 import { inputCls } from '../data/countries';
 import type { AddressParts } from '../utils/countryFormat';
-import { setAwaitingPayment } from '../data/onboardingFlags';
+import { setAwaitingPayment, setShowTrialWelcome } from '../data/onboardingFlags';
 
 type LocationDraft = {
   name: string;
@@ -107,6 +107,7 @@ export function LocationOnboardingPage({ onCompleted }: Props) {
         postcode: form.postcode.trim(),
       });
       setAwaitingPayment();
+      setShowTrialWelcome();
       applyAuthenticatedUser(user);
       onCompleted();
     } catch (err) {

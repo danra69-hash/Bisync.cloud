@@ -17,6 +17,7 @@ import {
   isAwaitingLocation,
   isAwaitingPayment,
 } from './data/onboardingFlags';
+import { FreeTrialWelcomeNote } from './components/auth/FreeTrialWelcomeNote';
 import { parseVendorOrderShareTarget } from './data/vendorOrderShare';
 import { parseVendorRfqToken } from './data/vendorRfqShare';
 import { parseSampleRequestToken } from './data/requestForSample';
@@ -110,14 +111,22 @@ export function AppRoot() {
 
   if (!isGhostSupport && isAuthenticated && needsPayment) {
     return (
-      <SubscriptionPlaceholderPage
-        onContinue={() => {
-          clearAwaitingPayment();
-          setForcePayment(false);
-        }}
-      />
+      <>
+        <SubscriptionPlaceholderPage
+          onContinue={() => {
+            clearAwaitingPayment();
+            setForcePayment(false);
+          }}
+        />
+        <FreeTrialWelcomeNote />
+      </>
     );
   }
 
-  return <App />;
+  return (
+    <>
+      <App />
+      <FreeTrialWelcomeNote />
+    </>
+  );
 }

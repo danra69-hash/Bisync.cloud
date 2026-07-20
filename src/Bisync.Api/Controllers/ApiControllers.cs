@@ -12,7 +12,7 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class LocationsController(BisyncDbContext db) : ControllerBase
+public class LocationsController(BisyncDbContext db, LocationSubscriptionService locationSubscriptions) : ControllerBase
 {
     static object MapLocationConfig(Location l) => new
     {
@@ -141,6 +141,17 @@ public class LocationsController(BisyncDbContext db) : ControllerBase
 
         db.Locations.Add(loc);
         await db.SaveChangesAsync();
+
+        try
+        {
+            if (loc.CompanyId is int companyId)
+                await locationSubscriptions.ActivateFreeTrialForCompanyAsync(companyId);
+        }
+        catch
+        {
+            // Best-effort: rollup / panel can backfill trial rows.
+        }
+
         var saved = await LoadLocationConfigAsync(loc.Id);
         return saved is null ? Ok(new { loc.Id, loc.ExternalId, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
     }

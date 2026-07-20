@@ -301,6 +301,11 @@ export const en = {
     paymentLocationTypeMustInherit: 'Location type for {{location}} must be one of the company types.',
     yourCompany: 'your company',
     continueToApp: 'Continue to Bisync.cloud',
+    trialWelcomeEyebrow: 'Welcome aboard',
+    trialWelcomeTitle: 'Your free trial is on',
+    trialWelcomeBody:
+      'A 1-month free trial is active for your locations. Full platform access runs through {{expiry}} — no card required for now. Pin this note, explore, and subscribe before the trial ends to stay unlocked.',
+    trialWelcomeDismiss: 'Got it',
     // Legacy keys kept for any remaining references
     continueToSubscription: 'Continue to Payment',
     onboardingStepSubscription: 'Step 3 of 3 · Payment',

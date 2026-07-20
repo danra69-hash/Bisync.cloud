@@ -16,7 +16,7 @@ import {
   parseCompanyModules,
 } from '../data/companyModules';
 import type { AccessModule } from '../data/userAccess';
-import { clearAwaitingPayment } from '../data/onboardingFlags';
+import { clearAwaitingPayment, setShowTrialWelcome } from '../data/onboardingFlags';
 import {
   PAYMENT_MODULE_LABELS,
   PAYMENT_TYPE_LABELS,
@@ -202,6 +202,7 @@ export function PaymentPage({ onContinue }: Props) {
 
       clearAwaitingPayment();
       clearExtraPaymentCompanyIds();
+      setShowTrialWelcome();
 
       // Provision dedicated operational + archive DBs after profiles are saved (idempotent).
       for (const draft of companies) {
