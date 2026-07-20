@@ -26,7 +26,7 @@ import {
 } from '../../data/productParStock';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
-import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
+import { useOrgB2bProductCapability } from '../../hooks/useOrgSupplyCapability';
 import {
   blankProductAlias,
   blankProductLine,
@@ -448,7 +448,7 @@ export function ProductsPage({
 }: Props) {
   const { rm, cogsPercent } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
-  const hasSupplyCapability = useOrgSupplyCapability(selectedCompanyId, selectedLocationIds);
+  const hasB2bProductCapability = useOrgB2bProductCapability(selectedCompanyId, selectedLocationIds);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -582,11 +582,11 @@ export function ProductsPage({
   }, [selectedLocationIds, selectedProductId]);
 
   useEffect(() => {
-    if (hasSupplyCapability || !b2bEnabled) return;
+    if (hasB2bProductCapability || !b2bEnabled) return;
     setB2bEnabled(false);
     setB2cEnabled(true);
     setB2bSalesConfig(blankB2bSalesConfig());
-  }, [hasSupplyCapability, b2bEnabled]);
+  }, [hasB2bProductCapability, b2bEnabled]);
 
   useEffect(() => {
     if (!editorRequest) return;
@@ -1100,8 +1100,8 @@ export function ProductsPage({
       setB2bSalesConfig(blankB2bSalesConfig());
       return;
     }
-    if (!hasSupplyCapability) {
-      showSaveError('B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.');
+    if (!hasB2bProductCapability) {
+      showSaveError('B2B products are available for Central Kitchen / Warehouse and Manufacturer.');
       return;
     }
     setB2bEnabled(true);
@@ -1143,8 +1143,8 @@ export function ProductsPage({
       showSaveError('A product must be either B2C or B2B, not both.');
       return;
     }
-    if (!isSubProduct && b2bEnabled && !hasSupplyCapability) {
-      showSaveError('B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.');
+    if (!isSubProduct && b2bEnabled && !hasB2bProductCapability) {
+      showSaveError('B2B products are available for Central Kitchen / Warehouse and Manufacturer.');
       return;
     }
 
@@ -1479,11 +1479,11 @@ export function ProductsPage({
                   </label>
                   <label
                     className={`inline-flex items-center gap-2 text-xs ${
-                      isSubProduct || !hasSupplyCapability ? 'cursor-not-allowed' : 'cursor-pointer'
+                      isSubProduct || !hasB2bProductCapability ? 'cursor-not-allowed' : 'cursor-pointer'
                     }`}
                     title={
-                      !hasSupplyCapability
-                        ? 'B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.'
+                      !hasB2bProductCapability
+                        ? 'B2B products are available for Central Kitchen / Warehouse and Manufacturer.'
                         : undefined
                     }
                   >
@@ -1491,7 +1491,7 @@ export function ProductsPage({
                       type="radio"
                       name="product-type"
                       checked={b2bEnabled}
-                      disabled={isSubProduct || !hasSupplyCapability}
+                      disabled={isSubProduct || !hasB2bProductCapability}
                       onChange={() => handleB2bEnabledChange(true)}
                       className="border-border disabled:cursor-not-allowed"
                     />
@@ -1502,9 +1502,9 @@ export function ProductsPage({
                   <p className="text-[10px] text-muted-foreground">
                     Sub-products are made or prepped as part of a B2C or B2B product — they are not sold directly on a channel.
                   </p>
-                ) : !hasSupplyCapability ? (
+                ) : !hasB2bProductCapability ? (
                   <p className="text-[10px] text-muted-foreground">
-                    B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.
+                    B2B products are available for Central Kitchen / Warehouse and Manufacturer.
                   </p>
                 ) : (
                   <p className="text-[10px] text-muted-foreground">

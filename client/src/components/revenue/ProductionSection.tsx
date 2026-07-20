@@ -4,7 +4,7 @@ import { ProductManagementPage } from './ProductManagementPage';
 import { SalesDataPage } from './SalesDataPage';
 import { B2bActiveOrderPage } from './B2bActiveOrderPage';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
-import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
+import { useOrgBusinessCapabilities } from '../../hooks/useOrgSupplyCapability';
 
 export type ProductionTab = 'b2bProduct' | 'activeOrder' | 'salesData' | 'subProduct';
 
@@ -14,9 +14,18 @@ type Props = {
   initialTab?: ProductionTab;
 };
 
-const ALL_TAB_ITEMS: { id: ProductionTab; label: string; supplyOnly?: boolean }[] = [
-  { id: 'b2bProduct', label: 'B2B Product', supplyOnly: true },
-  { id: 'activeOrder', label: 'Active Order', supplyOnly: true },
+type TabDef = {
+  id: ProductionTab;
+  label: string;
+  /** Active Sales capability (CK / warehouse / distributor / manufacturer). */
+  requiresSupply?: boolean;
+  /** B2B product capability (CK / warehouse / manufacturer only). */
+  requiresB2bProduct?: boolean;
+};
+
+const ALL_TAB_ITEMS: TabDef[] = [
+  { id: 'b2bProduct', label: 'B2B Product', requiresB2bProduct: true },
+  { id: 'activeOrder', label: 'Active Order', requiresSupply: true },
   { id: 'salesData', label: 'Sales Data' },
   { id: 'subProduct', label: 'Sub-Product' },
 ];
@@ -26,18 +35,29 @@ export function ProductionSection({
   selectedLocationIds,
   initialTab = 'b2bProduct',
 }: Props) {
-  const hasSupplyCapability = useOrgSupplyCapability(selectedCompanyId, selectedLocationIds);
+  const { hasSupplyCapability, hasB2bProductCapability } = useOrgBusinessCapabilities(
+    selectedCompanyId,
+    selectedLocationIds,
+  );
+
   const tabItems = useMemo(
-    () => ALL_TAB_ITEMS.filter(item => hasSupplyCapability || !item.supplyOnly),
-    [hasSupplyCapability],
+    () => ALL_TAB_ITEMS.filter(item => {
+      if (item.requiresB2bProduct && !hasB2bProductCapability) return false;
+      if (item.requiresSupply && !hasSupplyCapability) return false;
+      return true;
+    }),
+    [hasSupplyCapability, hasB2bProductCapability],
   );
 
   const resolvedInitial = useMemo((): ProductionTab => {
-    if (!hasSupplyCapability && (initialTab === 'b2bProduct' || initialTab === 'activeOrder')) {
-      return 'subProduct';
+    if (initialTab === 'b2bProduct' && !hasB2bProductCapability) {
+      return hasSupplyCapability ? 'activeOrder' : 'subProduct';
+    }
+    if (initialTab === 'activeOrder' && !hasSupplyCapability) {
+      return hasB2bProductCapability ? 'b2bProduct' : 'subProduct';
     }
     return initialTab;
-  }, [initialTab, hasSupplyCapability]);
+  }, [initialTab, hasSupplyCapability, hasB2bProductCapability]);
 
   const [tab, setTab] = useState<ProductionTab>(resolvedInitial);
   const activeLabel = tabItems.find(item => item.id === tab)?.label
@@ -74,7 +94,7 @@ export function ProductionSection({
         ))}
       </div>
 
-      {tab === 'b2bProduct' && hasSupplyCapability ? (
+      {tab === 'b2bProduct' && hasB2bProductCapability ? (
         <ProductManagementPage
           embedded
           viewMode="b2b"

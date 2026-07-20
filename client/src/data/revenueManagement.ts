@@ -4,10 +4,14 @@ export type RevMgmtItem = { label: string };
 export type RevMgmtSubSection = { subtitle?: string; items: RevMgmtItem[] };
 export type RevMgmtSection = { title: string; subs: RevMgmtSubSection[] };
 
-/** Nav labels only available for supply-side business types (CK / warehouse / distributor / manufacturer). */
+/** Nav labels for Active Sales / Sales Order (CK, warehouse, distributor, manufacturer). */
 export const SUPPLY_SIDE_NAV_LABELS = new Set([
   'Active Sales',
   'Sales Order',
+]);
+
+/** Nav labels for B2B Product management (CK / warehouse and manufacturer only). */
+export const B2B_PRODUCT_NAV_LABELS = new Set([
   'B2B Product',
 ]);
 
@@ -110,12 +114,20 @@ export const revMgmtNav: RevMgmtSection[] = [
   },
 ];
 
-/** Hide Active Sales / Sales Order / B2B Product nav when org is not supply-side. */
+/** Hide Active Sales / Sales Order / B2B Product nav by business-type capability. */
 export function filterRevMgmtNavForSupplyCapability(
   sections: RevMgmtSection[],
   hasSupplyCapability: boolean,
+  hasB2bProductCapability = hasSupplyCapability,
 ): RevMgmtSection[] {
-  if (hasSupplyCapability) return sections;
+  const hidden = new Set<string>();
+  if (!hasSupplyCapability) {
+    for (const label of SUPPLY_SIDE_NAV_LABELS) hidden.add(label);
+  }
+  if (!hasB2bProductCapability) {
+    for (const label of B2B_PRODUCT_NAV_LABELS) hidden.add(label);
+  }
+  if (hidden.size === 0) return sections;
 
   return sections
     .map(section => ({
@@ -123,7 +135,7 @@ export function filterRevMgmtNavForSupplyCapability(
       subs: section.subs
         .map(sub => ({
           ...sub,
-          items: sub.items.filter(item => !SUPPLY_SIDE_NAV_LABELS.has(item.label)),
+          items: sub.items.filter(item => !hidden.has(item.label)),
         }))
         .filter(sub => sub.items.length > 0),
     }))
@@ -132,6 +144,10 @@ export function filterRevMgmtNavForSupplyCapability(
 
 export function isSupplySideNavLabel(label: string | null | undefined): boolean {
   return Boolean(label && SUPPLY_SIDE_NAV_LABELS.has(label));
+}
+
+export function isB2bProductNavLabel(label: string | null | undefined): boolean {
+  return Boolean(label && B2B_PRODUCT_NAV_LABELS.has(label));
 }
 
 export const posItems = [

@@ -10,12 +10,14 @@ type Props = {
   selectedItem: string | null;
   onSelectItem: (id: string | null) => void;
   hasSupplyCapability?: boolean;
+  hasB2bProductCapability?: boolean;
 };
 
 export function RevMgmtBar({
   selectedItem,
   onSelectItem,
   hasSupplyCapability = true,
+  hasB2bProductCapability = true,
 }: Props) {
   const { revMgmtSection, revMgmtSubtitle, revMgmtItem } = useAppTranslation();
   const [openSection, setOpenSection] = useState<string | null>(null);
@@ -23,8 +25,12 @@ export function RevMgmtBar({
   const activeSection = selectedItem ? selectedItem.split('||')[0] : null;
 
   const nav = useMemo(
-    () => filterRevMgmtNavForSupplyCapability(revMgmtNav, hasSupplyCapability),
-    [hasSupplyCapability],
+    () => filterRevMgmtNavForSupplyCapability(
+      revMgmtNav,
+      hasSupplyCapability,
+      hasB2bProductCapability,
+    ),
+    [hasSupplyCapability, hasB2bProductCapability],
   );
 
   useEffect(() => {

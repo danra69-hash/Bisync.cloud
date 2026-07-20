@@ -9,8 +9,8 @@ export const COMPANY_BUSINESS_TYPES = [
 export type CompanyBusinessType = (typeof COMPANY_BUSINESS_TYPES)[number];
 
 /**
- * Business types that sell B2B / run Active Sales and B2B Product management.
- * Covers central kitchen, warehouse (same canonical label), distributor, and manufacturer.
+ * Business types that can use Active Sales / Sales Order (wholesale selling).
+ * Central kitchen & warehouse share one label; includes distributor and manufacturer.
  */
 export const SUPPLY_SIDE_BUSINESS_TYPES = [
   'Central Kitchen / Warehouse (supply only)',
@@ -20,13 +20,33 @@ export const SUPPLY_SIDE_BUSINESS_TYPES = [
 
 export type SupplySideBusinessType = (typeof SUPPLY_SIDE_BUSINESS_TYPES)[number];
 
+/**
+ * Business types that can create/manage B2B products.
+ * Central Kitchen / Warehouse and Manufacturer only (not Distributor or Restaurant).
+ */
+export const B2B_PRODUCT_BUSINESS_TYPES = [
+  'Central Kitchen / Warehouse (supply only)',
+  'Manufacturer',
+] as const satisfies readonly CompanyBusinessType[];
+
+export type B2bProductBusinessType = (typeof B2B_PRODUCT_BUSINESS_TYPES)[number];
+
 export function isSupplySideBusinessType(type: string | null | undefined): boolean {
   return SUPPLY_SIDE_BUSINESS_TYPES.includes(type as SupplySideBusinessType);
 }
 
-/** True when any of the given types is a supply-side (B2B) business type. */
+export function isB2bProductBusinessType(type: string | null | undefined): boolean {
+  return B2B_PRODUCT_BUSINESS_TYPES.includes(type as B2bProductBusinessType);
+}
+
+/** True when any of the given types is a supply-side (Active Sales) business type. */
 export function hasSupplySideBusinessType(types: readonly string[] | null | undefined): boolean {
   return (types ?? []).some(isSupplySideBusinessType);
+}
+
+/** True when any of the given types can manage B2B products. */
+export function hasB2bProductBusinessType(types: readonly string[] | null | undefined): boolean {
+  return (types ?? []).some(isB2bProductBusinessType);
 }
 
 export const COMPANY_VENDOR_POLICY_TAGS = [
@@ -216,27 +236,24 @@ export function resolveLocationProfileForDisplay(
   };
 }
 
-/**
- * Whether the org context can use Active Sales / B2B Product features.
- * Uses selected locations' effective business types (empty location types inherit company).
- * When no location is selected, uses the company profile.
- */
-export function resolveOrgHasSupplySideCapability(
-  company: {
-    id?: number;
-    businessTypesJson?: string | null;
-  } | null | undefined,
-  locations: {
-    companyId?: number | null;
-    externalId: string;
-    businessTypesJson?: string;
-    vendorPolicyTagsJson?: string;
-    profileOverridden?: boolean;
-  }[],
-  locationExternalIds: string[],
-): boolean {
-  if (!company) return false;
+type OrgCapabilityCompany = {
+  id?: number;
+  businessTypesJson?: string | null;
+};
 
+type OrgCapabilityLocation = {
+  companyId?: number | null;
+  externalId: string;
+  businessTypesJson?: string;
+  vendorPolicyTagsJson?: string;
+  profileOverridden?: boolean;
+};
+
+function resolveOrgEffectiveBusinessTypes(
+  company: OrgCapabilityCompany,
+  locations: OrgCapabilityLocation[],
+  locationExternalIds: string[],
+): string[] {
   const companyTypes = parseStringArrayJson(company.businessTypesJson);
   const scopedLocations = locationExternalIds.length === 0
     ? locations.filter(loc => loc.companyId == null || loc.companyId === company.id)
@@ -245,18 +262,50 @@ export function resolveOrgHasSupplySideCapability(
       && locationExternalIds.includes(loc.externalId),
     );
 
-  if (scopedLocations.length === 0) {
-    return hasSupplySideBusinessType(companyTypes);
-  }
+  if (scopedLocations.length === 0) return companyTypes;
 
+  const union = new Set<string>();
   for (const loc of scopedLocations) {
     const resolved = resolveLocationProfileForDisplay(loc, company);
     const types = parseStringArrayJson(resolved.businessTypesJson);
     const effective = types.length > 0 ? types : companyTypes;
-    if (hasSupplySideBusinessType(effective)) return true;
+    for (const type of effective) union.add(type);
   }
+  return [...union];
+}
 
-  return false;
+function resolveOrgHasCapability(
+  company: OrgCapabilityCompany | null | undefined,
+  locations: OrgCapabilityLocation[],
+  locationExternalIds: string[],
+  matcher: (types: readonly string[]) => boolean,
+): boolean {
+  if (!company) return false;
+  return matcher(resolveOrgEffectiveBusinessTypes(company, locations, locationExternalIds));
+}
+
+/**
+ * Whether the org context can use Active Sales / Sales Order.
+ * Uses selected locations' effective business types (empty location types inherit company).
+ */
+export function resolveOrgHasSupplySideCapability(
+  company: OrgCapabilityCompany | null | undefined,
+  locations: OrgCapabilityLocation[],
+  locationExternalIds: string[],
+): boolean {
+  return resolveOrgHasCapability(company, locations, locationExternalIds, hasSupplySideBusinessType);
+}
+
+/**
+ * Whether the org context can create/manage B2B products
+ * (Central Kitchen / Warehouse or Manufacturer).
+ */
+export function resolveOrgHasB2bProductCapability(
+  company: OrgCapabilityCompany | null | undefined,
+  locations: OrgCapabilityLocation[],
+  locationExternalIds: string[],
+): boolean {
+  return resolveOrgHasCapability(company, locations, locationExternalIds, hasB2bProductBusinessType);
 }
 
 export function buildLocationProfilePayload(
