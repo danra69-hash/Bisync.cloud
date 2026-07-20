@@ -1979,6 +1979,13 @@ export const api = {
       'POST',
       data,
     ),
+  registrationPolicy: () =>
+    fetchJson<{
+      demoMode: boolean;
+      goLive: boolean;
+      registrationRestricted: boolean;
+      allowedEmailDomains: string[];
+    }>('/api/auth/registration-policy'),
   geoHint: () => fetchJson<{ countryCode: string; source: string }>('/api/auth/geo-hint'),
   confirmActivation: (token: string) =>
     fetchJsonWithMethod<{ message: string; email: string }>(

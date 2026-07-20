@@ -67,6 +67,15 @@ export type DevQaHistoryRow = {
   resultsJson: string;
 };
 
+export type DevLaunchSettings = {
+  demoMode: boolean;
+  goLive: boolean;
+  registrationRestricted: boolean;
+  allowedEmailDomains: string[];
+  updatedAt?: string | null;
+  updatedByEmail?: string;
+};
+
 import { getDevConsoleToken } from './devConsoleSession';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -99,6 +108,12 @@ export const devConsoleApi = {
   rollups: () => fetchJson<DevUsageResponse>('/api/dev-console/rollups'),
   refreshRollups: () =>
     fetchJson<DevUsageResponse>('/api/dev-console/rollups/refresh', { method: 'POST' }),
+  launchSettings: () => fetchJson<DevLaunchSettings>('/api/dev-console/launch-settings'),
+  updateLaunchSettings: (payload: { demoMode: boolean; goLive: boolean }) =>
+    fetchJson<DevLaunchSettings>('/api/dev-console/launch-settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
   qaHistory: (take = 30) => fetchJson<DevQaHistoryRow[]>(`/api/dev-console/qa/history?take=${take}`),
   startQaRun: (payload: { triggeredBy: string; status?: string; summary?: string; resultsJson?: string }) =>
     fetchJson<{ id: number; startedAt: string; status: string }>('/api/dev-console/qa/runs', {

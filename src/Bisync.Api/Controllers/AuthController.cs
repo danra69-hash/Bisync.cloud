@@ -19,7 +19,8 @@ public class AuthController(
     LocationPartitionService locationPartitions,
     CompanyOperationalDbProvisioner companyDbProvisioner,
     ISystemAuditService systemAudit,
-    IHttpClientFactory httpClientFactory) : ControllerBase
+    IHttpClientFactory httpClientFactory,
+    PlatformLaunchService platformLaunch) : ControllerBase
 {
     public record LoginRequest(string Email, string Password);
 
@@ -146,6 +147,22 @@ public class AuthController(
         return Ok(new { countryCode = "MY", source = "fallback" });
     }
 
+    /// <summary>
+    /// Public registration policy (demo domain allowlist vs go-live open signup).
+    /// </summary>
+    [HttpGet("registration-policy")]
+    public async Task<ActionResult<object>> RegistrationPolicy(CancellationToken ct)
+    {
+        var status = await platformLaunch.GetStatusAsync(ct);
+        return Ok(new
+        {
+            demoMode = status.DemoMode,
+            goLive = status.GoLive,
+            registrationRestricted = status.RegistrationRestricted,
+            allowedEmailDomains = status.AllowedEmailDomains,
+        });
+    }
+
     [HttpPost("register")]
     public async Task<ActionResult<object>> Register([FromBody] RegisterRequest request)
     {
@@ -163,6 +180,11 @@ public class AuthController(
             return BadRequest(new { message = "Surname and given name are required." });
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
             return BadRequest(new { message = "A valid email address is required." });
+
+        var domainBlock = await platformLaunch.ValidateRegistrationEmailAsync(email);
+        if (domainBlock is not null)
+            return BadRequest(new { message = domainBlock });
+
         if (string.IsNullOrWhiteSpace(mobile))
             return BadRequest(new { message = "Mobile number is required." });
         if (password.Length < 8)

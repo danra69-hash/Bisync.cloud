@@ -40,6 +40,8 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
   const [successEmail, setSuccessEmail] = useState<string | null>(null);
   const [geoStatus, setGeoStatus] = useState<'loading' | 'ready'>('loading');
+  const [demoRestricted, setDemoRestricted] = useState(false);
+  const [allowedDomains, setAllowedDomains] = useState<string[]>(['cubevalue.com', 'pasar.ai']);
   const countryManualRef = useRef(false);
   const languageManualRef = useRef(false);
 
@@ -47,6 +49,23 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
   useEffect(() => {
     void setAppLocale(preferredLanguage);
   }, [preferredLanguage]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.registrationPolicy()
+      .then(policy => {
+        if (cancelled) return;
+        setDemoRestricted(Boolean(policy.registrationRestricted));
+        if (Array.isArray(policy.allowedEmailDomains) && policy.allowedEmailDomains.length > 0) {
+          setAllowedDomains(policy.allowedEmailDomains);
+        }
+      })
+      .catch(() => {
+        // Default to demo-safe restriction messaging if policy endpoint is unavailable.
+        if (!cancelled) setDemoRestricted(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -126,6 +145,14 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
     if (digits.length < 8) {
       setError(t('auth.mobileRequired'));
       return;
+    }
+    if (demoRestricted) {
+      const at = email.trim().toLowerCase().lastIndexOf('@');
+      const domain = at >= 0 ? email.trim().toLowerCase().slice(at + 1) : '';
+      if (!allowedDomains.includes(domain)) {
+        setError(`Demo site: registration is limited to ${allowedDomains.map(d => `@${d}`).join(' / ')} until Go live.`);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -296,6 +323,11 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
                   required
                   className={inputCls}
                 />
+                {demoRestricted && (
+                  <p className="mt-1.5 text-xs text-herme-ink/45">
+                    Demo site — use {allowedDomains.map(d => `@${d}`).join(' or ')} until Go live.
+                  </p>
+                )}
               </div>
 
               <div>

@@ -3,6 +3,7 @@ import { LogOut } from 'lucide-react';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { UsageDashboard } from '../components/dev/UsageDashboard';
 import { TenantRollupsPanel } from '../components/dev/TenantRollupsPanel';
+import { DemoLaunchPanel } from '../components/dev/DemoLaunchPanel';
 import { AutomatedQaPanel } from '../components/dev/AutomatedQaPanel';
 import { AuditTrailPanel } from '../components/dev/AuditTrailPanel';
 import { SystemAuditTrailTab } from '../components/admin/SystemAuditTrailTab';
@@ -147,7 +148,10 @@ export function DevConsolePage() {
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-10">
         <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
-          <UsageDashboard />
+          <>
+            <DemoLaunchPanel isRoot={sessionUser.isRoot} />
+            <UsageDashboard />
+          </>
         )}
         {tab === 'tenant-rollups' && (
           <TenantRollupsPanel />
