@@ -26,6 +26,7 @@ import {
 } from '../../data/productParStock';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
 import {
   blankProductAlias,
   blankProductLine,
@@ -447,6 +448,7 @@ export function ProductsPage({
 }: Props) {
   const { rm, cogsPercent } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
+  const hasSupplyCapability = useOrgSupplyCapability(selectedCompanyId, selectedLocationIds);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -578,6 +580,13 @@ export function ProductsPage({
     if (selectedProductId) return;
     setProductLocationIds(selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
   }, [selectedLocationIds, selectedProductId]);
+
+  useEffect(() => {
+    if (hasSupplyCapability || !b2bEnabled) return;
+    setB2bEnabled(false);
+    setB2cEnabled(true);
+    setB2bSalesConfig(blankB2bSalesConfig());
+  }, [hasSupplyCapability, b2bEnabled]);
 
   useEffect(() => {
     if (!editorRequest) return;
@@ -1091,6 +1100,10 @@ export function ProductsPage({
       setB2bSalesConfig(blankB2bSalesConfig());
       return;
     }
+    if (!hasSupplyCapability) {
+      showSaveError('B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.');
+      return;
+    }
     setB2bEnabled(true);
     setB2cEnabled(false);
     if (rrp.trim()) {
@@ -1128,6 +1141,10 @@ export function ProductsPage({
     }
     if (!isSubProduct && b2cEnabled && b2bEnabled) {
       showSaveError('A product must be either B2C or B2B, not both.');
+      return;
+    }
+    if (!isSubProduct && b2bEnabled && !hasSupplyCapability) {
+      showSaveError('B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.');
       return;
     }
 
@@ -1460,12 +1477,21 @@ export function ProductsPage({
                     />
                     B2C
                   </label>
-                  <label className={`inline-flex items-center gap-2 text-xs ${isSubProduct ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                  <label
+                    className={`inline-flex items-center gap-2 text-xs ${
+                      isSubProduct || !hasSupplyCapability ? 'cursor-not-allowed' : 'cursor-pointer'
+                    }`}
+                    title={
+                      !hasSupplyCapability
+                        ? 'B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.'
+                        : undefined
+                    }
+                  >
                     <input
                       type="radio"
                       name="product-type"
                       checked={b2bEnabled}
-                      disabled={isSubProduct}
+                      disabled={isSubProduct || !hasSupplyCapability}
                       onChange={() => handleB2bEnabledChange(true)}
                       className="border-border disabled:cursor-not-allowed"
                     />
@@ -1475,6 +1501,10 @@ export function ProductsPage({
                 {isSubProduct ? (
                   <p className="text-[10px] text-muted-foreground">
                     Sub-products are made or prepped as part of a B2C or B2B product — they are not sold directly on a channel.
+                  </p>
+                ) : !hasSupplyCapability ? (
+                  <p className="text-[10px] text-muted-foreground">
+                    B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer.
                   </p>
                 ) : (
                   <p className="text-[10px] text-muted-foreground">

@@ -24,6 +24,8 @@ import { useAppTranslation } from '../../i18n/useAppTranslation';
 import { setComponentCatalogCompanyId } from '../../data/componentCatalogConfig';
 import { ensureRevMgmtConfig } from '../../data/revMgmtConfigStore';
 import { refreshVendorProductCatalog } from '../../data/vendorProductCatalog';
+import { isSupplySideNavLabel } from '../../data/revenueManagement';
+import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
@@ -36,6 +38,7 @@ function renderRevMgmtContent(
   selectedCompanyId: number | null,
   selectedLocationIds: string[],
   onSelectItem?: (id: string | null) => void,
+  hasSupplyCapability = true,
 ) {
   if (!selectedItem) {
     return (
@@ -48,6 +51,16 @@ function renderRevMgmtContent(
   }
 
   const [section, subtitle, label] = selectedItem.split('||');
+
+  if (!hasSupplyCapability && isSupplySideNavLabel(label)) {
+    return (
+      <div className="p-2 sm:p-3 w-full min-w-0">
+        <p className="text-sm text-muted-foreground">
+          Active Sales and B2B products are available for Central Kitchen / Warehouse, Distributor, and Manufacturer locations.
+        </p>
+      </div>
+    );
+  }
 
   switch (label) {
     case 'Smart Component':
@@ -196,6 +209,7 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
   const { t } = useAppTranslation();
   const [revItem, setRevItem] = useState<string | null>(null);
   const [posItem, setPosItem] = useState<string | null>(null);
+  const hasSupplyCapability = useOrgSupplyCapability(selectedCompanyId, selectedLocationIds);
 
   useEffect(() => {
     void refreshVendorProductCatalog();
@@ -206,6 +220,14 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
     if (!selectedCompanyId) return;
     void ensureRevMgmtConfig(selectedCompanyId);
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!revItem || hasSupplyCapability) return;
+    const label = revItem.split('||')[2];
+    if (isSupplySideNavLabel(label)) {
+      setRevItem(null);
+    }
+  }, [revItem, hasSupplyCapability]);
 
   if (section === 'Point-of-Sales') {
     return (
@@ -224,9 +246,19 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
 
   return (
     <RevMgmtTitleProvider revItem={revItem}>
-      <RevMgmtBar selectedItem={revItem} onSelectItem={setRevItem} />
+      <RevMgmtBar
+        selectedItem={revItem}
+        onSelectItem={setRevItem}
+        hasSupplyCapability={hasSupplyCapability}
+      />
       {revItem && <RevMgmtPageTitle revItem={revItem} />}
-      {renderRevMgmtContent(revItem, selectedCompanyId, selectedLocationIds, setRevItem)}
+      {renderRevMgmtContent(
+        revItem,
+        selectedCompanyId,
+        selectedLocationIds,
+        setRevItem,
+        hasSupplyCapability,
+      )}
     </RevMgmtTitleProvider>
   );
 }

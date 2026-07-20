@@ -8,6 +8,27 @@ export const COMPANY_BUSINESS_TYPES = [
 
 export type CompanyBusinessType = (typeof COMPANY_BUSINESS_TYPES)[number];
 
+/**
+ * Business types that sell B2B / run Active Sales and B2B Product management.
+ * Covers central kitchen, warehouse (same canonical label), distributor, and manufacturer.
+ */
+export const SUPPLY_SIDE_BUSINESS_TYPES = [
+  'Central Kitchen / Warehouse (supply only)',
+  'Manufacturer',
+  'Distributor',
+] as const satisfies readonly CompanyBusinessType[];
+
+export type SupplySideBusinessType = (typeof SUPPLY_SIDE_BUSINESS_TYPES)[number];
+
+export function isSupplySideBusinessType(type: string | null | undefined): boolean {
+  return SUPPLY_SIDE_BUSINESS_TYPES.includes(type as SupplySideBusinessType);
+}
+
+/** True when any of the given types is a supply-side (B2B) business type. */
+export function hasSupplySideBusinessType(types: readonly string[] | null | undefined): boolean {
+  return (types ?? []).some(isSupplySideBusinessType);
+}
+
 export const COMPANY_VENDOR_POLICY_TAGS = [
   {
     id: 'halal',
@@ -193,6 +214,49 @@ export function resolveLocationProfileForDisplay(
     vendorPolicyTagsJson,
     inherits,
   };
+}
+
+/**
+ * Whether the org context can use Active Sales / B2B Product features.
+ * Uses selected locations' effective business types (empty location types inherit company).
+ * When no location is selected, uses the company profile.
+ */
+export function resolveOrgHasSupplySideCapability(
+  company: {
+    id?: number;
+    businessTypesJson?: string | null;
+  } | null | undefined,
+  locations: {
+    companyId?: number | null;
+    externalId: string;
+    businessTypesJson?: string;
+    vendorPolicyTagsJson?: string;
+    profileOverridden?: boolean;
+  }[],
+  locationExternalIds: string[],
+): boolean {
+  if (!company) return false;
+
+  const companyTypes = parseStringArrayJson(company.businessTypesJson);
+  const scopedLocations = locationExternalIds.length === 0
+    ? locations.filter(loc => loc.companyId == null || loc.companyId === company.id)
+    : locations.filter(loc =>
+      (loc.companyId == null || loc.companyId === company.id)
+      && locationExternalIds.includes(loc.externalId),
+    );
+
+  if (scopedLocations.length === 0) {
+    return hasSupplySideBusinessType(companyTypes);
+  }
+
+  for (const loc of scopedLocations) {
+    const resolved = resolveLocationProfileForDisplay(loc, company);
+    const types = parseStringArrayJson(resolved.businessTypesJson);
+    const effective = types.length > 0 ? types : companyTypes;
+    if (hasSupplySideBusinessType(effective)) return true;
+  }
+
+  return false;
 }
 
 export function buildLocationProfilePayload(

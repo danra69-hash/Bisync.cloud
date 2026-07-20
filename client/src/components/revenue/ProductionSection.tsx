@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { pageShellClass } from '../layout/pageLayout';
 import { ProductManagementPage } from './ProductManagementPage';
 import { SalesDataPage } from './SalesDataPage';
 import { B2bActiveOrderPage } from './B2bActiveOrderPage';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
 
 export type ProductionTab = 'b2bProduct' | 'activeOrder' | 'salesData' | 'subProduct';
 
@@ -13,9 +14,9 @@ type Props = {
   initialTab?: ProductionTab;
 };
 
-const TAB_ITEMS: { id: ProductionTab; label: string }[] = [
-  { id: 'b2bProduct', label: 'B2B Product' },
-  { id: 'activeOrder', label: 'Active Order' },
+const ALL_TAB_ITEMS: { id: ProductionTab; label: string; supplyOnly?: boolean }[] = [
+  { id: 'b2bProduct', label: 'B2B Product', supplyOnly: true },
+  { id: 'activeOrder', label: 'Active Order', supplyOnly: true },
   { id: 'salesData', label: 'Sales Data' },
   { id: 'subProduct', label: 'Sub-Product' },
 ];
@@ -25,18 +26,39 @@ export function ProductionSection({
   selectedLocationIds,
   initialTab = 'b2bProduct',
 }: Props) {
-  const [tab, setTab] = useState<ProductionTab>(initialTab);
-  const activeLabel = TAB_ITEMS.find(item => item.id === tab)?.label ?? 'B2B Product';
+  const hasSupplyCapability = useOrgSupplyCapability(selectedCompanyId, selectedLocationIds);
+  const tabItems = useMemo(
+    () => ALL_TAB_ITEMS.filter(item => hasSupplyCapability || !item.supplyOnly),
+    [hasSupplyCapability],
+  );
+
+  const resolvedInitial = useMemo((): ProductionTab => {
+    if (!hasSupplyCapability && (initialTab === 'b2bProduct' || initialTab === 'activeOrder')) {
+      return 'subProduct';
+    }
+    return initialTab;
+  }, [initialTab, hasSupplyCapability]);
+
+  const [tab, setTab] = useState<ProductionTab>(resolvedInitial);
+  const activeLabel = tabItems.find(item => item.id === tab)?.label
+    ?? tabItems[0]?.label
+    ?? 'Sub-Product';
   useRevMgmtPageLabel(activeLabel);
 
   useEffect(() => {
-    setTab(initialTab);
-  }, [initialTab]);
+    setTab(resolvedInitial);
+  }, [resolvedInitial]);
+
+  useEffect(() => {
+    if (!tabItems.some(item => item.id === tab) && tabItems[0]) {
+      setTab(tabItems[0].id);
+    }
+  }, [tab, tabItems]);
 
   return (
     <div className={pageShellClass({ spacing: 'default' })}>
       <div className="flex gap-1 border-b border-border">
-        {TAB_ITEMS.map(item => (
+        {tabItems.map(item => (
           <button
             key={item.id}
             type="button"
@@ -52,14 +74,14 @@ export function ProductionSection({
         ))}
       </div>
 
-      {tab === 'b2bProduct' ? (
+      {tab === 'b2bProduct' && hasSupplyCapability ? (
         <ProductManagementPage
           embedded
           viewMode="b2b"
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />
-      ) : tab === 'activeOrder' ? (
+      ) : tab === 'activeOrder' && hasSupplyCapability ? (
         <B2bActiveOrderPage
           embedded
           selectedCompanyId={selectedCompanyId}
