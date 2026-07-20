@@ -18,6 +18,8 @@ public class Company
     public string Fax { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
+    /// <summary>UTC timestamp when the company tenant was first registered.</summary>
+    public DateTime? RegisteredAt { get; set; }
     /// <summary>JSON array of business type labels.</summary>
     public string BusinessTypesJson { get; set; } = "[]";
     /// <summary>JSON array of vendor policy tag ids: halal, muslim-friendly, non-halal.</summary>

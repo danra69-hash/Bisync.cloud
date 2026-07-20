@@ -314,6 +314,10 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
             e.Property(x => x.Currency).HasMaxLength(8);
             e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.PaymentMethod).HasMaxLength(32);
+            e.Property(x => x.PaymentReference).HasMaxLength(128);
+            e.Property(x => x.BankName).HasMaxLength(128);
         });
     }
 }

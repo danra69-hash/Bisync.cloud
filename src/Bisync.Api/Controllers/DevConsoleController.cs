@@ -19,6 +19,7 @@ public class DevConsoleController(
     IConfiguration config,
     IWebHostEnvironment env,
     TenantRollupService rollupService,
+    LocationSubscriptionService locationSubscriptions,
     PlatformLaunchService platformLaunch,
     DevConsoleAuthService devConsoleAuth) : ControllerBase
 {
@@ -139,6 +140,116 @@ public class DevConsoleController(
         return Ok(ToUsageResponse(rollup));
     }
 
+    /// <summary>Company + locations for Edit Status side panel.</summary>
+    [HttpGet("subscriptions/company/{companyId:int}")]
+    public async Task<ActionResult<object>> GetCompanySubscriptionPanel(int companyId, CancellationToken ct)
+    {
+        var blocked = Guard();
+        if (blocked is not null) return blocked;
+
+        var panel = await locationSubscriptions.GetCompanyPanelAsync(companyId, ct);
+        if (panel is null) return NotFound(new { message = "Company not found." });
+        return Ok(panel);
+    }
+
+    public record ExtendTrialRequest(int CompanyId, string LocationExternalId, int Months = 1);
+
+    /// <summary>Extend free trial by N months (also unlocks a locked location after expiry).</summary>
+    [HttpPost("subscriptions/extend-trial")]
+    public async Task<ActionResult<object>> ExtendTrial([FromBody] ExtendTrialRequest req, CancellationToken ct)
+    {
+        var blocked = Guard();
+        if (blocked is not null) return blocked;
+        if (req.CompanyId <= 0) return BadRequest(new { message = "CompanyId is required." });
+        if (string.IsNullOrWhiteSpace(req.LocationExternalId))
+            return BadRequest(new { message = "LocationExternalId is required." });
+        if (req.Months is < 1 or > 36)
+            return BadRequest(new { message = "Months must be between 1 and 36." });
+
+        try
+        {
+            await locationSubscriptions.ExtendFreeTrialAsync(
+                req.CompanyId,
+                req.LocationExternalId.Trim(),
+                req.Months,
+                ct);
+            var panel = await locationSubscriptions.GetCompanyPanelAsync(req.CompanyId, ct);
+            var loc = panel?.Locations.FirstOrDefault(l =>
+                string.Equals(l.LocationExternalId, req.LocationExternalId.Trim(), StringComparison.OrdinalIgnoreCase));
+            return Ok(new
+            {
+                companyId = req.CompanyId,
+                locationExternalId = req.LocationExternalId.Trim(),
+                status = loc?.Status,
+                statusLabel = loc?.StatusLabel,
+                statusDate = loc?.StatusDate,
+                expiryDate = loc?.ExpiryDate,
+                yearsRenewed = loc?.YearsRenewed ?? 0,
+                panel,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    public record ActivateYearRequest(
+        int CompanyId,
+        string LocationExternalId,
+        DateTime CommencementDate,
+        string PaymentMethod,
+        string PaymentReference,
+        string? BankName = null,
+        decimal? Amount = null,
+        string? Currency = null);
+
+    /// <summary>Activate or renew a 1-year subscription with payment details.</summary>
+    [HttpPost("subscriptions/activate-year")]
+    public async Task<ActionResult<object>> ActivateYear([FromBody] ActivateYearRequest req, CancellationToken ct)
+    {
+        var blocked = Guard();
+        if (blocked is not null) return blocked;
+        if (req.CompanyId <= 0) return BadRequest(new { message = "CompanyId is required." });
+        if (string.IsNullOrWhiteSpace(req.LocationExternalId))
+            return BadRequest(new { message = "LocationExternalId is required." });
+
+        try
+        {
+            await locationSubscriptions.ActivateYearSubscriptionAsync(
+                req.CompanyId,
+                req.LocationExternalId.Trim(),
+                req.CommencementDate,
+                req.PaymentMethod,
+                req.PaymentReference,
+                req.BankName,
+                req.Amount,
+                req.Currency,
+                ct);
+            var panel = await locationSubscriptions.GetCompanyPanelAsync(req.CompanyId, ct);
+            var loc = panel?.Locations.FirstOrDefault(l =>
+                string.Equals(l.LocationExternalId, req.LocationExternalId.Trim(), StringComparison.OrdinalIgnoreCase));
+            return Ok(new
+            {
+                companyId = req.CompanyId,
+                locationExternalId = req.LocationExternalId.Trim(),
+                status = loc?.Status,
+                statusLabel = loc?.StatusLabel,
+                statusDate = loc?.StatusDate,
+                expiryDate = loc?.ExpiryDate,
+                yearsRenewed = loc?.YearsRenewed ?? 0,
+                paymentMethod = loc?.PaymentMethod,
+                paymentReference = loc?.PaymentReference,
+                bankName = loc?.BankName,
+                panel,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     static object ToUsageResponse(TenantRollupResult rollup) => new
     {
         generatedAt = rollup.GeneratedAt,
@@ -175,14 +286,21 @@ public class DevConsoleController(
             locationName = l.LocationName,
             companyId = l.CompanyId,
             companyName = l.CompanyName,
+            registeredAt = l.RegisteredAt,
             inventoryMovements = l.InventoryMovements,
             apiCalls30d = l.ApiCalls30d,
+            status = l.Status,
+            statusLabel = l.StatusLabel,
+            statusDate = l.StatusDate,
+            expiryDate = l.ExpiryDate,
+            yearsRenewed = l.YearsRenewed,
             subscribedSince = l.SubscribedSince,
             lastPaymentDate = l.LastPaymentDate,
             amount = l.Amount,
             currency = l.Currency,
             renewalDate = l.RenewalDate,
             subscriptionActive = l.SubscriptionActive,
+            locked = l.Locked,
         }),
     };
 

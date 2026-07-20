@@ -91,6 +91,7 @@ builder.Services.AddScoped<TransferService>();
 builder.Services.AddScoped<LocationPartitionService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
 builder.Services.AddScoped<TenantRollupService>();
+builder.Services.AddScoped<LocationSubscriptionService>();
 builder.Services.AddScoped<VendorRatingService>();
 builder.Services.AddScoped<PlatformLaunchService>();
 builder.Services.Configure<DevConsoleAuthOptions>(
@@ -163,6 +164,7 @@ using (var scope = app.Services.CreateScope())
     await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
     await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
     await SchemaPatcher.EnsureTenantRegistryAsync(db);
+    await scope.ServiceProvider.GetRequiredService<LocationSubscriptionService>().EnsureSchemaAsync();
     await HrStartup.InitializeAsync(db);
     await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
     await SystemAuditStartup.InitializeAsync(scope.ServiceProvider);

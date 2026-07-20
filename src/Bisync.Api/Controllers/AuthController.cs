@@ -20,7 +20,8 @@ public class AuthController(
     CompanyOperationalDbProvisioner companyDbProvisioner,
     ISystemAuditService systemAudit,
     IHttpClientFactory httpClientFactory,
-    PlatformLaunchService platformLaunch) : ControllerBase
+    PlatformLaunchService platformLaunch,
+    LocationSubscriptionService locationSubscriptions) : ControllerBase
 {
     public record LoginRequest(string Email, string Password);
 
@@ -96,12 +97,32 @@ public class AuthController(
         if (!passwordValid)
             return StatusCode(401, new { message = "Invalid email or password." });
 
+        Company? company = null;
+        if (user.CompanyId is > 0)
+        {
+            company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == user.CompanyId.Value);
+            if (company is not null
+                && !string.Equals(user.Email, SuperAdminAccess.SuperAdminEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var billingLocked = await locationSubscriptions.IsCompanyBillingLockedAsync(company.Id);
+                if (billingLocked || !company.Active)
+                {
+                    // Re-check: inactive solely from admin vs billing lock
+                    if (billingLocked || !company.Active)
+                    {
+                        return StatusCode(403, new
+                        {
+                            message = "This account is locked because the free trial or subscription has expired. Contact Bisync support to reactivate.",
+                            code = "subscription_locked",
+                        });
+                    }
+                }
+            }
+        }
+
         var companies = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
         var locations = await db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name);
 
-        Company? company = null;
-        if (user.CompanyId is > 0)
-            company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == user.CompanyId.Value);
         await systemAudit.RecordLoginAsync(user, company);
 
         return Ok(MapUser(user, companies, locations));
