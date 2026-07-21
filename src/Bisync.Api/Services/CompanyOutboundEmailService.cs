@@ -204,12 +204,34 @@ public static class CompanyOutboundEmailService
         bool? customUseSsl = null)
     {
         var mode = NormalizeProviderMode(providerMode);
+        var host = (customHost ?? string.Empty).Trim();
+        var port = customPort is > 0 and <= 65535 ? customPort.Value : 587;
+        var useSsl = customUseSsl ?? true;
+
+        // Manual host always wins — tenant keyed in the essential server details.
+        if (!string.IsNullOrWhiteSpace(host))
+        {
+            var label = mode switch
+            {
+                ModeMicrosoft => "Microsoft 365",
+                ModeGoogle => "Google Workspace",
+                ModeCustom => "Custom SMTP",
+                _ => $"SMTP ({host})",
+            };
+            return
+            [
+                new ProviderProfile(
+                    mode == ModeAuto ? "manual" : mode,
+                    label,
+                    host,
+                    port,
+                    useSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
+                    ResolveProviderForMode(email, mode).Tip),
+            ];
+        }
 
         if (mode == ModeCustom)
         {
-            var host = (customHost ?? string.Empty).Trim();
-            var port = customPort is > 0 and <= 65535 ? customPort.Value : 587;
-            var useSsl = customUseSsl ?? true;
             return
             [
                 new ProviderProfile(
@@ -280,15 +302,17 @@ public static class CompanyOutboundEmailService
         string email,
         string password,
         string? fromName = null,
-        ProviderProfile? profile = null)
+        ProviderProfile? profile = null,
+        string? username = null)
     {
         var address = (email ?? string.Empty).Trim();
         var provider = profile ?? ResolveProvider(address);
+        var user = string.IsNullOrWhiteSpace(username) ? address : username.Trim();
         return new SmtpSettings(
             provider.Host,
             provider.Port,
             provider.Security,
-            address,
+            user,
             NormalizePassword(password),
             address,
             string.IsNullOrWhiteSpace(fromName) ? string.Empty : fromName.Trim(),
@@ -304,16 +328,18 @@ public static class CompanyOutboundEmailService
         string? providerMode = null,
         string? customHost = null,
         int? customPort = null,
-        bool? customUseSsl = null)
+        bool? customUseSsl = null,
+        string? username = null)
     {
         var email = (outboundEmail ?? string.Empty).Trim();
         var mode = NormalizeProviderMode(providerMode ?? target.SmtpProviderMode);
         target.SmtpProviderMode = mode;
+        var user = string.IsNullOrWhiteSpace(username) ? email : username.Trim();
 
         if (!IsLikelyEmail(email))
         {
             target.SmtpFromEmail = email;
-            target.SmtpUsername = email;
+            target.SmtpUsername = user;
             if (!string.IsNullOrWhiteSpace(fromName))
                 target.SmtpFromName = fromName.Trim();
             if (passwordOrNullToKeep is not null)
@@ -321,28 +347,36 @@ public static class CompanyOutboundEmailService
             return;
         }
 
-        if (mode == ModeCustom)
+        var hostOverride = (customHost ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(hostOverride) || mode == ModeCustom)
         {
             target.SmtpFromEmail = email;
-            target.SmtpUsername = email;
+            target.SmtpUsername = user;
             target.SmtpFromName = string.IsNullOrWhiteSpace(fromName) ? target.SmtpFromName : fromName.Trim();
-            var host = (customHost ?? target.SmtpHost ?? string.Empty).Trim();
-            target.SmtpHost = host;
+            if (string.IsNullOrWhiteSpace(hostOverride))
+            {
+                var profile = ResolveProviderForMode(email, mode == ModeCustom ? ModeMicrosoft : mode);
+                hostOverride = profile.Host;
+                customPort ??= profile.Port;
+                customUseSsl ??= true;
+            }
+
+            target.SmtpHost = hostOverride;
             target.SmtpPort = customPort is > 0 and <= 65535 ? customPort.Value
                 : target.SmtpPort is > 0 and <= 65535 ? target.SmtpPort : 587;
-            target.SmtpUseSsl = customUseSsl ?? target.SmtpUseSsl;
+            target.SmtpUseSsl = customUseSsl ?? true;
             if (passwordOrNullToKeep is not null)
                 target.SmtpPassword = NormalizePassword(passwordOrNullToKeep);
             return;
         }
 
-        var profile = mode switch
+        var resolved = mode switch
         {
             ModeMicrosoft => MicrosoftStartTls,
             ModeGoogle => GoogleStartTls,
             _ => ResolveProvider(email),
         };
-        var settings = BuildSettings(email, passwordOrNullToKeep ?? string.Empty, fromName, profile);
+        var settings = BuildSettings(email, passwordOrNullToKeep ?? string.Empty, fromName, resolved, user);
         target.SmtpHost = settings.Host;
         target.SmtpPort = settings.Port;
         target.SmtpUseSsl = settings.Security is SecureSocketOptions.StartTls or SecureSocketOptions.SslOnConnect;
@@ -473,6 +507,7 @@ public static class CompanyOutboundEmailService
         string? customHost = null,
         int? customPort = null,
         bool? customUseSsl = null,
+        string? username = null,
         CancellationToken ct = default)
     {
         var email = outboundEmail.Trim();
@@ -480,12 +515,12 @@ public static class CompanyOutboundEmailService
         var candidates = ResolveCandidates(email, mode, customHost, customPort, customUseSsl);
         var errors = new List<string>();
 
-        if (mode == ModeCustom && string.IsNullOrWhiteSpace(customHost))
+        if (string.IsNullOrWhiteSpace(customHost) && mode == ModeCustom)
             throw new InvalidOperationException("Custom SMTP requires a host (for example smtp.sendgrid.net).");
 
         foreach (var profile in candidates)
         {
-            var settings = BuildSettings(email, password, fromName, profile);
+            var settings = BuildSettings(email, password, fromName, profile, username);
             try
             {
                 await SendAsync(settings, toEmail, subject, plainTextBody, ct);
@@ -581,6 +616,7 @@ public static class CompanyOutboundEmailService
         string? customHost = null,
         int? customPort = null,
         bool? customUseSsl = null,
+        string? username = null,
         CancellationToken ct = default)
     {
         var name = string.IsNullOrWhiteSpace(companyName) ? "your company" : companyName.Trim();
@@ -598,6 +634,7 @@ public static class CompanyOutboundEmailService
             customHost,
             customPort,
             customUseSsl,
+            username,
             ct);
     }
 }

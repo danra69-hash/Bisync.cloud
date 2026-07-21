@@ -30,6 +30,7 @@ import { CompanyProfileFields } from './CompanyProfileFields';
 import { ToggleSwitch } from './ToggleSwitch';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import {
+  defaultsForOutboundProvider,
   normalizeOutboundProviderMode,
   outboundEmailReady,
   tipForOutboundMode,
@@ -154,7 +155,19 @@ function CompanyPanel({
   // parent refreshes the same company after save (that previously cleared errors silently).
   const companyKey = !('id' in company) ? 'new' : String(company.id);
   useEffect(() => {
-    setForm(company);
+    const mode = normalizeOutboundProviderMode(
+      'smtpProviderMode' in company ? company.smtpProviderMode : 'auto',
+    );
+    const email = company.smtpFromEmail || '';
+    const defaults = defaultsForOutboundProvider(mode, email);
+    setForm({
+      ...company,
+      smtpProviderMode: mode,
+      smtpHost: (company.smtpHost ?? '').trim() || defaults.host,
+      smtpPort: company.smtpPort && company.smtpPort > 0 ? company.smtpPort : defaults.port,
+      smtpUseSsl: company.smtpUseSsl ?? defaults.useSsl,
+      smtpUsername: (company.smtpUsername ?? '').trim() || email,
+    });
     setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
     setVendorPolicyTags(parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
     setModules(parseCompanyModules(company.modulesJson));
@@ -168,7 +181,7 @@ function CompanyPanel({
     setForm(f => ({ ...f, [key]: val }));
     setError(null);
     if (key === 'smtpFromEmail' || key === 'smtpFromName' || key === 'smtpProviderMode'
-      || key === 'smtpHost' || key === 'smtpPort' || key === 'smtpUseSsl') {
+      || key === 'smtpHost' || key === 'smtpPort' || key === 'smtpUseSsl' || key === 'smtpUsername') {
       setOutboundFeedback(null);
     }
   }
@@ -200,6 +213,9 @@ function CompanyPanel({
   function buildPayload(active = form.active) {
     const outboundEmail = (form.smtpFromEmail ?? '').trim();
     const mode = providerMode;
+    const defaults = defaultsForOutboundProvider(mode, outboundEmail);
+    const host = (form.smtpHost ?? '').trim() || defaults.host;
+    const username = (form.smtpUsername ?? '').trim() || outboundEmail;
     return {
       ...form,
       active,
@@ -208,12 +224,12 @@ function CompanyPanel({
       modulesJson: serializeStringArray(modules),
       smtpProviderMode: mode,
       smtpFromEmail: outboundEmail,
-      smtpUsername: outboundEmail,
+      smtpUsername: username,
       smtpPassword: smtpPasswordDraft.trim(),
       smtpFromName: (form.smtpFromName ?? '').trim(),
-      smtpHost: mode === 'custom' ? (form.smtpHost ?? '').trim() : '',
-      smtpPort: mode === 'custom' ? (form.smtpPort && form.smtpPort > 0 ? form.smtpPort : 587) : 587,
-      smtpUseSsl: mode === 'custom' ? Boolean(form.smtpUseSsl ?? true) : true,
+      smtpHost: host,
+      smtpPort: form.smtpPort && form.smtpPort > 0 ? form.smtpPort : defaults.port,
+      smtpUseSsl: form.smtpUseSsl ?? defaults.useSsl,
     };
   }
 
@@ -225,8 +241,24 @@ function CompanyPanel({
       smtpPasswordDraft,
       Boolean(form.smtpPasswordSet),
       providerMode,
-      form.smtpHost ?? '',
+      (form.smtpHost ?? '').trim() || defaultsForOutboundProvider(providerMode, outboundAddress).host,
     );
+
+  function applyProviderMode(mode: OutboundProviderMode) {
+    const defaults = defaultsForOutboundProvider(mode, outboundAddress);
+    setForm(f => ({
+      ...f,
+      smtpProviderMode: mode,
+      // Prefill recommended host/port; custom keeps existing host if already typed.
+      smtpHost: mode === 'custom' && (f.smtpHost ?? '').trim()
+        ? f.smtpHost
+        : defaults.host,
+      smtpPort: defaults.port,
+      smtpUseSsl: defaults.useSsl,
+    }));
+    setError(null);
+    setOutboundFeedback(null);
+  }
 
   async function toggleActive() {
     if (isNew || !('id' in form)) return;
@@ -311,13 +343,13 @@ function CompanyPanel({
       smtpPasswordDraft,
       Boolean(form.smtpPasswordSet),
       providerMode,
-      form.smtpHost ?? '',
+      (form.smtpHost ?? '').trim() || defaultsForOutboundProvider(providerMode, address).host,
     )) {
       setOutboundFeedback({
         kind: 'error',
-        text: providerMode === 'custom' && !(form.smtpHost ?? '').trim()
-          ? 'Enter a custom SMTP host before testing.'
-          : 'Enter the outbound email address and password before testing.',
+        text: !(form.smtpHost ?? '').trim() && !defaultsForOutboundProvider(providerMode, address).host
+          ? 'Enter the SMTP host before testing.'
+          : 'Enter the outbound email, password, and SMTP host before testing.',
       });
       return;
     }
@@ -360,10 +392,11 @@ function CompanyPanel({
         toEmail: to,
         smtpFromEmail: address,
         smtpFromName: (form.smtpFromName ?? '').trim() || undefined,
+        smtpUsername: (form.smtpUsername ?? '').trim() || address,
         smtpProviderMode: providerMode,
-        smtpHost: providerMode === 'custom' ? (form.smtpHost ?? '').trim() : undefined,
-        smtpPort: providerMode === 'custom' ? (form.smtpPort || 587) : undefined,
-        smtpUseSsl: providerMode === 'custom' ? Boolean(form.smtpUseSsl ?? true) : undefined,
+        smtpHost: (payload.smtpHost as string) || undefined,
+        smtpPort: Number(payload.smtpPort) || 587,
+        smtpUseSsl: Boolean(payload.smtpUseSsl ?? true),
         // Pass draft password explicitly so test does not depend on a race with save.
         smtpPassword: passwordForTest || undefined,
       });
@@ -476,8 +509,8 @@ function CompanyPanel({
                 <div>
                   <p className="text-xs font-semibold">Outbound email</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Used to email purchase orders to vendors. Enter the mailbox address and password,
-                    then choose the mail provider if auto-detect is wrong.
+                    Enter the mailbox details your tenant provides: email, password, provider, and SMTP host.
+                    Choosing a provider prefills the usual host — you can edit everything before testing.
                   </p>
                 </div>
               </div>
@@ -491,7 +524,30 @@ function CompanyPanel({
                     type="email"
                     className={inputCls}
                     value={form.smtpFromEmail ?? ''}
-                    onChange={e => set('smtpFromEmail', e.target.value)}
+                    onChange={e => {
+                      const next = e.target.value;
+                      setForm(f => {
+                        const mode = normalizeOutboundProviderMode(f.smtpProviderMode);
+                        const defaults = defaultsForOutboundProvider(mode, next);
+                        const shouldPrefillHost = mode !== 'custom'
+                          && (!(f.smtpHost ?? '').trim()
+                            || f.smtpHost === 'smtp.office365.com'
+                            || f.smtpHost === 'smtp.gmail.com'
+                            || f.smtpHost === defaultsForOutboundProvider(mode, f.smtpFromEmail ?? '').host);
+                        return {
+                          ...f,
+                          smtpFromEmail: next,
+                          smtpUsername: !(f.smtpUsername ?? '').trim()
+                            || f.smtpUsername === (f.smtpFromEmail ?? '')
+                            ? next
+                            : f.smtpUsername,
+                          smtpHost: shouldPrefillHost ? defaults.host : f.smtpHost,
+                          smtpPort: shouldPrefillHost ? defaults.port : f.smtpPort,
+                        };
+                      });
+                      setError(null);
+                      setOutboundFeedback(null);
+                    }}
                     placeholder="orders@company.com"
                     autoComplete="off"
                   />
@@ -526,12 +582,12 @@ function CompanyPanel({
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                    Mail provider
+                    Mail provider *
                   </label>
                   <select
                     className={selectCls}
                     value={providerMode}
-                    onChange={e => set('smtpProviderMode', e.target.value as OutboundProviderMode)}
+                    onChange={e => applyProviderMode(e.target.value as OutboundProviderMode)}
                     disabled={testingEmail || saving}
                   >
                     {OUTBOUND_PROVIDER_MODES.map(m => (
@@ -539,51 +595,62 @@ function CompanyPanel({
                     ))}
                   </select>
                 </div>
-                {providerMode === 'custom' && (
-                  <>
-                    <div className="sm:col-span-2">
-                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                        SMTP host *
-                      </label>
-                      <input
-                        className={inputCls}
-                        value={form.smtpHost ?? ''}
-                        onChange={e => set('smtpHost', e.target.value)}
-                        placeholder="smtp.sendgrid.net"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                        Port
-                      </label>
-                      <input
-                        type="number"
-                        className={inputCls}
-                        value={form.smtpPort ?? 587}
-                        onChange={e => set('smtpPort', Number(e.target.value) || 587)}
-                        min={1}
-                        max={65535}
-                      />
-                    </div>
-                    <div className="flex items-end pb-1">
-                      <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(form.smtpUseSsl ?? true)}
-                          onChange={e => set('smtpUseSsl', e.target.checked)}
-                        />
-                        Use TLS / SSL
-                      </label>
-                    </div>
-                  </>
-                )}
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    SMTP host *
+                  </label>
+                  <input
+                    className={inputCls}
+                    value={form.smtpHost ?? ''}
+                    onChange={e => set('smtpHost', e.target.value)}
+                    placeholder="smtp.office365.com"
+                    autoComplete="off"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Microsoft: smtp.office365.com · Google: smtp.gmail.com · Relay: e.g. smtp.sendgrid.net
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Port *
+                  </label>
+                  <input
+                    type="number"
+                    className={inputCls}
+                    value={form.smtpPort ?? 587}
+                    onChange={e => set('smtpPort', Number(e.target.value) || 587)}
+                    min={1}
+                    max={65535}
+                  />
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.smtpUseSsl ?? true)}
+                      onChange={e => set('smtpUseSsl', e.target.checked)}
+                    />
+                    Use TLS / SSL
+                  </label>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    SMTP username
+                  </label>
+                  <input
+                    className={inputCls}
+                    value={form.smtpUsername ?? ''}
+                    onChange={e => set('smtpUsername', e.target.value)}
+                    placeholder="Usually the same as the email address"
+                    autoComplete="off"
+                  />
+                </div>
               </div>
 
               {providerInfo && (
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1">
                   <p className="text-[11px] font-medium">
-                    {providerMode === 'auto' ? `Detected: ${providerInfo.label}` : providerInfo.label}
+                    {providerMode === 'auto' ? `Suggested: ${providerInfo.label}` : providerInfo.label}
                   </p>
                   <p className="text-[11px] text-muted-foreground">{providerInfo.tip}</p>
                 </div>
@@ -615,7 +682,7 @@ function CompanyPanel({
                         ? 'Save the company first'
                         : canTestOutbound
                           ? 'Save and send a test email'
-                          : 'Enter email address and password first'
+                          : 'Enter email, password, and SMTP host first'
                     }
                     className="inline-flex items-center justify-center gap-1.5 shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -634,8 +701,9 @@ function CompanyPanel({
                       ? 'Enter the outbound email address above.'
                       : !(smtpPasswordDraft.trim() || form.smtpPasswordSet)
                         ? 'Enter the email password (Google/Microsoft MFA usually needs an App Password).'
-                        : providerMode === 'custom' && !(form.smtpHost ?? '').trim()
-                          ? 'Enter the custom SMTP host.'
+                        : !(form.smtpHost ?? '').trim()
+                            && !defaultsForOutboundProvider(providerMode, outboundAddress).host
+                          ? 'Enter the SMTP host.'
                           : 'Complete outbound email settings to send a test.'}
                   </p>
                 )}

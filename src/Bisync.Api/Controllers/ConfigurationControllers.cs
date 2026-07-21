@@ -59,7 +59,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
 
     /// <summary>
     /// Apply outbound email settings. Mode: auto | microsoft | google | custom.
-    /// Host / port are derived unless mode is custom.
+    /// When host/port are provided they are stored and used for send/test.
     /// </summary>
     static void ApplySmtpFields(Company target, Company source, bool isCreate)
     {
@@ -80,7 +80,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             mode,
             source.SmtpHost,
             source.SmtpPort,
-            source.SmtpUseSsl);
+            source.SmtpUseSsl,
+            source.SmtpUsername);
     }
 
     [HttpGet]
@@ -158,13 +159,14 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         string? SmtpPassword = null,
         string? SmtpFromEmail = null,
         string? SmtpFromName = null,
+        string? SmtpUsername = null,
         string? SmtpProviderMode = null,
         string? SmtpHost = null,
         int? SmtpPort = null,
         bool? SmtpUseSsl = null);
 
     /// <summary>
-    /// Send a test message. Provider mode: auto | microsoft | google | custom.
+    /// Send a test message. Uses the manually entered host/port when provided.
     /// Password empty = use saved password.
     /// </summary>
     [HttpPost("{id:int}/outbound-email/test")]
@@ -184,6 +186,11 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         var fromName = !string.IsNullOrWhiteSpace(req.SmtpFromName)
             ? req.SmtpFromName.Trim()
             : company.SmtpFromName;
+        var username = !string.IsNullOrWhiteSpace(req.SmtpUsername)
+            ? req.SmtpUsername.Trim()
+            : !string.IsNullOrWhiteSpace(company.SmtpUsername)
+                ? company.SmtpUsername.Trim()
+                : outboundEmail;
         var mode = CompanyOutboundEmailService.NormalizeProviderMode(
             !string.IsNullOrWhiteSpace(req.SmtpProviderMode) ? req.SmtpProviderMode : company.SmtpProviderMode);
         var customHost = !string.IsNullOrWhiteSpace(req.SmtpHost) ? req.SmtpHost.Trim() : company.SmtpHost;
@@ -199,8 +206,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         if (!CompanyOutboundEmailService.IsLikelyEmail(to))
             return BadRequest(new { message = "A valid test recipient email is required." });
 
-        if (mode == CompanyOutboundEmailService.ModeCustom && string.IsNullOrWhiteSpace(customHost))
-            return BadRequest(new { message = "Custom SMTP requires a host (for example smtp.sendgrid.net)." });
+        if (string.IsNullOrWhiteSpace(customHost))
+            return BadRequest(new { message = "SMTP host is required (for example smtp.office365.com)." });
 
         try
         {
@@ -214,6 +221,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 customHost,
                 customPort,
                 customUseSsl,
+                username,
                 ct);
 
             // Persist the working server + credentials used for the test.
@@ -235,7 +243,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 provider = providerLabel,
                 smtpHost = used.Host,
                 smtpProviderMode = mode,
-                message = $"Test email sent to {to} via {providerLabel}. Check the inbox (and spam) to confirm it works.",
+                message = $"Test email sent to {to} via {providerLabel} ({used.Host}:{used.Port}). Check the inbox (and spam) to confirm it works.",
             });
         }
         catch (Exception ex)
