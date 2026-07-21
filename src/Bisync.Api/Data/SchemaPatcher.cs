@@ -64,11 +64,7 @@ public static class SchemaPatcher
                 "Id" integer NOT NULL CONSTRAINT "PK_PlatformLaunchSettings" PRIMARY KEY,
                 "DemoMode" boolean NOT NULL DEFAULT TRUE,
                 "GoLive" boolean NOT NULL DEFAULT FALSE,
-<<<<<<< HEAD
-                "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{}',
-=======
                 "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{{}}',
->>>>>>> cursor/dev-console-module-go-live-ebcb
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "UpdatedByEmail" TEXT NOT NULL DEFAULT ''
             );
@@ -79,11 +75,6 @@ public static class SchemaPatcher
             "PlatformLaunchSettings",
             "ModulesGoLiveJson",
             "TEXT NOT NULL DEFAULT '{}'");
-
-        await db.Database.ExecuteSqlRawAsync("""
-            ALTER TABLE "PlatformLaunchSettings"
-            ADD COLUMN IF NOT EXISTS "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{}';
-            """);
 
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE "Vendors"
