@@ -22,6 +22,8 @@ export type TaggedB2bProductUnit = {
   productId: number;
   aliasId: number | null;
   unitKey: string;
+  appliedRrp?: number | null;
+  discountPercent?: number | null;
 };
 
 export type B2bCustomerTaggableUnitRow = {
@@ -35,7 +37,12 @@ export type B2bCustomerTaggableUnitRow = {
   unitTitle: string;
   deliveryPath: string;
   deliverySortQty: number;
+  /** Catalog / published RRP for the delivery unit. */
   rrp: number;
+  appliedRrp?: number | null;
+  discountPercent?: number | null;
+  /** Applied RRP when set, otherwise published RRP. */
+  sellingRrp: number;
   unitCogs: number;
 };
 
@@ -71,8 +78,91 @@ function productComponentLines(product: Product) {
   }));
 }
 
-function taggedUnitKey(unit: TaggedB2bProductUnit): string {
+function taggedUnitKey(unit: Pick<TaggedB2bProductUnit, 'productId' | 'aliasId' | 'unitKey'>): string {
   return `${unit.productId}:${unit.aliasId ?? 'p'}:${unit.unitKey}`;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function roundPercent(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Applied RRP from published RRP and discount % (e.g. 10 @ 20% → 8). */
+export function appliedRrpFromDiscount(publishedRrp: number, discountPercent: number): number {
+  if (!(publishedRrp > 0) || !Number.isFinite(discountPercent)) return 0;
+  const clamped = Math.min(100, Math.max(0, discountPercent));
+  return roundMoney(publishedRrp * (1 - clamped / 100));
+}
+
+/** Discount % from published RRP and applied RRP (e.g. 8 / 10 → 20). */
+export function discountPercentFromApplied(publishedRrp: number, appliedRrp: number): number {
+  if (!(publishedRrp > 0) || !Number.isFinite(appliedRrp) || appliedRrp < 0) return 0;
+  return roundPercent((1 - appliedRrp / publishedRrp) * 100);
+}
+
+/** Selling price for SO/invoice: applied RRP when set, otherwise published RRP. */
+export function resolveCustomerUnitSellingRrp(
+  publishedRrp: number,
+  tagged?: Pick<TaggedB2bProductUnit, 'appliedRrp'> | null,
+): number {
+  const applied = tagged?.appliedRrp;
+  if (typeof applied === 'number' && Number.isFinite(applied) && applied > 0) return applied;
+  return publishedRrp > 0 ? publishedRrp : 0;
+}
+
+export function updateTaggedUnitAppliedRrp(
+  units: TaggedB2bProductUnit[],
+  productId: number,
+  aliasId: number | null,
+  unitKey: string,
+  publishedRrp: number,
+  appliedRrpInput: string,
+): TaggedB2bProductUnit[] {
+  const parsed = parseFloat(appliedRrpInput);
+  const appliedRrp = Number.isFinite(parsed) && parsed > 0 ? roundMoney(parsed) : null;
+  const discountPercent = appliedRrp != null && publishedRrp > 0
+    ? discountPercentFromApplied(publishedRrp, appliedRrp)
+    : null;
+  return patchTaggedUnitPricing(units, productId, aliasId, unitKey, { appliedRrp, discountPercent });
+}
+
+export function updateTaggedUnitDiscountPercent(
+  units: TaggedB2bProductUnit[],
+  productId: number,
+  aliasId: number | null,
+  unitKey: string,
+  publishedRrp: number,
+  discountInput: string,
+): TaggedB2bProductUnit[] {
+  const parsed = parseFloat(discountInput);
+  const discountPercent = Number.isFinite(parsed) && parsed >= 0
+    ? roundPercent(Math.min(100, parsed))
+    : null;
+  const appliedRrp = discountPercent != null && publishedRrp > 0
+    ? appliedRrpFromDiscount(publishedRrp, discountPercent)
+    : null;
+  return patchTaggedUnitPricing(units, productId, aliasId, unitKey, { appliedRrp, discountPercent });
+}
+
+function patchTaggedUnitPricing(
+  units: TaggedB2bProductUnit[],
+  productId: number,
+  aliasId: number | null,
+  unitKey: string,
+  patch: Pick<TaggedB2bProductUnit, 'appliedRrp' | 'discountPercent'>,
+): TaggedB2bProductUnit[] {
+  const key = taggedUnitKey({ productId, aliasId, unitKey });
+  let found = false;
+  const next = units.map(unit => {
+    if (taggedUnitKey(unit) !== key) return unit;
+    found = true;
+    return { ...unit, ...patch };
+  });
+  if (found) return next;
+  return [...units, { productId, aliasId, unitKey, ...patch }];
 }
 
 function isTaggableLine(line: B2bSalesUnitLine): boolean {
@@ -195,6 +285,7 @@ export function collectB2bCustomerTaggableUnits(
             : (product.b2bPackageUnit?.trim() || '—'),
           deliverySortQty: resolveDeliveryUnitSortQty(line.delivery, linkedSubProduct),
           rrp: summary.rrp > 0 ? summary.rrp : (aliasId == null ? product.rrp : summary.rrp),
+          sellingRrp: summary.rrp > 0 ? summary.rrp : (aliasId == null ? product.rrp : summary.rrp),
           unitCogs: summary.cogs,
         });
       }
@@ -260,8 +351,20 @@ export function collectTaggedB2bCustomerUnits(
   const tagged = parseTaggedB2bProductUnits(customer, products, catalogProducts);
   if (tagged.length === 0) return [];
   const all = collectB2bCustomerTaggableUnits(products, catalogProducts);
-  const keys = new Set(tagged.map(taggedUnitKey));
-  return all.filter(row => keys.has(row.key));
+  const byKey = new Map(tagged.map(unit => [taggedUnitKey(unit), unit]));
+  return all
+    .filter(row => byKey.has(row.key))
+    .map(row => {
+      const tag = byKey.get(row.key);
+      const appliedRrp = tag?.appliedRrp ?? null;
+      const discountPercent = tag?.discountPercent ?? null;
+      return {
+        ...row,
+        appliedRrp,
+        discountPercent,
+        sellingRrp: resolveCustomerUnitSellingRrp(row.rrp, tag),
+      };
+    });
 }
 
 export function productsMissingSavedAliases(products: Product[]): Product[] {
@@ -306,6 +409,8 @@ function rematchTaggedUnitsToCurrentKeys(
       productId: resolved.productId,
       aliasId: resolved.aliasId,
       unitKey: resolved.unitKey,
+      appliedRrp: unit.appliedRrp,
+      discountPercent: unit.discountPercent,
     };
     const key = taggedUnitKey(next);
     if (seen.has(key)) continue;
@@ -331,13 +436,19 @@ export function parseTaggedB2bProductUnits(
       const parsed = JSON.parse(customer.taggedB2bProductUnitsJson) as Record<string, unknown>[];
       if (Array.isArray(parsed) && parsed.length > 0) {
         units = parsed
-          .map(row => ({
-            productId: Number(row.productId ?? row.ProductId),
-            aliasId: row.aliasId == null && row.AliasId == null
-              ? null
-              : Number(row.aliasId ?? row.AliasId),
-            unitKey: String(row.unitKey ?? row.UnitKey ?? '').trim(),
-          }))
+          .map(row => {
+            const appliedRaw = Number(row.appliedRrp ?? row.AppliedRrp);
+            const discountRaw = Number(row.discountPercent ?? row.DiscountPercent);
+            return {
+              productId: Number(row.productId ?? row.ProductId),
+              aliasId: row.aliasId == null && row.AliasId == null
+                ? null
+                : Number(row.aliasId ?? row.AliasId),
+              unitKey: String(row.unitKey ?? row.UnitKey ?? '').trim(),
+              appliedRrp: Number.isFinite(appliedRaw) && appliedRaw > 0 ? appliedRaw : null,
+              discountPercent: Number.isFinite(discountRaw) && discountRaw >= 0 ? discountRaw : null,
+            };
+          })
           .filter(unit =>
             Number.isFinite(unit.productId)
             && unit.productId > 0
@@ -396,6 +507,10 @@ export function serializeTaggedB2bProductUnits(units: TaggedB2bProductUnit[]): s
       productId: unit.productId,
       aliasId: unit.aliasId,
       unitKey: unit.unitKey,
+      ...(unit.appliedRrp != null && unit.appliedRrp > 0 ? { appliedRrp: unit.appliedRrp } : {}),
+      ...(unit.discountPercent != null && unit.discountPercent >= 0
+        ? { discountPercent: unit.discountPercent }
+        : {}),
     })),
   );
 }
@@ -421,17 +536,26 @@ export function deriveLegacyB2bProductTags(units: TaggedB2bProductUnit[]): {
   };
 }
 
+export function findTaggedB2bProductUnit(
+  units: TaggedB2bProductUnit[],
+  productId: number,
+  aliasId: number | null,
+  unitKey: string,
+): TaggedB2bProductUnit | undefined {
+  return units.find(unit =>
+    unit.productId === productId
+    && unit.aliasId === aliasId
+    && unit.unitKey === unitKey,
+  );
+}
+
 export function isTaggedB2bProductUnit(
   units: TaggedB2bProductUnit[],
   productId: number,
   aliasId: number | null,
   unitKey: string,
 ): boolean {
-  return units.some(unit =>
-    unit.productId === productId
-    && unit.aliasId === aliasId
-    && unit.unitKey === unitKey,
-  );
+  return Boolean(findTaggedB2bProductUnit(units, productId, aliasId, unitKey));
 }
 
 export function toggleTaggedB2bProductUnit(

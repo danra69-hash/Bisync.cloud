@@ -1019,6 +1019,10 @@ public class TaggedB2bProductUnitRequest
     public int? AliasId { get; set; }
     [MaxLength(80)]
     public string UnitKey { get; set; } = string.Empty;
+    /// <summary>Customer selling price for SO/invoice when &gt; 0; otherwise published RRP is used.</summary>
+    public decimal? AppliedRrp { get; set; }
+    /// <summary>Discount % off published RRP (0–100), kept in sync with AppliedRrp.</summary>
+    public decimal? DiscountPercent { get; set; }
 }
 
 public class PosDeliveryUnitRequest

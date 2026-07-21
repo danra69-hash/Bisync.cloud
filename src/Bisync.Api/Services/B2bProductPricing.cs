@@ -16,6 +16,13 @@ public static class B2bProductPricing
         int? ProductAliasId,
         string? ProductAliasName);
 
+    sealed record TaggedUnitDto(
+        int ProductId,
+        int? AliasId,
+        string UnitKey,
+        decimal? AppliedRrp,
+        decimal? DiscountPercent);
+
     public static List<int> ParseIdList(string? json)
     {
         if (string.IsNullOrWhiteSpace(json) || json == "[]") return [];
@@ -33,7 +40,8 @@ public static class B2bProductPricing
     public static ResolvedB2bPricing ResolveForCustomerProduct(
         Product product,
         B2bCustomer? customer,
-        int? explicitAliasId = null)
+        int? explicitAliasId = null,
+        string? unitKey = null)
     {
         var aliasIds = customer is null ? [] : ParseIdList(customer.TaggedProductAliasIdsJson);
         ProductAlias? alias = null;
@@ -47,20 +55,135 @@ public static class B2bProductPricing
             alias = product.Aliases.FirstOrDefault(a => aliasIds.Contains(a.Id));
         }
 
+        decimal publishedRrp;
+        string uom;
+        int? resolvedAliasId;
+        string? resolvedAliasName;
+
         if (alias is not null)
         {
             var config = ParseConfig(alias.B2bSalesConfigJson);
-            var rrp = ResolvePrincipalRrp(config, alias.Rrp > 0 ? alias.Rrp : product.Rrp);
-            var uom = ResolvePrincipalUom(config, product.B2bPackageUnit);
-            return new ResolvedB2bPricing(rrp, uom, alias.Id, alias.Name);
+            publishedRrp = ResolvePrincipalRrp(config, alias.Rrp > 0 ? alias.Rrp : product.Rrp);
+            uom = ResolvePrincipalUom(config, product.B2bPackageUnit);
+            resolvedAliasId = alias.Id;
+            resolvedAliasName = alias.Name;
+        }
+        else
+        {
+            var principalConfig = ParseConfig(product.B2bSalesConfigJson);
+            publishedRrp = ResolvePrincipalRrp(principalConfig, product.Rrp);
+            uom = ResolvePrincipalUom(principalConfig, product.B2bPackageUnit);
+            resolvedAliasId = null;
+            resolvedAliasName = null;
         }
 
-        var principalConfig = ParseConfig(product.B2bSalesConfigJson);
+        var applied = ResolveCustomerAppliedRrp(customer, product.Id, resolvedAliasId, unitKey);
         return new ResolvedB2bPricing(
-            ResolvePrincipalRrp(principalConfig, product.Rrp),
-            ResolvePrincipalUom(principalConfig, product.B2bPackageUnit),
-            null,
-            null);
+            applied is > 0 ? applied.Value : publishedRrp,
+            uom,
+            resolvedAliasId,
+            resolvedAliasName);
+    }
+
+    static decimal? ResolveCustomerAppliedRrp(
+        B2bCustomer? customer,
+        int productId,
+        int? aliasId,
+        string? unitKey)
+    {
+        if (customer is null) return null;
+        var units = ParseTaggedUnits(customer.TaggedB2bProductUnitsJson);
+        if (units.Count == 0) return null;
+
+        TaggedUnitDto? match = null;
+        if (!string.IsNullOrWhiteSpace(unitKey))
+        {
+            match = units.FirstOrDefault(u =>
+                u.ProductId == productId
+                && u.AliasId == aliasId
+                && string.Equals(u.UnitKey, unitKey.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        match ??= units.FirstOrDefault(u =>
+            u.ProductId == productId
+            && u.AliasId == aliasId
+            && u.AppliedRrp is > 0);
+
+        match ??= units.FirstOrDefault(u =>
+            u.ProductId == productId
+            && (aliasId is null || u.AliasId == aliasId)
+            && u.AppliedRrp is > 0);
+
+        return match?.AppliedRrp is > 0 ? match.AppliedRrp : null;
+    }
+
+    static List<TaggedUnitDto> ParseTaggedUnits(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json == "[]") return [];
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return [];
+
+            var rows = new List<TaggedUnitDto>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.ValueKind != JsonValueKind.Object) continue;
+                var productId = ReadInt(el, "productId", "ProductId");
+                if (productId <= 0) continue;
+                var unitKey = ReadString(el, "unitKey", "UnitKey");
+                if (string.IsNullOrWhiteSpace(unitKey)) continue;
+                int? aliasId = null;
+                if (el.TryGetProperty("aliasId", out var aliasEl) || el.TryGetProperty("AliasId", out aliasEl))
+                {
+                    if (aliasEl.ValueKind == JsonValueKind.Number && aliasEl.TryGetInt32(out var aid) && aid > 0)
+                        aliasId = aid;
+                    else if (aliasEl.ValueKind != JsonValueKind.Null && aliasEl.ValueKind != JsonValueKind.Undefined
+                             && int.TryParse(aliasEl.ToString(), out var aid2) && aid2 > 0)
+                        aliasId = aid2;
+                }
+
+                decimal? applied = null;
+                if (el.TryGetProperty("appliedRrp", out var appliedEl) || el.TryGetProperty("AppliedRrp", out appliedEl))
+                {
+                    if (appliedEl.ValueKind == JsonValueKind.Number && appliedEl.TryGetDecimal(out var a) && a > 0)
+                        applied = a;
+                }
+
+                decimal? discount = null;
+                if (el.TryGetProperty("discountPercent", out var discountEl)
+                    || el.TryGetProperty("DiscountPercent", out discountEl))
+                {
+                    if (discountEl.ValueKind == JsonValueKind.Number && discountEl.TryGetDecimal(out var d) && d >= 0)
+                        discount = d;
+                }
+
+                rows.Add(new TaggedUnitDto(productId, aliasId, unitKey.Trim(), applied, discount));
+            }
+
+            return rows;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    static int ReadInt(JsonElement el, string camel, string pascal)
+    {
+        if (el.TryGetProperty(camel, out var v) || el.TryGetProperty(pascal, out v))
+        {
+            if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)) return n;
+            if (int.TryParse(v.ToString(), out var n2)) return n2;
+        }
+        return 0;
+    }
+
+    static string ReadString(JsonElement el, string camel, string pascal)
+    {
+        if (el.TryGetProperty(camel, out var v) || el.TryGetProperty(pascal, out v))
+            return v.GetString()?.Trim() ?? string.Empty;
+        return string.Empty;
     }
 
     static B2bSalesConfigDto ParseConfig(string? json)
