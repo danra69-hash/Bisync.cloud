@@ -192,6 +192,12 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         if (request.ParStock.HasValue) product.ParStock = request.ParStock.Value;
         if (request.ParStockUom is not null) product.ParStockUom = request.ParStockUom.Trim();
         if (request.PosEnabled.HasValue) product.PosEnabled = request.PosEnabled.Value;
+        if (request.Active.HasValue && product.Active && !request.Active.Value)
+        {
+            var deactivateError = await DeactivationGuardService.ValidateB2bProductDeactivationAsync(db, product);
+            if (deactivateError is not null)
+                return Conflict(new { message = deactivateError, code = "product_deactivate_blocked" });
+        }
         if (request.Active.HasValue) product.Active = request.Active.Value;
         product.CompanyId = request.CompanyId;
         product.LocationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(request.LocationExternalIds ?? []);
@@ -248,6 +254,12 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
                     .Select(unit => new { unitKey = unit.UnitKey.Trim() })
                     .DistinctBy(unit => unit.unitKey),
                 JsonOptions);
+        }
+        if (request.Active.HasValue && product.Active && !request.Active.Value)
+        {
+            var deactivateError = await DeactivationGuardService.ValidateB2bProductDeactivationAsync(db, product);
+            if (deactivateError is not null)
+                return Conflict(new { message = deactivateError, code = "product_deactivate_blocked" });
         }
         if (request.Active.HasValue)
             product.Active = request.Active.Value;

@@ -313,6 +313,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
                 }
             }, ContactJsonOptions),
             Engaged = false,
+            Active = true,
         };
 
         db.Vendors.Add(vendor);
@@ -357,6 +358,102 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         return Ok(vendor);
     }
+
+    [HttpGet("{externalId}/tagged-components")]
+    public async Task<ActionResult<object>> GetTaggedComponents(string externalId, [FromQuery] int? companyId = null)
+    {
+        var vendor = await db.Vendors.AsNoTracking().FirstOrDefaultAsync(v => v.ExternalId == externalId);
+        if (vendor is null) return NotFound();
+
+        var tagged = await DeactivationGuardService.FindComponentsTaggedToVendorAsync(
+            db, vendor.ExternalId, companyId ?? vendor.CompanyId);
+        return Ok(new
+        {
+            vendorExternalId = vendor.ExternalId,
+            vendorName = vendor.Name,
+            taggedComponents = tagged.Select(MapTaggedComponent),
+        });
+    }
+
+    [HttpPost("{externalId}/untag-components")]
+    public async Task<ActionResult<object>> UntagComponents(string externalId, [FromBody] UntagVendorComponentsRequest? body = null)
+    {
+        var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
+        if (vendor is null) return NotFound();
+
+        var vendorProductIds = await db.VendorProducts.AsNoTracking()
+            .Where(p => p.VendorExternalId == vendor.ExternalId)
+            .Select(p => p.ExternalId)
+            .ToListAsync();
+        if (vendorProductIds.Count == 0)
+            return Ok(new { untagged = 0, remaining = Array.Empty<object>() });
+
+        var tagged = await DeactivationGuardService.FindComponentsTaggedToVendorAsync(
+            db, vendor.ExternalId, body?.CompanyId ?? vendor.CompanyId);
+        var selectedIds = body?.ComponentIds?
+            .Where(id => id > 0)
+            .ToHashSet();
+        var targets = selectedIds is { Count: > 0 }
+            ? tagged.Where(t => selectedIds.Contains(t.Id)).ToList()
+            : tagged.ToList();
+
+        var untagged = 0;
+        foreach (var target in targets)
+        {
+            var ingredient = await db.Ingredients.FirstOrDefaultAsync(i => i.Id == target.Id);
+            if (ingredient is null) continue;
+            ingredient.DetailConfigJson = DeactivationGuardService.UntagVendorProductsFromDetailConfig(
+                ingredient.DetailConfigJson,
+                vendorProductIds);
+            ingredient.UpdatedAt = DateTime.UtcNow;
+            untagged++;
+        }
+
+        await db.SaveChangesAsync();
+
+        var remaining = await DeactivationGuardService.FindComponentsTaggedToVendorAsync(
+            db, vendor.ExternalId, body?.CompanyId ?? vendor.CompanyId);
+        return Ok(new
+        {
+            untagged,
+            remaining = remaining.Select(MapTaggedComponent),
+        });
+    }
+
+    [HttpPost("{externalId}/set-active")]
+    public async Task<ActionResult<object>> SetActive(string externalId, [FromBody] SetVendorActiveRequest request)
+    {
+        var vendor = await db.Vendors.FirstOrDefaultAsync(v => v.ExternalId == externalId);
+        if (vendor is null) return NotFound();
+
+        if (vendor.Active && !request.Active)
+        {
+            var tagged = await DeactivationGuardService.FindComponentsTaggedToVendorAsync(
+                db, vendor.ExternalId, request.CompanyId ?? vendor.CompanyId);
+            if (tagged.Count > 0)
+            {
+                return Conflict(new
+                {
+                    message = $"Cannot deactivate: {tagged.Count} component(s) are still tagged to vendor products from {vendor.Name}. Untag them first.",
+                    code = "vendor_has_tagged_components",
+                    taggedComponents = tagged.Select(MapTaggedComponent),
+                });
+            }
+        }
+
+        vendor.Active = request.Active;
+        await db.SaveChangesAsync();
+        return Ok(vendor);
+    }
+
+    static object MapTaggedComponent(TaggedComponentRef row) => new
+    {
+        id = row.Id,
+        componentId = row.ComponentId,
+        name = row.Name,
+        taggedVendorProductIds = row.TaggedVendorProductIds,
+        taggedVendorProductNames = row.TaggedVendorProductNames,
+    };
 
     [HttpPost("{externalId}/engage")]
     public async Task<ActionResult<object>> Engage(string externalId, [FromBody] EngageVendorRequest? body = null)
@@ -634,6 +731,12 @@ public class IngredientsController(
         item.Group = updated.Group;
         item.RecipeUom = updated.RecipeUom;
         item.InventoryUom = updated.InventoryUom;
+        if (item.Active && !updated.Active)
+        {
+            var deactivateError = await DeactivationGuardService.ValidateComponentDeactivationAsync(db, item);
+            if (deactivateError is not null)
+                return Conflict(new { message = deactivateError, code = "component_deactivate_blocked" });
+        }
         item.Active = updated.Active;
         item.LastPriceRecipe = updated.LastPriceRecipe;
         item.LastPriceInventory = updated.LastPriceInventory;

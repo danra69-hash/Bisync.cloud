@@ -420,6 +420,7 @@ export interface Vendor {
   engageApprovedAt?: string | null;
   engageApprovedBy?: string;
   productPolicyTag?: VendorProductPolicyTag;
+  active?: boolean;
 }
 
 export type VendorRatingLevel = 'satisfied' | 'acceptable' | 'poor';
@@ -1703,13 +1704,31 @@ export interface ProduceBatchShortage {
 export class ApiError extends Error {
   shortages?: ProduceBatchShortage[];
   components?: ProduceBatchShortage[];
+  taggedComponents?: VendorTaggedComponent[];
+  code?: string;
 
-  constructor(message: string, shortages?: ProduceBatchShortage[], components?: ProduceBatchShortage[]) {
+  constructor(
+    message: string,
+    shortages?: ProduceBatchShortage[],
+    components?: ProduceBatchShortage[],
+    taggedComponents?: VendorTaggedComponent[],
+    code?: string,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.shortages = shortages;
     this.components = components;
+    this.taggedComponents = taggedComponents;
+    this.code = code;
   }
+}
+
+export interface VendorTaggedComponent {
+  id: number;
+  componentId: string;
+  name: string;
+  taggedVendorProductIds: string[];
+  taggedVendorProductNames: string[];
 }
 
 export interface ProduceBatchResult {
@@ -2029,25 +2048,33 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
     let message = fallback;
     let shortages: ProduceBatchShortage[] | undefined;
     let components: ProduceBatchShortage[] | undefined;
+    let taggedComponents: VendorTaggedComponent[] | undefined;
+    let code: string | undefined;
     try {
       const parsed = JSON.parse(text) as {
         message?: string;
         title?: string;
+        code?: string;
         shortages?: ProduceBatchShortage[];
         components?: ProduceBatchShortage[];
+        taggedComponents?: VendorTaggedComponent[];
       };
       message = parsed.message ?? parsed.title ?? (parsed as { error?: string }).error ?? message;
+      code = parsed.code;
       if (Array.isArray(parsed.components) && parsed.components.length > 0) {
         components = parsed.components;
       }
       if (Array.isArray(parsed.shortages) && parsed.shortages.length > 0) {
         shortages = parsed.shortages;
       }
+      if (Array.isArray(parsed.taggedComponents) && parsed.taggedComponents.length > 0) {
+        taggedComponents = parsed.taggedComponents;
+      }
     } catch {
       message = parseApiErrorText(text, fallback);
     }
-    if (components?.length || shortages?.length) {
-      throw new ApiError(message, shortages, components);
+    if (components?.length || shortages?.length || taggedComponents?.length) {
+      throw new ApiError(message, shortages, components, taggedComponents, code);
     }
     throw new Error(message);
   }
@@ -2174,6 +2201,25 @@ export const api = {
   createVendor: (data: VendorCreatePayload) => fetchJsonWithMethod<Vendor>('/api/vendors', 'POST', data),
   updateVendor: (externalId: string, data: VendorUpdatePayload) =>
     fetchJsonWithMethod<Vendor>(`/api/vendors/${externalId}`, 'PUT', data),
+  setVendorActive: (externalId: string, active: boolean, companyId?: number | null) =>
+    fetchJsonWithMethod<Vendor>(`/api/vendors/${encodeURIComponent(externalId)}/set-active`, 'POST', {
+      active,
+      companyId: companyId ?? undefined,
+    }),
+  vendorTaggedComponents: (externalId: string, companyId?: number | null) =>
+    fetchJson<{
+      vendorExternalId: string;
+      vendorName: string;
+      taggedComponents: VendorTaggedComponent[];
+    }>(`/api/vendors/${encodeURIComponent(externalId)}/tagged-components${companyId ? `?companyId=${companyId}` : ''}`),
+  untagVendorComponents: (externalId: string, payload?: { companyId?: number | null; componentIds?: number[] }) =>
+    fetchJsonWithMethod<{
+      untagged: number;
+      remaining: VendorTaggedComponent[];
+    }>(`/api/vendors/${encodeURIComponent(externalId)}/untag-components`, 'POST', {
+      companyId: payload?.companyId ?? undefined,
+      componentIds: payload?.componentIds,
+    }),
   vendorRatingSummaries: () => fetchJson<VendorRatingSummary[]>('/api/vendor-ratings'),
   vendorRating: (vendorExternalId: string) =>
     fetchJson<VendorRatingDetail>(`/api/vendor-ratings/${encodeURIComponent(vendorExternalId)}`),

@@ -640,6 +640,18 @@ public class UpdateVendorRequest
     public string ProductPolicyTag { get; set; } = string.Empty;
 }
 
+public class SetVendorActiveRequest
+{
+    public bool Active { get; set; }
+    public int? CompanyId { get; set; }
+}
+
+public class UntagVendorComponentsRequest
+{
+    public int? CompanyId { get; set; }
+    public List<int>? ComponentIds { get; set; }
+}
+
 public class CreatePurchaseOrderItemRequest
 {
     [MaxLength(32)]
