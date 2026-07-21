@@ -47,4 +47,10 @@ public class Location
     public string VendorPolicyTagsJson { get; set; } = "[]";
     /// <summary>JSON array of enabled modules (inherits from company when empty; Accounting not allowed).</summary>
     public string ModulesJson { get; set; } = "[]";
+    /// <summary>
+    /// Weekly opening hours + last-order times (JSON).
+    /// Shape: { monday: { openFrom, openTo, lastOrder, closed }, … sunday }.
+    /// Times are HH:mm (24h).
+    /// </summary>
+    public string OpeningHoursJson { get; set; } = "{}";
 }

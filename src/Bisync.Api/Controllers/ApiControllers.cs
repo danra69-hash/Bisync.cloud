@@ -34,6 +34,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         modulesJson = CompanyModuleRules.ResolveModulesJson(l.ModulesJson, l.Company?.ModulesJson),
         modulesOverridden = CompanyModuleRules.LocationModulesOverridden(l.ModulesJson),
         profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
+        openingHoursJson = string.IsNullOrWhiteSpace(l.OpeningHoursJson) ? "{}" : l.OpeningHoursJson,
     };
 
     async Task<Location?> LoadLocationConfigAsync(int id) =>
@@ -136,6 +137,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             BusinessTypesJson = businessTypesJson,
             VendorPolicyTagsJson = vendorPolicyTagsJson,
             ModulesJson = modulesJson,
+            OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim(),
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
         };
 
@@ -195,6 +197,8 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         loc.BusinessTypesJson = businessTypesJson;
         loc.VendorPolicyTagsJson = vendorPolicyTagsJson;
         loc.ModulesJson = modulesJson;
+        if (body.OpeningHoursJson is not null)
+            loc.OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim();
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         await db.SaveChangesAsync();
         var saved = await LoadLocationConfigAsync(loc.Id);
