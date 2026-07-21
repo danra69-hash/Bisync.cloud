@@ -136,6 +136,8 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     postcode: '',
     principalContactUserId: null,
     principalContactName: null,
+    secondaryContactUserId: null,
+    secondaryContactName: null,
     businessTypesJson: '[]',
     vendorPolicyTagsJson: '[]',
     modulesJson: '[]',
@@ -382,6 +384,7 @@ function LocationPanel({
         stateProvince: form.stateProvince,
         postcode: form.postcode,
         principalContactUserId: form.principalContactUserId,
+        secondaryContactUserId: form.secondaryContactUserId ?? null,
         businessTypesJson: profilePayload.businessTypesJson,
         vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
         modulesJson: modulesPayload.modulesJson,
@@ -399,12 +402,14 @@ function LocationPanel({
         companyName: company.name,
         countryCode: company.countryCode,
         principalContactName: users.find(u => u.id === form.principalContactUserId)?.fullName ?? null,
+        secondaryContactName: users.find(u => u.id === form.secondaryContactUserId)?.fullName ?? null,
         businessTypesJson: saved.businessTypesJson ?? profilePayload.effectiveBusinessTypesJson,
         vendorPolicyTagsJson: saved.vendorPolicyTagsJson ?? profilePayload.effectiveVendorPolicyTagsJson,
         modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
         modulesOverridden: saved.modulesOverridden,
         profileOverridden: saved.profileOverridden ?? (profilePayload.profileOverridden || modulesPayload.modulesJson !== '[]'),
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
+        secondaryContactUserId: saved.secondaryContactUserId ?? form.secondaryContactUserId ?? null,
       });
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save location.');
@@ -436,7 +441,7 @@ function LocationPanel({
           <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"><X size={14} className="text-muted-foreground" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3">
           {error && (
             <div ref={errorBannerRef} role="alert" className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs font-medium">
               {error}
@@ -447,31 +452,36 @@ function LocationPanel({
               This company has no Type of Business / vendor policy yet. Configure them under Companies, or set a custom policy for this location below.
             </div>
           )}
-          <div>
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company *</label>
-            <select className={selectCls} value={form.companyId ?? ''} onChange={e => set('companyId', e.target.value ? Number(e.target.value) : null)}>
-              <option value="">— Select company —</option>
-              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
 
-          <div>
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Location Name *</label>
-            <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} />
-          </div>
-
-          <div className="rounded-lg bg-muted/40 border border-border px-3 py-2">
-            <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Country (from company)</p>
-            <p className="text-xs font-medium mt-0.5">{country.name}</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company *</label>
+              <select className={selectCls} value={form.companyId ?? ''} onChange={e => set('companyId', e.target.value ? Number(e.target.value) : null)}>
+                <option value="">— Select company —</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Location Name *</label>
+              <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Country</label>
+              <div className={`${inputCls} bg-muted/40 text-foreground flex items-center`}>
+                {country.name}
+              </div>
+            </div>
           </div>
 
           <CountryAddressFields
             countryCode={company?.countryCode ?? form.countryCode}
             value={addressParts}
             onChange={setAddressParts}
+            layout="compact"
           />
 
           <CompanyProfileFields
+            layout="compact"
             businessTypes={businessTypes}
             vendorPolicyTags={vendorPolicyTags}
             modules={modules}
@@ -489,26 +499,56 @@ function LocationPanel({
             }}
             hint={inheritsCompanyProfile
               ? 'Following the company policy. Change any option below to set a custom policy for this location only.'
-              : 'This location uses a custom policy. Use company defaults to follow the parent company again.'}
+              : 'This location uses a custom policy.'}
             onUseCompanyDefaults={company ? applyCompanyDefaults : undefined}
           />
 
-          <div>
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Principal Contact</label>
-            <select className={selectCls} value={form.principalContactUserId ?? ''} onChange={e => set('principalContactUserId', e.target.value ? Number(e.target.value) : null)}>
-              <option value="">— Select user —</option>
-              {users.filter(u => u.active).map(u => (
-                <option key={u.id} value={u.id}>{u.fullName} · {u.role}</option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground mt-1">User list is managed in the Users tab.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Principal Contact</label>
+              <select
+                className={selectCls}
+                value={form.principalContactUserId ?? ''}
+                onChange={e => {
+                  const nextId = e.target.value ? Number(e.target.value) : null;
+                  setForm(f => ({
+                    ...f,
+                    principalContactUserId: nextId,
+                    secondaryContactUserId:
+                      f.secondaryContactUserId != null && f.secondaryContactUserId === nextId
+                        ? null
+                        : f.secondaryContactUserId,
+                  }));
+                  setError(null);
+                }}
+              >
+                <option value="">— Select user —</option>
+                {users.filter(u => u.active).map(u => (
+                  <option key={u.id} value={u.id}>{u.fullName} · {u.role}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Secondary Contact</label>
+              <select
+                className={selectCls}
+                value={form.secondaryContactUserId ?? ''}
+                onChange={e => set('secondaryContactUserId', e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">— Select user —</option>
+                {users.filter(u => u.active && u.id !== form.principalContactUserId).map(u => (
+                  <option key={u.id} value={u.id}>{u.fullName} · {u.role}</option>
+                ))}
+              </select>
+            </div>
           </div>
+          <p className="text-[11px] text-muted-foreground -mt-1">Contacts are managed in the Users tab.</p>
 
           <div className="rounded-lg border border-border bg-card p-3 space-y-2">
             <div>
               <p className="text-xs font-semibold text-foreground">Opening Hours</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Set open from / to and last order for each day (Mon–Sun). Minutes are :00 or :30 only.
+                From / To / Last Order per day. Minutes are :00 or :30 only.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -701,6 +741,7 @@ export function LocationsConfigTab({
         stateProvince: location.stateProvince,
         postcode: location.postcode,
         principalContactUserId: location.principalContactUserId,
+        secondaryContactUserId: location.secondaryContactUserId ?? null,
         businessTypesJson: profile.businessTypesJson ?? '[]',
         vendorPolicyTagsJson: profile.vendorPolicyTagsJson ?? '[]',
         modulesJson: modulesPayload.modulesJson,

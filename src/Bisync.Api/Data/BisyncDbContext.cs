@@ -91,6 +91,11 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             .WithMany()
             .HasForeignKey(l => l.PrincipalContactUserId)
             .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Location>()
+            .HasOne(l => l.SecondaryContact)
+            .WithMany()
+            .HasForeignKey(l => l.SecondaryContactUserId)
+            .OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<AppUser>(e =>
         {
             e.ToTable("AppUsers");

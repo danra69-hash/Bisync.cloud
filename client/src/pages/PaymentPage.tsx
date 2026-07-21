@@ -193,6 +193,7 @@ export function PaymentPage({ onContinue }: Props) {
           stateProvince: original.stateProvince,
           postcode: original.postcode,
           principalContactUserId: original.principalContactUserId,
+          secondaryContactUserId: original.secondaryContactUserId ?? null,
           businessTypesJson: serializeStringArray(draft.type ? [draft.type] : []),
           vendorPolicyTagsJson: '[]',
           // Empty modules = inherit from company (Accounting never on location).

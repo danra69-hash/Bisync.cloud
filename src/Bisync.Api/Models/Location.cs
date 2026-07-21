@@ -16,6 +16,8 @@ public class Location
     public string Postcode { get; set; } = string.Empty;
     public int? PrincipalContactUserId { get; set; }
     public AppUser? PrincipalContact { get; set; }
+    public int? SecondaryContactUserId { get; set; }
+    public AppUser? SecondaryContact { get; set; }
 
     public decimal SalesToday { get; set; }
     public decimal SalesWtd { get; set; }
