@@ -7,7 +7,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { pageShellClass } from '../layout/pageLayout';
 import { Plus } from 'lucide-react';
-import { api, type LocationConfig } from '../../api';
+import { api, type Ingredient, type LocationConfig } from '../../api';
 import {
   loadStorageAssignment,
   loadStorageAssignmentForCompany,
@@ -22,10 +22,13 @@ import {
   type StorageCatalogRow,
 } from '../../data/storageAssignment';
 import {
+  buildHierarchyAttachmentCounts,
+  emptyHierarchyAttachmentCounts,
   loadComponentHierarchy,
   loadComponentHierarchyForCompany,
   saveComponentHierarchy,
   type ComponentHierarchyState,
+  type HierarchyAttachmentCounts,
 } from '../../data/componentHierarchy';
 import { ComponentHierarchyPanel } from './ComponentHierarchyPanel';
 import { StorageAreaPicker } from './StorageAreaPicker';
@@ -77,6 +80,9 @@ export function ComponentConfigPage({
   const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Component Hierarchy';
   useRevMgmtPageLabel(activeTabLabel);
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
+  const [attachmentCounts, setAttachmentCounts] = useState<HierarchyAttachmentCounts>(
+    () => emptyHierarchyAttachmentCounts(),
+  );
   const [storage] = useState(STORAGE_CATALOG);
   const [companyLocations, setCompanyLocations] = useState<LocationConfig[]>([]);
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -97,13 +103,18 @@ export function ComponentConfigPage({
   }
 
   useEffect(() => {
-    if (!selectedCompanyId) return;
+    if (!selectedCompanyId) {
+      setAttachmentCounts(emptyHierarchyAttachmentCounts());
+      return;
+    }
     void Promise.all([
       loadComponentHierarchyForCompany(selectedCompanyId),
       loadStorageAssignmentForCompany(selectedCompanyId),
       api.locationsConfig().catch(() => [] as LocationConfig[]),
-    ]).then(([nextHierarchy, nextStorage, locations]) => {
+      api.ingredients(selectedCompanyId).catch(() => [] as Ingredient[]),
+    ]).then(([nextHierarchy, nextStorage, locations, ingredients]) => {
       setHierarchy(nextHierarchy);
+      setAttachmentCounts(buildHierarchyAttachmentCounts(ingredients));
       const companyLocIds = locations
         .filter(location => location.companyId === selectedCompanyId)
         .map(location => location.externalId);
@@ -280,7 +291,11 @@ export function ComponentConfigPage({
       </div>
 
       {tab === 'hierarchy' ? (
-        <ComponentHierarchyPanel state={hierarchy} onChange={updateHierarchy} />
+        <ComponentHierarchyPanel
+          state={hierarchy}
+          onChange={updateHierarchy}
+          attachmentCounts={attachmentCounts}
+        />
       ) : tab === 'storage' ? (
         <div className="space-y-3">
           {!orgReady ? (
