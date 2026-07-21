@@ -76,7 +76,6 @@ export const HR_CONFIG_TAB_I18N: Record<string, string> = {
   'Access Control': 'systemConfig.accessControl',
   'COGS Audit': 'systemConfig.cogsAudit',
   'Audit Trail': 'systemConfig.auditTrail',
-  'Ghost Support': 'systemConfig.ghostSupport',
 };
 
 export const MODULE_I18N: Record<string, string> = {

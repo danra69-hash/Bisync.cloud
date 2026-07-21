@@ -3,7 +3,6 @@ import { CompaniesTab } from './CompaniesTab';
 import { AccessControlTab } from './AccessControlTab';
 import { CogsAuditTab } from './CogsAuditTab';
 import { SystemAuditTrailTab } from './SystemAuditTrailTab';
-import { GhostSupportTab } from './GhostSupportTab';
 import { HrConfigTabBar } from './HrConfigTabBar';
 import { LocationsConfigTab } from './LocationsConfigTab';
 import { SYSTEM_HR_CONFIG_TABS, type SystemHrConfigTabId } from './hrConfigTabs';
@@ -49,7 +48,6 @@ export function SystemConfigurationPage({
         <CogsAuditTab selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />
       )}
       {tab === 'auditTrail' && <SystemAuditTrailTab />}
-      {tab === 'ghostSupport' && <GhostSupportTab />}
     </div>
   );
 }

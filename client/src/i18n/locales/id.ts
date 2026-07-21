@@ -163,7 +163,6 @@ export const id = {
     accessControl: 'Kontrol Akses',
     cogsAudit: 'COGS Audit',
     auditTrail: 'Audit Trail',
-    ghostSupport: 'Ghost Support',
     addCompany: 'Tambah Perusahaan',
     addLocation: 'Tambah Lokasi',
     registeredCompanies: '{{count}} perusahaan terdaftar',
