@@ -29,6 +29,7 @@ import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePane
 import { CompanyProfileFields } from './CompanyProfileFields';
 import { ToggleSwitch } from './ToggleSwitch';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { detectOutboundProvider, outboundEmailReady } from '../../data/outboundEmailProvider';
 
 type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'locations' | 'status';
 type CompanyTableColumn = CompanySortColumn | 'accessControl';
@@ -113,15 +114,6 @@ const blankCompany = (): CompanyDraft => ({
   smtpPasswordSet: false,
 });
 
-function outboundEmailReady(form: Company | CompanyDraft, passwordDraft: string): boolean {
-  const host = (form.smtpHost ?? '').trim();
-  const from = (form.smtpFromEmail ?? '').trim();
-  const user = (form.smtpUsername ?? '').trim();
-  const port = form.smtpPort ?? 0;
-  const hasPassword = passwordDraft.trim().length > 0 || Boolean(form.smtpPasswordSet);
-  return Boolean(host && from.includes('@') && user && port > 0 && port <= 65535 && hasPassword);
-}
-
 function CompanyPanel({
   company, isNew, onClose, onSave,
 }: {
@@ -185,24 +177,30 @@ function CompanyPanel({
   }
 
   function buildPayload(active = form.active) {
+    const outboundEmail = (form.smtpFromEmail ?? '').trim();
     return {
       ...form,
       active,
       businessTypesJson: serializeStringArray(businessTypes),
       vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
       modulesJson: serializeStringArray(modules),
-      smtpHost: (form.smtpHost ?? '').trim(),
-      smtpPort: form.smtpPort && form.smtpPort > 0 ? form.smtpPort : 587,
-      smtpUseSsl: form.smtpUseSsl ?? true,
-      smtpUsername: (form.smtpUsername ?? '').trim(),
-      // Empty keeps the previously saved password on update.
+      // Server auto-fills host/port/SSL from the email provider.
+      smtpFromEmail: outboundEmail,
+      smtpUsername: outboundEmail,
       smtpPassword: smtpPasswordDraft.trim(),
-      smtpFromEmail: (form.smtpFromEmail ?? '').trim(),
       smtpFromName: (form.smtpFromName ?? '').trim(),
+      smtpHost: '',
+      smtpPort: 587,
+      smtpUseSsl: true,
     };
   }
 
-  const canTestOutbound = !isNew && 'id' in form && outboundEmailReady(form, smtpPasswordDraft);
+  const outboundAddress = (form.smtpFromEmail ?? '').trim();
+  const providerInfo = detectOutboundProvider(outboundAddress);
+  const canTestOutbound =
+    !isNew
+    && 'id' in form
+    && outboundEmailReady(outboundAddress, smtpPasswordDraft, Boolean(form.smtpPasswordSet));
 
   async function toggleActive() {
     if (isNew || !('id' in form)) return;
@@ -278,8 +276,9 @@ function CompanyPanel({
       setError('Save the company first, then send a test email.');
       return;
     }
-    if (!outboundEmailReady(form, smtpPasswordDraft)) {
-      setError('Fill in SMTP host, port, username, password, and From email before testing.');
+    const address = (form.smtpFromEmail ?? '').trim();
+    if (!outboundEmailReady(address, smtpPasswordDraft, Boolean(form.smtpPasswordSet))) {
+      setError('Enter the outbound email address and password before testing.');
       return;
     }
     const to = testToEmail.trim();
@@ -292,7 +291,6 @@ function CompanyPanel({
     setError(null);
     setTestMessage(null);
     try {
-      // Persist SMTP settings first so the test uses the same values you configured.
       const payload = buildPayload();
       const saved = await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
       setForm(f => ({
@@ -306,15 +304,16 @@ function CompanyPanel({
 
       const result = await api.testCompanyOutboundEmail(form.id, {
         toEmail: to,
-        smtpHost: saved.smtpHost,
-        smtpPort: saved.smtpPort,
-        smtpUseSsl: saved.smtpUseSsl,
-        smtpUsername: saved.smtpUsername,
-        smtpFromEmail: saved.smtpFromEmail,
-        smtpFromName: saved.smtpFromName,
-        // Password already saved; omit so API uses stored secret.
+        smtpFromEmail: address,
+        smtpFromName: (form.smtpFromName ?? '').trim() || undefined,
       });
       setTestMessage(result.message);
+      if (result.provider) {
+        setForm(f => ({
+          ...f,
+          smtpProviderLabel: result.provider,
+        }));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Test email failed.');
     } finally {
@@ -409,57 +408,29 @@ function CompanyPanel({
               <div className="flex items-start gap-2">
                 <Mail size={14} className="mt-0.5 text-muted-foreground shrink-0" />
                 <div>
-                  <p className="text-xs font-semibold">Outbound email (SMTP)</p>
+                  <p className="text-xs font-semibold">Outbound email</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Used to email purchase orders to vendors. Fill all required fields, then send a test message to confirm delivery.
+                    Used to email purchase orders to vendors. Enter the mailbox address and password —
+                    Microsoft, Google, and other providers are configured automatically.
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">SMTP host *</label>
-                  <input
-                    className={inputCls}
-                    value={form.smtpHost ?? ''}
-                    onChange={e => set('smtpHost', e.target.value)}
-                    placeholder="smtp.example.com"
-                    autoComplete="off"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Port *</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={65535}
-                    className={inputCls}
-                    value={form.smtpPort ?? 587}
-                    onChange={e => set('smtpPort', Number(e.target.value) || 587)}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2 text-xs cursor-pointer pb-2">
-                    <input
-                      type="checkbox"
-                      className="rounded border-border"
-                      checked={form.smtpUseSsl ?? true}
-                      onChange={e => set('smtpUseSsl', e.target.checked)}
-                    />
-                    Use SSL / TLS
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Email address *
                   </label>
-                </div>
-                <div>
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Username *</label>
                   <input
+                    type="email"
                     className={inputCls}
-                    value={form.smtpUsername ?? ''}
-                    onChange={e => set('smtpUsername', e.target.value)}
-                    placeholder="mail@company.com"
+                    value={form.smtpFromEmail ?? ''}
+                    onChange={e => set('smtpFromEmail', e.target.value)}
+                    placeholder="orders@company.com"
                     autoComplete="off"
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                     Password *{form.smtpPasswordSet ? ' (saved)' : ''}
                   </label>
@@ -472,22 +443,14 @@ function CompanyPanel({
                       setError(null);
                       setTestMessage(null);
                     }}
-                    placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'SMTP password'}
+                    placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'Email password'}
                     autoComplete="new-password"
                   />
                 </div>
-                <div>
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">From email *</label>
-                  <input
-                    type="email"
-                    className={inputCls}
-                    value={form.smtpFromEmail ?? ''}
-                    onChange={e => set('smtpFromEmail', e.target.value)}
-                    placeholder="orders@company.com"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">From name</label>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Display name (optional)
+                  </label>
                   <input
                     className={inputCls}
                     value={form.smtpFromName ?? ''}
@@ -496,6 +459,15 @@ function CompanyPanel({
                   />
                 </div>
               </div>
+
+              {providerInfo && (
+                <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1">
+                  <p className="text-[11px] font-medium">
+                    Detected: {providerInfo.label}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">{providerInfo.tip}</p>
+                </div>
+              )}
 
               <div className="border-t border-border pt-3 space-y-2">
                 <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
@@ -522,8 +494,8 @@ function CompanyPanel({
                       isNew
                         ? 'Save the company first'
                         : canTestOutbound
-                          ? 'Save settings and send a test email'
-                          : 'Fill all required SMTP fields first'
+                          ? 'Save and send a test email'
+                          : 'Enter email address and password first'
                     }
                     className="inline-flex items-center justify-center gap-1.5 shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                   >

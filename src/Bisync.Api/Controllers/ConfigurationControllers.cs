@@ -11,50 +11,69 @@ namespace Bisync.Api.Controllers;
 [Route("api/[controller]")]
 public class CompaniesController(BisyncDbContext db) : ControllerBase
 {
-    static object MapCompany(Company c, int? locationCount = null) => new
+    static object MapCompany(Company c, int? locationCount = null)
     {
-        c.Id,
-        c.Name,
-        c.Code,
-        c.Brn,
-        c.GstTin,
-        c.CountryCode,
-        c.AddressLine1,
-        c.AddressLine2,
-        c.City,
-        c.StateProvince,
-        c.Postcode,
-        c.Phone,
-        c.Fax,
-        c.Email,
-        c.Active,
-        c.BusinessTypesJson,
-        c.VendorPolicyTagsJson,
-        c.ModulesJson,
-        smtpHost = c.SmtpHost ?? string.Empty,
-        smtpPort = c.SmtpPort > 0 ? c.SmtpPort : 587,
-        smtpUseSsl = c.SmtpUseSsl,
-        smtpUsername = c.SmtpUsername ?? string.Empty,
-        smtpFromEmail = c.SmtpFromEmail ?? string.Empty,
-        smtpFromName = c.SmtpFromName ?? string.Empty,
-        smtpPasswordSet = !string.IsNullOrWhiteSpace(c.SmtpPassword),
-        // Never echo stored password.
-        smtpPassword = string.Empty,
-        locationCount = locationCount ?? c.Locations?.Count ?? 0,
-    };
+        var outboundEmail = !string.IsNullOrWhiteSpace(c.SmtpFromEmail)
+            ? c.SmtpFromEmail
+            : (c.SmtpUsername ?? string.Empty);
+        var provider = CompanyOutboundEmailService.IsLikelyEmail(outboundEmail)
+            ? CompanyOutboundEmailService.ResolveProvider(outboundEmail)
+            : null;
 
+        return new
+        {
+            c.Id,
+            c.Name,
+            c.Code,
+            c.Brn,
+            c.GstTin,
+            c.CountryCode,
+            c.AddressLine1,
+            c.AddressLine2,
+            c.City,
+            c.StateProvince,
+            c.Postcode,
+            c.Phone,
+            c.Fax,
+            c.Email,
+            c.Active,
+            c.BusinessTypesJson,
+            c.VendorPolicyTagsJson,
+            c.ModulesJson,
+            smtpHost = c.SmtpHost ?? string.Empty,
+            smtpPort = c.SmtpPort > 0 ? c.SmtpPort : 587,
+            smtpUseSsl = c.SmtpUseSsl,
+            smtpUsername = c.SmtpUsername ?? string.Empty,
+            smtpFromEmail = c.SmtpFromEmail ?? string.Empty,
+            smtpFromName = c.SmtpFromName ?? string.Empty,
+            smtpPasswordSet = !string.IsNullOrWhiteSpace(c.SmtpPassword),
+            smtpPassword = string.Empty,
+            smtpProviderId = provider?.Id ?? string.Empty,
+            smtpProviderLabel = provider?.Label ?? string.Empty,
+            smtpProviderTip = provider?.Tip ?? string.Empty,
+            locationCount = locationCount ?? c.Locations?.Count ?? 0,
+        };
+    }
+
+    /// <summary>
+    /// Auto-configure SMTP from outbound email + password.
+    /// Host / port / SSL / username are derived from the email provider (Microsoft, Google, …).
+    /// </summary>
     static void ApplySmtpFields(Company target, Company source, bool isCreate)
     {
-        target.SmtpHost = (source.SmtpHost ?? string.Empty).Trim();
-        target.SmtpPort = source.SmtpPort is > 0 and <= 65535 ? source.SmtpPort : 587;
-        target.SmtpUseSsl = source.SmtpUseSsl;
-        target.SmtpUsername = (source.SmtpUsername ?? string.Empty).Trim();
-        target.SmtpFromEmail = (source.SmtpFromEmail ?? string.Empty).Trim();
-        target.SmtpFromName = (source.SmtpFromName ?? string.Empty).Trim();
-
-        var incomingPassword = source.SmtpPassword ?? string.Empty;
+        var outboundEmail = !string.IsNullOrWhiteSpace(source.SmtpFromEmail)
+            ? source.SmtpFromEmail
+            : source.SmtpUsername;
+        var incomingPassword = source.SmtpPassword;
+        string? passwordArg = null;
         if (isCreate || !string.IsNullOrWhiteSpace(incomingPassword))
-            target.SmtpPassword = incomingPassword.Trim();
+            passwordArg = (incomingPassword ?? string.Empty).Trim();
+
+        CompanyOutboundEmailService.ApplyAutoSmtp(
+            target,
+            outboundEmail ?? string.Empty,
+            passwordArg,
+            source.SmtpFromName);
     }
 
     [HttpGet]
@@ -129,38 +148,36 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
 
     public record OutboundEmailTestRequest(
         string ToEmail,
-        string? SmtpHost = null,
-        int? SmtpPort = null,
-        bool? SmtpUseSsl = null,
-        string? SmtpUsername = null,
         string? SmtpPassword = null,
         string? SmtpFromEmail = null,
         string? SmtpFromName = null);
 
     /// <summary>
-    /// Send a test message using this company's outbound SMTP settings.
-    /// Optional body fields override saved settings for the attempt (password empty = use saved).
+    /// Send a test message. Mail server is auto-detected from the outbound email address
+    /// (Microsoft 365 / Google / Yahoo / …). Password empty = use saved password.
     /// </summary>
     [HttpPost("{id:int}/outbound-email/test")]
     public async Task<ActionResult<object>> TestOutboundEmail(int id, [FromBody] OutboundEmailTestRequest req, CancellationToken ct)
     {
-        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == id, ct);
         if (company is null) return NotFound(new { message = "Company not found." });
 
-        var draft = new Company
-        {
-            SmtpHost = req.SmtpHost ?? company.SmtpHost,
-            SmtpPort = req.SmtpPort ?? company.SmtpPort,
-            SmtpUseSsl = req.SmtpUseSsl ?? company.SmtpUseSsl,
-            SmtpUsername = req.SmtpUsername ?? company.SmtpUsername,
-            SmtpPassword = company.SmtpPassword,
-            SmtpFromEmail = req.SmtpFromEmail ?? company.SmtpFromEmail,
-            SmtpFromName = req.SmtpFromName ?? company.SmtpFromName,
-        };
-        var settings = CompanyOutboundEmailService.FromCompany(draft, req.SmtpPassword);
-        var validation = CompanyOutboundEmailService.ValidateForSend(settings);
-        if (validation is not null)
-            return BadRequest(new { message = validation });
+        var outboundEmail = !string.IsNullOrWhiteSpace(req.SmtpFromEmail)
+            ? req.SmtpFromEmail.Trim()
+            : !string.IsNullOrWhiteSpace(company.SmtpFromEmail)
+                ? company.SmtpFromEmail.Trim()
+                : (company.SmtpUsername ?? string.Empty).Trim();
+        var password = !string.IsNullOrWhiteSpace(req.SmtpPassword)
+            ? req.SmtpPassword.Trim()
+            : (company.SmtpPassword ?? string.Empty);
+        var fromName = !string.IsNullOrWhiteSpace(req.SmtpFromName)
+            ? req.SmtpFromName.Trim()
+            : company.SmtpFromName;
+
+        if (!CompanyOutboundEmailService.IsLikelyEmail(outboundEmail))
+            return BadRequest(new { message = "A valid outbound email address is required." });
+        if (string.IsNullOrWhiteSpace(password))
+            return BadRequest(new { message = "Email password is required." });
 
         var to = (req.ToEmail ?? string.Empty).Trim();
         if (!CompanyOutboundEmailService.IsLikelyEmail(to))
@@ -168,12 +185,31 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
 
         try
         {
-            await CompanyOutboundEmailService.SendTestAsync(settings, to, company.Name, ct);
+            var (used, providerLabel) = await CompanyOutboundEmailService.SendTestAsync(
+                outboundEmail,
+                password,
+                fromName,
+                to,
+                company.Name,
+                ct);
+
+            // Persist the working auto-detected server + credentials used for the test.
+            company.SmtpHost = used.Host;
+            company.SmtpPort = used.Port;
+            company.SmtpUseSsl = used.UseSsl;
+            company.SmtpUsername = used.Username;
+            company.SmtpFromEmail = used.FromEmail;
+            company.SmtpFromName = used.FromName;
+            company.SmtpPassword = password;
+            await db.SaveChangesAsync(ct);
+
             return Ok(new
             {
                 sent = true,
                 to,
-                message = $"Test email sent to {to}. Check the inbox (and spam) to confirm outbound SMTP works.",
+                provider = providerLabel,
+                smtpHost = used.Host,
+                message = $"Test email sent to {to} via {providerLabel}. Check the inbox (and spam) to confirm it works.",
             });
         }
         catch (Exception ex)

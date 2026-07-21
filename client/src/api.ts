@@ -122,6 +122,9 @@ export interface Company {
   smtpFromEmail?: string;
   smtpFromName?: string;
   smtpPasswordSet?: boolean;
+  smtpProviderId?: string;
+  smtpProviderLabel?: string;
+  smtpProviderTip?: string;
 }
 
 export interface AccessControlSettings {
@@ -2066,16 +2069,12 @@ export const api = {
     id: number,
     payload: {
       toEmail: string;
-      smtpHost?: string;
-      smtpPort?: number;
-      smtpUseSsl?: boolean;
-      smtpUsername?: string;
-      smtpPassword?: string;
       smtpFromEmail?: string;
+      smtpPassword?: string;
       smtpFromName?: string;
     },
   ) =>
-    fetchJsonWithMethod<{ sent: boolean; to: string; message: string }>(
+    fetchJsonWithMethod<{ sent: boolean; to: string; message: string; provider?: string }>(
       `/api/companies/${id}/outbound-email/test`,
       'POST',
       payload,
