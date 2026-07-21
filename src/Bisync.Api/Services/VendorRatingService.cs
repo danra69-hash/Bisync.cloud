@@ -46,11 +46,12 @@ public static class VendorRatingRules
         return Math.Round(list.Average(), 1, MidpointRounding.AwayFromZero);
     }
 
+    /// <summary>Smiley ≥80%, sweating 50–79%, red below 50%.</summary>
     public static string MoodFromAverage(decimal? average)
     {
         if (average is null) return "none";
-        if (average >= 90m) return "green";
-        if (average >= 70m) return "yellow";
+        if (average >= 80m) return "green";
+        if (average >= 50m) return "yellow";
         return "red";
     }
 

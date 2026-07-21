@@ -38,9 +38,31 @@ export function ratingLevelLabel(level: string | null | undefined): string {
   return found?.label ?? '—';
 }
 
+/** Smiley ≥80%, sweating 50–79%, red below 50%. */
 export function moodFromAverage(value: number | null | undefined): RatingMood {
   if (value == null || !Number.isFinite(value)) return 'none';
-  if (value >= 90) return 'green';
-  if (value >= 70) return 'yellow';
+  if (value >= 80) return 'green';
+  if (value >= 50) return 'yellow';
   return 'red';
+}
+
+export function moodFaceChar(mood: RatingMood): string {
+  if (mood === 'green') return '😊';
+  if (mood === 'yellow') return '😅';
+  if (mood === 'red') return '😠';
+  return '—';
+}
+
+export function moodFaceColorClass(mood: RatingMood): string {
+  if (mood === 'green') return 'text-[#5A7A2A]';
+  if (mood === 'yellow') return 'text-amber-600';
+  if (mood === 'red') return 'text-destructive';
+  return 'text-muted-foreground';
+}
+
+export function moodFaceLabel(mood: RatingMood): string {
+  if (mood === 'green') return 'Good (80–100%)';
+  if (mood === 'yellow') return 'Fair (50–79%)';
+  if (mood === 'red') return 'Poor (below 50%)';
+  return 'No rating';
 }
