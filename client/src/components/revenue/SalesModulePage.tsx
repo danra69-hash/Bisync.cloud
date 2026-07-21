@@ -2,17 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
 import {
   api,
+  type Company,
   type SalesModuleAppointment,
   type SalesModuleCustomer,
   type UpsertSalesModuleCustomerPayload,
 } from '../../api';
-import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
-import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import {
   blankSalesBrand,
   blankSalesContact,
@@ -34,8 +33,9 @@ const TABS = [
 ];
 
 type Props = {
-  selectedCompanyId: number | null;
-  selectedLocationIds: string[];
+  /** Dev Console session identity used when creating engaged records. */
+  sessionEmail?: string;
+  sessionName?: string;
 };
 
 function toDateInput(value?: string | null): string {
@@ -64,10 +64,10 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export function SalesModulePage({ selectedCompanyId }: Props) {
+export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) {
   const [tab, setTab] = useState<TabId>('customers');
-  useRevMgmtPageLabel(tab === 'customers' ? 'Sales Module · Customers' : 'Sales Module · Appointment Calendar');
-  const { currentUser } = useCurrentUser();
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
   const [customers, setCustomers] = useState<SalesModuleCustomer[]>([]);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
@@ -86,32 +86,47 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
   const [apptEnd, setApptEnd] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const engagedUserId = currentUser?.id ?? 0;
   const scrollRootRef = useRef<HTMLDivElement>(null);
+  const engagedUserEmail = sessionEmail.trim();
+  const engagedUserName = sessionName.trim() || engagedUserEmail || 'Dev Console';
+
+  useEffect(() => {
+    let cancelled = false;
+    api.companies()
+      .then(rows => {
+        if (cancelled) return;
+        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
+        setCompanies(sorted);
+        setSelectedCompanyId(prev => prev ?? sorted[0]?.id ?? null);
+      })
+      .catch(err => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load companies');
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const loadCustomers = useCallback(async () => {
-    if (!selectedCompanyId || !engagedUserId) {
+    if (!selectedCompanyId) {
       setCustomers([]);
       return;
     }
-    const rows = await api.salesModuleCustomers(selectedCompanyId, engagedUserId);
+    const rows = await api.salesModuleCustomers(selectedCompanyId);
     setCustomers(rows);
-  }, [selectedCompanyId, engagedUserId]);
+  }, [selectedCompanyId]);
 
   const loadAppointments = useCallback(async () => {
-    if (!selectedCompanyId || !engagedUserId) {
+    if (!selectedCompanyId) {
       setAppointments([]);
       return;
     }
     const from = startOfMonth(monthCursor);
     const to = new Date(from.getFullYear(), from.getMonth() + 2, 1);
     const rows = await api.salesModuleAppointments(selectedCompanyId, {
-      engagedUserId,
       from: from.toISOString(),
       to: to.toISOString(),
     });
     setAppointments(rows);
-  }, [selectedCompanyId, engagedUserId, monthCursor]);
+  }, [selectedCompanyId, monthCursor]);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,7 +196,7 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
   }
 
   async function saveAppointment() {
-    if (!selectedCompanyId || !engagedUserId || !apptCustomerId || !apptTitle.trim()) {
+    if (!selectedCompanyId || !apptCustomerId || !apptTitle.trim()) {
       setError('Customer and title are required for an appointment.');
       return;
     }
@@ -196,8 +211,8 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
         location: apptLocation.trim(),
         startsAt: new Date(apptStart).toISOString(),
         endsAt: new Date(apptEnd).toISOString(),
-        engagedUserId,
-        engagedUserEmail: currentUser?.email ?? '',
+        engagedUserId: 0,
+        engagedUserEmail,
       });
       setAppointments(prev => [...prev, created].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
       setApptFormOpen(false);
@@ -220,15 +235,9 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
   if (!selectedCompanyId) {
     return (
       <div className={pageShellClass()}>
-        <p className="text-sm text-muted-foreground">Select a company to open Sales Module.</p>
-      </div>
-    );
-  }
-
-  if (!engagedUserId) {
-    return (
-      <div className={pageShellClass()}>
-        <p className="text-sm text-muted-foreground">Sign in as a platform user to manage engaged customers.</p>
+        <p className="text-sm text-muted-foreground">
+          {companies.length === 0 ? 'Loading companies…' : 'Select a company to open Sales Module.'}
+        </p>
       </div>
     );
   }
@@ -245,11 +254,25 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
       <PageStickyFilters opaque className="space-y-2 pb-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground uppercase tracking-wide">Company</span>
+            <select
+              value={selectedCompanyId}
+              onChange={e => setSelectedCompanyId(Number(e.target.value) || null)}
+              className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+            >
+              {companies.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
         <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
         {tab === 'customers' ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              Customers you are engaged with · {customers.length} record{customers.length === 1 ? '' : 's'}
+              Sales customers for this company · {customers.length} record{customers.length === 1 ? '' : 's'}
             </p>
             <button
               type="button"
@@ -315,15 +338,16 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
                 <th className="px-2 py-1.5 text-left">Current Status</th>
                 <th className="px-2 py-1.5 text-left">Last Contact Date</th>
                 <th className="px-2 py-1.5 text-left">Short Brief on last discussion</th>
+                <th className="px-2 py-1.5 text-left">Engaged by</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <TableLoadingRow colSpan={11} label="Loading customers…" />
+                <TableLoadingRow colSpan={12} label="Loading customers…" />
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
-                    No engaged customers yet. Create a customer to start.
+                  <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
+                    No sales customers yet. Create a customer to start.
                   </td>
                 </tr>
               ) : (
@@ -349,6 +373,9 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
                     </td>
                     <td className="px-2 py-1.5 max-w-[16rem] truncate" title={row.lastDiscussionBrief}>
                       {row.lastDiscussionBrief || '—'}
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap" title={row.engagedUserEmail}>
+                      {row.engagedUserName || row.engagedUserEmail || '—'}
                     </td>
                   </tr>
                 ))
@@ -454,9 +481,9 @@ export function SalesModulePage({ selectedCompanyId }: Props) {
         <SalesCustomerPanel
           companyId={selectedCompanyId}
           customer={editing}
-          engagedUserId={engagedUserId}
-          engagedUserEmail={currentUser?.email ?? ''}
-          engagedUserName={currentUser?.fullName ?? ''}
+          engagedUserId={0}
+          engagedUserEmail={engagedUserEmail}
+          engagedUserName={engagedUserName}
           onClose={() => { setPanelOpen(false); setEditing(null); }}
           onSaved={handleSavedCustomer}
         />
@@ -550,9 +577,9 @@ function SalesCustomerPanel({
     status: customer?.status ?? 'Prospect',
     lastContactDate: toDateInput(customer?.lastContactDate),
     lastDiscussionBrief: customer?.lastDiscussionBrief ?? '',
-    engagedUserId,
-    engagedUserEmail,
-    engagedUserName,
+    engagedUserId: customer?.engagedUserId ?? engagedUserId,
+    engagedUserEmail: customer?.engagedUserEmail || engagedUserEmail,
+    engagedUserName: customer?.engagedUserName || engagedUserName,
     active: customer?.active ?? true,
   }));
   const [saving, setSaving] = useState(false);
@@ -565,9 +592,9 @@ function SalesCustomerPanel({
       const payload = toCustomerPayload({
         ...form,
         lastContactDate: form.lastContactDate ? new Date(form.lastContactDate).toISOString() : null,
-        engagedUserId,
-        engagedUserEmail,
-        engagedUserName,
+        engagedUserId: customer?.engagedUserId ?? engagedUserId,
+        engagedUserEmail: customer?.engagedUserEmail || engagedUserEmail,
+        engagedUserName: customer?.engagedUserName || engagedUserName,
       });
       const saved = customer
         ? await api.updateSalesModuleCustomer(customer.externalId, payload)

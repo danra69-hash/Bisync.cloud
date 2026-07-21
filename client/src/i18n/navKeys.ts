@@ -50,7 +50,6 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'Customer List': 'revMgmt.items.customerList',
   'Customer Group': 'revMgmt.items.customerGroup',
   'Customer Management': 'revMgmt.items.customerManagement',
-  'Sales Module': 'revMgmt.items.salesModule',
   'Promotion Scheduler': 'revMgmt.items.promotionScheduler',
   'Itemized Sales Summary': 'revMgmt.items.itemizedSalesSummary',
   'Inventory Summary': 'revMgmt.items.inventorySummary',

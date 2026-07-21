@@ -334,11 +334,11 @@
       "kind": "client-page",
       "path": "client/src/components/revenue/SalesModulePage.tsx",
       "symbol": "SalesModulePage",
-      "route": "/revenue/sales-module",
+      "route": "/dev-console#sales-module",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-21",
-      "notes": "Sales Module CRM customers + appointment calendar"
+      "notes": "Sales Module CRM customers + appointment calendar (Dev Console tab after Tenant Rollups)"
     },
     {
       "id": "dr.page.create-b2b-sales-order",
