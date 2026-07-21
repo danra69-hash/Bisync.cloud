@@ -8,7 +8,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { FileText, PackageOpen, Search, UserPlus } from 'lucide-react';
-import { api, type Company, type EngageVendorContact, type LocationConfig, type Vendor, type VendorRatingSummary } from '../../api';
+import { api, ApiError, type Company, type EngageVendorContact, type LocationConfig, type Vendor, type VendorRatingSummary, type VendorTaggedComponent } from '../../api';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import {
   applyVendorProductOverrides,
@@ -26,6 +26,7 @@ import {
 } from '../../data/vendorPolicyRules';
 import { getDefaultVendorContact } from '../../data/vendorContacts';
 import { VendorEngageModal } from './VendorEngageModal';
+import { VendorDeactivateUntagModal } from './VendorDeactivateUntagModal';
 import { VendorCreatePanel } from './VendorCreatePanel';
 import { VendorProductsList } from './VendorProductsList';
 import { VendorProductsPanel } from './VendorProductsPanel';
@@ -40,8 +41,9 @@ import type { SampleQuoteTemplateId } from '../../data/requestForSample';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { formatOverallRating } from '../../data/vendorRating';
+import { ToggleSwitch } from '../admin/ToggleSwitch';
 
-type VendorSortColumn = 'name' | 'products' | 'policy' | 'rating' | 'address' | 'phone' | 'email' | 'action';
+type VendorSortColumn = 'name' | 'products' | 'policy' | 'rating' | 'address' | 'phone' | 'email' | 'active' | 'action';
 
 const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
   { key: 'name', label: 'Vendor Name' },
@@ -51,6 +53,7 @@ const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
   { key: 'address', label: 'Address' },
   { key: 'phone', label: 'Phone Number' },
   { key: 'email', label: 'Email' },
+  { key: 'active', label: 'Active', align: 'center', sortable: false },
   { key: 'action', label: 'Action', align: 'right', sortable: false },
 ];
 
@@ -95,6 +98,12 @@ export function VendorListPage({
   const [productTagFilter, setProductTagFilter] = useState<'all' | 'tagged' | 'untagged'>('all');
   const [engageTarget, setEngageTarget] = useState<Vendor | null>(null);
   const [engageError, setEngageError] = useState<string | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<{
+    vendor: Vendor;
+    tagged: VendorTaggedComponent[];
+  } | null>(null);
+  const [vendorActionError, setVendorActionError] = useState<string | null>(null);
+  const [savingVendorId, setSavingVendorId] = useState<string | null>(null);
   const [productsVendor, setProductsVendor] = useState<Vendor | null>(null);
   const [ratingVendor, setRatingVendor] = useState<Vendor | null>(null);
   const [ratingSummaries, setRatingSummaries] = useState<Record<string, VendorRatingSummary>>({});
@@ -323,15 +332,37 @@ export function VendorListPage({
     }
   }
 
+  function replaceVendor(updated: Vendor) {
+    setVendors(prev => prev.map(v => (v.id === updated.id ? { ...v, ...updated } : v)));
+  }
+
+  async function toggleVendorActive(vendor: Vendor, active: boolean) {
+    setVendorActionError(null);
+    setSavingVendorId(vendor.externalId);
+    try {
+      const updated = await api.setVendorActive(vendor.externalId, active, selectedCompanyId);
+      replaceVendor(updated);
+    } catch (e) {
+      if (e instanceof ApiError && e.taggedComponents && e.taggedComponents.length > 0 && !active) {
+        setDeactivateTarget({ vendor, tagged: e.taggedComponents });
+      } else {
+        setVendorActionError(e instanceof Error ? e.message : 'Failed to update vendor status.');
+      }
+    } finally {
+      setSavingVendorId(null);
+    }
+  }
+
   function renderRow(v: Vendor) {
     const defaultContact = getDefaultVendorContact(v);
     const displayMobile = defaultContact?.mobile || v.mobile || '—';
     const displayEmail = defaultContact?.email || v.email;
     const rating = ratingSummaries[v.externalId];
+    const isActive = v.active !== false;
     return (
       <tr
         key={v.id}
-        className={`border-b border-border last:border-0 transition-colors hover:bg-muted/30 ${v.engaged ? 'bg-[#5A7A2A]/[0.04]' : ''}`}
+        className={`border-b border-border last:border-0 transition-colors hover:bg-muted/30 ${v.engaged ? 'bg-[#5A7A2A]/[0.04]' : ''} ${!isActive ? 'opacity-60' : ''}`}
       >
         <td className="px-4 py-3">
           <div className="flex items-start gap-2 min-w-[160px]">
@@ -378,8 +409,16 @@ export function VendorListPage({
             </a>
           ) : '—'}
         </td>
+        <td className="px-4 py-3 text-center">
+          <ToggleSwitch
+            checked={isActive}
+            disabled={savingVendorId === v.externalId}
+            label={isActive ? 'Deactivate vendor' : 'Activate vendor'}
+            onChange={next => void toggleVendorActive(v, next)}
+          />
+        </td>
         <td className="px-4 py-3 text-right whitespace-nowrap">
-          {!v.engaged && (
+          {!v.engaged && isActive && (
             <button
               onClick={() => {
                 setEngageError(null);
@@ -504,6 +543,10 @@ export function VendorListPage({
         )}
       </p>
 
+      {vendorActionError && (
+        <p className="text-xs text-red-600 border border-red-300/50 rounded-lg px-3 py-2">{vendorActionError}</p>
+      )}
+
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
           <MillstoneLoader size="sm" layout="block" label="Loading vendors…" />
@@ -522,7 +565,7 @@ export function VendorListPage({
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
+                    <td colSpan={9} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No vendors match your filters.
                     </td>
                   </tr>
@@ -531,7 +574,7 @@ export function VendorListPage({
                     if (row.kind === 'header') {
                       return (
                         <tr key={row.id} className="bg-muted/20">
-                          <td colSpan={8} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
+                          <td colSpan={9} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
                             {row.label}
                           </td>
                         </tr>
@@ -540,7 +583,7 @@ export function VendorListPage({
                     return renderRow(row.vendor);
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
@@ -633,6 +676,20 @@ export function VendorListPage({
             }
           }}
           onConfirm={handleConfirmEngage}
+        />
+      )}
+
+      {deactivateTarget && (
+        <VendorDeactivateUntagModal
+          key={deactivateTarget.vendor.externalId}
+          vendor={deactivateTarget.vendor}
+          companyId={selectedCompanyId}
+          initialTagged={deactivateTarget.tagged}
+          onClose={() => setDeactivateTarget(null)}
+          onDeactivated={updated => {
+            replaceVendor(updated);
+            setDeactivateTarget(null);
+          }}
         />
       )}
 

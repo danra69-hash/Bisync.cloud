@@ -89,6 +89,7 @@ export function SmartIngredientPage({
   const [editRow, setEditRow] = useState<ComponentRow | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [importPlan, setImportPlan] = useState<SmartComponentImportPlan | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const templateRef = useRef<HTMLInputElement | null>(null);
@@ -238,12 +239,12 @@ export function SmartIngredientPage({
 
   async function toggleActive(row: ComponentRow) {
     if (!row.id) return;
-    const updated = { ...row, active: !row.active };
+    setActionError(null);
     try {
       const saved = await api.updateIngredient(row.id, rowToIngredient({ ...row, active: !row.active }, {}));
       setRows(prev => prev.map(r => r.id === row.id ? mergeSavedRow(saved, row) : r));
-    } catch {
-      setRows(prev => prev.map(r => r.id === row.id ? updated : r));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update component status.');
     }
   }
 
@@ -329,6 +330,9 @@ export function SmartIngredientPage({
 
       {importError && (
         <p className="text-xs text-red-500 border border-red-300/50 rounded-lg px-3 py-2">{importError}</p>
+      )}
+      {actionError && (
+        <p className="text-xs text-red-500 border border-red-300/50 rounded-lg px-3 py-2">{actionError}</p>
       )}
 
       {selectedCompanyId && scopedLocationNames.length > 0 && (
