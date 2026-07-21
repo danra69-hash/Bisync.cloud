@@ -45,7 +45,7 @@ export function RevMgmtBar({
   }, []);
 
   return (
-    <div ref={barRef} className="bg-card border-b border-border px-2 sm:px-3 py-1.5">
+    <div ref={barRef} className="bg-card px-2 sm:px-3 py-1.5">
       <div className="flex items-center gap-2 flex-wrap">
         {nav.map(section => {
           const isOpen = openSection === section.title;

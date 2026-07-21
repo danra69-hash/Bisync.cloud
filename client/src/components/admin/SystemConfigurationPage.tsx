@@ -28,15 +28,17 @@ export function SystemConfigurationPage({
 
   return (
     <div className={`${PAGE_SHELL_CLS} space-y-3`}>
-      <div>
-        <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">{t('systemConfig.title')}</p>
-        <h2 className="text-lg font-semibold">{t('systemConfig.platformConfig')}</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          {t('systemConfig.description')}
-        </p>
-      </div>
+      <div data-page-filters className="bg-background/95 backdrop-blur-sm space-y-3 pb-2 border-b border-border/60 -mx-0">
+        <div>
+          <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-1">{t('systemConfig.title')}</p>
+          <h2 className="text-lg font-semibold">{t('systemConfig.platformConfig')}</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            {t('systemConfig.description')}
+          </p>
+        </div>
 
-      <HrConfigTabBar tabs={tabs} active={tab} onChange={setTab} />
+        <HrConfigTabBar tabs={tabs} active={tab} onChange={setTab} />
+      </div>
 
       {tab === 'companies' && <CompaniesTab onOrgDataChanged={onOrgDataChanged} />}
       {tab === 'locations' && (

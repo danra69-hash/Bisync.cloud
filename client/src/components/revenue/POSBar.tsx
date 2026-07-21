@@ -10,7 +10,7 @@ export function POSBar({ selectedItem, onSelectItem }: Props) {
   const { posItem, t } = useAppTranslation();
 
   return (
-    <div className="bg-card border-b border-border px-4 py-2">
+    <div data-module-bar className="bg-card border-b border-border px-4 py-2">
       <div className="flex items-center gap-2 flex-wrap">
         {posItems.map(item => {
           const isActive = selectedItem === item;

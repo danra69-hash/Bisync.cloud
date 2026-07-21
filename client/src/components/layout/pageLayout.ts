@@ -3,9 +3,16 @@ export const PAGE_SHELL_CLS = 'w-full min-w-0 max-w-none';
 
 export const PAGE_PADDING_CLS = 'p-2 sm:p-3';
 
-/** Vertical-only scroll region for data tables — no horizontal scroll. */
+/**
+ * Vertical scroll region for data tables.
+ * Height leaves room for sticky app header + module bar + page filters.
+ */
 export const TABLE_SCROLL_CLS =
   'overflow-x-hidden rounded-lg border border-border bg-card max-h-[calc(100dvh-var(--app-chrome-offset))] overflow-y-auto w-full min-w-0';
+
+/** Sticky module nav (Rev Mgmt / POS) — use with data-module-bar. */
+export const MODULE_BAR_STICKY_CLS =
+  'sticky top-0 z-20 bg-card border-b border-border';
 
 /** Fit tables to container width; pair with truncate/line-clamp in cells when needed. */
 export const DATA_TABLE_CLS = 'w-full table-fixed border-collapse';
@@ -34,3 +41,4 @@ export function pageShellClass({ embedded = false, spacing = 'default' }: ShellO
     ? `${PAGE_SHELL_CLS} ${spaceCls}`
     : `${PAGE_SHELL_CLS} ${PAGE_PADDING_CLS} ${spaceCls}`;
 }
+

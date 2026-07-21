@@ -158,9 +158,9 @@ export default function App() {
   const isFullBleed = isRevenueSection || isHrSection;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="h-dvh max-h-dvh flex flex-col overflow-hidden bg-background text-foreground">
       {ghostSession && (
-        <div className="sticky top-0 z-40 px-3 py-2 flex flex-wrap items-center justify-between gap-2 bg-amber-500 text-amber-950 text-xs">
+        <div className="shrink-0 z-40 px-3 py-2 flex flex-wrap items-center justify-between gap-2 bg-amber-500 text-amber-950 text-xs">
           <div className="inline-flex items-center gap-2 min-w-0">
             <Ghost size={14} className="shrink-0" />
             <span className="font-semibold">Ghost Support</span>
@@ -187,7 +187,7 @@ export default function App() {
         onNavigate={handleNavigate}
       />
 
-      <div className="flex flex-col min-h-screen w-full min-w-0 overflow-x-hidden">
+      <div className="flex flex-col flex-1 min-h-0 w-full min-w-0 overflow-hidden">
         <Header
           activeNav={activeNav}
           darkMode={darkMode}
@@ -211,7 +211,10 @@ export default function App() {
         />
 
         <OrgCountryProvider countryCode={orgCountryCode}>
-        <main className={`flex-1 flex flex-col min-h-0 w-full min-w-0 overflow-x-hidden ${isFullBleed ? '' : 'p-2 sm:p-3 space-y-3'}`}>
+        <main
+          data-app-main
+          className={`flex-1 flex flex-col min-h-0 w-full min-w-0 overflow-x-hidden overflow-y-auto ${isFullBleed ? '' : 'p-2 sm:p-3 space-y-3'}`}
+        >
           {activeNav === 'Overview' ? (
             <OverviewDashboard
               editLayout={editLayout}

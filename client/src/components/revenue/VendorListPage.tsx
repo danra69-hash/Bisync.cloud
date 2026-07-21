@@ -6,6 +6,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { FileText, PackageOpen, Search, UserPlus } from 'lucide-react';
 import { api, ApiError, type Company, type EngageVendorContact, type LocationConfig, type Vendor, type VendorRatingSummary, type VendorTaggedComponent } from '../../api';
@@ -474,6 +475,7 @@ export function VendorListPage({
         </p>
       )}
 
+      <PageStickyFilters opaque>
       <div className="flex items-end justify-between gap-3 flex-wrap border-b border-border">
         <div className="flex gap-1">
           {VENDOR_TABS.map(t => (
@@ -524,6 +526,7 @@ export function VendorListPage({
           </button>
         </div>
       </div>
+      </PageStickyFilters>
 
       {tab === 'vendors' ? (
       <>

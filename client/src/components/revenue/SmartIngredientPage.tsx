@@ -6,6 +6,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { FilePlus2, Search, Upload, X } from 'lucide-react';
 import { api } from '../../api';
@@ -351,6 +352,7 @@ export function SmartIngredientPage({
         </p>
       )}
 
+      <PageStickyFilters opaque className="space-y-2 pb-2">
       <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
           <FilterSelect label="Category" value={catFilter} options={getSiCategoryFilterOptions()} onChange={setCatFilter} />
@@ -413,6 +415,7 @@ export function SmartIngredientPage({
           </div>
         </div>
       </div>
+      </PageStickyFilters>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (

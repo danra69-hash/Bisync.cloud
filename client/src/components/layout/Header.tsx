@@ -41,7 +41,7 @@ export function Header({
   const selectableCompanies = companies.filter(c => c.active !== false);
 
   return (
-    <header className="sticky top-0 z-30 px-2 sm:px-3 py-2 flex items-center gap-2" style={{ background: '#2C1A0A', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+    <header className="shrink-0 z-30 px-2 sm:px-3 py-2 flex items-center gap-2" style={{ background: '#2C1A0A', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="flex items-center gap-2 shrink-0">
         <button onClick={onToggleSidebar} className="p-2 rounded-md hover:bg-white/10">
           <Menu size={16} className="text-white" />

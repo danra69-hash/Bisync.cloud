@@ -246,13 +246,15 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
 
   return (
     <RevMgmtTitleProvider revItem={revItem}>
-      <RevMgmtBar
-        selectedItem={revItem}
-        onSelectItem={setRevItem}
-        hasSupplyCapability={hasSupplyCapability}
-        hasB2bProductCapability={hasB2bProductCapability}
-      />
-      {revItem && <RevMgmtPageTitle revItem={revItem} />}
+      <div data-module-bar className="bg-background border-b border-border shadow-sm">
+        <RevMgmtBar
+          selectedItem={revItem}
+          onSelectItem={setRevItem}
+          hasSupplyCapability={hasSupplyCapability}
+          hasB2bProductCapability={hasB2bProductCapability}
+        />
+        {revItem && <RevMgmtPageTitle revItem={revItem} />}
+      </div>
       {renderRevMgmtContent(
         revItem,
         selectedCompanyId,
