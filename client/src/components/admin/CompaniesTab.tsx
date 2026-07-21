@@ -31,7 +31,9 @@ import { ToggleSwitch } from './ToggleSwitch';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import {
   defaultsForOutboundProvider,
+  isMailRetrievalPort,
   normalizeOutboundProviderMode,
+  normalizeSmtpPort,
   outboundEmailReady,
   tipForOutboundMode,
   OUTBOUND_PROVIDER_MODES,
@@ -169,7 +171,10 @@ function CompanyPanel({
       ...company,
       smtpProviderMode: mode,
       smtpHost: (company.smtpHost ?? '').trim() || defaults.host,
-      smtpPort: company.smtpPort && company.smtpPort > 0 ? company.smtpPort : defaults.port,
+      smtpPort: normalizeSmtpPort(
+        company.smtpPort && company.smtpPort > 0 ? company.smtpPort : defaults.port,
+        (company.smtpHost ?? '').trim() || defaults.host,
+      ),
       smtpUseSsl: company.smtpUseSsl ?? defaults.useSsl,
       smtpUsername: (company.smtpUsername ?? '').trim() || email,
       graphTenantId: company.graphTenantId ?? '',
@@ -243,7 +248,10 @@ function CompanyPanel({
       smtpHost: host,
       smtpPort: mode === 'microsoft-graph'
         ? 443
-        : (form.smtpPort && form.smtpPort > 0 ? form.smtpPort : defaults.port),
+        : normalizeSmtpPort(
+          form.smtpPort && form.smtpPort > 0 ? form.smtpPort : defaults.port,
+          host,
+        ),
       smtpUseSsl: mode === 'microsoft-graph' ? true : (form.smtpUseSsl ?? defaults.useSsl),
       graphTenantId: (form.graphTenantId ?? '').trim(),
       graphClientId: (form.graphClientId ?? '').trim(),
@@ -429,7 +437,9 @@ function CompanyPanel({
         smtpUsername: (form.smtpUsername ?? '').trim() || address,
         smtpProviderMode: providerMode,
         smtpHost: providerMode === 'microsoft-graph' ? undefined : ((payload.smtpHost as string) || undefined),
-        smtpPort: providerMode === 'microsoft-graph' ? undefined : (Number(payload.smtpPort) || 587),
+        smtpPort: providerMode === 'microsoft-graph'
+          ? undefined
+          : normalizeSmtpPort(Number(payload.smtpPort) || 587, String(payload.smtpHost ?? '')),
         smtpUseSsl: providerMode === 'microsoft-graph' ? undefined : Boolean(payload.smtpUseSsl ?? true),
         smtpPassword: providerMode === 'microsoft-graph' ? undefined : (passwordForTest || undefined),
         graphTenantId: providerMode === 'microsoft-graph' ? (form.graphTenantId ?? '').trim() : undefined,
@@ -701,10 +711,24 @@ function CompanyPanel({
                         type="number"
                         className={inputCls}
                         value={form.smtpPort ?? 587}
-                        onChange={e => set('smtpPort', Number(e.target.value) || 587)}
+                        onChange={e => {
+                          const raw = Number(e.target.value) || 587;
+                          const host = form.smtpHost ?? '';
+                          const next = normalizeSmtpPort(raw, host);
+                          set('smtpPort', next);
+                          if (isMailRetrievalPort(raw)) {
+                            setOutboundFeedback({
+                              kind: 'info',
+                              text: `Port ${raw} is POP/IMAP, not SMTP. Switched to ${next}. For Microsoft 365, prefer Microsoft Graph.`,
+                            });
+                          }
+                        }}
                         min={1}
                         max={65535}
                       />
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        SMTP submission: 587 (STARTTLS) or 465 (SSL). Do not use 995 / 993.
+                      </p>
                     </div>
                     <div className="flex items-end pb-1">
                       <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">

@@ -35,7 +35,8 @@ export const OUTBOUND_PROVIDER_MODES: {
     id: 'microsoft',
     label: 'Microsoft 365 (SMTP)',
     tip:
-      'Uses smtp.office365.com:587. Often blocked unless Authenticated SMTP is enabled. Prefer Microsoft Graph instead.',
+      'Uses smtp.office365.com on port 587 only (never 995/993 — those are POP/IMAP). ' +
+      'Often blocked unless Authenticated SMTP is enabled. Prefer Microsoft Graph instead.',
   },
   {
     id: 'google',
@@ -111,6 +112,25 @@ export function defaultsForOutboundProvider(
       return { host: 'smtp.office365.com', port: 587, useSsl: true };
     }
   }
+}
+
+/** POP/IMAP ports are a common SMTP misconfiguration — map them to submission 587. */
+export function isMailRetrievalPort(port: number): boolean {
+  return port === 995 || port === 993 || port === 110 || port === 143;
+}
+
+export function normalizeSmtpPort(port: number | null | undefined, host = ''): number {
+  const p = port && port > 0 && port <= 65535 ? port : 587;
+  if (isMailRetrievalPort(p)) return 587;
+  const h = host.trim().toLowerCase();
+  if (
+    (h.includes('office365') || h.includes('outlook') || h.includes('gmail'))
+    && p !== 587
+    && p !== 465
+  ) {
+    return 587;
+  }
+  return p;
 }
 
 export function detectOutboundProvider(email: string): OutboundProviderInfo | null {

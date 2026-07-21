@@ -43,7 +43,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             c.ModulesJson,
             smtpProviderMode = mode,
             smtpHost = c.SmtpHost ?? string.Empty,
-            smtpPort = c.SmtpPort > 0 ? c.SmtpPort : 587,
+            smtpPort = CompanyOutboundEmailService.NormalizeSmtpPort(
+                c.SmtpPort > 0 ? c.SmtpPort : 587,
+                c.SmtpHost),
             smtpUseSsl = c.SmtpUseSsl,
             smtpUsername = c.SmtpUsername ?? string.Empty,
             smtpFromEmail = c.SmtpFromEmail ?? string.Empty,
@@ -271,8 +273,21 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                     ? company.SmtpUsername.Trim()
                     : outboundEmail;
             var customHost = !string.IsNullOrWhiteSpace(req.SmtpHost) ? req.SmtpHost.Trim() : company.SmtpHost;
-            var customPort = req.SmtpPort ?? company.SmtpPort;
+            var customPort = CompanyOutboundEmailService.NormalizeSmtpPort(
+                req.SmtpPort ?? company.SmtpPort,
+                customHost);
             var customUseSsl = req.SmtpUseSsl ?? company.SmtpUseSsl;
+
+            if (req.SmtpPort is int requestedPort
+                && CompanyOutboundEmailService.IsMailRetrievalPort(requestedPort))
+            {
+                return BadRequest(new
+                {
+                    message =
+                        $"Port {requestedPort} is POP/IMAP, not SMTP. Use port 587 (or 465). " +
+                        "For Microsoft 365 / Exchange, prefer Mail provider → Microsoft Graph.",
+                });
+            }
 
             if (string.IsNullOrWhiteSpace(customHost))
                 return BadRequest(new { message = "SMTP host is required (for example smtp.office365.com)." });
