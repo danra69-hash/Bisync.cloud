@@ -17,6 +17,7 @@ import { StockCardPage } from './StockCardPage';
 import { InventoryPage } from './InventoryPage';
 import { WastagePage } from './WastagePage';
 import { TransferPage } from './TransferPage';
+import { CogsAuditPage } from './CogsAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
@@ -184,6 +185,13 @@ function renderRevMgmtContent(
     case 'Transfer':
       return (
         <TransferPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'COGS Audit':
+      return (
+        <CogsAuditPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

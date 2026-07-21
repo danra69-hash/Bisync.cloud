@@ -56,6 +56,7 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'Detailed Purchase Summary': 'revMgmt.items.detailedPurchaseSummary',
   'Production Report': 'revMgmt.items.productionReport',
   'Wastage Report': 'revMgmt.items.wastageReport',
+  'COGS Audit': 'revMgmt.items.cogsAudit',
 };
 
 export const POS_ITEM_I18N: Record<string, string> = {
@@ -74,7 +75,6 @@ export const HR_CONFIG_TAB_I18N: Record<string, string> = {
   Companies: 'systemConfig.companies',
   Locations: 'systemConfig.locations',
   'Access Control': 'systemConfig.accessControl',
-  'COGS Audit': 'systemConfig.cogsAudit',
   'Audit Trail': 'systemConfig.auditTrail',
 };
 

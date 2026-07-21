@@ -410,6 +410,16 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.cogs-audit",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CogsAuditPage.tsx",
+      "symbol": "CogsAuditPage",
+      "route": "/revenue/reports/cogs-audit",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-21"
+    },
+    {
       "id": "dr.page.system-configuration",
       "kind": "client-page",
       "path": "client/src/components/admin/SystemConfigurationPage.tsx",
