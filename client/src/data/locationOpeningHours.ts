@@ -1,4 +1,4 @@
-/** Weekly opening hours + last-order times for a location (HH:mm, 24h). */
+/** Weekly opening hours + last-order times for a location (HH:mm, 24h, :00 or :30 only). */
 
 export const LOCATION_WEEKDAYS = [
   'monday',
@@ -31,6 +31,13 @@ export const LOCATION_WEEKDAY_LABELS: Record<LocationWeekday, string> = {
   sunday: 'Sun',
 };
 
+/** 00:00, 00:30, … 23:30 */
+export const HALF_HOUR_TIMES: string[] = Array.from({ length: 48 }, (_, i) => {
+  const hour = Math.floor(i / 2);
+  const minute = i % 2 === 0 ? '00' : '30';
+  return `${String(hour).padStart(2, '0')}:${minute}`;
+});
+
 export function blankDayHours(): LocationDayHours {
   return { openFrom: '', openTo: '', lastOrder: '', closed: false };
 }
@@ -47,17 +54,24 @@ export function blankOpeningHours(): LocationOpeningHours {
   };
 }
 
-function normalizeTime(value: unknown): string {
+/** Parse HH:mm and snap minutes to :00 or :30. */
+export function normalizeTime(value: unknown): string {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
   if (!trimmed) return '';
-  // Accept H:mm or HH:mm
-  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
+  // Accept H:mm, HH:mm, or HH:mm:ss
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(trimmed);
   if (!match) return '';
   const hour = Number(match[1]);
   const minute = Number(match[2]);
   if (!Number.isFinite(hour) || !Number.isFinite(minute) || hour > 23 || minute > 59) return '';
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+  const totalMinutes = hour * 60 + minute;
+  let snapped = Math.round(totalMinutes / 30) * 30;
+  if (snapped >= 24 * 60) snapped = 0; // 23:45+ → 00:00
+  const snappedHour = Math.floor(snapped / 60);
+  const snappedMinute = snapped % 60;
+  return `${String(snappedHour).padStart(2, '0')}:${String(snappedMinute).padStart(2, '0')}`;
 }
 
 export function parseOpeningHoursJson(json: string | null | undefined): LocationOpeningHours {
