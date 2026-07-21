@@ -183,3 +183,125 @@ export function groupLabel(state: ComponentHierarchyState, groupId: number): str
   if (!group) return '—';
   return `${categoryName(state, group.categoryId)} · ${group.name}`;
 }
+
+/** Live ingredient attachment counts keyed by lowercase category / category::group. */
+export type HierarchyAttachmentCounts = {
+  category: Record<string, number>;
+  group: Record<string, number>;
+};
+
+export function emptyHierarchyAttachmentCounts(): HierarchyAttachmentCounts {
+  return { category: {}, group: {} };
+}
+
+export function buildHierarchyAttachmentCounts(
+  ingredients: { category?: string | null; group?: string | null }[],
+): HierarchyAttachmentCounts {
+  const category: Record<string, number> = {};
+  const group: Record<string, number> = {};
+  for (const ingredient of ingredients) {
+    const cat = (ingredient.category ?? '').trim().toLowerCase();
+    const grp = (ingredient.group ?? '').trim().toLowerCase();
+    if (cat) category[cat] = (category[cat] ?? 0) + 1;
+    if (grp) {
+      const key = cat ? `${cat}::${grp}` : `::${grp}`;
+      group[key] = (group[key] ?? 0) + 1;
+    }
+  }
+  return { category, group };
+}
+
+function categoryIngredientCount(counts: HierarchyAttachmentCounts, name: string): number {
+  return counts.category[name.trim().toLowerCase()] ?? 0;
+}
+
+function groupIngredientCount(
+  counts: HierarchyAttachmentCounts,
+  categoryNameValue: string,
+  groupNameValue: string,
+): number {
+  const cat = categoryNameValue.trim().toLowerCase();
+  const grp = groupNameValue.trim().toLowerCase();
+  if (!grp) return 0;
+  const keyed = counts.group[`${cat}::${grp}`] ?? 0;
+  const loose = counts.group[`::${grp}`] ?? 0;
+  return keyed + (keyed > 0 ? 0 : loose);
+}
+
+/** Category delete blocked when it has groups or any attached components. */
+export function categoryDeleteBlocked(
+  state: ComponentHierarchyState,
+  categoryId: number,
+  counts: HierarchyAttachmentCounts,
+): { blocked: boolean; reason: string } {
+  const category = state.categories.find(item => item.id === categoryId);
+  if (!category) return { blocked: true, reason: 'Category not found.' };
+  const childGroups = state.groups.filter(item => item.categoryId === categoryId).length;
+  if (childGroups > 0) {
+    return {
+      blocked: true,
+      reason: `Cannot delete: ${childGroups} group${childGroups === 1 ? '' : 's'} attached. Remove groups first.`,
+    };
+  }
+  const attached = categoryIngredientCount(counts, category.name);
+  if (attached > 0) {
+    return {
+      blocked: true,
+      reason: `Cannot delete: ${attached} component${attached === 1 ? '' : 's'} attached under this category.`,
+    };
+  }
+  return { blocked: false, reason: 'Delete category' };
+}
+
+/** Group delete blocked when it has sub-groups or any attached components. */
+export function groupDeleteBlocked(
+  state: ComponentHierarchyState,
+  groupId: number,
+  counts: HierarchyAttachmentCounts,
+): { blocked: boolean; reason: string; componentCount: number } {
+  const group = state.groups.find(item => item.id === groupId);
+  if (!group) return { blocked: true, reason: 'Group not found.', componentCount: 0 };
+  const childSubs = state.subGroups.filter(item => item.groupId === groupId).length;
+  const catName = categoryName(state, group.categoryId);
+  const componentCount = groupIngredientCount(counts, catName, group.name);
+  if (childSubs > 0) {
+    return {
+      blocked: true,
+      reason: `Cannot delete: ${childSubs} sub-group${childSubs === 1 ? '' : 's'} attached. Remove sub-groups first.`,
+      componentCount,
+    };
+  }
+  if (componentCount > 0) {
+    return {
+      blocked: true,
+      reason: `Cannot delete: ${componentCount} component${componentCount === 1 ? '' : 's'} attached under this group.`,
+      componentCount,
+    };
+  }
+  return { blocked: false, reason: 'Delete group', componentCount: 0 };
+}
+
+/**
+ * Sub-group delete blocked when components are attached under its parent group
+ * (components are assigned at category/group level today) or the row still has a stored count.
+ */
+export function subGroupDeleteBlocked(
+  state: ComponentHierarchyState,
+  subGroupId: number,
+  counts: HierarchyAttachmentCounts,
+): { blocked: boolean; reason: string; componentCount: number } {
+  const subGroup = state.subGroups.find(item => item.id === subGroupId);
+  if (!subGroup) return { blocked: true, reason: 'Sub-group not found.', componentCount: 0 };
+  const group = state.groups.find(item => item.id === subGroup.groupId);
+  if (!group) return { blocked: true, reason: 'Parent group not found.', componentCount: 0 };
+  const catName = categoryName(state, group.categoryId);
+  const componentCount = groupIngredientCount(counts, catName, group.name);
+  if (componentCount > 0) {
+    return {
+      blocked: true,
+      reason: `Cannot delete: ${componentCount} component${componentCount === 1 ? '' : 's'} attached under this group/sub-group.`,
+      componentCount,
+    };
+  }
+  return { blocked: false, reason: 'Delete sub-group', componentCount: 0 };
+}

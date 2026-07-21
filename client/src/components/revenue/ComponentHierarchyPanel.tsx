@@ -2,17 +2,28 @@ import { useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { inputCls, selectCls } from '../../data/componentForm';
 import {
+  categoryDeleteBlocked,
   categoryName,
+  emptyHierarchyAttachmentCounts,
+  groupDeleteBlocked,
   groupLabel,
+  subGroupDeleteBlocked,
   type ComponentHierarchyState,
+  type HierarchyAttachmentCounts,
 } from '../../data/componentHierarchy';
 
 type Props = {
   state: ComponentHierarchyState;
   onChange: (next: ComponentHierarchyState) => void;
+  /** Live component attachment counts (from ingredients). */
+  attachmentCounts?: HierarchyAttachmentCounts;
 };
 
-export function ComponentHierarchyPanel({ state, onChange }: Props) {
+export function ComponentHierarchyPanel({
+  state,
+  onChange,
+  attachmentCounts = emptyHierarchyAttachmentCounts(),
+}: Props) {
   const [categoryNameInput, setCategoryNameInput] = useState('');
   const [groupCategoryId, setGroupCategoryId] = useState<number | ''>('');
   const [groupNameInput, setGroupNameInput] = useState('');
@@ -25,41 +36,55 @@ export function ComponentHierarchyPanel({ state, onChange }: Props) {
         const group = state.groups.find(item => item.id === subGroup.groupId);
         const category = group ? state.categories.find(item => item.id === group.categoryId) : undefined;
         if (!group || !category) return null;
+        const gate = subGroupDeleteBlocked(state, subGroup.id, attachmentCounts);
         return {
           key: `sub-${subGroup.id}`,
           category: category.name,
           group: group.name,
           subGroup: subGroup.name,
-          items: subGroup.items,
-          onDelete: () => onChange({
-            ...state,
-            subGroups: state.subGroups.filter(item => item.id !== subGroup.id),
-          }),
+          items: gate.componentCount,
+          deleteBlocked: gate.blocked,
+          deleteTitle: gate.reason,
+          onDelete: () => {
+            if (gate.blocked) return;
+            onChange({
+              ...state,
+              subGroups: state.subGroups.filter(item => item.id !== subGroup.id),
+            });
+          },
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)
       .concat(
         state.groups
           .filter(group => !state.subGroups.some(item => item.groupId === group.id))
-          .map(group => ({
-            key: `group-${group.id}`,
-            category: categoryName(state, group.categoryId),
-            group: group.name,
-            subGroup: '—',
-            items: group.items,
-            onDelete: () => onChange({
-              ...state,
-              groups: state.groups.filter(item => item.id !== group.id),
-              subGroups: state.subGroups.filter(item => item.groupId !== group.id),
-            }),
-          })),
+          .map(group => {
+            const gate = groupDeleteBlocked(state, group.id, attachmentCounts);
+            return {
+              key: `group-${group.id}`,
+              category: categoryName(state, group.categoryId),
+              group: group.name,
+              subGroup: '—',
+              items: gate.componentCount,
+              deleteBlocked: gate.blocked,
+              deleteTitle: gate.reason,
+              onDelete: () => {
+                if (gate.blocked) return;
+                onChange({
+                  ...state,
+                  groups: state.groups.filter(item => item.id !== group.id),
+                  subGroups: state.subGroups.filter(item => item.groupId !== group.id),
+                });
+              },
+            };
+          }),
       )
       .sort((a, b) =>
         a.category.localeCompare(b.category)
         || a.group.localeCompare(b.group)
         || a.subGroup.localeCompare(b.subGroup),
       ),
-    [state, onChange],
+    [state, onChange, attachmentCounts],
   );
 
   function addCategory() {
@@ -106,6 +131,8 @@ export function ComponentHierarchyPanel({ state, onChange }: Props) {
   }
 
   function deleteCategory(categoryId: number) {
+    const gate = categoryDeleteBlocked(state, categoryId, attachmentCounts);
+    if (gate.blocked) return;
     const groupIds = state.groups.filter(item => item.categoryId === categoryId).map(item => item.id);
     onChange({
       ...state,
@@ -141,19 +168,23 @@ export function ComponentHierarchyPanel({ state, onChange }: Props) {
             <Plus size={11} /> Add Category
           </button>
           <div className="space-y-1.5 pt-1">
-            {state.categories.map(category => (
-              <div key={category.id} className="flex items-center justify-between gap-2 text-xs border border-border rounded-md px-2.5 py-1.5">
-                <span className="font-medium">{category.name}</span>
-                <button
-                  type="button"
-                  onClick={() => deleteCategory(category.id)}
-                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500"
-                  title="Delete category"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
+            {state.categories.map(category => {
+              const gate = categoryDeleteBlocked(state, category.id, attachmentCounts);
+              return (
+                <div key={category.id} className="flex items-center justify-between gap-2 text-xs border border-border rounded-md px-2.5 py-1.5">
+                  <span className="font-medium">{category.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => deleteCategory(category.id)}
+                    disabled={gate.blocked}
+                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-not-allowed"
+                    title={gate.reason}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -225,7 +256,9 @@ export function ComponentHierarchyPanel({ state, onChange }: Props) {
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         <div className="px-3 py-2 border-b border-border bg-muted/30">
           <p className="text-xs font-semibold">Hierarchy</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Category → Group → Sub-Group</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Category → Group → Sub-Group. Delete is available only when nothing is attached.
+          </p>
         </div>
         <table className="w-full table-fixed text-xs">
           <thead>
@@ -255,8 +288,9 @@ export function ComponentHierarchyPanel({ state, onChange }: Props) {
                     <button
                       type="button"
                       onClick={row.onDelete}
-                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500"
-                      title="Delete row"
+                      disabled={row.deleteBlocked}
+                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-red-500 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-not-allowed"
+                      title={row.deleteTitle}
                     >
                       <Trash2 size={12} />
                     </button>
