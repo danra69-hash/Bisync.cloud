@@ -5,7 +5,6 @@ import { ModuleContent } from './ModuleContent';
 import { SmartIngredientPage } from './SmartIngredientPage';
 import { ComponentConfigPage } from './ComponentConfigPage';
 import { CustomerListPage } from './CustomerListPage';
-import { SalesModulePage } from './SalesModulePage';
 import { ActiveSalesOrderPage } from './ActiveSalesOrderPage';
 import { VendorListPage } from './VendorListPage';
 import { ComparePricePage } from './ComparePricePage';
@@ -94,13 +93,6 @@ function renderRevMgmtContent(
     case 'Customer List':
       return (
         <CustomerListPage
-          selectedCompanyId={selectedCompanyId}
-          selectedLocationIds={selectedLocationIds}
-        />
-      );
-    case 'Sales Module':
-      return (
-        <SalesModulePage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

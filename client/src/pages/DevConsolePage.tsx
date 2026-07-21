@@ -8,6 +8,7 @@ import { AutomatedQaPanel } from '../components/dev/AutomatedQaPanel';
 import { AuditTrailPanel } from '../components/dev/AuditTrailPanel';
 import { SystemAuditTrailTab } from '../components/admin/SystemAuditTrailTab';
 import { GhostSupportTab } from '../components/admin/GhostSupportTab';
+import { SalesModulePage } from '../components/revenue/SalesModulePage';
 import { DEV_CONSOLE_PATH } from '../config/devConsole';
 import { clearDevConsoleSession, getDevConsoleToken } from '../data/devConsoleSession';
 import { devConsoleAuthApi } from '../data/devConsoleAuthApi';
@@ -17,11 +18,19 @@ import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 /** Dev Console always requires its own login (separate from customer Access Control). */
 const REQUIRE_DEV_CONSOLE_LOGIN = true;
 
-type DevConsoleTab = 'overview' | 'tenant-rollups' | 'automated-qa' | 'qa-history' | 'audit-trail' | 'ghost-support';
+type DevConsoleTab =
+  | 'overview'
+  | 'tenant-rollups'
+  | 'sales-module'
+  | 'automated-qa'
+  | 'qa-history'
+  | 'audit-trail'
+  | 'ghost-support';
 
 const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'tenant-rollups', label: 'Tenant Rollups' },
+  { id: 'sales-module', label: 'Sales Module' },
   { id: 'automated-qa', label: 'Power-user Automated QA' },
   { id: 'qa-history', label: 'QA History' },
   { id: 'audit-trail', label: 'Audit Trail' },
@@ -155,6 +164,12 @@ export function DevConsolePage() {
         )}
         {tab === 'tenant-rollups' && (
           <TenantRollupsPanel />
+        )}
+        {tab === 'sales-module' && (
+          <SalesModulePage
+            sessionEmail={sessionUser.email}
+            sessionName={sessionUser.fullName}
+          />
         )}
         {tab === 'automated-qa' && (
           <AutomatedQaPanel triggeredBy={triggeredBy} />
