@@ -13,6 +13,7 @@ import {
   parseUserAccess,
 } from '../../data/userAccess';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
@@ -715,109 +716,146 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
   return (
     <div className={pageShellClass()}>
-      <HrConfigTabBar tabs={INVENTORY_TABS} active={pageTab} onChange={setPageTab} />
+      <PageStickyFilters opaque className="space-y-3 pb-2">
+        <HrConfigTabBar tabs={INVENTORY_TABS} active={pageTab} onChange={setPageTab} />
 
-      {pageTab === 'count' ? (
-        <>
-      <div className="mb-4 mt-4 space-y-3">
-        <div className="rounded-md border border-border bg-muted/20 p-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Required</p>
+        {pageTab === 'count' ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-muted/20 p-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Required</p>
+              <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
+                <FilterSelect
+                  label="Inventory"
+                  value={inventoryMode}
+                  options={INVENTORY_MODES}
+                  onChange={value => setInventoryMode(value as InventoryCountSessionType)}
+                  required
+                />
+                <div className="flex flex-col gap-1 shrink-0">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Month<span className="text-destructive"> *</span>
+                  </label>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    min={earliestStockCardMonth()}
+                    max={currentStockCardMonth()}
+                    onChange={e => {
+                      if (e.target.value) setSelectedMonth(e.target.value);
+                    }}
+                    className={`${filterSelectCls} min-w-[140px]`}
+                  />
+                </div>
+                {inventoryMode === 'spot' ? (
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                      Count Date<span className="text-destructive"> *</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={countDate}
+                      max={todayIsoDate()}
+                      onChange={e => {
+                        if (e.target.value) setCountDate(e.target.value);
+                      }}
+                      className={`${filterSelectCls} min-w-[140px]`}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Filters</p>
+              <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
+                <FilterSelect
+                  label="Category"
+                  value={categoryFilter}
+                  options={categoryOptions}
+                  onChange={value => setCategoryFilter(value)}
+                />
+                <FilterSelect
+                  label="Type"
+                  value={itemTypeFilter}
+                  options={[...ITEM_TYPES]}
+                  onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])}
+                />
+                <StorageFilter
+                  locationIds={countLocationIds}
+                  areaFilter={areaFilter}
+                  selectedStorageKeys={selectedStorageKeys}
+                  companyId={selectedCompanyId}
+                  onAreaChange={area => {
+                    setAreaFilter(area);
+                    setSelectedStorageKeys([]);
+                  }}
+                  onStorageKeysChange={setSelectedStorageKeys}
+                />
+                <div className="flex flex-col gap-1 shrink-0">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
+                  <select
+                    value={uomMode}
+                    onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
+                    className={`${filterSelectCls} min-w-[130px]`}
+                  >
+                    <option value="inventory">Inventory UOM</option>
+                    <option value="recipe">Component UOM</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <span className="text-xs font-sans text-transparent uppercase tracking-wider select-none" aria-hidden="true">
+                    Create
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void loadInventoryList()}
+                    disabled={loading || !requiredFiltersReady}
+                    className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 min-w-[100px]"
+                  >
+                    Create
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
           <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
             <FilterSelect
               label="Inventory"
               value={inventoryMode}
               options={INVENTORY_MODES}
               onChange={value => setInventoryMode(value as InventoryCountSessionType)}
-              required
             />
-            <div className="flex flex-col gap-1 shrink-0">
-              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                Month<span className="text-destructive"> *</span>
-              </label>
-              <input
-                type="month"
-                value={selectedMonth}
-                min={earliestStockCardMonth()}
-                max={currentStockCardMonth()}
-                onChange={e => {
-                  if (e.target.value) setSelectedMonth(e.target.value);
-                }}
-                className={`${filterSelectCls} min-w-[140px]`}
-              />
-            </div>
-            {inventoryMode === 'spot' ? (
-              <div className="flex flex-col gap-1 shrink-0">
-                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                  Count Date<span className="text-destructive"> *</span>
-                </label>
-                <input
-                  type="date"
-                  value={countDate}
-                  max={todayIsoDate()}
-                  onChange={e => {
-                    if (e.target.value) setCountDate(e.target.value);
-                  }}
-                  className={`${filterSelectCls} min-w-[140px]`}
-                />
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div>
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Filters</p>
-          <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
             <FilterSelect
               label="Category"
               value={categoryFilter}
               options={categoryOptions}
               onChange={value => setCategoryFilter(value)}
             />
-            <FilterSelect
-              label="Type"
-              value={itemTypeFilter}
-              options={[...ITEM_TYPES]}
-              onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])}
-            />
-            <StorageFilter
-              locationIds={countLocationIds}
-              areaFilter={areaFilter}
-              selectedStorageKeys={selectedStorageKeys}
-              companyId={selectedCompanyId}
-              onAreaChange={area => {
-                setAreaFilter(area);
-                setSelectedStorageKeys([]);
-              }}
-              onStorageKeysChange={setSelectedStorageKeys}
-            />
             <div className="flex flex-col gap-1 shrink-0">
-              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-              <select
-                value={uomMode}
-                onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-                className={`${filterSelectCls} min-w-[130px]`}
-              >
-                <option value="inventory">Inventory UOM</option>
-                <option value="recipe">Component UOM</option>
-              </select>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
+              <input
+                type="month"
+                value={historyMonth}
+                min={earliestStockCardMonth()}
+                max={currentStockCardMonth()}
+                onChange={e => setHistoryMonth(e.target.value)}
+                className={`${filterSelectCls} min-w-[140px]`}
+              />
             </div>
-            <div className="flex flex-col gap-1 shrink-0">
-              <span className="text-xs font-sans text-transparent uppercase tracking-wider select-none" aria-hidden="true">
-                Create
-              </span>
-              <button
-                type="button"
-                onClick={() => void loadInventoryList()}
-                disabled={loading || !requiredFiltersReady}
-                className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 min-w-[100px]"
-              >
-                Create
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setHistoryMonth('')}
+              className="h-9 px-3 shrink-0 rounded-md border border-border bg-background text-sm font-medium hover:bg-muted"
+            >
+              All months
+            </button>
           </div>
-        </div>
-      </div>
+        )}
+      </PageStickyFilters>
 
+      {pageTab === 'count' ? (
+        <>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">
@@ -943,40 +981,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
       </TableScrollContainer>
         </>
       ) : (
-        <div className="mt-4 space-y-4">
-          <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-1">
-            <FilterSelect
-              label="Inventory"
-              value={inventoryMode}
-              options={INVENTORY_MODES}
-              onChange={value => setInventoryMode(value as InventoryCountSessionType)}
-            />
-            <FilterSelect
-              label="Category"
-              value={categoryFilter}
-              options={categoryOptions}
-              onChange={value => setCategoryFilter(value)}
-            />
-            <div className="flex flex-col gap-1 shrink-0">
-              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
-              <input
-                type="month"
-                value={historyMonth}
-                min={earliestStockCardMonth()}
-                max={currentStockCardMonth()}
-                onChange={e => setHistoryMonth(e.target.value)}
-                className={`${filterSelectCls} min-w-[140px]`}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setHistoryMonth('')}
-              className="h-9 px-3 shrink-0 rounded-md border border-border bg-background text-sm font-medium hover:bg-muted"
-            >
-              All months
-            </button>
-          </div>
-
+        <div className="mt-2 space-y-4">
           <p className="text-xs text-muted-foreground">
             {inventoryMode === 'full'
               ? 'Unconfirmed full inventories can be confirmed from the Actions column before the 72-hour deadline.'

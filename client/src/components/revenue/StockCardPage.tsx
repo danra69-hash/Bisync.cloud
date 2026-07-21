@@ -6,6 +6,7 @@ import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { AvgCogsWithTrend } from './stockCardCogsTrend';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
@@ -199,54 +200,55 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
 
   return (
     <div className={pageShellClass()}>
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <FilterSelect label="Type" value={itemTypeFilter} options={[...ITEM_TYPES]} onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])} />
-        <FilterSelect label="Group" value={groupFilter} options={groups} onChange={setGroupFilter} />
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-          <select
-            value={uomMode}
-            onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-            className={`${filterSelectCls} min-w-[160px]`}
-          >
-            <option value="inventory">Inventory UOM</option>
-            <option value="recipe">Component UOM</option>
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
-          <input
-            type="month"
-            value={selectedMonth}
-            min={earliestStockCardMonth()}
-            max={currentStockCardMonth()}
-            onChange={e => {
-              if (e.target.value) setSelectedMonth(e.target.value);
-            }}
-            className={`${filterSelectCls} min-w-[160px]`}
-          />
-        </div>
-        <div className="flex flex-col gap-1 flex-1 min-w-[200px] max-w-sm">
-          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Search</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <PageStickyFilters opaque className="py-2 mb-3 space-y-2">
+        <div className="flex flex-wrap items-end gap-3">
+          <FilterSelect label="Type" value={itemTypeFilter} options={[...ITEM_TYPES]} onChange={v => setItemTypeFilter(v as (typeof ITEM_TYPES)[number])} />
+          <FilterSelect label="Group" value={groupFilter} options={groups} onChange={setGroupFilter} />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
+            <select
+              value={uomMode}
+              onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
+              className={`${filterSelectCls} min-w-[160px]`}
+            >
+              <option value="inventory">Inventory UOM</option>
+              <option value="recipe">Component UOM</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Month</label>
             <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Name or group…"
-              className="w-full h-9 pl-9 pr-3 rounded-md border border-border bg-background text-sm font-sans"
+              type="month"
+              value={selectedMonth}
+              min={earliestStockCardMonth()}
+              max={currentStockCardMonth()}
+              onChange={e => {
+                if (e.target.value) setSelectedMonth(e.target.value);
+              }}
+              className={`${filterSelectCls} min-w-[160px]`}
             />
           </div>
+          <div className="flex flex-col gap-1 flex-1 min-w-[200px] max-w-sm">
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Search</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Name or group…"
+                className="w-full h-9 pl-9 pr-3 rounded-md border border-border bg-background text-sm font-sans"
+              />
+            </div>
+          </div>
         </div>
-      </div>
-
-      <p className="text-xs text-muted-foreground mb-4">
-        {formatStockCardMonthLabel(selectedMonth, selectedMonth === currentStockCardMonth())}
-        {' · '}
-        History older than {STOCK_CARD_HISTORY_YEARS} years is moved to the Stock Card archive (
-        <code className="text-xs">data-archives/stock-card/archive.db</code>
-        ).
-      </p>
+        <p className="text-xs text-muted-foreground">
+          {formatStockCardMonthLabel(selectedMonth, selectedMonth === currentStockCardMonth())}
+          {' · '}
+          History older than {STOCK_CARD_HISTORY_YEARS} years is moved to the Stock Card archive (
+          <code className="text-xs">data-archives/stock-card/archive.db</code>
+          ).
+        </p>
+      </PageStickyFilters>
 
       {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 

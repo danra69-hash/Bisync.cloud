@@ -6,6 +6,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { Plus } from 'lucide-react';
 import { api, type Ingredient, type LocationConfig } from '../../api';
 import {
@@ -276,19 +277,21 @@ export function ComponentConfigPage({
 
   return (
     <div className={pageShellClass()}>
-      <div className="flex gap-1 border-b border-border">
-        {CONFIG_TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
-              tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <PageStickyFilters opaque className="pb-0">
+        <div className="flex gap-1 border-b border-border">
+          {CONFIG_TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
+                tab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </PageStickyFilters>
 
       {tab === 'hierarchy' ? (
         <ComponentHierarchyPanel

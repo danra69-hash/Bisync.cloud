@@ -5,6 +5,7 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type AppUser } from '../../api';
@@ -819,21 +820,23 @@ export function LocationsConfigTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          {selectedCompanyId
-            ? `${filteredLocations.length} of ${locations.length} locations · filtered by company`
-            : `${locations.length} locations · each belongs to a company`}
-        </p>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-1.5 text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-2"
-        >
-          <Plus size={12} />
-          Add Location
-        </button>
-      </div>
+      <PageStickyFilters opaque className="py-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            {selectedCompanyId
+              ? `${filteredLocations.length} of ${locations.length} locations · filtered by company`
+              : `${locations.length} locations · each belongs to a company`}
+          </p>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-1.5 text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-2"
+          >
+            <Plus size={12} />
+            Add Location
+          </button>
+        </div>
+      </PageStickyFilters>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (

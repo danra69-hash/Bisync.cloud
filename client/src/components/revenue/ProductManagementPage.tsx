@@ -7,6 +7,7 @@ import { tableHeaderCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderSty
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { api, ApiError, type Product, type ProductManagementSummary, type ProduceBatchShortage } from '../../api';
@@ -600,55 +601,57 @@ export function ProductManagementPage({
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              id={viewMode === 'sub-product' ? 'sub-product-search' : 'b2b-product-search'}
-              type="search"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by ID or name…"
-              className={`${filterCls} flex-1 min-w-[9rem] max-w-[14rem]`}
-            />
-            <select
-              id={viewMode === 'sub-product' ? 'sub-product-category-filter' : 'b2b-product-category-filter'}
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className={filterCls}
-              aria-label="Category"
-            >
-              <option value="All">All categories</option>
-              {categoryOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-            <select
-              id={viewMode === 'sub-product' ? 'sub-product-group-filter' : 'b2b-product-group-filter'}
-              value={groupFilter}
-              onChange={e => setGroupFilter(e.target.value)}
-              className={filterCls}
-              aria-label="Group"
-            >
-              <option value="All">All groups</option>
-              {groupOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-            <p className="text-[10px] text-muted-foreground shrink-0">
-              {visibleProductCount} {viewMode === 'sub-product' ? 'sub-product' : 'product'}{visibleProductCount !== 1 ? 's' : ''}
-              {visibleBatchLineCount > 0
-                ? ` · ${visibleBatchLineCount} batch line${visibleBatchLineCount !== 1 ? 's' : ''}`
-                : ''}
-            </p>
-            <button
-              type="button"
-              onClick={() => void loadData()}
-              disabled={loading}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50 shrink-0 ml-auto"
-            >
-              <RefreshCw size={11}  />
-              Refresh
-            </button>
-          </div>
+          <PageStickyFilters opaque className="py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                id={viewMode === 'sub-product' ? 'sub-product-search' : 'b2b-product-search'}
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by ID or name…"
+                className={`${filterCls} flex-1 min-w-[9rem] max-w-[14rem]`}
+              />
+              <select
+                id={viewMode === 'sub-product' ? 'sub-product-category-filter' : 'b2b-product-category-filter'}
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className={filterCls}
+                aria-label="Category"
+              >
+                <option value="All">All categories</option>
+                {categoryOptions.map(option => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <select
+                id={viewMode === 'sub-product' ? 'sub-product-group-filter' : 'b2b-product-group-filter'}
+                value={groupFilter}
+                onChange={e => setGroupFilter(e.target.value)}
+                className={filterCls}
+                aria-label="Group"
+              >
+                <option value="All">All groups</option>
+                {groupOptions.map(option => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground shrink-0">
+                {visibleProductCount} {viewMode === 'sub-product' ? 'sub-product' : 'product'}{visibleProductCount !== 1 ? 's' : ''}
+                {visibleBatchLineCount > 0
+                  ? ` · ${visibleBatchLineCount} batch line${visibleBatchLineCount !== 1 ? 's' : ''}`
+                  : ''}
+              </p>
+              <button
+                type="button"
+                onClick={() => void loadData()}
+                disabled={loading}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50 shrink-0 ml-auto"
+              >
+                <RefreshCw size={11}  />
+                Refresh
+              </button>
+            </div>
+          </PageStickyFilters>
 
           {error ? (
             <p className="text-xs text-destructive border border-destructive/30 bg-destructive/5 rounded-md px-3 py-2">

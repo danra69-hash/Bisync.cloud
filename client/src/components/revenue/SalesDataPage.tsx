@@ -4,6 +4,7 @@ import { api, type SalesDataRow } from '../../api';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
@@ -124,65 +125,67 @@ export function SalesDataPage({ selectedCompanyId, selectedLocationIds, embedded
         </p>
       ) : (
         <>
-          <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Filters</p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1 shrink-0">
-                <label className="text-xs text-muted-foreground uppercase tracking-wider" htmlFor="sales-data-month">
-                  Month
-                </label>
-                <input
-                  id="sales-data-month"
-                  type="month"
-                  value={selectedMonth}
-                  min={earliestStockCardMonth()}
-                  max={currentStockCardMonth()}
-                  onChange={e => {
-                    if (e.target.value) setSelectedMonth(e.target.value);
-                  }}
-                  className={`${filterCls} min-w-[140px]`}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider">View by</span>
-                <div className="flex flex-wrap items-center gap-4">
-                  <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={viewBy === 'product'}
-                      onChange={() => setViewBy('product')}
-                      className="rounded border-border"
-                    />
-                    Product
+          <PageStickyFilters opaque className="py-2">
+            <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Filters</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1 shrink-0">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider" htmlFor="sales-data-month">
+                    Month
                   </label>
-                  <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={viewBy === 'customer'}
-                      onChange={() => setViewBy('customer')}
-                      className="rounded border-border"
-                    />
-                    Customer
-                  </label>
+                  <input
+                    id="sales-data-month"
+                    type="month"
+                    value={selectedMonth}
+                    min={earliestStockCardMonth()}
+                    max={currentStockCardMonth()}
+                    onChange={e => {
+                      if (e.target.value) setSelectedMonth(e.target.value);
+                    }}
+                    className={`${filterCls} min-w-[140px]`}
+                  />
                 </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">View by</span>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={viewBy === 'product'}
+                        onChange={() => setViewBy('product')}
+                        className="rounded border-border"
+                      />
+                      Product
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={viewBy === 'customer'}
+                        onChange={() => setViewBy('customer')}
+                        className="rounded border-border"
+                      />
+                      Customer
+                    </label>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-muted-foreground shrink-0 pb-1">
+                  {formatStockCardMonthLabel(selectedMonth, selectedMonth === currentStockCardMonth())}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => void loadData()}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50 shrink-0 ml-auto"
+                >
+                  <RefreshCw size={11}  />
+                  Refresh
+                </button>
               </div>
-
-              <p className="text-[10px] text-muted-foreground shrink-0 pb-1">
-                {formatStockCardMonthLabel(selectedMonth, selectedMonth === currentStockCardMonth())}
-              </p>
-
-              <button
-                type="button"
-                onClick={() => void loadData()}
-                disabled={loading}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50 shrink-0 ml-auto"
-              >
-                <RefreshCw size={11}  />
-                Refresh
-              </button>
             </div>
-          </div>
+          </PageStickyFilters>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div className="rounded-lg border border-border bg-card px-3 py-2.5">

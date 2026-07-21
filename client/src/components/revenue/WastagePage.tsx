@@ -7,10 +7,12 @@ import {
   type WastageEntry,
 } from '../../api';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
@@ -430,41 +432,43 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
 
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Wastage</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Manual spoilage &amp; POS void/refund wastage · 2-year live history
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Date</label>
-            <input
-              type="date"
-              className={`${filterSelectCls} min-w-[11rem]`}
-              value={filterDate}
-              min={earliestLiveDate()}
-              max={toDateInputValue(new Date())}
-              onChange={e => e.target.value && setFilterDate(e.target.value)}
-            />
+      <PageStickyFilters opaque className="py-2">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Wastage</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Manual spoilage &amp; POS void/refund wastage · 2-year live history
+            </p>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Type of Waste</label>
-            <select
-              value={wasteTypeFilter}
-              onChange={e => setWasteTypeFilter(e.target.value as WasteTypeFilter)}
-              className={`${filterSelectCls} min-w-[11rem]`}
-            >
-              {WASTE_TYPES.map(option => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Date</label>
+              <input
+                type="date"
+                className={`${filterSelectCls} min-w-[11rem]`}
+                value={filterDate}
+                min={earliestLiveDate()}
+                max={toDateInputValue(new Date())}
+                onChange={e => e.target.value && setFilterDate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Type of Waste</label>
+              <select
+                value={wasteTypeFilter}
+                onChange={e => setWasteTypeFilter(e.target.value as WasteTypeFilter)}
+                className={`${filterSelectCls} min-w-[11rem]`}
+              >
+                {WASTE_TYPES.map(option => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      </PageStickyFilters>
 
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -633,19 +637,19 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
       </form>
 
       <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
+        <div data-table-title data-sticky-table-title className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">
             Summary · {formatWastedDate(filterDate)}
             {wasteTypeFilter !== 'All' ? ` · ${wasteTypeFilter}` : ''}
           </h3>
           <span className="text-[11px] text-muted-foreground">{rows.length} record{rows.length === 1 ? '' : 's'}</span>
         </div>
-        <div
+        <TableScrollContainer
           ref={historyScrollRef}
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
         >
           <table className="w-full table-fixed border-collapse text-sm">
-            <thead className="sticky top-0 bg-card z-10">
+            <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-2 py-1.5 w-16">Source</th>
                 <th className="text-left px-2 py-1.5 w-24">Date</th>
@@ -695,7 +699,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
             </tbody>
           </table>
           <InfiniteScrollDivSentinel hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
-        </div>
+        </TableScrollContainer>
         <p className="px-3 py-2 text-[10px] text-muted-foreground border-t border-border">
           POS void/refund wastage posts automatically once POS is live (API: <code className="font-mono">POST /api/wastage/pos</code>).
           Component BOM is depleted through products and nested sub-products.
