@@ -2074,6 +2074,7 @@ export const api = {
       smtpFromEmail?: string;
       smtpPassword?: string;
       smtpFromName?: string;
+      smtpUsername?: string;
       smtpProviderMode?: string;
       smtpHost?: string;
       smtpPort?: number;
