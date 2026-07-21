@@ -16,8 +16,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         var outboundEmail = !string.IsNullOrWhiteSpace(c.SmtpFromEmail)
             ? c.SmtpFromEmail
             : (c.SmtpUsername ?? string.Empty);
+        var mode = CompanyOutboundEmailService.NormalizeProviderMode(c.SmtpProviderMode);
         var provider = CompanyOutboundEmailService.IsLikelyEmail(outboundEmail)
-            ? CompanyOutboundEmailService.ResolveProvider(outboundEmail)
+            ? CompanyOutboundEmailService.ResolveProviderForMode(outboundEmail, mode)
             : null;
 
         return new
@@ -40,6 +41,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             c.BusinessTypesJson,
             c.VendorPolicyTagsJson,
             c.ModulesJson,
+            smtpProviderMode = mode,
             smtpHost = c.SmtpHost ?? string.Empty,
             smtpPort = c.SmtpPort > 0 ? c.SmtpPort : 587,
             smtpUseSsl = c.SmtpUseSsl,
@@ -56,8 +58,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     }
 
     /// <summary>
-    /// Auto-configure SMTP from outbound email + password.
-    /// Host / port / SSL / username are derived from the email provider (Microsoft, Google, …).
+    /// Apply outbound email settings. Mode: auto | microsoft | google | custom.
+    /// Host / port are derived unless mode is custom.
     /// </summary>
     static void ApplySmtpFields(Company target, Company source, bool isCreate)
     {
@@ -69,11 +71,16 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         if (isCreate || !string.IsNullOrWhiteSpace(incomingPassword))
             passwordArg = (incomingPassword ?? string.Empty).Trim();
 
+        var mode = CompanyOutboundEmailService.NormalizeProviderMode(source.SmtpProviderMode);
         CompanyOutboundEmailService.ApplyAutoSmtp(
             target,
             outboundEmail ?? string.Empty,
             passwordArg,
-            source.SmtpFromName);
+            source.SmtpFromName,
+            mode,
+            source.SmtpHost,
+            source.SmtpPort,
+            source.SmtpUseSsl);
     }
 
     [HttpGet]
@@ -150,11 +157,15 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         string ToEmail,
         string? SmtpPassword = null,
         string? SmtpFromEmail = null,
-        string? SmtpFromName = null);
+        string? SmtpFromName = null,
+        string? SmtpProviderMode = null,
+        string? SmtpHost = null,
+        int? SmtpPort = null,
+        bool? SmtpUseSsl = null);
 
     /// <summary>
-    /// Send a test message. Mail server is auto-detected from the outbound email address
-    /// (Microsoft 365 / Google / Yahoo / …). Password empty = use saved password.
+    /// Send a test message. Provider mode: auto | microsoft | google | custom.
+    /// Password empty = use saved password.
     /// </summary>
     [HttpPost("{id:int}/outbound-email/test")]
     public async Task<ActionResult<object>> TestOutboundEmail(int id, [FromBody] OutboundEmailTestRequest req, CancellationToken ct)
@@ -173,6 +184,11 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         var fromName = !string.IsNullOrWhiteSpace(req.SmtpFromName)
             ? req.SmtpFromName.Trim()
             : company.SmtpFromName;
+        var mode = CompanyOutboundEmailService.NormalizeProviderMode(
+            !string.IsNullOrWhiteSpace(req.SmtpProviderMode) ? req.SmtpProviderMode : company.SmtpProviderMode);
+        var customHost = !string.IsNullOrWhiteSpace(req.SmtpHost) ? req.SmtpHost.Trim() : company.SmtpHost;
+        var customPort = req.SmtpPort ?? company.SmtpPort;
+        var customUseSsl = req.SmtpUseSsl ?? company.SmtpUseSsl;
 
         if (!CompanyOutboundEmailService.IsLikelyEmail(outboundEmail))
             return BadRequest(new { message = "A valid outbound email address is required." });
@@ -183,6 +199,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         if (!CompanyOutboundEmailService.IsLikelyEmail(to))
             return BadRequest(new { message = "A valid test recipient email is required." });
 
+        if (mode == CompanyOutboundEmailService.ModeCustom && string.IsNullOrWhiteSpace(customHost))
+            return BadRequest(new { message = "Custom SMTP requires a host (for example smtp.sendgrid.net)." });
+
         try
         {
             var (used, providerLabel) = await CompanyOutboundEmailService.SendTestAsync(
@@ -191,9 +210,14 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 fromName,
                 to,
                 company.Name,
+                mode,
+                customHost,
+                customPort,
+                customUseSsl,
                 ct);
 
-            // Persist the working auto-detected server + credentials used for the test.
+            // Persist the working server + credentials used for the test.
+            company.SmtpProviderMode = mode;
             company.SmtpHost = used.Host;
             company.SmtpPort = used.Port;
             company.SmtpUseSsl = used.Security is MailKit.Security.SecureSocketOptions.StartTls
@@ -210,6 +234,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 to,
                 provider = providerLabel,
                 smtpHost = used.Host,
+                smtpProviderMode = mode,
                 message = $"Test email sent to {to} via {providerLabel}. Check the inbox (and spam) to confirm it works.",
             });
         }
