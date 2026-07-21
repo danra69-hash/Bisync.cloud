@@ -9,14 +9,19 @@ import {
 import {
   collectB2bCustomerTaggableUnits,
   deriveLegacyB2bProductTags,
+  findTaggedB2bProductUnit,
   groupB2bCustomerTaggableUnits,
   isTaggedB2bProductUnit,
   parseTaggedB2bProductUnits,
   productsMissingSavedAliases,
+  resolveCustomerUnitSellingRrp,
   toggleTaggedB2bProductUnit,
+  updateTaggedUnitAppliedRrp,
+  updateTaggedUnitDiscountPercent,
   type TaggedB2bProductUnit,
 } from '../../data/b2bCustomerProductTags';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { inputCls } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -27,6 +32,11 @@ type Props = {
   onClose: () => void;
   onSaved: (customer: B2bCustomer) => void;
 };
+
+function formatEditable(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '';
+  return String(value);
+}
 
 export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSaved }: Props) {
   const { number, cogsPercent } = useCountryFormatters();
@@ -103,8 +113,7 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">My Product</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5">{customer.companyName}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Tag delivery units smallest to largest. Principal and alias tags are mutually exclusive per product.
-              Product aliases appear here after they are saved on the Products page.
+              Tag delivery units and set Applied RRP or Discount %. Applied RRP is used on sales orders and invoices.
             </p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted">
@@ -125,7 +134,9 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
                     <TableHeaderCell>Tag</TableHeaderCell>
                     <TableHeaderCell>Product / Alias</TableHeaderCell>
                     <TableHeaderCell>Delivery Unit</TableHeaderCell>
-                    <TableHeaderCell headerAlign="right">RRP</TableHeaderCell>
+                    <TableHeaderCell headerAlign="right">Published RRP</TableHeaderCell>
+                    <TableHeaderCell headerAlign="right">Applied RRP</TableHeaderCell>
+                    <TableHeaderCell headerAlign="right">Discount %</TableHeaderCell>
                     <TableHeaderCell headerAlign="right">COGS</TableHeaderCell>
                     <TableHeaderCell headerAlign="right">COGS %</TableHeaderCell>
                   </tr>
@@ -134,7 +145,7 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
                   {groups.map(group => (
                     <Fragment key={group.key}>
                       <tr className="bg-muted/25 border-b border-border/60">
-                        <td colSpan={6} className="py-2 px-2">
+                        <td colSpan={8} className="py-2 px-2">
                           {group.aliasId == null ? (
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground">
                               {group.productName}
@@ -159,11 +170,18 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
                           row.aliasId,
                           row.unitKey,
                         );
+                        const taggedUnit = findTaggedB2bProductUnit(
+                          taggedUnits,
+                          row.productId,
+                          row.aliasId,
+                          row.unitKey,
+                        );
                         const unitTag: TaggedB2bProductUnit = {
                           productId: row.productId,
                           aliasId: row.aliasId,
                           unitKey: row.unitKey,
                         };
+                        const sellingRrp = resolveCustomerUnitSellingRrp(row.rrp, taggedUnit);
 
                         return (
                           <tr key={row.key} className="border-b border-border/50">
@@ -191,11 +209,52 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
                             <td className="py-2 pr-2 text-right tabular-nums align-top">
                               {row.rrp > 0 ? number(row.rrp) : '—'}
                             </td>
+                            <td className="py-2 pr-2 text-right align-top">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                disabled={!tagged}
+                                className={`${inputCls} w-[5.5rem] ml-auto text-right tabular-nums disabled:opacity-40`}
+                                value={formatEditable(taggedUnit?.appliedRrp)}
+                                placeholder={row.rrp > 0 ? String(row.rrp) : '0'}
+                                onChange={e => setTaggedUnits(prev => updateTaggedUnitAppliedRrp(
+                                  prev,
+                                  row.productId,
+                                  row.aliasId,
+                                  row.unitKey,
+                                  row.rrp,
+                                  e.target.value,
+                                ))}
+                                aria-label={`Applied RRP for ${row.unitTitle}`}
+                              />
+                            </td>
+                            <td className="py-2 pr-2 text-right align-top">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                disabled={!tagged}
+                                className={`${inputCls} w-[4.75rem] ml-auto text-right tabular-nums disabled:opacity-40`}
+                                value={formatEditable(taggedUnit?.discountPercent)}
+                                placeholder="0"
+                                onChange={e => setTaggedUnits(prev => updateTaggedUnitDiscountPercent(
+                                  prev,
+                                  row.productId,
+                                  row.aliasId,
+                                  row.unitKey,
+                                  row.rrp,
+                                  e.target.value,
+                                ))}
+                                aria-label={`Discount percent for ${row.unitTitle}`}
+                              />
+                            </td>
                             <td className="py-2 pr-2 text-right tabular-nums align-top">
                               {number(row.unitCogs)}
                             </td>
                             <td className="py-2 text-right tabular-nums align-top">
-                              {row.rrp > 0 ? cogsPercent(row.unitCogs, row.rrp) : '—'}
+                              {sellingRrp > 0 ? cogsPercent(row.unitCogs, sellingRrp) : '—'}
                             </td>
                           </tr>
                         );

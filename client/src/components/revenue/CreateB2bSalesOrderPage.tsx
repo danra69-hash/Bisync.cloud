@@ -106,7 +106,8 @@ export function CreateB2bSalesOrderPage({
       const next = { ...prev };
       for (const unit of taggedUnits) {
         if (next[unit.key] == null || next[unit.key] === '') {
-          next[unit.key] = unit.rrp > 0 ? String(unit.rrp) : '';
+          const selling = unit.sellingRrp > 0 ? unit.sellingRrp : unit.rrp;
+          next[unit.key] = selling > 0 ? String(selling) : '';
         }
       }
       return next;
@@ -117,7 +118,8 @@ export function CreateB2bSalesOrderPage({
     return taggedUnits
       .map(unit => {
         const qty = parseFloat(qtyByKey[unit.key] ?? '');
-        const price = parseFloat(priceByKey[unit.key] ?? String(unit.rrp));
+        const fallback = unit.sellingRrp > 0 ? unit.sellingRrp : unit.rrp;
+        const price = parseFloat(priceByKey[unit.key] ?? String(fallback));
         if (!Number.isFinite(qty) || qty <= 0) return null;
         const displayName = unit.aliasName?.trim() || unit.productName;
         return {
@@ -275,7 +277,8 @@ export function CreateB2bSalesOrderPage({
               <tbody>
                 {taggedUnits.map(unit => {
                   const qty = parseFloat(qtyByKey[unit.key] ?? '');
-                  const price = parseFloat(priceByKey[unit.key] ?? String(unit.rrp));
+                  const fallback = unit.sellingRrp > 0 ? unit.sellingRrp : unit.rrp;
+                  const price = parseFloat(priceByKey[unit.key] ?? String(fallback));
                   const subtotal = Number.isFinite(qty) && qty > 0 && Number.isFinite(price)
                     ? qty * price
                     : 0;

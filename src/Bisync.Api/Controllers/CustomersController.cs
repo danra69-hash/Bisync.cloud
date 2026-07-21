@@ -101,6 +101,8 @@ public class B2bCustomersController(BisyncDbContext db) : ControllerBase
                     productId = unit.ProductId,
                     aliasId = unit.AliasId,
                     unitKey = unit.UnitKey.Trim(),
+                    appliedRrp = unit.AppliedRrp is > 0 ? unit.AppliedRrp : null,
+                    discountPercent = unit.DiscountPercent is >= 0 ? unit.DiscountPercent : null,
                 })
                 .DistinctBy(unit => $"{unit.productId}:{unit.aliasId}:{unit.unitKey}"),
             JsonOptions);

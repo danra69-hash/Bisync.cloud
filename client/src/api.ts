@@ -695,6 +695,10 @@ export interface TaggedB2bProductUnit {
   productId: number;
   aliasId: number | null;
   unitKey: string;
+  /** Customer selling price used on sales orders / invoices when > 0. */
+  appliedRrp?: number | null;
+  /** Discount off published RRP (0–100). Kept in sync with appliedRrp. */
+  discountPercent?: number | null;
 }
 
 export interface PosDeliveryUnitSelection {
