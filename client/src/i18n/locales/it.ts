@@ -131,6 +131,7 @@ export const it = {
       customerList: 'Elenco clienti',
       customerGroup: 'Gruppo clienti',
       customerManagement: 'Gestione clienti',
+      salesModule: 'Sales Module',
       promotionScheduler: 'Pianificatore promozioni',
       itemizedSalesSummary: 'Riepilogo vendite dettagliato',
       inventorySummary: 'Riepilogo magazzino',

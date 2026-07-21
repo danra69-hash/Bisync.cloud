@@ -128,6 +128,7 @@ export const en = {
       customerList: 'Customer List',
       customerGroup: 'Customer Group',
       customerManagement: 'Customer Management',
+      salesModule: 'Sales Module',
       promotionScheduler: 'Promotion Scheduler',
       itemizedSalesSummary: 'Itemized Sales Summary',
       inventorySummary: 'Inventory Summary',

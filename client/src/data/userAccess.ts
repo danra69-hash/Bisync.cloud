@@ -94,6 +94,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
       { id: 'manageCustomers', label: 'Customer List' },
       { id: 'customerGroup', label: 'Customer Group' },
       { id: 'customerManagement', label: 'Customer Management' },
+      { id: 'salesModule', label: 'Sales Module' },
       { id: 'manageInvoice', label: 'Manage Invoice' },
       { id: 'promotionScheduler', label: 'Promotion Scheduler' },
       { id: 'accountMapping', label: 'Account Mapping' },

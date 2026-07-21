@@ -131,6 +131,7 @@ export const ms = {
       customerList: 'Senarai Pelanggan',
       customerGroup: 'Kumpulan Pelanggan',
       customerManagement: 'Pengurusan Pelanggan',
+      salesModule: 'Sales Module',
       promotionScheduler: 'Penjadual Promosi',
       itemizedSalesSummary: 'Ringkasan Jualan Terperinci',
       inventorySummary: 'Ringkasan Inventori',

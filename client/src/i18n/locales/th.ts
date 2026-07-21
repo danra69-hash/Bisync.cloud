@@ -131,6 +131,7 @@ export const th = {
       customerList: 'รายชื่อลูกค้า',
       customerGroup: 'กลุ่มลูกค้า',
       customerManagement: 'การจัดการลูกค้า',
+      salesModule: 'Sales Module',
       promotionScheduler: 'ตารางโปรโมชัน',
       itemizedSalesSummary: 'สรุปยอดขายรายรายการ',
       inventorySummary: 'สรุปสินค้าคงคลัง',

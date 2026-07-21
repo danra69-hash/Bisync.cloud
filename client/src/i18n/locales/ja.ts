@@ -131,6 +131,7 @@ export const ja = {
       customerList: '顧客一覧',
       customerGroup: '顧客グループ',
       customerManagement: '顧客管理',
+      salesModule: 'Sales Module',
       promotionScheduler: 'プロモーションスケジューラ',
       itemizedSalesSummary: '品目別売上サマリー',
       inventorySummary: '在庫サマリー',
