@@ -39,10 +39,15 @@ public static class CompanyOutboundEmailService
         string Tip);
 
     const string MicrosoftAuthTip =
-        "Microsoft 365 business mailboxes often reject password SMTP until Authenticated SMTP is enabled " +
-        "for the mailbox (Exchange admin → mailbox → Manage email apps → Authenticated SMTP). " +
+        "Prefer Mail provider → Microsoft Graph (no SMTP AUTH). " +
+        "If you must use SMTP, host smtp.office365.com on port 587 (not 995/993 — those are POP/IMAP). " +
+        "Authenticated SMTP must also be enabled for the mailbox (Exchange admin → mailbox → Manage email apps). " +
         "If Security Defaults / Conditional Access block basic auth, use an App Password (if allowed) " +
-        "or switch to Custom SMTP with a relay (SendGrid / Amazon SES).";
+        "or a Custom SMTP relay (SendGrid / Amazon SES).";
+
+    const string WrongSmtpPortTip =
+        "Port 995/993/110/143 are mail-retrieval (POP/IMAP), not SMTP. " +
+        "Use port 587 with STARTTLS (or 465 with SSL). For Microsoft 365 / Exchange, prefer Microsoft Graph instead of SMTP.";
 
     const string GoogleAuthTip =
         "Google rejected the login (error 5.7.8 BadCredentials). " +
@@ -142,6 +147,32 @@ public static class CompanyOutboundEmailService
     public static string NormalizePassword(string? password) =>
         (password ?? string.Empty).Trim().Replace(" ", "", StringComparison.Ordinal);
 
+    /// <summary>
+    /// POP/IMAP ports (995, 993, 110, 143) are a common misconfiguration for SMTP.
+    /// Map them to submission port 587; leave real SMTP ports alone.
+    /// </summary>
+    public static int NormalizeSmtpPort(int? port, string? host = null)
+    {
+        var p = port is > 0 and <= 65535 ? port.Value : 587;
+        if (IsMailRetrievalPort(p))
+            return 587;
+
+        var h = (host ?? string.Empty).Trim();
+        if (h.Contains("office365", StringComparison.OrdinalIgnoreCase)
+            || h.Contains("outlook", StringComparison.OrdinalIgnoreCase)
+            || h.Contains("gmail", StringComparison.OrdinalIgnoreCase))
+        {
+            // Submission ports only for these cloud SMTP endpoints.
+            if (p is not (587 or 465))
+                return 587;
+        }
+
+        return p;
+    }
+
+    public static bool IsMailRetrievalPort(int port) =>
+        port is 995 or 993 or 110 or 143;
+
     public static string NormalizeProviderMode(string? mode)
     {
         var m = (mode ?? ModeAuto).Trim().ToLowerInvariant();
@@ -214,7 +245,8 @@ public static class CompanyOutboundEmailService
     {
         var mode = NormalizeProviderMode(providerMode);
         var host = (customHost ?? string.Empty).Trim();
-        var port = customPort is > 0 and <= 65535 ? customPort.Value : 587;
+        var rawPort = customPort is > 0 and <= 65535 ? customPort.Value : 587;
+        var port = NormalizeSmtpPort(rawPort, host);
         var useSsl = customUseSsl ?? true;
 
         // Manual host always wins — tenant keyed in the essential server details.
@@ -388,8 +420,10 @@ public static class CompanyOutboundEmailService
             }
 
             target.SmtpHost = hostOverride;
-            target.SmtpPort = customPort is > 0 and <= 65535 ? customPort.Value
-                : target.SmtpPort is > 0 and <= 65535 ? target.SmtpPort : 587;
+            target.SmtpPort = NormalizeSmtpPort(
+                customPort is > 0 and <= 65535 ? customPort.Value
+                    : target.SmtpPort is > 0 and <= 65535 ? target.SmtpPort : 587,
+                hostOverride);
             target.SmtpUseSsl = customUseSsl ?? true;
             if (passwordOrNullToKeep is not null)
                 target.SmtpPassword = NormalizePassword(passwordOrNullToKeep);
@@ -428,7 +462,7 @@ public static class CompanyOutboundEmailService
         {
             return new SmtpSettings(
                 company.SmtpHost.Trim(),
-                company.SmtpPort is > 0 and <= 65535 ? company.SmtpPort : 587,
+                NormalizeSmtpPort(company.SmtpPort, company.SmtpHost),
                 company.SmtpUseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
                 string.IsNullOrWhiteSpace(company.SmtpUsername) ? email : company.SmtpUsername.Trim(),
                 NormalizePassword(password),
@@ -445,7 +479,7 @@ public static class CompanyOutboundEmailService
             {
                 return new SmtpSettings(
                     (company.SmtpHost ?? string.Empty).Trim(),
-                    company.SmtpPort is > 0 and <= 65535 ? company.SmtpPort : 587,
+                    NormalizeSmtpPort(company.SmtpPort, company.SmtpHost),
                     company.SmtpUseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
                     email,
                     NormalizePassword(password),
@@ -460,7 +494,7 @@ public static class CompanyOutboundEmailService
 
         return new SmtpSettings(
             (company.SmtpHost ?? string.Empty).Trim(),
-            company.SmtpPort is > 0 and <= 65535 ? company.SmtpPort : 587,
+            NormalizeSmtpPort(company.SmtpPort, company.SmtpHost),
             company.SmtpUseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
             (company.SmtpUsername ?? string.Empty).Trim(),
             NormalizePassword(password),
@@ -480,6 +514,8 @@ public static class CompanyOutboundEmailService
             return "Could not detect the mail server for this email address. Choose a mail provider or enter a custom SMTP host.";
         if (settings.Port is < 1 or > 65535)
             return "SMTP port is invalid.";
+        if (IsMailRetrievalPort(settings.Port))
+            return WrongSmtpPortTip;
         return null;
     }
 
@@ -495,6 +531,11 @@ public static class CompanyOutboundEmailService
             throw new InvalidOperationException(validation);
         if (!IsLikelyEmail(toEmail))
             throw new InvalidOperationException("A valid recipient email is required.");
+
+        // Auto-correct POP/IMAP ports so a saved :995 never hangs the SMTP connect.
+        var port = NormalizeSmtpPort(settings.Port, settings.Host);
+        if (port != settings.Port)
+            settings = settings with { Port = port };
 
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(
@@ -568,6 +609,11 @@ public static class CompanyOutboundEmailService
     static string BuildFailureTip(string email, string mode, IReadOnlyList<string> errors)
     {
         mode = NormalizeProviderMode(mode);
+        var blob = string.Join(" ", errors);
+
+        if (LooksLikeWrongSmtpPort(blob))
+            return WrongSmtpPortTip + " Prefer Microsoft Graph for Exchange Online.";
+
         if (mode == ModeGoogle) return GoogleAuthTip;
         if (mode == ModeMicrosoft) return MicrosoftAuthTip;
         if (mode == ModeMicrosoftGraph)
@@ -576,20 +622,24 @@ public static class CompanyOutboundEmailService
         }
         if (mode == ModeCustom)
         {
-            return "Check the custom SMTP host, port, and password/API key from your mail relay provider.";
+            return LooksLikeTimeoutOrCancel(blob)
+                ? "Connection timed out or was canceled — check host/port (SMTP is usually 587 or 465, never 995/993) and firewall rules."
+                : "Check the custom SMTP host, port, and password/API key from your mail relay provider.";
         }
 
-        var blob = string.Join(" ", errors);
         var googleHit = blob.Contains("gmail", StringComparison.OrdinalIgnoreCase)
             || blob.Contains("Google", StringComparison.OrdinalIgnoreCase)
             || blob.Contains("gsmtp", StringComparison.OrdinalIgnoreCase);
         var microsoftHit = blob.Contains("office365", StringComparison.OrdinalIgnoreCase)
             || blob.Contains("Microsoft", StringComparison.OrdinalIgnoreCase);
 
+        if (LooksLikeTimeoutOrCancel(blob) && microsoftHit)
+            return WrongSmtpPortTip + " " + MicrosoftAuthTip;
+
         if (googleHit && microsoftHit)
         {
             return "Both Microsoft 365 and Google rejected this password. Set Mail provider to the correct one for this mailbox — "
-                + "Microsoft 365: enable Authenticated SMTP (or App Password). "
+                + "prefer Microsoft Graph for Exchange, or enable Authenticated SMTP / App Password. "
                 + "Google Workspace: use a 16-character App Password, not the normal login password.";
         }
 
@@ -598,10 +648,28 @@ public static class CompanyOutboundEmailService
         return ResolveProvider(email).Tip;
     }
 
+    static bool LooksLikeWrongSmtpPort(string blob) =>
+        blob.Contains(":995", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains(":993", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains(":110", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains(":143", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains("POP", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains("IMAP", StringComparison.OrdinalIgnoreCase);
+
+    static bool LooksLikeTimeoutOrCancel(string blob) =>
+        blob.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains("Timeout", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains("canceled", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains("cancelled", StringComparison.OrdinalIgnoreCase)
+        || blob.Contains("TaskCanceled", StringComparison.OrdinalIgnoreCase);
+
     static string FormatSmtpError(Exception ex, ProviderProfile? profile = null)
     {
         var msg = ex.InnerException?.Message ?? ex.Message;
         if (string.IsNullOrWhiteSpace(msg)) msg = ex.GetType().Name;
+
+        if (profile is not null && IsMailRetrievalPort(profile.Port))
+            return $"wrong port {profile.Port} (POP/IMAP) — use SMTP 587 or 465";
 
         var isGoogle = profile?.Host.Contains("gmail", StringComparison.OrdinalIgnoreCase) == true
             || msg.Contains("gsmtp", StringComparison.OrdinalIgnoreCase)
@@ -627,10 +695,13 @@ public static class CompanyOutboundEmailService
             return "authentication failed (wrong password, or SMTP AUTH / App Password not enabled)";
         }
 
-        if (msg.Contains("timed out", StringComparison.OrdinalIgnoreCase)
-            || msg.Contains("Timeout", StringComparison.OrdinalIgnoreCase))
+        if (LooksLikeTimeoutOrCancel(msg))
         {
-            return "connection timed out";
+            if (profile is not null && IsMailRetrievalPort(profile.Port))
+                return $"connection canceled — port {profile.Port} is POP/IMAP, not SMTP (use 587)";
+            if (isMicrosoft)
+                return "connection canceled/timed out (use smtp.office365.com:587, or switch to Microsoft Graph)";
+            return "connection timed out or canceled (check host/port — SMTP is usually 587 or 465)";
         }
 
         return msg.Length > 160 ? msg[..160] + "…" : msg;
