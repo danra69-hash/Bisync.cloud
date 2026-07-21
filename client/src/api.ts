@@ -127,6 +127,12 @@ export interface Company {
   smtpProviderId?: string;
   smtpProviderLabel?: string;
   smtpProviderTip?: string;
+  /** Microsoft Graph (Azure AD) — for microsoft-graph provider mode. */
+  graphTenantId?: string;
+  graphClientId?: string;
+  /** Write-only; leave empty to keep the saved secret. */
+  graphClientSecret?: string;
+  graphClientSecretSet?: boolean;
 }
 
 export interface AccessControlSettings {
@@ -2079,6 +2085,9 @@ export const api = {
       smtpHost?: string;
       smtpPort?: number;
       smtpUseSsl?: boolean;
+      graphTenantId?: string;
+      graphClientId?: string;
+      graphClientSecret?: string;
     },
   ) =>
     fetchJsonWithMethod<{ sent: boolean; to: string; message: string; provider?: string; smtpProviderMode?: string }>(

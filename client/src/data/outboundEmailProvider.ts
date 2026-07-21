@@ -1,6 +1,6 @@
 /** Outbound mail provider helpers (mirrors server CompanyOutboundEmailService rules). */
 
-export type OutboundProviderMode = 'auto' | 'microsoft' | 'google' | 'custom';
+export type OutboundProviderMode = 'auto' | 'microsoft' | 'microsoft-graph' | 'google' | 'custom';
 
 export type OutboundProviderInfo = {
   id: string;
@@ -20,27 +20,32 @@ export const OUTBOUND_PROVIDER_MODES: {
   tip: string;
 }[] = [
   {
+    id: 'microsoft-graph',
+    label: 'Microsoft Graph (recommended for Exchange)',
+    tip:
+      'Sends via Microsoft Graph API — no SMTP AUTH / App Password. In Azure: App registration → ' +
+      'Application permission Mail.Send → Grant admin consent. Enter Tenant ID, Client ID, and Client secret below.',
+  },
+  {
     id: 'auto',
-    label: 'Auto-detect',
-    tip: 'Prefills a likely SMTP host from the email domain. You can still edit host/port manually before testing.',
+    label: 'Auto-detect (SMTP)',
+    tip: 'Prefills a likely SMTP host from the email domain. Prefer Microsoft Graph for Exchange Online when SMTP AUTH is blocked.',
   },
   {
     id: 'microsoft',
-    label: 'Microsoft 365',
+    label: 'Microsoft 365 (SMTP)',
     tip:
-      'Prefills smtp.office365.com:587. Business mailboxes often need Authenticated SMTP enabled in Exchange admin ' +
-      '(mailbox → Manage email apps). Security Defaults may block password SMTP — then use an App Password or a relay host.',
+      'Uses smtp.office365.com:587. Often blocked unless Authenticated SMTP is enabled. Prefer Microsoft Graph instead.',
   },
   {
     id: 'google',
-    label: 'Google Workspace',
+    label: 'Google Workspace (SMTP)',
     tip:
-      'Prefills smtp.gmail.com:587. Google error 5.7.8 / BadCredentials means the normal password was rejected — ' +
-      'create a 16-character App Password (Google Account → Security → 2-Step Verification → App passwords).',
+      'Prefills smtp.gmail.com:587. Accounts with 2-Step Verification need a 16-character App Password.',
   },
   {
     id: 'custom',
-    label: 'Custom SMTP',
+    label: 'Custom SMTP / relay',
     tip: 'Enter host/port from your provider or transactional relay (SendGrid, Amazon SES, Mailgun).',
   },
 ];
@@ -64,6 +69,7 @@ function domainOf(email: string): string | null {
 
 export function normalizeOutboundProviderMode(mode: string | null | undefined): OutboundProviderMode {
   const m = (mode ?? 'auto').trim().toLowerCase();
+  if (m === 'microsoft-graph' || m === 'graph' || m === 'ms-graph' || m === 'm365-graph') return 'microsoft-graph';
   if (m === 'microsoft' || m === 'ms' || m === 'm365' || m === 'office365') return 'microsoft';
   if (m === 'google' || m === 'gmail' || m === 'workspace') return 'google';
   if (m === 'custom') return 'custom';
@@ -76,6 +82,8 @@ export function defaultsForOutboundProvider(
   email = '',
 ): SmtpServerDefaults {
   switch (mode) {
+    case 'microsoft-graph':
+      return { host: 'graph.microsoft.com', port: 443, useSsl: true };
     case 'microsoft':
       return { host: 'smtp.office365.com', port: 587, useSsl: true };
     case 'google':
@@ -100,7 +108,6 @@ export function defaultsForOutboundProvider(
       if (domain && (ZOHO.has(domain) || domain.endsWith('.zoho.com'))) {
         return { host: 'smtp.zoho.com', port: 587, useSsl: true };
       }
-      // Company domains default to Microsoft 365 host — editable if wrong.
       return { host: 'smtp.office365.com', port: 587, useSsl: true };
     }
   }
@@ -119,9 +126,9 @@ export function detectOutboundProvider(email: string): OutboundProviderInfo | nu
   }
   if (MICROSOFT.has(domain)) {
     return {
-      id: 'microsoft',
+      id: 'microsoft-graph',
       label: 'Microsoft 365 / Outlook',
-      tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'microsoft')!.tip,
+      tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'microsoft-graph')!.tip,
     };
   }
   if (YAHOO.has(domain) || domain.startsWith('yahoo.')) {
@@ -147,10 +154,9 @@ export function detectOutboundProvider(email: string): OutboundProviderInfo | nu
   }
 
   return {
-    id: 'microsoft-business',
+    id: 'microsoft-graph',
     label: 'Microsoft Exchange / Microsoft 365',
-    tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'microsoft')!.tip
-      + ' If this mailbox is Google Workspace, choose Google and use smtp.gmail.com.',
+    tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'microsoft-graph')!.tip,
   };
 }
 
@@ -165,7 +171,7 @@ export function tipForOutboundMode(
   return detectOutboundProvider(email) ?? {
     id: 'auto',
     label: 'Auto-detect',
-    tip: OUTBOUND_PROVIDER_MODES[0].tip,
+    tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'auto')!.tip,
   };
 }
 
@@ -173,12 +179,27 @@ export function outboundEmailReady(
   email: string,
   passwordDraft: string,
   passwordSet: boolean,
-  _mode: OutboundProviderMode = 'auto',
+  mode: OutboundProviderMode = 'auto',
   smtpHost = '',
+  graph?: {
+    tenantId?: string;
+    clientId?: string;
+    clientSecretDraft?: string;
+    clientSecretSet?: boolean;
+  },
 ): boolean {
   const address = email.trim();
+  if (!(address.includes('@') && address.includes('.'))) return false;
+
+  if (mode === 'microsoft-graph') {
+    const tenant = (graph?.tenantId ?? '').trim();
+    const clientId = (graph?.clientId ?? '').trim();
+    const hasSecret = Boolean((graph?.clientSecretDraft ?? '').trim() || graph?.clientSecretSet);
+    return Boolean(tenant && clientId && hasSecret);
+  }
+
   const hasPassword = passwordDraft.trim().length > 0 || passwordSet;
-  if (!(address.includes('@') && address.includes('.') && hasPassword)) return false;
+  if (!hasPassword) return false;
   if (!smtpHost.trim()) return false;
   return true;
 }

@@ -39,6 +39,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpFromEmail", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpFromName", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "SmtpProviderMode", "TEXT NOT NULL DEFAULT 'auto'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "GraphTenantId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "GraphClientId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "GraphClientSecret", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
