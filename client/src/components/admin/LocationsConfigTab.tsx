@@ -36,8 +36,10 @@ import {
 import type { AccessModule } from '../../data/userAccess';
 import {
   blankOpeningHours,
+  HALF_HOUR_TIMES,
   LOCATION_WEEKDAY_LABELS,
   LOCATION_WEEKDAYS,
+  normalizeTime,
   parseOpeningHoursJson,
   serializeOpeningHours,
   validateOpeningHours,
@@ -294,15 +296,20 @@ function LocationPanel({
   }
 
   function updateDayHours(day: LocationWeekday, patch: Partial<LocationDayHours>) {
+    const next = { ...patch };
+    if (next.openFrom !== undefined) next.openFrom = normalizeTime(next.openFrom);
+    if (next.openTo !== undefined) next.openTo = normalizeTime(next.openTo);
+    if (next.lastOrder !== undefined) next.lastOrder = normalizeTime(next.lastOrder);
     setOpeningHours(prev => ({
       ...prev,
-      [day]: { ...(prev[day] ?? blankOpeningHours()[day]), ...patch },
+      [day]: { ...(prev[day] ?? blankOpeningHours()[day]), ...next },
     }));
     setError(null);
   }
 
   async function save() {
     if (saving) return;
+    setError(null);
     try {
       if (!form.companyId) {
         showError('Select a company.');
@@ -382,10 +389,10 @@ function LocationPanel({
       };
 
       setSaving(true);
-      setError(null);
       const saved = isNew
         ? await api.createLocationConfig(payload)
         : await api.updateLocationConfig(form.id, payload);
+      // Notify parent first; parent closes the panel on successful save.
       onSave({
         ...form,
         ...saved,
@@ -399,7 +406,6 @@ function LocationPanel({
         profileOverridden: saved.profileOverridden ?? (profilePayload.profileOverridden || modulesPayload.modulesJson !== '[]'),
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
       });
-      onClose();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save location.');
     } finally {
@@ -502,7 +508,7 @@ function LocationPanel({
             <div>
               <p className="text-xs font-semibold text-foreground">Opening Hours</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Set open from / to and last order time for each day (Mon–Sun). Times use 24-hour format.
+                Set open from / to and last order for each day (Mon–Sun). Minutes are :00 or :30 only.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -525,34 +531,46 @@ function LocationPanel({
                           {LOCATION_WEEKDAY_LABELS[day]}
                         </td>
                         <td className="py-1.5 px-1">
-                          <input
-                            type="time"
-                            className={`${inputCls} min-w-[7rem]`}
+                          <select
+                            className={`${selectCls} min-w-[6.5rem]`}
                             value={row.openFrom}
                             disabled={row.closed}
                             onChange={e => updateDayHours(day, { openFrom: e.target.value })}
                             aria-label={`${LOCATION_WEEKDAY_LABELS[day]} opening from`}
-                          />
+                          >
+                            <option value="">—</option>
+                            {HALF_HOUR_TIMES.map(t => (
+                              <option key={`from-${day}-${t}`} value={t}>{t}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="py-1.5 px-1">
-                          <input
-                            type="time"
-                            className={`${inputCls} min-w-[7rem]`}
+                          <select
+                            className={`${selectCls} min-w-[6.5rem]`}
                             value={row.openTo}
                             disabled={row.closed}
                             onChange={e => updateDayHours(day, { openTo: e.target.value })}
                             aria-label={`${LOCATION_WEEKDAY_LABELS[day]} opening to`}
-                          />
+                          >
+                            <option value="">—</option>
+                            {HALF_HOUR_TIMES.map(t => (
+                              <option key={`to-${day}-${t}`} value={t}>{t}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="py-1.5 px-1">
-                          <input
-                            type="time"
-                            className={`${inputCls} min-w-[7rem]`}
+                          <select
+                            className={`${selectCls} min-w-[6.5rem]`}
                             value={row.lastOrder}
                             disabled={row.closed}
                             onChange={e => updateDayHours(day, { lastOrder: e.target.value })}
                             aria-label={`${LOCATION_WEEKDAY_LABELS[day]} last order`}
-                          />
+                          >
+                            <option value="">—</option>
+                            {HALF_HOUR_TIMES.map(t => (
+                              <option key={`last-${day}-${t}`} value={t}>{t}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="py-1.5 pl-1 text-center">
                           <input
@@ -580,8 +598,9 @@ function LocationPanel({
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
             <button
-              type="submit"
+              type="button"
               disabled={saving}
+              onClick={() => void save()}
               className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
             >
               {saving ? 'Saving…' : isNew ? 'Add Location' : 'Save Changes'}
@@ -837,7 +856,10 @@ export function LocationsConfigTab({
           companies={companies}
           users={users}
           onClose={closePanel}
-          onSave={afterSave}
+          onSave={saved => {
+            afterSave(saved);
+            closePanel();
+          }}
         />
       )}
     </div>
