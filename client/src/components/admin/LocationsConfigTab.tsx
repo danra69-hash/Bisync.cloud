@@ -34,6 +34,17 @@ import {
   validateLocationModules,
 } from '../../data/companyModules';
 import type { AccessModule } from '../../data/userAccess';
+import {
+  blankOpeningHours,
+  LOCATION_WEEKDAY_LABELS,
+  LOCATION_WEEKDAYS,
+  parseOpeningHoursJson,
+  serializeOpeningHours,
+  validateOpeningHours,
+  type LocationDayHours,
+  type LocationOpeningHours,
+  type LocationWeekday,
+} from '../../data/locationOpeningHours';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type LocationSortColumn =
@@ -126,6 +137,7 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     businessTypesJson: '[]',
     vendorPolicyTagsJson: '[]',
     modulesJson: '[]',
+    openingHoursJson: '{}',
   };
 }
 
@@ -162,6 +174,9 @@ function LocationPanel({
     }
     return initialCompany ? locationModulesFromCompany(initialCompany) : [];
   });
+  const [openingHours, setOpeningHours] = useState<LocationOpeningHours>(() =>
+    parseOpeningHoursJson(location.openingHoursJson),
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const errorBannerRef = useRef<HTMLDivElement>(null);
@@ -196,6 +211,7 @@ function LocationPanel({
       setVendorPolicyTags(profile.vendorPolicyTags);
       setModules(initial ? locationModulesFromCompany(initial) : []);
     }
+    setOpeningHours(parseOpeningHoursJson(location.openingHoursJson));
     setError(null);
     // Only re-hydrate when the edited location (or create/edit mode) changes — not when
     // the companies list is refreshed, which would wipe in-progress edits and clear errors.
@@ -277,6 +293,14 @@ function LocationPanel({
     setError(null);
   }
 
+  function updateDayHours(day: LocationWeekday, patch: Partial<LocationDayHours>) {
+    setOpeningHours(prev => ({
+      ...prev,
+      [day]: { ...(prev[day] ?? blankOpeningHours()[day]), ...patch },
+    }));
+    setError(null);
+  }
+
   async function save() {
     if (saving) return;
     try {
@@ -327,6 +351,11 @@ function LocationPanel({
         showError(modulesError);
         return;
       }
+      const hoursError = validateOpeningHours(openingHours);
+      if (hoursError) {
+        showError(hoursError);
+        return;
+      }
 
       const profilePayload = buildLocationProfilePayload(
         company,
@@ -335,6 +364,7 @@ function LocationPanel({
         inheritsCompanyProfile,
       );
       const modulesPayload = buildLocationModulesPayload(company, modules, inheritsCompanyProfile);
+      const openingHoursJson = serializeOpeningHours(openingHours);
 
       const payload = {
         companyId: form.companyId,
@@ -348,6 +378,7 @@ function LocationPanel({
         businessTypesJson: profilePayload.businessTypesJson,
         vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
         modulesJson: modulesPayload.modulesJson,
+        openingHoursJson,
       };
 
       setSaving(true);
@@ -366,6 +397,7 @@ function LocationPanel({
         modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
         modulesOverridden: saved.modulesOverridden,
         profileOverridden: saved.profileOverridden ?? (profilePayload.profileOverridden || modulesPayload.modulesJson !== '[]'),
+        openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
       });
       onClose();
     } catch (err) {
@@ -464,6 +496,78 @@ function LocationPanel({
               ))}
             </select>
             <p className="text-xs text-muted-foreground mt-1">User list is managed in the Users tab.</p>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+            <div>
+              <p className="text-xs font-semibold text-foreground">Opening Hours</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Set open from / to and last order time for each day (Mon–Sun). Times use 24-hour format.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[28rem]">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="py-1.5 pr-2 text-left font-medium">Day</th>
+                    <th className="py-1.5 px-1 text-left font-medium">From</th>
+                    <th className="py-1.5 px-1 text-left font-medium">To</th>
+                    <th className="py-1.5 px-1 text-left font-medium">Last Order</th>
+                    <th className="py-1.5 pl-1 text-center font-medium">Closed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {LOCATION_WEEKDAYS.map(day => {
+                    const row = openingHours[day];
+                    return (
+                      <tr key={day} className="border-b border-border/50">
+                        <td className="py-1.5 pr-2 font-medium whitespace-nowrap">
+                          {LOCATION_WEEKDAY_LABELS[day]}
+                        </td>
+                        <td className="py-1.5 px-1">
+                          <input
+                            type="time"
+                            className={`${inputCls} min-w-[7rem]`}
+                            value={row.openFrom}
+                            disabled={row.closed}
+                            onChange={e => updateDayHours(day, { openFrom: e.target.value })}
+                            aria-label={`${LOCATION_WEEKDAY_LABELS[day]} opening from`}
+                          />
+                        </td>
+                        <td className="py-1.5 px-1">
+                          <input
+                            type="time"
+                            className={`${inputCls} min-w-[7rem]`}
+                            value={row.openTo}
+                            disabled={row.closed}
+                            onChange={e => updateDayHours(day, { openTo: e.target.value })}
+                            aria-label={`${LOCATION_WEEKDAY_LABELS[day]} opening to`}
+                          />
+                        </td>
+                        <td className="py-1.5 px-1">
+                          <input
+                            type="time"
+                            className={`${inputCls} min-w-[7rem]`}
+                            value={row.lastOrder}
+                            disabled={row.closed}
+                            onChange={e => updateDayHours(day, { lastOrder: e.target.value })}
+                            aria-label={`${LOCATION_WEEKDAY_LABELS[day]} last order`}
+                          />
+                        </td>
+                        <td className="py-1.5 pl-1 text-center">
+                          <input
+                            type="checkbox"
+                            checked={row.closed}
+                            onChange={e => updateDayHours(day, { closed: e.target.checked })}
+                            aria-label={`${LOCATION_WEEKDAY_LABELS[day]} closed`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 

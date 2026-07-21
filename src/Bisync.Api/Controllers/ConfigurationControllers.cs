@@ -527,7 +527,8 @@ public record LocationConfigUpdate(
     int? PrincipalContactUserId,
     string BusinessTypesJson,
     string VendorPolicyTagsJson,
-    string ModulesJson
+    string ModulesJson,
+    string? OpeningHoursJson = null
 );
 
 public record LocationConfigCreate(
@@ -541,5 +542,6 @@ public record LocationConfigCreate(
     int? PrincipalContactUserId,
     string? BusinessTypesJson,
     string? VendorPolicyTagsJson,
-    string? ModulesJson
+    string? ModulesJson,
+    string? OpeningHoursJson = null
 );

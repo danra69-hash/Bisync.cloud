@@ -90,6 +90,8 @@ export interface LocationConfig {
   modulesJson: string;
   modulesOverridden?: boolean;
   profileOverridden?: boolean;
+  /** Weekly opening hours + last-order times (JSON). */
+  openingHoursJson?: string;
 }
 
 export interface Company {
