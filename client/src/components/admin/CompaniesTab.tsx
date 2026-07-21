@@ -5,6 +5,7 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X, Mail } from 'lucide-react';
 import { api, type Company } from '../../api';
@@ -1000,15 +1001,17 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{companies.length} registered companies</p>
-        <button
-          type="button"
-          onClick={() => { setIsNew(true); setPanelDraft(blankCompany()); }}
-          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md">
-          <Plus size={12} /> Add Company
-        </button>
-      </div>
+      <PageStickyFilters opaque className="py-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">{companies.length} registered companies</p>
+          <button
+            type="button"
+            onClick={() => { setIsNew(true); setPanelDraft(blankCompany()); }}
+            className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md">
+            <Plus size={12} /> Add Company
+          </button>
+        </div>
+      </PageStickyFilters>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (

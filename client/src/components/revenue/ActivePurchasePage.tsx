@@ -6,6 +6,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { RefreshCw } from 'lucide-react';
 import { api, type PurchaseOrder } from '../../api';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
@@ -171,17 +172,19 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
 
   return (
     <div className={pageShellClass({ embedded })}>
-      <div className="flex items-start justify-end gap-4">
-        <button
-          type="button"
-          onClick={() => void loadOrders()}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
-        >
-          <RefreshCw size={12}  />
-          Refresh
-        </button>
-      </div>
+      <PageStickyFilters opaque className="py-2">
+        <div className="flex items-start justify-end gap-4">
+          <button
+            type="button"
+            onClick={() => void loadOrders()}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw size={12}  />
+            Refresh
+          </button>
+        </div>
+      </PageStickyFilters>
 
       {!selectedCompanyId && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
@@ -211,7 +214,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
       </div>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
+        <div data-table-title data-sticky-table-title className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">Unreconciled purchases</h2>
         </div>
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">

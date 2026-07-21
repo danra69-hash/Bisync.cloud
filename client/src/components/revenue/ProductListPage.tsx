@@ -6,6 +6,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { Plus, RefreshCw, ArrowDown, ArrowUp } from 'lucide-react';
 import { api, type PosDeliveryUnitSelection, type Product } from '../../api';
@@ -290,35 +291,35 @@ export function ProductListPage({
 
   return (
     <div className={pageShellClass({ embedded })}>
-      <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => void loadProducts()}
-          disabled={loading || !orgReady}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw size={12}  />
-          Refresh
-        </button>
-        {onCreateProduct ? (
+      <PageStickyFilters opaque className="space-y-2 py-2">
+        <div className="flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onCreateProduct}
-            disabled={!orgReady}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+            onClick={() => void loadProducts()}
+            disabled={loading || !orgReady}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
           >
-            <Plus size={12} />
-            New product
+            <RefreshCw size={12}  />
+            Refresh
           </button>
-        ) : null}
-      </div>
+          {onCreateProduct ? (
+            <button
+              type="button"
+              onClick={onCreateProduct}
+              disabled={!orgReady}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Plus size={12} />
+              New product
+            </button>
+          ) : null}
+        </div>
 
-      {!orgReady ? (
-        <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
-          Select a company and at least one location in the header to view products.
-        </p>
-      ) : (
-        <>
+        {!orgReady ? (
+          <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">
+            Select a company and at least one location in the header to view products.
+          </p>
+        ) : (
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1 flex-1 min-w-[14rem]">
               <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" htmlFor="product-search">
@@ -407,7 +408,11 @@ export function ProductListPage({
               {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
             </p>
           </div>
+        )}
+      </PageStickyFilters>
 
+      {!orgReady ? null : (
+        <>
           {error ? (
             <p className="text-xs text-destructive border border-destructive/30 bg-destructive/5 rounded-md px-3 py-2">
               {error}

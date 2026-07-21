@@ -18,6 +18,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { B2bCustomerPanel } from './B2bCustomerPanel';
 import { B2bCustomerMyProductsPanel } from './B2bCustomerMyProductsPanel';
@@ -218,26 +219,26 @@ export function CustomerListPage({
 
   return (
     <div className={pageShellClass()}>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {CUSTOMER_TABS.map(t => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-              tab === t.id
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <PageStickyFilters opaque className="space-y-3 py-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {CUSTOMER_TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                tab === t.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-      {tab === 'b2b' ? (
-        <>
-          <div className="flex flex-wrap items-center gap-2 mb-3">
+        {tab === 'b2b' ? (
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -257,7 +258,32 @@ export function CustomerListPage({
               Add Customer
             </button>
           </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={posSearch}
+                onChange={e => setPosSearch(e.target.value)}
+                placeholder="Search POS customers…"
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md border border-border bg-background"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setPosEditTarget('new')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
+            >
+              <Plus size={12} />
+              Add POS Customer
+            </button>
+          </div>
+        )}
+      </PageStickyFilters>
 
+      {tab === 'b2b' ? (
+        <>
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-muted/30">
@@ -327,27 +353,6 @@ export function CustomerListPage({
         </>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="search"
-                value={posSearch}
-                onChange={e => setPosSearch(e.target.value)}
-                placeholder="Search POS customers…"
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md border border-border bg-background"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setPosEditTarget('new')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
-            >
-              <Plus size={12} />
-              Add POS Customer
-            </button>
-          </div>
-
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-muted/30">

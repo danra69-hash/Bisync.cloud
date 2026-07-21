@@ -8,8 +8,10 @@ import {
   type TransferEntry,
 } from '../../api';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import { TableScrollContainer } from '../shared/TableScrollContainer';
 import {
   currentStockCardMonth,
   earliestStockCardMonth,
@@ -515,28 +517,30 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
 
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Transfer</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Initiate as your logged-in user · receiving user confirms (adjust qty) · FIFO/recipe cost · 2-year live history
-          </p>
+      <PageStickyFilters opaque className="py-2">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Transfer</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Initiate as your logged-in user · receiving user confirms (adjust qty) · FIFO/recipe cost · 2-year live history
+            </p>
+          </div>
+          <label className="text-xs">
+            <span className={labelCls}>Month</span>
+            <input
+              type="month"
+              className={fieldCls + ' w-[11rem]'}
+              value={month}
+              min={earliestStockCardMonth()}
+              max={currentStockCardMonth()}
+              onChange={e => e.target.value && setMonth(e.target.value)}
+            />
+            <span className="block text-[10px] text-muted-foreground mt-1">
+              {formatStockCardMonthLabel(month, month === currentStockCardMonth())}
+            </span>
+          </label>
         </div>
-        <label className="text-xs">
-          <span className={labelCls}>Month</span>
-          <input
-            type="month"
-            className={fieldCls + ' w-[11rem]'}
-            value={month}
-            min={earliestStockCardMonth()}
-            max={currentStockCardMonth()}
-            onChange={e => e.target.value && setMonth(e.target.value)}
-          />
-          <span className="block text-[10px] text-muted-foreground mt-1">
-            {formatStockCardMonthLabel(month, month === currentStockCardMonth())}
-          </span>
-        </label>
-      </div>
+      </PageStickyFilters>
 
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -817,19 +821,19 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
       </form>
 
       <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
+        <div data-table-title data-sticky-table-title className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
             <ArrowRightLeft size={14} />
             History · {formatStockCardMonthLabel(month, month === currentStockCardMonth())}
           </h3>
           <span className="text-[11px] text-muted-foreground">{rows.length} record{rows.length === 1 ? '' : 's'}</span>
         </div>
-        <div
+        <TableScrollContainer
           ref={historyScrollRef}
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
         >
           <table className="w-full table-fixed border-collapse text-sm">
-            <thead className="sticky top-0 bg-card z-10">
+            <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-2 py-1.5 w-24">Date</th>
                 <th className="text-left px-2 py-1.5 w-28">From</th>
@@ -917,7 +921,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             </tbody>
           </table>
           <InfiniteScrollDivSentinel hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
-        </div>
+        </TableScrollContainer>
       </div>
     </div>
   );

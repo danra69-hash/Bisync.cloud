@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileStack, Search, ShoppingCart } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { api, type OrderTemplate, type Vendor } from '../../api';
 import {
@@ -255,67 +256,69 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
         <MillstoneLoader size="sm" layout="block" label="Loading order data…" />
       ) : (
         <>
-          <div className="flex items-center gap-3 flex-wrap">
-            <select
-              value={vendorFilter}
-              onChange={e => setVendorFilter(e.target.value)}
-              className={`${filterSelectCls} min-w-[180px]`}
-            >
-              <option value="">All vendors</option>
-              {vendorOptions.map(v => (
-                <option key={v.externalId} value={v.externalId}>{v.name}</option>
-              ))}
-            </select>
+          <PageStickyFilters opaque className="py-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <select
+                value={vendorFilter}
+                onChange={e => setVendorFilter(e.target.value)}
+                className={`${filterSelectCls} min-w-[180px]`}
+              >
+                <option value="">All vendors</option>
+                {vendorOptions.map(v => (
+                  <option key={v.externalId} value={v.externalId}>{v.name}</option>
+                ))}
+              </select>
 
-            <select
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className={`${filterSelectCls} min-w-[160px]`}
-            >
-              {categoryOptions.map(cat => (
-                <option key={cat} value={cat}>{cat === 'All' ? 'All component types' : cat}</option>
-              ))}
-            </select>
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className={`${filterSelectCls} min-w-[160px]`}
+              >
+                {categoryOptions.map(cat => (
+                  <option key={cat} value={cat}>{cat === 'All' ? 'All component types' : cat}</option>
+                ))}
+              </select>
 
-            <div className="relative flex-1 min-w-[220px] max-w-md">
-              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search smart component…"
-                className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search smart component…"
+                  className="w-full pl-8 pr-3 py-2 text-xs rounded-md border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <p className="text-xs font-sans text-muted-foreground">
+                {lines.length} line{lines.length !== 1 ? 's' : ''}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors"
+              >
+                <FileStack size={16} />
+                PO Template
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCart(true)}
+                disabled={cartCount === 0}
+                className="relative inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="View my carte"
+              >
+                <ShoppingCart size={16} className="text-primary" />
+                <span>My Carte</span>
+                {cartCount > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shadow-sm">
+                    {cartCount}
+                  </span>
+                )}
+              </button>
             </div>
-
-            <p className="text-xs font-sans text-muted-foreground">
-              {lines.length} line{lines.length !== 1 ? 's' : ''}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setShowTemplatePicker(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors"
-            >
-              <FileStack size={16} />
-              PO Template
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowCart(true)}
-              disabled={cartCount === 0}
-              className="relative inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="View my carte"
-            >
-              <ShoppingCart size={16} className="text-primary" />
-              <span>My Carte</span>
-              {cartCount > 0 && (
-                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shadow-sm">
-                  {cartCount}
-                </span>
-              )}
-            </button>
-          </div>
+          </PageStickyFilters>
 
           {templateNotice && (
             <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">

@@ -3,6 +3,7 @@ import { FileText, Ghost } from 'lucide-react';
 import { api, setApiTenantCompanyId, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
+import { StickyChromeSync } from './components/layout/StickyChromeSync';
 import { RevenueSection } from './components/revenue/RevenueSection';
 import { OverviewDashboard } from './components/overview/OverviewDashboard';
 import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
@@ -211,6 +212,7 @@ export default function App() {
         />
 
         <OrgCountryProvider countryCode={orgCountryCode}>
+        <StickyChromeSync />
         <main
           data-app-main
           className={`flex-1 flex flex-col min-h-0 w-full min-w-0 overflow-x-hidden overflow-y-auto ${isFullBleed ? '' : 'p-2 sm:p-3 space-y-3'}`}

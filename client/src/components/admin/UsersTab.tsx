@@ -4,6 +4,7 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Check, ChevronDown, Plus, X } from 'lucide-react';
 import { api, type AppUser, type AvailableEmployee, type Company, type LocationConfig, type UserUpsert } from '../../api';
@@ -610,18 +611,20 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          {users.length} users with platform access · sourced from Employee Directory · assign company, locations, and modules
-        </p>
-        <button
-          onClick={() => { setIsNew(true); setEditUser(blankUser()); }}
-          disabled={availableEmployees.length === 0}
-          className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md disabled:opacity-50"
-        >
-          <Plus size={12} /> Grant Access
-        </button>
-      </div>
+      <PageStickyFilters opaque className="py-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {users.length} users with platform access · sourced from Employee Directory · assign company, locations, and modules
+          </p>
+          <button
+            onClick={() => { setIsNew(true); setEditUser(blankUser()); }}
+            disabled={availableEmployees.length === 0}
+            className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground px-3 py-2 rounded-md disabled:opacity-50"
+          >
+            <Plus size={12} /> Grant Access
+          </button>
+        </div>
+      </PageStickyFilters>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
