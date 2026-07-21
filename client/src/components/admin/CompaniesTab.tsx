@@ -29,7 +29,13 @@ import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePane
 import { CompanyProfileFields } from './CompanyProfileFields';
 import { ToggleSwitch } from './ToggleSwitch';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
-import { detectOutboundProvider, outboundEmailReady } from '../../data/outboundEmailProvider';
+import {
+  normalizeOutboundProviderMode,
+  outboundEmailReady,
+  tipForOutboundMode,
+  OUTBOUND_PROVIDER_MODES,
+  type OutboundProviderMode,
+} from '../../data/outboundEmailProvider';
 
 type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'locations' | 'status';
 type CompanyTableColumn = CompanySortColumn | 'accessControl';
@@ -112,6 +118,7 @@ const blankCompany = (): CompanyDraft => ({
   smtpFromEmail: '',
   smtpFromName: '',
   smtpPasswordSet: false,
+  smtpProviderMode: 'auto',
 });
 
 function CompanyPanel({
@@ -160,7 +167,8 @@ function CompanyPanel({
   function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: val }));
     setError(null);
-    if (key === 'smtpFromEmail' || key === 'smtpFromName') {
+    if (key === 'smtpFromEmail' || key === 'smtpFromName' || key === 'smtpProviderMode'
+      || key === 'smtpHost' || key === 'smtpPort' || key === 'smtpUseSsl') {
       setOutboundFeedback(null);
     }
   }
@@ -185,31 +193,40 @@ function CompanyPanel({
     setError(null);
   }
 
+  const providerMode = normalizeOutboundProviderMode(form.smtpProviderMode);
+  const outboundAddress = (form.smtpFromEmail ?? '').trim();
+  const providerInfo = tipForOutboundMode(providerMode, outboundAddress);
+
   function buildPayload(active = form.active) {
     const outboundEmail = (form.smtpFromEmail ?? '').trim();
+    const mode = providerMode;
     return {
       ...form,
       active,
       businessTypesJson: serializeStringArray(businessTypes),
       vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
       modulesJson: serializeStringArray(modules),
-      // Server auto-fills host/port/SSL from the email provider.
+      smtpProviderMode: mode,
       smtpFromEmail: outboundEmail,
       smtpUsername: outboundEmail,
       smtpPassword: smtpPasswordDraft.trim(),
       smtpFromName: (form.smtpFromName ?? '').trim(),
-      smtpHost: '',
-      smtpPort: 587,
-      smtpUseSsl: true,
+      smtpHost: mode === 'custom' ? (form.smtpHost ?? '').trim() : '',
+      smtpPort: mode === 'custom' ? (form.smtpPort && form.smtpPort > 0 ? form.smtpPort : 587) : 587,
+      smtpUseSsl: mode === 'custom' ? Boolean(form.smtpUseSsl ?? true) : true,
     };
   }
 
-  const outboundAddress = (form.smtpFromEmail ?? '').trim();
-  const providerInfo = detectOutboundProvider(outboundAddress);
   const canTestOutbound =
     !isNew
     && 'id' in form
-    && outboundEmailReady(outboundAddress, smtpPasswordDraft, Boolean(form.smtpPasswordSet));
+    && outboundEmailReady(
+      outboundAddress,
+      smtpPasswordDraft,
+      Boolean(form.smtpPasswordSet),
+      providerMode,
+      form.smtpHost ?? '',
+    );
 
   async function toggleActive() {
     if (isNew || !('id' in form)) return;
@@ -289,10 +306,18 @@ function CompanyPanel({
       return;
     }
     const address = (form.smtpFromEmail ?? '').trim();
-    if (!outboundEmailReady(address, smtpPasswordDraft, Boolean(form.smtpPasswordSet))) {
+    if (!outboundEmailReady(
+      address,
+      smtpPasswordDraft,
+      Boolean(form.smtpPasswordSet),
+      providerMode,
+      form.smtpHost ?? '',
+    )) {
       setOutboundFeedback({
         kind: 'error',
-        text: 'Enter the outbound email address and password before testing.',
+        text: providerMode === 'custom' && !(form.smtpHost ?? '').trim()
+          ? 'Enter a custom SMTP host before testing.'
+          : 'Enter the outbound email address and password before testing.',
       });
       return;
     }
@@ -321,19 +346,24 @@ function CompanyPanel({
         ...f,
         ...saved,
         smtpPassword: '',
+        smtpProviderMode: normalizeOutboundProviderMode(saved.smtpProviderMode ?? providerMode),
         smtpPasswordSet: saved.smtpPasswordSet
           ?? (passwordForTest.length > 0 || Boolean(f.smtpPasswordSet)),
       }));
 
       setOutboundFeedback({
         kind: 'info',
-        text: `Connecting via ${providerInfo?.label ?? 'SMTP'}…`,
+        text: `Connecting via ${providerInfo.label}…`,
       });
 
       const result = await api.testCompanyOutboundEmail(form.id, {
         toEmail: to,
         smtpFromEmail: address,
         smtpFromName: (form.smtpFromName ?? '').trim() || undefined,
+        smtpProviderMode: providerMode,
+        smtpHost: providerMode === 'custom' ? (form.smtpHost ?? '').trim() : undefined,
+        smtpPort: providerMode === 'custom' ? (form.smtpPort || 587) : undefined,
+        smtpUseSsl: providerMode === 'custom' ? Boolean(form.smtpUseSsl ?? true) : undefined,
         // Pass draft password explicitly so test does not depend on a race with save.
         smtpPassword: passwordForTest || undefined,
       });
@@ -343,6 +373,7 @@ function CompanyPanel({
         setForm(f => ({
           ...f,
           smtpProviderLabel: result.provider,
+          smtpProviderMode: normalizeOutboundProviderMode(result.smtpProviderMode ?? providerMode),
         }));
       }
       onSave();
@@ -445,8 +476,8 @@ function CompanyPanel({
                 <div>
                   <p className="text-xs font-semibold">Outbound email</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Used to email purchase orders to vendors. Enter the mailbox address and password —
-                    Microsoft, Google, and other providers are configured automatically.
+                    Used to email purchase orders to vendors. Enter the mailbox address and password,
+                    then choose the mail provider if auto-detect is wrong.
                   </p>
                 </div>
               </div>
@@ -478,7 +509,7 @@ function CompanyPanel({
                       setError(null);
                       setOutboundFeedback(null);
                     }}
-                    placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'Email password'}
+                    placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'Email password or App Password'}
                     autoComplete="new-password"
                   />
                 </div>
@@ -493,12 +524,66 @@ function CompanyPanel({
                     placeholder="Company Purchasing"
                   />
                 </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Mail provider
+                  </label>
+                  <select
+                    className={selectCls}
+                    value={providerMode}
+                    onChange={e => set('smtpProviderMode', e.target.value as OutboundProviderMode)}
+                    disabled={testingEmail || saving}
+                  >
+                    {OUTBOUND_PROVIDER_MODES.map(m => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {providerMode === 'custom' && (
+                  <>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        SMTP host *
+                      </label>
+                      <input
+                        className={inputCls}
+                        value={form.smtpHost ?? ''}
+                        onChange={e => set('smtpHost', e.target.value)}
+                        placeholder="smtp.sendgrid.net"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        Port
+                      </label>
+                      <input
+                        type="number"
+                        className={inputCls}
+                        value={form.smtpPort ?? 587}
+                        onChange={e => set('smtpPort', Number(e.target.value) || 587)}
+                        min={1}
+                        max={65535}
+                      />
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(form.smtpUseSsl ?? true)}
+                          onChange={e => set('smtpUseSsl', e.target.checked)}
+                        />
+                        Use TLS / SSL
+                      </label>
+                    </div>
+                  </>
+                )}
               </div>
 
               {providerInfo && (
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2 space-y-1">
                   <p className="text-[11px] font-medium">
-                    Detected: {providerInfo.label}
+                    {providerMode === 'auto' ? `Detected: ${providerInfo.label}` : providerInfo.label}
                   </p>
                   <p className="text-[11px] text-muted-foreground">{providerInfo.tip}</p>
                 </div>
@@ -549,7 +634,9 @@ function CompanyPanel({
                       ? 'Enter the outbound email address above.'
                       : !(smtpPasswordDraft.trim() || form.smtpPasswordSet)
                         ? 'Enter the email password (Google/Microsoft MFA usually needs an App Password).'
-                        : 'Complete outbound email settings to send a test.'}
+                        : providerMode === 'custom' && !(form.smtpHost ?? '').trim()
+                          ? 'Enter the custom SMTP host.'
+                          : 'Complete outbound email settings to send a test.'}
                   </p>
                 )}
                 {outboundFeedback && (

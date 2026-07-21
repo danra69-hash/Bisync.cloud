@@ -1,10 +1,41 @@
-/** Auto-detect outbound mail provider from an email address (mirrors server rules). */
+/** Outbound mail provider helpers (mirrors server CompanyOutboundEmailService rules). */
+
+export type OutboundProviderMode = 'auto' | 'microsoft' | 'google' | 'custom';
 
 export type OutboundProviderInfo = {
   id: string;
   label: string;
   tip: string;
 };
+
+export const OUTBOUND_PROVIDER_MODES: {
+  id: OutboundProviderMode;
+  label: string;
+  tip: string;
+}[] = [
+  {
+    id: 'auto',
+    label: 'Auto-detect',
+    tip: 'Tries Microsoft 365 first for company domains, then Google Workspace and domain SMTP.',
+  },
+  {
+    id: 'microsoft',
+    label: 'Microsoft 365',
+    tip:
+      'Uses smtp.office365.com. Business mailboxes often need Authenticated SMTP enabled in Exchange admin ' +
+      '(mailbox → Manage email apps). Security Defaults may block password SMTP — then use an App Password or Custom SMTP.',
+  },
+  {
+    id: 'google',
+    label: 'Google Workspace',
+    tip: 'Uses smtp.gmail.com. Accounts with 2-Step Verification need a 16-character App Password (not the normal login password).',
+  },
+  {
+    id: 'custom',
+    label: 'Custom SMTP',
+    tip: 'Use your provider host or a transactional relay (SendGrid, Amazon SES, Mailgun). Enter host and port below.',
+  },
+];
 
 const GOOGLE = new Set(['gmail.com', 'googlemail.com']);
 const MICROSOFT = new Set([
@@ -23,6 +54,14 @@ function domainOf(email: string): string | null {
   return v.slice(at + 1);
 }
 
+export function normalizeOutboundProviderMode(mode: string | null | undefined): OutboundProviderMode {
+  const m = (mode ?? 'auto').trim().toLowerCase();
+  if (m === 'microsoft' || m === 'ms' || m === 'm365' || m === 'office365') return 'microsoft';
+  if (m === 'google' || m === 'gmail' || m === 'workspace') return 'google';
+  if (m === 'custom') return 'custom';
+  return 'auto';
+}
+
 export function detectOutboundProvider(email: string): OutboundProviderInfo | null {
   const domain = domainOf(email);
   if (!domain) return null;
@@ -31,14 +70,14 @@ export function detectOutboundProvider(email: string): OutboundProviderInfo | nu
     return {
       id: 'google',
       label: 'Google / Gmail',
-      tip: 'Google accounts with 2-Step Verification need an App Password (16 characters). Normal Gmail passwords are rejected.',
+      tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'google')!.tip,
     };
   }
   if (MICROSOFT.has(domain)) {
     return {
       id: 'microsoft',
       label: 'Microsoft 365 / Outlook',
-      tip: 'Use your Microsoft 365 / Outlook email. If MFA is enabled, create an app password in Microsoft account security settings.',
+      tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'microsoft')!.tip,
     };
   }
   if (YAHOO.has(domain) || domain.startsWith('yahoo.')) {
@@ -66,12 +105,36 @@ export function detectOutboundProvider(email: string): OutboundProviderInfo | nu
   return {
     id: 'microsoft-business',
     label: 'Microsoft Exchange / Microsoft 365',
-    tip: 'Company domains usually send through Microsoft 365. If MFA is on, use an app password. Google Workspace is tried automatically if needed.',
+    tip: OUTBOUND_PROVIDER_MODES.find(m => m.id === 'microsoft')!.tip
+      + ' If this mailbox is Google Workspace, choose Google above.',
   };
 }
 
-export function outboundEmailReady(email: string, passwordDraft: string, passwordSet: boolean): boolean {
+export function tipForOutboundMode(
+  mode: OutboundProviderMode,
+  email: string,
+): OutboundProviderInfo {
+  if (mode !== 'auto') {
+    const preset = OUTBOUND_PROVIDER_MODES.find(m => m.id === mode)!;
+    return { id: mode, label: preset.label, tip: preset.tip };
+  }
+  return detectOutboundProvider(email) ?? {
+    id: 'auto',
+    label: 'Auto-detect',
+    tip: OUTBOUND_PROVIDER_MODES[0].tip,
+  };
+}
+
+export function outboundEmailReady(
+  email: string,
+  passwordDraft: string,
+  passwordSet: boolean,
+  mode: OutboundProviderMode = 'auto',
+  customHost = '',
+): boolean {
   const address = email.trim();
   const hasPassword = passwordDraft.trim().length > 0 || passwordSet;
-  return address.includes('@') && address.includes('.') && hasPassword;
+  if (!(address.includes('@') && address.includes('.') && hasPassword)) return false;
+  if (mode === 'custom' && !customHost.trim()) return false;
+  return true;
 }

@@ -122,6 +122,8 @@ export interface Company {
   smtpFromEmail?: string;
   smtpFromName?: string;
   smtpPasswordSet?: boolean;
+  /** auto | microsoft | google | custom */
+  smtpProviderMode?: string;
   smtpProviderId?: string;
   smtpProviderLabel?: string;
   smtpProviderTip?: string;
@@ -2072,9 +2074,13 @@ export const api = {
       smtpFromEmail?: string;
       smtpPassword?: string;
       smtpFromName?: string;
+      smtpProviderMode?: string;
+      smtpHost?: string;
+      smtpPort?: number;
+      smtpUseSsl?: boolean;
     },
   ) =>
-    fetchJsonWithMethod<{ sent: boolean; to: string; message: string; provider?: string }>(
+    fetchJsonWithMethod<{ sent: boolean; to: string; message: string; provider?: string; smtpProviderMode?: string }>(
       `/api/companies/${id}/outbound-email/test`,
       'POST',
       payload,

@@ -22,6 +22,8 @@ public class Company
     public DateTime? RegisteredAt { get; set; }
 
     // --- Outbound email (SMTP) for Purchase Order / vendor mail ---
+    /// <summary>auto | microsoft | google | custom</summary>
+    public string SmtpProviderMode { get; set; } = "auto";
     public string SmtpHost { get; set; } = string.Empty;
     public int SmtpPort { get; set; } = 587;
     public bool SmtpUseSsl { get; set; } = true;
