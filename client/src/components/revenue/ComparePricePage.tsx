@@ -18,6 +18,7 @@ import {
   type ComparePriceCell,
   type ComparePriceSlot,
 } from '../../data/comparePrice';
+import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import { resolveDetailConfigForRow, serializeDetailConfig, type ComponentRow } from '../../data/componentForm';
 import type { VendorProductCatalogItem } from '../../data/vendorProductCatalog';
 import { componentRowToIngredientPayload } from '../../data/vendorProductTagging';
@@ -31,6 +32,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 
 const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0';
 const COMPONENT_COL_WIDTH_PX = 220;
@@ -47,6 +49,7 @@ function ComparePriceCellView({
   vendor,
   isBest,
   saving,
+  hidePrices,
   onEngage,
   onTag,
   onSaveUomCost,
@@ -57,6 +60,7 @@ function ComparePriceCellView({
   vendor: Vendor;
   isBest: boolean;
   saving: boolean;
+  hidePrices: boolean;
   onEngage: () => void;
   onTag: () => void;
   onSaveUomCost: (cell: ComparePriceCell, uomCost: number) => Promise<void>;
@@ -106,7 +110,9 @@ function ComparePriceCellView({
       <p className={`font-medium text-foreground line-clamp-2 ${slot.isTagged ? 'pr-4' : ''}`}>
         {product.productName}
       </p>
-      <p className="font-sans text-xs text-muted-foreground">{formatDeliveryPriceLine(product)}</p>
+      <p className="font-sans text-xs text-muted-foreground">
+        {hidePrices ? formatDeliveryUnitPath(product.delivery) : formatDeliveryPriceLine(product)}
+      </p>
 
       <div className="pt-0.5 border-t border-border/60">
         {!vendor.engaged ? (
@@ -127,6 +133,8 @@ function ComparePriceCellView({
             <Tag size={11} />
             Tag
           </button>
+        ) : hidePrices ? (
+          <p className="font-sans text-[11px] text-muted-foreground">Qty / UOM only</p>
         ) : cell && cell.uomCost !== null && cell.uomCost > 0 ? (
           <p className={`font-sans text-[11px] font-semibold ${isBest ? 'text-[#5A7A2A]' : 'text-foreground'}`}>
             {formatUomCost(cell.uomCost, cell.componentUom)}
@@ -177,6 +185,7 @@ export function ComparePricePage({
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 }) {
+  const hidePrices = useShouldHidePrices();
   const orgPolicyTags = useOrgVendorPolicy(selectedCompanyId, selectedLocationIds);
   const [componentRows, setComponentRows] = useState<ComponentRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -652,8 +661,9 @@ export function ComparePricePage({
                                 <ComparePriceCellView
                                   slot={displaySlot}
                                   vendor={vendor}
-                                  isBest={isBest}
+                                  isBest={isBest && !hidePrices}
                                   saving={savingKey === key}
+                                  hidePrices={hidePrices}
                                   onEngage={() => handleEngageClick(vendor, slot.product, component.id!)}
                                   onTag={() => handleTagClick(slot.product, component.id!)}
                                   onSaveUomCost={handleSaveUomCost}

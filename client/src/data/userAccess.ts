@@ -20,7 +20,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     id: 'order',
     label: 'Order',
     tasks: [
-      { id: 'viewOrder', label: 'View Order' },
+      { id: 'viewOrder', label: 'My Order / View Order' },
       { id: 'createEditOrder', label: 'Create and Edit Order' },
       { id: 'approveOrder', label: 'Approve Order' },
       { id: 'receiveOrder', label: 'Receive Order' },
@@ -35,7 +35,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     tasks: [
       { id: 'productManagement', label: 'B2B Product' },
       { id: 'subProductManagement', label: 'Sub-Product' },
-      { id: 'offlineSales', label: 'Offline Sales' },
+      { id: 'offlineSales', label: 'Offline Sales / Sales Data' },
     ],
   },
   {
@@ -49,17 +49,18 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
       { id: 'creditNote', label: 'Credit Note' },
       { id: 'wastage', label: 'Wastage' },
       { id: 'transfer', label: 'Transfer' },
-      { id: 'inventoryConfiguration', label: 'Inventory Configuration' },
+      { id: 'inventoryConfiguration', label: 'Inventory Config' },
     ],
   },
   {
     id: 'smartComponent',
     label: 'Smart Component',
     tasks: [
-      { id: 'createEdit', label: 'Create and edit' },
+      { id: 'createEdit', label: 'Smart Component' },
+      { id: 'componentConfig', label: 'Component Config' },
       { id: 'activateDeactivateVendorProducts', label: 'Activate/Deactivate Vendor Products' },
       { id: 'createEditComponentGroup', label: 'Create and Edit Component Group' },
-      { id: 'createEditStorageAssignment', label: 'Create and edit Storage Assignment' },
+      { id: 'createEditStorageAssignment', label: 'Create and Edit Storage Assignment' },
       { id: 'accountMapping', label: 'Account Mapping' },
     ],
   },
@@ -67,9 +68,10 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     id: 'vendor',
     label: 'Vendor',
     tasks: [
-      { id: 'viewVendorList', label: 'View Vendor List & Products' },
+      { id: 'viewVendorList', label: 'Vendor List & Products' },
       { id: 'viewVendorProducts', label: 'View Vendor Products' },
-      { id: 'activateDeactivateVendor', label: 'Activate/deactivate Vendor' },
+      { id: 'comparePrice', label: 'Compare Price' },
+      { id: 'activateDeactivateVendor', label: 'Activate/Deactivate Vendor' },
       { id: 'accountMapping', label: 'Account Mapping' },
     ],
   },
@@ -77,8 +79,9 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     id: 'products',
     label: 'Products',
     tasks: [
-      { id: 'viewProductSubProduct', label: 'View Product & sub-product' },
-      { id: 'manageProductSubProduct', label: 'Manage Product & sub-product' },
+      { id: 'viewProductSubProduct', label: 'View Products' },
+      { id: 'manageProductSubProduct', label: 'Manage Products & Sub-Products' },
+      { id: 'externalPosMapping', label: 'External POS Mapping' },
       { id: 'accountMapping', label: 'Account Mapping' },
     ],
   },
@@ -86,10 +89,11 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     id: 'sales',
     label: 'Sales',
     tasks: [
-      { id: 'manageCustomers', label: 'Manage Customers' },
-      { id: 'customerGroup', label: 'Customer Group' },
-      { id: 'manageSalesOrder', label: 'Manage Sales Order' },
+      { id: 'manageSalesOrder', label: 'Sales Order' },
       { id: 'approveSalesOrder', label: 'Approve / Issue Sales Order' },
+      { id: 'manageCustomers', label: 'Customer List' },
+      { id: 'customerGroup', label: 'Customer Group' },
+      { id: 'customerManagement', label: 'Customer Management' },
       { id: 'manageInvoice', label: 'Manage Invoice' },
       { id: 'promotionScheduler', label: 'Promotion Scheduler' },
       { id: 'accountMapping', label: 'Account Mapping' },
@@ -98,7 +102,25 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
   {
     id: 'reports',
     label: 'Reports',
-    tasks: [{ id: 'viewReports', label: 'View Reports' }],
+    tasks: [
+      { id: 'viewReports', label: 'View Reports' },
+      { id: 'itemizedSalesSummary', label: 'Itemized Sales Summary' },
+      { id: 'inventorySummary', label: 'Inventory Summary' },
+      { id: 'detailedPurchaseSummary', label: 'Detailed Purchase Summary' },
+      { id: 'productionReport', label: 'Production Report' },
+      { id: 'wastageReport', label: 'Wastage Report' },
+      { id: 'cogsAudit', label: 'COGS Audit' },
+    ],
+  },
+  {
+    id: 'policies',
+    label: 'Policies',
+    tasks: [
+      {
+        id: 'hidePrices',
+        label: 'Price Hide Policy (quantity only)',
+      },
+    ],
   },
 ];
 

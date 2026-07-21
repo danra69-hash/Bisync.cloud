@@ -18,6 +18,8 @@ import {
   formatStockCardMonthLabel,
 } from './stockCardPeriod';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
+import { formatPriceOrHidden } from '../../data/priceVisibility';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -47,6 +49,8 @@ function last24MonthOptions(): string[] {
 
 export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const countryCode = useOrgCountryCode();
+  const hidePrices = useShouldHidePrices();
+  const money = (value: number) => formatPriceOrHidden(hidePrices, () => fmt2(value, countryCode));
   const [screen, setScreen] = useState<Screen>('summary');
   const [period, setPeriod] = useState(currentStockCardMonth);
   const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
@@ -188,6 +192,7 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
       loading={historyLoading}
       error={historyError}
       countryCode={countryCode}
+      hidePrices={hidePrices}
       onClose={() => setHistoryOpen(false)}
       onRefresh={() => void openHistoryPanel()}
       onOpenSystem={row => void openSystemHistoryRun(row)}
@@ -247,7 +252,7 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
               <Metric label="ME Debit (+)" value={fmt2(detail.summary.meDebitQty, countryCode)} />
               <Metric label="ME Credit (−)" value={fmt2(detail.summary.meCreditQty, countryCode)} />
               <Metric label="Shortage qty" value={fmt2(detail.summary.shortageQty, countryCode)} />
-              <Metric label="Shortage value" value={fmt2(detail.summary.shortageVal, countryCode)} />
+              <Metric label="Shortage value" value={money(detail.summary.shortageVal)} />
             </div>
 
             <TableScrollContainer ref={scrollRootRef} className="max-h-[min(70vh,640px)]">
@@ -281,10 +286,10 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(line.debitQty, countryCode)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(line.creditQty, countryCode)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(line.unitPrice, countryCode)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(line.fifoValue, countryCode)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{money(line.unitPrice)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{money(line.fifoValue)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(line.runningQty, countryCode)}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(line.runningValue, countryCode)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{money(line.runningValue)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -370,12 +375,12 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
       {summary && !loading && (
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Metric label="Opening value" value={fmt2(summary.openingValue, countryCode)} />
-            <Metric label="Before inventory value" value={fmt2(summary.beforeInventoryValue, countryCode)} />
-            <Metric label="Credit COGS (−)" value={fmt2(summary.creditCogsBeforeInventory, countryCode)} />
-            <Metric label="Closing value" value={fmt2(summary.closingValue, countryCode)} />
+            <Metric label="Opening value" value={money(summary.openingValue)} />
+            <Metric label="Before inventory value" value={money(summary.beforeInventoryValue)} />
+            <Metric label="Credit COGS (−)" value={money(summary.creditCogsBeforeInventory)} />
+            <Metric label="Closing value" value={money(summary.closingValue)} />
             <Metric label="Shortage qty" value={fmt2(summary.shortageQty, countryCode)} />
-            <Metric label="Shortage value" value={fmt2(summary.shortageValue, countryCode)} />
+            <Metric label="Shortage value" value={money(summary.shortageValue)} />
             <Metric label="Ingredients" value={String(summary.ingredientCount)} />
             <Metric label="Month" value={summary.periodMonth} />
           </div>
@@ -424,17 +429,17 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
                     </td>
                     <td className="px-2 py-1.5">{row.uom}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.openQty, countryCode)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.openVal, countryCode)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{money(row.openVal)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.debitQty, countryCode)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.debitVal, countryCode)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{money(row.debitVal)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.creditQty, countryCode)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.creditCogs, countryCode)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{money(row.creditCogs)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.beforeInvQty, countryCode)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.meDebitQty, countryCode)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.meCreditQty, countryCode)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.closeQty, countryCode)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.shortageQty, countryCode)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.shortageVal, countryCode)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{money(row.shortageVal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -452,6 +457,7 @@ function HistoryPanel({
   loading,
   error,
   countryCode,
+  hidePrices,
   onClose,
   onRefresh,
   onOpenSystem,
@@ -460,10 +466,12 @@ function HistoryPanel({
   loading: boolean;
   error: string | null;
   countryCode: string;
+  hidePrices: boolean;
   onClose: () => void;
   onRefresh: () => void;
   onOpenSystem: (row: SystemCogsAuditHistoryEntry) => void;
 }) {
+  const money = (value: number) => formatPriceOrHidden(hidePrices, () => fmt2(value, countryCode));
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
@@ -527,7 +535,7 @@ function HistoryPanel({
                       : 'Initial'}
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{row.ingredientCount}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{fmt2(row.shortageValue, countryCode)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{money(row.shortageValue)}</td>
                   <td className="px-2 py-1.5 max-w-[16rem] truncate font-mono text-[11px]" title={row.relativePath}>
                     {row.relativePath}
                   </td>

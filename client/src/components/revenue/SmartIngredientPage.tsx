@@ -25,6 +25,7 @@ import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredie
 import { countComponentTaggedVendors } from '../../data/vendorProductTagging';
 import { formatParStock, resolveComponentParStock } from '../../data/componentParStock';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type IngredientSortColumn =
@@ -79,6 +80,14 @@ export function SmartIngredientPage({
   selectedLocationIds: string[];
 }) {
   const { number } = useCountryFormatters();
+  const hidePrices = useShouldHidePrices();
+  const tableColumns = useMemo(
+    () => (hidePrices
+      ? INGREDIENT_TABLE_COLUMNS.filter(col => col.key !== 'lastPrice')
+      : INGREDIENT_TABLE_COLUMNS),
+    [hidePrices],
+  );
+  const columnCount = tableColumns.length;
   const [rows, setRows] = useState<ComponentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [companyLocations, setCompanyLocations] = useState<{ externalId: string; name: string }[]>([]);
@@ -413,7 +422,7 @@ export function SmartIngredientPage({
             <table className="w-full table-fixed text-xs">
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
-                  columns={INGREDIENT_TABLE_COLUMNS}
+                  columns={tableColumns}
                   sortColumn={sortColumn}
                   sortDirection={sortDirection}
                   onSort={toggleSort}
@@ -423,7 +432,7 @@ export function SmartIngredientPage({
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
+                    <td colSpan={columnCount} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No items match the selected filters.
                     </td>
                   </tr>
@@ -441,7 +450,9 @@ export function SmartIngredientPage({
                       </button>
                     </td>
                     <td className="px-4 py-3 font-sans text-foreground">{uom(row)}</td>
-                    <td className="px-4 py-3 font-sans text-foreground">${number(price(row))}</td>
+                    {!hidePrices && (
+                      <td className="px-4 py-3 font-sans text-foreground">${number(price(row))}</td>
+                    )}
                     <td className="px-4 py-3 font-sans text-muted-foreground">
                       {row.dailyUsage > 0 ? `${row.dailyUsage} ${uom(row)}/day` : '—'}
                     </td>
@@ -480,7 +491,7 @@ export function SmartIngredientPage({
                   </tr>
                   );
                 })}
-                <InfiniteScrollTableSentinel colSpan={11} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={columnCount} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>

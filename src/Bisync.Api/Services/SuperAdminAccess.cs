@@ -13,13 +13,16 @@ public static class SuperAdminAccess
     static readonly string[] RmsTasks =
     [
         "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder",
-        "cashPurchase", "orderTemplate", "productManagement", "offlineSales", "batchStockAdjustment",
-        "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage",
-        "transfer", "inventoryConfiguration", "createEdit", "activateDeactivateVendorProducts",
+        "cashPurchase", "orderTemplate", "productManagement", "subProductManagement", "offlineSales",
+        "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage",
+        "transfer", "inventoryConfiguration", "createEdit", "componentConfig", "activateDeactivateVendorProducts",
         "createEditComponentGroup", "createEditStorageAssignment", "accountMapping",
-        "viewVendorList", "viewVendorProducts", "activateDeactivateVendor",
-        "viewProductSubProduct", "manageProductSubProduct", "manageCustomers", "customerGroup",
-        "manageSalesOrder", "approveSalesOrder", "manageInvoice", "promotionScheduler", "viewReports",
+        "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",
+        "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",
+        "manageCustomers", "customerGroup", "customerManagement", "manageSalesOrder", "approveSalesOrder",
+        "manageInvoice", "promotionScheduler", "viewReports",
+        "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit",
+        // hidePrices intentionally omitted — restriction policy, not a super-admin grant
     ];
 
     public static string BuildJson()

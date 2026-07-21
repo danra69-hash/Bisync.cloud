@@ -19,6 +19,8 @@ import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
 import { fromApiUom } from '../../data/componentForm';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
+import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
+import { formatPriceOrHidden } from '../../data/priceVisibility';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {
@@ -116,6 +118,10 @@ function formatMoney(value: number | null | undefined) {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatMoneyMaybeHidden(hide: boolean, value: number | null | undefined) {
+  return formatPriceOrHidden(hide, () => formatMoney(value));
+}
+
 function statusLabel(status: string) {
   const s = (status || '').toLowerCase();
   if (s === 'pending') return 'Pending receive';
@@ -131,6 +137,8 @@ const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted
 
 export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const { currentUser } = useCurrentUser();
+  const hidePrices = useShouldHidePrices();
+  const money = (value: number | null | undefined) => formatMoneyMaybeHidden(hidePrices, value);
   const orgReady = !!selectedCompanyId;
 
   const [month, setMonth] = useState(currentStockCardMonth);
@@ -582,7 +590,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             <div className="text-xs text-muted-foreground pb-2">
               Max {receiveTarget.quantity} {receiveTarget.uom}
               {receiveTarget.unitPrice != null && receiveTarget.unitPrice > 0 && (
-                <> · est. value {formatMoney((Number(receiveQty) || 0) * receiveTarget.unitPrice)}</>
+                <> · est. value {money((Number(receiveQty) || 0) * receiveTarget.unitPrice)}</>
               )}
             </div>
             <div className="flex items-center gap-2 ml-auto">
@@ -654,9 +662,9 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums">{row.quantity}</td>
                     <td className="px-2 py-1.5">{row.uom}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(row.unitPrice)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{money(row.unitPrice)}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums">
-                      {formatMoney(row.totalValue ?? (row.unitPrice ?? 0) * row.quantity)}
+                      {money(row.totalValue ?? (row.unitPrice ?? 0) * row.quantity)}
                     </td>
                     <td className="px-2 py-1.5 truncate" title={row.initiatedBy || undefined}>
                       {row.initiatedBy?.trim() || '—'}
@@ -882,8 +890,8 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   <td className="px-2 py-1.5 capitalize text-xs text-muted-foreground">{row.itemType}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{qty}</td>
                   <td className="px-2 py-1.5">{row.uom}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(unitPrice)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">{formatMoney(total)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{money(unitPrice)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">{money(total)}</td>
                   <td className="px-2 py-1.5 truncate" title={row.initiatedBy || undefined}>
                     {row.initiatedBy?.trim() || '—'}
                   </td>

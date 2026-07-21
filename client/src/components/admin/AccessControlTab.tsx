@@ -3,6 +3,7 @@ import { api } from '../../api';
 import {
   ACCESS_CONTROL_ROWS,
   defaultAccessControlTypes,
+  isAccessControlRestrictionRow,
   parseAccessControlMatrix,
   parseAccessControlTypes,
   serializeAccessControlMatrix,
@@ -72,16 +73,21 @@ export function AccessControlTab() {
 
   const columnCount = 3 + types.length;
 
+  const grantRows = useMemo(
+    () => filteredRows.filter(row => !isAccessControlRestrictionRow(row)),
+    [filteredRows],
+  );
+
   const typeColumnStates = useMemo(
     () => types.map(type => {
-      const allowedCount = filteredRows.filter(row => matrix[row.key]?.[type.id]).length;
+      const allowedCount = grantRows.filter(row => matrix[row.key]?.[type.id]).length;
       return {
         type,
-        allSelected: filteredRows.length > 0 && allowedCount === filteredRows.length,
-        someSelected: allowedCount > 0 && allowedCount < filteredRows.length,
+        allSelected: grantRows.length > 0 && allowedCount === grantRows.length,
+        someSelected: allowedCount > 0 && allowedCount < grantRows.length,
       };
     }),
-    [types, matrix, filteredRows],
+    [types, matrix, grantRows],
   );
 
   function updateTypeLabel(index: number, label: string) {
@@ -127,6 +133,8 @@ export function AccessControlTab() {
           <p className="text-xs text-muted-foreground max-w-2xl">
             Define eight access control types (AC 1–AC 8) and tick which module tasks each type may perform.
             Column headers can be renamed to match your organisation roles.
+            Under Revenue Management → Policies, <span className="font-medium text-foreground">Price Hide Policy</span> means
+            users on that level see quantities only (no unit prices or amounts). Column “tick all” does not enable Policies.
           </p>
         </div>
         <button
@@ -229,11 +237,23 @@ export function AccessControlTab() {
                 </td>
               </tr>
             ) : (
-              pagedRows.map(row => (
-                <tr key={row.key} className="border-b border-border/50 hover:bg-muted/20">
+              pagedRows.map(row => {
+                const restriction = isAccessControlRestrictionRow(row);
+                return (
+                <tr
+                  key={row.key}
+                  className={`border-b border-border/50 hover:bg-muted/20 ${restriction ? 'bg-amber-500/5' : ''}`}
+                >
                   <td className="px-3 py-2 font-medium whitespace-nowrap">{row.module}</td>
                   <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{row.function}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.task}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {row.task}
+                    {restriction ? (
+                      <span className="block text-[10px] text-amber-800 dark:text-amber-200 font-normal">
+                        Restriction — tick to hide prices
+                      </span>
+                    ) : null}
+                  </td>
                   {types.map(type => (
                     <td key={`${row.key}-${type.id}`} className={acColumnCls}>
                       <input
@@ -246,7 +266,8 @@ export function AccessControlTab() {
                     </td>
                   ))}
                 </tr>
-              ))
+                );
+              })
             )}
             <InfiniteScrollTableSentinel
               colSpan={columnCount}
