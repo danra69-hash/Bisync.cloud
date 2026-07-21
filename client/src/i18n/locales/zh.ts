@@ -131,6 +131,7 @@ export const zh = {
       customerList: '客户列表',
       customerGroup: '客户分组',
       customerManagement: '客户管理',
+      salesModule: 'Sales Module',
       promotionScheduler: '促销排期',
       itemizedSalesSummary: '销售明细汇总',
       inventorySummary: '库存汇总',

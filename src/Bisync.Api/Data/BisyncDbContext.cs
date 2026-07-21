@@ -37,6 +37,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<VendorRating> VendorRatings => Set<VendorRating>();
     public DbSet<B2bCustomer> B2bCustomers => Set<B2bCustomer>();
     public DbSet<PosCustomer> PosCustomers => Set<PosCustomer>();
+    public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
+    public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -136,6 +138,26 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.ExternalId).IsUnique();
             e.HasIndex(x => x.CompanyId);
             e.Property(x => x.Active).HasConversion<int>();
+        });
+        modelBuilder.Entity<SalesModuleCustomer>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.EngagedUserId });
+            e.Property(x => x.Active).HasConversion<int>();
+            e.Property(x => x.CompanyName).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(40);
+            e.Property(x => x.EngagedUserEmail).HasMaxLength(256);
+            e.Property(x => x.EngagedUserName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<SalesModuleAppointment>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.StartsAt });
+            e.HasIndex(x => x.SalesModuleCustomerId);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Location).HasMaxLength(200);
+            e.Property(x => x.EngagedUserEmail).HasMaxLength(256);
         });
         modelBuilder.Entity<Company>(e =>
         {

@@ -131,6 +131,7 @@ export const es = {
       customerList: 'Lista de clientes',
       customerGroup: 'Grupo de clientes',
       customerManagement: 'Gestión de clientes',
+      salesModule: 'Sales Module',
       promotionScheduler: 'Programador de promociones',
       itemizedSalesSummary: 'Resumen de ventas detallado',
       inventorySummary: 'Resumen de inventario',

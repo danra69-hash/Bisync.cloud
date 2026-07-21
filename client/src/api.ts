@@ -611,6 +611,79 @@ export interface UpsertB2bCustomerPayload {
   active: boolean;
 }
 
+export interface SalesModuleBrand {
+  name: string;
+  count: number;
+}
+
+export interface SalesModuleContact {
+  id: string;
+  name: string;
+  position: string;
+  email: string;
+  mobile: string;
+}
+
+export interface SalesModuleCustomer {
+  id: number;
+  companyId: number;
+  externalId: string;
+  companyName: string;
+  brands: SalesModuleBrand[];
+  contacts: SalesModuleContact[];
+  status: string;
+  createdAt: string;
+  lastContactDate?: string | null;
+  lastDiscussionBrief: string;
+  engagedUserId: number;
+  engagedUserEmail: string;
+  engagedUserName: string;
+  active: boolean;
+}
+
+export interface UpsertSalesModuleCustomerPayload {
+  companyId: number;
+  externalId?: string;
+  companyName: string;
+  brands: SalesModuleBrand[];
+  contacts: SalesModuleContact[];
+  status: string;
+  lastContactDate?: string | null;
+  lastDiscussionBrief: string;
+  engagedUserId: number;
+  engagedUserEmail: string;
+  engagedUserName: string;
+  active: boolean;
+}
+
+export interface SalesModuleAppointment {
+  id: number;
+  companyId: number;
+  salesModuleCustomerId: number;
+  customerName: string;
+  customerExternalId: string;
+  title: string;
+  notes: string;
+  startsAt: string;
+  endsAt: string;
+  location: string;
+  engagedUserId: number;
+  engagedUserEmail: string;
+  createdAt: string;
+}
+
+export interface UpsertSalesModuleAppointmentPayload {
+  companyId: number;
+  salesModuleCustomerId: number;
+  title: string;
+  notes: string;
+  startsAt: string;
+  endsAt: string;
+  location: string;
+  engagedUserId: number;
+  engagedUserEmail: string;
+}
+
 export interface B2bSalesOrderLine {
   id: number;
   productId: number;
@@ -2250,6 +2323,26 @@ export const api = {
     fetchJsonWithMethod<B2bCustomer>('/api/b2b-customers', 'POST', data),
   updateB2bCustomer: (externalId: string, data: UpsertB2bCustomerPayload) =>
     fetchJsonWithMethod<B2bCustomer>(`/api/b2b-customers/${externalId}`, 'PUT', data),
+  salesModuleCustomers: (companyId: number, engagedUserId?: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (engagedUserId && engagedUserId > 0) params.set('engagedUserId', String(engagedUserId));
+    return fetchJson<SalesModuleCustomer[]>(`/api/sales-module/customers?${params}`);
+  },
+  createSalesModuleCustomer: (data: UpsertSalesModuleCustomerPayload) =>
+    fetchJsonWithMethod<SalesModuleCustomer>('/api/sales-module/customers', 'POST', data),
+  updateSalesModuleCustomer: (externalId: string, data: UpsertSalesModuleCustomerPayload) =>
+    fetchJsonWithMethod<SalesModuleCustomer>(`/api/sales-module/customers/${encodeURIComponent(externalId)}`, 'PUT', data),
+  salesModuleAppointments: (companyId: number, opts?: { engagedUserId?: number; from?: string; to?: string }) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.engagedUserId && opts.engagedUserId > 0) params.set('engagedUserId', String(opts.engagedUserId));
+    if (opts?.from) params.set('from', opts.from);
+    if (opts?.to) params.set('to', opts.to);
+    return fetchJson<SalesModuleAppointment[]>(`/api/sales-module/appointments?${params}`);
+  },
+  createSalesModuleAppointment: (data: UpsertSalesModuleAppointmentPayload) =>
+    fetchJsonWithMethod<SalesModuleAppointment>('/api/sales-module/appointments', 'POST', data),
+  deleteSalesModuleAppointment: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/sales-module/appointments/${id}`, 'DELETE'),
   b2bSalesOrders: (companyId?: number) =>
     fetchJson<B2bSalesOrder[]>(`/api/b2b-sales-orders${companyId ? `?companyId=${companyId}` : ''}`),
   b2bSalesOrder: (id: number) =>

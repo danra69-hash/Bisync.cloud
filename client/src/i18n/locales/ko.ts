@@ -131,6 +131,7 @@ export const ko = {
       customerList: '고객 목록',
       customerGroup: '고객 그룹',
       customerManagement: '고객 관리',
+      salesModule: 'Sales Module',
       promotionScheduler: '프로모션 일정',
       itemizedSalesSummary: '품목별 매출 요약',
       inventorySummary: '재고 요약',

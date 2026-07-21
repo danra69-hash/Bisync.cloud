@@ -1369,3 +1369,64 @@ public class RejectTransferRequest
     [MaxLength(200)]
     public string? RejectedBy { get; set; }
 }
+
+public class SalesModuleBrandRequest
+{
+    [MaxLength(120)]
+    public string Name { get; set; } = string.Empty;
+    public int Count { get; set; }
+}
+
+public class SalesModuleContactRequest
+{
+    [MaxLength(80)]
+    public string Id { get; set; } = string.Empty;
+    [MaxLength(120)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(120)]
+    public string Position { get; set; } = string.Empty;
+    [MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+    [MaxLength(40)]
+    public string Mobile { get; set; } = string.Empty;
+}
+
+public class UpsertSalesModuleCustomerRequest
+{
+    public int CompanyId { get; set; }
+    [MaxLength(50)]
+    public string? ExternalId { get; set; }
+    [Required, MaxLength(200)]
+    public string CompanyName { get; set; } = string.Empty;
+    public List<SalesModuleBrandRequest> Brands { get; set; } = [];
+    public List<SalesModuleContactRequest> Contacts { get; set; } = [];
+    [MaxLength(40)]
+    public string Status { get; set; } = "Prospect";
+    public DateTime? LastContactDate { get; set; }
+    [MaxLength(2000)]
+    public string LastDiscussionBrief { get; set; } = string.Empty;
+    public int EngagedUserId { get; set; }
+    [MaxLength(256)]
+    public string EngagedUserEmail { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string EngagedUserName { get; set; } = string.Empty;
+    public bool Active { get; set; } = true;
+}
+
+public class UpsertSalesModuleAppointmentRequest
+{
+    public int CompanyId { get; set; }
+    public int SalesModuleCustomerId { get; set; }
+    [Required, MaxLength(200)]
+    public string Title { get; set; } = string.Empty;
+    [MaxLength(2000)]
+    public string Notes { get; set; } = string.Empty;
+    public DateTime StartsAt { get; set; }
+    public DateTime EndsAt { get; set; }
+    [MaxLength(200)]
+    public string Location { get; set; } = string.Empty;
+    public int EngagedUserId { get; set; }
+    [MaxLength(256)]
+    public string EngagedUserEmail { get; set; } = string.Empty;
+}
+

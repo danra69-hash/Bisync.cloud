@@ -131,6 +131,7 @@ export const id = {
       customerList: 'Daftar Pelanggan',
       customerGroup: 'Grup Pelanggan',
       customerManagement: 'Manajemen Pelanggan',
+      salesModule: 'Sales Module',
       promotionScheduler: 'Penjadwal Promosi',
       itemizedSalesSummary: 'Ringkasan Penjualan Rinci',
       inventorySummary: 'Ringkasan Inventaris',

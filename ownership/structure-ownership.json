@@ -330,6 +330,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.sales-module",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/SalesModulePage.tsx",
+      "symbol": "SalesModulePage",
+      "route": "/revenue/sales-module",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-21",
+      "notes": "Sales Module CRM customers + appointment calendar"
+    },
+    {
       "id": "dr.page.create-b2b-sales-order",
       "kind": "client-page",
       "path": "client/src/components/revenue/CreateB2bSalesOrderPage.tsx",
@@ -748,6 +759,17 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.sales-module",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/SalesModuleController.cs",
+      "symbol": "SalesModuleController",
+      "route": "api/sales-module",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-21",
+      "notes": "Sales Module engaged customers and appointments"
     },
     {
       "id": "dr.api.pos-customers",
