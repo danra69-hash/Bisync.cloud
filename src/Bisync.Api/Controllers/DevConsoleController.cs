@@ -61,7 +61,9 @@ public class DevConsoleController(
     public class LaunchSettingsUpdateRequest
     {
         public bool DemoMode { get; set; }
-        public bool GoLive { get; set; }
+        /// <summary>Optional; when omitted, DemoMode alone drives registration open/closed.</summary>
+        public bool? GoLive { get; set; }
+        public Dictionary<string, bool>? ModulesGoLive { get; set; }
     }
 
     [HttpGet("launch-settings")]
@@ -82,7 +84,9 @@ public class DevConsoleController(
         var (err, user) = await RequireRootAsync(ct);
         if (err is not null) return err;
 
-        var status = await platformLaunch.UpdateAsync(body.DemoMode, body.GoLive, user!.Email, ct);
+        // Prefer explicit DemoMode from new clients; legacy clients may send goLive instead.
+        var demoMode = body.GoLive.HasValue ? !body.GoLive.Value : body.DemoMode;
+        var status = await platformLaunch.UpdateAsync(demoMode, body.ModulesGoLive, user!.Email, ct);
         return Ok(status);
     }
 

@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { NAV_ITEMS, COMING_SOON_NAV_ITEMS, type NavItem } from '../../data/revenueManagement';
 import { isNavItemEnabled } from '../../data/companyModules';
+import { isNavItemPlatformLive, type ModulesGoLiveMap } from '../../data/platformGoLiveModules';
 import type { AccessModule } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { userInitials } from '../../context/currentUserContext';
@@ -11,11 +12,12 @@ type Props = {
   open: boolean;
   activeNav: NavItem;
   enabledModules: AccessModule[];
+  modulesGoLive?: ModulesGoLiveMap | null;
   onClose: () => void;
   onNavigate: (item: NavItem) => void;
 };
 
-export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }: Props) {
+export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClose, onNavigate }: Props) {
   const { t, navLabel } = useAppTranslation();
   const { currentUser, users, setCurrentUserId, logout } = useCurrentUser();
   const displayName = currentUser?.fullName ?? t('common.unknownUser');
@@ -37,7 +39,7 @@ export function Sidebar({ open, activeNav, enabledModules, onClose, onNavigate }
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map(item => {
-            const moduleEnabled = isNavItemEnabled(item, enabledModules);
+            const moduleEnabled = isNavItemEnabled(item, enabledModules) && isNavItemPlatformLive(item, modulesGoLive);
             const comingSoon = COMING_SOON_NAV_ITEMS.has(item);
             const enabled = moduleEnabled && !comingSoon;
             const isActive = activeNav === item;
