@@ -180,10 +180,10 @@ export function AccessControlTab() {
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-16rem)] overflow-auto border border-border rounded-lg">
-        <table className="w-full text-xs table-fixed min-w-[980px]">
+        <table className="w-full text-xs table-fixed min-w-[1080px]">
           <colgroup>
-            <col className="w-[9rem]" />
-            <col className="w-[7rem]" />
+            <col className="w-[10rem]" />
+            <col className="w-[12rem]" />
             <col />
             {types.map(type => (
               <col key={type.id} className="w-[5.75rem]" />
@@ -192,7 +192,7 @@ export function AccessControlTab() {
           <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="border-b border-border">
               <TableHeaderCell>Module</TableHeaderCell>
-              <TableHeaderCell>Function</TableHeaderCell>
+              <TableHeaderCell className="min-w-[12rem]">Function</TableHeaderCell>
               <TableHeaderCell>Task</TableHeaderCell>
               {typeColumnStates.map(({ type, allSelected, someSelected }, index) => (
                 <th key={type.id} className={`${acColumnCls} align-top`}>
@@ -245,7 +245,7 @@ export function AccessControlTab() {
                   className={`border-b border-border/50 hover:bg-muted/20 ${restriction ? 'bg-amber-500/5' : ''}`}
                 >
                   <td className="px-3 py-2 font-medium whitespace-nowrap">{row.module}</td>
-                  <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{row.function}</td>
+                  <td className="px-3 py-2 text-muted-foreground whitespace-nowrap min-w-[12rem]">{row.function}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {row.task}
                     {restriction ? (
