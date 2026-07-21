@@ -14,6 +14,11 @@ import { configLocationToDropdown, filterMetricsByOrg } from './utils/orgFilters
 import { useOrgFilters } from './hooks/useOrgFilters';
 import { OrgCountryProvider } from './context/OrgCountryContext';
 import { isNavItemEnabled, moduleForNavItem, resolveOrgEnabledModules } from './data/companyModules';
+import {
+  filterAccessModulesByPlatformGoLive,
+  isNavItemPlatformLive,
+  type ModulesGoLiveMap,
+} from './data/platformGoLiveModules';
 import type { NavItem } from './data/revenueManagement';
 import { useAppTranslation } from './i18n/useAppTranslation';
 import { NAV_ITEM_I18N } from './i18n/navKeys';
@@ -66,6 +71,7 @@ export default function App() {
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
   const [progress, setProgress] = useState<ProgressData | null>(null);
+  const [modulesGoLive, setModulesGoLive] = useState<ModulesGoLiveMap | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -79,6 +85,7 @@ export default function App() {
         api.inventoryAlerts(),
         api.revenue(),
         api.progress(),
+        api.registrationPolicy(),
       ]);
 
       if (results[0].status === 'fulfilled') setMenuItems(results[0].value);
@@ -86,6 +93,11 @@ export default function App() {
       if (results[2].status === 'fulfilled') setAlerts(results[2].value);
       if (results[3].status === 'fulfilled') setRevenue(results[3].value);
       if (results[4].status === 'fulfilled') setProgress(results[4].value);
+      if (results[5].status === 'fulfilled') {
+        setModulesGoLive(results[5].value.modulesGoLive ?? null);
+      } else {
+        setModulesGoLive(null);
+      }
     }
     load();
   }, []);
@@ -129,20 +141,28 @@ export default function App() {
   const selectedCompany = companies.find(company => company.id === selectedCompanyId) ?? null;
   const orgCountryCode = selectedCompany?.countryCode ?? 'MY';
   const enabledModules = useMemo(
-    () => resolveOrgEnabledModules(selectedCompany, configLocations, selectedCompanyId, selectedLocationIds),
-    [selectedCompany, configLocations, selectedCompanyId, selectedLocationIds],
+    () => filterAccessModulesByPlatformGoLive(
+      resolveOrgEnabledModules(selectedCompany, configLocations, selectedCompanyId, selectedLocationIds),
+      modulesGoLive,
+    ),
+    [selectedCompany, configLocations, selectedCompanyId, selectedLocationIds, modulesGoLive],
   );
 
   function handleNavigate(item: NavItem) {
+    if (!isNavItemPlatformLive(item, modulesGoLive)) return;
     if (!isNavItemEnabled(item, enabledModules)) return;
     setActiveNav(item);
   }
 
   useEffect(() => {
+    if (!isNavItemPlatformLive(activeNav, modulesGoLive)) {
+      setActiveNav('Overview');
+      return;
+    }
     if (moduleForNavItem(activeNav) && !isNavItemEnabled(activeNav, enabledModules)) {
       setActiveNav('Overview');
     }
-  }, [activeNav, enabledModules]);
+  }, [activeNav, enabledModules, modulesGoLive]);
   const headerLocations = companyScopedConfigLocations.map(configLocationToDropdown);
   const activeLocations = selectedCompanyId
     ? filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds)
@@ -184,6 +204,7 @@ export default function App() {
         open={sidebarOpen}
         activeNav={activeNav}
         enabledModules={enabledModules}
+        modulesGoLive={modulesGoLive}
         onClose={() => setSidebarOpen(false)}
         onNavigate={handleNavigate}
       />

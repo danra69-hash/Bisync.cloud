@@ -99,11 +99,20 @@ export type DevQaHistoryRow = {
   resultsJson: string;
 };
 
+export type ModulesGoLiveMap = {
+  RMS?: boolean;
+  POS?: boolean;
+  HRM?: boolean;
+  Accounting?: boolean;
+  SystemConfig?: boolean;
+};
+
 export type DevLaunchSettings = {
   demoMode: boolean;
   goLive: boolean;
   registrationRestricted: boolean;
   allowedEmailDomains: string[];
+  modulesGoLive?: ModulesGoLiveMap;
   updatedAt?: string | null;
   updatedByEmail?: string;
 };
@@ -162,7 +171,11 @@ export const devConsoleApi = {
       body: JSON.stringify(payload),
     }),
   launchSettings: () => fetchJson<DevLaunchSettings>('/api/dev-console/launch-settings'),
-  updateLaunchSettings: (payload: { demoMode: boolean; goLive: boolean }) =>
+  updateLaunchSettings: (payload: {
+    demoMode: boolean;
+    goLive?: boolean;
+    modulesGoLive?: ModulesGoLiveMap;
+  }) =>
     fetchJson<DevLaunchSettings>('/api/dev-console/launch-settings', {
       method: 'PUT',
       body: JSON.stringify(payload),

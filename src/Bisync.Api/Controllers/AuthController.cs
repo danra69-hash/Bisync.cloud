@@ -181,6 +181,7 @@ public class AuthController(
             goLive = status.GoLive,
             registrationRestricted = status.RegistrationRestricted,
             allowedEmailDomains = status.AllowedEmailDomains,
+            modulesGoLive = status.ModulesGoLive,
         });
     }
 

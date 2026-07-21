@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -11,14 +12,38 @@ public sealed class PlatformLaunchStatusDto
     public bool GoLive { get; set; }
     public bool RegistrationRestricted { get; set; }
     public IReadOnlyList<string> AllowedEmailDomains { get; set; } = [];
+    public Dictionary<string, bool> ModulesGoLive { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public DateTime? UpdatedAt { get; set; }
     public string UpdatedByEmail { get; set; } = string.Empty;
+}
+
+public static class PlatformModuleGoLiveKeys
+{
+    public const string Rms = "RMS";
+    public const string Pos = "POS";
+    public const string Hrm = "HRM";
+    public const string Accounting = "Accounting";
+    public const string SystemConfig = "SystemConfig";
+
+    public static readonly string[] All =
+    [
+        Rms,
+        Pos,
+        Hrm,
+        Accounting,
+        SystemConfig,
+    ];
 }
 
 public class PlatformLaunchService(
     BisyncDbContext db,
     IOptions<DevConsoleAuthOptions> authOptions)
 {
+    static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public IReadOnlyList<string> DemoAllowedDomains =>
         authOptions.Value.AllowedEmailDomains
             .Select(d => d.Trim().TrimStart('@').ToLowerInvariant())
@@ -33,9 +58,15 @@ public class PlatformLaunchService(
                 "Id" integer NOT NULL CONSTRAINT "PK_PlatformLaunchSettings" PRIMARY KEY,
                 "DemoMode" boolean NOT NULL DEFAULT TRUE,
                 "GoLive" boolean NOT NULL DEFAULT FALSE,
+                "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{}',
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "UpdatedByEmail" TEXT NOT NULL DEFAULT ''
             );
+            """, ct);
+
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "PlatformLaunchSettings"
+            ADD COLUMN IF NOT EXISTS "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{}';
             """, ct);
 
         var exists = await db.PlatformLaunchSettings.AsNoTracking().AnyAsync(s => s.Id == 1, ct);
@@ -46,9 +77,21 @@ public class PlatformLaunchService(
                 Id = 1,
                 DemoMode = true,
                 GoLive = false,
+                // Modules stay available by default; Demo mode only gates registration domains.
+                ModulesGoLiveJson = SerializeModules(DefaultModules(goLive: true)),
                 UpdatedAt = DateTime.UtcNow,
                 UpdatedByEmail = "system",
             });
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+
+        // Backfill empty module flags as all live (legacy sites already exposed modules).
+        var row = await db.PlatformLaunchSettings.FirstOrDefaultAsync(s => s.Id == 1, ct);
+        if (row is null) return;
+        if (string.IsNullOrWhiteSpace(row.ModulesGoLiveJson) || row.ModulesGoLiveJson.Trim() == "{}")
+        {
+            row.ModulesGoLiveJson = SerializeModules(DefaultModules(goLive: true));
             await db.SaveChangesAsync(ct);
         }
     }
@@ -64,6 +107,7 @@ public class PlatformLaunchService(
             Id = 1,
             DemoMode = true,
             GoLive = false,
+            ModulesGoLiveJson = SerializeModules(DefaultModules(goLive: true)),
             UpdatedAt = DateTime.UtcNow,
             UpdatedByEmail = "system",
         };
@@ -80,25 +124,18 @@ public class PlatformLaunchService(
 
     public async Task<PlatformLaunchStatusDto> UpdateAsync(
         bool demoMode,
-        bool goLive,
+        IReadOnlyDictionary<string, bool>? modulesGoLive,
         string updatedByEmail,
         CancellationToken ct = default)
     {
-        // Mutual modes: Go live unlocks registration; Demo keeps the site locked.
-        if (goLive)
-        {
-            demoMode = false;
-            goLive = true;
-        }
-        else
-        {
-            demoMode = true;
-            goLive = false;
-        }
+        // Demo mode locks registration; turning Demo off opens signup (legacy GoLive flag).
+        var goLive = !demoMode;
 
         var row = await GetOrCreateAsync(ct);
         row.DemoMode = demoMode;
         row.GoLive = goLive;
+        if (modulesGoLive is not null)
+            row.ModulesGoLiveJson = SerializeModules(NormalizeModules(modulesGoLive, fallbackGoLive: goLive));
         row.UpdatedAt = DateTime.UtcNow;
         row.UpdatedByEmail = (updatedByEmail ?? string.Empty).Trim().ToLowerInvariant();
         await db.SaveChangesAsync(ct);
@@ -134,7 +171,54 @@ public class PlatformLaunchService(
         GoLive = row.GoLive,
         RegistrationRestricted = !row.GoLive,
         AllowedEmailDomains = DemoAllowedDomains,
+        ModulesGoLive = ParseModules(row.ModulesGoLiveJson, fallbackGoLive: row.GoLive),
         UpdatedAt = row.UpdatedAt,
         UpdatedByEmail = row.UpdatedByEmail,
     };
+
+    static Dictionary<string, bool> DefaultModules(bool goLive) =>
+        PlatformModuleGoLiveKeys.All.ToDictionary(k => k, _ => goLive, StringComparer.OrdinalIgnoreCase);
+
+    static Dictionary<string, bool> NormalizeModules(
+        IReadOnlyDictionary<string, bool>? incoming,
+        bool fallbackGoLive)
+    {
+        var result = DefaultModules(fallbackGoLive);
+        if (incoming is null) return result;
+        foreach (var key in PlatformModuleGoLiveKeys.All)
+        {
+            if (incoming.TryGetValue(key, out var value))
+                result[key] = value;
+            else
+            {
+                // Accept case-insensitive keys from clients.
+                var match = incoming.FirstOrDefault(kv =>
+                    string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(match.Key))
+                    result[key] = match.Value;
+            }
+        }
+        return result;
+    }
+
+    static Dictionary<string, bool> ParseModules(string? json, bool fallbackGoLive)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json.Trim() == "{}")
+            return DefaultModules(fallbackGoLive);
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, bool>>(json, JsonOptions);
+            return NormalizeModules(parsed, fallbackGoLive);
+        }
+        catch
+        {
+            return DefaultModules(fallbackGoLive);
+        }
+    }
+
+    static string SerializeModules(Dictionary<string, bool> modules) =>
+        JsonSerializer.Serialize(
+            PlatformModuleGoLiveKeys.All.ToDictionary(k => k, k => modules.GetValueOrDefault(k)),
+            JsonOptions);
 }

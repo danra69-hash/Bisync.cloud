@@ -2154,6 +2154,13 @@ export const api = {
       goLive: boolean;
       registrationRestricted: boolean;
       allowedEmailDomains: string[];
+      modulesGoLive?: {
+        RMS?: boolean;
+        POS?: boolean;
+        HRM?: boolean;
+        Accounting?: boolean;
+        SystemConfig?: boolean;
+      };
     }>('/api/auth/registration-policy'),
   geoHint: () => fetchJson<{ countryCode: string; source: string }>('/api/auth/geo-hint'),
   confirmActivation: (token: string) =>
