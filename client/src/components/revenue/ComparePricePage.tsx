@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Tag, UserCheck, UserPlus } from 'lucide-react';
 import { getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
 import { api, type EngageVendorContact, type Vendor } from '../../api';
 import { vendorMatchesOrgPolicy } from '../../data/vendorPolicyRules';
@@ -511,6 +512,7 @@ export function ComparePricePage({
         <MillstoneLoader size="sm" layout="block" label="Loading compare price data…" />
       ) : (
         <>
+          <PageStickyFilters opaque className="py-1">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -554,6 +556,7 @@ export function ComparePricePage({
               {filteredVendorColumns.length} vendor{filteredVendorColumns.length !== 1 ? 's' : ''}
             </p>
           </div>
+          </PageStickyFilters>
 
           {filteredComponents.length === 0 || filteredVendorColumns.length === 0 ? (
             <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-5 text-center">

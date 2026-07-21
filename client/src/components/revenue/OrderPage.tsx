@@ -52,7 +52,7 @@ export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLo
 
   return (
     <div className={pageShellClass()}>
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+      <div data-page-filters className="bg-background/95 backdrop-blur-sm border-b border-border/60">
         <HrConfigTabBar tabs={visibleTabs} active={tab} onChange={setTab} />
       </div>
 

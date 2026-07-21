@@ -158,7 +158,7 @@ export function AccessControlTab() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div data-page-filters className="flex flex-wrap items-center gap-3 bg-background/95 backdrop-blur-sm py-2 border-b border-border/60">
         <label className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground shrink-0">Module</span>
           <select
