@@ -15,9 +15,17 @@ type Props = {
   value: AddressParts;
   onChange: (value: AddressParts) => void;
   showErrors?: boolean;
+  /** Compact = line1+line2 together; state+city+postcode together. */
+  layout?: 'stack' | 'compact';
 };
 
-export function CountryAddressFields({ countryCode, value, onChange, showErrors = false }: Props) {
+export function CountryAddressFields({
+  countryCode,
+  value,
+  onChange,
+  showErrors = false,
+  layout = 'stack',
+}: Props) {
   const { t } = useAppTranslation();
   const cityListId = useId();
   const country = getCountry(countryCode);
@@ -27,6 +35,7 @@ export function CountryAddressFields({ countryCode, value, onChange, showErrors 
     () => getCitySuggestions(countryCode, value.stateProvince),
     [countryCode, value.stateProvince],
   );
+  const compact = layout === 'compact';
 
   function set<K extends keyof AddressParts>(key: K, next: AddressParts[K]) {
     onChange({ ...value, [key]: next });
@@ -58,28 +67,29 @@ export function CountryAddressFields({ countryCode, value, onChange, showErrors 
   }
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{t('forms.addressLine1')}</label>
-        <input
-          className={`${inputCls} mt-1`}
-          value={value.addressLine1}
-          onChange={e => set('addressLine1', e.target.value)}
-          placeholder={t('forms.streetAddress')}
-        />
+    <div className={compact ? 'space-y-2' : 'space-y-3'}>
+      <div className={compact ? 'grid grid-cols-1 sm:grid-cols-2 gap-2' : 'space-y-3'}>
+        <div>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{t('forms.addressLine1')}</label>
+          <input
+            className={`${inputCls} mt-1`}
+            value={value.addressLine1}
+            onChange={e => set('addressLine1', e.target.value)}
+            placeholder={t('forms.streetAddress')}
+          />
+        </div>
+        <div>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{t('forms.addressLine2')}</label>
+          <input
+            className={`${inputCls} mt-1`}
+            value={value.addressLine2}
+            onChange={e => set('addressLine2', e.target.value)}
+            placeholder={t('forms.suiteOptional')}
+          />
+        </div>
       </div>
 
-      <div>
-        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{t('forms.addressLine2')}</label>
-        <input
-          className={`${inputCls} mt-1`}
-          value={value.addressLine2}
-          onChange={e => set('addressLine2', e.target.value)}
-          placeholder={t('forms.suiteOptional')}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
+      <div className={compact ? 'grid grid-cols-1 sm:grid-cols-3 gap-2' : 'grid grid-cols-2 gap-3'}>
         <div>
           <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{country.stateLabel}</label>
           <select
@@ -108,22 +118,37 @@ export function CountryAddressFields({ countryCode, value, onChange, showErrors 
             ))}
           </datalist>
         </div>
+        {!compact ? null : (
+          <div>
+            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{country.postcodeLabel}</label>
+            <input
+              className={`${inputCls} mt-1`}
+              value={value.postcode}
+              onChange={e => set('postcode', formatPostcodeInput(countryCode, e.target.value))}
+              onBlur={handlePostcodeBlur}
+              placeholder={country.postcodePlaceholder}
+            />
+            {postcodeError && <p className="text-xs text-destructive mt-1">{postcodeError}</p>}
+          </div>
+        )}
       </div>
 
-      <div>
-        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{country.postcodeLabel}</label>
-        <input
-          className={`${inputCls} mt-1`}
-          value={value.postcode}
-          onChange={e => set('postcode', formatPostcodeInput(countryCode, e.target.value))}
-          onBlur={handlePostcodeBlur}
-          placeholder={country.postcodePlaceholder}
-        />
-        {postcodeError && <p className="text-xs text-destructive mt-1">{postcodeError}</p>}
-        <p className="text-xs text-muted-foreground mt-1">{t('forms.enterPostcodeAutofill', { postcodeLabel: country.postcodeLabel.toLowerCase(), cityLabel: country.cityLabel.toLowerCase(), stateLabel: country.stateLabel.toLowerCase() })}</p>
-      </div>
+      {!compact && (
+        <div>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{country.postcodeLabel}</label>
+          <input
+            className={`${inputCls} mt-1`}
+            value={value.postcode}
+            onChange={e => set('postcode', formatPostcodeInput(countryCode, e.target.value))}
+            onBlur={handlePostcodeBlur}
+            placeholder={country.postcodePlaceholder}
+          />
+          {postcodeError && <p className="text-xs text-destructive mt-1">{postcodeError}</p>}
+          <p className="text-xs text-muted-foreground mt-1">{t('forms.enterPostcodeAutofill', { postcodeLabel: country.postcodeLabel.toLowerCase(), cityLabel: country.cityLabel.toLowerCase(), stateLabel: country.stateLabel.toLowerCase() })}</p>
+        </div>
+      )}
 
-      <p className="text-xs text-muted-foreground">{t('forms.countryFormat', { country: country.name })}</p>
+      {!compact && <p className="text-xs text-muted-foreground">{t('forms.countryFormat', { country: country.name })}</p>}
       {addressError && <p className="text-xs text-destructive">{addressError}</p>}
     </div>
   );

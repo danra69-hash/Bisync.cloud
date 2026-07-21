@@ -85,6 +85,8 @@ export interface LocationConfig {
   postcode: string;
   principalContactUserId: number | null;
   principalContactName: string | null;
+  secondaryContactUserId?: number | null;
+  secondaryContactName?: string | null;
   businessTypesJson: string;
   vendorPolicyTagsJson: string;
   modulesJson: string;
@@ -2099,9 +2101,9 @@ export const api = {
   health: () => fetchJson<{ status: string }>('/api/health'),
   locations: () => fetchJson<Location[]>('/api/locations'),
   locationsConfig: () => fetchJson<LocationConfig[]>('/api/locations/config'),
-  createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'profileOverridden'>) =>
+  createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
     fetchJsonWithMethod<LocationConfig>('/api/locations/config', 'POST', data),
-  updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'profileOverridden'>) =>
+  updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
     fetchJsonWithMethod<LocationConfig>(`/api/locations/${id}/config`, 'PUT', data),
   companies: () => fetchJson<Company[]>('/api/companies'),
   createCompany: (data: Omit<Company, 'id' | 'locationCount'>) => fetchJsonWithMethod<Company>('/api/companies', 'POST', data),

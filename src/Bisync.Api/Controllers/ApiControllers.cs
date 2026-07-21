@@ -29,6 +29,8 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         l.Postcode,
         l.PrincipalContactUserId,
         principalContactName = l.PrincipalContact?.FullName,
+        l.SecondaryContactUserId,
+        secondaryContactName = l.SecondaryContact?.FullName,
         businessTypesJson = CompanyProfileRules.ResolveProfileJson(l.BusinessTypesJson, l.Company?.BusinessTypesJson),
         vendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(l.VendorPolicyTagsJson, l.Company?.VendorPolicyTagsJson),
         modulesJson = CompanyModuleRules.ResolveModulesJson(l.ModulesJson, l.Company?.ModulesJson),
@@ -42,6 +44,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             .AsNoTracking()
             .Include(l => l.Company)
             .Include(l => l.PrincipalContact)
+            .Include(l => l.SecondaryContact)
             .FirstOrDefaultAsync(l => l.Id == id);
 
     [HttpGet]
@@ -88,6 +91,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             .AsNoTracking()
             .Include(l => l.Company)
             .Include(l => l.PrincipalContact)
+            .Include(l => l.SecondaryContact)
             .OrderBy(l => l.Name)
             .ToListAsync();
 
@@ -134,6 +138,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             StateProvince = body.StateProvince ?? string.Empty,
             Postcode = body.Postcode ?? string.Empty,
             PrincipalContactUserId = body.PrincipalContactUserId,
+            SecondaryContactUserId = body.SecondaryContactUserId,
             BusinessTypesJson = businessTypesJson,
             VendorPolicyTagsJson = vendorPolicyTagsJson,
             ModulesJson = modulesJson,
@@ -194,6 +199,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         loc.StateProvince = body.StateProvince;
         loc.Postcode = body.Postcode;
         loc.PrincipalContactUserId = body.PrincipalContactUserId;
+        loc.SecondaryContactUserId = body.SecondaryContactUserId;
         loc.BusinessTypesJson = businessTypesJson;
         loc.VendorPolicyTagsJson = vendorPolicyTagsJson;
         loc.ModulesJson = modulesJson;

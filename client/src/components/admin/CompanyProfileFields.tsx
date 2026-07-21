@@ -102,47 +102,59 @@ export function BusinessTypeMultiSelect({
 export function VendorPolicyCheckboxGroup({
   selected,
   onChange,
+  layout = 'stack',
 }: {
   selected: CompanyVendorPolicyTag[];
   onChange: (values: CompanyVendorPolicyTag[]) => void;
+  layout?: 'stack' | 'compact';
 }) {
   function toggle(tagId: CompanyVendorPolicyTag) {
     onChange(toggleVendorPolicyTags(selected, tagId));
   }
 
   const nonHalalSelected = selected.includes('non-halal');
+  const compact = layout === 'compact';
 
   return (
-    <div className="space-y-2">
-      {COMPANY_VENDOR_POLICY_TAGS.map(tag => {
-        const checked = selected.includes(tag.id);
-        const disabled = isVendorPolicyTagDisabled(selected, tag.id);
-        return (
-          <label
-            key={tag.id}
-            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
-              checked ? 'border-primary bg-primary/5' : disabled ? 'border-border opacity-50 cursor-not-allowed' : 'border-border hover:border-primary/40 cursor-pointer'
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={disabled}
-              onChange={() => toggle(tag.id)}
-              className="mt-0.5 rounded border-border"
-            />
-            <span className="min-w-0">
-              <span className="block text-xs font-medium text-foreground">{tag.label}</span>
-              <span className="block text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{tag.description}</span>
-            </span>
-          </label>
-        );
-      })}
-      <p className="text-[11px] text-muted-foreground">
-        {nonHalalSelected
-          ? 'Non-halal is exclusive — Halal and Muslim Friendly are not available.'
-          : 'Select Halal and/or Muslim Friendly together, or choose Non-halal alone.'}
-      </p>
+    <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
+      <div className={compact ? 'flex flex-wrap gap-2' : 'space-y-2'}>
+        {COMPANY_VENDOR_POLICY_TAGS.map(tag => {
+          const checked = selected.includes(tag.id);
+          const disabled = isVendorPolicyTagDisabled(selected, tag.id);
+          return (
+            <label
+              key={tag.id}
+              title={tag.description}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+                compact ? 'flex-1 min-w-[8rem]' : 'items-start gap-3 py-2.5'
+              } ${
+                checked ? 'border-primary bg-primary/5' : disabled ? 'border-border opacity-50 cursor-not-allowed' : 'border-border hover:border-primary/40 cursor-pointer'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={disabled}
+                onChange={() => toggle(tag.id)}
+                className={`${compact ? '' : 'mt-0.5'} rounded border-border`}
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-foreground">{tag.label}</span>
+                {!compact && (
+                  <span className="block text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{tag.description}</span>
+                )}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {!compact && (
+        <p className="text-[11px] text-muted-foreground">
+          {nonHalalSelected
+            ? 'Non-halal is exclusive — Halal and Muslim Friendly are not available.'
+            : 'Select Halal and/or Muslim Friendly together, or choose Non-halal alone.'}
+        </p>
+      )}
     </div>
   );
 }
@@ -152,15 +164,18 @@ export function ModuleCheckboxGroup({
   onChange,
   scope,
   availableModules,
+  layout = 'stack',
 }: {
   selected: AccessModule[];
   onChange: (values: AccessModule[]) => void;
   scope: 'company' | 'location';
   availableModules?: AccessModule[];
+  layout?: 'stack' | 'compact';
 }) {
   const moduleOptions = scope === 'company'
     ? PLATFORM_MODULES
     : LOCATION_PLATFORM_MODULES.filter(module => !availableModules || availableModules.includes(module.id));
+  const compact = layout === 'compact';
 
   function toggle(moduleId: AccessModule) {
     if (selected.includes(moduleId)) {
@@ -171,32 +186,38 @@ export function ModuleCheckboxGroup({
   }
 
   return (
-    <div className="space-y-2">
-      {moduleOptions.map(module => {
-        const checked = selected.includes(module.id);
-        const disabled = scope === 'location' && availableModules != null && !availableModules.includes(module.id);
-        return (
-          <label
-            key={module.id}
-            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
-              checked ? 'border-primary bg-primary/5' : disabled ? 'border-border opacity-50 cursor-not-allowed' : 'border-border hover:border-primary/40 cursor-pointer'
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={disabled}
-              onChange={() => !disabled && toggle(module.id)}
-              className="mt-0.5 rounded border-border"
-            />
-            <span className="text-xs font-medium text-foreground">{module.label}</span>
-          </label>
-        );
-      })}
-      {scope === 'location' ? (
-        <p className="text-[11px] text-muted-foreground">Accounting is configured at company level only.</p>
-      ) : (
-        <p className="text-[11px] text-muted-foreground">Tick modules to enable access for this company.</p>
+    <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
+      <div className={compact ? 'flex flex-wrap gap-2' : 'space-y-2'}>
+        {moduleOptions.map(module => {
+          const checked = selected.includes(module.id);
+          const disabled = scope === 'location' && availableModules != null && !availableModules.includes(module.id);
+          return (
+            <label
+              key={module.id}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${
+                compact ? 'min-w-[7rem]' : 'items-start gap-3 py-2.5'
+              } ${
+                checked ? 'border-primary bg-primary/5' : disabled ? 'border-border opacity-50 cursor-not-allowed' : 'border-border hover:border-primary/40 cursor-pointer'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={disabled}
+                onChange={() => !disabled && toggle(module.id)}
+                className={`${compact ? '' : 'mt-0.5'} rounded border-border`}
+              />
+              <span className="text-xs font-medium text-foreground">{module.label}</span>
+            </label>
+          );
+        })}
+      </div>
+      {!compact && (
+        scope === 'location' ? (
+          <p className="text-[11px] text-muted-foreground">Accounting is configured at company level only.</p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">Tick modules to enable access for this company.</p>
+        )
       )}
     </div>
   );
@@ -214,6 +235,7 @@ type ProfileFieldsProps = {
   moduleScope?: 'company' | 'location';
   hint?: string;
   onUseCompanyDefaults?: () => void;
+  layout?: 'stack' | 'compact';
 };
 
 export function CompanyProfileFields({
@@ -228,15 +250,26 @@ export function CompanyProfileFields({
   moduleScope = 'company',
   hint,
   onUseCompanyDefaults,
+  layout = 'stack',
 }: ProfileFieldsProps) {
+  const compact = layout === 'compact';
+
   return (
     <>
       {hint && (
         <p className="text-[11px] text-muted-foreground border border-dashed border-border rounded-lg px-3 py-2">
           {hint}
+          {onUseCompanyDefaults ? (
+            <>
+              {' '}
+              <button type="button" onClick={onUseCompanyDefaults} className="text-primary hover:underline">
+                Use company defaults
+              </button>
+            </>
+          ) : null}
         </p>
       )}
-      {onUseCompanyDefaults && (
+      {!compact && onUseCompanyDefaults && (
         <button
           type="button"
           onClick={onUseCompanyDefaults}
@@ -245,29 +278,48 @@ export function CompanyProfileFields({
           Use company defaults
         </button>
       )}
-      <div>
-        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Type of Business *</label>
-        <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Choose one or more business types.</p>
-        <BusinessTypeMultiSelect
-          selected={businessTypes}
-          onChange={onBusinessTypesChange}
-          availableTypes={availableBusinessTypes}
-        />
-      </div>
-      <div>
-        <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Modules *</label>
-        <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Enable platform modules for this {moduleScope === 'company' ? 'company' : 'location'}.</p>
-        <ModuleCheckboxGroup
-          selected={modules}
-          onChange={onModulesChange}
-          scope={moduleScope}
-          availableModules={availableModules}
-        />
+      <div className={compact ? 'grid grid-cols-1 lg:grid-cols-2 gap-3' : 'contents'}>
+        <div>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Type of Business *</label>
+          {!compact && <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Choose one or more business types.</p>}
+          <div className={compact ? 'mt-1' : undefined}>
+            <BusinessTypeMultiSelect
+              selected={businessTypes}
+              onChange={onBusinessTypesChange}
+              availableTypes={availableBusinessTypes}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Modules *</label>
+          {!compact && (
+            <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+              Enable platform modules for this {moduleScope === 'company' ? 'company' : 'location'}.
+            </p>
+          )}
+          <div className={compact ? 'mt-1' : undefined}>
+            <ModuleCheckboxGroup
+              selected={modules}
+              onChange={onModulesChange}
+              scope={moduleScope}
+              availableModules={availableModules}
+              layout={layout}
+            />
+          </div>
+        </div>
       </div>
       <div>
         <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Vendor Product Policy *</label>
-        <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Non-halal cannot be combined with Halal or Muslim Friendly.</p>
-        <VendorPolicyCheckboxGroup selected={vendorPolicyTags} onChange={onVendorPolicyTagsChange} />
+        {!compact && (
+          <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Non-halal cannot be combined with Halal or Muslim Friendly.</p>
+        )}
+        <div className={compact ? 'mt-1' : undefined}>
+          <VendorPolicyCheckboxGroup
+            selected={vendorPolicyTags}
+            onChange={onVendorPolicyTagsChange}
+            layout={layout}
+          />
+        </div>
       </div>
     </>
   );
