@@ -40,20 +40,27 @@ import { SampleRequestList } from './SampleRequestList';
 import type { SampleQuoteTemplateId } from '../../data/requestForSample';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
-import { formatOverallRating } from '../../data/vendorRating';
+import {
+  formatOverallRating,
+  moodFaceChar,
+  moodFaceColorClass,
+  moodFaceLabel,
+  moodFromAverage,
+  type RatingMood,
+} from '../../data/vendorRating';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 
-type VendorSortColumn = 'name' | 'products' | 'policy' | 'rating' | 'address' | 'phone' | 'email' | 'active' | 'action';
+type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'active' | 'rating' | 'action';
 
 const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
   { key: 'name', label: 'Vendor Name' },
   { key: 'products', label: 'Type of Product Supplied' },
   { key: 'policy', label: 'Product Policy' },
-  { key: 'rating', label: 'Vendor Rating' },
   { key: 'address', label: 'Address' },
   { key: 'phone', label: 'Phone Number' },
   { key: 'email', label: 'Email' },
   { key: 'active', label: 'Active', align: 'center', sortable: false },
+  { key: 'rating', label: 'Vendor Rating', align: 'center' },
   { key: 'action', label: 'Action', align: 'right', sortable: false },
 ];
 
@@ -358,6 +365,10 @@ export function VendorListPage({
     const displayMobile = defaultContact?.mobile || v.mobile || '—';
     const displayEmail = defaultContact?.email || v.email;
     const rating = ratingSummaries[v.externalId];
+    const overall = rating?.overallRating ?? null;
+    const mood: RatingMood =
+      (rating?.overallMood as RatingMood | undefined)
+      ?? moodFromAverage(overall);
     const isActive = v.active !== false;
     return (
       <tr
@@ -385,19 +396,6 @@ export function VendorListPage({
         </td>
         <td className="px-4 py-3 text-foreground ">{v.products || '—'}</td>
         <td className="px-4 py-3 text-foreground whitespace-nowrap">{formatVendorPolicyLabel(inferVendorPolicyTag(v))}</td>
-        <td className="px-4 py-3">
-          <button
-            type="button"
-            onClick={() => setRatingVendor(v)}
-            className="text-left group inline-flex flex-col"
-            title="Open vendor rating detail"
-          >
-            <span className="font-sans tabular-nums font-medium text-foreground group-hover:text-primary group-hover:underline">
-              {formatOverallRating(rating?.overallRating)}
-            </span>
-            <span className="text-[10px] text-muted-foreground">Overall</span>
-          </button>
-        </td>
         <td className="px-4 py-3 text-muted-foreground ">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>
@@ -416,6 +414,22 @@ export function VendorListPage({
             label={isActive ? 'Deactivate vendor' : 'Activate vendor'}
             onChange={next => void toggleVendorActive(v, next)}
           />
+        </td>
+        <td className="px-4 py-3 text-center">
+          <button
+            type="button"
+            onClick={() => setRatingVendor(v)}
+            className={`inline-flex flex-col items-center gap-0.5 group ${moodFaceColorClass(mood)}`}
+            title={`${moodFaceLabel(mood)} · ${formatOverallRating(overall)} — open rating detail`}
+            aria-label={`Vendor rating ${formatOverallRating(overall)}, ${moodFaceLabel(mood)}`}
+          >
+            <span className="text-xl leading-none group-hover:scale-110 transition-transform" aria-hidden>
+              {moodFaceChar(mood)}
+            </span>
+            <span className="text-[10px] font-sans tabular-nums text-muted-foreground group-hover:text-primary">
+              {formatOverallRating(overall)}
+            </span>
+          </button>
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap">
           {!v.engaged && isActive && (

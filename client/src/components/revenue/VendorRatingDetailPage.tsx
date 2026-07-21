@@ -12,6 +12,8 @@ import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
 import {
   formatOverallRating,
+  moodFaceChar,
+  moodFaceColorClass,
   moodFromAverage,
   ratingLevelLabel,
   vendorKindHint,
@@ -27,15 +29,9 @@ type Props = {
 };
 
 function MoodFace({ mood, label }: { mood: RatingMood; label?: string }) {
-  const color =
-    mood === 'green' ? 'text-[#5A7A2A]'
-      : mood === 'yellow' ? 'text-amber-600'
-        : mood === 'red' ? 'text-destructive'
-          : 'text-muted-foreground';
-  const face = mood === 'green' ? '☺' : mood === 'yellow' ? '😐' : mood === 'red' ? '☹' : '—';
   return (
-    <span className={`inline-flex items-center gap-1.5 ${color}`} title={label ?? mood}>
-      <span className="text-lg leading-none" aria-hidden>{face}</span>
+    <span className={`inline-flex items-center gap-1.5 ${moodFaceColorClass(mood)}`} title={label ?? mood}>
+      <span className="text-lg leading-none" aria-hidden>{moodFaceChar(mood)}</span>
       {label ? <span className="text-[11px] font-medium">{label}</span> : null}
     </span>
   );
