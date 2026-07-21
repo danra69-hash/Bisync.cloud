@@ -137,8 +137,15 @@ function CompanyPanel({
   const [smtpPasswordDraft, setSmtpPasswordDraft] = useState('');
   const [testToEmail, setTestToEmail] = useState(() => company.email || company.smtpFromEmail || '');
   const [testingEmail, setTestingEmail] = useState(false);
-  const [testMessage, setTestMessage] = useState<string | null>(null);
+  /** Success/error for outbound test — kept near the Send button (not only the top banner). */
+  const [outboundFeedback, setOutboundFeedback] = useState<{
+    kind: 'ok' | 'error' | 'info';
+    text: string;
+  } | null>(null);
 
+  // Reset panel form only when switching companies — do not wipe outbound feedback when the
+  // parent refreshes the same company after save (that previously cleared errors silently).
+  const companyKey = !('id' in company) ? 'new' : String(company.id);
   useEffect(() => {
     setForm(company);
     setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
@@ -146,14 +153,16 @@ function CompanyPanel({
     setModules(parseCompanyModules(company.modulesJson));
     setSmtpPasswordDraft('');
     setTestToEmail(company.email || company.smtpFromEmail || '');
-    setTestMessage(null);
+    setOutboundFeedback(null);
     setError(null);
-  }, [company]);
+  }, [companyKey]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: reset on company switch only
 
   function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
     setForm(f => ({ ...f, [key]: val }));
     setError(null);
-    setTestMessage(null);
+    if (key === 'smtpFromEmail' || key === 'smtpFromName') {
+      setOutboundFeedback(null);
+    }
   }
 
   const addressParts: AddressParts = {
@@ -273,34 +282,53 @@ function CompanyPanel({
 
   async function sendTestEmail() {
     if (!('id' in form)) {
-      setError('Save the company first, then send a test email.');
+      setOutboundFeedback({
+        kind: 'error',
+        text: 'Save the company first, then send a test email.',
+      });
       return;
     }
     const address = (form.smtpFromEmail ?? '').trim();
     if (!outboundEmailReady(address, smtpPasswordDraft, Boolean(form.smtpPasswordSet))) {
-      setError('Enter the outbound email address and password before testing.');
+      setOutboundFeedback({
+        kind: 'error',
+        text: 'Enter the outbound email address and password before testing.',
+      });
       return;
     }
     const to = testToEmail.trim();
-    if (!to.includes('@')) {
-      setError('Enter a valid test recipient email.');
+    if (!to.includes('@') || !to.includes('.')) {
+      setOutboundFeedback({
+        kind: 'error',
+        text: 'Enter a valid test recipient email.',
+      });
       return;
     }
 
     setTestingEmail(true);
     setError(null);
-    setTestMessage(null);
+    setOutboundFeedback({
+      kind: 'info',
+      text: 'Saving settings, then connecting to the mail server… this can take up to 30 seconds.',
+    });
     try {
       const passwordForTest = smtpPasswordDraft.trim();
       const payload = buildPayload();
+      // Persist credentials first, but do NOT refresh the parent list yet — that used to
+      // remount/resync the panel and wipe the error banner before it was visible.
       const saved = await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
       setForm(f => ({
         ...f,
         ...saved,
         smtpPassword: '',
-        smtpPasswordSet: true,
+        smtpPasswordSet: saved.smtpPasswordSet
+          ?? (passwordForTest.length > 0 || Boolean(f.smtpPasswordSet)),
       }));
-      onSave();
+
+      setOutboundFeedback({
+        kind: 'info',
+        text: `Connecting via ${providerInfo?.label ?? 'SMTP'}…`,
+      });
 
       const result = await api.testCompanyOutboundEmail(form.id, {
         toEmail: to,
@@ -310,15 +338,19 @@ function CompanyPanel({
         smtpPassword: passwordForTest || undefined,
       });
       setSmtpPasswordDraft('');
-      setTestMessage(result.message);
+      setOutboundFeedback({ kind: 'ok', text: result.message });
       if (result.provider) {
         setForm(f => ({
           ...f,
           smtpProviderLabel: result.provider,
         }));
       }
+      onSave();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Test email failed.');
+      const message = err instanceof Error ? err.message : 'Test email failed.';
+      setOutboundFeedback({ kind: 'error', text: message });
+      // Also mirror at top so other save errors stay consistent if user scrolls up.
+      setError(message);
     } finally {
       setTestingEmail(false);
     }
@@ -444,7 +476,7 @@ function CompanyPanel({
                     onChange={e => {
                       setSmtpPasswordDraft(e.target.value);
                       setError(null);
-                      setTestMessage(null);
+                      setOutboundFeedback(null);
                     }}
                     placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'Email password'}
                     autoComplete="new-password"
@@ -484,14 +516,14 @@ function CompanyPanel({
                     onChange={e => {
                       setTestToEmail(e.target.value);
                       setError(null);
-                      setTestMessage(null);
+                      setOutboundFeedback(null);
                     }}
                     placeholder="you@company.com"
                     disabled={isNew || testingEmail || saving}
                   />
                   <button
                     type="button"
-                    disabled={!canTestOutbound || testingEmail || saving}
+                    disabled={isNew || testingEmail || saving}
                     onClick={() => void sendTestEmail()}
                     title={
                       isNew
@@ -511,8 +543,28 @@ function CompanyPanel({
                     Save the company once, then reopen to send a test email.
                   </p>
                 )}
-                {testMessage && (
-                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400">{testMessage}</p>
+                {!isNew && !canTestOutbound && (
+                  <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                    {!outboundAddress.includes('@')
+                      ? 'Enter the outbound email address above.'
+                      : !(smtpPasswordDraft.trim() || form.smtpPasswordSet)
+                        ? 'Enter the email password (Google/Microsoft MFA usually needs an App Password).'
+                        : 'Complete outbound email settings to send a test.'}
+                  </p>
+                )}
+                {outboundFeedback && (
+                  <div
+                    role="status"
+                    className={
+                      outboundFeedback.kind === 'error'
+                        ? 'px-3 py-2 rounded-md border border-destructive/30 bg-destructive/10 text-destructive text-[11px] whitespace-pre-wrap break-words'
+                        : outboundFeedback.kind === 'ok'
+                          ? 'px-3 py-2 rounded-md border border-emerald-600/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[11px] whitespace-pre-wrap break-words'
+                          : 'px-3 py-2 rounded-md border border-border bg-muted/40 text-muted-foreground text-[11px] whitespace-pre-wrap break-words'
+                    }
+                  >
+                    {outboundFeedback.text}
+                  </div>
                 )}
               </div>
             </div>
@@ -601,7 +653,16 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
   function refreshList() {
     setLoading(true);
     api.companies()
-      .then(setCompanies)
+      .then(rows => {
+        setCompanies(rows);
+        // Keep the open panel in sync without remounting (companyKey stays the same,
+        // so outbound success/error feedback is not cleared).
+        setPanelDraft(prev => {
+          if (!prev || !('id' in prev)) return prev;
+          const next = rows.find(c => c.id === prev.id);
+          return next ?? prev;
+        });
+      })
       .catch(() => setCompanies([]))
       .finally(() => setLoading(false));
   }
