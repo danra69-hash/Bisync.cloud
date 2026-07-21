@@ -163,7 +163,6 @@ export const fr = {
     accessControl: 'Contrôle d\'accès',
     cogsAudit: 'COGS Audit',
     auditTrail: 'Audit Trail',
-    ghostSupport: 'Ghost Support',
     addCompany: 'Ajouter une société',
     addLocation: 'Ajouter un établissement',
     registeredCompanies: '{{count}} sociétés enregistrées',

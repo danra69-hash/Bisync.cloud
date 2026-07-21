@@ -15,7 +15,6 @@ export const SYSTEM_HR_CONFIG_TABS = [
   { id: 'accessControl' as const, label: 'Access Control' },
   { id: 'cogsAudit' as const, label: 'COGS Audit' },
   { id: 'auditTrail' as const, label: 'Audit Trail' },
-  { id: 'ghostSupport' as const, label: 'Ghost Support' },
 ] as const;
 
 export type SystemHrConfigTabId = (typeof SYSTEM_HR_CONFIG_TABS)[number]['id'];

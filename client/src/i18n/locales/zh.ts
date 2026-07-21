@@ -163,7 +163,6 @@ export const zh = {
     accessControl: '访问控制',
     cogsAudit: 'COGS Audit',
     auditTrail: 'Audit Trail',
-    ghostSupport: 'Ghost Support',
     addCompany: '添加公司',
     addLocation: '添加门店',
     registeredCompanies: '已注册 {{count}} 家公司',
