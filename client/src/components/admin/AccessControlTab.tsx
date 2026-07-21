@@ -20,9 +20,11 @@ import { filterSelectCls } from '../layout/formControls';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 const ALL_MODULES = '';
-const acColumnCls = 'w-11 min-w-[44px] max-w-[48px] px-0.5 py-1 text-center border-l border-border/40';
+/** Wide enough for renamed role labels + the column “tick all” checkbox. */
+const acColumnCls =
+  'w-[5.75rem] min-w-[5.75rem] px-1 py-1.5 text-center border-l border-border/40 align-middle';
 const acHeaderInputCls =
-  'bg-card border border-border rounded px-0.5 py-0.5 text-[10px] font-medium text-center w-full min-w-0 min-h-0 leading-tight';
+  'bg-card border border-border rounded px-1 py-1 text-[11px] font-medium text-center w-full min-w-0 leading-tight';
 
 export function AccessControlTab() {
   const [types, setTypes] = useState<AccessControlType[]>(() => defaultAccessControlTypes());
@@ -170,13 +172,13 @@ export function AccessControlTab() {
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-16rem)] overflow-auto border border-border rounded-lg">
-        <table className="w-full text-xs table-fixed min-w-[720px]">
+        <table className="w-full text-xs table-fixed min-w-[980px]">
           <colgroup>
             <col className="w-[9rem]" />
             <col className="w-[7rem]" />
             <col />
             {types.map(type => (
-              <col key={type.id} className="w-11" />
+              <col key={type.id} className="w-[5.75rem]" />
             ))}
           </colgroup>
           <thead className="bg-muted/40 sticky top-0 z-10">
@@ -186,7 +188,7 @@ export function AccessControlTab() {
               <TableHeaderCell>Task</TableHeaderCell>
               {typeColumnStates.map(({ type, allSelected, someSelected }, index) => (
                 <th key={type.id} className={`${acColumnCls} align-top`}>
-                  <div className="space-y-1">
+                  <div className="flex flex-col items-center gap-1.5">
                     <input
                       className={acHeaderInputCls}
                       value={type.label}
@@ -195,12 +197,12 @@ export function AccessControlTab() {
                       title={type.label}
                     />
                     <label
-                      className="inline-flex items-center justify-center cursor-pointer"
+                      className="inline-flex flex-col items-center gap-0.5 cursor-pointer"
                       title={`Select all for ${type.label}`}
                     >
                       <input
                         type="checkbox"
-                        className="scale-90"
+                        className="h-3.5 w-3.5 accent-primary"
                         checked={allSelected}
                         ref={el => {
                           if (el) el.indeterminate = someSelected;
@@ -208,6 +210,9 @@ export function AccessControlTab() {
                         onChange={e => toggleColumn(type.id, e.target.checked)}
                         aria-label={`Select all tasks for ${type.label}`}
                       />
+                      <span className="text-[9px] font-sans uppercase tracking-wide text-muted-foreground leading-none">
+                        All
+                      </span>
                     </label>
                   </div>
                 </th>
@@ -233,7 +238,7 @@ export function AccessControlTab() {
                     <td key={`${row.key}-${type.id}`} className={acColumnCls}>
                       <input
                         type="checkbox"
-                        className="scale-90"
+                        className="h-3.5 w-3.5 accent-primary"
                         checked={!!matrix[row.key]?.[type.id]}
                         onChange={() => toggleCell(row.key, type.id)}
                         aria-label={`${type.label} — ${row.task}`}
