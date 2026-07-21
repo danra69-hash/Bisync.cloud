@@ -1,19 +1,21 @@
-using System.Net;
-using System.Net.Mail;
 using Bisync.Api.Models;
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
 
 namespace Bisync.Api.Services;
 
 /// <summary>
 /// Company-scoped outbound SMTP (Purchase Order / vendor email).
 /// Resolves Microsoft / Google / common providers automatically from the email address.
+/// Uses MailKit (STARTTLS / SSL) — System.Net.Mail.SmtpClient is unreliable with modern providers.
 /// </summary>
 public static class CompanyOutboundEmailService
 {
     public sealed record SmtpSettings(
         string Host,
         int Port,
-        bool UseSsl,
+        SecureSocketOptions Security,
         string Username,
         string Password,
         string FromEmail,
@@ -26,47 +28,63 @@ public static class CompanyOutboundEmailService
         string Label,
         string Host,
         int Port,
-        bool UseSsl,
+        SecureSocketOptions Security,
         string Tip);
 
-    static readonly ProviderProfile Google = new(
+    static readonly ProviderProfile GoogleStartTls = new(
         "google",
         "Google / Gmail",
         "smtp.gmail.com",
         587,
-        true,
-        "Google accounts with 2-Step Verification need an App Password (not your normal login password).");
+        SecureSocketOptions.StartTls,
+        "Google accounts with 2-Step Verification need an App Password (16 characters). Normal Gmail passwords are rejected.");
 
-    static readonly ProviderProfile Microsoft = new(
+    static readonly ProviderProfile GoogleSsl = new(
+        "google-ssl",
+        "Google / Gmail (SSL)",
+        "smtp.gmail.com",
+        465,
+        SecureSocketOptions.SslOnConnect,
+        GoogleStartTls.Tip);
+
+    static readonly ProviderProfile MicrosoftStartTls = new(
         "microsoft",
         "Microsoft 365 / Outlook",
         "smtp.office365.com",
         587,
-        true,
-        "Use your Microsoft 365 or Outlook email and password. If MFA is on, use an app password.");
+        SecureSocketOptions.StartTls,
+        "Use your Microsoft 365 / Outlook email. If MFA is enabled, create an app password in your Microsoft account security settings.");
 
-    static readonly ProviderProfile Yahoo = new(
+    static readonly ProviderProfile MicrosoftSsl = new(
+        "microsoft-ssl",
+        "Microsoft 365 / Outlook (SSL)",
+        "smtp.office365.com",
+        465,
+        SecureSocketOptions.SslOnConnect,
+        MicrosoftStartTls.Tip);
+
+    static readonly ProviderProfile YahooStartTls = new(
         "yahoo",
         "Yahoo Mail",
         "smtp.mail.yahoo.com",
         587,
-        true,
-        "Yahoo usually requires an app password generated in account security settings.");
+        SecureSocketOptions.StartTls,
+        "Yahoo usually requires an app password from account security settings.");
 
-    static readonly ProviderProfile Icloud = new(
+    static readonly ProviderProfile IcloudStartTls = new(
         "icloud",
         "iCloud Mail",
         "smtp.mail.me.com",
         587,
-        true,
+        SecureSocketOptions.StartTls,
         "iCloud requires an app-specific password from appleid.apple.com.");
 
-    static readonly ProviderProfile Zoho = new(
+    static readonly ProviderProfile ZohoStartTls = new(
         "zoho",
         "Zoho Mail",
         "smtp.zoho.com",
         587,
-        true,
+        SecureSocketOptions.StartTls,
         "Use your Zoho email and password (or app password if MFA is enabled).");
 
     static readonly HashSet<string> GoogleDomains = new(StringComparer.OrdinalIgnoreCase)
@@ -110,34 +128,35 @@ public static class CompanyOutboundEmailService
         return at < 0 ? null : email.Trim()[(at + 1)..].ToLowerInvariant();
     }
 
-    /// <summary>Primary provider for an email address (consumer domains + business defaults).</summary>
+    /// <summary>Normalize passwords (Google app passwords are often pasted with spaces).</summary>
+    public static string NormalizePassword(string? password) =>
+        (password ?? string.Empty).Trim().Replace(" ", "", StringComparison.Ordinal);
+
     public static ProviderProfile ResolveProvider(string email)
     {
         var domain = GetDomain(email);
-        if (domain is null) return Microsoft;
+        if (domain is null) return MicrosoftStartTls;
 
         if (GoogleDomains.Contains(domain) || domain.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase))
-            return Google;
+            return GoogleStartTls;
         if (MicrosoftDomains.Contains(domain))
-            return Microsoft;
+            return MicrosoftStartTls;
         if (YahooDomains.Contains(domain) || domain.StartsWith("yahoo.", StringComparison.OrdinalIgnoreCase))
-            return Yahoo;
+            return YahooStartTls;
         if (IcloudDomains.Contains(domain))
-            return Icloud;
+            return IcloudStartTls;
         if (ZohoDomains.Contains(domain) || domain.EndsWith(".zoho.com", StringComparison.OrdinalIgnoreCase))
-            return Zoho;
+            return ZohoStartTls;
 
-        // Custom / company domains: Microsoft 365 (Exchange Online) is the common business default.
         return new ProviderProfile(
             "microsoft-business",
             "Microsoft Exchange / Microsoft 365",
-            Microsoft.Host,
-            Microsoft.Port,
-            Microsoft.UseSsl,
-            "Company domains usually send through Microsoft 365. If this mailbox is Google Workspace, the system will also try Google automatically when testing.");
+            MicrosoftStartTls.Host,
+            MicrosoftStartTls.Port,
+            MicrosoftStartTls.Security,
+            "Company domains usually send through Microsoft 365. Google Workspace is tried automatically if Microsoft fails.");
     }
 
-    /// <summary>Ordered SMTP candidates (primary first, then sensible fallbacks for custom domains).</summary>
     public static IReadOnlyList<ProviderProfile> ResolveCandidates(string email)
     {
         var primary = ResolveProvider(email);
@@ -152,7 +171,13 @@ public static class CompanyOutboundEmailService
             list.Add(p);
         }
 
-        // Custom domains: also try Google Workspace and smtp.<domain>.
+        // Same provider, alternate port/security.
+        if (primary.Host.Contains("gmail", StringComparison.OrdinalIgnoreCase))
+            AddUnique(GoogleSsl);
+        else if (primary.Host.Contains("office365", StringComparison.OrdinalIgnoreCase))
+            AddUnique(MicrosoftSsl);
+
+        // Custom domains: also try Google Workspace + domain SMTP hosts.
         if (domain is not null
             && !GoogleDomains.Contains(domain)
             && !MicrosoftDomains.Contains(domain)
@@ -160,20 +185,21 @@ public static class CompanyOutboundEmailService
             && !IcloudDomains.Contains(domain)
             && !ZohoDomains.Contains(domain))
         {
-            AddUnique(Google with { Id = "google-workspace", Label = "Google Workspace" });
+            AddUnique(GoogleStartTls with { Id = "google-workspace", Label = "Google Workspace" });
+            AddUnique(GoogleSsl with { Id = "google-workspace-ssl", Label = "Google Workspace (SSL)" });
             AddUnique(new ProviderProfile(
                 "domain-smtp",
                 $"Mail server for {domain}",
                 $"smtp.{domain}",
                 587,
-                true,
+                SecureSocketOptions.StartTls,
                 "Tried the domain’s own SMTP host as a fallback."));
             AddUnique(new ProviderProfile(
                 "domain-mail",
                 $"Mail server for {domain}",
                 $"mail.{domain}",
                 587,
-                true,
+                SecureSocketOptions.StartTls,
                 "Tried mail.<domain> as a fallback."));
         }
 
@@ -191,19 +217,15 @@ public static class CompanyOutboundEmailService
         return new SmtpSettings(
             provider.Host,
             provider.Port,
-            provider.UseSsl,
+            provider.Security,
             address,
-            (password ?? string.Empty).Trim(),
+            NormalizePassword(password),
             address,
             string.IsNullOrWhiteSpace(fromName) ? string.Empty : fromName.Trim(),
             provider.Id,
             provider.Label);
     }
 
-    /// <summary>
-    /// Fill company SMTP fields from outbound email + password.
-    /// Host/port/SSL/username are derived automatically from the email provider.
-    /// </summary>
     public static void ApplyAutoSmtp(Company target, string outboundEmail, string? passwordOrNullToKeep, string? fromName)
     {
         var email = (outboundEmail ?? string.Empty).Trim();
@@ -219,12 +241,12 @@ public static class CompanyOutboundEmailService
         var settings = BuildSettings(email, passwordOrNullToKeep ?? string.Empty, fromName);
         target.SmtpHost = settings.Host;
         target.SmtpPort = settings.Port;
-        target.SmtpUseSsl = settings.UseSsl;
+        target.SmtpUseSsl = settings.Security is SecureSocketOptions.StartTls or SecureSocketOptions.SslOnConnect;
         target.SmtpUsername = settings.Username;
         target.SmtpFromEmail = settings.FromEmail;
         target.SmtpFromName = settings.FromName;
         if (passwordOrNullToKeep is not null)
-            target.SmtpPassword = passwordOrNullToKeep.Trim();
+            target.SmtpPassword = NormalizePassword(passwordOrNullToKeep);
     }
 
     public static SmtpSettings FromCompany(Company company, string? passwordOverride = null)
@@ -234,25 +256,23 @@ public static class CompanyOutboundEmailService
             : (company.SmtpUsername ?? string.Empty).Trim();
         var password = string.IsNullOrWhiteSpace(passwordOverride)
             ? (company.SmtpPassword ?? string.Empty)
-            : passwordOverride.Trim();
+            : passwordOverride;
 
-        // Prefer auto-resolved host when email is present (keeps provider mapping current).
         if (IsLikelyEmail(email))
             return BuildSettings(email, password, company.SmtpFromName);
 
         return new SmtpSettings(
             (company.SmtpHost ?? string.Empty).Trim(),
             company.SmtpPort is > 0 and <= 65535 ? company.SmtpPort : 587,
-            company.SmtpUseSsl,
+            company.SmtpUseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto,
             (company.SmtpUsername ?? string.Empty).Trim(),
-            password,
+            NormalizePassword(password),
             (company.SmtpFromEmail ?? string.Empty).Trim(),
             (company.SmtpFromName ?? string.Empty).Trim(),
             "custom",
             "Custom SMTP");
     }
 
-    /// <summary>Returns null when settings are complete enough to attempt a send.</summary>
     public static string? ValidateForSend(SmtpSettings settings)
     {
         if (string.IsNullOrWhiteSpace(settings.FromEmail) || !IsLikelyEmail(settings.FromEmail))
@@ -279,34 +299,31 @@ public static class CompanyOutboundEmailService
         if (!IsLikelyEmail(toEmail))
             throw new InvalidOperationException("A valid recipient email is required.");
 
-        using var message = new MailMessage
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(
+            string.IsNullOrWhiteSpace(settings.FromName) ? settings.FromEmail : settings.FromName,
+            settings.FromEmail));
+        message.To.Add(MailboxAddress.Parse(toEmail.Trim()));
+        message.Subject = subject;
+        message.Body = new TextPart("plain")
         {
-            From = new MailAddress(
-                settings.FromEmail,
-                string.IsNullOrWhiteSpace(settings.FromName) ? settings.FromEmail : settings.FromName),
-            Subject = subject,
-            Body = plainTextBody,
-            IsBodyHtml = false,
-        };
-        message.To.Add(toEmail.Trim());
-
-        using var client = new SmtpClient(settings.Host, settings.Port)
-        {
-            EnableSsl = settings.UseSsl,
-            DeliveryMethod = SmtpDeliveryMethod.Network,
-            UseDefaultCredentials = false,
-            Credentials = new NetworkCredential(settings.Username, settings.Password),
-            Timeout = 30_000,
+            Text = plainTextBody,
         };
 
-        ct.ThrowIfCancellationRequested();
-        await client.SendMailAsync(message);
+        using var client = new SmtpClient { Timeout = 30_000 };
+        try
+        {
+            await client.ConnectAsync(settings.Host, settings.Port, settings.Security, ct);
+            await client.AuthenticateAsync(settings.Username, settings.Password, ct);
+            await client.SendAsync(message, ct);
+        }
+        finally
+        {
+            if (client.IsConnected)
+                await client.DisconnectAsync(true, ct);
+        }
     }
 
-    /// <summary>
-    /// Send using the primary provider, then fallbacks (Google Workspace / domain SMTP) for custom domains.
-    /// Returns the provider that succeeded.
-    /// </summary>
     public static async Task<(SmtpSettings Used, string ProviderLabel)> SendWithFallbackAsync(
         string outboundEmail,
         string password,
@@ -318,7 +335,7 @@ public static class CompanyOutboundEmailService
     {
         var email = outboundEmail.Trim();
         var candidates = ResolveCandidates(email);
-        Exception? last = null;
+        var errors = new List<string>();
 
         foreach (var profile in candidates)
         {
@@ -330,12 +347,39 @@ public static class CompanyOutboundEmailService
             }
             catch (Exception ex)
             {
-                last = ex;
+                var detail = FormatSmtpError(ex);
+                errors.Add($"{profile.Label} ({profile.Host}:{profile.Port}): {detail}");
             }
         }
 
-        var detail = last?.InnerException?.Message ?? last?.Message ?? "Unknown SMTP error.";
-        throw new InvalidOperationException($"Could not send email via detected mail servers. {detail}");
+        var tip = ResolveProvider(email).Tip;
+        var joined = string.Join(" | ", errors.Take(3));
+        throw new InvalidOperationException(
+            $"Could not send email. {joined} — Tip: {tip}");
+    }
+
+    static string FormatSmtpError(Exception ex)
+    {
+        var msg = ex.InnerException?.Message ?? ex.Message;
+        if (string.IsNullOrWhiteSpace(msg)) msg = ex.GetType().Name;
+
+        // Soften common provider errors into actionable text.
+        if (msg.Contains("Authentication", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("535", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("5.7.3", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("5.7.57", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Invalid credentials", StringComparison.OrdinalIgnoreCase))
+        {
+            return "authentication failed (check email/password — Google & Microsoft often need an App Password if MFA is on)";
+        }
+
+        if (msg.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Timeout", StringComparison.OrdinalIgnoreCase))
+        {
+            return "connection timed out";
+        }
+
+        return msg.Length > 180 ? msg[..180] + "…" : msg;
     }
 
     public static async Task<(SmtpSettings Used, string ProviderLabel)> SendTestAsync(

@@ -291,6 +291,7 @@ function CompanyPanel({
     setError(null);
     setTestMessage(null);
     try {
+      const passwordForTest = smtpPasswordDraft.trim();
       const payload = buildPayload();
       const saved = await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
       setForm(f => ({
@@ -299,14 +300,16 @@ function CompanyPanel({
         smtpPassword: '',
         smtpPasswordSet: true,
       }));
-      setSmtpPasswordDraft('');
       onSave();
 
       const result = await api.testCompanyOutboundEmail(form.id, {
         toEmail: to,
         smtpFromEmail: address,
         smtpFromName: (form.smtpFromName ?? '').trim() || undefined,
+        // Pass draft password explicitly so test does not depend on a race with save.
+        smtpPassword: passwordForTest || undefined,
       });
+      setSmtpPasswordDraft('');
       setTestMessage(result.message);
       if (result.provider) {
         setForm(f => ({

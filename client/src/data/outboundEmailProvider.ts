@@ -31,21 +31,21 @@ export function detectOutboundProvider(email: string): OutboundProviderInfo | nu
     return {
       id: 'google',
       label: 'Google / Gmail',
-      tip: 'Google accounts with 2-Step Verification need an App Password (not your normal login password).',
+      tip: 'Google accounts with 2-Step Verification need an App Password (16 characters). Normal Gmail passwords are rejected.',
     };
   }
   if (MICROSOFT.has(domain)) {
     return {
       id: 'microsoft',
       label: 'Microsoft 365 / Outlook',
-      tip: 'Use your Microsoft 365 or Outlook email and password. If MFA is on, use an app password.',
+      tip: 'Use your Microsoft 365 / Outlook email. If MFA is enabled, create an app password in Microsoft account security settings.',
     };
   }
   if (YAHOO.has(domain) || domain.startsWith('yahoo.')) {
     return {
       id: 'yahoo',
       label: 'Yahoo Mail',
-      tip: 'Yahoo usually requires an app password generated in account security settings.',
+      tip: 'Yahoo usually requires an app password from account security settings.',
     };
   }
   if (ICLOUD.has(domain)) {
@@ -66,7 +66,7 @@ export function detectOutboundProvider(email: string): OutboundProviderInfo | nu
   return {
     id: 'microsoft-business',
     label: 'Microsoft Exchange / Microsoft 365',
-    tip: 'Company domains usually send through Microsoft 365. Google Workspace mailboxes are tried automatically if needed.',
+    tip: 'Company domains usually send through Microsoft 365. If MFA is on, use an app password. Google Workspace is tried automatically if needed.',
   };
 }
 
