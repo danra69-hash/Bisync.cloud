@@ -16,7 +16,7 @@ export const OUTBOUND_PROVIDER_MODES: {
   {
     id: 'auto',
     label: 'Auto-detect',
-    tip: 'Tries Microsoft 365 first for company domains, then Google Workspace and domain SMTP.',
+    tip: 'Tries Microsoft 365 first for company domains, then Google Workspace. If both reject the password, pick Microsoft 365 or Google Workspace explicitly — they need different passwords/settings.',
   },
   {
     id: 'microsoft',
@@ -28,7 +28,10 @@ export const OUTBOUND_PROVIDER_MODES: {
   {
     id: 'google',
     label: 'Google Workspace',
-    tip: 'Uses smtp.gmail.com. Accounts with 2-Step Verification need a 16-character App Password (not the normal login password).',
+    tip:
+      'Uses smtp.gmail.com. Google error 5.7.8 / BadCredentials means the normal password was rejected — ' +
+      'create a 16-character App Password (Google Account → Security → 2-Step Verification → App passwords). ' +
+      'Workspace admins may also need to allow SMTP.',
   },
   {
     id: 'custom',

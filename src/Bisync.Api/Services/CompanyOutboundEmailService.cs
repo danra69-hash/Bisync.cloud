@@ -44,8 +44,9 @@ public static class CompanyOutboundEmailService
         "or switch to Custom SMTP with a relay (SendGrid / Amazon SES).";
 
     const string GoogleAuthTip =
-        "Google accounts with 2-Step Verification need an App Password (16 characters). " +
-        "Normal account passwords are rejected. For Google Workspace, an admin may need to allow SMTP.";
+        "Google rejected the login (error 5.7.8 BadCredentials). " +
+        "Create a 16-character App Password: Google Account → Security → 2-Step Verification → App passwords. " +
+        "Do not use the normal account password. Google Workspace admins may also need to allow SMTP access.";
 
     static readonly ProviderProfile GoogleStartTls = new(
         "google",
@@ -492,21 +493,57 @@ public static class CompanyOutboundEmailService
             }
             catch (Exception ex)
             {
-                var detail = FormatSmtpError(ex);
+                var detail = FormatSmtpError(ex, profile);
                 errors.Add($"{profile.Label} ({profile.Host}:{profile.Port}): {detail}");
             }
         }
 
-        var tip = ResolveProviderForMode(email, mode).Tip;
-        var joined = string.Join(" | ", errors.Take(3));
+        var tip = BuildFailureTip(email, mode, errors);
+        var joined = string.Join(" | ", errors.Take(2));
         throw new InvalidOperationException(
-            $"Could not send email. {joined} — Next step: {tip}");
+            $"Could not send email. Next step: {tip} — Details: {joined}");
     }
 
-    static string FormatSmtpError(Exception ex)
+    static string BuildFailureTip(string email, string mode, IReadOnlyList<string> errors)
+    {
+        mode = NormalizeProviderMode(mode);
+        if (mode == ModeGoogle) return GoogleAuthTip;
+        if (mode == ModeMicrosoft) return MicrosoftAuthTip;
+        if (mode == ModeCustom)
+        {
+            return "Check the custom SMTP host, port, and password/API key from your mail relay provider.";
+        }
+
+        var blob = string.Join(" ", errors);
+        var googleHit = blob.Contains("gmail", StringComparison.OrdinalIgnoreCase)
+            || blob.Contains("Google", StringComparison.OrdinalIgnoreCase)
+            || blob.Contains("gsmtp", StringComparison.OrdinalIgnoreCase);
+        var microsoftHit = blob.Contains("office365", StringComparison.OrdinalIgnoreCase)
+            || blob.Contains("Microsoft", StringComparison.OrdinalIgnoreCase);
+
+        if (googleHit && microsoftHit)
+        {
+            return "Both Microsoft 365 and Google rejected this password. Set Mail provider to the correct one for this mailbox — "
+                + "Microsoft 365: enable Authenticated SMTP (or App Password). "
+                + "Google Workspace: use a 16-character App Password, not the normal login password.";
+        }
+
+        if (googleHit) return GoogleAuthTip;
+        if (microsoftHit) return MicrosoftAuthTip;
+        return ResolveProvider(email).Tip;
+    }
+
+    static string FormatSmtpError(Exception ex, ProviderProfile? profile = null)
     {
         var msg = ex.InnerException?.Message ?? ex.Message;
         if (string.IsNullOrWhiteSpace(msg)) msg = ex.GetType().Name;
+
+        var isGoogle = profile?.Host.Contains("gmail", StringComparison.OrdinalIgnoreCase) == true
+            || msg.Contains("gsmtp", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("support.google.com/mail", StringComparison.OrdinalIgnoreCase);
+        var isMicrosoft = profile?.Host.Contains("office365", StringComparison.OrdinalIgnoreCase) == true
+            || msg.Contains("5.7.57", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("5.7.3", StringComparison.OrdinalIgnoreCase);
 
         // Soften common provider errors into actionable text.
         if (msg.Contains("Authentication", StringComparison.OrdinalIgnoreCase)
@@ -514,9 +551,14 @@ public static class CompanyOutboundEmailService
             || msg.Contains("5.7.3", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("5.7.57", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("5.7.8", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("BadCredentials", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("Invalid credentials", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("Username and Password not accepted", StringComparison.OrdinalIgnoreCase))
         {
+            if (isGoogle)
+                return "Google rejected the password (need a 16-character App Password if 2-Step Verification is on)";
+            if (isMicrosoft)
+                return "Microsoft rejected the password (enable Authenticated SMTP on the mailbox, or use an App Password)";
             return "authentication failed (wrong password, or SMTP AUTH / App Password not enabled)";
         }
 
@@ -526,7 +568,7 @@ public static class CompanyOutboundEmailService
             return "connection timed out";
         }
 
-        return msg.Length > 180 ? msg[..180] + "…" : msg;
+        return msg.Length > 160 ? msg[..160] + "…" : msg;
     }
 
     public static async Task<(SmtpSettings Used, string ProviderLabel)> SendTestAsync(
