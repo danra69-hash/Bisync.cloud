@@ -581,10 +581,13 @@ public class AuthController(
                 "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder", "cashPurchase", "orderTemplate",
                 "productManagement", "subProductManagement", "offlineSales",
                 "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage", "transfer", "inventoryConfiguration",
-                "createEdit", "activateDeactivateVendorProducts", "createEditComponentGroup", "createEditStorageAssignment",
-                "viewVendorList", "viewVendorProducts", "activateDeactivateVendor",
-                "viewProductSubProduct", "manageCustomers", "customerGroup", "manageSalesOrder", "manageInvoice", "promotionScheduler",
-                "viewReports", "accountMapping",
+                "createEdit", "componentConfig", "activateDeactivateVendorProducts", "createEditComponentGroup", "createEditStorageAssignment",
+                "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",
+                "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",
+                "manageCustomers", "customerGroup", "customerManagement", "manageSalesOrder", "approveSalesOrder", "manageInvoice", "promotionScheduler",
+                "viewReports", "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit",
+                "accountMapping",
+                // hidePrices omitted — owners see prices by default
             })
             {
                 tasks[id] = true;

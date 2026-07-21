@@ -38,8 +38,17 @@ function row(module: string, functionName: string, task: string, taskId: string)
 function platformConfigRows(): AccessControlRow[] {
   const groups: { function: string; tasks: string[] }[] = [
     { function: 'Companies', tasks: ['View Companies', 'Create and Edit Company', 'Manage Company Modules'] },
-    { function: 'Locations', tasks: ['View Locations', 'Create and Edit Location', 'Manage Location Modules'] },
+    {
+      function: 'Locations',
+      tasks: [
+        'View Locations',
+        'Create and Edit Location',
+        'Manage Location Modules',
+        'Manage Opening Hours',
+      ],
+    },
     { function: 'Access Control', tasks: ['View Access Control', 'Edit Access Control Matrix'] },
+    { function: 'Audit Trail', tasks: ['View Audit Trail'] },
   ];
   return groups.flatMap(group =>
     group.tasks.map(task =>
@@ -94,6 +103,11 @@ export const ACCESS_CONTROL_ROWS: AccessControlRow[] = [
   ...hrmRows(),
   ...accountingRows(),
 ];
+
+/** Restriction rows (tick = limit, not grant). Excluded from column “tick all”. */
+export function isAccessControlRestrictionRow(row: AccessControlRow): boolean {
+  return row.function === 'Policies' || row.key.endsWith(':hidePrices');
+}
 
 export function parseAccessControlTypes(json: string | null | undefined): AccessControlType[] {
   if (!json?.trim() || json === '[]') return defaultAccessControlTypes();
@@ -159,6 +173,8 @@ export function setAllTasksForType(
 ): AccessControlMatrix {
   const next = { ...matrix };
   for (const row of rows) {
+    // Never bulk-enable restriction policies (e.g. Price Hide).
+    if (allowed && isAccessControlRestrictionRow(row)) continue;
     const rowPerms = { ...(next[row.key] ?? {}) };
     if (allowed) rowPerms[typeId] = true;
     else delete rowPerms[typeId];

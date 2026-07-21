@@ -203,6 +203,9 @@ function RmsAccessPanel({
                       className="rounded border-border text-primary focus:ring-primary/30"
                     />
                     <span className="text-xs">{task.label}</span>
+                    {group.id === 'policies' && task.id === 'hidePrices' ? (
+                      <span className="block text-[10px] text-muted-foreground">Hides unit prices; quantity only</span>
+                    ) : null}
                   </label>
                 ))}
               </div>
