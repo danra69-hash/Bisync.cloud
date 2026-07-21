@@ -58,16 +58,17 @@ public class PlatformLaunchService(
                 "Id" integer NOT NULL CONSTRAINT "PK_PlatformLaunchSettings" PRIMARY KEY,
                 "DemoMode" boolean NOT NULL DEFAULT TRUE,
                 "GoLive" boolean NOT NULL DEFAULT FALSE,
-                "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{}',
+                "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{{}}',
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "UpdatedByEmail" TEXT NOT NULL DEFAULT ''
             );
             """, ct);
 
-        await db.Database.ExecuteSqlRawAsync("""
-            ALTER TABLE "PlatformLaunchSettings"
-            ADD COLUMN IF NOT EXISTS "ModulesGoLiveJson" TEXT NOT NULL DEFAULT '{}';
-            """, ct);
+        await DatabaseSchemaHelper.EnsureColumnAsync(
+            db,
+            "PlatformLaunchSettings",
+            "ModulesGoLiveJson",
+            "TEXT NOT NULL DEFAULT '{}'");
 
         var exists = await db.PlatformLaunchSettings.AsNoTracking().AnyAsync(s => s.Id == 1, ct);
         if (!exists)
