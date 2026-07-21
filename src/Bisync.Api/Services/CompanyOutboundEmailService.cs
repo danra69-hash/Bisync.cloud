@@ -15,6 +15,7 @@ public static class CompanyOutboundEmailService
 {
     public const string ModeAuto = "auto";
     public const string ModeMicrosoft = "microsoft";
+    public const string ModeMicrosoftGraph = "microsoft-graph";
     public const string ModeGoogle = "google";
     public const string ModeCustom = "custom";
 
@@ -147,6 +148,7 @@ public static class CompanyOutboundEmailService
         return m switch
         {
             "microsoft" or "ms" or "m365" or "office365" or "exchange" => ModeMicrosoft,
+            "microsoft-graph" or "graph" or "ms-graph" or "m365-graph" => ModeMicrosoftGraph,
             "google" or "gmail" or "workspace" => ModeGoogle,
             "custom" => ModeCustom,
             _ => ModeAuto,
@@ -184,6 +186,13 @@ public static class CompanyOutboundEmailService
         return mode switch
         {
             ModeMicrosoft => MicrosoftStartTls,
+            ModeMicrosoftGraph => new ProviderProfile(
+                "microsoft-graph",
+                "Microsoft Graph API",
+                "graph.microsoft.com",
+                443,
+                SecureSocketOptions.StartTls,
+                "Sends via Microsoft Graph (no SMTP AUTH). Azure app needs Application permission Mail.Send with admin consent, plus Tenant ID, Client ID, and Client secret."),
             ModeGoogle => GoogleStartTls with { Id = "google-workspace", Label = "Google Workspace" },
             ModeCustom => new ProviderProfile(
                 "custom",
@@ -214,6 +223,7 @@ public static class CompanyOutboundEmailService
             var label = mode switch
             {
                 ModeMicrosoft => "Microsoft 365",
+                ModeMicrosoftGraph => "Microsoft Graph API",
                 ModeGoogle => "Google Workspace",
                 ModeCustom => "Custom SMTP",
                 _ => $"SMTP ({host})",
@@ -229,6 +239,9 @@ public static class CompanyOutboundEmailService
                     ResolveProviderForMode(email, mode).Tip),
             ];
         }
+
+        if (mode == ModeMicrosoftGraph)
+            return [ResolveProviderForMode(email, ModeMicrosoftGraph)];
 
         if (mode == ModeCustom)
         {
@@ -348,6 +361,19 @@ public static class CompanyOutboundEmailService
         }
 
         var hostOverride = (customHost ?? string.Empty).Trim();
+        if (mode == ModeMicrosoftGraph)
+        {
+            target.SmtpFromEmail = email;
+            target.SmtpUsername = user;
+            target.SmtpFromName = string.IsNullOrWhiteSpace(fromName) ? target.SmtpFromName : fromName.Trim();
+            target.SmtpHost = "graph.microsoft.com";
+            target.SmtpPort = 443;
+            target.SmtpUseSsl = true;
+            if (passwordOrNullToKeep is not null)
+                target.SmtpPassword = NormalizePassword(passwordOrNullToKeep);
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(hostOverride) || mode == ModeCustom)
         {
             target.SmtpFromEmail = email;
@@ -544,6 +570,10 @@ public static class CompanyOutboundEmailService
         mode = NormalizeProviderMode(mode);
         if (mode == ModeGoogle) return GoogleAuthTip;
         if (mode == ModeMicrosoft) return MicrosoftAuthTip;
+        if (mode == ModeMicrosoftGraph)
+        {
+            return "Microsoft Graph: confirm Tenant ID / Client ID / Client secret, add Application permission Mail.Send, and Grant admin consent in Azure.";
+        }
         if (mode == ModeCustom)
         {
             return "Check the custom SMTP host, port, and password/API key from your mail relay provider.";

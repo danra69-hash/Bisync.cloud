@@ -50,6 +50,10 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             smtpFromName = c.SmtpFromName ?? string.Empty,
             smtpPasswordSet = !string.IsNullOrWhiteSpace(c.SmtpPassword),
             smtpPassword = string.Empty,
+            graphTenantId = c.GraphTenantId ?? string.Empty,
+            graphClientId = c.GraphClientId ?? string.Empty,
+            graphClientSecretSet = !string.IsNullOrWhiteSpace(c.GraphClientSecret),
+            graphClientSecret = string.Empty,
             smtpProviderId = provider?.Id ?? string.Empty,
             smtpProviderLabel = provider?.Label ?? string.Empty,
             smtpProviderTip = provider?.Tip ?? string.Empty,
@@ -58,8 +62,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     }
 
     /// <summary>
-    /// Apply outbound email settings. Mode: auto | microsoft | google | custom.
-    /// When host/port are provided they are stored and used for send/test.
+    /// Apply outbound email settings. Mode: auto | microsoft | microsoft-graph | google | custom.
     /// </summary>
     static void ApplySmtpFields(Company target, Company source, bool isCreate)
     {
@@ -82,6 +85,11 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             source.SmtpPort,
             source.SmtpUseSsl,
             source.SmtpUsername);
+
+        target.GraphTenantId = (source.GraphTenantId ?? string.Empty).Trim();
+        target.GraphClientId = (source.GraphClientId ?? string.Empty).Trim();
+        if (isCreate || !string.IsNullOrWhiteSpace(source.GraphClientSecret))
+            target.GraphClientSecret = (source.GraphClientSecret ?? string.Empty).Trim();
     }
 
     [HttpGet]
@@ -163,11 +171,14 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         string? SmtpProviderMode = null,
         string? SmtpHost = null,
         int? SmtpPort = null,
-        bool? SmtpUseSsl = null);
+        bool? SmtpUseSsl = null,
+        string? GraphTenantId = null,
+        string? GraphClientId = null,
+        string? GraphClientSecret = null);
 
     /// <summary>
-    /// Send a test message. Uses the manually entered host/port when provided.
-    /// Password empty = use saved password.
+    /// Send a test message via SMTP or Microsoft Graph.
+    /// Password / Graph client secret empty = use saved values.
     /// </summary>
     [HttpPost("{id:int}/outbound-email/test")]
     public async Task<ActionResult<object>> TestOutboundEmail(int id, [FromBody] OutboundEmailTestRequest req, CancellationToken ct)
@@ -180,37 +191,92 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             : !string.IsNullOrWhiteSpace(company.SmtpFromEmail)
                 ? company.SmtpFromEmail.Trim()
                 : (company.SmtpUsername ?? string.Empty).Trim();
-        var password = !string.IsNullOrWhiteSpace(req.SmtpPassword)
-            ? CompanyOutboundEmailService.NormalizePassword(req.SmtpPassword)
-            : CompanyOutboundEmailService.NormalizePassword(company.SmtpPassword);
         var fromName = !string.IsNullOrWhiteSpace(req.SmtpFromName)
             ? req.SmtpFromName.Trim()
             : company.SmtpFromName;
-        var username = !string.IsNullOrWhiteSpace(req.SmtpUsername)
-            ? req.SmtpUsername.Trim()
-            : !string.IsNullOrWhiteSpace(company.SmtpUsername)
-                ? company.SmtpUsername.Trim()
-                : outboundEmail;
         var mode = CompanyOutboundEmailService.NormalizeProviderMode(
             !string.IsNullOrWhiteSpace(req.SmtpProviderMode) ? req.SmtpProviderMode : company.SmtpProviderMode);
-        var customHost = !string.IsNullOrWhiteSpace(req.SmtpHost) ? req.SmtpHost.Trim() : company.SmtpHost;
-        var customPort = req.SmtpPort ?? company.SmtpPort;
-        var customUseSsl = req.SmtpUseSsl ?? company.SmtpUseSsl;
 
         if (!CompanyOutboundEmailService.IsLikelyEmail(outboundEmail))
             return BadRequest(new { message = "A valid outbound email address is required." });
-        if (string.IsNullOrWhiteSpace(password))
-            return BadRequest(new { message = "Email password is required." });
 
         var to = (req.ToEmail ?? string.Empty).Trim();
         if (!CompanyOutboundEmailService.IsLikelyEmail(to))
             return BadRequest(new { message = "A valid test recipient email is required." });
 
-        if (string.IsNullOrWhiteSpace(customHost))
-            return BadRequest(new { message = "SMTP host is required (for example smtp.office365.com)." });
-
         try
         {
+            if (mode == CompanyOutboundEmailService.ModeMicrosoftGraph)
+            {
+                var tenantId = !string.IsNullOrWhiteSpace(req.GraphTenantId)
+                    ? req.GraphTenantId.Trim()
+                    : company.GraphTenantId;
+                var clientId = !string.IsNullOrWhiteSpace(req.GraphClientId)
+                    ? req.GraphClientId.Trim()
+                    : company.GraphClientId;
+                var clientSecret = !string.IsNullOrWhiteSpace(req.GraphClientSecret)
+                    ? req.GraphClientSecret.Trim()
+                    : company.GraphClientSecret;
+
+                if (!MicrosoftGraphEmailService.LooksConfigured(tenantId, clientId, clientSecret))
+                {
+                    return BadRequest(new
+                    {
+                        message = "Microsoft Graph requires Directory (tenant) ID, Application (client) ID, and Client secret.",
+                    });
+                }
+
+                await MicrosoftGraphEmailService.SendTestAsync(
+                    tenantId,
+                    clientId,
+                    clientSecret,
+                    outboundEmail,
+                    fromName,
+                    to,
+                    company.Name,
+                    ct);
+
+                company.SmtpProviderMode = mode;
+                company.SmtpFromEmail = outboundEmail;
+                company.SmtpUsername = outboundEmail;
+                company.SmtpFromName = fromName ?? string.Empty;
+                company.GraphTenantId = tenantId;
+                company.GraphClientId = clientId;
+                company.GraphClientSecret = clientSecret;
+                company.SmtpHost = "graph.microsoft.com";
+                company.SmtpPort = 443;
+                company.SmtpUseSsl = true;
+                await db.SaveChangesAsync(ct);
+
+                return Ok(new
+                {
+                    sent = true,
+                    to,
+                    provider = "Microsoft Graph API",
+                    smtpHost = "graph.microsoft.com",
+                    smtpProviderMode = mode,
+                    message = $"Test email sent to {to} via Microsoft Graph. Check the inbox (and spam) to confirm it works.",
+                });
+            }
+
+            var password = !string.IsNullOrWhiteSpace(req.SmtpPassword)
+                ? CompanyOutboundEmailService.NormalizePassword(req.SmtpPassword)
+                : CompanyOutboundEmailService.NormalizePassword(company.SmtpPassword);
+            if (string.IsNullOrWhiteSpace(password))
+                return BadRequest(new { message = "Email password is required." });
+
+            var username = !string.IsNullOrWhiteSpace(req.SmtpUsername)
+                ? req.SmtpUsername.Trim()
+                : !string.IsNullOrWhiteSpace(company.SmtpUsername)
+                    ? company.SmtpUsername.Trim()
+                    : outboundEmail;
+            var customHost = !string.IsNullOrWhiteSpace(req.SmtpHost) ? req.SmtpHost.Trim() : company.SmtpHost;
+            var customPort = req.SmtpPort ?? company.SmtpPort;
+            var customUseSsl = req.SmtpUseSsl ?? company.SmtpUseSsl;
+
+            if (string.IsNullOrWhiteSpace(customHost))
+                return BadRequest(new { message = "SMTP host is required (for example smtp.office365.com)." });
+
             var (used, providerLabel) = await CompanyOutboundEmailService.SendTestAsync(
                 outboundEmail,
                 password,
@@ -224,7 +290,6 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 username,
                 ct);
 
-            // Persist the working server + credentials used for the test.
             company.SmtpProviderMode = mode;
             company.SmtpHost = used.Host;
             company.SmtpPort = used.Port;

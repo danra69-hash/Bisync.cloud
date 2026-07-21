@@ -21,8 +21,8 @@ public class Company
     /// <summary>UTC timestamp when the company tenant was first registered.</summary>
     public DateTime? RegisteredAt { get; set; }
 
-    // --- Outbound email (SMTP) for Purchase Order / vendor mail ---
-    /// <summary>auto | microsoft | google | custom</summary>
+    // --- Outbound email (SMTP / Microsoft Graph) for Purchase Order / vendor mail ---
+    /// <summary>auto | microsoft | microsoft-graph | google | custom</summary>
     public string SmtpProviderMode { get; set; } = "auto";
     public string SmtpHost { get; set; } = string.Empty;
     public int SmtpPort { get; set; } = 587;
@@ -32,6 +32,13 @@ public class Company
     public string SmtpPassword { get; set; } = string.Empty;
     public string SmtpFromEmail { get; set; } = string.Empty;
     public string SmtpFromName { get; set; } = string.Empty;
+
+    /// <summary>Azure AD directory (tenant) ID for Microsoft Graph send.</summary>
+    public string GraphTenantId { get; set; } = string.Empty;
+    /// <summary>Azure AD application (client) ID for Microsoft Graph send.</summary>
+    public string GraphClientId { get; set; } = string.Empty;
+    /// <summary>Azure AD client secret. Never return plaintext on GET; only update when a new value is posted.</summary>
+    public string GraphClientSecret { get; set; } = string.Empty;
 
     /// <summary>JSON array of business type labels.</summary>
     public string BusinessTypesJson { get; set; } = "[]";

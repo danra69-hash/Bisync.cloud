@@ -119,7 +119,11 @@ const blankCompany = (): CompanyDraft => ({
   smtpFromEmail: '',
   smtpFromName: '',
   smtpPasswordSet: false,
-  smtpProviderMode: 'auto',
+  smtpProviderMode: 'microsoft-graph',
+  graphTenantId: '',
+  graphClientId: '',
+  graphClientSecret: '',
+  graphClientSecretSet: false,
 });
 
 function CompanyPanel({
@@ -143,6 +147,7 @@ function CompanyPanel({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [smtpPasswordDraft, setSmtpPasswordDraft] = useState('');
+  const [graphClientSecretDraft, setGraphClientSecretDraft] = useState('');
   const [testToEmail, setTestToEmail] = useState(() => company.email || company.smtpFromEmail || '');
   const [testingEmail, setTestingEmail] = useState(false);
   /** Success/error for outbound test — kept near the Send button (not only the top banner). */
@@ -167,11 +172,16 @@ function CompanyPanel({
       smtpPort: company.smtpPort && company.smtpPort > 0 ? company.smtpPort : defaults.port,
       smtpUseSsl: company.smtpUseSsl ?? defaults.useSsl,
       smtpUsername: (company.smtpUsername ?? '').trim() || email,
+      graphTenantId: company.graphTenantId ?? '',
+      graphClientId: company.graphClientId ?? '',
+      graphClientSecret: '',
+      graphClientSecretSet: Boolean(company.graphClientSecretSet),
     });
     setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
     setVendorPolicyTags(parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
     setModules(parseCompanyModules(company.modulesJson));
     setSmtpPasswordDraft('');
+    setGraphClientSecretDraft('');
     setTestToEmail(company.email || company.smtpFromEmail || '');
     setOutboundFeedback(null);
     setError(null);
@@ -181,7 +191,8 @@ function CompanyPanel({
     setForm(f => ({ ...f, [key]: val }));
     setError(null);
     if (key === 'smtpFromEmail' || key === 'smtpFromName' || key === 'smtpProviderMode'
-      || key === 'smtpHost' || key === 'smtpPort' || key === 'smtpUseSsl' || key === 'smtpUsername') {
+      || key === 'smtpHost' || key === 'smtpPort' || key === 'smtpUseSsl' || key === 'smtpUsername'
+      || key === 'graphTenantId' || key === 'graphClientId') {
       setOutboundFeedback(null);
     }
   }
@@ -214,7 +225,9 @@ function CompanyPanel({
     const outboundEmail = (form.smtpFromEmail ?? '').trim();
     const mode = providerMode;
     const defaults = defaultsForOutboundProvider(mode, outboundEmail);
-    const host = (form.smtpHost ?? '').trim() || defaults.host;
+    const host = mode === 'microsoft-graph'
+      ? 'graph.microsoft.com'
+      : ((form.smtpHost ?? '').trim() || defaults.host);
     const username = (form.smtpUsername ?? '').trim() || outboundEmail;
     return {
       ...form,
@@ -225,11 +238,16 @@ function CompanyPanel({
       smtpProviderMode: mode,
       smtpFromEmail: outboundEmail,
       smtpUsername: username,
-      smtpPassword: smtpPasswordDraft.trim(),
+      smtpPassword: mode === 'microsoft-graph' ? '' : smtpPasswordDraft.trim(),
       smtpFromName: (form.smtpFromName ?? '').trim(),
       smtpHost: host,
-      smtpPort: form.smtpPort && form.smtpPort > 0 ? form.smtpPort : defaults.port,
-      smtpUseSsl: form.smtpUseSsl ?? defaults.useSsl,
+      smtpPort: mode === 'microsoft-graph'
+        ? 443
+        : (form.smtpPort && form.smtpPort > 0 ? form.smtpPort : defaults.port),
+      smtpUseSsl: mode === 'microsoft-graph' ? true : (form.smtpUseSsl ?? defaults.useSsl),
+      graphTenantId: (form.graphTenantId ?? '').trim(),
+      graphClientId: (form.graphClientId ?? '').trim(),
+      graphClientSecret: graphClientSecretDraft.trim(),
     };
   }
 
@@ -242,6 +260,12 @@ function CompanyPanel({
       Boolean(form.smtpPasswordSet),
       providerMode,
       (form.smtpHost ?? '').trim() || defaultsForOutboundProvider(providerMode, outboundAddress).host,
+      {
+        tenantId: form.graphTenantId,
+        clientId: form.graphClientId,
+        clientSecretDraft: graphClientSecretDraft,
+        clientSecretSet: Boolean(form.graphClientSecretSet),
+      },
     );
 
   function applyProviderMode(mode: OutboundProviderMode) {
@@ -249,7 +273,6 @@ function CompanyPanel({
     setForm(f => ({
       ...f,
       smtpProviderMode: mode,
-      // Prefill recommended host/port; custom keeps existing host if already typed.
       smtpHost: mode === 'custom' && (f.smtpHost ?? '').trim()
         ? f.smtpHost
         : defaults.host,
@@ -338,17 +361,24 @@ function CompanyPanel({
       return;
     }
     const address = (form.smtpFromEmail ?? '').trim();
-    if (!outboundEmailReady(
+    const ready = outboundEmailReady(
       address,
       smtpPasswordDraft,
       Boolean(form.smtpPasswordSet),
       providerMode,
       (form.smtpHost ?? '').trim() || defaultsForOutboundProvider(providerMode, address).host,
-    )) {
+      {
+        tenantId: form.graphTenantId,
+        clientId: form.graphClientId,
+        clientSecretDraft: graphClientSecretDraft,
+        clientSecretSet: Boolean(form.graphClientSecretSet),
+      },
+    );
+    if (!ready) {
       setOutboundFeedback({
         kind: 'error',
-        text: !(form.smtpHost ?? '').trim() && !defaultsForOutboundProvider(providerMode, address).host
-          ? 'Enter the SMTP host before testing.'
+        text: providerMode === 'microsoft-graph'
+          ? 'Enter the outbound email, Tenant ID, Client ID, and Client secret before testing.'
           : 'Enter the outbound email, password, and SMTP host before testing.',
       });
       return;
@@ -366,21 +396,25 @@ function CompanyPanel({
     setError(null);
     setOutboundFeedback({
       kind: 'info',
-      text: 'Saving settings, then connecting to the mail server… this can take up to 30 seconds.',
+      text: providerMode === 'microsoft-graph'
+        ? 'Saving settings, then sending via Microsoft Graph…'
+        : 'Saving settings, then connecting to the mail server… this can take up to 30 seconds.',
     });
     try {
       const passwordForTest = smtpPasswordDraft.trim();
+      const graphSecretForTest = graphClientSecretDraft.trim();
       const payload = buildPayload();
-      // Persist credentials first, but do NOT refresh the parent list yet — that used to
-      // remount/resync the panel and wipe the error banner before it was visible.
       const saved = await api.updateCompany(form.id, { ...payload, id: form.id } as Company);
       setForm(f => ({
         ...f,
         ...saved,
         smtpPassword: '',
+        graphClientSecret: '',
         smtpProviderMode: normalizeOutboundProviderMode(saved.smtpProviderMode ?? providerMode),
         smtpPasswordSet: saved.smtpPasswordSet
           ?? (passwordForTest.length > 0 || Boolean(f.smtpPasswordSet)),
+        graphClientSecretSet: saved.graphClientSecretSet
+          ?? (graphSecretForTest.length > 0 || Boolean(f.graphClientSecretSet)),
       }));
 
       setOutboundFeedback({
@@ -394,13 +428,16 @@ function CompanyPanel({
         smtpFromName: (form.smtpFromName ?? '').trim() || undefined,
         smtpUsername: (form.smtpUsername ?? '').trim() || address,
         smtpProviderMode: providerMode,
-        smtpHost: (payload.smtpHost as string) || undefined,
-        smtpPort: Number(payload.smtpPort) || 587,
-        smtpUseSsl: Boolean(payload.smtpUseSsl ?? true),
-        // Pass draft password explicitly so test does not depend on a race with save.
-        smtpPassword: passwordForTest || undefined,
+        smtpHost: providerMode === 'microsoft-graph' ? undefined : ((payload.smtpHost as string) || undefined),
+        smtpPort: providerMode === 'microsoft-graph' ? undefined : (Number(payload.smtpPort) || 587),
+        smtpUseSsl: providerMode === 'microsoft-graph' ? undefined : Boolean(payload.smtpUseSsl ?? true),
+        smtpPassword: providerMode === 'microsoft-graph' ? undefined : (passwordForTest || undefined),
+        graphTenantId: providerMode === 'microsoft-graph' ? (form.graphTenantId ?? '').trim() : undefined,
+        graphClientId: providerMode === 'microsoft-graph' ? (form.graphClientId ?? '').trim() : undefined,
+        graphClientSecret: providerMode === 'microsoft-graph' ? (graphSecretForTest || undefined) : undefined,
       });
       setSmtpPasswordDraft('');
+      setGraphClientSecretDraft('');
       setOutboundFeedback({ kind: 'ok', text: result.message });
       if (result.provider) {
         setForm(f => ({
@@ -413,7 +450,6 @@ function CompanyPanel({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Test email failed.';
       setOutboundFeedback({ kind: 'error', text: message });
-      // Also mirror at top so other save errors stay consistent if user scrolls up.
       setError(message);
     } finally {
       setTestingEmail(false);
@@ -509,8 +545,8 @@ function CompanyPanel({
                 <div>
                   <p className="text-xs font-semibold">Outbound email</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Enter the mailbox details your tenant provides: email, password, provider, and SMTP host.
-                    Choosing a provider prefills the usual host — you can edit everything before testing.
+                    For Microsoft 365 / Exchange, use <span className="font-medium">Microsoft Graph</span> —
+                    no SMTP AUTH required. Enter Azure app credentials from your tenant admin.
                   </p>
                 </div>
               </div>
@@ -518,7 +554,22 @@ function CompanyPanel({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                    Email address *
+                    Mail provider *
+                  </label>
+                  <select
+                    className={selectCls}
+                    value={providerMode}
+                    onChange={e => applyProviderMode(e.target.value as OutboundProviderMode)}
+                    disabled={testingEmail || saving}
+                  >
+                    {OUTBOUND_PROVIDER_MODES.map(m => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    From email address *
                   </label>
                   <input
                     type="email"
@@ -529,7 +580,7 @@ function CompanyPanel({
                       setForm(f => {
                         const mode = normalizeOutboundProviderMode(f.smtpProviderMode);
                         const defaults = defaultsForOutboundProvider(mode, next);
-                        const shouldPrefillHost = mode !== 'custom'
+                        const shouldPrefillHost = mode !== 'custom' && mode !== 'microsoft-graph'
                           && (!(f.smtpHost ?? '').trim()
                             || f.smtpHost === 'smtp.office365.com'
                             || f.smtpHost === 'smtp.gmail.com'
@@ -548,25 +599,8 @@ function CompanyPanel({
                       setError(null);
                       setOutboundFeedback(null);
                     }}
-                    placeholder="orders@company.com"
+                    placeholder="ms@cubevalue.com"
                     autoComplete="off"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                    Password *{form.smtpPasswordSet ? ' (saved)' : ''}
-                  </label>
-                  <input
-                    type="password"
-                    className={inputCls}
-                    value={smtpPasswordDraft}
-                    onChange={e => {
-                      setSmtpPasswordDraft(e.target.value);
-                      setError(null);
-                      setOutboundFeedback(null);
-                    }}
-                    placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'Email password or App Password'}
-                    autoComplete="new-password"
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -580,71 +614,122 @@ function CompanyPanel({
                     placeholder="Company Purchasing"
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                    Mail provider *
-                  </label>
-                  <select
-                    className={selectCls}
-                    value={providerMode}
-                    onChange={e => applyProviderMode(e.target.value as OutboundProviderMode)}
-                    disabled={testingEmail || saving}
-                  >
-                    {OUTBOUND_PROVIDER_MODES.map(m => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                    SMTP host *
-                  </label>
-                  <input
-                    className={inputCls}
-                    value={form.smtpHost ?? ''}
-                    onChange={e => set('smtpHost', e.target.value)}
-                    placeholder="smtp.office365.com"
-                    autoComplete="off"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Microsoft: smtp.office365.com · Google: smtp.gmail.com · Relay: e.g. smtp.sendgrid.net
-                  </p>
-                </div>
-                <div>
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                    Port *
-                  </label>
-                  <input
-                    type="number"
-                    className={inputCls}
-                    value={form.smtpPort ?? 587}
-                    onChange={e => set('smtpPort', Number(e.target.value) || 587)}
-                    min={1}
-                    max={65535}
-                  />
-                </div>
-                <div className="flex items-end pb-1">
-                  <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(form.smtpUseSsl ?? true)}
-                      onChange={e => set('smtpUseSsl', e.target.checked)}
-                    />
-                    Use TLS / SSL
-                  </label>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                    SMTP username
-                  </label>
-                  <input
-                    className={inputCls}
-                    value={form.smtpUsername ?? ''}
-                    onChange={e => set('smtpUsername', e.target.value)}
-                    placeholder="Usually the same as the email address"
-                    autoComplete="off"
-                  />
-                </div>
+
+                {providerMode === 'microsoft-graph' ? (
+                  <>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        Directory (tenant) ID *
+                      </label>
+                      <input
+                        className={inputCls}
+                        value={form.graphTenantId ?? ''}
+                        onChange={e => set('graphTenantId', e.target.value)}
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        Application (client) ID *
+                      </label>
+                      <input
+                        className={inputCls}
+                        value={form.graphClientId ?? ''}
+                        onChange={e => set('graphClientId', e.target.value)}
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        Client secret *{form.graphClientSecretSet ? ' (saved)' : ''}
+                      </label>
+                      <input
+                        type="password"
+                        className={inputCls}
+                        value={graphClientSecretDraft}
+                        onChange={e => {
+                          setGraphClientSecretDraft(e.target.value);
+                          setError(null);
+                          setOutboundFeedback(null);
+                        }}
+                        placeholder={form.graphClientSecretSet ? 'Leave blank to keep saved secret' : 'Azure app client secret value'}
+                        autoComplete="new-password"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        Password *{form.smtpPasswordSet ? ' (saved)' : ''}
+                      </label>
+                      <input
+                        type="password"
+                        className={inputCls}
+                        value={smtpPasswordDraft}
+                        onChange={e => {
+                          setSmtpPasswordDraft(e.target.value);
+                          setError(null);
+                          setOutboundFeedback(null);
+                        }}
+                        placeholder={form.smtpPasswordSet ? 'Leave blank to keep saved password' : 'Email password or App Password'}
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        SMTP host *
+                      </label>
+                      <input
+                        className={inputCls}
+                        value={form.smtpHost ?? ''}
+                        onChange={e => set('smtpHost', e.target.value)}
+                        placeholder="smtp.office365.com"
+                        autoComplete="off"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Microsoft: smtp.office365.com · Google: smtp.gmail.com · Relay: e.g. smtp.sendgrid.net
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        Port *
+                      </label>
+                      <input
+                        type="number"
+                        className={inputCls}
+                        value={form.smtpPort ?? 587}
+                        onChange={e => set('smtpPort', Number(e.target.value) || 587)}
+                        min={1}
+                        max={65535}
+                      />
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(form.smtpUseSsl ?? true)}
+                          onChange={e => set('smtpUseSsl', e.target.checked)}
+                        />
+                        Use TLS / SSL
+                      </label>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                        SMTP username
+                      </label>
+                      <input
+                        className={inputCls}
+                        value={form.smtpUsername ?? ''}
+                        onChange={e => set('smtpUsername', e.target.value)}
+                        placeholder="Usually the same as the email address"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {providerInfo && (
@@ -682,7 +767,9 @@ function CompanyPanel({
                         ? 'Save the company first'
                         : canTestOutbound
                           ? 'Save and send a test email'
-                          : 'Enter email, password, and SMTP host first'
+                          : providerMode === 'microsoft-graph'
+                            ? 'Enter email and Azure Graph credentials first'
+                            : 'Enter email, password, and SMTP host first'
                     }
                     className="inline-flex items-center justify-center gap-1.5 shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -698,13 +785,18 @@ function CompanyPanel({
                 {!isNew && !canTestOutbound && (
                   <p className="text-[11px] text-amber-800 dark:text-amber-300">
                     {!outboundAddress.includes('@')
-                      ? 'Enter the outbound email address above.'
-                      : !(smtpPasswordDraft.trim() || form.smtpPasswordSet)
-                        ? 'Enter the email password (Google/Microsoft MFA usually needs an App Password).'
-                        : !(form.smtpHost ?? '').trim()
-                            && !defaultsForOutboundProvider(providerMode, outboundAddress).host
-                          ? 'Enter the SMTP host.'
-                          : 'Complete outbound email settings to send a test.'}
+                      ? 'Enter the from email address above.'
+                      : providerMode === 'microsoft-graph'
+                        ? (!(form.graphTenantId ?? '').trim() || !(form.graphClientId ?? '').trim()
+                          ? 'Enter Azure Tenant ID and Client ID.'
+                          : !(graphClientSecretDraft.trim() || form.graphClientSecretSet)
+                            ? 'Enter the Azure client secret.'
+                            : 'Complete Microsoft Graph settings to send a test.')
+                        : !(smtpPasswordDraft.trim() || form.smtpPasswordSet)
+                          ? 'Enter the email password (Google/Microsoft MFA usually needs an App Password).'
+                          : !(form.smtpHost ?? '').trim()
+                            ? 'Enter the SMTP host.'
+                            : 'Complete outbound email settings to send a test.'}
                   </p>
                 )}
                 {outboundFeedback && (
