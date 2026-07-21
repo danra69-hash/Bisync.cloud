@@ -168,8 +168,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
                 ? company.SmtpFromEmail.Trim()
                 : (company.SmtpUsername ?? string.Empty).Trim();
         var password = !string.IsNullOrWhiteSpace(req.SmtpPassword)
-            ? req.SmtpPassword.Trim()
-            : (company.SmtpPassword ?? string.Empty);
+            ? CompanyOutboundEmailService.NormalizePassword(req.SmtpPassword)
+            : CompanyOutboundEmailService.NormalizePassword(company.SmtpPassword);
         var fromName = !string.IsNullOrWhiteSpace(req.SmtpFromName)
             ? req.SmtpFromName.Trim()
             : company.SmtpFromName;
@@ -196,7 +196,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             // Persist the working auto-detected server + credentials used for the test.
             company.SmtpHost = used.Host;
             company.SmtpPort = used.Port;
-            company.SmtpUseSsl = used.UseSsl;
+            company.SmtpUseSsl = used.Security is MailKit.Security.SecureSocketOptions.StartTls
+                or MailKit.Security.SecureSocketOptions.SslOnConnect;
             company.SmtpUsername = used.Username;
             company.SmtpFromEmail = used.FromEmail;
             company.SmtpFromName = used.FromName;
