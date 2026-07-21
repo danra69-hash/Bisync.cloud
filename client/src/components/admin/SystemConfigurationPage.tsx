@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CompaniesTab } from './CompaniesTab';
 import { AccessControlTab } from './AccessControlTab';
-import { CogsAuditTab } from './CogsAuditTab';
 import { SystemAuditTrailTab } from './SystemAuditTrailTab';
 import { HrConfigTabBar } from './HrConfigTabBar';
 import { LocationsConfigTab } from './LocationsConfigTab';
@@ -17,7 +16,7 @@ type Props = {
 
 export function SystemConfigurationPage({
   selectedCompanyId,
-  selectedLocationIds,
+  selectedLocationIds: _selectedLocationIds,
   onOrgDataChanged,
 }: Props) {
   const [tab, setTab] = useState<SystemHrConfigTabId>('companies');
@@ -44,9 +43,6 @@ export function SystemConfigurationPage({
         <LocationsConfigTab selectedCompanyId={selectedCompanyId} onOrgDataChanged={onOrgDataChanged} />
       )}
       {tab === 'accessControl' && <AccessControlTab />}
-      {tab === 'cogsAudit' && (
-        <CogsAuditTab selectedCompanyId={selectedCompanyId} selectedLocationIds={selectedLocationIds} />
-      )}
       {tab === 'auditTrail' && <SystemAuditTrailTab />}
     </div>
   );

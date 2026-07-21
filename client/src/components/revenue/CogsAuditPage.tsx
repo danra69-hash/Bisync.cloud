@@ -16,7 +16,7 @@ import { formatCountryNumber } from '../../utils/numberFormat';
 import {
   currentStockCardMonth,
   formatStockCardMonthLabel,
-} from '../revenue/stockCardPeriod';
+} from './stockCardPeriod';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
@@ -45,7 +45,7 @@ function last24MonthOptions(): string[] {
   return options;
 }
 
-export function CogsAuditTab({ selectedCompanyId, selectedLocationIds }: Props) {
+export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const countryCode = useOrgCountryCode();
   const [screen, setScreen] = useState<Screen>('summary');
   const [period, setPeriod] = useState(currentStockCardMonth);
