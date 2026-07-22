@@ -726,6 +726,31 @@ public class SalesModuleController(
         };
         db.SalesModuleDiaryEntries.Add(row);
         await db.SaveChangesAsync(ct);
+
+        // Keep Client Update (and Overview metrics) aligned with diary activity.
+        var contactTuples = contacts
+            .Select(c => (c.name, c.position))
+            .ToList();
+        try
+        {
+            await clientUpdateService.ApplyDiaryEntryAsync(
+                member.Name,
+                activity,
+                companyName,
+                row.BrandName,
+                row.LocationVisited,
+                row.EmailsSent,
+                statuses,
+                row.ContactType,
+                row.ContactDate,
+                contactTuples,
+                ct);
+        }
+        catch
+        {
+            // Diary is already saved; do not fail the request if Client Update sync fails.
+        }
+
         return Ok(MapDiaryEntry(row));
     }
 

@@ -138,6 +138,7 @@ export function SalesDiaryPanel({
           Hunter {hunterName}
           {companies.length === 0 ? ' · no tagged companies yet' : ''}
           {activity === 'Sales Call' ? ' · Cold Call / Email Blast do not require tagged company' : ''}
+          {' · '}entries also update Client Update
         </p>
       </div>
 
