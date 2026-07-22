@@ -669,12 +669,51 @@ export interface SalesModuleAppointment {
   location: string;
   engagedUserId: number;
   engagedUserEmail: string;
+  salesTeamMemberId?: number | null;
   createdAt: string;
   outlookEventId?: string;
   outlookWebLink?: string | null;
   outlookSynced?: boolean;
   outlookSyncError?: string | null;
   outlookSyncedAt?: string | null;
+}
+
+export interface SalesModuleTeamMember {
+  id: number;
+  name: string;
+  email: string;
+  active: boolean;
+  calendarSyncEnabled: boolean;
+  lastSyncError?: string | null;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  calendarWired?: boolean;
+}
+
+export interface SalesModuleTeamCalendarEvent {
+  id: string;
+  source: 'office365';
+  salesTeamMemberId: number;
+  salesTeamMemberName: string;
+  salesTeamMemberEmail: string;
+  outlookEventId: string;
+  title: string;
+  notes: string;
+  startsAt: string;
+  endsAt: string;
+  location: string;
+  outlookWebLink?: string | null;
+  isAllDay?: boolean;
+  readOnly?: boolean;
+}
+
+export interface SalesModuleTeamCalendarsResponse {
+  configured: boolean;
+  message: string;
+  events: SalesModuleTeamCalendarEvent[];
+  errors: Array<{ salesTeamMemberId: number; name: string; email: string; error: string }>;
+  members: SalesModuleTeamMember[];
 }
 
 export interface UpsertSalesModuleAppointmentPayload {
@@ -687,6 +726,7 @@ export interface UpsertSalesModuleAppointmentPayload {
   location: string;
   engagedUserId: number;
   engagedUserEmail: string;
+  salesTeamMemberId?: number | null;
 }
 
 export interface B2bSalesOrderLine {
@@ -2348,6 +2388,27 @@ export const api = {
     fetchJsonWithMethod<SalesModuleAppointment>('/api/sales-module/appointments', 'POST', data),
   deleteSalesModuleAppointment: (id: number) =>
     fetchJsonWithMethod<void>(`/api/sales-module/appointments/${id}`, 'DELETE'),
+  salesModuleTeam: () => fetchJson<SalesModuleTeamMember[]>('/api/sales-module/team'),
+  createSalesModuleTeamMember: (data: { name: string; email: string; active?: boolean; calendarSyncEnabled?: boolean }) =>
+    fetchJsonWithMethod<SalesModuleTeamMember>('/api/sales-module/team', 'POST', data),
+  updateSalesModuleTeamMember: (
+    id: number,
+    data: { name: string; email: string; active: boolean; calendarSyncEnabled: boolean },
+  ) => fetchJsonWithMethod<SalesModuleTeamMember>(`/api/sales-module/team/${id}`, 'PUT', data),
+  deleteSalesModuleTeamMember: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/sales-module/team/${id}`, 'DELETE'),
+  testSalesModuleTeamMemberCalendar: (id: number) =>
+    fetchJsonWithMethod<{ ok: boolean; message: string; member?: SalesModuleTeamMember | null }>(
+      `/api/sales-module/team/${id}/test-calendar`,
+      'POST',
+    ),
+  salesModuleTeamCalendars: (opts?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.from) params.set('from', opts.from);
+    if (opts?.to) params.set('to', opts.to);
+    const q = params.toString();
+    return fetchJson<SalesModuleTeamCalendarsResponse>(`/api/sales-module/team-calendars${q ? `?${q}` : ''}`);
+  },
   b2bSalesOrders: (companyId?: number) =>
     fetchJson<B2bSalesOrder[]>(`/api/b2b-sales-orders${companyId ? `?companyId=${companyId}` : ''}`),
   b2bSalesOrder: (id: number) =>

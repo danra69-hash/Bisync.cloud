@@ -37,6 +37,9 @@ public class SalesModuleAppointment
     public string EngagedUserEmail { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Optional Sales Module team member this appointment is assigned to.</summary>
+    public int? SalesTeamMemberId { get; set; }
+
     /// <summary>Microsoft Graph event id on the Cubevalue Office 365 calendar (empty when not synced).</summary>
     public string OutlookEventId { get; set; } = string.Empty;
     public string OutlookWebLink { get; set; } = string.Empty;

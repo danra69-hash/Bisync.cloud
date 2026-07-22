@@ -1428,5 +1428,17 @@ public class UpsertSalesModuleAppointmentRequest
     public int EngagedUserId { get; set; }
     [MaxLength(256)]
     public string EngagedUserEmail { get; set; } = string.Empty;
+    /// <summary>Optional Sales Module team member assigned to this appointment.</summary>
+    public int? SalesTeamMemberId { get; set; }
+}
+
+public class UpsertSalesModuleTeamMemberRequest
+{
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [Required, MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+    public bool Active { get; set; } = true;
+    public bool CalendarSyncEnabled { get; set; } = true;
 }
 

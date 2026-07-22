@@ -113,6 +113,19 @@ public class SalesModuleController(
             .FirstOrDefaultAsync(c => c.Id == request.SalesModuleCustomerId && c.CompanyId == request.CompanyId, ct);
         if (customer is null) return BadRequest(new { message = "Sales Module customer not found." });
 
+        SalesModuleTeamMember? teamMember = null;
+        if (request.SalesTeamMemberId is > 0)
+        {
+            teamMember = (await calendarSync.ListTeamAsync(ct))
+                .FirstOrDefault(m => m.Id == request.SalesTeamMemberId.Value && m.Active);
+            if (teamMember is null)
+                return BadRequest(new { message = "Sales team member not found." });
+        }
+
+        var engagedEmail = !string.IsNullOrWhiteSpace(request.EngagedUserEmail)
+            ? request.EngagedUserEmail.Trim().ToLowerInvariant()
+            : teamMember?.Email ?? string.Empty;
+
         var row = new SalesModuleAppointment
         {
             CompanyId = request.CompanyId,
@@ -123,7 +136,8 @@ public class SalesModuleController(
             EndsAt = DateTime.SpecifyKind(request.EndsAt, DateTimeKind.Utc),
             Location = (request.Location ?? string.Empty).Trim(),
             EngagedUserId = request.EngagedUserId,
-            EngagedUserEmail = (request.EngagedUserEmail ?? string.Empty).Trim().ToLowerInvariant(),
+            EngagedUserEmail = engagedEmail,
+            SalesTeamMemberId = teamMember?.Id,
             CreatedAt = DateTime.UtcNow,
         };
         db.SalesModuleAppointments.Add(row);
@@ -152,6 +166,86 @@ public class SalesModuleController(
     {
         var settings = await calendarSync.GetOrCreateAsync(ct);
         return Ok(calendarSync.ToPublicDto(settings));
+    }
+
+    [HttpGet("team")]
+    public async Task<ActionResult<IEnumerable<object>>> GetTeam(CancellationToken ct)
+    {
+        var rows = await calendarSync.ListTeamAsync(ct);
+        return Ok(rows.Select(SalesModuleCalendarSyncService.MapTeamMember));
+    }
+
+    [HttpPost("team")]
+    public async Task<ActionResult<object>> CreateTeamMember(
+        [FromBody] UpsertSalesModuleTeamMemberRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var row = await calendarSync.CreateTeamMemberAsync(request.Name, request.Email, ct);
+            return Ok(SalesModuleCalendarSyncService.MapTeamMember(row));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPut("team/{id:int}")]
+    public async Task<ActionResult<object>> UpdateTeamMember(
+        int id,
+        [FromBody] UpsertSalesModuleTeamMemberRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var row = await calendarSync.UpdateTeamMemberAsync(
+                id,
+                request.Name,
+                request.Email,
+                request.Active,
+                request.CalendarSyncEnabled,
+                ct);
+            if (row is null) return NotFound();
+            return Ok(SalesModuleCalendarSyncService.MapTeamMember(row));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("team/{id:int}")]
+    public async Task<ActionResult> DeleteTeamMember(int id, CancellationToken ct)
+    {
+        var ok = await calendarSync.DeleteTeamMemberAsync(id, ct);
+        return ok ? NoContent() : NotFound();
+    }
+
+    [HttpPost("team/{id:int}/test-calendar")]
+    public async Task<ActionResult<object>> TestTeamMemberCalendar(int id, CancellationToken ct)
+    {
+        var (ok, message) = await calendarSync.TestTeamMemberAsync(id, ct);
+        var members = await calendarSync.ListTeamAsync(ct);
+        var member = members.FirstOrDefault(m => m.Id == id);
+        return Ok(new
+        {
+            ok,
+            message,
+            member = member is null ? null : SalesModuleCalendarSyncService.MapTeamMember(member),
+        });
+    }
+
+    [HttpGet("team-calendars")]
+    public async Task<ActionResult<object>> GetTeamCalendars(
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        CancellationToken ct = default)
+    {
+        var rangeStart = from ?? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var rangeEnd = to ?? rangeStart.AddMonths(2);
+        var payload = await calendarSync.PullTeamCalendarsAsync(rangeStart, rangeEnd, ct);
+        return Ok(payload);
     }
 
     async Task<string> NextCustomerExternalIdAsync(int companyId, CancellationToken ct)
@@ -255,6 +349,7 @@ public class SalesModuleController(
         a.Location,
         a.EngagedUserId,
         a.EngagedUserEmail,
+        salesTeamMemberId = a.SalesTeamMemberId,
         createdAt = a.CreatedAt,
         outlookEventId = a.OutlookEventId,
         outlookWebLink = string.IsNullOrWhiteSpace(a.OutlookWebLink) ? null : a.OutlookWebLink,

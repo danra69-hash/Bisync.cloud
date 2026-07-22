@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, Users, X } from 'lucide-react';
 import {
   api,
   type Company,
   type SalesModuleAppointment,
   type SalesModuleCustomer,
+  type SalesModuleTeamCalendarEvent,
+  type SalesModuleTeamMember,
   type UpsertSalesModuleCustomerPayload,
 } from '../../api';
 import { pageShellClass } from '../layout/pageLayout';
@@ -25,8 +27,13 @@ import {
   toCustomerPayload,
 } from '../../data/salesModule';
 import { SalesModuleOffice365SyncPanel } from '../dev/SalesModuleOffice365SyncPanel';
+import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 
 type TabId = 'customers' | 'calendar';
+
+type CalendarItem =
+  | { kind: 'local'; key: string; startsAt: string; endsAt: string; title: string; appointment: SalesModuleAppointment }
+  | { kind: 'o365'; key: string; startsAt: string; endsAt: string; title: string; event: SalesModuleTeamCalendarEvent };
 
 const TABS = [
   { id: 'customers' as const, label: 'Customers' },
@@ -87,6 +94,11 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
   const [apptStart, setApptStart] = useState('');
   const [apptEnd, setApptEnd] = useState('');
   const [saving, setSaving] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<SalesModuleTeamMember[]>([]);
+  const [teamEvents, setTeamEvents] = useState<SalesModuleTeamCalendarEvent[]>([]);
+  const [teamSyncMessage, setTeamSyncMessage] = useState<string | null>(null);
+  const [apptTeamMemberId, setApptTeamMemberId] = useState<number | ''>('');
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const engagedUserEmail = sessionEmail.trim();
@@ -103,6 +115,18 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
       })
       .catch(err => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load companies');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.salesModuleTeam()
+      .then(rows => {
+        if (!cancelled) setTeamMembers(rows);
+      })
+      .catch(() => {
+        /* team list is optional until Graph is configured */
       });
     return () => { cancelled = true; };
   }, []);
@@ -130,11 +154,28 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     setAppointments(rows);
   }, [selectedCompanyId, monthCursor]);
 
+  const loadTeamCalendars = useCallback(async () => {
+    const from = startOfMonth(monthCursor);
+    const to = new Date(from.getFullYear(), from.getMonth() + 2, 1);
+    try {
+      const result = await api.salesModuleTeamCalendars({
+        from: from.toISOString(),
+        to: to.toISOString(),
+      });
+      setTeamEvents(result.events ?? []);
+      setTeamMembers(result.members ?? []);
+      setTeamSyncMessage(result.message || null);
+    } catch (err) {
+      setTeamEvents([]);
+      setTeamSyncMessage(err instanceof Error ? err.message : 'Failed to sync sales team calendars');
+    }
+  }, [monthCursor]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([loadCustomers(), loadAppointments()])
+    Promise.all([loadCustomers(), loadAppointments(), loadTeamCalendars()])
       .catch(err => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Sales Module');
       })
@@ -142,25 +183,52 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [loadCustomers, loadAppointments]);
+  }, [loadCustomers, loadAppointments, loadTeamCalendars]);
 
-  const appointmentsByDay = useMemo(() => {
-    const map = new Map<string, SalesModuleAppointment[]>();
-    for (const appt of appointments) {
-      const d = new Date(appt.startsAt);
+  const calendarItemsByDay = useMemo(() => {
+    const map = new Map<string, CalendarItem[]>();
+    const push = (item: CalendarItem) => {
+      const d = new Date(item.startsAt);
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       const list = map.get(key) ?? [];
-      list.push(appt);
+      list.push(item);
       map.set(key, list);
+    };
+    for (const appt of appointments) {
+      push({
+        kind: 'local',
+        key: `local-${appt.id}`,
+        startsAt: appt.startsAt,
+        endsAt: appt.endsAt,
+        title: appt.title,
+        appointment: appt,
+      });
+    }
+    const localOutlookIds = new Set(
+      appointments.map(a => a.outlookEventId).filter((id): id is string => Boolean(id)),
+    );
+    for (const ev of teamEvents) {
+      if (ev.outlookEventId && localOutlookIds.has(ev.outlookEventId)) continue;
+      push({
+        kind: 'o365',
+        key: ev.id,
+        startsAt: ev.startsAt,
+        endsAt: ev.endsAt,
+        title: ev.title,
+        event: ev,
+      });
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
     }
     return map;
-  }, [appointments]);
+  }, [appointments, teamEvents]);
 
-  const selectedDayAppointments = useMemo(() => {
+  const selectedDayItems = useMemo(() => {
     if (!selectedDay) return [];
     const key = `${selectedDay.getFullYear()}-${selectedDay.getMonth()}-${selectedDay.getDate()}`;
-    return appointmentsByDay.get(key) ?? [];
-  }, [appointmentsByDay, selectedDay]);
+    return calendarItemsByDay.get(key) ?? [];
+  }, [calendarItemsByDay, selectedDay]);
 
   function openCreateCustomer() {
     setEditing(null);
@@ -192,6 +260,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     setApptNotes('');
     setApptLocation('');
     setApptCustomerId(customers[0]?.id ?? '');
+    setApptTeamMemberId(teamMembers.find(m => m.active)?.id ?? '');
     setApptStart(toLocalInputValue(start.toISOString()));
     setApptEnd(toLocalInputValue(end.toISOString()));
     setApptFormOpen(true);
@@ -205,6 +274,9 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     setSaving(true);
     setError(null);
     try {
+      const member = typeof apptTeamMemberId === 'number'
+        ? teamMembers.find(m => m.id === apptTeamMemberId)
+        : undefined;
       const created = await api.createSalesModuleAppointment({
         companyId: selectedCompanyId,
         salesModuleCustomerId: Number(apptCustomerId),
@@ -214,10 +286,12 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
         startsAt: new Date(apptStart).toISOString(),
         endsAt: new Date(apptEnd).toISOString(),
         engagedUserId: 0,
-        engagedUserEmail,
+        engagedUserEmail: member?.email || engagedUserEmail,
+        salesTeamMemberId: member?.id ?? null,
       });
       setAppointments(prev => [...prev, created].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
       setApptFormOpen(false);
+      void loadTeamCalendars();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save appointment');
     } finally {
@@ -229,6 +303,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     try {
       await api.deleteSalesModuleAppointment(id);
       setAppointments(prev => prev.filter(a => a.id !== id));
+      void loadTeamCalendars();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete appointment');
     }
@@ -270,6 +345,17 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            onClick={() => setTeamOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
+          >
+            <Users size={12} />
+            Sales Team
+            {teamMembers.length > 0 ? (
+              <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
+            ) : null}
+          </button>
         </div>
         <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
         {tab === 'customers' ? (
@@ -317,6 +403,9 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
             </button>
           </div>
         )}
+        {tab === 'calendar' && teamSyncMessage ? (
+          <p className="text-[11px] text-muted-foreground">{teamSyncMessage}</p>
+        ) : null}
       </PageStickyFilters>
 
       {error ? (
@@ -398,7 +487,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
               {cells.map((day, idx) => {
                 if (!day) return <div key={`empty-${idx}`} className="min-h-[5.5rem] border-b border-r border-border/50 bg-muted/10" />;
                 const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
-                const dayAppts = appointmentsByDay.get(key) ?? [];
+                const dayItems = calendarItemsByDay.get(key) ?? [];
                 const selected = selectedDay ? sameDay(day, selectedDay) : false;
                 const isToday = sameDay(day, new Date());
                 return (
@@ -416,13 +505,21 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
                       {day.getDate()}
                     </span>
                     <div className="mt-1 space-y-0.5">
-                      {dayAppts.slice(0, 3).map(a => (
-                        <p key={a.id} className="text-[10px] truncate rounded bg-muted px-1 py-0.5" title={a.title}>
-                          {a.title}
+                      {dayItems.slice(0, 3).map(item => (
+                        <p
+                          key={item.key}
+                          className={`text-[10px] truncate rounded px-1 py-0.5 ${
+                            item.kind === 'o365' ? 'bg-sky-500/15 text-sky-900 dark:text-sky-200' : 'bg-muted'
+                          }`}
+                          title={item.kind === 'o365'
+                            ? `${item.title} · ${item.event.salesTeamMemberName}`
+                            : item.title}
+                        >
+                          {item.title}
                         </p>
                       ))}
-                      {dayAppts.length > 3 ? (
-                        <p className="text-[10px] text-muted-foreground">+{dayAppts.length - 3} more</p>
+                      {dayItems.length > 3 ? (
+                        <p className="text-[10px] text-muted-foreground">+{dayItems.length - 3} more</p>
                       ) : null}
                     </div>
                   </button>
@@ -448,47 +545,78 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
                 </button>
               ) : null}
             </div>
-            {selectedDayAppointments.length === 0 ? (
+            {selectedDayItems.length === 0 ? (
               <p className="text-xs text-muted-foreground">No appointments.</p>
             ) : (
               <ul className="space-y-2">
-                {selectedDayAppointments.map(a => (
-                  <li key={a.id} className="rounded-md border border-border px-2 py-2 space-y-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-semibold">{a.title}</p>
-                      <button
-                        type="button"
-                        onClick={() => void removeAppointment(a.id)}
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label="Delete appointment"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">{a.customerName}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {new Date(a.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      {' – '}
-                      {new Date(a.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    {a.location ? <p className="text-[11px] text-muted-foreground">{a.location}</p> : null}
-                    {a.outlookSynced ? (
-                      <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
-                        Synced to Office 365
-                        {a.outlookWebLink ? (
-                          <>
-                            {' · '}
-                            <a href={a.outlookWebLink} target="_blank" rel="noreferrer" className="underline">
-                              Open
-                            </a>
-                          </>
+                {selectedDayItems.map(item => (
+                  <li key={item.key} className="rounded-md border border-border px-2 py-2 space-y-1">
+                    {item.kind === 'local' ? (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-semibold">{item.appointment.title}</p>
+                          <button
+                            type="button"
+                            onClick={() => void removeAppointment(item.appointment.id)}
+                            className="text-muted-foreground hover:text-destructive"
+                            aria-label="Delete appointment"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{item.appointment.customerName}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {new Date(item.appointment.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {' – '}
+                          {new Date(item.appointment.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        {item.appointment.location ? (
+                          <p className="text-[11px] text-muted-foreground">{item.appointment.location}</p>
                         ) : null}
-                      </p>
-                    ) : a.outlookSyncError ? (
-                      <p className="text-[10px] text-destructive" title={a.outlookSyncError}>
-                        Office 365 sync failed
-                      </p>
-                    ) : null}
+                        {item.appointment.outlookSynced ? (
+                          <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                            Synced to Office 365
+                            {item.appointment.outlookWebLink ? (
+                              <>
+                                {' · '}
+                                <a href={item.appointment.outlookWebLink} target="_blank" rel="noreferrer" className="underline">
+                                  Open
+                                </a>
+                              </>
+                            ) : null}
+                          </p>
+                        ) : item.appointment.outlookSyncError ? (
+                          <p className="text-[10px] text-destructive" title={item.appointment.outlookSyncError}>
+                            Office 365 sync failed
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold">{item.event.title}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {item.event.salesTeamMemberName} · Office 365
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {item.event.isAllDay
+                            ? 'All day'
+                            : `${new Date(item.event.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – ${new Date(item.event.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                        </p>
+                        {item.event.location ? (
+                          <p className="text-[11px] text-muted-foreground">{item.event.location}</p>
+                        ) : null}
+                        {item.event.outlookWebLink ? (
+                          <a
+                            href={item.event.outlookWebLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-sky-700 dark:text-sky-300 underline"
+                          >
+                            Open in Outlook
+                          </a>
+                        ) : null}
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -496,6 +624,15 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
           </div>
         </div>
       )}
+
+      <SalesModuleTeamPanel
+        open={teamOpen}
+        onClose={() => {
+          setTeamOpen(false);
+          void loadTeamCalendars();
+        }}
+        onChanged={setTeamMembers}
+      />
 
       {panelOpen ? (
         <SalesCustomerPanel
@@ -528,6 +665,19 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
                 <option value="">Select customer…</option>
                 {customers.map(c => (
                   <option key={c.id} value={c.id}>{c.companyName}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Sales person</span>
+              <select
+                value={apptTeamMemberId}
+                onChange={e => setApptTeamMemberId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              >
+                <option value="">Unassigned</option>
+                {teamMembers.filter(m => m.active).map(m => (
+                  <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
                 ))}
               </select>
             </label>

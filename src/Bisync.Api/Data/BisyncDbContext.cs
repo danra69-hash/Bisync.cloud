@@ -40,6 +40,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
     public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
     public DbSet<SalesModuleCalendarSettings> SalesModuleCalendarSettings => Set<SalesModuleCalendarSettings>();
+    public DbSet<SalesModuleTeamMember> SalesModuleTeamMembers => Set<SalesModuleTeamMember>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -173,6 +174,13 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.UpdatedByEmail).HasMaxLength(256);
             e.Property(x => x.LastTestAt).HasMaxLength(64);
             e.Property(x => x.LastTestResult).HasMaxLength(500);
+        });
+        modelBuilder.Entity<SalesModuleTeamMember>(e =>
+        {
+            e.HasIndex(x => x.Email).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Email).HasMaxLength(256);
+            e.Property(x => x.LastSyncError).HasMaxLength(500);
         });
         modelBuilder.Entity<Company>(e =>
         {
