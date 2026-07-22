@@ -2538,6 +2538,16 @@ export const api = {
     const q = params.toString();
     return fetchJson<SalesModuleClientUpdate[]>(`/api/sales-module/client-updates${q ? `?${q}` : ''}`);
   },
+  patchSalesModuleClientUpdate: (
+    id: number,
+    data: {
+      dateCreated?: string | null;
+      hunter?: string | null;
+      company?: string | null;
+      brand?: string | null;
+      locationCount?: number | null;
+    },
+  ) => fetchJsonWithMethod<SalesModuleClientUpdate>(`/api/sales-module/client-updates/${id}`, 'PATCH', data),
   importSalesModuleClientUpdates: async (file: File) => {
     const form = new FormData();
     form.append('file', file);

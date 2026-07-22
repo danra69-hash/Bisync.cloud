@@ -119,6 +119,65 @@ public class SalesModuleClientUpdateService(
         return rows.ConvertAll(Map);
     }
 
+    /// <summary>
+    /// Fill blank identity fields only: DateCreated, Hunter, Company, Brand, LocationCount.
+    /// Non-blank existing values are left unchanged.
+    /// </summary>
+    public async Task<object> PatchBlankFieldsAsync(
+        int id,
+        DateTime? dateCreated,
+        string? hunter,
+        string? company,
+        string? brand,
+        int? locationCount,
+        CancellationToken ct = default)
+    {
+        await EnsureSchemaAsync(ct);
+        var row = await db.SalesModuleClientUpdates.FirstOrDefaultAsync(r => r.Id == id, ct)
+            ?? throw new InvalidOperationException("Client Update row not found.");
+
+        var changed = false;
+
+        if (!row.DateCreated.HasValue && dateCreated.HasValue)
+        {
+            row.DateCreated = DateTime.SpecifyKind(dateCreated.Value.Date, DateTimeKind.Utc);
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(row.Hunter) && !string.IsNullOrWhiteSpace(hunter))
+        {
+            row.Hunter = hunter.Trim();
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(row.Company) && !string.IsNullOrWhiteSpace(company))
+        {
+            row.Company = company.Trim();
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(row.Brand) && !string.IsNullOrWhiteSpace(brand))
+        {
+            row.Brand = brand.Trim();
+            changed = true;
+        }
+
+        if (!row.LocationCount.HasValue && locationCount.HasValue)
+        {
+            if (locationCount.Value < 0)
+                throw new InvalidOperationException("No. of Location cannot be negative.");
+            row.LocationCount = locationCount.Value;
+            changed = true;
+        }
+
+        if (!changed)
+            return Map(row);
+
+        await db.SaveChangesAsync(ct);
+        InvalidateListCache();
+        return Map(row);
+    }
+
     /// <summary>Monday of last week through today (UTC date).</summary>
     public static (DateTime From, DateTime ToInclusive) ClientUpdateListWindow(DateTime utcToday)
     {

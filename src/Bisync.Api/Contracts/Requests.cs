@@ -1472,3 +1472,16 @@ public class UpsertSalesModuleCompanyRequest
     public List<int> SalesTeamMemberIds { get; set; } = [];
 }
 
+/// <summary>Fill blank Client Update identity fields only (non-blank values are ignored).</summary>
+public class PatchSalesModuleClientUpdateRequest
+{
+    public DateTime? DateCreated { get; set; }
+    [MaxLength(200)]
+    public string? Hunter { get; set; }
+    [MaxLength(200)]
+    public string? Company { get; set; }
+    [MaxLength(200)]
+    public string? Brand { get; set; }
+    public int? LocationCount { get; set; }
+}
+

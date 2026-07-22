@@ -463,6 +463,35 @@ public class SalesModuleController(
     }
 
     /// <summary>
+    /// Fill blank Client Update identity fields (Date Created, Hunter, Company, Brand, No. of Location).
+    /// Existing non-blank values are not overwritten.
+    /// </summary>
+    [HttpPatch("client-updates/{id:int}")]
+    public async Task<ActionResult<object>> PatchClientUpdate(
+        int id,
+        [FromBody] PatchSalesModuleClientUpdateRequest request,
+        CancellationToken ct = default)
+    {
+        if (id <= 0) return BadRequest(new { message = "id is required." });
+        try
+        {
+            var row = await clientUpdateService.PatchBlankFieldsAsync(
+                id,
+                request.DateCreated,
+                request.Hunter,
+                request.Company,
+                request.Brand,
+                request.LocationCount,
+                ct);
+            return Ok(row);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Import only the "Weekly Update" sheet from Instant Sales Update.xlsx (replaces existing Client Update rows).
     /// </summary>
     [HttpPost("client-updates/import")]
