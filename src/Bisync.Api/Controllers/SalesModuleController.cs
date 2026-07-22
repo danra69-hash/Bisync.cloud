@@ -558,14 +558,27 @@ public class SalesModuleController(
     /// <summary>
     /// List Client Update rows for last week plus week-to-date only
     /// (Instant Sales Update → Weekly Update sheet).
+    /// Prefer salesTeamMemberId to scope by Sales Team Hunter.
     /// </summary>
     [HttpGet("client-updates")]
     public async Task<ActionResult<IEnumerable<object>>> GetClientUpdates(
         [FromQuery] string? hunter = null,
+        [FromQuery] int? salesTeamMemberId = null,
         CancellationToken ct = default)
     {
-        var rows = await clientUpdateService.ListAsync(hunter, ct);
+        var rows = await clientUpdateService.ListAsync(hunter, salesTeamMemberId, ct);
         return Ok(rows);
+    }
+
+    /// <summary>
+    /// Rematch free-text Client Update Hunter values (manual upload) to Sales Team members.
+    /// Normalizes Hunter to the team member display name and sets SalesTeamMemberId.
+    /// </summary>
+    [HttpPost("client-updates/rematch-hunters")]
+    public async Task<ActionResult<object>> RematchClientUpdateHunters(CancellationToken ct = default)
+    {
+        var result = await clientUpdateService.RematchHuntersAsync(ct);
+        return Ok(result);
     }
 
     /// <summary>
@@ -588,6 +601,7 @@ public class SalesModuleController(
                 request.Company,
                 request.Brand,
                 request.LocationCount,
+                request.SalesTeamMemberId,
                 ct);
             return Ok(row);
         }
@@ -734,6 +748,7 @@ public class SalesModuleController(
         try
         {
             await clientUpdateService.ApplyDiaryEntryAsync(
+                member.Id,
                 member.Name,
                 activity,
                 companyName,

@@ -6,6 +6,8 @@ public class SalesModuleClientUpdate
     public int Id { get; set; }
     public DateTime? DateCreated { get; set; }
     public string Hunter { get; set; } = string.Empty;
+    /// <summary>Sales Team member (Hunter) when rematched / tagged from the Sales Team list.</summary>
+    public int? SalesTeamMemberId { get; set; }
     public string Company { get; set; } = string.Empty;
     public string Brand { get; set; } = string.Empty;
     public int? LocationCount { get; set; }

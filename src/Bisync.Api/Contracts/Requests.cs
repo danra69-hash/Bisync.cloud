@@ -1478,6 +1478,8 @@ public class PatchSalesModuleClientUpdateRequest
     public DateTime? DateCreated { get; set; }
     [MaxLength(200)]
     public string? Hunter { get; set; }
+    /// <summary>Preferred when filling blank Hunter — tags row to Sales Team member.</summary>
+    public int? SalesTeamMemberId { get; set; }
     [MaxLength(200)]
     public string? Company { get; set; }
     [MaxLength(200)]
