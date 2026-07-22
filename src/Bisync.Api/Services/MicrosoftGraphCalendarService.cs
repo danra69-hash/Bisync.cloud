@@ -27,6 +27,16 @@ public static class MicrosoftGraphCalendarService
 
     public sealed record CalendarEventResult(string EventId, string? WebLink);
 
+    public sealed record ListedCalendarEvent(
+        string EventId,
+        string Subject,
+        string BodyPreview,
+        DateTime StartsAtUtc,
+        DateTime EndsAtUtc,
+        string Location,
+        string? WebLink,
+        bool IsAllDay);
+
     public static async Task<CalendarEventResult> CreateEventAsync(
         string tenantId,
         string clientId,
@@ -90,6 +100,96 @@ public static class MicrosoftGraphCalendarService
         {
             return (false, ex.Message);
         }
+    }
+
+    /// <summary>Lists events from a mailbox calendar in the given UTC window (calendarView).</summary>
+    public static async Task<IReadOnlyList<ListedCalendarEvent>> ListCalendarViewAsync(
+        string tenantId,
+        string clientId,
+        string clientSecret,
+        string mailbox,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken ct = default)
+    {
+        var token = await MicrosoftGraphAuth.AcquireTokenAsync(tenantId, clientId, clientSecret, ct);
+        using var http = CreateClient(token);
+        http.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "outlook.timezone=\"UTC\"");
+
+        var userPath = Uri.EscapeDataString(mailbox.Trim());
+        var start = Uri.EscapeDataString(fromUtc.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"));
+        var end = Uri.EscapeDataString(toUtc.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"));
+        var url =
+            $"https://graph.microsoft.com/v1.0/users/{userPath}/calendar/calendarView" +
+            $"?startDateTime={start}&endDateTime={end}" +
+            "&$select=id,subject,bodyPreview,start,end,location,webLink,isAllDay" +
+            "&$orderby=start/dateTime" +
+            "&$top=100";
+
+        var results = new List<ListedCalendarEvent>();
+        while (!string.IsNullOrWhiteSpace(url) && results.Count < 500)
+        {
+            using var res = await http.GetAsync(url, ct);
+            var body = await res.Content.ReadAsStringAsync(ct);
+            if (!res.IsSuccessStatusCode)
+                throw new InvalidOperationException(
+                    MicrosoftGraphAuth.FormatGraphError(res.StatusCode, body, "Calendars.ReadWrite"));
+
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("value", out var values) && values.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in values.EnumerateArray())
+                {
+                    var id = item.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(id)) continue;
+                    var subject = item.TryGetProperty("subject", out var subEl) ? subEl.GetString() ?? "" : "";
+                    var preview = item.TryGetProperty("bodyPreview", out var prevEl) ? prevEl.GetString() ?? "" : "";
+                    var webLink = item.TryGetProperty("webLink", out var linkEl) ? linkEl.GetString() : null;
+                    var isAllDay = item.TryGetProperty("isAllDay", out var allEl) && allEl.ValueKind == JsonValueKind.True;
+                    var location = "";
+                    if (item.TryGetProperty("location", out var loc) && loc.TryGetProperty("displayName", out var locName))
+                        location = locName.GetString() ?? "";
+
+                    var starts = ParseGraphDateTime(item, "start");
+                    var ends = ParseGraphDateTime(item, "end");
+                    if (starts is null || ends is null) continue;
+
+                    results.Add(new ListedCalendarEvent(
+                        id,
+                        subject,
+                        preview,
+                        starts.Value,
+                        ends.Value,
+                        location,
+                        webLink,
+                        isAllDay));
+                }
+            }
+
+            url = null;
+            if (doc.RootElement.TryGetProperty("@odata.nextLink", out var next)
+                && next.ValueKind == JsonValueKind.String)
+            {
+                url = next.GetString();
+            }
+        }
+
+        return results;
+    }
+
+    static DateTime? ParseGraphDateTime(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var block)) return null;
+        if (!block.TryGetProperty("dateTime", out var dtEl)) return null;
+        var raw = dtEl.GetString();
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (DateTime.TryParse(
+                raw,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+            return parsed;
+        return null;
     }
 
     static async Task<CalendarEventResult> PostEventAsync(
