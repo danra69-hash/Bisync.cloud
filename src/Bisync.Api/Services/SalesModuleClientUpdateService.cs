@@ -94,9 +94,22 @@ public class SalesModuleClientUpdateService(
         }
     }
 
+    /// <summary>
+    /// Lists Client Update rows for last week (Mon–Sun) plus week-to-date (Mon–today),
+    /// using activity date = LastContactDate ?? DateCreated.
+    /// </summary>
     public async Task<List<object>> ListAsync(string? hunter = null, CancellationToken ct = default)
     {
         var rows = await GetCachedRowsAsync(ct);
+        var (from, toInclusive) = ClientUpdateListWindow(DateTime.UtcNow.Date);
+        rows = rows.Where(r =>
+        {
+            var activity = ActivityDate(r);
+            return activity.HasValue
+                && activity.Value.Date >= from
+                && activity.Value.Date <= toInclusive;
+        }).ToList();
+
         if (!string.IsNullOrWhiteSpace(hunter))
         {
             var key = hunter.Trim().ToLowerInvariant();
@@ -104,6 +117,15 @@ public class SalesModuleClientUpdateService(
         }
 
         return rows.ConvertAll(Map);
+    }
+
+    /// <summary>Monday of last week through today (UTC date).</summary>
+    public static (DateTime From, DateTime ToInclusive) ClientUpdateListWindow(DateTime utcToday)
+    {
+        var today = utcToday.Date;
+        var thisWeekStart = StartOfWeekMonday(today);
+        var lastWeekStart = thisWeekStart.AddDays(-7);
+        return (lastWeekStart, today);
     }
 
     /// <summary>

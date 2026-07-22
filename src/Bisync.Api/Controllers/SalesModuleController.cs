@@ -449,7 +449,10 @@ public class SalesModuleController(
         }
     }
 
-    /// <summary>List Client Update rows (from Instant Sales Update → Weekly Update sheet).</summary>
+    /// <summary>
+    /// List Client Update rows for last week plus week-to-date only
+    /// (Instant Sales Update → Weekly Update sheet).
+    /// </summary>
     [HttpGet("client-updates")]
     public async Task<ActionResult<IEnumerable<object>>> GetClientUpdates(
         [FromQuery] string? hunter = null,

@@ -611,7 +611,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">
-                Weekly Update · {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
+                Weekly Update · last week + week-to-date ·{' '}
+                {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
                 {filterClientUpdatesByHunter && selectedTeamMember
                   ? ` · hunter ${selectedTeamMember.name}`
                   : ' · all hunters'}
@@ -768,7 +769,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               ) : clientUpdates.length === 0 ? (
                 <tr>
                   <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
-                    No Weekly Update rows yet. Use Import Weekly Update with Instant Sales Update.xlsx.
+                    No Weekly Update rows for last week or week-to-date. Import Instant Sales Update.xlsx or check Overview for older periods.
                   </td>
                 </tr>
               ) : (
