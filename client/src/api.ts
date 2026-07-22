@@ -2463,11 +2463,38 @@ export const api = {
   deleteSalesModuleAppointment: (id: number) =>
     fetchJsonWithMethod<void>(`/api/sales-module/appointments/${id}`, 'DELETE'),
   salesModuleTeam: () => fetchJson<SalesModuleTeamMember[]>('/api/sales-module/team'),
-  createSalesModuleTeamMember: (data: { name: string; email: string; active?: boolean; calendarSyncEnabled?: boolean }) =>
-    fetchJsonWithMethod<SalesModuleTeamMember>('/api/sales-module/team', 'POST', data),
+  salesModuleTeamGraphSettings: () =>
+    fetchJson<{
+      enabled: boolean;
+      graphTenantId: string;
+      graphClientId: string;
+      graphClientSecretSet: boolean;
+      calendarMailbox?: string;
+      calendarDisplayName?: string;
+      configured: boolean;
+      lastTestAt?: string | null;
+      lastTestResult?: string | null;
+    }>('/api/sales-module/team/graph-settings'),
+  createSalesModuleTeamMember: (data: {
+    name: string;
+    email: string;
+    active?: boolean;
+    calendarSyncEnabled?: boolean;
+    graphTenantId?: string;
+    graphClientId?: string;
+    graphClientSecret?: string;
+  }) => fetchJsonWithMethod<SalesModuleTeamMember>('/api/sales-module/team', 'POST', data),
   updateSalesModuleTeamMember: (
     id: number,
-    data: { name: string; email: string; active: boolean; calendarSyncEnabled: boolean },
+    data: {
+      name: string;
+      email: string;
+      active: boolean;
+      calendarSyncEnabled: boolean;
+      graphTenantId?: string;
+      graphClientId?: string;
+      graphClientSecret?: string;
+    },
   ) => fetchJsonWithMethod<SalesModuleTeamMember>(`/api/sales-module/team/${id}`, 'PUT', data),
   deleteSalesModuleTeamMember: (id: number) =>
     fetchJsonWithMethod<void>(`/api/sales-module/team/${id}`, 'DELETE'),
