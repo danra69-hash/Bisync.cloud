@@ -106,6 +106,220 @@ public class SalesModuleClientUpdateService(
         return rows.ConvertAll(Map);
     }
 
+    /// <summary>
+    /// Available week/month periods derived from Client Update activity dates
+    /// (LastContactDate, falling back to DateCreated).
+    /// </summary>
+    public async Task<object> GetOverviewPeriodsAsync(CancellationToken ct = default)
+    {
+        var rows = await GetCachedRowsAsync(ct);
+        var dates = rows
+            .Select(ActivityDate)
+            .Where(d => d.HasValue)
+            .Select(d => d!.Value.Date)
+            .Distinct()
+            .OrderByDescending(d => d)
+            .ToList();
+
+        var weekKeys = new HashSet<DateTime>();
+        var monthKeys = new HashSet<(int Year, int Month)>();
+        foreach (var d in dates)
+        {
+            weekKeys.Add(StartOfWeekMonday(d));
+            monthKeys.Add((d.Year, d.Month));
+        }
+
+        var weeks = weekKeys
+            .OrderByDescending(w => w)
+            .Select(w =>
+            {
+                var end = w.AddDays(6);
+                return new
+                {
+                    value = w.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    weekStart = w,
+                    weekEnd = end,
+                    label = FormatWeekLabel(w, end),
+                };
+            })
+            .ToList();
+
+        var months = monthKeys
+            .OrderByDescending(m => m.Year)
+            .ThenByDescending(m => m.Month)
+            .Select(m => new
+            {
+                value = $"{m.Year:D4}-{m.Month:D2}",
+                year = m.Year,
+                month = m.Month,
+                label = new DateTime(m.Year, m.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+                    .ToString("MMMM yyyy", CultureInfo.InvariantCulture),
+            })
+            .ToList();
+
+        return new { weeks, months };
+    }
+
+    /// <summary>
+    /// Hunter summary for Overview: status changes, interactions (contact), and new leads
+    /// for a required week or month period.
+    /// </summary>
+    public async Task<object> GetOverviewAsync(
+        string view,
+        string? weekStart = null,
+        int? year = null,
+        int? month = null,
+        CancellationToken ct = default)
+    {
+        var mode = (view ?? string.Empty).Trim().ToLowerInvariant();
+        if (mode is not ("week" or "month"))
+            throw new InvalidOperationException("view must be \"week\" or \"month\".");
+
+        DateTime periodStart;
+        DateTime periodEndExclusive;
+        string periodKey;
+        string periodLabel;
+
+        if (mode == "week")
+        {
+            if (string.IsNullOrWhiteSpace(weekStart)
+                || !DateTime.TryParseExact(
+                    weekStart.Trim(),
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out var parsed))
+            {
+                throw new InvalidOperationException("weekStart is required (yyyy-MM-dd, Monday of the week).");
+            }
+
+            periodStart = StartOfWeekMonday(parsed.Date);
+            periodEndExclusive = periodStart.AddDays(7);
+            periodKey = periodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            periodLabel = FormatWeekLabel(periodStart, periodStart.AddDays(6));
+        }
+        else
+        {
+            if (year is null or < 2000 or > 2100 || month is null or < 1 or > 12)
+                throw new InvalidOperationException("year and month are required for month view.");
+
+            periodStart = new DateTime(year.Value, month.Value, 1, 0, 0, 0, DateTimeKind.Utc);
+            periodEndExclusive = periodStart.AddMonths(1);
+            periodKey = $"{year.Value:D4}-{month.Value:D2}";
+            periodLabel = periodStart.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+        }
+
+        var rows = await GetCachedRowsAsync(ct);
+        var inPeriod = rows.Where(r =>
+        {
+            var activity = ActivityDate(r);
+            return activity.HasValue
+                && activity.Value.Date >= periodStart
+                && activity.Value.Date < periodEndExclusive;
+        });
+
+        var byHunter = new Dictionary<string, HunterTotals>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in inPeriod)
+        {
+            var hunter = string.IsNullOrWhiteSpace(row.Hunter) ? "(Unassigned)" : row.Hunter.Trim();
+            if (!byHunter.TryGetValue(hunter, out var totals))
+            {
+                totals = new HunterTotals { Hunter = hunter };
+                byHunter[hunter] = totals;
+            }
+
+            if (IsStatusChange(row)) totals.StatusChanges++;
+            if (IsInteraction(row)) totals.Interactions++;
+            if (IsNewLead(row)) totals.NewLeads++;
+        }
+
+        var hunters = byHunter.Values
+            .OrderBy(h => h.Hunter, StringComparer.OrdinalIgnoreCase)
+            .Select(h => new
+            {
+                hunter = h.Hunter,
+                statusChanges = h.StatusChanges,
+                interactions = h.Interactions,
+                newLeads = h.NewLeads,
+            })
+            .ToList();
+
+        var totalsOut = new
+        {
+            statusChanges = hunters.Sum(h => h.statusChanges),
+            interactions = hunters.Sum(h => h.interactions),
+            newLeads = hunters.Sum(h => h.newLeads),
+        };
+
+        return new
+        {
+            view = mode,
+            periodKey,
+            periodLabel,
+            periodStart,
+            periodEnd = periodEndExclusive.AddDays(-1),
+            hunters,
+            totals = totalsOut,
+        };
+    }
+
+    sealed class HunterTotals
+    {
+        public string Hunter { get; set; } = string.Empty;
+        public int StatusChanges { get; set; }
+        public int Interactions { get; set; }
+        public int NewLeads { get; set; }
+    }
+
+    static DateTime? ActivityDate(SalesModuleClientUpdate r) =>
+        (r.LastContactDate ?? r.DateCreated)?.Date;
+
+    static DateTime StartOfWeekMonday(DateTime date)
+    {
+        var d = date.Date;
+        var diff = ((int)d.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        return DateTime.SpecifyKind(d.AddDays(-diff), DateTimeKind.Utc);
+    }
+
+    static string FormatWeekLabel(DateTime start, DateTime end)
+    {
+        if (start.Year == end.Year && start.Month == end.Month)
+        {
+            return $"{start.Day}–{end.Day} {start.ToString("MMM yyyy", CultureInfo.InvariantCulture)}";
+        }
+
+        if (start.Year == end.Year)
+        {
+            return $"{start.Day} {start.ToString("MMM", CultureInfo.InvariantCulture)} – {end.Day} {end.ToString("MMM yyyy", CultureInfo.InvariantCulture)}";
+        }
+
+        return $"{start.ToString("d MMM yyyy", CultureInfo.InvariantCulture)} – {end.ToString("d MMM yyyy", CultureInfo.InvariantCulture)}";
+    }
+
+    static string NormalizeToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var s = value.Trim().ToUpperInvariant();
+        while (s.Contains("  ", StringComparison.Ordinal))
+            s = s.Replace("  ", " ", StringComparison.Ordinal);
+        return s;
+    }
+
+    /// <summary>Status UPDATED or Contact Type STATUS UPDATE.</summary>
+    static bool IsStatusChange(SalesModuleClientUpdate r)
+    {
+        var status = NormalizeToken(r.Status);
+        var contact = NormalizeToken(r.ContactType);
+        return status == "UPDATED" || contact == "STATUS UPDATE" || contact.Contains("STATUS UPDATE", StringComparison.Ordinal);
+    }
+
+    /// <summary>Any non-empty contact type counts as a client interaction.</summary>
+    static bool IsInteraction(SalesModuleClientUpdate r) =>
+        !string.IsNullOrWhiteSpace(r.ContactType);
+
+    static bool IsNewLead(SalesModuleClientUpdate r) =>
+        NormalizeToken(r.Status) == "LEAD";
+
     public async Task<object> ImportWeeklyUpdateAsync(Stream stream, string? fileName, CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);

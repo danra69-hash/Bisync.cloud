@@ -418,6 +418,37 @@ public class SalesModuleController(
         }
     }
 
+    /// <summary>Available week/month periods for Sales Module Overview filters.</summary>
+    [HttpGet("overview/periods")]
+    public async Task<ActionResult<object>> GetOverviewPeriods(CancellationToken ct = default)
+    {
+        var result = await clientUpdateService.GetOverviewPeriodsAsync(ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Overview summary by Hunter: status changes, interactions (contact), and new leads.
+    /// Requires view=week with weekStart, or view=month with year+month.
+    /// </summary>
+    [HttpGet("overview")]
+    public async Task<ActionResult<object>> GetOverview(
+        [FromQuery] string view = "week",
+        [FromQuery] string? weekStart = null,
+        [FromQuery] int? year = null,
+        [FromQuery] int? month = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await clientUpdateService.GetOverviewAsync(view, weekStart, year, month, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     /// <summary>List Client Update rows (from Instant Sales Update → Weekly Update sheet).</summary>
     [HttpGet("client-updates")]
     public async Task<ActionResult<IEnumerable<object>>> GetClientUpdates(

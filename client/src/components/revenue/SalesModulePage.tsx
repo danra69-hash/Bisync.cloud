@@ -6,32 +6,27 @@ import {
   type SalesModuleClientUpdate,
   type SalesModuleCompany,
   type SalesModuleCustomer,
+  type SalesModuleOverview,
+  type SalesModuleOverviewPeriods,
   type SalesModuleTeamCalendarEvent,
   type SalesModuleTeamMember,
-  type UpsertSalesModuleCustomerPayload,
 } from '../../api';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
-import {
-  blankSalesBrand,
-  blankSalesContact,
-  formatBrandsCell,
-  SALES_MODULE_STATUSES,
-  toCustomerPayload,
-} from '../../data/salesModule';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 
-type TabId = 'customers' | 'client-update' | 'calendar';
+type TabId = 'overview' | 'client-update' | 'calendar';
+type OverviewView = 'week' | 'month';
 
 type CalendarItem =
   | { kind: 'local'; key: string; startsAt: string; endsAt: string; title: string; appointment: SalesModuleAppointment }
   | { kind: 'o365'; key: string; startsAt: string; endsAt: string; title: string; event: SalesModuleTeamCalendarEvent };
 
 const TABS = [
-  { id: 'customers' as const, label: 'Customers' },
+  { id: 'overview' as const, label: 'Overview' },
   { id: 'client-update' as const, label: 'Client Update' },
   { id: 'calendar' as const, label: 'Appointment Calendar' },
 ];
@@ -48,13 +43,6 @@ type Props = {
   sessionEmail?: string;
   sessionName?: string;
 };
-
-function toDateInput(value?: string | null): string {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10);
-}
 
 function toLocalInputValue(iso: string): string {
   const d = new Date(iso);
@@ -75,8 +63,8 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) {
-  const [tab, setTab] = useState<TabId>('customers');
+export function SalesModulePage({ sessionEmail = '' }: Props) {
+  const [tab, setTab] = useState<TabId>('overview');
   const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<number | null>(null);
   const [companies, setCompanies] = useState<SalesModuleCompany[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
@@ -84,6 +72,12 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
   const [creatingCompany, setCreatingCompany] = useState(false);
 
   const [customers, setCustomers] = useState<SalesModuleCustomer[]>([]);
+  const [overviewView, setOverviewView] = useState<OverviewView>('week');
+  const [overviewWeekStart, setOverviewWeekStart] = useState('');
+  const [overviewMonthValue, setOverviewMonthValue] = useState('');
+  const [overviewPeriods, setOverviewPeriods] = useState<SalesModuleOverviewPeriods | null>(null);
+  const [overview, setOverview] = useState<SalesModuleOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
@@ -91,10 +85,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
   const [filterClientUpdatesByHunter, setFilterClientUpdatesByHunter] = useState(false);
   const clientUpdateFileRef = useRef<HTMLInputElement | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [editing, setEditing] = useState<SalesModuleCustomer | null>(null);
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [apptFormOpen, setApptFormOpen] = useState(false);
@@ -113,7 +104,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const engagedUserEmail = sessionEmail.trim();
-  const engagedUserName = sessionName.trim() || engagedUserEmail || 'Dev Console';
 
   const activeTeamMembers = useMemo(
     () => teamMembers.filter(m => m.active).sort((a, b) => a.name.localeCompare(b.name)),
@@ -188,6 +178,53 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
     }
   }, [filterClientUpdatesByHunter, selectedTeamMemberId, teamMembers]);
 
+  const loadOverviewPeriods = useCallback(async () => {
+    const periods = await api.salesModuleOverviewPeriods();
+    setOverviewPeriods(periods);
+    setOverviewWeekStart(prev => {
+      if (prev && periods.weeks.some(w => w.value === prev)) return prev;
+      return periods.weeks[0]?.value ?? '';
+    });
+    setOverviewMonthValue(prev => {
+      if (prev && periods.months.some(m => m.value === prev)) return prev;
+      return periods.months[0]?.value ?? '';
+    });
+  }, []);
+
+  const loadOverview = useCallback(async () => {
+    if (overviewView === 'week') {
+      if (!overviewWeekStart) {
+        setOverview(null);
+        return;
+      }
+      setOverviewLoading(true);
+      try {
+        const data = await api.salesModuleOverview({ view: 'week', weekStart: overviewWeekStart });
+        setOverview(data);
+      } finally {
+        setOverviewLoading(false);
+      }
+      return;
+    }
+
+    const month = overviewPeriods?.months.find(m => m.value === overviewMonthValue);
+    if (!month) {
+      setOverview(null);
+      return;
+    }
+    setOverviewLoading(true);
+    try {
+      const data = await api.salesModuleOverview({
+        view: 'month',
+        year: month.year,
+        month: month.month,
+      });
+      setOverview(data);
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, [overviewView, overviewWeekStart, overviewMonthValue, overviewPeriods]);
+
   const loadAppointments = useCallback(async () => {
     if (!selectedCompanyId) {
       setAppointments([]);
@@ -219,20 +256,35 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
     }
   }, [monthCursor]);
 
-  // Core Sales Module data — do not wait on Client Update or O365 calendar for Customers tab.
+  // Core Sales Module data for appointments (customers still needed for calendar form).
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setError(null);
     Promise.all([loadCustomers(), loadAppointments()])
       .catch(err => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Sales Module');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
   }, [loadCustomers, loadAppointments]);
+
+  // Overview periods + summary when Overview tab is open.
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    let cancelled = false;
+    void loadOverviewPeriods().catch(err => {
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview periods');
+    });
+    return () => { cancelled = true; };
+  }, [tab, loadOverviewPeriods]);
+
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    let cancelled = false;
+    void loadOverview().catch(err => {
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview');
+    });
+    return () => { cancelled = true; };
+  }, [tab, loadOverview]);
 
   // Calendar sync is only needed on the Appointment Calendar tab (and can be slow via Graph).
   useEffect(() => {
@@ -337,30 +389,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
     return calendarItemsByDay.get(key) ?? [];
   }, [calendarItemsByDay, selectedDay]);
 
-  function openCreateCustomer() {
-    setEditing(null);
-    setPanelOpen(true);
-  }
-
-  function openEditCustomer(row: SalesModuleCustomer) {
-    setEditing(row);
-    setPanelOpen(true);
-  }
-
-  const selectedSalesCompany = companies.find(c => c.id === selectedCompanyId) ?? null;
   const selectedTeamMember = activeTeamMembers.find(m => m.id === selectedTeamMemberId) ?? null;
-
-  async function handleSavedCustomer(row: SalesModuleCustomer) {
-    setCustomers(prev => {
-      const idx = prev.findIndex(c => c.id === row.id);
-      if (idx < 0) return [row, ...prev];
-      const next = [...prev];
-      next[idx] = row;
-      return next;
-    });
-    setPanelOpen(false);
-    setEditing(null);
-  }
 
   function openNewAppointment(day?: Date) {
     const base = day ?? selectedDay ?? new Date();
@@ -520,22 +549,63 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
           </button>
         </div>
         <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
-        {tab === 'customers' ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
-              Pipeline · {customers.length} record{customers.length === 1 ? '' : 's'}
-              {selectedCompanyId ? '' : ' · all companies for this sales person'}
+        {tab === 'overview' ? (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+              <button
+                type="button"
+                onClick={() => setOverviewView('week')}
+                className={`px-3 py-1.5 font-semibold ${overviewView === 'week' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+              >
+                Week
+              </button>
+              <button
+                type="button"
+                onClick={() => setOverviewView('month')}
+                className={`px-3 py-1.5 font-semibold border-l border-border ${overviewView === 'month' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+              >
+                Month
+              </button>
+            </div>
+            {overviewView === 'week' ? (
+              <label className="inline-flex flex-col gap-1 text-xs min-w-[14rem]">
+                <span className="text-muted-foreground uppercase tracking-wide">Week</span>
+                <select
+                  required
+                  value={overviewWeekStart}
+                  onChange={e => setOverviewWeekStart(e.target.value)}
+                  className="rounded-md border border-border bg-background px-2 py-1.5"
+                >
+                  <option value="" disabled>
+                    Select week…
+                  </option>
+                  {(overviewPeriods?.weeks ?? []).map(w => (
+                    <option key={w.value} value={w.value}>{w.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem]">
+                <span className="text-muted-foreground uppercase tracking-wide">Month</span>
+                <select
+                  required
+                  value={overviewMonthValue}
+                  onChange={e => setOverviewMonthValue(e.target.value)}
+                  className="rounded-md border border-border bg-background px-2 py-1.5"
+                >
+                  <option value="" disabled>
+                    Select month…
+                  </option>
+                  {(overviewPeriods?.months ?? []).map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <p className="text-xs text-muted-foreground self-center">
+              Summary by Hunter
+              {overview?.periodLabel ? ` · ${overview.periodLabel}` : ''}
             </p>
-            <button
-              type="button"
-              onClick={openCreateCustomer}
-              disabled={!selectedCompanyId}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
-              title={selectedCompanyId ? undefined : 'Select a company first to create a customer'}
-            >
-              <Plus size={12} />
-              Create new customer
-            </button>
           </div>
         ) : tab === 'client-update' ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -624,61 +694,51 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
         </div>
       ) : null}
 
-      {tab === 'customers' ? (
+      {tab === 'overview' ? (
         <TableScrollContainer ref={scrollRootRef}>
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="px-2 py-1.5 text-left">Date Created</th>
-                <th className="px-2 py-1.5 text-left">Company</th>
-                <th className="px-2 py-1.5 text-left">Brand</th>
-                <th className="px-2 py-1.5 text-left">No. of Location</th>
-                <th className="px-2 py-1.5 text-left">Last Contact</th>
-                <th className="px-2 py-1.5 text-left">Discussion Detail</th>
-                <th className="px-2 py-1.5 text-left">Status</th>
-                <th className="px-2 py-1.5 text-left">Last Changes Date</th>
                 <th className="px-2 py-1.5 text-left">Hunter</th>
-                <th className="px-2 py-1.5 text-left">Farmer</th>
+                <th className="px-2 py-1.5 text-right">Client status change</th>
+                <th className="px-2 py-1.5 text-right">Client interaction (contact)</th>
+                <th className="px-2 py-1.5 text-right">New Lead</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <TableLoadingRow colSpan={10} label="Loading customers…" />
-              ) : customers.length === 0 ? (
+              {overviewLoading ? (
+                <TableLoadingRow colSpan={4} label="Loading overview…" />
+              ) : (overviewView === 'week' && !overviewWeekStart) || (overviewView === 'month' && !overviewMonthValue) ? (
                 <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
-                    No sales customers yet. Create a customer to start.
+                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                    {overviewView === 'week'
+                      ? 'Select a week to view the hunter summary.'
+                      : 'Select a month to view the hunter summary.'}
+                  </td>
+                </tr>
+              ) : !overview || overview.hunters.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                    No Client Update activity for this period.
                   </td>
                 </tr>
               ) : (
-                customers.map(row => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-border/60 hover:bg-muted/30 cursor-pointer"
-                    onClick={() => openEditCustomer(row)}
-                  >
-                    <td className="px-2 py-1.5 whitespace-nowrap">
-                      {new Date(row.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-2 py-1.5 font-medium">{row.companyName}</td>
-                    <td className="px-2 py-1.5">{formatBrandsCell(row.brands)}</td>
-                    <td className="px-2 py-1.5">{row.locationCount ?? 0}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">
-                      {row.lastContactDate ? new Date(row.lastContactDate).toLocaleDateString() : '—'}
-                    </td>
-                    <td className="px-2 py-1.5 max-w-[16rem] truncate" title={row.lastDiscussionBrief}>
-                      {row.lastDiscussionBrief || '—'}
-                    </td>
-                    <td className="px-2 py-1.5">{row.status}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">
-                      {row.lastChangedAt
-                        ? new Date(row.lastChangedAt).toLocaleDateString()
-                        : new Date(row.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{row.hunterName || '—'}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{row.farmerName || '—'}</td>
+                <>
+                  {overview.hunters.map(row => (
+                    <tr key={row.hunter} className="border-b border-border/60 hover:bg-muted/30">
+                      <td className="px-2 py-1.5 font-medium whitespace-nowrap">{row.hunter}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{row.statusChanges}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{row.interactions}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{row.newLeads}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-border bg-muted/20 font-semibold">
+                    <td className="px-2 py-1.5">Total</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.statusChanges}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.interactions}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.newLeads}</td>
                   </tr>
-                ))
+                </>
               )}
             </tbody>
           </table>
@@ -893,20 +953,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
         onChanged={setTeamMembers}
       />
 
-      {panelOpen && (editing || selectedCompanyId) ? (
-        <SalesCustomerPanel
-          companyId={editing?.companyId ?? selectedCompanyId!}
-          defaultCompanyName={editing?.companyName || selectedSalesCompany?.name || ''}
-          customer={editing}
-          teamMembers={activeTeamMembers}
-          engagedUserId={0}
-          engagedUserEmail={selectedTeamMember?.email || engagedUserEmail}
-          engagedUserName={selectedTeamMember?.name || engagedUserName}
-          onClose={() => { setPanelOpen(false); setEditing(null); }}
-          onSaved={handleSavedCustomer}
-        />
-      ) : null}
-
       {apptFormOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-lg border border-border bg-card p-4 space-y-3 shadow-lg">
@@ -978,345 +1024,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
           </div>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function SalesCustomerPanel({
-  companyId,
-  defaultCompanyName,
-  customer,
-  teamMembers,
-  engagedUserId,
-  engagedUserEmail,
-  engagedUserName,
-  onClose,
-  onSaved,
-}: {
-  companyId: number;
-  defaultCompanyName?: string;
-  customer: SalesModuleCustomer | null;
-  teamMembers: SalesModuleTeamMember[];
-  engagedUserId: number;
-  engagedUserEmail: string;
-  engagedUserName: string;
-  onClose: () => void;
-  onSaved: (row: SalesModuleCustomer) => void;
-}) {
-  const [form, setForm] = useState<UpsertSalesModuleCustomerPayload>(() => ({
-    companyId,
-    externalId: customer?.externalId,
-    companyName: customer?.companyName || defaultCompanyName || '',
-    brands: customer?.brands?.length ? customer.brands.map(b => ({ ...b })) : [blankSalesBrand()],
-    contacts: customer?.contacts?.length ? customer.contacts.map(c => ({ ...c })) : [blankSalesContact()],
-    status: customer?.status ?? 'Prospect',
-    lastContactDate: toDateInput(customer?.lastContactDate),
-    lastDiscussionBrief: customer?.lastDiscussionBrief ?? '',
-    locationCount: customer?.locationCount ?? 0,
-    createdAt: toDateInput(customer?.createdAt),
-    lastChangedAt: toDateInput(customer?.lastChangedAt ?? customer?.createdAt),
-    hunterMemberId: customer?.hunterMemberId ?? null,
-    hunterName: customer?.hunterName ?? '',
-    farmerMemberId: customer?.farmerMemberId ?? null,
-    farmerName: customer?.farmerName ?? '',
-    engagedUserId: customer?.engagedUserId ?? engagedUserId,
-    engagedUserEmail: customer?.engagedUserEmail || engagedUserEmail,
-    engagedUserName: customer?.engagedUserName || engagedUserName,
-    active: customer?.active ?? true,
-  }));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      const hunter = teamMembers.find(m => m.id === form.hunterMemberId);
-      const farmer = teamMembers.find(m => m.id === form.farmerMemberId);
-      const payload = toCustomerPayload({
-        ...form,
-        lastContactDate: form.lastContactDate ? new Date(form.lastContactDate).toISOString() : null,
-        createdAt: form.createdAt ? new Date(form.createdAt).toISOString() : null,
-        lastChangedAt: form.lastChangedAt ? new Date(form.lastChangedAt).toISOString() : new Date().toISOString(),
-        hunterName: hunter?.name || form.hunterName || '',
-        farmerName: farmer?.name || form.farmerName || '',
-        engagedUserId: customer?.engagedUserId ?? engagedUserId,
-        engagedUserEmail: customer?.engagedUserEmail || engagedUserEmail,
-        engagedUserName: customer?.engagedUserName || engagedUserName,
-      });
-      const saved = customer
-        ? await api.updateSalesModuleCustomer(customer.externalId, payload)
-        : await api.createSalesModuleCustomer(payload);
-      onSaved(saved);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save customer');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40">
-      <div className="w-full max-w-lg h-full bg-card border-l border-border shadow-xl flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold">{customer ? 'Edit customer' : 'Create new customer'}</h3>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted"><X size={14} /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <label className="block space-y-1 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-            <input
-              value={form.companyName}
-              onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-            />
-          </label>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Brands</p>
-              <button
-                type="button"
-                onClick={() => setForm(f => ({ ...f, brands: [...f.brands, blankSalesBrand()] }))}
-                className="text-[11px] font-semibold text-primary inline-flex items-center gap-1"
-              >
-                <Plus size={11} /> Add brand
-              </button>
-            </div>
-            {form.brands.map((brand, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_auto] gap-2">
-                <input
-                  value={brand.name}
-                  placeholder="Brand name"
-                  onChange={e => setForm(f => {
-                    const brands = [...f.brands];
-                    brands[idx] = { ...brands[idx], name: e.target.value };
-                    return { ...f, brands };
-                  })}
-                  className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, brands: f.brands.filter((_, i) => i !== idx) }))}
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Date Created</span>
-              <input
-                type="date"
-                value={form.createdAt ?? ''}
-                onChange={e => setForm(f => ({ ...f, createdAt: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              />
-            </label>
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">No. of Location</span>
-              <input
-                type="number"
-                min={0}
-                value={form.locationCount ?? 0}
-                onChange={e => setForm(f => ({ ...f, locationCount: Math.max(0, Number(e.target.value) || 0) }))}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              />
-            </label>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Status</span>
-              <select
-                value={form.status}
-                onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              >
-                {SALES_MODULE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </label>
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Last Contact</span>
-              <input
-                type="date"
-                value={form.lastContactDate ?? ''}
-                onChange={e => setForm(f => ({ ...f, lastContactDate: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              />
-            </label>
-          </div>
-
-          <label className="block space-y-1 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wide">Last Changes Date</span>
-            <input
-              type="date"
-              value={form.lastChangedAt ?? ''}
-              onChange={e => setForm(f => ({ ...f, lastChangedAt: e.target.value }))}
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-            />
-          </label>
-
-          <label className="block space-y-1 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wide">Discussion Detail</span>
-            <textarea
-              value={form.lastDiscussionBrief}
-              onChange={e => setForm(f => ({ ...f, lastDiscussionBrief: e.target.value }))}
-              rows={4}
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-            />
-          </label>
-
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Hunter</span>
-              <select
-                value={form.hunterMemberId ?? ''}
-                onChange={e => {
-                  const id = e.target.value ? Number(e.target.value) : null;
-                  const member = teamMembers.find(m => m.id === id);
-                  setForm(f => ({
-                    ...f,
-                    hunterMemberId: id,
-                    hunterName: member?.name ?? '',
-                  }));
-                }}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              >
-                <option value="">—</option>
-                {teamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-              {!form.hunterMemberId ? (
-                <input
-                  value={form.hunterName ?? ''}
-                  placeholder="Or type name"
-                  onChange={e => setForm(f => ({ ...f, hunterName: e.target.value }))}
-                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5"
-                />
-              ) : null}
-            </label>
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Farmer</span>
-              <select
-                value={form.farmerMemberId ?? ''}
-                onChange={e => {
-                  const id = e.target.value ? Number(e.target.value) : null;
-                  const member = teamMembers.find(m => m.id === id);
-                  setForm(f => ({
-                    ...f,
-                    farmerMemberId: id,
-                    farmerName: member?.name ?? '',
-                  }));
-                }}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              >
-                <option value="">—</option>
-                {teamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-              {!form.farmerMemberId ? (
-                <input
-                  value={form.farmerName ?? ''}
-                  placeholder="Or type name"
-                  onChange={e => setForm(f => ({ ...f, farmerName: e.target.value }))}
-                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5"
-                />
-              ) : null}
-            </label>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Contact persons</p>
-              <button
-                type="button"
-                onClick={() => setForm(f => ({ ...f, contacts: [...f.contacts, blankSalesContact()] }))}
-                className="text-[11px] font-semibold text-primary inline-flex items-center gap-1"
-              >
-                <Plus size={11} /> Add contact
-              </button>
-            </div>
-            {form.contacts.map((contact, idx) => (
-              <div key={contact.id || idx} className="rounded-md border border-border p-2 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={contact.name}
-                    placeholder="Name"
-                    onChange={e => setForm(f => {
-                      const contacts = [...f.contacts];
-                      contacts[idx] = { ...contacts[idx], name: e.target.value };
-                      return { ...f, contacts };
-                    })}
-                    className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                  />
-                  <input
-                    value={contact.position}
-                    placeholder="Position"
-                    onChange={e => setForm(f => {
-                      const contacts = [...f.contacts];
-                      contacts[idx] = { ...contacts[idx], position: e.target.value };
-                      return { ...f, contacts };
-                    })}
-                    className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                  />
-                  <input
-                    value={contact.email}
-                    placeholder="Email"
-                    onChange={e => setForm(f => {
-                      const contacts = [...f.contacts];
-                      contacts[idx] = { ...contacts[idx], email: e.target.value };
-                      return { ...f, contacts };
-                    })}
-                    className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                  />
-                  <input
-                    value={contact.mobile}
-                    placeholder="Mobile"
-                    onChange={e => setForm(f => {
-                      const contacts = [...f.contacts];
-                      contacts[idx] = { ...contacts[idx], mobile: e.target.value };
-                      return { ...f, contacts };
-                    })}
-                    className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                  />
-                </div>
-                {form.contacts.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, contacts: f.contacts.filter((_, i) => i !== idx) }))}
-                    className="text-[11px] text-destructive"
-                  >
-                    Remove contact
-                  </button>
-                ) : null}
-              </div>
-            ))}
-          </div>
-
-          {error ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              {error}
-            </div>
-          ) : null}
-        </div>
-        <div className="border-t border-border px-4 py-3 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-md border border-border">Cancel</button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void handleSave()}
-            className="px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
