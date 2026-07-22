@@ -39,6 +39,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosCustomer> PosCustomers => Set<PosCustomer>();
     public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
     public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
+    public DbSet<SalesModuleCalendarSettings> SalesModuleCalendarSettings => Set<SalesModuleCalendarSettings>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -158,6 +159,20 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Location).HasMaxLength(200);
             e.Property(x => x.EngagedUserEmail).HasMaxLength(256);
+            e.Property(x => x.OutlookEventId).HasMaxLength(256);
+            e.Property(x => x.OutlookWebLink).HasMaxLength(1024);
+            e.Property(x => x.OutlookSyncError).HasMaxLength(500);
+        });
+        modelBuilder.Entity<SalesModuleCalendarSettings>(e =>
+        {
+            e.Property(x => x.GraphTenantId).HasMaxLength(64);
+            e.Property(x => x.GraphClientId).HasMaxLength(64);
+            e.Property(x => x.GraphClientSecret).HasMaxLength(512);
+            e.Property(x => x.CalendarMailbox).HasMaxLength(256);
+            e.Property(x => x.CalendarDisplayName).HasMaxLength(120);
+            e.Property(x => x.UpdatedByEmail).HasMaxLength(256);
+            e.Property(x => x.LastTestAt).HasMaxLength(64);
+            e.Property(x => x.LastTestResult).HasMaxLength(500);
         });
         modelBuilder.Entity<Company>(e =>
         {

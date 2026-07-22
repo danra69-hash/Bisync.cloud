@@ -36,4 +36,10 @@ public class SalesModuleAppointment
     public int EngagedUserId { get; set; }
     public string EngagedUserEmail { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Microsoft Graph event id on the Cubevalue Office 365 calendar (empty when not synced).</summary>
+    public string OutlookEventId { get; set; } = string.Empty;
+    public string OutlookWebLink { get; set; } = string.Empty;
+    public string OutlookSyncError { get; set; } = string.Empty;
+    public DateTime? OutlookSyncedAt { get; set; }
 }

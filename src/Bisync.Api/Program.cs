@@ -94,6 +94,7 @@ builder.Services.AddScoped<TenantRollupService>();
 builder.Services.AddScoped<LocationSubscriptionService>();
 builder.Services.AddScoped<VendorRatingService>();
 builder.Services.AddScoped<PlatformLaunchService>();
+builder.Services.AddScoped<SalesModuleCalendarSyncService>();
 builder.Services.Configure<DevConsoleAuthOptions>(
     builder.Configuration.GetSection(DevConsoleAuthOptions.SectionName));
 builder.Services.AddHttpClient("google-oauth");

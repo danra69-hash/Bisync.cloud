@@ -169,6 +169,7 @@ export function DevConsolePage() {
           <SalesModulePage
             sessionEmail={sessionUser.email}
             sessionName={sessionUser.fullName}
+            isRoot={sessionUser.isRoot}
           />
         )}
         {tab === 'automated-qa' && (

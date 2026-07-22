@@ -24,6 +24,7 @@ import {
   SALES_MODULE_STATUSES,
   toCustomerPayload,
 } from '../../data/salesModule';
+import { SalesModuleOffice365SyncPanel } from '../dev/SalesModuleOffice365SyncPanel';
 
 type TabId = 'customers' | 'calendar';
 
@@ -36,6 +37,7 @@ type Props = {
   /** Dev Console session identity used when creating engaged records. */
   sessionEmail?: string;
   sessionName?: string;
+  isRoot?: boolean;
 };
 
 function toDateInput(value?: string | null): string {
@@ -64,7 +66,7 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) {
+export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = false }: Props) {
   const [tab, setTab] = useState<TabId>('customers');
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
@@ -253,6 +255,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
 
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
+      <SalesModuleOffice365SyncPanel isRoot={isRoot} />
       <PageStickyFilters opaque className="space-y-2 pb-2">
         <div className="flex flex-wrap items-center gap-2">
           <label className="inline-flex items-center gap-2 text-xs">
@@ -469,6 +472,23 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
                       {new Date(a.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                     {a.location ? <p className="text-[11px] text-muted-foreground">{a.location}</p> : null}
+                    {a.outlookSynced ? (
+                      <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                        Synced to Office 365
+                        {a.outlookWebLink ? (
+                          <>
+                            {' · '}
+                            <a href={a.outlookWebLink} target="_blank" rel="noreferrer" className="underline">
+                              Open
+                            </a>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : a.outlookSyncError ? (
+                      <p className="text-[10px] text-destructive" title={a.outlookSyncError}>
+                        Office 365 sync failed
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
