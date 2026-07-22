@@ -107,8 +107,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
   const [importingClientUpdates, setImportingClientUpdates] = useState(false);
-  const [filterClientUpdatesByHunter, setFilterClientUpdatesByHunter] = useState(true);
-  const clientUpdateFileRef = useRef<HTMLInputElement | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
@@ -128,6 +126,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [apptTeamMemberId, setApptTeamMemberId] = useState<number | ''>('');
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
+  const clientUpdateFileRef = useRef<HTMLInputElement | null>(null);
+  const teamSelectionReadyRef = useRef(false);
   const engagedUserEmail = sessionEmail.trim();
 
   const activeTeamMembers = useMemo(
@@ -140,14 +140,22 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     setTeamMembers(rows);
     setSelectedTeamMemberId(prev => {
       if (prev && rows.some(m => m.id === prev && m.active)) return prev;
+      // Preserve Client Update "All" after the first default selection.
+      if (teamSelectionReadyRef.current && prev === null) return null;
+      teamSelectionReadyRef.current = true;
       return rows.find(m => m.active)?.id ?? null;
     });
   }, []);
 
   const loadSalesCompanies = useCallback(async (memberId: number | null) => {
     if (!memberId) {
-      setCompanies([]);
-      setSelectedCompanyId(null);
+      // Client Update "All" hunters — show every tagged company.
+      const rows = await api.salesModuleCompanies({});
+      setCompanies(rows);
+      setSelectedCompanyId(prev => {
+        if (prev && rows.some(c => c.id === prev)) return prev;
+        return null;
+      });
       return;
     }
     const rows = await api.salesModuleCompanies({ salesTeamMemberId: memberId });
@@ -194,7 +202,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       // Rematch uploaded Hunter free-text to Sales Team list, then load windowed rows.
       await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
       const rows = await api.salesModuleClientUpdates(
-        filterClientUpdatesByHunter && selectedTeamMemberId
+        selectedTeamMemberId
           ? { salesTeamMemberId: selectedTeamMemberId }
           : undefined,
       );
@@ -202,7 +210,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     } finally {
       setClientUpdatesLoading(false);
     }
-  }, [filterClientUpdatesByHunter, selectedTeamMemberId]);
+  }, [selectedTeamMemberId]);
 
   const loadOverviewPeriods = useCallback(async () => {
     const periods = await api.salesModuleOverviewPeriods();
@@ -424,8 +432,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         }
         // When scoped to a hunter, drop rows tagged to someone else after save.
         if (
-          filterClientUpdatesByHunter
-          && selectedTeamMemberId
+          selectedTeamMemberId
           && saved.salesTeamMemberId
           && saved.salesTeamMemberId !== selectedTeamMemberId
         ) {
@@ -543,7 +550,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     }
   }
 
-  if (!selectedTeamMemberId) {
+  if (activeTeamMembers.length === 0) {
     return (
       <div className={pageShellClass({ spacing: 'loose' })}>
         <div className="flex flex-wrap items-center gap-2">
@@ -557,9 +564,35 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           </button>
         </div>
         <p className="text-sm text-muted-foreground">
-          {activeTeamMembers.length === 0
-            ? 'Create a Sales Team member first (include Office 365 Graph credentials), then add companies.'
-            : 'Select a Sales Team member to continue.'}
+          Create a Sales Team member first (include Office 365 Graph credentials), then add companies.
+        </p>
+        <SalesModuleTeamPanel
+          open={teamOpen}
+          onClose={() => {
+            setTeamOpen(false);
+            void loadTeamMembers().then(() => loadTeamCalendars());
+          }}
+          onChanged={setTeamMembers}
+        />
+      </div>
+    );
+  }
+
+  if (!selectedTeamMemberId && tab !== 'client-update' && tab !== 'overview') {
+    return (
+      <div className={pageShellClass({ spacing: 'loose' })}>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTeamOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
+          >
+            <Users size={12} />
+            Sales Team
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Select a Sales Team member to continue.
         </p>
         <SalesModuleTeamPanel
           open={teamOpen}
@@ -721,10 +754,13 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               <label className="inline-flex flex-col gap-1 text-xs">
                 <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
                 <select
-                  value={selectedTeamMemberId}
-                  onChange={e => setSelectedTeamMemberId(Number(e.target.value) || null)}
+                  value={selectedTeamMemberId ?? ''}
+                  onChange={e => setSelectedTeamMemberId(e.target.value ? Number(e.target.value) : null)}
                   className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
                 >
+                  {tab === 'client-update' ? (
+                    <option value="">All</option>
+                  ) : null}
                   {activeTeamMembers.map(m => (
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
@@ -755,48 +791,52 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 ) : null}
               </button>
             </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
-                <span className="text-muted-foreground uppercase tracking-wide">Add company for this member</span>
-                <input
-                  value={companyDraft}
-                  onChange={e => setCompanyDraft(e.target.value)}
-                  placeholder="Company name…"
-                  className="rounded-md border border-border bg-background px-2 py-1.5"
-                />
-              </label>
-              <button
-                type="button"
-                disabled={creatingCompany || !companyDraft.trim()}
-                onClick={() => void handleCreateCompany()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
-              >
-                <Plus size={12} />
-                {creatingCompany ? 'Saving…' : 'Add company'}
-              </button>
-            </div>
+            {tab === 'client-update' && !selectedTeamMemberId ? null : (
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
+                  <span className="text-muted-foreground uppercase tracking-wide">Add company for this member</span>
+                  <input
+                    value={companyDraft}
+                    onChange={e => setCompanyDraft(e.target.value)}
+                    placeholder="Company name…"
+                    className="rounded-md border border-border bg-background px-2 py-1.5"
+                    disabled={!selectedTeamMemberId}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={creatingCompany || !companyDraft.trim() || !selectedTeamMemberId}
+                  onClick={() => void handleCreateCompany()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+                >
+                  <Plus size={12} />
+                  {creatingCompany ? 'Saving…' : 'Add company'}
+                </button>
+              </div>
+            )}
           </>
         )}
-        <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
+        <HrConfigTabBar
+          tabs={TABS}
+          active={tab}
+          onChange={next => {
+            setTab(next);
+            if (next !== 'client-update' && next !== 'overview' && !selectedTeamMemberId) {
+              setSelectedTeamMemberId(activeTeamMembers[0]?.id ?? null);
+            }
+          }}
+        />
         {tab === 'overview' ? null : tab === 'client-update' ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">
                 Weekly Update · last week + week-to-date ·{' '}
                 {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
-                {filterClientUpdatesByHunter && selectedTeamMember
+                {selectedTeamMember
                   ? ` · hunter ${selectedTeamMember.name}`
                   : ' · all hunters'}
                 {' · '}hunters tagged to Sales Team · blank Date Created / Hunter / Company / Brand / No. of Location can be filled in
               </p>
-              <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={filterClientUpdatesByHunter}
-                  onChange={e => setFilterClientUpdatesByHunter(e.target.checked)}
-                />
-                Only selected Sales Team member (Hunter)
-              </label>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input
