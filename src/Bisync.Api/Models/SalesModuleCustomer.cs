@@ -1,6 +1,6 @@
 namespace Bisync.Api.Models;
 
-/// <summary>Sales Module CRM customer the logged-in user is engaged with.</summary>
+/// <summary>Sales Module CRM customer / pipeline row.</summary>
 public class SalesModuleCustomer
 {
     public int Id { get; set; }
@@ -15,6 +15,13 @@ public class SalesModuleCustomer
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastContactDate { get; set; }
     public string LastDiscussionBrief { get; set; } = string.Empty;
+    /// <summary>Number of locations for this account.</summary>
+    public int LocationCount { get; set; }
+    public DateTime LastChangedAt { get; set; } = DateTime.UtcNow;
+    public int? HunterMemberId { get; set; }
+    public string HunterName { get; set; } = string.Empty;
+    public int? FarmerMemberId { get; set; }
+    public string FarmerName { get; set; } = string.Empty;
     /// <summary>User id of the sales person engaged to this customer.</summary>
     public int EngagedUserId { get; set; }
     public string EngagedUserEmail { get; set; } = string.Empty;

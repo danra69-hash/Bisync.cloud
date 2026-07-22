@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Users, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -17,12 +17,7 @@ import { TableLoadingRow } from '../shared/MillstoneLoader';
 import {
   blankSalesBrand,
   blankSalesContact,
-  formatBrandCountsCell,
   formatBrandsCell,
-  formatContactsEmails,
-  formatContactsMobiles,
-  formatContactsNames,
-  formatContactsPositions,
   SALES_MODULE_STATUSES,
   toCustomerPayload,
 } from '../../data/salesModule';
@@ -102,6 +97,8 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
   const [teamEvents, setTeamEvents] = useState<SalesModuleTeamCalendarEvent[]>([]);
   const [teamSyncMessage, setTeamSyncMessage] = useState<string | null>(null);
   const [apptTeamMemberId, setApptTeamMemberId] = useState<number | ''>('');
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const engagedUserEmail = sessionEmail.trim();
@@ -154,13 +151,16 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
   }, [selectedTeamMemberId, loadSalesCompanies]);
 
   const loadCustomers = useCallback(async () => {
-    if (!selectedCompanyId) {
+    if (!selectedTeamMemberId) {
       setCustomers([]);
       return;
     }
-    const rows = await api.salesModuleCustomers(selectedCompanyId);
+    const rows = await api.salesModuleCustomers({
+      salesTeamMemberId: selectedTeamMemberId,
+      companyId: selectedCompanyId ?? undefined,
+    });
     setCustomers(rows);
-  }, [selectedCompanyId]);
+  }, [selectedTeamMemberId, selectedCompanyId]);
 
   const loadAppointments = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -223,6 +223,62 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
       setError(err instanceof Error ? err.message : 'Failed to create company');
     } finally {
       setCreatingCompany(false);
+    }
+  }
+
+  async function reloadAfterImport() {
+    await loadSalesCompanies(selectedTeamMemberId);
+    await loadCustomers();
+  }
+
+  async function handleImportExcel(file: File) {
+    if (!selectedTeamMemberId) {
+      setImportMessage('Select a Sales Team member before importing.');
+      return;
+    }
+    setImporting(true);
+    setImportMessage(null);
+    setError(null);
+    try {
+      const result = await api.importSalesModuleCompanies({
+        file,
+        salesTeamMemberId: selectedTeamMemberId,
+        onlyDate: '2026-01-01',
+      });
+      setImportMessage(
+        (result.messages?.length ? result.messages.join('\n') : null) ||
+          `Imported ${result.imported} row(s)` +
+            (result.skipped ? ` · skipped ${result.skipped}` : '') +
+            (result.companiesCreated ? ` · ${result.companiesCreated} company(ies) created` : '') +
+            '.',
+      );
+      await reloadAfterImport();
+    } catch (err) {
+      setImportMessage(err instanceof Error ? err.message : 'Import failed.');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleImportAtta() {
+    if (!selectedTeamMemberId) {
+      setImportMessage('Select a Sales Team member before importing Atta.');
+      return;
+    }
+    setImporting(true);
+    setImportMessage(null);
+    setError(null);
+    try {
+      const result = await api.importSalesModuleAtta(selectedTeamMemberId);
+      setImportMessage(
+        (result.messages?.length ? result.messages.join('\n') : null) ||
+          `Atta imported (${result.imported} row(s)).`,
+      );
+      await reloadAfterImport();
+    } catch (err) {
+      setImportMessage(err instanceof Error ? err.message : 'Atta import failed.');
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -369,77 +425,9 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
         </div>
         <p className="text-sm text-muted-foreground">
           {activeTeamMembers.length === 0
-            ? 'Create a Sales Team member first, then tag companies to them.'
+            ? 'Create a Sales Team member first, then import or add companies.'
             : 'Select a Sales Team member to continue.'}
         </p>
-        <SalesModuleTeamPanel
-          open={teamOpen}
-          onClose={() => {
-            setTeamOpen(false);
-            void loadTeamMembers().then(() => loadTeamCalendars());
-          }}
-          onChanged={setTeamMembers}
-        />
-      </div>
-    );
-  }
-
-  if (!selectedCompanyId) {
-    return (
-      <div className={pageShellClass({ spacing: 'loose' })}>
-        <SalesModuleOffice365SyncPanel isRoot={isRoot} />
-        <PageStickyFilters opaque className="space-y-2 pb-2">
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="inline-flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
-              <select
-                value={selectedTeamMemberId}
-                onChange={e => setSelectedTeamMemberId(Number(e.target.value) || null)}
-                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-              >
-                {activeTeamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => setTeamOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-            >
-              <Users size={12} />
-              Manage team
-            </button>
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
-              <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-              <input
-                value={companyDraft}
-                onChange={e => setCompanyDraft(e.target.value)}
-                placeholder="Create company for this sales person…"
-                className="rounded-md border border-border bg-background px-2 py-1.5"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={creatingCompany || !companyDraft.trim()}
-              onClick={() => void handleCreateCompany()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
-            >
-              <Plus size={12} />
-              {creatingCompany ? 'Saving…' : 'Add company'}
-            </button>
-          </div>
-        </PageStickyFilters>
-        <p className="text-sm text-muted-foreground">
-          No companies tagged to this sales team member yet. Add a company above (Sales Module list — not a Bisync tenant).
-        </p>
-        {error ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
-        ) : null}
         <SalesModuleTeamPanel
           open={teamOpen}
           onClose={() => {
@@ -481,10 +469,11 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
           <label className="inline-flex flex-col gap-1 text-xs">
             <span className="text-muted-foreground uppercase tracking-wide">Company</span>
             <select
-              value={selectedCompanyId}
-              onChange={e => setSelectedCompanyId(Number(e.target.value) || null)}
+              value={selectedCompanyId ?? ''}
+              onChange={e => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
               className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
             >
+              <option value="">All companies</option>
               {companies.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -500,6 +489,35 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
             {teamMembers.length > 0 ? (
               <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
             ) : null}
+          </button>
+          <label
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted cursor-pointer ${
+              importing || !selectedTeamMemberId ? 'opacity-50 pointer-events-none' : ''
+            }`}
+            title="Import Excel/CSV — only rows with Date Created = 1 January 2026"
+          >
+            <Upload size={12} />
+            {importing ? 'Importing…' : 'Import Excel (1 Jan 2026)'}
+            <input
+              type="file"
+              accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+              className="hidden"
+              disabled={importing || !selectedTeamMemberId}
+              onChange={e => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void handleImportExcel(file);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={importing || !selectedTeamMemberId}
+            onClick={() => void handleImportAtta()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+            title="Import Atta with Date Created = 1 January 2026"
+          >
+            Import Atta (1 Jan 2026)
           </button>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -522,16 +540,22 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
             {creatingCompany ? 'Saving…' : 'Add company'}
           </button>
         </div>
+        {importMessage ? (
+          <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{importMessage}</p>
+        ) : null}
         <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
         {tab === 'customers' ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              Sales customers for this company · {customers.length} record{customers.length === 1 ? '' : 's'}
+              Pipeline · {customers.length} record{customers.length === 1 ? '' : 's'}
+              {selectedCompanyId ? '' : ' · all companies for this sales person'}
             </p>
             <button
               type="button"
               onClick={openCreateCustomer}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
+              disabled={!selectedCompanyId}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
+              title={selectedCompanyId ? undefined : 'Select a company first to create a customer'}
             >
               <Plus size={12} />
               Create new customer
@@ -561,7 +585,8 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
             <button
               type="button"
               onClick={() => openNewAppointment()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground"
+              disabled={!selectedCompanyId}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
             >
               <Plus size={12} />
               New appointment
@@ -584,27 +609,25 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                <th className="px-2 py-1.5 text-left">Date Created</th>
                 <th className="px-2 py-1.5 text-left">Company</th>
                 <th className="px-2 py-1.5 text-left">Brand</th>
-                <th className="px-2 py-1.5 text-left">No of Each brand</th>
-                <th className="px-2 py-1.5 text-left">Contact Person</th>
-                <th className="px-2 py-1.5 text-left">Position</th>
-                <th className="px-2 py-1.5 text-left">Email</th>
-                <th className="px-2 py-1.5 text-left">Mobile Number</th>
-                <th className="px-2 py-1.5 text-left">Date created</th>
-                <th className="px-2 py-1.5 text-left">Current Status</th>
-                <th className="px-2 py-1.5 text-left">Last Contact Date</th>
-                <th className="px-2 py-1.5 text-left">Short Brief on last discussion</th>
-                <th className="px-2 py-1.5 text-left">Engaged by</th>
+                <th className="px-2 py-1.5 text-left">No. of Location</th>
+                <th className="px-2 py-1.5 text-left">Last Contact</th>
+                <th className="px-2 py-1.5 text-left">Discussion Detail</th>
+                <th className="px-2 py-1.5 text-left">Status</th>
+                <th className="px-2 py-1.5 text-left">Last Changes Date</th>
+                <th className="px-2 py-1.5 text-left">Hunter</th>
+                <th className="px-2 py-1.5 text-left">Farmer</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <TableLoadingRow colSpan={12} label="Loading customers…" />
+                <TableLoadingRow colSpan={10} label="Loading customers…" />
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
-                    No sales customers yet. Create a customer to start.
+                  <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
+                    No sales customers yet. Import Excel (1 Jan 2026), Import Atta, or create a customer.
                   </td>
                 </tr>
               ) : (
@@ -614,26 +637,26 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
                     className="border-b border-border/60 hover:bg-muted/30 cursor-pointer"
                     onClick={() => openEditCustomer(row)}
                   >
-                    <td className="px-2 py-1.5 font-medium">{row.companyName}</td>
-                    <td className="px-2 py-1.5">{formatBrandsCell(row.brands)}</td>
-                    <td className="px-2 py-1.5">{formatBrandCountsCell(row.brands)}</td>
-                    <td className="px-2 py-1.5">{formatContactsNames(row.contacts)}</td>
-                    <td className="px-2 py-1.5">{formatContactsPositions(row.contacts)}</td>
-                    <td className="px-2 py-1.5">{formatContactsEmails(row.contacts)}</td>
-                    <td className="px-2 py-1.5">{formatContactsMobiles(row.contacts)}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       {new Date(row.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-2 py-1.5">{row.status}</td>
+                    <td className="px-2 py-1.5 font-medium">{row.companyName}</td>
+                    <td className="px-2 py-1.5">{formatBrandsCell(row.brands)}</td>
+                    <td className="px-2 py-1.5">{row.locationCount ?? 0}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       {row.lastContactDate ? new Date(row.lastContactDate).toLocaleDateString() : '—'}
                     </td>
                     <td className="px-2 py-1.5 max-w-[16rem] truncate" title={row.lastDiscussionBrief}>
                       {row.lastDiscussionBrief || '—'}
                     </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap" title={row.engagedUserEmail}>
-                      {row.engagedUserName || row.engagedUserEmail || '—'}
+                    <td className="px-2 py-1.5">{row.status}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {row.lastChangedAt
+                        ? new Date(row.lastChangedAt).toLocaleDateString()
+                        : new Date(row.createdAt).toLocaleDateString()}
                     </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{row.hunterName || '—'}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{row.farmerName || '—'}</td>
                   </tr>
                 ))
               )}
@@ -801,11 +824,12 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
         onChanged={setTeamMembers}
       />
 
-      {panelOpen ? (
+      {panelOpen && (editing || selectedCompanyId) ? (
         <SalesCustomerPanel
-          companyId={selectedCompanyId}
-          defaultCompanyName={selectedSalesCompany?.name ?? ''}
+          companyId={editing?.companyId ?? selectedCompanyId!}
+          defaultCompanyName={editing?.companyName || selectedSalesCompany?.name || ''}
           customer={editing}
+          teamMembers={activeTeamMembers}
           engagedUserId={0}
           engagedUserEmail={selectedTeamMember?.email || engagedUserEmail}
           engagedUserName={selectedTeamMember?.name || engagedUserName}
@@ -893,6 +917,7 @@ function SalesCustomerPanel({
   companyId,
   defaultCompanyName,
   customer,
+  teamMembers,
   engagedUserId,
   engagedUserEmail,
   engagedUserName,
@@ -902,6 +927,7 @@ function SalesCustomerPanel({
   companyId: number;
   defaultCompanyName?: string;
   customer: SalesModuleCustomer | null;
+  teamMembers: SalesModuleTeamMember[];
   engagedUserId: number;
   engagedUserEmail: string;
   engagedUserName: string;
@@ -917,6 +943,13 @@ function SalesCustomerPanel({
     status: customer?.status ?? 'Prospect',
     lastContactDate: toDateInput(customer?.lastContactDate),
     lastDiscussionBrief: customer?.lastDiscussionBrief ?? '',
+    locationCount: customer?.locationCount ?? 0,
+    createdAt: toDateInput(customer?.createdAt),
+    lastChangedAt: toDateInput(customer?.lastChangedAt ?? customer?.createdAt),
+    hunterMemberId: customer?.hunterMemberId ?? null,
+    hunterName: customer?.hunterName ?? '',
+    farmerMemberId: customer?.farmerMemberId ?? null,
+    farmerName: customer?.farmerName ?? '',
     engagedUserId: customer?.engagedUserId ?? engagedUserId,
     engagedUserEmail: customer?.engagedUserEmail || engagedUserEmail,
     engagedUserName: customer?.engagedUserName || engagedUserName,
@@ -929,9 +962,15 @@ function SalesCustomerPanel({
     setSaving(true);
     setError(null);
     try {
+      const hunter = teamMembers.find(m => m.id === form.hunterMemberId);
+      const farmer = teamMembers.find(m => m.id === form.farmerMemberId);
       const payload = toCustomerPayload({
         ...form,
         lastContactDate: form.lastContactDate ? new Date(form.lastContactDate).toISOString() : null,
+        createdAt: form.createdAt ? new Date(form.createdAt).toISOString() : null,
+        lastChangedAt: form.lastChangedAt ? new Date(form.lastChangedAt).toISOString() : new Date().toISOString(),
+        hunterName: hunter?.name || form.hunterName || '',
+        farmerName: farmer?.name || form.farmerName || '',
         engagedUserId: customer?.engagedUserId ?? engagedUserId,
         engagedUserEmail: customer?.engagedUserEmail || engagedUserEmail,
         engagedUserName: customer?.engagedUserName || engagedUserName,
@@ -976,7 +1015,7 @@ function SalesCustomerPanel({
               </button>
             </div>
             {form.brands.map((brand, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_5rem_auto] gap-2">
+              <div key={idx} className="grid grid-cols-[1fr_auto] gap-2">
                 <input
                   value={brand.name}
                   placeholder="Brand name"
@@ -987,18 +1026,6 @@ function SalesCustomerPanel({
                   })}
                   className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
                 />
-                <input
-                  type="number"
-                  min={0}
-                  value={brand.count}
-                  onChange={e => setForm(f => {
-                    const brands = [...f.brands];
-                    brands[idx] = { ...brands[idx], count: Number(e.target.value) || 0 };
-                    return { ...f, brands };
-                  })}
-                  className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                  title="No of each brand"
-                />
                 <button
                   type="button"
                   onClick={() => setForm(f => ({ ...f, brands: f.brands.filter((_, i) => i !== idx) }))}
@@ -1008,6 +1035,131 @@ function SalesCustomerPanel({
                 </button>
               </div>
             ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Date Created</span>
+              <input
+                type="date"
+                value={form.createdAt ?? ''}
+                onChange={e => setForm(f => ({ ...f, createdAt: e.target.value }))}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              />
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">No. of Location</span>
+              <input
+                type="number"
+                min={0}
+                value={form.locationCount ?? 0}
+                onChange={e => setForm(f => ({ ...f, locationCount: Math.max(0, Number(e.target.value) || 0) }))}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Status</span>
+              <select
+                value={form.status}
+                onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              >
+                {SALES_MODULE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Last Contact</span>
+              <input
+                type="date"
+                value={form.lastContactDate ?? ''}
+                onChange={e => setForm(f => ({ ...f, lastContactDate: e.target.value }))}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              />
+            </label>
+          </div>
+
+          <label className="block space-y-1 text-xs">
+            <span className="text-muted-foreground uppercase tracking-wide">Last Changes Date</span>
+            <input
+              type="date"
+              value={form.lastChangedAt ?? ''}
+              onChange={e => setForm(f => ({ ...f, lastChangedAt: e.target.value }))}
+              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+            />
+          </label>
+
+          <label className="block space-y-1 text-xs">
+            <span className="text-muted-foreground uppercase tracking-wide">Discussion Detail</span>
+            <textarea
+              value={form.lastDiscussionBrief}
+              onChange={e => setForm(f => ({ ...f, lastDiscussionBrief: e.target.value }))}
+              rows={4}
+              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Hunter</span>
+              <select
+                value={form.hunterMemberId ?? ''}
+                onChange={e => {
+                  const id = e.target.value ? Number(e.target.value) : null;
+                  const member = teamMembers.find(m => m.id === id);
+                  setForm(f => ({
+                    ...f,
+                    hunterMemberId: id,
+                    hunterName: member?.name ?? '',
+                  }));
+                }}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              >
+                <option value="">—</option>
+                {teamMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              {!form.hunterMemberId ? (
+                <input
+                  value={form.hunterName ?? ''}
+                  placeholder="Or type name"
+                  onChange={e => setForm(f => ({ ...f, hunterName: e.target.value }))}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5"
+                />
+              ) : null}
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Farmer</span>
+              <select
+                value={form.farmerMemberId ?? ''}
+                onChange={e => {
+                  const id = e.target.value ? Number(e.target.value) : null;
+                  const member = teamMembers.find(m => m.id === id);
+                  setForm(f => ({
+                    ...f,
+                    farmerMemberId: id,
+                    farmerName: member?.name ?? '',
+                  }));
+                }}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              >
+                <option value="">—</option>
+                {teamMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              {!form.farmerMemberId ? (
+                <input
+                  value={form.farmerName ?? ''}
+                  placeholder="Or type name"
+                  onChange={e => setForm(f => ({ ...f, farmerName: e.target.value }))}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5"
+                />
+              ) : null}
+            </label>
           </div>
 
           <div className="space-y-2">
@@ -1077,38 +1229,6 @@ function SalesCustomerPanel({
               </div>
             ))}
           </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Current Status</span>
-              <select
-                value={form.status}
-                onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              >
-                {SALES_MODULE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </label>
-            <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Last Contact Date</span>
-              <input
-                type="date"
-                value={form.lastContactDate ?? ''}
-                onChange={e => setForm(f => ({ ...f, lastContactDate: e.target.value }))}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-              />
-            </label>
-          </div>
-
-          <label className="block space-y-1 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wide">Short Brief on last discussion</span>
-            <textarea
-              value={form.lastDiscussionBrief}
-              onChange={e => setForm(f => ({ ...f, lastDiscussionBrief: e.target.value }))}
-              rows={4}
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-            />
-          </label>
 
           {error ? (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">

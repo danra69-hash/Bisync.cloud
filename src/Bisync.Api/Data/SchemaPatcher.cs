@@ -771,6 +771,17 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleAppointments", "OutlookSyncError", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleAppointments", "OutlookSyncedAt", "timestamp with time zone NULL");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleAppointments", "SalesTeamMemberId", "INTEGER NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleCustomers", "LocationCount", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleCustomers", "LastChangedAt", "timestamp with time zone NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleCustomers", "HunterMemberId", "INTEGER NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleCustomers", "HunterName", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleCustomers", "FarmerMemberId", "INTEGER NULL");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleCustomers", "FarmerName", "TEXT NOT NULL DEFAULT ''");
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "SalesModuleCustomers"
+            SET "LastChangedAt" = COALESCE("LastChangedAt", "CreatedAt", NOW())
+            WHERE "LastChangedAt" IS NULL;
+            """);
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "SalesModuleCalendarSettings" (

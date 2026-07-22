@@ -82,6 +82,9 @@ export function toCustomerPayload(
       mobile: c.mobile.trim(),
     })),
     lastDiscussionBrief: form.lastDiscussionBrief.trim(),
+    locationCount: Math.max(0, Number(form.locationCount) || 0),
+    hunterName: (form.hunterName ?? '').trim(),
+    farmerName: (form.farmerName ?? '').trim(),
     status: form.status.trim() || 'Prospect',
   };
 }
