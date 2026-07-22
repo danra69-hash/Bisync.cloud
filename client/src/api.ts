@@ -748,6 +748,44 @@ export interface SalesModuleClientUpdateImportResult {
   messages: string[];
 }
 
+export interface SalesModuleDiaryContact {
+  name: string;
+  position: string;
+}
+
+export interface SalesModuleDiaryEntry {
+  id: number;
+  salesTeamMemberId: number;
+  activityType: 'StatusChange' | 'SalesCall' | string;
+  activityLabel: string;
+  salesModuleCompanyId?: number | null;
+  companyName: string;
+  brandName: string;
+  locationVisited: string;
+  emailsSent?: number | null;
+  statuses: string[];
+  contactType: string;
+  contactDate: string;
+  contacts: SalesModuleDiaryContact[];
+  createdAt: string;
+  createdByEmail?: string;
+}
+
+export interface CreateSalesModuleDiaryEntryPayload {
+  salesTeamMemberId: number;
+  activityType: 'Status Change' | 'Sales Call' | 'StatusChange' | 'SalesCall';
+  salesModuleCompanyId?: number | null;
+  companyName?: string;
+  brandName?: string;
+  locationVisited?: string;
+  emailsSent?: number | null;
+  statuses?: string[];
+  contactType?: string;
+  contactDate: string;
+  contacts?: SalesModuleDiaryContact[];
+  createdByEmail?: string;
+}
+
 export interface SalesModuleOverviewPeriodWeek {
   value: string;
   weekStart: string;
@@ -2548,6 +2586,12 @@ export const api = {
       locationCount?: number | null;
     },
   ) => fetchJsonWithMethod<SalesModuleClientUpdate>(`/api/sales-module/client-updates/${id}`, 'PATCH', data),
+  salesModuleDiary: (salesTeamMemberId: number) =>
+    fetchJson<SalesModuleDiaryEntry[]>(`/api/sales-module/diary?salesTeamMemberId=${salesTeamMemberId}`),
+  createSalesModuleDiaryEntry: (data: CreateSalesModuleDiaryEntryPayload) =>
+    fetchJsonWithMethod<SalesModuleDiaryEntry>('/api/sales-module/diary', 'POST', data),
+  deleteSalesModuleDiaryEntry: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/sales-module/diary/${id}`, 'DELETE'),
   importSalesModuleClientUpdates: async (file: File) => {
     const form = new FormData();
     form.append('file', file);

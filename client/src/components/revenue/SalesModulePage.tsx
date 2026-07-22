@@ -17,8 +17,9 @@ import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
+import { SalesDiaryPanel } from './SalesDiaryPanel';
 
-type TabId = 'overview' | 'client-update' | 'calendar';
+type TabId = 'overview' | 'client-update' | 'sales-diary' | 'calendar';
 type OverviewView = 'week' | 'month';
 
 type CalendarItem =
@@ -28,6 +29,7 @@ type CalendarItem =
 const TABS = [
   { id: 'overview' as const, label: 'Overview' },
   { id: 'client-update' as const, label: 'Client Update' },
+  { id: 'sales-diary' as const, label: 'Sales Diary' },
   { id: 'calendar' as const, label: 'Appointment Calendar' },
 ];
 
@@ -695,6 +697,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               </button>
             </div>
           </div>
+        ) : tab === 'sales-diary' ? (
+          <p className="text-xs text-muted-foreground">
+            Log Status Change and Sales Call activity for hunter{' '}
+            {selectedTeamMember?.name ?? '—'}. Company list is limited to accounts tagged to this hunter.
+          </p>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex items-center gap-2">
@@ -889,6 +896,13 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
             ))}
           </datalist>
         </TableScrollContainer>
+      ) : tab === 'sales-diary' && selectedTeamMemberId ? (
+        <SalesDiaryPanel
+          salesTeamMemberId={selectedTeamMemberId}
+          hunterName={selectedTeamMember?.name ?? ''}
+          companies={companies}
+          createdByEmail={engagedUserEmail}
+        />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4">
           <div className="rounded-lg border border-border bg-card overflow-hidden">
