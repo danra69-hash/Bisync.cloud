@@ -112,7 +112,7 @@ export default function EmployeePayrollPortal({ employees, onVerifyPayrollPin }:
         </button>
       </div>
 
-      <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <div className="p-6 w-full max-w-none mx-auto space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
             { label: 'Latest Payslip', value: '—', hint: 'No payslip issued yet' },

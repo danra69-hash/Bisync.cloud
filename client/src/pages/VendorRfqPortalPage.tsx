@@ -102,14 +102,14 @@ export function VendorRfqPortalPage({ token }: Props) {
   return (
     <div className="min-h-screen bg-[#F7F3EE]">
       <header className="border-b border-border bg-[#2C1A0A] text-white px-4 py-4">
-        <div className="max-w-3xl mx-auto">
+        <div className="w-full max-w-none mx-auto">
           <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">pasar.ai · Bisync.cloud</p>
           <h1 className="text-lg font-semibold mt-1">Sample & Quote</h1>
           <p className="text-sm text-white/80 mt-0.5">{portal.rfqNumber}</p>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+      <main className="w-full max-w-none mx-auto px-4 py-6 space-y-5">
         {error ? (
           <p className="text-sm text-destructive border border-destructive/30 rounded-lg px-3 py-2 bg-destructive/5">
             {error}

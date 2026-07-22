@@ -227,7 +227,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border bg-card px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+        <div className="w-full max-w-none mx-auto flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">Bisync.cloud Vendor Portal</p>
             <h1 className="text-lg font-semibold mt-0.5">
@@ -246,7 +246,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto p-6 space-y-4">
+      <main className="w-full max-w-none mx-auto p-6 space-y-4">
         {loading && (
           <MillstoneLoader layout="block" size="lg" label="Loading purchase order…" />
         )}

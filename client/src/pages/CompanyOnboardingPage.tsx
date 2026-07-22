@@ -148,7 +148,7 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
   return (
     <div className="min-h-screen bg-herme-cream">
       <header className="border-b border-herme-muted/40 bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex w-full max-w-none items-center justify-between px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-[#C9963A]">
               {t('auth.onboardingStepCompany')}
@@ -165,7 +165,7 @@ export function CompanyOnboardingPage({ onCompleted }: Props) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-8">
+      <main className="mx-auto w-full max-w-none px-6 py-8">
         <p className="mb-6 text-sm text-herme-ink/60">{t('auth.companyRegistrationHint')}</p>
 
         <div className="space-y-4 rounded-2xl border border-border bg-white p-6 shadow-sm">

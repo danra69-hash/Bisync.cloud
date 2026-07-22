@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
+import { contentFrameClass } from '../components/layout/pageLayout';
 import { UsageDashboard } from '../components/dev/UsageDashboard';
 import { TenantRollupsPanel } from '../components/dev/TenantRollupsPanel';
 import { DemoLaunchPanel } from '../components/dev/DemoLaunchPanel';
@@ -103,9 +104,9 @@ export function DevConsolePage() {
   const triggeredBy = sessionUser.fullName || sessionUser.email || 'Dev Console';
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+    <div className="min-h-screen w-full max-w-none bg-background text-foreground">
+      <header className="border-b border-border bg-card/80 backdrop-blur sticky top-0 z-10 w-full">
+        <div className={contentFrameClass('py-3 flex items-center justify-between gap-3')}>
           <div className="flex items-center gap-3 min-w-0">
             <BrandEngineLockup size="sm" tone="onLight" />
             <div className="min-w-0">
@@ -131,8 +132,8 @@ export function DevConsolePage() {
             </button>
           </div>
         </div>
-        <div className="max-w-6xl mx-auto px-4">
-          <nav className="flex gap-1 -mb-px" aria-label="Dev Console sections">
+        <div className={contentFrameClass()}>
+          <nav className="flex gap-1 -mb-px overflow-x-auto" aria-label="Dev Console sections">
             {DEV_CONSOLE_TABS.map(item => {
               const active = tab === item.id;
               return (
@@ -140,7 +141,7 @@ export function DevConsolePage() {
                   key={item.id}
                   type="button"
                   onClick={() => setTab(item.id)}
-                  className={`px-3 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+                  className={`px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
                     active
                       ? 'border-primary text-foreground'
                       : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
@@ -154,7 +155,7 @@ export function DevConsolePage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-10">
+      <main className={contentFrameClass('py-6 space-y-10')}>
         <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
           <>
