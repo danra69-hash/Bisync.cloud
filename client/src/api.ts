@@ -635,6 +635,12 @@ export interface SalesModuleCustomer {
   createdAt: string;
   lastContactDate?: string | null;
   lastDiscussionBrief: string;
+  locationCount?: number;
+  lastChangedAt?: string | null;
+  hunterMemberId?: number | null;
+  hunterName?: string;
+  farmerMemberId?: number | null;
+  farmerName?: string;
   engagedUserId: number;
   engagedUserEmail: string;
   engagedUserName: string;
@@ -650,6 +656,13 @@ export interface UpsertSalesModuleCustomerPayload {
   status: string;
   lastContactDate?: string | null;
   lastDiscussionBrief: string;
+  locationCount?: number;
+  createdAt?: string | null;
+  lastChangedAt?: string | null;
+  hunterMemberId?: number | null;
+  hunterName?: string;
+  farmerMemberId?: number | null;
+  farmerName?: string;
   engagedUserId: number;
   engagedUserEmail: string;
   engagedUserName: string;
@@ -700,6 +713,14 @@ export interface SalesModuleCompany {
   createdByEmail?: string;
   salesTeamMemberIds: number[];
   salesTeamMembers: Array<{ id: number; name: string; email: string }>;
+}
+
+export interface SalesModuleImportResult {
+  imported: number;
+  skipped: number;
+  companiesCreated: number;
+  messages: string[];
+  customers: SalesModuleCustomer[];
 }
 
 export interface SalesModuleTeamCalendarEvent {
@@ -2379,15 +2400,57 @@ export const api = {
     fetchJsonWithMethod<B2bCustomer>('/api/b2b-customers', 'POST', data),
   updateB2bCustomer: (externalId: string, data: UpsertB2bCustomerPayload) =>
     fetchJsonWithMethod<B2bCustomer>(`/api/b2b-customers/${externalId}`, 'PUT', data),
-  salesModuleCustomers: (companyId: number, engagedUserId?: number) => {
-    const params = new URLSearchParams({ companyId: String(companyId) });
-    if (engagedUserId && engagedUserId > 0) params.set('engagedUserId', String(engagedUserId));
+  salesModuleCustomers: (opts: { companyId?: number; salesTeamMemberId?: number; engagedUserId?: number }) => {
+    const params = new URLSearchParams();
+    if (opts.companyId && opts.companyId > 0) params.set('companyId', String(opts.companyId));
+    if (opts.salesTeamMemberId && opts.salesTeamMemberId > 0) {
+      params.set('salesTeamMemberId', String(opts.salesTeamMemberId));
+    }
+    if (opts.engagedUserId && opts.engagedUserId > 0) params.set('engagedUserId', String(opts.engagedUserId));
     return fetchJson<SalesModuleCustomer[]>(`/api/sales-module/customers?${params}`);
   },
   createSalesModuleCustomer: (data: UpsertSalesModuleCustomerPayload) =>
     fetchJsonWithMethod<SalesModuleCustomer>('/api/sales-module/customers', 'POST', data),
   updateSalesModuleCustomer: (externalId: string, data: UpsertSalesModuleCustomerPayload) =>
     fetchJsonWithMethod<SalesModuleCustomer>(`/api/sales-module/customers/${encodeURIComponent(externalId)}`, 'PUT', data),
+  importSalesModuleCompanies: async (payload: {
+    file: File;
+    salesTeamMemberId: number;
+    onlyDate?: string;
+    companyName?: string;
+  }) => {
+    const form = new FormData();
+    form.append('file', payload.file);
+    form.append('salesTeamMemberId', String(payload.salesTeamMemberId));
+    if (payload.onlyDate) form.append('onlyDate', payload.onlyDate);
+    if (payload.companyName) form.append('companyName', payload.companyName);
+    const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/sales-module/import`, {
+      method: 'POST',
+      headers: (() => {
+        const h: Record<string, string> = {};
+        try {
+          const companyId = localStorage.getItem('bisync.selectedCompanyId');
+          const userId = localStorage.getItem('bisync.currentUserId');
+          const devToken = localStorage.getItem('bisync.devConsoleToken');
+          if (companyId) h['X-Bisync-Company-Id'] = companyId;
+          if (userId) h['X-Bisync-User-Id'] = userId;
+          if (devToken) h['X-Bisync-Dev-Console-Token'] = devToken;
+        } catch { /* ignore */ }
+        return h;
+      })(),
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Import failed (${res.status})`);
+    }
+    return res.json() as Promise<SalesModuleImportResult>;
+  },
+  importSalesModuleAtta: (salesTeamMemberId: number) =>
+    fetchJsonWithMethod<SalesModuleImportResult>(
+      `/api/sales-module/import/atta?salesTeamMemberId=${salesTeamMemberId}`,
+      'POST',
+    ),
   salesModuleAppointments: (companyId: number, opts?: { engagedUserId?: number; from?: string; to?: string }) => {
     const params = new URLSearchParams({ companyId: String(companyId) });
     if (opts?.engagedUserId && opts.engagedUserId > 0) params.set('engagedUserId', String(opts.engagedUserId));

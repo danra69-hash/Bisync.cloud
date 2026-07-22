@@ -153,6 +153,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Status).HasMaxLength(40);
             e.Property(x => x.EngagedUserEmail).HasMaxLength(256);
             e.Property(x => x.EngagedUserName).HasMaxLength(200);
+            e.Property(x => x.HunterName).HasMaxLength(200);
+            e.Property(x => x.FarmerName).HasMaxLength(200);
         });
         modelBuilder.Entity<SalesModuleAppointment>(e =>
         {

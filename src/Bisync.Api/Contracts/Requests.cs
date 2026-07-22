@@ -1405,6 +1405,15 @@ public class UpsertSalesModuleCustomerRequest
     public DateTime? LastContactDate { get; set; }
     [MaxLength(2000)]
     public string LastDiscussionBrief { get; set; } = string.Empty;
+    public int LocationCount { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public DateTime? LastChangedAt { get; set; }
+    public int? HunterMemberId { get; set; }
+    [MaxLength(200)]
+    public string HunterName { get; set; } = string.Empty;
+    public int? FarmerMemberId { get; set; }
+    [MaxLength(200)]
+    public string FarmerName { get; set; } = string.Empty;
     public int EngagedUserId { get; set; }
     [MaxLength(256)]
     public string EngagedUserEmail { get; set; } = string.Empty;

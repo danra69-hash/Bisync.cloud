@@ -12,7 +12,8 @@ namespace Bisync.Api.Controllers;
 [Route("api/sales-module")]
 public class SalesModuleController(
     BisyncDbContext db,
-    SalesModuleCalendarSyncService calendarSync) : ControllerBase
+    SalesModuleCalendarSyncService calendarSync,
+    SalesModuleImportService importService) : ControllerBase
 {
     static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -23,13 +24,38 @@ public class SalesModuleController(
 
     [HttpGet("customers")]
     public async Task<ActionResult<IEnumerable<object>>> GetCustomers(
-        [FromQuery] int companyId,
+        [FromQuery] int? companyId = null,
+        [FromQuery] int? salesTeamMemberId = null,
         [FromQuery] int? engagedUserId = null,
         CancellationToken ct = default)
     {
-        if (companyId <= 0) return BadRequest(new { message = "companyId is required." });
+        await EnsureSalesCompanySchemaAsync(ct);
 
-        var q = db.SalesModuleCustomers.AsNoTracking().Where(c => c.CompanyId == companyId && c.Active);
+        HashSet<int>? allowedCompanyIds = null;
+        if (salesTeamMemberId is > 0)
+        {
+            var ids = await db.SalesModuleCompanyMembers.AsNoTracking()
+                .Where(m => m.SalesTeamMemberId == salesTeamMemberId.Value)
+                .Select(m => m.SalesModuleCompanyId)
+                .ToListAsync(ct);
+            allowedCompanyIds = ids.ToHashSet();
+        }
+
+        if (companyId is > 0)
+        {
+            if (allowedCompanyIds is not null && !allowedCompanyIds.Contains(companyId.Value))
+                return Ok(Array.Empty<object>());
+            allowedCompanyIds = new HashSet<int> { companyId.Value };
+        }
+
+        if (allowedCompanyIds is null)
+            return BadRequest(new { message = "companyId or salesTeamMemberId is required." });
+
+        if (allowedCompanyIds.Count == 0)
+            return Ok(Array.Empty<object>());
+
+        var q = db.SalesModuleCustomers.AsNoTracking()
+            .Where(c => c.Active && allowedCompanyIds.Contains(c.CompanyId));
         if (engagedUserId is > 0)
             q = q.Where(c => c.EngagedUserId == engagedUserId.Value);
 
@@ -326,6 +352,71 @@ public class SalesModuleController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Import companies/pipeline rows from Excel or CSV.
+    /// Only rows whose first column (Date Created) equals onlyDate (default 1 January 2026) are imported.
+    /// Optional companyName filters to a single company (e.g. Atta).
+    /// </summary>
+    [HttpPost("import")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<ActionResult<object>> ImportCompanies(
+        IFormFile file,
+        [FromForm] int salesTeamMemberId,
+        [FromForm] string? onlyDate = null,
+        [FromForm] string? companyName = null,
+        CancellationToken ct = default)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Upload an Excel (.xlsx) or CSV file." });
+        if (salesTeamMemberId <= 0)
+            return BadRequest(new { message = "salesTeamMemberId is required." });
+
+        DateOnly? filterDate = null;
+        if (!string.IsNullOrWhiteSpace(onlyDate)
+            && DateOnly.TryParse(onlyDate, out var parsed))
+            filterDate = parsed;
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await importService.ImportAsync(
+                stream,
+                file.FileName,
+                salesTeamMemberId,
+                filterDate,
+                companyName,
+                ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Import failed: {ex.Message}" });
+        }
+    }
+
+    /// <summary>Import Atta dated 1 January 2026 for the selected sales team member.</summary>
+    [HttpPost("import/atta")]
+    public async Task<ActionResult<object>> ImportAtta(
+        [FromQuery] int salesTeamMemberId,
+        CancellationToken ct = default)
+    {
+        if (salesTeamMemberId <= 0)
+            return BadRequest(new { message = "salesTeamMemberId is required." });
+        try
+        {
+            var result = await importService.ImportAttaSeedAsync(salesTeamMemberId, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("team")]
     public async Task<ActionResult<IEnumerable<object>>> GetTeam(CancellationToken ct)
     {
@@ -532,6 +623,16 @@ public class SalesModuleController(
             ? DateTime.SpecifyKind(request.LastContactDate.Value, DateTimeKind.Utc)
             : null;
         customer.LastDiscussionBrief = (request.LastDiscussionBrief ?? string.Empty).Trim();
+        customer.LocationCount = Math.Max(0, request.LocationCount);
+        if (request.CreatedAt.HasValue)
+            customer.CreatedAt = DateTime.SpecifyKind(request.CreatedAt.Value, DateTimeKind.Utc);
+        customer.LastChangedAt = request.LastChangedAt.HasValue
+            ? DateTime.SpecifyKind(request.LastChangedAt.Value, DateTimeKind.Utc)
+            : DateTime.UtcNow;
+        customer.HunterMemberId = request.HunterMemberId is > 0 ? request.HunterMemberId : null;
+        customer.HunterName = (request.HunterName ?? string.Empty).Trim();
+        customer.FarmerMemberId = request.FarmerMemberId is > 0 ? request.FarmerMemberId : null;
+        customer.FarmerName = (request.FarmerName ?? string.Empty).Trim();
         customer.EngagedUserId = request.EngagedUserId;
         customer.EngagedUserEmail = (request.EngagedUserEmail ?? string.Empty).Trim().ToLowerInvariant();
         customer.EngagedUserName = (request.EngagedUserName ?? string.Empty).Trim();
@@ -551,6 +652,12 @@ public class SalesModuleController(
         createdAt = c.CreatedAt,
         lastContactDate = c.LastContactDate,
         c.LastDiscussionBrief,
+        locationCount = c.LocationCount,
+        lastChangedAt = c.LastChangedAt == default ? c.CreatedAt : c.LastChangedAt,
+        hunterMemberId = c.HunterMemberId,
+        hunterName = c.HunterName,
+        farmerMemberId = c.FarmerMemberId,
+        farmerName = c.FarmerName,
         c.EngagedUserId,
         c.EngagedUserEmail,
         c.EngagedUserName,
