@@ -748,6 +748,46 @@ export interface SalesModuleClientUpdateImportResult {
   messages: string[];
 }
 
+export interface SalesModuleOverviewPeriodWeek {
+  value: string;
+  weekStart: string;
+  weekEnd: string;
+  label: string;
+}
+
+export interface SalesModuleOverviewPeriodMonth {
+  value: string;
+  year: number;
+  month: number;
+  label: string;
+}
+
+export interface SalesModuleOverviewPeriods {
+  weeks: SalesModuleOverviewPeriodWeek[];
+  months: SalesModuleOverviewPeriodMonth[];
+}
+
+export interface SalesModuleOverviewHunterRow {
+  hunter: string;
+  statusChanges: number;
+  interactions: number;
+  newLeads: number;
+}
+
+export interface SalesModuleOverview {
+  view: 'week' | 'month' | string;
+  periodKey: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  hunters: SalesModuleOverviewHunterRow[];
+  totals: {
+    statusChanges: number;
+    interactions: number;
+    newLeads: number;
+  };
+}
+
 export interface SalesModuleTeamCalendarEvent {
   id: string;
   source: 'office365';
@@ -2476,6 +2516,22 @@ export const api = {
       `/api/sales-module/import/atta?salesTeamMemberId=${salesTeamMemberId}`,
       'POST',
     ),
+  salesModuleOverviewPeriods: () =>
+    fetchJson<SalesModuleOverviewPeriods>('/api/sales-module/overview/periods'),
+  salesModuleOverview: (opts: {
+    view: 'week' | 'month';
+    weekStart?: string;
+    year?: number;
+    month?: number;
+  }) => {
+    const params = new URLSearchParams({ view: opts.view });
+    if (opts.view === 'week' && opts.weekStart) params.set('weekStart', opts.weekStart);
+    if (opts.view === 'month') {
+      if (opts.year != null) params.set('year', String(opts.year));
+      if (opts.month != null) params.set('month', String(opts.month));
+    }
+    return fetchJson<SalesModuleOverview>(`/api/sales-module/overview?${params}`);
+  },
   salesModuleClientUpdates: (opts?: { hunter?: string }) => {
     const params = new URLSearchParams();
     if (opts?.hunter?.trim()) params.set('hunter', opts.hunter.trim());
