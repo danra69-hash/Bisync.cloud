@@ -43,6 +43,12 @@ public class SalesModuleController(
         var error = ValidateCustomer(request);
         if (error is not null) return BadRequest(new { message = error });
 
+        await EnsureSalesCompanySchemaAsync(ct);
+        var salesCompany = await db.SalesModuleCompanies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == request.CompanyId && c.Active, ct);
+        if (salesCompany is null)
+            return BadRequest(new { message = "Sales company not found. Create and tag a company to a sales team member first." });
+
         var externalId = string.IsNullOrWhiteSpace(request.ExternalId)
             ? await NextCustomerExternalIdAsync(request.CompanyId, ct)
             : request.ExternalId.Trim();
@@ -51,6 +57,8 @@ public class SalesModuleController(
             return Conflict(new { message = $"Customer id {externalId} already exists." });
 
         var customer = MapToCustomer(new SalesModuleCustomer(), request, externalId);
+        if (string.IsNullOrWhiteSpace(customer.CompanyName))
+            customer.CompanyName = salesCompany.Name;
         customer.CreatedAt = DateTime.UtcNow;
         db.SalesModuleCustomers.Add(customer);
         await db.SaveChangesAsync(ct);
@@ -109,6 +117,10 @@ public class SalesModuleController(
         var error = ValidateAppointment(request);
         if (error is not null) return BadRequest(new { message = error });
 
+        await EnsureSalesCompanySchemaAsync(ct);
+        if (!await db.SalesModuleCompanies.AsNoTracking().AnyAsync(c => c.Id == request.CompanyId && c.Active, ct))
+            return BadRequest(new { message = "Sales company not found." });
+
         var customer = await db.SalesModuleCustomers.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == request.SalesModuleCustomerId && c.CompanyId == request.CompanyId, ct);
         if (customer is null) return BadRequest(new { message = "Sales Module customer not found." });
@@ -166,6 +178,152 @@ public class SalesModuleController(
     {
         var settings = await calendarSync.GetOrCreateAsync(ct);
         return Ok(calendarSync.ToPublicDto(settings));
+    }
+
+    [HttpGet("companies")]
+    public async Task<ActionResult<IEnumerable<object>>> GetSalesCompanies(
+        [FromQuery] int? salesTeamMemberId = null,
+        [FromQuery] bool includeInactive = false,
+        CancellationToken ct = default)
+    {
+        await EnsureSalesCompanySchemaAsync(ct);
+
+        IQueryable<SalesModuleCompany> q = db.SalesModuleCompanies.AsNoTracking();
+        if (!includeInactive)
+            q = q.Where(c => c.Active);
+
+        if (salesTeamMemberId is > 0)
+        {
+            var companyIds = await db.SalesModuleCompanyMembers.AsNoTracking()
+                .Where(m => m.SalesTeamMemberId == salesTeamMemberId.Value)
+                .Select(m => m.SalesModuleCompanyId)
+                .ToListAsync(ct);
+            q = q.Where(c => companyIds.Contains(c.Id));
+        }
+
+        var rows = await q.OrderBy(c => c.Name).ToListAsync(ct);
+        var tags = await db.SalesModuleCompanyMembers.AsNoTracking()
+            .Where(t => rows.Select(r => r.Id).Contains(t.SalesModuleCompanyId))
+            .ToListAsync(ct);
+        var members = await calendarSync.ListTeamAsync(ct);
+        var memberMap = members.ToDictionary(m => m.Id);
+
+        return Ok(rows.Select(c => MapSalesCompany(c, tags, memberMap)));
+    }
+
+    [HttpPost("companies")]
+    public async Task<ActionResult<object>> CreateSalesCompany(
+        [FromBody] UpsertSalesModuleCompanyRequest request,
+        CancellationToken ct)
+    {
+        await EnsureSalesCompanySchemaAsync(ct);
+        var error = ValidateSalesCompany(request);
+        if (error is not null) return BadRequest(new { message = error });
+
+        var memberIds = request.SalesTeamMemberIds.Where(id => id > 0).Distinct().ToList();
+        var existingMembers = await db.SalesModuleTeamMembers.AsNoTracking()
+            .Where(m => memberIds.Contains(m.Id))
+            .Select(m => m.Id)
+            .ToListAsync(ct);
+        if (existingMembers.Count != memberIds.Count)
+            return BadRequest(new { message = "One or more sales team members were not found." });
+
+        var name = request.Name.Trim();
+        if (await db.SalesModuleCompanies.AnyAsync(c => c.Name.ToLower() == name.ToLower(), ct))
+            return Conflict(new { message = $"Company \"{name}\" already exists." });
+
+        var row = new SalesModuleCompany
+        {
+            Name = name,
+            Active = request.Active,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.SalesModuleCompanies.Add(row);
+        await db.SaveChangesAsync(ct);
+
+        foreach (var memberId in memberIds)
+        {
+            db.SalesModuleCompanyMembers.Add(new SalesModuleCompanyMember
+            {
+                SalesModuleCompanyId = row.Id,
+                SalesTeamMemberId = memberId,
+            });
+        }
+        await db.SaveChangesAsync(ct);
+
+        var tags = await db.SalesModuleCompanyMembers.AsNoTracking()
+            .Where(t => t.SalesModuleCompanyId == row.Id)
+            .ToListAsync(ct);
+        var members = await calendarSync.ListTeamAsync(ct);
+        return Ok(MapSalesCompany(row, tags, members.ToDictionary(m => m.Id)));
+    }
+
+    [HttpPut("companies/{id:int}")]
+    public async Task<ActionResult<object>> UpdateSalesCompany(
+        int id,
+        [FromBody] UpsertSalesModuleCompanyRequest request,
+        CancellationToken ct)
+    {
+        await EnsureSalesCompanySchemaAsync(ct);
+        var error = ValidateSalesCompany(request);
+        if (error is not null) return BadRequest(new { message = error });
+
+        var row = await db.SalesModuleCompanies.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (row is null) return NotFound();
+
+        var memberIds = request.SalesTeamMemberIds.Where(mid => mid > 0).Distinct().ToList();
+        var existingMembers = await db.SalesModuleTeamMembers.AsNoTracking()
+            .Where(m => memberIds.Contains(m.Id))
+            .Select(m => m.Id)
+            .ToListAsync(ct);
+        if (existingMembers.Count != memberIds.Count)
+            return BadRequest(new { message = "One or more sales team members were not found." });
+
+        var name = request.Name.Trim();
+        if (await db.SalesModuleCompanies.AnyAsync(c => c.Id != id && c.Name.ToLower() == name.ToLower(), ct))
+            return Conflict(new { message = $"Company \"{name}\" already exists." });
+
+        row.Name = name;
+        row.Active = request.Active;
+        row.UpdatedAt = DateTime.UtcNow;
+
+        var existingTags = await db.SalesModuleCompanyMembers
+            .Where(t => t.SalesModuleCompanyId == id)
+            .ToListAsync(ct);
+        db.SalesModuleCompanyMembers.RemoveRange(existingTags);
+        foreach (var memberId in memberIds)
+        {
+            db.SalesModuleCompanyMembers.Add(new SalesModuleCompanyMember
+            {
+                SalesModuleCompanyId = id,
+                SalesTeamMemberId = memberId,
+            });
+        }
+        await db.SaveChangesAsync(ct);
+
+        var tags = await db.SalesModuleCompanyMembers.AsNoTracking()
+            .Where(t => t.SalesModuleCompanyId == id)
+            .ToListAsync(ct);
+        var members = await calendarSync.ListTeamAsync(ct);
+        return Ok(MapSalesCompany(row, tags, members.ToDictionary(m => m.Id)));
+    }
+
+    [HttpDelete("companies/{id:int}")]
+    public async Task<ActionResult> DeleteSalesCompany(int id, CancellationToken ct)
+    {
+        await EnsureSalesCompanySchemaAsync(ct);
+        var row = await db.SalesModuleCompanies.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (row is null) return NotFound();
+
+        if (await db.SalesModuleCustomers.AnyAsync(c => c.CompanyId == id && c.Active, ct))
+            return BadRequest(new { message = "Cannot delete a company that still has active customers. Deactivate it instead." });
+
+        var tags = await db.SalesModuleCompanyMembers.Where(t => t.SalesModuleCompanyId == id).ToListAsync(ct);
+        db.SalesModuleCompanyMembers.RemoveRange(tags);
+        db.SalesModuleCompanies.Remove(row);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     [HttpGet("team")]
@@ -265,7 +423,7 @@ public class SalesModuleController(
 
     static string? ValidateCustomer(UpsertSalesModuleCustomerRequest request)
     {
-        if (request.CompanyId <= 0) return "Company is required.";
+        if (request.CompanyId <= 0) return "Sales company is required.";
         if (string.IsNullOrWhiteSpace(request.CompanyName)) return "Company name is required.";
         if (!AllowedStatuses.Contains(request.Status?.Trim() ?? string.Empty))
             return "Status must be Prospect, Engaged, Active, Inactive, or Closed.";
@@ -276,11 +434,75 @@ public class SalesModuleController(
 
     static string? ValidateAppointment(UpsertSalesModuleAppointmentRequest request)
     {
-        if (request.CompanyId <= 0) return "Company is required.";
+        if (request.CompanyId <= 0) return "Sales company is required.";
         if (request.SalesModuleCustomerId <= 0) return "Customer is required.";
         if (string.IsNullOrWhiteSpace(request.Title)) return "Title is required.";
         if (request.EndsAt <= request.StartsAt) return "End time must be after start time.";
         return null;
+    }
+
+    static string? ValidateSalesCompany(UpsertSalesModuleCompanyRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name)) return "Company name is required.";
+        if (request.SalesTeamMemberIds is null || request.SalesTeamMemberIds.Count == 0
+            || request.SalesTeamMemberIds.All(id => id <= 0))
+            return "Tag at least one sales team member to this company.";
+        return null;
+    }
+
+    async Task EnsureSalesCompanySchemaAsync(CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SalesModuleCompanies" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_SalesModuleCompanies" PRIMARY KEY,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "Active" boolean NOT NULL DEFAULT true,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "CreatedByEmail" TEXT NOT NULL DEFAULT ''
+            );
+            """, ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SalesModuleCompanyMembers" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_SalesModuleCompanyMembers" PRIMARY KEY,
+                "SalesModuleCompanyId" integer NOT NULL,
+                "SalesTeamMemberId" integer NOT NULL
+            );
+            """, ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_SalesModuleCompanyMembers_Pair"
+            ON "SalesModuleCompanyMembers" ("SalesModuleCompanyId", "SalesTeamMemberId");
+            """, ct);
+    }
+
+    static object MapSalesCompany(
+        SalesModuleCompany c,
+        List<SalesModuleCompanyMember> tags,
+        Dictionary<int, SalesModuleTeamMember> members)
+    {
+        var memberIds = tags
+            .Where(t => t.SalesModuleCompanyId == c.Id)
+            .Select(t => t.SalesTeamMemberId)
+            .Distinct()
+            .ToList();
+        return new
+        {
+            c.Id,
+            c.Name,
+            c.Active,
+            createdAt = c.CreatedAt,
+            updatedAt = c.UpdatedAt,
+            createdByEmail = c.CreatedByEmail,
+            salesTeamMemberIds = memberIds,
+            salesTeamMembers = memberIds
+                .Where(id => members.ContainsKey(id))
+                .Select(id => new
+                {
+                    id,
+                    name = members[id].Name,
+                    email = members[id].Email,
+                }),
+        };
     }
 
     static SalesModuleCustomer MapToCustomer(SalesModuleCustomer customer, UpsertSalesModuleCustomerRequest request, string externalId)
