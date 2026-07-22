@@ -96,6 +96,7 @@ builder.Services.AddScoped<VendorRatingService>();
 builder.Services.AddScoped<PlatformLaunchService>();
 builder.Services.AddScoped<SalesModuleCalendarSyncService>();
 builder.Services.AddScoped<SalesModuleImportService>();
+builder.Services.AddScoped<SalesModuleClientUpdateService>();
 builder.Services.Configure<DevConsoleAuthOptions>(
     builder.Configuration.GetSection(DevConsoleAuthOptions.SectionName));
 builder.Services.AddHttpClient("google-oauth");
@@ -171,6 +172,7 @@ using (var scope = app.Services.CreateScope())
     await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
     await SystemAuditStartup.InitializeAsync(scope.ServiceProvider);
     await scope.ServiceProvider.GetRequiredService<DevConsoleAuthService>().EnsureRootUserAsync();
+    await scope.ServiceProvider.GetRequiredService<SalesModuleClientUpdateService>().SeedBundledIfEmptyAsync();
 
     var partitions = scope.ServiceProvider.GetRequiredService<LocationPartitionService>();
     await partitions.EnsureLocationListPartitionsAsync();

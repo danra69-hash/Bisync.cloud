@@ -723,6 +723,31 @@ export interface SalesModuleImportResult {
   customers: SalesModuleCustomer[];
 }
 
+export interface SalesModuleClientUpdate {
+  id: number;
+  dateCreated?: string | null;
+  hunter: string;
+  company: string;
+  brand: string;
+  locationCount?: number | null;
+  status: string;
+  lastContactDate?: string | null;
+  contactPerson: string;
+  contactType: string;
+  note: string;
+  followUpReminder?: string | null;
+  appointment: string;
+  importedAt?: string;
+}
+
+export interface SalesModuleClientUpdateImportResult {
+  imported: number;
+  sheet: string;
+  fileName: string;
+  importedAt?: string;
+  messages: string[];
+}
+
 export interface SalesModuleTeamCalendarEvent {
   id: string;
   source: 'office365';
@@ -2451,6 +2476,37 @@ export const api = {
       `/api/sales-module/import/atta?salesTeamMemberId=${salesTeamMemberId}`,
       'POST',
     ),
+  salesModuleClientUpdates: (opts?: { hunter?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.hunter?.trim()) params.set('hunter', opts.hunter.trim());
+    const q = params.toString();
+    return fetchJson<SalesModuleClientUpdate[]>(`/api/sales-module/client-updates${q ? `?${q}` : ''}`);
+  },
+  importSalesModuleClientUpdates: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/sales-module/client-updates/import`, {
+      method: 'POST',
+      headers: (() => {
+        const h: Record<string, string> = {};
+        try {
+          const companyId = localStorage.getItem('bisync.selectedCompanyId');
+          const userId = localStorage.getItem('bisync.currentUserId');
+          const devToken = localStorage.getItem('bisync.devConsoleToken');
+          if (companyId) h['X-Bisync-Company-Id'] = companyId;
+          if (userId) h['X-Bisync-User-Id'] = userId;
+          if (devToken) h['X-Bisync-Dev-Console-Token'] = devToken;
+        } catch { /* ignore */ }
+        return h;
+      })(),
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Client Update import failed (${res.status})`);
+    }
+    return res.json() as Promise<SalesModuleClientUpdateImportResult>;
+  },
   salesModuleAppointments: (companyId: number, opts?: { engagedUserId?: number; from?: string; to?: string }) => {
     const params = new URLSearchParams({ companyId: String(companyId) });
     if (opts?.engagedUserId && opts.engagedUserId > 0) params.set('engagedUserId', String(opts.engagedUserId));

@@ -43,6 +43,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<SalesModuleTeamMember> SalesModuleTeamMembers => Set<SalesModuleTeamMember>();
     public DbSet<SalesModuleCompany> SalesModuleCompanies => Set<SalesModuleCompany>();
     public DbSet<SalesModuleCompanyMember> SalesModuleCompanyMembers => Set<SalesModuleCompanyMember>();
+    public DbSet<SalesModuleClientUpdate> SalesModuleClientUpdates => Set<SalesModuleClientUpdate>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -196,6 +197,19 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.HasIndex(x => new { x.SalesModuleCompanyId, x.SalesTeamMemberId }).IsUnique();
             e.HasIndex(x => x.SalesTeamMemberId);
+        });
+        modelBuilder.Entity<SalesModuleClientUpdate>(e =>
+        {
+            e.HasIndex(x => x.Hunter);
+            e.HasIndex(x => x.DateCreated);
+            e.Property(x => x.Hunter).HasMaxLength(120);
+            e.Property(x => x.Company).HasMaxLength(200);
+            e.Property(x => x.Brand).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(80);
+            e.Property(x => x.ContactPerson).HasMaxLength(200);
+            e.Property(x => x.ContactType).HasMaxLength(120);
+            e.Property(x => x.Note).HasMaxLength(4000);
+            e.Property(x => x.Appointment).HasMaxLength(500);
         });
         modelBuilder.Entity<Company>(e =>
         {
