@@ -17,6 +17,10 @@ public class SalesModuleClientUpdateService(
     public const string WeeklyUpdateSheetName = "Weekly Update";
 
     static int _schemaReady;
+    static readonly object CacheLock = new();
+    static List<SalesModuleClientUpdate>? _listCache;
+    static DateTime _listCacheExpiresUtc;
+    static readonly TimeSpan ListCacheTtl = TimeSpan.FromMinutes(2);
 
     public async Task EnsureSchemaAsync(CancellationToken ct = default)
     {
@@ -58,22 +62,47 @@ public class SalesModuleClientUpdateService(
         Volatile.Write(ref _schemaReady, 1);
     }
 
-    public async Task<List<object>> ListAsync(string? hunter = null, CancellationToken ct = default)
+    static void InvalidateListCache()
     {
-        await EnsureSchemaAsync(ct);
-        var q = db.SalesModuleClientUpdates.AsNoTracking().AsQueryable();
-        if (!string.IsNullOrWhiteSpace(hunter))
+        lock (CacheLock)
         {
-            var key = hunter.Trim().ToLowerInvariant();
-            // LOWER("Hunter") matches the functional index above.
-            q = q.Where(r => r.Hunter.ToLower() == key);
+            _listCache = null;
+            _listCacheExpiresUtc = default;
+        }
+    }
+
+    async Task<List<SalesModuleClientUpdate>> GetCachedRowsAsync(CancellationToken ct)
+    {
+        lock (CacheLock)
+        {
+            if (_listCache is not null && _listCacheExpiresUtc > DateTime.UtcNow)
+                return _listCache;
         }
 
-        var rows = await q
+        await EnsureSchemaAsync(ct);
+        var rows = await db.SalesModuleClientUpdates.AsNoTracking()
             .OrderByDescending(r => r.DateCreated)
             .ThenBy(r => r.Brand)
             .ThenBy(r => r.Id)
             .ToListAsync(ct);
+
+        lock (CacheLock)
+        {
+            _listCache = rows;
+            _listCacheExpiresUtc = DateTime.UtcNow.Add(ListCacheTtl);
+            return _listCache;
+        }
+    }
+
+    public async Task<List<object>> ListAsync(string? hunter = null, CancellationToken ct = default)
+    {
+        var rows = await GetCachedRowsAsync(ct);
+        if (!string.IsNullOrWhiteSpace(hunter))
+        {
+            var key = hunter.Trim().ToLowerInvariant();
+            rows = rows.Where(r => r.Hunter.ToLowerInvariant() == key).ToList();
+        }
+
         return rows.ConvertAll(Map);
     }
 
@@ -95,6 +124,7 @@ public class SalesModuleClientUpdateService(
         db.SalesModuleClientUpdates.AddRange(rows);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+        InvalidateListCache();
 
         logger.LogInformation(
             "Sales Module Client Update import: {Count} rows from {File}",
