@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Users, X } from 'lucide-react';
 import {
   api,
-  type Company,
   type SalesModuleAppointment,
+  type SalesModuleCompany,
   type SalesModuleCustomer,
   type SalesModuleTeamCalendarEvent,
   type SalesModuleTeamMember,
@@ -75,8 +75,11 @@ function sameDay(a: Date, b: Date): boolean {
 
 export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = false }: Props) {
   const [tab, setTab] = useState<TabId>('customers');
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<number | null>(null);
+  const [companies, setCompanies] = useState<SalesModuleCompany[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [companyDraft, setCompanyDraft] = useState('');
+  const [creatingCompany, setCreatingCompany] = useState(false);
 
   const [customers, setCustomers] = useState<SalesModuleCustomer[]>([]);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
@@ -104,32 +107,51 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
   const engagedUserEmail = sessionEmail.trim();
   const engagedUserName = sessionName.trim() || engagedUserEmail || 'Dev Console';
 
-  useEffect(() => {
-    let cancelled = false;
-    api.companies()
-      .then(rows => {
-        if (cancelled) return;
-        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
-        setCompanies(sorted);
-        setSelectedCompanyId(prev => prev ?? sorted[0]?.id ?? null);
-      })
-      .catch(err => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load companies');
-      });
-    return () => { cancelled = true; };
+  const activeTeamMembers = useMemo(
+    () => teamMembers.filter(m => m.active).sort((a, b) => a.name.localeCompare(b.name)),
+    [teamMembers],
+  );
+
+  const loadTeamMembers = useCallback(async () => {
+    const rows = await api.salesModuleTeam();
+    setTeamMembers(rows);
+    setSelectedTeamMemberId(prev => {
+      if (prev && rows.some(m => m.id === prev && m.active)) return prev;
+      return rows.find(m => m.active)?.id ?? null;
+    });
+  }, []);
+
+  const loadSalesCompanies = useCallback(async (memberId: number | null) => {
+    if (!memberId) {
+      setCompanies([]);
+      setSelectedCompanyId(null);
+      return;
+    }
+    const rows = await api.salesModuleCompanies({ salesTeamMemberId: memberId });
+    setCompanies(rows);
+    setSelectedCompanyId(prev => {
+      if (prev && rows.some(c => c.id === prev)) return prev;
+      return rows[0]?.id ?? null;
+    });
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    api.salesModuleTeam()
-      .then(rows => {
-        if (!cancelled) setTeamMembers(rows);
-      })
-      .catch(() => {
-        /* team list is optional until Graph is configured */
+    loadTeamMembers()
+      .catch(err => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load sales team');
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [loadTeamMembers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSalesCompanies(selectedTeamMemberId)
+      .catch(err => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load sales companies');
+      });
+    return () => { cancelled = true; };
+  }, [selectedTeamMemberId, loadSalesCompanies]);
 
   const loadCustomers = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -163,7 +185,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
         to: to.toISOString(),
       });
       setTeamEvents(result.events ?? []);
-      setTeamMembers(result.members ?? []);
+      if (result.members?.length) setTeamMembers(result.members);
       setTeamSyncMessage(result.message || null);
     } catch (err) {
       setTeamEvents([]);
@@ -184,6 +206,25 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
       });
     return () => { cancelled = true; };
   }, [loadCustomers, loadAppointments, loadTeamCalendars]);
+
+  async function handleCreateCompany() {
+    if (!selectedTeamMemberId || !companyDraft.trim()) return;
+    setCreatingCompany(true);
+    setError(null);
+    try {
+      const created = await api.createSalesModuleCompany({
+        name: companyDraft.trim(),
+        salesTeamMemberIds: [selectedTeamMemberId],
+      });
+      setCompanyDraft('');
+      setCompanies(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedCompanyId(created.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create company');
+    } finally {
+      setCreatingCompany(false);
+    }
+  }
 
   const calendarItemsByDay = useMemo(() => {
     const map = new Map<string, CalendarItem[]>();
@@ -240,6 +281,9 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     setPanelOpen(true);
   }
 
+  const selectedSalesCompany = companies.find(c => c.id === selectedCompanyId) ?? null;
+  const selectedTeamMember = activeTeamMembers.find(m => m.id === selectedTeamMemberId) ?? null;
+
   async function handleSavedCustomer(row: SalesModuleCustomer) {
     setCustomers(prev => {
       const idx = prev.findIndex(c => c.id === row.id);
@@ -260,7 +304,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     setApptNotes('');
     setApptLocation('');
     setApptCustomerId(customers[0]?.id ?? '');
-    setApptTeamMemberId(teamMembers.find(m => m.active)?.id ?? '');
+    setApptTeamMemberId(selectedTeamMemberId ?? teamMembers.find(m => m.active)?.id ?? '');
     setApptStart(toLocalInputValue(start.toISOString()));
     setApptEnd(toLocalInputValue(end.toISOString()));
     setApptFormOpen(true);
@@ -309,12 +353,101 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     }
   }
 
+  if (!selectedTeamMemberId) {
+    return (
+      <div className={pageShellClass({ spacing: 'loose' })}>
+        <SalesModuleOffice365SyncPanel isRoot={isRoot} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTeamOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
+          >
+            <Users size={12} />
+            Sales Team
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {activeTeamMembers.length === 0
+            ? 'Create a Sales Team member first, then tag companies to them.'
+            : 'Select a Sales Team member to continue.'}
+        </p>
+        <SalesModuleTeamPanel
+          open={teamOpen}
+          onClose={() => {
+            setTeamOpen(false);
+            void loadTeamMembers().then(() => loadTeamCalendars());
+          }}
+          onChanged={setTeamMembers}
+        />
+      </div>
+    );
+  }
+
   if (!selectedCompanyId) {
     return (
-      <div className={pageShellClass()}>
+      <div className={pageShellClass({ spacing: 'loose' })}>
+        <SalesModuleOffice365SyncPanel isRoot={isRoot} />
+        <PageStickyFilters opaque className="space-y-2 pb-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="inline-flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+              <select
+                value={selectedTeamMemberId}
+                onChange={e => setSelectedTeamMemberId(Number(e.target.value) || null)}
+                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+              >
+                {activeTeamMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => setTeamOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
+            >
+              <Users size={12} />
+              Manage team
+            </button>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
+              <span className="text-muted-foreground uppercase tracking-wide">Company</span>
+              <input
+                value={companyDraft}
+                onChange={e => setCompanyDraft(e.target.value)}
+                placeholder="Create company for this sales person…"
+                className="rounded-md border border-border bg-background px-2 py-1.5"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={creatingCompany || !companyDraft.trim()}
+              onClick={() => void handleCreateCompany()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              <Plus size={12} />
+              {creatingCompany ? 'Saving…' : 'Add company'}
+            </button>
+          </div>
+        </PageStickyFilters>
         <p className="text-sm text-muted-foreground">
-          {companies.length === 0 ? 'Loading companies…' : 'Select a company to open Sales Module.'}
+          No companies tagged to this sales team member yet. Add a company above (Sales Module list — not a Bisync tenant).
         </p>
+        {error ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            {error}
+          </div>
+        ) : null}
+        <SalesModuleTeamPanel
+          open={teamOpen}
+          onClose={() => {
+            setTeamOpen(false);
+            void loadTeamMembers().then(() => loadTeamCalendars());
+          }}
+          onChanged={setTeamMembers}
+        />
       </div>
     );
   }
@@ -332,8 +465,20 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
     <div className={pageShellClass({ spacing: 'loose' })}>
       <SalesModuleOffice365SyncPanel isRoot={isRoot} />
       <PageStickyFilters opaque className="space-y-2 pb-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="inline-flex flex-col gap-1 text-xs">
+            <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+            <select
+              value={selectedTeamMemberId}
+              onChange={e => setSelectedTeamMemberId(Number(e.target.value) || null)}
+              className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+            >
+              {activeTeamMembers.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="inline-flex flex-col gap-1 text-xs">
             <span className="text-muted-foreground uppercase tracking-wide">Company</span>
             <select
               value={selectedCompanyId}
@@ -355,6 +500,26 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
             {teamMembers.length > 0 ? (
               <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
             ) : null}
+          </button>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
+            <span className="text-muted-foreground uppercase tracking-wide">Add company for this member</span>
+            <input
+              value={companyDraft}
+              onChange={e => setCompanyDraft(e.target.value)}
+              placeholder="Company name…"
+              className="rounded-md border border-border bg-background px-2 py-1.5"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={creatingCompany || !companyDraft.trim()}
+            onClick={() => void handleCreateCompany()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+          >
+            <Plus size={12} />
+            {creatingCompany ? 'Saving…' : 'Add company'}
           </button>
         </div>
         <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
@@ -629,7 +794,9 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
         open={teamOpen}
         onClose={() => {
           setTeamOpen(false);
-          void loadTeamCalendars();
+          void loadTeamMembers()
+            .then(() => loadSalesCompanies(selectedTeamMemberId))
+            .then(() => loadTeamCalendars());
         }}
         onChanged={setTeamMembers}
       />
@@ -637,10 +804,11 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
       {panelOpen ? (
         <SalesCustomerPanel
           companyId={selectedCompanyId}
+          defaultCompanyName={selectedSalesCompany?.name ?? ''}
           customer={editing}
           engagedUserId={0}
-          engagedUserEmail={engagedUserEmail}
-          engagedUserName={engagedUserName}
+          engagedUserEmail={selectedTeamMember?.email || engagedUserEmail}
+          engagedUserName={selectedTeamMember?.name || engagedUserName}
           onClose={() => { setPanelOpen(false); setEditing(null); }}
           onSaved={handleSavedCustomer}
         />
@@ -723,6 +891,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
 
 function SalesCustomerPanel({
   companyId,
+  defaultCompanyName,
   customer,
   engagedUserId,
   engagedUserEmail,
@@ -731,6 +900,7 @@ function SalesCustomerPanel({
   onSaved,
 }: {
   companyId: number;
+  defaultCompanyName?: string;
   customer: SalesModuleCustomer | null;
   engagedUserId: number;
   engagedUserEmail: string;
@@ -741,7 +911,7 @@ function SalesCustomerPanel({
   const [form, setForm] = useState<UpsertSalesModuleCustomerPayload>(() => ({
     companyId,
     externalId: customer?.externalId,
-    companyName: customer?.companyName ?? '',
+    companyName: customer?.companyName || defaultCompanyName || '',
     brands: customer?.brands?.length ? customer.brands.map(b => ({ ...b })) : [blankSalesBrand()],
     contacts: customer?.contacts?.length ? customer.contacts.map(c => ({ ...c })) : [blankSalesContact()],
     status: customer?.status ?? 'Prospect',

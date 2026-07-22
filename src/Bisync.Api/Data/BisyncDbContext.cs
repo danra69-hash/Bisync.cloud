@@ -41,6 +41,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
     public DbSet<SalesModuleCalendarSettings> SalesModuleCalendarSettings => Set<SalesModuleCalendarSettings>();
     public DbSet<SalesModuleTeamMember> SalesModuleTeamMembers => Set<SalesModuleTeamMember>();
+    public DbSet<SalesModuleCompany> SalesModuleCompanies => Set<SalesModuleCompany>();
+    public DbSet<SalesModuleCompanyMember> SalesModuleCompanyMembers => Set<SalesModuleCompanyMember>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -181,6 +183,17 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Email).HasMaxLength(256);
             e.Property(x => x.LastSyncError).HasMaxLength(500);
+        });
+        modelBuilder.Entity<SalesModuleCompany>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.CreatedByEmail).HasMaxLength(256);
+            e.HasIndex(x => x.Name);
+        });
+        modelBuilder.Entity<SalesModuleCompanyMember>(e =>
+        {
+            e.HasIndex(x => new { x.SalesModuleCompanyId, x.SalesTeamMemberId }).IsUnique();
+            e.HasIndex(x => x.SalesTeamMemberId);
         });
         modelBuilder.Entity<Company>(e =>
         {

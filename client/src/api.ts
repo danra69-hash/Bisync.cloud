@@ -691,6 +691,17 @@ export interface SalesModuleTeamMember {
   calendarWired?: boolean;
 }
 
+export interface SalesModuleCompany {
+  id: number;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdByEmail?: string;
+  salesTeamMemberIds: number[];
+  salesTeamMembers: Array<{ id: number; name: string; email: string }>;
+}
+
 export interface SalesModuleTeamCalendarEvent {
   id: string;
   source: 'office365';
@@ -2409,6 +2420,23 @@ export const api = {
     const q = params.toString();
     return fetchJson<SalesModuleTeamCalendarsResponse>(`/api/sales-module/team-calendars${q ? `?${q}` : ''}`);
   },
+  salesModuleCompanies: (opts?: { salesTeamMemberId?: number; includeInactive?: boolean }) => {
+    const params = new URLSearchParams();
+    if (opts?.salesTeamMemberId && opts.salesTeamMemberId > 0) {
+      params.set('salesTeamMemberId', String(opts.salesTeamMemberId));
+    }
+    if (opts?.includeInactive) params.set('includeInactive', 'true');
+    const q = params.toString();
+    return fetchJson<SalesModuleCompany[]>(`/api/sales-module/companies${q ? `?${q}` : ''}`);
+  },
+  createSalesModuleCompany: (data: { name: string; active?: boolean; salesTeamMemberIds: number[] }) =>
+    fetchJsonWithMethod<SalesModuleCompany>('/api/sales-module/companies', 'POST', data),
+  updateSalesModuleCompany: (
+    id: number,
+    data: { name: string; active: boolean; salesTeamMemberIds: number[] },
+  ) => fetchJsonWithMethod<SalesModuleCompany>(`/api/sales-module/companies/${id}`, 'PUT', data),
+  deleteSalesModuleCompany: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/sales-module/companies/${id}`, 'DELETE'),
   b2bSalesOrders: (companyId?: number) =>
     fetchJson<B2bSalesOrder[]>(`/api/b2b-sales-orders${companyId ? `?companyId=${companyId}` : ''}`),
   b2bSalesOrder: (id: number) =>

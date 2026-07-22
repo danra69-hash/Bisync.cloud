@@ -1442,3 +1442,12 @@ public class UpsertSalesModuleTeamMemberRequest
     public bool CalendarSyncEnabled { get; set; } = true;
 }
 
+public class UpsertSalesModuleCompanyRequest
+{
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    public bool Active { get; set; } = true;
+    /// <summary>Sales Team member ids this company is tagged to (at least one required).</summary>
+    public List<int> SalesTeamMemberIds { get; set; } = [];
+}
+
