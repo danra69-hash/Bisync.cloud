@@ -1448,6 +1448,8 @@ public class UpsertSalesModuleTeamMemberRequest
     [Required, MaxLength(256)]
     public string Email { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
+    public bool IsHunter { get; set; } = true;
+    public bool IsFarmer { get; set; } = false;
     public bool CalendarSyncEnabled { get; set; } = true;
 
     /// <summary>Optional Microsoft Graph Directory (tenant) ID — saved when creating/editing a team member.</summary>
