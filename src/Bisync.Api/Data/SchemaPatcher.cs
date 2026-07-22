@@ -863,6 +863,10 @@ public static class SchemaPatcher
             """);
         await TryCreateIndexAsync(db, "IX_SalesModuleClientUpdates_Hunter", "SalesModuleClientUpdates", "\"Hunter\"");
         await TryCreateIndexAsync(db, "IX_SalesModuleClientUpdates_DateCreated", "SalesModuleClientUpdates", "\"DateCreated\"");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX IF NOT EXISTS "IX_SalesModuleClientUpdates_Hunter_Lower"
+            ON "SalesModuleClientUpdates" (LOWER("Hunter"));
+            """);
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "AccessControlSettings" (
