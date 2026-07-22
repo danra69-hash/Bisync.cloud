@@ -44,6 +44,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<SalesModuleCompany> SalesModuleCompanies => Set<SalesModuleCompany>();
     public DbSet<SalesModuleCompanyMember> SalesModuleCompanyMembers => Set<SalesModuleCompanyMember>();
     public DbSet<SalesModuleClientUpdate> SalesModuleClientUpdates => Set<SalesModuleClientUpdate>();
+    public DbSet<SalesModuleDiaryEntry> SalesModuleDiaryEntries => Set<SalesModuleDiaryEntry>();
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -210,6 +211,18 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.ContactType).HasMaxLength(120);
             e.Property(x => x.Note).HasMaxLength(4000);
             e.Property(x => x.Appointment).HasMaxLength(500);
+        });
+        modelBuilder.Entity<SalesModuleDiaryEntry>(e =>
+        {
+            e.HasIndex(x => x.SalesTeamMemberId);
+            e.HasIndex(x => x.ContactDate);
+            e.HasIndex(x => x.SalesModuleCompanyId);
+            e.Property(x => x.ActivityType).HasMaxLength(40);
+            e.Property(x => x.CompanyName).HasMaxLength(200);
+            e.Property(x => x.BrandName).HasMaxLength(200);
+            e.Property(x => x.LocationVisited).HasMaxLength(300);
+            e.Property(x => x.ContactType).HasMaxLength(80);
+            e.Property(x => x.CreatedByEmail).HasMaxLength(256);
         });
         modelBuilder.Entity<Company>(e =>
         {

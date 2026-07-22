@@ -1485,3 +1485,47 @@ public class PatchSalesModuleClientUpdateRequest
     public int? LocationCount { get; set; }
 }
 
+public class SalesModuleDiaryContactRequest
+{
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string Position { get; set; } = string.Empty;
+}
+
+public class CreateSalesModuleDiaryEntryRequest
+{
+    [Required]
+    public int SalesTeamMemberId { get; set; }
+
+    /// <summary>StatusChange or SalesCall (also accepts display labels).</summary>
+    [Required, MaxLength(40)]
+    public string ActivityType { get; set; } = string.Empty;
+
+    public int? SalesModuleCompanyId { get; set; }
+
+    [MaxLength(200)]
+    public string? CompanyName { get; set; }
+
+    [MaxLength(200)]
+    public string? BrandName { get; set; }
+
+    [MaxLength(300)]
+    public string? LocationVisited { get; set; }
+
+    public int? EmailsSent { get; set; }
+
+    public List<string> Statuses { get; set; } = [];
+
+    [MaxLength(80)]
+    public string? ContactType { get; set; }
+
+    [Required]
+    public DateTime ContactDate { get; set; }
+
+    public List<SalesModuleDiaryContactRequest> Contacts { get; set; } = [];
+
+    [MaxLength(256)]
+    public string? CreatedByEmail { get; set; }
+}
+
