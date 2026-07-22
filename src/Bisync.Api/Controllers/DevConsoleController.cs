@@ -21,6 +21,7 @@ public class DevConsoleController(
     TenantRollupService rollupService,
     LocationSubscriptionService locationSubscriptions,
     PlatformLaunchService platformLaunch,
+    SalesModuleCalendarSyncService salesModuleCalendarSync,
     DevConsoleAuthService devConsoleAuth) : ControllerBase
 {
     bool IsEnabled()
@@ -88,6 +89,62 @@ public class DevConsoleController(
         var demoMode = body.GoLive.HasValue ? !body.GoLive.Value : body.DemoMode;
         var status = await platformLaunch.UpdateAsync(demoMode, body.ModulesGoLive, user!.Email, ct);
         return Ok(status);
+    }
+
+    public class SalesModuleCalendarSettingsUpdateRequest
+    {
+        public bool Enabled { get; set; }
+        public string? GraphTenantId { get; set; }
+        public string? GraphClientId { get; set; }
+        public string? GraphClientSecret { get; set; }
+        public string? CalendarMailbox { get; set; }
+        public string? CalendarDisplayName { get; set; }
+    }
+
+    /// <summary>Cubevalue Office 365 calendar sync settings for Sales Module.</summary>
+    [HttpGet("sales-module/calendar-sync")]
+    public async Task<ActionResult<object>> GetSalesModuleCalendarSync(CancellationToken ct)
+    {
+        var (err, _) = await RequireSessionAsync(ct);
+        if (err is not null) return err;
+        var settings = await salesModuleCalendarSync.GetOrCreateAsync(ct);
+        return Ok(salesModuleCalendarSync.ToPublicDto(settings));
+    }
+
+    [HttpPut("sales-module/calendar-sync")]
+    public async Task<ActionResult<object>> UpdateSalesModuleCalendarSync(
+        [FromBody] SalesModuleCalendarSettingsUpdateRequest body,
+        CancellationToken ct)
+    {
+        var (err, user) = await RequireRootAsync(ct);
+        if (err is not null) return err;
+
+        var settings = await salesModuleCalendarSync.UpdateAsync(
+            body.Enabled,
+            body.GraphTenantId,
+            body.GraphClientId,
+            body.GraphClientSecret,
+            body.CalendarMailbox,
+            body.CalendarDisplayName,
+            user!.Email,
+            ct);
+        return Ok(salesModuleCalendarSync.ToPublicDto(settings));
+    }
+
+    [HttpPost("sales-module/calendar-sync/test")]
+    public async Task<ActionResult<object>> TestSalesModuleCalendarSync(CancellationToken ct)
+    {
+        var (err, _) = await RequireRootAsync(ct);
+        if (err is not null) return err;
+
+        var (ok, message) = await salesModuleCalendarSync.TestAsync(ct);
+        var settings = await salesModuleCalendarSync.GetOrCreateAsync(ct);
+        return Ok(new
+        {
+            ok,
+            message,
+            settings = salesModuleCalendarSync.ToPublicDto(settings),
+        });
     }
 
     [HttpGet("status")]

@@ -670,6 +670,11 @@ export interface SalesModuleAppointment {
   engagedUserId: number;
   engagedUserEmail: string;
   createdAt: string;
+  outlookEventId?: string;
+  outlookWebLink?: string | null;
+  outlookSynced?: boolean;
+  outlookSyncError?: string | null;
+  outlookSyncedAt?: string | null;
 }
 
 export interface UpsertSalesModuleAppointmentPayload {

@@ -196,6 +196,40 @@ export const devConsoleApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  salesModuleCalendarSync: () =>
+    fetchJson<SalesModuleCalendarSyncSettings>('/api/dev-console/sales-module/calendar-sync'),
+  updateSalesModuleCalendarSync: (payload: {
+    enabled: boolean;
+    graphTenantId?: string;
+    graphClientId?: string;
+    graphClientSecret?: string;
+    calendarMailbox?: string;
+    calendarDisplayName?: string;
+  }) =>
+    fetchJson<SalesModuleCalendarSyncSettings>('/api/dev-console/sales-module/calendar-sync', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  testSalesModuleCalendarSync: () =>
+    fetchJson<{ ok: boolean; message: string; settings: SalesModuleCalendarSyncSettings }>(
+      '/api/dev-console/sales-module/calendar-sync/test',
+      { method: 'POST' },
+    ),
+};
+
+export type SalesModuleCalendarSyncSettings = {
+  enabled: boolean;
+  graphTenantId: string;
+  graphClientId: string;
+  graphClientSecretSet: boolean;
+  calendarMailbox: string;
+  calendarDisplayName: string;
+  configured: boolean;
+  updatedAt?: string;
+  updatedByEmail?: string;
+  lastTestAt?: string | null;
+  lastTestResult?: string | null;
+  permissionHint?: string;
 };
 
 export type QaPurgeResult = {

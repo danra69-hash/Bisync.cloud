@@ -766,6 +766,32 @@ public static class SchemaPatcher
         await TryCreateIndexAsync(db, "IX_SalesModuleAppointments_CompanyId", "SalesModuleAppointments", "\"CompanyId\"");
         await TryCreateIndexAsync(db, "IX_SalesModuleAppointments_CustomerId", "SalesModuleAppointments", "\"SalesModuleCustomerId\"");
 
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleAppointments", "OutlookEventId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleAppointments", "OutlookWebLink", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleAppointments", "OutlookSyncError", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleAppointments", "OutlookSyncedAt", "timestamp with time zone NULL");
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SalesModuleCalendarSettings" (
+                "Id" integer NOT NULL CONSTRAINT "PK_SalesModuleCalendarSettings" PRIMARY KEY,
+                "Enabled" boolean NOT NULL DEFAULT false,
+                "GraphTenantId" TEXT NOT NULL DEFAULT '',
+                "GraphClientId" TEXT NOT NULL DEFAULT '',
+                "GraphClientSecret" TEXT NOT NULL DEFAULT '',
+                "CalendarMailbox" TEXT NOT NULL DEFAULT '',
+                "CalendarDisplayName" TEXT NOT NULL DEFAULT 'Cubevalue',
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedByEmail" TEXT NOT NULL DEFAULT '',
+                "LastTestAt" TEXT NOT NULL DEFAULT '',
+                "LastTestResult" TEXT NOT NULL DEFAULT ''
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "SalesModuleCalendarSettings" ("Id", "Enabled", "CalendarDisplayName")
+            SELECT 1, false, 'Cubevalue'
+            WHERE NOT EXISTS (SELECT 1 FROM "SalesModuleCalendarSettings" WHERE "Id" = 1);
+            """);
+
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "AccessControlSettings" (
                 "Id" integer NOT NULL CONSTRAINT "PK_AccessControlSettings" PRIMARY KEY,

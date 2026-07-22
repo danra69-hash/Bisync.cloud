@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +10,9 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/sales-module")]
-public class SalesModuleController(BisyncDbContext db) : ControllerBase
+public class SalesModuleController(
+    BisyncDbContext db,
+    SalesModuleCalendarSyncService calendarSync) : ControllerBase
 {
     static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -125,6 +128,9 @@ public class SalesModuleController(BisyncDbContext db) : ControllerBase
         };
         db.SalesModuleAppointments.Add(row);
         await db.SaveChangesAsync(ct);
+
+        await calendarSync.PushCreateAsync(row, customer, ct);
+
         return Ok(MapAppointment(row, customer));
     }
 
@@ -133,9 +139,19 @@ public class SalesModuleController(BisyncDbContext db) : ControllerBase
     {
         var row = await db.SalesModuleAppointments.FirstOrDefaultAsync(a => a.Id == id, ct);
         if (row is null) return NotFound();
+
+        await calendarSync.PushDeleteAsync(row, ct);
+
         db.SalesModuleAppointments.Remove(row);
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    [HttpGet("calendar-sync")]
+    public async Task<ActionResult<object>> GetCalendarSync(CancellationToken ct)
+    {
+        var settings = await calendarSync.GetOrCreateAsync(ct);
+        return Ok(calendarSync.ToPublicDto(settings));
     }
 
     async Task<string> NextCustomerExternalIdAsync(int companyId, CancellationToken ct)
@@ -240,6 +256,11 @@ public class SalesModuleController(BisyncDbContext db) : ControllerBase
         a.EngagedUserId,
         a.EngagedUserEmail,
         createdAt = a.CreatedAt,
+        outlookEventId = a.OutlookEventId,
+        outlookWebLink = string.IsNullOrWhiteSpace(a.OutlookWebLink) ? null : a.OutlookWebLink,
+        outlookSynced = !string.IsNullOrWhiteSpace(a.OutlookEventId),
+        outlookSyncError = string.IsNullOrWhiteSpace(a.OutlookSyncError) ? null : a.OutlookSyncError,
+        outlookSyncedAt = a.OutlookSyncedAt,
     };
 
     static object ParseJson(string json)
