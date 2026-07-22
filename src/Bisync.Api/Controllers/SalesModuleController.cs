@@ -424,6 +424,14 @@ public class SalesModuleController(
         return Ok(rows.Select(SalesModuleCalendarSyncService.MapTeamMember));
     }
 
+    /// <summary>Shared Graph credentials used when wiring Sales Team member calendars.</summary>
+    [HttpGet("team/graph-settings")]
+    public async Task<ActionResult<object>> GetTeamGraphSettings(CancellationToken ct)
+    {
+        var settings = await calendarSync.GetOrCreateAsync(ct);
+        return Ok(calendarSync.ToPublicDto(settings));
+    }
+
     [HttpPost("team")]
     public async Task<ActionResult<object>> CreateTeamMember(
         [FromBody] UpsertSalesModuleTeamMemberRequest request,
@@ -431,7 +439,14 @@ public class SalesModuleController(
     {
         try
         {
-            var row = await calendarSync.CreateTeamMemberAsync(request.Name, request.Email, ct);
+            var row = await calendarSync.CreateTeamMemberAsync(
+                request.Name,
+                request.Email,
+                request.CalendarSyncEnabled,
+                request.GraphTenantId,
+                request.GraphClientId,
+                request.GraphClientSecret,
+                ct);
             return Ok(SalesModuleCalendarSyncService.MapTeamMember(row));
         }
         catch (InvalidOperationException ex)
@@ -454,6 +469,9 @@ public class SalesModuleController(
                 request.Email,
                 request.Active,
                 request.CalendarSyncEnabled,
+                request.GraphTenantId,
+                request.GraphClientId,
+                request.GraphClientSecret,
                 ct);
             if (row is null) return NotFound();
             return Ok(SalesModuleCalendarSyncService.MapTeamMember(row));

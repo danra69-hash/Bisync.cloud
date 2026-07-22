@@ -1449,6 +1449,18 @@ public class UpsertSalesModuleTeamMemberRequest
     public string Email { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
     public bool CalendarSyncEnabled { get; set; } = true;
+
+    /// <summary>Optional Microsoft Graph Directory (tenant) ID — saved when creating/editing a team member.</summary>
+    [MaxLength(64)]
+    public string? GraphTenantId { get; set; }
+
+    /// <summary>Optional Microsoft Graph Application (client) ID.</summary>
+    [MaxLength(64)]
+    public string? GraphClientId { get; set; }
+
+    /// <summary>Optional client secret (omit to keep existing).</summary>
+    [MaxLength(512)]
+    public string? GraphClientSecret { get; set; }
 }
 
 public class UpsertSalesModuleCompanyRequest

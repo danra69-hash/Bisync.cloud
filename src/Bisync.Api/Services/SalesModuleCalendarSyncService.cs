@@ -248,7 +248,14 @@ public class SalesModuleCalendarSyncService(
             .ToListAsync(ct);
     }
 
-    public async Task<SalesModuleTeamMember> CreateTeamMemberAsync(string name, string email, CancellationToken ct = default)
+    public async Task<SalesModuleTeamMember> CreateTeamMemberAsync(
+        string name,
+        string email,
+        bool calendarSyncEnabled = true,
+        string? graphTenantId = null,
+        string? graphClientId = null,
+        string? graphClientSecret = null,
+        CancellationToken ct = default)
     {
         await EnsureTeamSchemaAsync(ct);
         var trimmedName = (name ?? string.Empty).Trim();
@@ -256,17 +263,25 @@ public class SalesModuleCalendarSyncService(
         if (string.IsNullOrWhiteSpace(trimmedName))
             throw new InvalidOperationException("Name is required.");
         if (string.IsNullOrWhiteSpace(trimmedEmail) || !trimmedEmail.Contains('@'))
-            throw new InvalidOperationException("A valid email is required.");
+            throw new InvalidOperationException("A valid email (Office 365 UPN) is required.");
 
         if (await db.SalesModuleTeamMembers.AnyAsync(m => m.Email == trimmedEmail, ct))
             throw new InvalidOperationException($"Sales team member {trimmedEmail} already exists.");
+
+        await ApplyGraphCredentialsFromTeamMemberAsync(
+            trimmedEmail,
+            calendarSyncEnabled,
+            graphTenantId,
+            graphClientId,
+            graphClientSecret,
+            ct);
 
         var row = new SalesModuleTeamMember
         {
             Name = trimmedName,
             Email = trimmedEmail,
             Active = true,
-            CalendarSyncEnabled = true,
+            CalendarSyncEnabled = calendarSyncEnabled,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -284,6 +299,9 @@ public class SalesModuleCalendarSyncService(
         string email,
         bool active,
         bool calendarSyncEnabled,
+        string? graphTenantId = null,
+        string? graphClientId = null,
+        string? graphClientSecret = null,
         CancellationToken ct = default)
     {
         await EnsureTeamSchemaAsync(ct);
@@ -295,10 +313,18 @@ public class SalesModuleCalendarSyncService(
         if (string.IsNullOrWhiteSpace(trimmedName))
             throw new InvalidOperationException("Name is required.");
         if (string.IsNullOrWhiteSpace(trimmedEmail) || !trimmedEmail.Contains('@'))
-            throw new InvalidOperationException("A valid email is required.");
+            throw new InvalidOperationException("A valid email (Office 365 UPN) is required.");
 
         if (await db.SalesModuleTeamMembers.AnyAsync(m => m.Email == trimmedEmail && m.Id != id, ct))
             throw new InvalidOperationException($"Sales team member {trimmedEmail} already exists.");
+
+        await ApplyGraphCredentialsFromTeamMemberAsync(
+            trimmedEmail,
+            calendarSyncEnabled,
+            graphTenantId,
+            graphClientId,
+            graphClientSecret,
+            ct);
 
         row.Name = trimmedName;
         row.Email = trimmedEmail;
@@ -311,6 +337,46 @@ public class SalesModuleCalendarSyncService(
             await ProbeTeamMemberAsync(row, ct);
 
         return row;
+    }
+
+    /// <summary>
+    /// Persists Graph app credentials from the Sales Team member form into the shared settings row.
+    /// Member email is the mailbox UPN used for calendar sync.
+    /// </summary>
+    async Task ApplyGraphCredentialsFromTeamMemberAsync(
+        string memberEmail,
+        bool calendarSyncEnabled,
+        string? graphTenantId,
+        string? graphClientId,
+        string? graphClientSecret,
+        CancellationToken ct)
+    {
+        var hasAnyGraphField =
+            !string.IsNullOrWhiteSpace(graphTenantId)
+            || !string.IsNullOrWhiteSpace(graphClientId)
+            || !string.IsNullOrWhiteSpace(graphClientSecret);
+        if (!hasAnyGraphField && !calendarSyncEnabled)
+            return;
+
+        var settings = await GetOrCreateAsync(ct);
+        if (hasAnyGraphField)
+        {
+            if (graphTenantId is not null) settings.GraphTenantId = graphTenantId.Trim();
+            if (graphClientId is not null) settings.GraphClientId = graphClientId.Trim();
+            if (!string.IsNullOrWhiteSpace(graphClientSecret))
+                settings.GraphClientSecret = graphClientSecret.Trim();
+        }
+
+        if (calendarSyncEnabled
+            && MicrosoftGraphAuth.LooksConfigured(settings.GraphTenantId, settings.GraphClientId, settings.GraphClientSecret))
+        {
+            settings.Enabled = true;
+            if (string.IsNullOrWhiteSpace(settings.CalendarMailbox))
+                settings.CalendarMailbox = memberEmail;
+        }
+
+        settings.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
     }
 
     public async Task<bool> DeleteTeamMemberAsync(int id, CancellationToken ct = default)
@@ -445,7 +511,7 @@ public class SalesModuleCalendarSyncService(
         var settings = await GetOrCreateAsync(ct);
         if (!MicrosoftGraphAuth.LooksConfigured(settings.GraphTenantId, settings.GraphClientId, settings.GraphClientSecret))
         {
-            row.LastSyncError = "Office 365 Graph credentials not configured yet.";
+            row.LastSyncError = "Add Office 365 Graph credentials when creating/editing this Sales Team member.";
             row.LastSyncedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             return;

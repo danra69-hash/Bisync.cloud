@@ -21,7 +21,6 @@ import {
   SALES_MODULE_STATUSES,
   toCustomerPayload,
 } from '../../data/salesModule';
-import { SalesModuleOffice365SyncPanel } from '../dev/SalesModuleOffice365SyncPanel';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 
 type TabId = 'customers' | 'calendar';
@@ -39,7 +38,6 @@ type Props = {
   /** Dev Console session identity used when creating engaged records. */
   sessionEmail?: string;
   sessionName?: string;
-  isRoot?: boolean;
 };
 
 function toDateInput(value?: string | null): string {
@@ -68,7 +66,7 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = false }: Props) {
+export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) {
   const [tab, setTab] = useState<TabId>('customers');
   const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<number | null>(null);
   const [companies, setCompanies] = useState<SalesModuleCompany[]>([]);
@@ -412,7 +410,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
   if (!selectedTeamMemberId) {
     return (
       <div className={pageShellClass({ spacing: 'loose' })}>
-        <SalesModuleOffice365SyncPanel isRoot={isRoot} />
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -425,7 +422,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
         </div>
         <p className="text-sm text-muted-foreground">
           {activeTeamMembers.length === 0
-            ? 'Create a Sales Team member first, then import or add companies.'
+            ? 'Create a Sales Team member first (include Office 365 Graph credentials), then import or add companies.'
             : 'Select a Sales Team member to continue.'}
         </p>
         <SalesModuleTeamPanel
@@ -451,7 +448,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '', isRoot = 
 
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
-      <SalesModuleOffice365SyncPanel isRoot={isRoot} />
       <PageStickyFilters opaque className="space-y-2 pb-2">
         <div className="flex flex-wrap items-end gap-2">
           <label className="inline-flex flex-col gap-1 text-xs">

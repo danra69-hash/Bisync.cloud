@@ -2,6 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, type SalesModuleTeamMember } from '../../api';
 
+type GraphSettings = {
+  enabled: boolean;
+  graphTenantId: string;
+  graphClientId: string;
+  graphClientSecretSet: boolean;
+  configured: boolean;
+  lastTestResult?: string | null;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -10,11 +19,16 @@ type Props = {
 
 export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
   const [members, setMembers] = useState<SalesModuleTeamMember[]>([]);
+  const [graphSettings, setGraphSettings] = useState<GraphSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
+  const [graphTenantId, setGraphTenantId] = useState('');
+  const [graphClientId, setGraphClientId] = useState('');
+  const [graphClientSecret, setGraphClientSecret] = useState('');
   const [editing, setEditing] = useState<SalesModuleTeamMember | null>(null);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<number | null>(null);
@@ -23,9 +37,16 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const rows = await api.salesModuleTeam();
+      const [rows, graph] = await Promise.all([
+        api.salesModuleTeam(),
+        api.salesModuleTeamGraphSettings(),
+      ]);
       setMembers(rows);
       onChanged(rows);
+      setGraphSettings(graph);
+      setGraphTenantId(graph.graphTenantId || '');
+      setGraphClientId(graph.graphClientId || '');
+      setGraphClientSecret('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sales team');
     } finally {
@@ -42,12 +63,20 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
     setEditing(null);
     setName('');
     setEmail('');
+    setCalendarSyncEnabled(true);
+    setGraphTenantId(graphSettings?.graphTenantId || '');
+    setGraphClientId(graphSettings?.graphClientId || '');
+    setGraphClientSecret('');
   }
 
   function startEdit(row: SalesModuleTeamMember) {
     setEditing(row);
     setName(row.name);
     setEmail(row.email);
+    setCalendarSyncEnabled(row.calendarSyncEnabled);
+    setGraphTenantId(graphSettings?.graphTenantId || '');
+    setGraphClientId(graphSettings?.graphClientId || '');
+    setGraphClientSecret('');
     setMessage(null);
     setError(null);
   }
@@ -57,23 +86,35 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
     setError(null);
     setMessage(null);
     try {
+      const graphPayload = {
+        graphTenantId: graphTenantId.trim() || undefined,
+        graphClientId: graphClientId.trim() || undefined,
+        graphClientSecret: graphClientSecret.trim() || undefined,
+      };
       if (editing) {
         const saved = await api.updateSalesModuleTeamMember(editing.id, {
           name: name.trim(),
           email: email.trim(),
           active: editing.active,
-          calendarSyncEnabled: editing.calendarSyncEnabled,
+          calendarSyncEnabled,
+          ...graphPayload,
         });
         setMembers(prev => {
           const next = prev.map(m => (m.id === saved.id ? saved : m));
           onChanged(next);
           return next;
         });
-        setMessage(`Updated ${saved.name}. Calendar sync ${saved.calendarWired ? 'wired' : 'pending'}.`);
+        setMessage(
+          saved.calendarWired
+            ? `Updated ${saved.name} — Office 365 calendar wired.`
+            : `Updated ${saved.name}. ${saved.lastSyncError || 'Calendar not wired yet.'}`,
+        );
       } else {
         const created = await api.createSalesModuleTeamMember({
           name: name.trim(),
           email: email.trim(),
+          calendarSyncEnabled,
+          ...graphPayload,
         });
         setMembers(prev => {
           const next = [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
@@ -83,10 +124,14 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
         setMessage(
           created.calendarWired
             ? `${created.name} added — Office 365 calendar wired.`
-            : `${created.name} added. ${created.lastSyncError || 'Configure Graph credentials to wire calendar.'}`,
+            : `${created.name} added. ${created.lastSyncError || 'Add Graph credentials above to wire calendar.'}`,
         );
       }
+      const graph = await api.salesModuleTeamGraphSettings();
+      setGraphSettings(graph);
       resetForm();
+      setGraphTenantId(graph.graphTenantId || '');
+      setGraphClientId(graph.graphClientId || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save sales team member');
     } finally {
@@ -158,7 +203,7 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
           <div>
             <h3 className="text-sm font-semibold">Sales Team</h3>
             <p className="text-[11px] text-muted-foreground">
-              Add sales people by name and Microsoft 365 email. Each wired member’s Outlook calendar syncs into Appointment Calendar.
+              Create each sales person with their Microsoft 365 email (UPN) and Graph app credentials so their Outlook calendar syncs here.
             </p>
           </div>
           <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted"><X size={14} /></button>
@@ -179,7 +224,7 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
               />
             </label>
             <label className="block space-y-1 text-xs">
-              <span className="text-muted-foreground">Email (Office 365 mailbox)</span>
+              <span className="text-muted-foreground">Email / UPN (Office 365 mailbox)</span>
               <input
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -187,6 +232,54 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
                 placeholder="name@cubevalue.com"
               />
             </label>
+
+            <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-2 space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Office 365 Graph (shared app)
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                From Entra → App registrations. Needs Application permission Calendars.ReadWrite + admin consent.
+                {graphSettings?.graphClientSecretSet ? ' Secret already saved — leave blank to keep it.' : ''}
+              </p>
+              <label className="block space-y-1 text-xs">
+                <span className="text-muted-foreground">Directory (tenant) ID</span>
+                <input
+                  value={graphTenantId}
+                  onChange={e => setGraphTenantId(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px]"
+                />
+              </label>
+              <label className="block space-y-1 text-xs">
+                <span className="text-muted-foreground">Application (client) ID</span>
+                <input
+                  value={graphClientId}
+                  onChange={e => setGraphClientId(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px]"
+                />
+              </label>
+              <label className="block space-y-1 text-xs">
+                <span className="text-muted-foreground">
+                  Client secret{graphSettings?.graphClientSecretSet ? ' (leave blank to keep)' : ''}
+                </span>
+                <input
+                  type="password"
+                  value={graphClientSecret}
+                  onChange={e => setGraphClientSecret(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px]"
+                  autoComplete="new-password"
+                  placeholder={graphSettings?.graphClientSecretSet ? '••••••••' : ''}
+                />
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={calendarSyncEnabled}
+                  onChange={e => setCalendarSyncEnabled(e.target.checked)}
+                />
+                Sync this person’s Outlook calendar into Appointment Calendar
+              </label>
+            </div>
+
             <div className="flex justify-end gap-2">
               {editing ? (
                 <button type="button" onClick={resetForm} className="px-3 py-1.5 text-xs rounded-md border border-border">
