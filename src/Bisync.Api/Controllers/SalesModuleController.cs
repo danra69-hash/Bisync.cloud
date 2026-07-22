@@ -535,6 +535,7 @@ public class SalesModuleController(
     /// <summary>
     /// Overview summary by Hunter: status changes, interactions (contact), and new leads.
     /// Requires view=week with weekStart, or view=month with year+month.
+    /// Optional salesTeamMemberId / companyId filters.
     /// </summary>
     [HttpGet("overview")]
     public async Task<ActionResult<object>> GetOverview(
@@ -542,11 +543,14 @@ public class SalesModuleController(
         [FromQuery] string? weekStart = null,
         [FromQuery] int? year = null,
         [FromQuery] int? month = null,
+        [FromQuery] int? salesTeamMemberId = null,
+        [FromQuery] int? companyId = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await clientUpdateService.GetOverviewAsync(view, weekStart, year, month, ct);
+            var result = await clientUpdateService.GetOverviewAsync(
+                view, weekStart, year, month, salesTeamMemberId, companyId, ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)

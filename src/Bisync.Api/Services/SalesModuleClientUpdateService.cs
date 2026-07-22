@@ -524,13 +524,15 @@ public class SalesModuleClientUpdateService(
 
     /// <summary>
     /// Hunter summary for Overview: status changes, interactions (contact), and new leads
-    /// for a required week or month period.
+    /// for a required week or month period. Optional Sales Team / company filters.
     /// </summary>
     public async Task<object> GetOverviewAsync(
         string view,
         string? weekStart = null,
         int? year = null,
         int? month = null,
+        int? salesTeamMemberId = null,
+        int? companyId = null,
         CancellationToken ct = default)
     {
         await EnsureHuntersTaggedAsync(ct);
@@ -572,13 +574,61 @@ public class SalesModuleClientUpdateService(
             periodLabel = periodStart.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
         }
 
+        string? hunterNameFilter = null;
+        if (salesTeamMemberId is > 0)
+        {
+            var member = await db.SalesModuleTeamMembers.AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Id == salesTeamMemberId.Value, ct);
+            if (member is null)
+                throw new InvalidOperationException("Sales team member not found.");
+            hunterNameFilter = member.Name.Trim();
+        }
+
+        string? companyNameFilter = null;
+        if (companyId is > 0)
+        {
+            var company = await db.SalesModuleCompanies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == companyId.Value, ct);
+            if (company is null)
+                throw new InvalidOperationException("Company not found.");
+            if (salesTeamMemberId is > 0)
+            {
+                var tagged = await db.SalesModuleCompanyMembers.AsNoTracking()
+                    .AnyAsync(
+                        t => t.SalesModuleCompanyId == companyId.Value
+                            && t.SalesTeamMemberId == salesTeamMemberId.Value,
+                        ct);
+                if (!tagged)
+                    throw new InvalidOperationException("Company is not tagged to this Sales Team member.");
+            }
+            companyNameFilter = company.Name.Trim();
+        }
+
         var rows = await GetCachedRowsAsync(ct);
         var inPeriod = rows.Where(r =>
         {
             var activity = ActivityDate(r);
-            return activity.HasValue
-                && activity.Value.Date >= periodStart
-                && activity.Value.Date < periodEndExclusive;
+            if (!activity.HasValue
+                || activity.Value.Date < periodStart
+                || activity.Value.Date >= periodEndExclusive)
+                return false;
+
+            if (salesTeamMemberId is > 0)
+            {
+                var hunterOk = r.SalesTeamMemberId == salesTeamMemberId.Value
+                    || (!string.IsNullOrWhiteSpace(hunterNameFilter)
+                        && r.Hunter.Equals(hunterNameFilter, StringComparison.OrdinalIgnoreCase));
+                if (!hunterOk) return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(companyNameFilter))
+            {
+                var companyOk = r.Company.Equals(companyNameFilter, StringComparison.OrdinalIgnoreCase)
+                    || r.Brand.Equals(companyNameFilter, StringComparison.OrdinalIgnoreCase);
+                if (!companyOk) return false;
+            }
+
+            return true;
         });
 
         var byHunter = new Dictionary<string, HunterTotals>(StringComparer.OrdinalIgnoreCase);
@@ -621,6 +671,9 @@ public class SalesModuleClientUpdateService(
             periodLabel,
             periodStart,
             periodEnd = periodEndExclusive.AddDays(-1),
+            salesTeamMemberId = salesTeamMemberId is > 0 ? salesTeamMemberId : null,
+            companyId = companyId is > 0 ? companyId : null,
+            companyName = companyNameFilter,
             hunters,
             totals = totalsOut,
         };
