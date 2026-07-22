@@ -178,6 +178,140 @@ public class SalesModuleClientUpdateService(
         return Map(row);
     }
 
+    /// <summary>
+    /// Apply a Sales Diary log to Client Update: update matching Hunter+Company row when found,
+    /// otherwise insert a new Client Update row so Overview / Client Update stay in sync.
+    /// </summary>
+    public async Task<object> ApplyDiaryEntryAsync(
+        string hunterName,
+        string activityType,
+        string companyName,
+        string brandName,
+        string locationVisited,
+        int? emailsSent,
+        IReadOnlyList<string> statuses,
+        string contactType,
+        DateTime contactDate,
+        IReadOnlyList<(string Name, string Position)> contacts,
+        CancellationToken ct = default)
+    {
+        await EnsureSchemaAsync(ct);
+
+        var hunter = (hunterName ?? string.Empty).Trim();
+        var company = (companyName ?? string.Empty).Trim();
+        var brand = (brandName ?? string.Empty).Trim();
+        var contactDateUtc = DateTime.SpecifyKind(contactDate.Date, DateTimeKind.Utc);
+        var isStatusChange = activityType.Equals("StatusChange", StringComparison.OrdinalIgnoreCase);
+        var resolvedContactType = isStatusChange
+            ? "STATUS UPDATE"
+            : (contactType ?? string.Empty).Trim();
+        var contactPerson = FormatDiaryContacts(contacts);
+        var note = BuildDiaryNote(isStatusChange, statuses, resolvedContactType, locationVisited, emailsSent);
+        var statusValue = isStatusChange && statuses.Count > 0
+            ? string.Join(", ", statuses)
+            : string.Empty;
+
+        SalesModuleClientUpdate? row = null;
+        if (!string.IsNullOrWhiteSpace(company) || !string.IsNullOrWhiteSpace(brand))
+        {
+            var companyKey = company.ToLowerInvariant();
+            var brandKey = brand.ToLowerInvariant();
+            var hunterKey = hunter.ToLowerInvariant();
+
+            var candidates = await db.SalesModuleClientUpdates
+                .Where(r =>
+                    (string.IsNullOrWhiteSpace(hunterKey) || r.Hunter.ToLower() == hunterKey)
+                    && (
+                        (!string.IsNullOrWhiteSpace(companyKey) && r.Company.ToLower() == companyKey)
+                        || (!string.IsNullOrWhiteSpace(brandKey) && r.Brand.ToLower() == brandKey)
+                        || (!string.IsNullOrWhiteSpace(companyKey) && r.Brand.ToLower() == companyKey)
+                    ))
+                .ToListAsync(ct);
+
+            row = candidates
+                .OrderByDescending(r =>
+                    !string.IsNullOrWhiteSpace(brandKey)
+                    && r.Brand.Equals(brand, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .ThenByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
+                .ThenByDescending(r => r.Id)
+                .FirstOrDefault();
+        }
+
+        if (row is null)
+        {
+            row = new SalesModuleClientUpdate
+            {
+                DateCreated = contactDateUtc,
+                Hunter = hunter,
+                Company = company,
+                Brand = brand,
+                Status = statusValue,
+                LastContactDate = contactDateUtc,
+                ContactPerson = contactPerson,
+                ContactType = resolvedContactType,
+                Note = note,
+                ImportedAt = DateTime.UtcNow,
+            };
+            db.SalesModuleClientUpdates.Add(row);
+        }
+        else
+        {
+            if (!row.DateCreated.HasValue)
+                row.DateCreated = contactDateUtc;
+            if (string.IsNullOrWhiteSpace(row.Hunter) && !string.IsNullOrWhiteSpace(hunter))
+                row.Hunter = hunter;
+            if (string.IsNullOrWhiteSpace(row.Company) && !string.IsNullOrWhiteSpace(company))
+                row.Company = company;
+            if (string.IsNullOrWhiteSpace(row.Brand) && !string.IsNullOrWhiteSpace(brand))
+                row.Brand = brand;
+
+            row.LastContactDate = contactDateUtc;
+            if (!string.IsNullOrWhiteSpace(contactPerson))
+                row.ContactPerson = contactPerson;
+            if (!string.IsNullOrWhiteSpace(resolvedContactType))
+                row.ContactType = resolvedContactType;
+            if (!string.IsNullOrWhiteSpace(note))
+                row.Note = note;
+            if (isStatusChange && !string.IsNullOrWhiteSpace(statusValue))
+                row.Status = statusValue;
+        }
+
+        await db.SaveChangesAsync(ct);
+        InvalidateListCache();
+        return Map(row);
+    }
+
+    static string FormatDiaryContacts(IReadOnlyList<(string Name, string Position)> contacts)
+    {
+        if (contacts is null || contacts.Count == 0) return string.Empty;
+        return string.Join("; ", contacts
+            .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+            .Select(c => string.IsNullOrWhiteSpace(c.Position)
+                ? c.Name.Trim()
+                : $"{c.Name.Trim()} ({c.Position.Trim()})"));
+    }
+
+    static string BuildDiaryNote(
+        bool isStatusChange,
+        IReadOnlyList<string> statuses,
+        string contactType,
+        string locationVisited,
+        int? emailsSent)
+    {
+        if (isStatusChange)
+        {
+            var statusText = statuses.Count > 0 ? string.Join(", ", statuses) : "—";
+            return $"Sales Diary · Status Change · {statusText}";
+        }
+
+        var parts = new List<string> { "Sales Diary", contactType };
+        if (!string.IsNullOrWhiteSpace(locationVisited))
+            parts.Add($"Location: {locationVisited.Trim()}");
+        if (emailsSent is > 0)
+            parts.Add($"{emailsSent} emails sent");
+        return string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+    }
+
     /// <summary>Monday of last week through today (UTC date).</summary>
     public static (DateTime From, DateTime ToInclusive) ClientUpdateListWindow(DateTime utcToday)
     {
