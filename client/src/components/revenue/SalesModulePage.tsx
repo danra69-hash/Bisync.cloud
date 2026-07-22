@@ -85,6 +85,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
 
   const [customers, setCustomers] = useState<SalesModuleCustomer[]>([]);
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
+  const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
   const [importingClientUpdates, setImportingClientUpdates] = useState(false);
   const [filterClientUpdatesByHunter, setFilterClientUpdatesByHunter] = useState(false);
@@ -178,8 +179,13 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
       filterClientUpdatesByHunter && member?.name
         ? member.name
         : undefined;
-    const rows = await api.salesModuleClientUpdates({ hunter });
-    setClientUpdates(rows);
+    setClientUpdatesLoading(true);
+    try {
+      const rows = await api.salesModuleClientUpdates({ hunter });
+      setClientUpdates(rows);
+    } finally {
+      setClientUpdatesLoading(false);
+    }
   }, [filterClientUpdatesByHunter, selectedTeamMemberId, teamMembers]);
 
   const loadAppointments = useCallback(async () => {
@@ -213,11 +219,12 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
     }
   }, [monthCursor]);
 
+  // Core Sales Module data — do not wait on Client Update or O365 calendar for Customers tab.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([loadCustomers(), loadClientUpdates(), loadAppointments(), loadTeamCalendars()])
+    Promise.all([loadCustomers(), loadAppointments()])
       .catch(err => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Sales Module');
       })
@@ -225,7 +232,27 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [loadCustomers, loadClientUpdates, loadAppointments, loadTeamCalendars]);
+  }, [loadCustomers, loadAppointments]);
+
+  // Calendar sync is only needed on the Appointment Calendar tab (and can be slow via Graph).
+  useEffect(() => {
+    if (tab !== 'calendar') return;
+    let cancelled = false;
+    void loadTeamCalendars().catch(err => {
+      if (!cancelled) setTeamSyncMessage(err instanceof Error ? err.message : 'Failed to sync calendars');
+    });
+    return () => { cancelled = true; };
+  }, [tab, loadTeamCalendars]);
+
+  // Lazy-load Client Update only when that tab is open (and when hunter filter changes).
+  useEffect(() => {
+    if (tab !== 'client-update') return;
+    let cancelled = false;
+    void loadClientUpdates().catch(err => {
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Client Update');
+    });
+    return () => { cancelled = true; };
+  }, [tab, loadClientUpdates]);
 
   async function handleCreateCompany() {
     if (!selectedTeamMemberId || !companyDraft.trim()) return;
@@ -514,7 +541,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">
-                Weekly Update · {clientUpdates.length} record{clientUpdates.length === 1 ? '' : 's'}
+                Weekly Update · {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
                 {filterClientUpdatesByHunter && selectedTeamMember
                   ? ` · hunter ${selectedTeamMember.name}`
                   : ' · all hunters'}
@@ -676,7 +703,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {clientUpdatesLoading ? (
                 <TableLoadingRow colSpan={12} label="Loading client updates…" />
               ) : clientUpdates.length === 0 ? (
                 <tr>
