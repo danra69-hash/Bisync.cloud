@@ -134,16 +134,21 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     () => teamMembers.filter(m => m.active).sort((a, b) => a.name.localeCompare(b.name)),
     [teamMembers],
   );
+  const activeHunters = useMemo(
+    () => activeTeamMembers.filter(m => m.isHunter !== false),
+    [activeTeamMembers],
+  );
 
   const loadTeamMembers = useCallback(async () => {
     const rows = await api.salesModuleTeam();
     setTeamMembers(rows);
     setSelectedTeamMemberId(prev => {
-      if (prev && rows.some(m => m.id === prev && m.active)) return prev;
+      const hunters = rows.filter(m => m.active && m.isHunter !== false);
+      if (prev && hunters.some(m => m.id === prev)) return prev;
       // Preserve Client Update "All" after the first default selection.
       if (teamSelectionReadyRef.current && prev === null) return null;
       teamSelectionReadyRef.current = true;
-      return rows.find(m => m.active)?.id ?? null;
+      return hunters[0]?.id ?? rows.find(m => m.active)?.id ?? null;
     });
   }, []);
 
@@ -335,14 +340,14 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     if (tab !== 'overview') return;
     let cancelled = false;
     setOverviewSalesTeamId(prev => {
-      if (prev !== '' && activeTeamMembers.some(m => m.id === prev)) return prev;
+      if (prev !== '' && activeHunters.some(m => m.id === prev)) return prev;
       return selectedTeamMemberId ?? '';
     });
     void loadOverviewPeriods().catch(err => {
       if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview periods');
     });
     return () => { cancelled = true; };
-  }, [tab, loadOverviewPeriods, selectedTeamMemberId, activeTeamMembers]);
+  }, [tab, loadOverviewPeriods, selectedTeamMemberId, activeHunters]);
 
   useEffect(() => {
     if (tab !== 'overview') return;
@@ -491,7 +496,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     return calendarItemsByDay.get(key) ?? [];
   }, [calendarItemsByDay, selectedDay]);
 
-  const selectedTeamMember = activeTeamMembers.find(m => m.id === selectedTeamMemberId) ?? null;
+  const selectedTeamMember = activeHunters.find(m => m.id === selectedTeamMemberId)
+    ?? activeTeamMembers.find(m => m.id === selectedTeamMemberId)
+    ?? null;
 
   function openNewAppointment(day?: Date) {
     const base = day ?? selectedDay ?? new Date();
@@ -632,7 +639,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
               >
                 <option value="">All hunters</option>
-                {activeTeamMembers.map(m => (
+                {activeHunters.map(m => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
@@ -761,7 +768,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   {tab === 'client-update' ? (
                     <option value="">All</option>
                   ) : null}
-                  {activeTeamMembers.map(m => (
+                  {activeHunters.map(m => (
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
@@ -1012,7 +1019,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                         row.hunter
                       ) : (
                         <ClientUpdateBlankHunterSelect
-                          teamMembers={activeTeamMembers}
+                          teamMembers={activeHunters}
                           preferredMemberId={selectedTeamMemberId}
                           onSave={memberId => saveClientUpdateBlankField(row.id, { salesTeamMemberId: memberId })}
                         />

@@ -25,6 +25,8 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [isHunter, setIsHunter] = useState(true);
+  const [isFarmer, setIsFarmer] = useState(false);
   const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(true);
   const [graphTenantId, setGraphTenantId] = useState('');
   const [graphClientId, setGraphClientId] = useState('');
@@ -63,6 +65,8 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
     setEditing(null);
     setName('');
     setEmail('');
+    setIsHunter(true);
+    setIsFarmer(false);
     setCalendarSyncEnabled(true);
     setGraphTenantId(graphSettings?.graphTenantId || '');
     setGraphClientId(graphSettings?.graphClientId || '');
@@ -73,6 +77,8 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
     setEditing(row);
     setName(row.name);
     setEmail(row.email);
+    setIsHunter(row.isHunter !== false);
+    setIsFarmer(!!row.isFarmer);
     setCalendarSyncEnabled(row.calendarSyncEnabled);
     setGraphTenantId(graphSettings?.graphTenantId || '');
     setGraphClientId(graphSettings?.graphClientId || '');
@@ -96,6 +102,8 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
           name: name.trim(),
           email: email.trim(),
           active: editing.active,
+          isHunter,
+          isFarmer,
           calendarSyncEnabled,
           ...graphPayload,
         });
@@ -113,6 +121,8 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
         const created = await api.createSalesModuleTeamMember({
           name: name.trim(),
           email: email.trim(),
+          isHunter,
+          isFarmer,
           calendarSyncEnabled,
           ...graphPayload,
         });
@@ -160,6 +170,8 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
         name: row.name,
         email: row.email,
         active: row.active,
+        isHunter: row.isHunter !== false,
+        isFarmer: !!row.isFarmer,
         calendarSyncEnabled: !row.calendarSyncEnabled,
       });
       setMembers(prev => {
@@ -232,6 +244,25 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
                 placeholder="name@cubevalue.com"
               />
             </label>
+
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isHunter}
+                  onChange={e => setIsHunter(e.target.checked)}
+                />
+                Hunter
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isFarmer}
+                  onChange={e => setIsFarmer(e.target.checked)}
+                />
+                Farmer
+              </label>
+            </div>
 
             <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-2 space-y-2">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -319,6 +350,14 @@ export function SalesModuleTeamPanel({ open, onClose, onChanged }: Props) {
                       <div className="min-w-0">
                         <p className="text-xs font-semibold truncate">{row.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">{row.email}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {[
+                            row.isHunter !== false ? 'Hunter' : null,
+                            row.isFarmer ? 'Farmer' : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || 'No role'}
+                        </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button type="button" onClick={() => startEdit(row)} className="p-1 text-muted-foreground hover:text-foreground" title="Edit">

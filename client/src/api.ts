@@ -696,6 +696,8 @@ export interface SalesModuleTeamMember {
   name: string;
   email: string;
   active: boolean;
+  isHunter: boolean;
+  isFarmer: boolean;
   calendarSyncEnabled: boolean;
   lastSyncError?: string | null;
   lastSyncedAt?: string | null;
@@ -2671,6 +2673,8 @@ export const api = {
     name: string;
     email: string;
     active?: boolean;
+    isHunter?: boolean;
+    isFarmer?: boolean;
     calendarSyncEnabled?: boolean;
     graphTenantId?: string;
     graphClientId?: string;
@@ -2682,6 +2686,8 @@ export const api = {
       name: string;
       email: string;
       active: boolean;
+      isHunter: boolean;
+      isFarmer: boolean;
       calendarSyncEnabled: boolean;
       graphTenantId?: string;
       graphClientId?: string;

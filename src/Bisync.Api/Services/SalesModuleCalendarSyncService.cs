@@ -226,6 +226,8 @@ public class SalesModuleCalendarSyncService(
                 "Name" TEXT NOT NULL DEFAULT '',
                 "Email" TEXT NOT NULL DEFAULT '',
                 "Active" boolean NOT NULL DEFAULT true,
+                "IsHunter" boolean NOT NULL DEFAULT true,
+                "IsFarmer" boolean NOT NULL DEFAULT false,
                 "CalendarSyncEnabled" boolean NOT NULL DEFAULT true,
                 "LastSyncError" TEXT NOT NULL DEFAULT '',
                 "LastSyncedAt" timestamp with time zone NULL,
@@ -233,6 +235,8 @@ public class SalesModuleCalendarSyncService(
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
             );
             """, ct);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleTeamMembers", "IsHunter", "boolean NOT NULL DEFAULT true");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleTeamMembers", "IsFarmer", "boolean NOT NULL DEFAULT false");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_SalesModuleTeamMembers_Email"
             ON "SalesModuleTeamMembers" ("Email");
@@ -252,6 +256,8 @@ public class SalesModuleCalendarSyncService(
         string name,
         string email,
         bool calendarSyncEnabled = true,
+        bool isHunter = true,
+        bool isFarmer = false,
         string? graphTenantId = null,
         string? graphClientId = null,
         string? graphClientSecret = null,
@@ -281,6 +287,8 @@ public class SalesModuleCalendarSyncService(
             Name = trimmedName,
             Email = trimmedEmail,
             Active = true,
+            IsHunter = isHunter,
+            IsFarmer = isFarmer,
             CalendarSyncEnabled = calendarSyncEnabled,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -299,6 +307,8 @@ public class SalesModuleCalendarSyncService(
         string email,
         bool active,
         bool calendarSyncEnabled,
+        bool isHunter = true,
+        bool isFarmer = false,
         string? graphTenantId = null,
         string? graphClientId = null,
         string? graphClientSecret = null,
@@ -329,6 +339,8 @@ public class SalesModuleCalendarSyncService(
         row.Name = trimmedName;
         row.Email = trimmedEmail;
         row.Active = active;
+        row.IsHunter = isHunter;
+        row.IsFarmer = isFarmer;
         row.CalendarSyncEnabled = calendarSyncEnabled;
         row.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -498,6 +510,8 @@ public class SalesModuleCalendarSyncService(
         m.Name,
         m.Email,
         m.Active,
+        m.IsHunter,
+        m.IsFarmer,
         m.CalendarSyncEnabled,
         lastSyncError = string.IsNullOrWhiteSpace(m.LastSyncError) ? null : m.LastSyncError,
         lastSyncedAt = m.LastSyncedAt,

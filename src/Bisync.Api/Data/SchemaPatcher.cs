@@ -810,6 +810,8 @@ public static class SchemaPatcher
                 "Name" TEXT NOT NULL DEFAULT '',
                 "Email" TEXT NOT NULL DEFAULT '',
                 "Active" boolean NOT NULL DEFAULT true,
+                "IsHunter" boolean NOT NULL DEFAULT true,
+                "IsFarmer" boolean NOT NULL DEFAULT false,
                 "CalendarSyncEnabled" boolean NOT NULL DEFAULT true,
                 "LastSyncError" TEXT NOT NULL DEFAULT '',
                 "LastSyncedAt" timestamp with time zone NULL,
@@ -817,6 +819,8 @@ public static class SchemaPatcher
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
             );
             """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleTeamMembers", "IsHunter", "boolean NOT NULL DEFAULT true");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleTeamMembers", "IsFarmer", "boolean NOT NULL DEFAULT false");
         await TryCreateUniqueIndexAsync(db, "IX_SalesModuleTeamMembers_Email", "SalesModuleTeamMembers", "Email");
 
         await db.Database.ExecuteSqlRawAsync("""
