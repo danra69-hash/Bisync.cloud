@@ -727,6 +727,7 @@ export interface SalesModuleClientUpdate {
   id: number;
   dateCreated?: string | null;
   hunter: string;
+  salesTeamMemberId?: number | null;
   company: string;
   brand: string;
   locationCount?: number | null;
@@ -2570,17 +2571,31 @@ export const api = {
     }
     return fetchJson<SalesModuleOverview>(`/api/sales-module/overview?${params}`);
   },
-  salesModuleClientUpdates: (opts?: { hunter?: string }) => {
+  salesModuleClientUpdates: (opts?: { hunter?: string; salesTeamMemberId?: number }) => {
     const params = new URLSearchParams();
-    if (opts?.hunter?.trim()) params.set('hunter', opts.hunter.trim());
+    if (opts?.salesTeamMemberId && opts.salesTeamMemberId > 0) {
+      params.set('salesTeamMemberId', String(opts.salesTeamMemberId));
+    } else if (opts?.hunter?.trim()) {
+      params.set('hunter', opts.hunter.trim());
+    }
     const q = params.toString();
     return fetchJson<SalesModuleClientUpdate[]>(`/api/sales-module/client-updates${q ? `?${q}` : ''}`);
   },
+  rematchSalesModuleClientUpdateHunters: () =>
+    fetchJsonWithMethod<{
+      changed: number;
+      matched: number;
+      unmatched: number;
+      total: number;
+      teamMembers: number;
+      hunters?: Array<{ id: number; name: string; count: number }>;
+    }>('/api/sales-module/client-updates/rematch-hunters', 'POST'),
   patchSalesModuleClientUpdate: (
     id: number,
     data: {
       dateCreated?: string | null;
       hunter?: string | null;
+      salesTeamMemberId?: number | null;
       company?: string | null;
       brand?: string | null;
       locationCount?: number | null;

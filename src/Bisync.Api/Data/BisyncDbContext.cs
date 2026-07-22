@@ -203,6 +203,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.HasIndex(x => x.Hunter);
             e.HasIndex(x => x.DateCreated);
+            e.HasIndex(x => x.SalesTeamMemberId);
             e.Property(x => x.Hunter).HasMaxLength(120);
             e.Property(x => x.Company).HasMaxLength(200);
             e.Property(x => x.Brand).HasMaxLength(200);

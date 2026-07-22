@@ -103,7 +103,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
   const [importingClientUpdates, setImportingClientUpdates] = useState(false);
-  const [filterClientUpdatesByHunter, setFilterClientUpdatesByHunter] = useState(false);
+  const [filterClientUpdatesByHunter, setFilterClientUpdatesByHunter] = useState(true);
   const clientUpdateFileRef = useRef<HTMLInputElement | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -185,19 +185,20 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   }, [selectedTeamMemberId, selectedCompanyId]);
 
   const loadClientUpdates = useCallback(async () => {
-    const member = teamMembers.find(m => m.id === selectedTeamMemberId);
-    const hunter =
-      filterClientUpdatesByHunter && member?.name
-        ? member.name
-        : undefined;
     setClientUpdatesLoading(true);
     try {
-      const rows = await api.salesModuleClientUpdates({ hunter });
+      // Rematch uploaded Hunter free-text to Sales Team list, then load windowed rows.
+      await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
+      const rows = await api.salesModuleClientUpdates(
+        filterClientUpdatesByHunter && selectedTeamMemberId
+          ? { salesTeamMemberId: selectedTeamMemberId }
+          : undefined,
+      );
       setClientUpdates(rows);
     } finally {
       setClientUpdatesLoading(false);
     }
-  }, [filterClientUpdatesByHunter, selectedTeamMemberId, teamMembers]);
+  }, [filterClientUpdatesByHunter, selectedTeamMemberId]);
 
   const loadOverviewPeriods = useCallback(async () => {
     const periods = await api.salesModuleOverviewPeriods();
@@ -370,6 +371,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     patch: {
       dateCreated?: string | null;
       hunter?: string | null;
+      salesTeamMemberId?: number | null;
       company?: string | null;
       brand?: string | null;
       locationCount?: number | null;
@@ -381,6 +383,15 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       setClientUpdates(prev => {
         const activity = saved.lastContactDate || saved.dateCreated;
         if (activity && !isInClientUpdateListWindow(activity)) {
+          return prev.filter(r => r.id !== id);
+        }
+        // When scoped to a hunter, drop rows tagged to someone else after save.
+        if (
+          filterClientUpdatesByHunter
+          && selectedTeamMemberId
+          && saved.salesTeamMemberId
+          && saved.salesTeamMemberId !== selectedTeamMemberId
+        ) {
           return prev.filter(r => r.id !== id);
         }
         return prev.map(r => (r.id === id ? saved : r));
@@ -663,7 +674,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 {filterClientUpdatesByHunter && selectedTeamMember
                   ? ` · hunter ${selectedTeamMember.name}`
                   : ' · all hunters'}
-                {' · '}blank Date Created / Hunter / Company / Brand / No. of Location can be filled in
+                {' · '}hunters tagged to Sales Team · blank Date Created / Hunter / Company / Brand / No. of Location can be filled in
               </p>
               <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <input
@@ -671,7 +682,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   checked={filterClientUpdatesByHunter}
                   onChange={e => setFilterClientUpdatesByHunter(e.target.checked)}
                 />
-                Filter by selected Sales Team member (Hunter)
+                Only selected Sales Team member (Hunter)
               </label>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -841,10 +852,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                       {!isBlankText(row.hunter) ? (
                         row.hunter
                       ) : (
-                        <ClientUpdateBlankTextInput
-                          placeholder="Hunter…"
-                          listId="client-update-hunter-suggestions"
-                          onSave={value => saveClientUpdateBlankField(row.id, { hunter: value })}
+                        <ClientUpdateBlankHunterSelect
+                          teamMembers={activeTeamMembers}
+                          preferredMemberId={selectedTeamMemberId}
+                          onSave={memberId => saveClientUpdateBlankField(row.id, { salesTeamMemberId: memberId })}
                         />
                       )}
                     </td>
@@ -890,11 +901,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               )}
             </tbody>
           </table>
-          <datalist id="client-update-hunter-suggestions">
-            {activeTeamMembers.map(m => (
-              <option key={m.id} value={m.name} />
-            ))}
-          </datalist>
         </TableScrollContainer>
       ) : tab === 'sales-diary' && selectedTeamMemberId ? (
         <SalesDiaryPanel
@@ -1180,6 +1186,50 @@ function ClientUpdateBlankTextInput({
       }}
       className="w-full min-w-[6rem] max-w-[10rem] rounded border border-dashed border-border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
     />
+  );
+}
+
+function ClientUpdateBlankHunterSelect({
+  teamMembers,
+  preferredMemberId,
+  onSave,
+}: {
+  teamMembers: SalesModuleTeamMember[];
+  preferredMemberId: number | null;
+  onSave: (memberId: number) => Promise<void>;
+}) {
+  const [value, setValue] = useState<number | ''>(() => preferredMemberId ?? teamMembers[0]?.id ?? '');
+  const [saving, setSaving] = useState(false);
+
+  async function commit(next: number) {
+    if (!next || saving) return;
+    setSaving(true);
+    try {
+      await onSave(next);
+    } catch {
+      /* parent surfaces error */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <select
+      value={value === '' ? '' : String(value)}
+      disabled={saving || teamMembers.length === 0}
+      onChange={e => {
+        const id = Number(e.target.value) || 0;
+        setValue(id > 0 ? id : '');
+        if (id > 0) void commit(id);
+      }}
+      className="w-full min-w-[7rem] max-w-[11rem] rounded border border-dashed border-border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
+      title="Tag hunter from Sales Team"
+    >
+      <option value="">Select hunter…</option>
+      {teamMembers.map(m => (
+        <option key={m.id} value={m.id}>{m.name}</option>
+      ))}
+    </select>
   );
 }
 
