@@ -38,6 +38,25 @@ function formatOptionalDate(value?: string | null): string {
   return d.toLocaleDateString();
 }
 
+/** Monday-start week window matching API: last week + week-to-date (UTC date). */
+function isInClientUpdateListWindow(iso: string): boolean {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const today = new Date();
+  const utcToday = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const day = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = day.getUTCDay(); // 0 Sun … 6 Sat
+  const mondayOffset = (dow + 6) % 7;
+  const thisWeekStart = utcToday - mondayOffset * 86400000;
+  const lastWeekStart = thisWeekStart - 7 * 86400000;
+  const t = day.getTime();
+  return t >= lastWeekStart && t <= utcToday;
+}
+
+function isBlankText(value?: string | null): boolean {
+  return !value || !value.trim();
+}
+
 type Props = {
   /** Dev Console session identity used when creating engaged records. */
   sessionEmail?: string;
@@ -344,6 +363,32 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     }
   }
 
+  async function saveClientUpdateBlankField(
+    id: number,
+    patch: {
+      dateCreated?: string | null;
+      hunter?: string | null;
+      company?: string | null;
+      brand?: string | null;
+      locationCount?: number | null;
+    },
+  ) {
+    setError(null);
+    try {
+      const saved = await api.patchSalesModuleClientUpdate(id, patch);
+      setClientUpdates(prev => {
+        const activity = saved.lastContactDate || saved.dateCreated;
+        if (activity && !isInClientUpdateListWindow(activity)) {
+          return prev.filter(r => r.id !== id);
+        }
+        return prev.map(r => (r.id === id ? saved : r));
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save Client Update field');
+      throw err;
+    }
+  }
+
   const calendarItemsByDay = useMemo(() => {
     const map = new Map<string, CalendarItem[]>();
     const push = (item: CalendarItem) => {
@@ -616,6 +661,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 {filterClientUpdatesByHunter && selectedTeamMember
                   ? ` · hunter ${selectedTeamMember.name}`
                   : ' · all hunters'}
+                {' · '}blank Date Created / Hunter / Company / Brand / No. of Location can be filled in
               </p>
               <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <input
@@ -775,11 +821,56 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               ) : (
                 clientUpdates.map(row => (
                   <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
-                    <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.dateCreated)}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{row.hunter || '—'}</td>
-                    <td className="px-2 py-1.5">{row.company || '—'}</td>
-                    <td className="px-2 py-1.5 font-medium">{row.brand || '—'}</td>
-                    <td className="px-2 py-1.5">{row.locationCount ?? '—'}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {row.dateCreated ? (
+                        formatOptionalDate(row.dateCreated)
+                      ) : (
+                        <ClientUpdateBlankDateInput
+                          onSave={value => saveClientUpdateBlankField(row.id, { dateCreated: value })}
+                        />
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {!isBlankText(row.hunter) ? (
+                        row.hunter
+                      ) : (
+                        <ClientUpdateBlankTextInput
+                          placeholder="Hunter…"
+                          listId="client-update-hunter-suggestions"
+                          onSave={value => saveClientUpdateBlankField(row.id, { hunter: value })}
+                        />
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {!isBlankText(row.company) ? (
+                        row.company
+                      ) : (
+                        <ClientUpdateBlankTextInput
+                          placeholder="Company…"
+                          onSave={value => saveClientUpdateBlankField(row.id, { company: value })}
+                        />
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 font-medium">
+                      {!isBlankText(row.brand) ? (
+                        row.brand
+                      ) : (
+                        <ClientUpdateBlankTextInput
+                          placeholder="Brand…"
+                          onSave={value => saveClientUpdateBlankField(row.id, { brand: value })}
+                        />
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {row.locationCount != null ? (
+                        row.locationCount
+                      ) : (
+                        <ClientUpdateBlankNumberInput
+                          placeholder="Locations…"
+                          onSave={value => saveClientUpdateBlankField(row.id, { locationCount: value })}
+                        />
+                      )}
+                    </td>
                     <td className="px-2 py-1.5">{row.status || '—'}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.lastContactDate)}</td>
                     <td className="px-2 py-1.5">{row.contactPerson || '—'}</td>
@@ -792,6 +883,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               )}
             </tbody>
           </table>
+          <datalist id="client-update-hunter-suggestions">
+            {activeTeamMembers.map(m => (
+              <option key={m.id} value={m.name} />
+            ))}
+          </datalist>
         </TableScrollContainer>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4">
@@ -1026,5 +1122,130 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ClientUpdateBlankTextInput({
+  placeholder,
+  listId,
+  onSave,
+}: {
+  placeholder: string;
+  listId?: string;
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function commit() {
+    const trimmed = value.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    try {
+      await onSave(trimmed);
+    } catch {
+      /* parent surfaces error */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <input
+      value={value}
+      list={listId}
+      disabled={saving}
+      placeholder={placeholder}
+      onChange={e => setValue(e.target.value)}
+      onBlur={() => void commit()}
+      onKeyDown={e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void commit();
+        }
+      }}
+      className="w-full min-w-[6rem] max-w-[10rem] rounded border border-dashed border-border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
+    />
+  );
+}
+
+function ClientUpdateBlankDateInput({
+  onSave,
+}: {
+  onSave: (value: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function commit(next: string) {
+    if (!next || saving) return;
+    setSaving(true);
+    try {
+      await onSave(`${next}T00:00:00.000Z`);
+    } catch {
+      /* parent surfaces error */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <input
+      type="date"
+      value={value}
+      disabled={saving}
+      onChange={e => {
+        setValue(e.target.value);
+        void commit(e.target.value);
+      }}
+      className="w-full min-w-[8rem] rounded border border-dashed border-border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
+      title="Enter Date Created"
+    />
+  );
+}
+
+function ClientUpdateBlankNumberInput({
+  placeholder,
+  onSave,
+}: {
+  placeholder: string;
+  onSave: (value: number) => Promise<void>;
+}) {
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function commit() {
+    const trimmed = value.trim();
+    if (!trimmed || saving) return;
+    const n = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n < 0) return;
+    setSaving(true);
+    try {
+      await onSave(n);
+    } catch {
+      /* parent surfaces error */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <input
+      type="number"
+      min={0}
+      step={1}
+      value={value}
+      disabled={saving}
+      placeholder={placeholder}
+      onChange={e => setValue(e.target.value)}
+      onBlur={() => void commit()}
+      onKeyDown={e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void commit();
+        }
+      }}
+      className="w-full min-w-[4.5rem] max-w-[6rem] rounded border border-dashed border-border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
+    />
   );
 }
