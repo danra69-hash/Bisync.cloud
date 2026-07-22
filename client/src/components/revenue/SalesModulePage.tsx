@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Upload, Users, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -99,6 +99,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [overviewPeriods, setOverviewPeriods] = useState<SalesModuleOverviewPeriods | null>(null);
   const [overview, setOverview] = useState<SalesModuleOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewSalesTeamId, setOverviewSalesTeamId] = useState<number | ''>('');
+  const [overviewCompanyId, setOverviewCompanyId] = useState<number | ''>('');
+  const [overviewCompanies, setOverviewCompanies] = useState<SalesModuleCompany[]>([]);
+  const [overviewHasSearched, setOverviewHasSearched] = useState(false);
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
@@ -213,39 +217,68 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     });
   }, []);
 
-  const loadOverview = useCallback(async () => {
-    if (overviewView === 'week') {
-      if (!overviewWeekStart) {
-        setOverview(null);
-        return;
-      }
-      setOverviewLoading(true);
-      try {
-        const data = await api.salesModuleOverview({ view: 'week', weekStart: overviewWeekStart });
-        setOverview(data);
-      } finally {
-        setOverviewLoading(false);
-      }
+  const loadOverviewCompanies = useCallback(async (memberId: number | '') => {
+    const rows = await api.salesModuleCompanies(
+      memberId ? { salesTeamMemberId: memberId } : {},
+    );
+    setOverviewCompanies(rows);
+    setOverviewCompanyId(prev => {
+      if (prev && rows.some(c => c.id === prev)) return prev;
+      return '';
+    });
+  }, []);
+
+  const runOverviewSearch = useCallback(async () => {
+    if (overviewView === 'week' && !overviewWeekStart) {
+      setError('Select a week to search.');
+      return;
+    }
+    if (overviewView === 'month' && !overviewMonthValue) {
+      setError('Select a month to search.');
       return;
     }
 
-    const month = overviewPeriods?.months.find(m => m.value === overviewMonthValue);
-    if (!month) {
-      setOverview(null);
-      return;
-    }
     setOverviewLoading(true);
+    setError(null);
+    setOverviewHasSearched(true);
     try {
+      if (overviewView === 'week') {
+        const data = await api.salesModuleOverview({
+          view: 'week',
+          weekStart: overviewWeekStart,
+          salesTeamMemberId: overviewSalesTeamId || undefined,
+          companyId: overviewCompanyId || undefined,
+        });
+        setOverview(data);
+        return;
+      }
+      const month = overviewPeriods?.months.find(m => m.value === overviewMonthValue);
+      if (!month) {
+        setOverview(null);
+        return;
+      }
       const data = await api.salesModuleOverview({
         view: 'month',
         year: month.year,
         month: month.month,
+        salesTeamMemberId: overviewSalesTeamId || undefined,
+        companyId: overviewCompanyId || undefined,
       });
       setOverview(data);
+    } catch (err) {
+      setOverview(null);
+      setError(err instanceof Error ? err.message : 'Failed to load Overview');
     } finally {
       setOverviewLoading(false);
     }
-  }, [overviewView, overviewWeekStart, overviewMonthValue, overviewPeriods]);
+  }, [
+    overviewView,
+    overviewWeekStart,
+    overviewMonthValue,
+    overviewPeriods,
+    overviewSalesTeamId,
+    overviewCompanyId,
+  ]);
 
   const loadAppointments = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -289,24 +322,28 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     return () => { cancelled = true; };
   }, [loadCustomers, loadAppointments]);
 
-  // Overview periods + summary when Overview tab is open.
+  // Overview periods + company options when Overview tab is open (results load via Search).
   useEffect(() => {
     if (tab !== 'overview') return;
     let cancelled = false;
+    setOverviewSalesTeamId(prev => {
+      if (prev !== '' && activeTeamMembers.some(m => m.id === prev)) return prev;
+      return selectedTeamMemberId ?? '';
+    });
     void loadOverviewPeriods().catch(err => {
       if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview periods');
     });
     return () => { cancelled = true; };
-  }, [tab, loadOverviewPeriods]);
+  }, [tab, loadOverviewPeriods, selectedTeamMemberId, activeTeamMembers]);
 
   useEffect(() => {
     if (tab !== 'overview') return;
     let cancelled = false;
-    void loadOverview().catch(err => {
-      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview');
+    void loadOverviewCompanies(overviewSalesTeamId).catch(err => {
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview companies');
     });
     return () => { cancelled = true; };
-  }, [tab, loadOverview]);
+  }, [tab, overviewSalesTeamId, loadOverviewCompanies]);
 
   // Calendar sync is only needed on the Appointment Calendar tab (and can be slow via Graph).
   useEffect(() => {
@@ -548,78 +585,61 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   return (
     <div className={pageShellClass({ spacing: 'loose' })}>
       <PageStickyFilters opaque className="space-y-2 pb-2">
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="inline-flex flex-col gap-1 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
-            <select
-              value={selectedTeamMemberId}
-              onChange={e => setSelectedTeamMemberId(Number(e.target.value) || null)}
-              className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-            >
-              {activeTeamMembers.map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="inline-flex flex-col gap-1 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-            <select
-              value={selectedCompanyId ?? ''}
-              onChange={e => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
-              className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-            >
-              <option value="">All companies</option>
-              {companies.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => setTeamOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
-          >
-            <Users size={12} />
-            Sales Team
-            {teamMembers.length > 0 ? (
-              <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
-            ) : null}
-          </button>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
-            <span className="text-muted-foreground uppercase tracking-wide">Add company for this member</span>
-            <input
-              value={companyDraft}
-              onChange={e => setCompanyDraft(e.target.value)}
-              placeholder="Company name…"
-              className="rounded-md border border-border bg-background px-2 py-1.5"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={creatingCompany || !companyDraft.trim()}
-            onClick={() => void handleCreateCompany()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
-          >
-            <Plus size={12} />
-            {creatingCompany ? 'Saving…' : 'Add company'}
-          </button>
-        </div>
-        <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
         {tab === 'overview' ? (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="inline-flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+              <select
+                value={overviewSalesTeamId}
+                onChange={e => {
+                  setOverviewSalesTeamId(e.target.value ? Number(e.target.value) : '');
+                  setOverviewHasSearched(false);
+                  setOverview(null);
+                }}
+                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+              >
+                <option value="">All hunters</option>
+                {activeTeamMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="inline-flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Company</span>
+              <select
+                value={overviewCompanyId}
+                onChange={e => {
+                  setOverviewCompanyId(e.target.value ? Number(e.target.value) : '');
+                  setOverviewHasSearched(false);
+                  setOverview(null);
+                }}
+                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+              >
+                <option value="">All companies</option>
+                {overviewCompanies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+            <div className="inline-flex rounded-md border border-border overflow-hidden text-xs self-end">
               <button
                 type="button"
-                onClick={() => setOverviewView('week')}
+                onClick={() => {
+                  setOverviewView('week');
+                  setOverviewHasSearched(false);
+                  setOverview(null);
+                }}
                 className={`px-3 py-1.5 font-semibold ${overviewView === 'week' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
               >
                 Week
               </button>
               <button
                 type="button"
-                onClick={() => setOverviewView('month')}
+                onClick={() => {
+                  setOverviewView('month');
+                  setOverviewHasSearched(false);
+                  setOverview(null);
+                }}
                 className={`px-3 py-1.5 font-semibold border-l border-border ${overviewView === 'month' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
               >
                 Month
@@ -631,7 +651,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 <select
                   required
                   value={overviewWeekStart}
-                  onChange={e => setOverviewWeekStart(e.target.value)}
+                  onChange={e => {
+                    setOverviewWeekStart(e.target.value);
+                    setOverviewHasSearched(false);
+                    setOverview(null);
+                  }}
                   className="rounded-md border border-border bg-background px-2 py-1.5"
                 >
                   <option value="" disabled>
@@ -648,7 +672,11 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 <select
                   required
                   value={overviewMonthValue}
-                  onChange={e => setOverviewMonthValue(e.target.value)}
+                  onChange={e => {
+                    setOverviewMonthValue(e.target.value);
+                    setOverviewHasSearched(false);
+                    setOverview(null);
+                  }}
                   className="rounded-md border border-border bg-background px-2 py-1.5"
                 >
                   <option value="" disabled>
@@ -660,12 +688,97 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 </select>
               </label>
             )}
-            <p className="text-xs text-muted-foreground self-center">
-              Summary by Hunter
-              {overview?.periodLabel ? ` · ${overview.periodLabel}` : ''}
-            </p>
+            <button
+              type="button"
+              disabled={overviewLoading}
+              onClick={() => void runOverviewSearch()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              <Search size={12} />
+              {overviewLoading ? 'Searching…' : 'Search'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTeamOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
+            >
+              <Users size={12} />
+              Sales Team
+              {teamMembers.length > 0 ? (
+                <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
+              ) : null}
+            </button>
+            {overviewHasSearched && overview?.periodLabel ? (
+              <p className="text-xs text-muted-foreground self-center">
+                Summary by Hunter · {overview.periodLabel}
+                {overview.companyName ? ` · ${overview.companyName}` : ''}
+              </p>
+            ) : null}
           </div>
-        ) : tab === 'client-update' ? (
+        ) : (
+          <>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="inline-flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+                <select
+                  value={selectedTeamMemberId}
+                  onChange={e => setSelectedTeamMemberId(Number(e.target.value) || null)}
+                  className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+                >
+                  {activeTeamMembers.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="inline-flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground uppercase tracking-wide">Company</span>
+                <select
+                  value={selectedCompanyId ?? ''}
+                  onChange={e => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
+                  className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+                >
+                  <option value="">All companies</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => setTeamOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted"
+              >
+                <Users size={12} />
+                Sales Team
+                {teamMembers.length > 0 ? (
+                  <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
+                ) : null}
+              </button>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
+                <span className="text-muted-foreground uppercase tracking-wide">Add company for this member</span>
+                <input
+                  value={companyDraft}
+                  onChange={e => setCompanyDraft(e.target.value)}
+                  placeholder="Company name…"
+                  className="rounded-md border border-border bg-background px-2 py-1.5"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={creatingCompany || !companyDraft.trim()}
+                onClick={() => void handleCreateCompany()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+              >
+                <Plus size={12} />
+                {creatingCompany ? 'Saving…' : 'Add company'}
+              </button>
+            </div>
+          </>
+        )}
+        <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
+        {tab === 'overview' ? null : tab === 'client-update' ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">
@@ -773,6 +886,12 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
             <tbody>
               {overviewLoading ? (
                 <TableLoadingRow colSpan={4} label="Loading overview…" />
+              ) : !overviewHasSearched ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                    Choose Sales Team, Company, and Week or Month, then click Search.
+                  </td>
+                </tr>
               ) : (overviewView === 'week' && !overviewWeekStart) || (overviewView === 'month' && !overviewMonthValue) ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
@@ -784,7 +903,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               ) : !overview || overview.hunters.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    No Client Update activity for this period.
+                    No Client Update activity for this filter.
                   </td>
                 </tr>
               ) : (
