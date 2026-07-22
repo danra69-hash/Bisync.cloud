@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, Users, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -95,8 +95,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
   const [teamEvents, setTeamEvents] = useState<SalesModuleTeamCalendarEvent[]>([]);
   const [teamSyncMessage, setTeamSyncMessage] = useState<string | null>(null);
   const [apptTeamMemberId, setApptTeamMemberId] = useState<number | ''>('');
-  const [importing, setImporting] = useState(false);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const engagedUserEmail = sessionEmail.trim();
@@ -221,62 +219,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
       setError(err instanceof Error ? err.message : 'Failed to create company');
     } finally {
       setCreatingCompany(false);
-    }
-  }
-
-  async function reloadAfterImport() {
-    await loadSalesCompanies(selectedTeamMemberId);
-    await loadCustomers();
-  }
-
-  async function handleImportExcel(file: File) {
-    if (!selectedTeamMemberId) {
-      setImportMessage('Select a Sales Team member before importing.');
-      return;
-    }
-    setImporting(true);
-    setImportMessage(null);
-    setError(null);
-    try {
-      const result = await api.importSalesModuleCompanies({
-        file,
-        salesTeamMemberId: selectedTeamMemberId,
-        onlyDate: '2026-01-01',
-      });
-      setImportMessage(
-        (result.messages?.length ? result.messages.join('\n') : null) ||
-          `Imported ${result.imported} row(s)` +
-            (result.skipped ? ` · skipped ${result.skipped}` : '') +
-            (result.companiesCreated ? ` · ${result.companiesCreated} company(ies) created` : '') +
-            '.',
-      );
-      await reloadAfterImport();
-    } catch (err) {
-      setImportMessage(err instanceof Error ? err.message : 'Import failed.');
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  async function handleImportAtta() {
-    if (!selectedTeamMemberId) {
-      setImportMessage('Select a Sales Team member before importing Atta.');
-      return;
-    }
-    setImporting(true);
-    setImportMessage(null);
-    setError(null);
-    try {
-      const result = await api.importSalesModuleAtta(selectedTeamMemberId);
-      setImportMessage(
-        (result.messages?.length ? result.messages.join('\n') : null) ||
-          `Atta imported (${result.imported} row(s)).`,
-      );
-      await reloadAfterImport();
-    } catch (err) {
-      setImportMessage(err instanceof Error ? err.message : 'Atta import failed.');
-    } finally {
-      setImporting(false);
     }
   }
 
@@ -422,7 +364,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
         </div>
         <p className="text-sm text-muted-foreground">
           {activeTeamMembers.length === 0
-            ? 'Create a Sales Team member first (include Office 365 Graph credentials), then import or add companies.'
+            ? 'Create a Sales Team member first (include Office 365 Graph credentials), then add companies.'
             : 'Select a Sales Team member to continue.'}
         </p>
         <SalesModuleTeamPanel
@@ -486,35 +428,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
               <span className="text-[10px] text-muted-foreground">({teamMembers.length})</span>
             ) : null}
           </button>
-          <label
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted cursor-pointer ${
-              importing || !selectedTeamMemberId ? 'opacity-50 pointer-events-none' : ''
-            }`}
-            title="Import Excel/CSV — only rows with Date Created = 1 January 2026"
-          >
-            <Upload size={12} />
-            {importing ? 'Importing…' : 'Import Excel (1 Jan 2026)'}
-            <input
-              type="file"
-              accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-              className="hidden"
-              disabled={importing || !selectedTeamMemberId}
-              onChange={e => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) void handleImportExcel(file);
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={importing || !selectedTeamMemberId}
-            onClick={() => void handleImportAtta()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
-            title="Import Atta with Date Created = 1 January 2026"
-          >
-            Import Atta (1 Jan 2026)
-          </button>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem] flex-1">
@@ -536,9 +449,6 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
             {creatingCompany ? 'Saving…' : 'Add company'}
           </button>
         </div>
-        {importMessage ? (
-          <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{importMessage}</p>
-        ) : null}
         <HrConfigTabBar tabs={TABS} active={tab} onChange={setTab} />
         {tab === 'customers' ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -623,7 +533,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
               ) : customers.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
-                    No sales customers yet. Import Excel (1 Jan 2026), Import Atta, or create a customer.
+                    No sales customers yet. Create a customer to start.
                   </td>
                 </tr>
               ) : (
