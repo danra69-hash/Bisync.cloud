@@ -4,6 +4,12 @@ export const PAGE_SHELL_CLS = 'w-full min-w-0 max-w-none';
 export const PAGE_PADDING_CLS = 'p-2 sm:p-3';
 
 /**
+ * Shared content frame for app shells (Dev Console, portals, payroll).
+ * Always stretch to the browser width; only horizontal padding is fixed.
+ */
+export const CONTENT_FRAME_CLS = 'w-full max-w-none min-w-0 px-4 sm:px-6';
+
+/**
  * Vertical scroll region for data tables.
  * Height leaves room for sticky app header + module bar + page filters.
  */
@@ -40,5 +46,10 @@ export function pageShellClass({ embedded = false, spacing = 'default' }: ShellO
   return embedded
     ? `${PAGE_SHELL_CLS} ${spaceCls}`
     : `${PAGE_SHELL_CLS} ${PAGE_PADDING_CLS} ${spaceCls}`;
+}
+
+/** Full-bleed content frame with optional extra classes. */
+export function contentFrameClass(...extra: Array<string | false | null | undefined>): string {
+  return [CONTENT_FRAME_CLS, ...extra.filter(Boolean)].join(' ');
 }
 

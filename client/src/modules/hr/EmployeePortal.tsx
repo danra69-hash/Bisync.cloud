@@ -228,7 +228,7 @@ export default function EmployeePortal({
   if (step === 'select') {
     return (
       <div className="min-h-[calc(100vh-200px)] bg-herme-cream flex flex-col items-center justify-center p-8">
-        <div className="max-w-3xl w-full">
+        <div className="w-full max-w-none">
           <div className="text-center mb-10">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-herme-dark rounded-2xl mb-5 shadow-lg">
               <LayoutDashboard className="w-8 h-8 text-white" />
