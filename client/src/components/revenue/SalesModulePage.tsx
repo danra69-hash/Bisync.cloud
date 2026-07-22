@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, Upload, Users, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
+  type SalesModuleClientUpdate,
   type SalesModuleCompany,
   type SalesModuleCustomer,
   type SalesModuleTeamCalendarEvent,
@@ -23,7 +24,7 @@ import {
 } from '../../data/salesModule';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 
-type TabId = 'customers' | 'calendar';
+type TabId = 'customers' | 'client-update' | 'calendar';
 
 type CalendarItem =
   | { kind: 'local'; key: string; startsAt: string; endsAt: string; title: string; appointment: SalesModuleAppointment }
@@ -31,8 +32,16 @@ type CalendarItem =
 
 const TABS = [
   { id: 'customers' as const, label: 'Customers' },
+  { id: 'client-update' as const, label: 'Client Update' },
   { id: 'calendar' as const, label: 'Appointment Calendar' },
 ];
+
+function formatOptionalDate(value?: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString();
+}
 
 type Props = {
   /** Dev Console session identity used when creating engaged records. */
@@ -75,6 +84,11 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
   const [creatingCompany, setCreatingCompany] = useState(false);
 
   const [customers, setCustomers] = useState<SalesModuleCustomer[]>([]);
+  const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
+  const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
+  const [importingClientUpdates, setImportingClientUpdates] = useState(false);
+  const [filterClientUpdatesByHunter, setFilterClientUpdatesByHunter] = useState(false);
+  const clientUpdateFileRef = useRef<HTMLInputElement | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +172,16 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
     setCustomers(rows);
   }, [selectedTeamMemberId, selectedCompanyId]);
 
+  const loadClientUpdates = useCallback(async () => {
+    const member = teamMembers.find(m => m.id === selectedTeamMemberId);
+    const hunter =
+      filterClientUpdatesByHunter && member?.name
+        ? member.name
+        : undefined;
+    const rows = await api.salesModuleClientUpdates({ hunter });
+    setClientUpdates(rows);
+  }, [filterClientUpdatesByHunter, selectedTeamMemberId, teamMembers]);
+
   const loadAppointments = useCallback(async () => {
     if (!selectedCompanyId) {
       setAppointments([]);
@@ -193,7 +217,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([loadCustomers(), loadAppointments(), loadTeamCalendars()])
+    Promise.all([loadCustomers(), loadClientUpdates(), loadAppointments(), loadTeamCalendars()])
       .catch(err => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Sales Module');
       })
@@ -201,7 +225,7 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [loadCustomers, loadAppointments, loadTeamCalendars]);
+  }, [loadCustomers, loadClientUpdates, loadAppointments, loadTeamCalendars]);
 
   async function handleCreateCompany() {
     if (!selectedTeamMemberId || !companyDraft.trim()) return;
@@ -219,6 +243,25 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
       setError(err instanceof Error ? err.message : 'Failed to create company');
     } finally {
       setCreatingCompany(false);
+    }
+  }
+
+  async function handleImportClientUpdates(file: File) {
+    setImportingClientUpdates(true);
+    setClientUpdateMessage(null);
+    setError(null);
+    try {
+      const result = await api.importSalesModuleClientUpdates(file);
+      setClientUpdateMessage(
+        (result.messages?.length ? result.messages.join('\n') : null)
+          || `Imported ${result.imported} Weekly Update row(s).`,
+      );
+      await loadClientUpdates();
+    } catch (err) {
+      setClientUpdateMessage(err instanceof Error ? err.message : 'Client Update import failed.');
+    } finally {
+      setImportingClientUpdates(false);
+      if (clientUpdateFileRef.current) clientUpdateFileRef.current.value = '';
     }
   }
 
@@ -467,6 +510,47 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
               Create new customer
             </button>
           </div>
+        ) : tab === 'client-update' ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">
+                Weekly Update · {clientUpdates.length} record{clientUpdates.length === 1 ? '' : 's'}
+                {filterClientUpdatesByHunter && selectedTeamMember
+                  ? ` · hunter ${selectedTeamMember.name}`
+                  : ' · all hunters'}
+              </p>
+              <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={filterClientUpdatesByHunter}
+                  onChange={e => setFilterClientUpdatesByHunter(e.target.checked)}
+                />
+                Filter by selected Sales Team member (Hunter)
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={clientUpdateFileRef}
+                type="file"
+                accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportClientUpdates(file);
+                }}
+              />
+              <button
+                type="button"
+                disabled={importingClientUpdates}
+                onClick={() => clientUpdateFileRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+                title="Import Instant Sales Update.xlsx — Weekly Update sheet only"
+              >
+                <Upload size={12} />
+                {importingClientUpdates ? 'Importing…' : 'Import Weekly Update'}
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex items-center gap-2">
@@ -499,6 +583,9 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
             </button>
           </div>
         )}
+        {tab === 'client-update' && clientUpdateMessage ? (
+          <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{clientUpdateMessage}</p>
+        ) : null}
         {tab === 'calendar' && teamSyncMessage ? (
           <p className="text-[11px] text-muted-foreground">{teamSyncMessage}</p>
         ) : null}
@@ -563,6 +650,55 @@ export function SalesModulePage({ sessionEmail = '', sessionName = '' }: Props) 
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{row.hunterName || '—'}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{row.farmerName || '—'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </TableScrollContainer>
+      ) : tab === 'client-update' ? (
+        <TableScrollContainer ref={scrollRootRef}>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                <th className="px-2 py-1.5 text-left">Date Created</th>
+                <th className="px-2 py-1.5 text-left">Hunter</th>
+                <th className="px-2 py-1.5 text-left">Company</th>
+                <th className="px-2 py-1.5 text-left">Brand</th>
+                <th className="px-2 py-1.5 text-left">No. of Location</th>
+                <th className="px-2 py-1.5 text-left">Status</th>
+                <th className="px-2 py-1.5 text-left">Last Contact Date</th>
+                <th className="px-2 py-1.5 text-left">Contact Person</th>
+                <th className="px-2 py-1.5 text-left">Contact Type</th>
+                <th className="px-2 py-1.5 text-left">Note</th>
+                <th className="px-2 py-1.5 text-left">Follow Up Reminder</th>
+                <th className="px-2 py-1.5 text-left">Appointment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <TableLoadingRow colSpan={12} label="Loading client updates…" />
+              ) : clientUpdates.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
+                    No Weekly Update rows yet. Use Import Weekly Update with Instant Sales Update.xlsx.
+                  </td>
+                </tr>
+              ) : (
+                clientUpdates.map(row => (
+                  <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
+                    <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.dateCreated)}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{row.hunter || '—'}</td>
+                    <td className="px-2 py-1.5">{row.company || '—'}</td>
+                    <td className="px-2 py-1.5 font-medium">{row.brand || '—'}</td>
+                    <td className="px-2 py-1.5">{row.locationCount ?? '—'}</td>
+                    <td className="px-2 py-1.5">{row.status || '—'}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.lastContactDate)}</td>
+                    <td className="px-2 py-1.5">{row.contactPerson || '—'}</td>
+                    <td className="px-2 py-1.5">{row.contactType || '—'}</td>
+                    <td className="px-2 py-1.5 max-w-[18rem] truncate" title={row.note}>{row.note || '—'}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.followUpReminder)}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{row.appointment || '—'}</td>
                   </tr>
                 ))
               )}

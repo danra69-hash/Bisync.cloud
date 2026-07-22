@@ -13,7 +13,8 @@ namespace Bisync.Api.Controllers;
 public class SalesModuleController(
     BisyncDbContext db,
     SalesModuleCalendarSyncService calendarSync,
-    SalesModuleImportService importService) : ControllerBase
+    SalesModuleImportService importService,
+    SalesModuleClientUpdateService clientUpdateService) : ControllerBase
 {
     static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -414,6 +415,41 @@ public class SalesModuleController(
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>List Client Update rows (from Instant Sales Update → Weekly Update sheet).</summary>
+    [HttpGet("client-updates")]
+    public async Task<ActionResult<IEnumerable<object>>> GetClientUpdates(
+        [FromQuery] string? hunter = null,
+        CancellationToken ct = default)
+    {
+        var rows = await clientUpdateService.ListAsync(hunter, ct);
+        return Ok(rows);
+    }
+
+    /// <summary>
+    /// Import only the "Weekly Update" sheet from Instant Sales Update.xlsx (replaces existing Client Update rows).
+    /// </summary>
+    [HttpPost("client-updates/import")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<ActionResult<object>> ImportClientUpdates(IFormFile file, CancellationToken ct = default)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Upload Instant Sales Update.xlsx (Weekly Update sheet)." });
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await clientUpdateService.ImportWeeklyUpdateAsync(stream, file.FileName, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Client Update import failed: {ex.Message}" });
         }
     }
 
