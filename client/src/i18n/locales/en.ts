@@ -330,12 +330,61 @@ export const en = {
   landing: {
     login: 'Login',
     register: 'Register',
-    badge: 'Hospitality operations platform',
+    navAbout: 'About us',
+    navApproach: 'Our approach',
+    navProducts: 'Products',
+    badge: 'Bisync Cloud by CubeValue',
+    heroSlogan: 'Chaotic Processes… Simplified!',
     heroTitle: 'Keep every outlet',
     heroTitleHighlight: 'in sync',
-    heroSubtitle: 'Procurement, inventory, and recipe cost — connected so your team acts on the same numbers, every shift.',
+    heroSubtitle: 'Process innovation, driven by ecosystem, provides real-time data — so operators can decide in time, every shift.',
     enterPlatform: 'Enter platform',
     exploreCapabilities: 'See how it works',
+    aboutTitle: 'About us…',
+    aboutP1: 'A small project that started many years ago — merely to innovate our own back-office process for restaurant operations — has grown into a complete ecosystem today.',
+    aboutP2: 'Named Bisync Cloud, our platform helps operators meet suppliers online, trade instantly, and automate administrative work wherever possible. Results are instant and live — so teams can focus on building the business on a solid foundation.',
+    aboutImageAlt: 'Hospitality operations',
+    approachTitle: 'Our approach',
+    approach: {
+      veterans: {
+        title: 'Industry veterans',
+        body: 'Key members, including our CEO, have worked across hospitality, retail, warehouse, trading, and FMCG — so we understand each industry’s pain points.',
+      },
+      implementation: {
+        title: 'Implementation experts',
+        body: 'Every situation is different. Implementation should be highly structured and collaborative.',
+      },
+      collaboration: {
+        title: 'Committed to collaboration',
+        body: 'Communication is the most effective tool for a successful go-live. We bring best practice — and stay flexible to your needs.',
+      },
+      digital: {
+        title: 'Digital foundation',
+        body: 'We innovate and digitalise process — helping industries grow sustainably, with less paper, less printing, and less wasted energy.',
+      },
+    },
+    productsTitle: 'Products',
+    productsSubtitle: 'One connected stack for buying, stocking, costing, selling, and people — built for multi-outlet hospitality.',
+    products: {
+      ops: {
+        title: 'Bisync Cloud — Operations',
+        opsBuy: 'Complete procurement online',
+        opsForecast: 'Forecasted purchase',
+        opsRecipe: 'Product / recipe engineering & management',
+        opsCost: 'Accurate theoretical & actual cost',
+        opsAnalytics: 'Smart business analytics',
+        opsKitchen: 'Central kitchen / vendor module',
+      },
+      commerce: {
+        title: 'Commerce & people',
+        comPos: 'Lightweight browser-driven POS',
+        comMobile: 'True mobile POS',
+        comMenu: 'Integrated e-menu / QR order',
+        comDelivery: 'Access to major delivery platforms',
+        comStore: 'Online store connected to the same engine',
+        comHr: 'Mobile HR — schedule, leave, clock-in, payroll',
+      },
+    },
     metrics: {
       forecastAccuracy: 'Forecast accuracy',
       fasterProcurement: 'Faster procurement cycles',
@@ -358,7 +407,7 @@ export const en = {
     neural: {
       eyebrow: 'Live operations',
       title: 'Clarity without the noise',
-      subtitle: 'Purchases, transfers, and recipe changes stay connected — so managers see what needs attention, not another dashboard of noise.',
+      subtitle: 'Purchases, transfers, and recipe changes stay connected — so managers see what needs attention.',
       seeCapabilities: 'See capabilities',
       consoleTitle: 'Operations console',
       consoleLine1: 'Downtown covers tracking +12% vs plan',
@@ -369,7 +418,7 @@ export const en = {
     edge: {
       eyebrow: 'Everywhere you operate',
       title: 'One engine across every outlet',
-      subtitle: 'Approve orders, review margin alerts, and keep inventory moving — with the same source of truth in the cloud and on the floor.',
+      subtitle: 'Approve orders, review margin alerts, and keep inventory moving.',
       agentActive: 'Operations live',
       monitoringLocations: 'Monitoring 4 locations',
       systemConfidence: 'Cycle health: strong',
@@ -377,7 +426,7 @@ export const en = {
     capabilities: {
       eyebrow: 'What you get',
       title: 'Built for operators who run multi-outlet hospitality',
-      subtitle: 'One connected layer for buying, stocking, costing, and selling — without stitching five tools together.',
+      subtitle: 'One connected layer for buying, stocking, costing, and selling.',
       launch: 'Launch Bisync.cloud',
     },
     orb: {
@@ -387,36 +436,12 @@ export const en = {
       vendors: 'Vendors',
     },
     capabilityItems: {
-      predictive: {
-        title: 'Demand-aware par levels',
-        description: 'Forecast covers and reorder points so stockouts are caught before service.',
-        tag: 'Forecasting',
-      },
-      autonomous: {
-        title: 'Guided procurement',
-        description: 'Draft purchase requests, compare vendor pricing, and route approvals cleanly.',
-        tag: 'Buying',
-      },
-      margin: {
-        title: 'Live recipe costing',
-        description: 'See margin drift as ingredient prices and yields change across outlets.',
-        tag: 'Costing',
-      },
-      anomaly: {
-        title: 'Variance that surfaces early',
-        description: 'Spot wastage spikes, price outliers, and inventory gaps before they hit P&L.',
-        tag: 'Control',
-      },
-      adaptive: {
-        title: 'Workflows that fit each outlet',
-        description: 'Lead times, seasonality, and location patterns shape how work moves through the loop.',
-        tag: 'Rhythm',
-      },
-      unified: {
-        title: 'One operations layer',
-        description: 'Procurement, inventory, recipes, and vendors share the same records — not siloed exports.',
-        tag: 'Platform',
-      },
+      predictive: { title: 'Demand-aware par levels', description: 'Forecast covers and reorder points so stockouts are caught before service.', tag: 'Forecasting' },
+      autonomous: { title: 'Guided procurement', description: 'Draft purchase requests, compare vendor pricing, and route approvals cleanly.', tag: 'Buying' },
+      margin: { title: 'Live recipe costing', description: 'See margin drift as ingredient prices and yields change across outlets.', tag: 'Costing' },
+      anomaly: { title: 'Variance that surfaces early', description: 'Spot wastage spikes, price outliers, and inventory gaps before they hit P&L.', tag: 'Control' },
+      adaptive: { title: 'Workflows that fit each outlet', description: 'Lead times, seasonality, and location patterns shape how work moves through the loop.', tag: 'Rhythm' },
+      unified: { title: 'One operations layer', description: 'Procurement, inventory, recipes, and vendors share the same records.', tag: 'Platform' },
     },
     workbench: {
       module: 'Revenue',
@@ -431,7 +456,7 @@ export const en = {
       colVendor: 'Vendor',
       colStatus: 'Status',
       colValue: 'Value',
-      caption: 'The same Hermès-register workbench your team uses after login — orders, stock, and cost in one place.',
+      caption: 'The same workbench your team uses after login.',
     },
     footer: 'Copyright Cube Value Sdn Bhd (1164413X)',
     capabilitiesTitle: 'Built for operators who think ahead',
@@ -439,7 +464,7 @@ export const en = {
     pipelineTitle: 'How Bisync runs',
     metricsTitle: 'Proven impact',
     ctaTitle: 'Ready for operations that stay aligned?',
-    ctaSubtitle: 'Join teams using Bisync to tighten buying, reduce waste, and protect margin across every outlet.',
+    ctaSubtitle: 'Process innovation with real-time data — enabling timely decisions across every outlet.',
   },
   admin: {
     accessControlLevel: 'Access Control Level',
