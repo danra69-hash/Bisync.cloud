@@ -1983,6 +1983,10 @@ export interface NutritionLibraryStatus {
   lastSyncStatus: string;
   lastSyncError: string;
   changedOnLastSync: boolean;
+  portalUrl?: string;
+  foundationZipUrl?: string;
+  srLegacyZipUrl?: string;
+  checkIntervalHours?: number;
 }
 
 export interface ProductAlias {
