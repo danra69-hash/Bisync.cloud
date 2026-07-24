@@ -15,6 +15,7 @@ public class NutritionController(
     [HttpGet("library/status")]
     public async Task<ActionResult<object>> LibraryStatus(CancellationToken cancellationToken)
     {
+        await syncService.EnsureReadyAsync(cancellationToken);
         var meta = await syncService.GetStatusAsync(cancellationToken);
         var foodCount = await db.NutritionLibraryFoods.CountAsync(cancellationToken);
         return Ok(new
@@ -62,6 +63,7 @@ public class NutritionController(
         [FromQuery] bool force = false,
         CancellationToken cancellationToken = default)
     {
+        await syncService.EnsureReadyAsync(cancellationToken);
         var estimate = await estimateService.GetOrCalculateAsync(productId, force, cancellationToken);
         if (estimate is null) return NotFound(new { message = "Product not found." });
         var meta = await syncService.GetStatusAsync(cancellationToken);
