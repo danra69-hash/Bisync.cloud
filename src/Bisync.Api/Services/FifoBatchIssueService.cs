@@ -157,8 +157,8 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
                     : layer.ReceivedAt.ToUniversalTime(),
                 DecimalRounding.ToDb(layer.Quantity),
                 StockCardFifoEngine.RoundUnitPrice(layer.UnitPrice),
-                layer.SourceId > 0 ? layer.SourceId : null,
-                companyId);
+                layer.SourceId > 0 ? (object)layer.SourceId : DBNull.Value,
+                (object?)companyId ?? DBNull.Value);
         }
     }
 
