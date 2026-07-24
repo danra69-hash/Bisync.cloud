@@ -1,15 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- Bisync.cloud chain mark (matches landing Link2 logo) -->
-  <rect width="32" height="32" rx="7" fill="#1A120E"/>
-  <g
-    transform="translate(4 4)"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 44" fill="none">
+  <!-- Bisync chain mark: interlocking stadium links, Hermès orange, no background -->
+  <path
+    d="M48 7H24a15 15 0 0 0 0 30h24"
     stroke="#F37021"
-    stroke-width="2.25"
+    stroke-width="8"
     stroke-linecap="round"
     stroke-linejoin="round"
-  >
-    <path d="M9 17H7A5 5 0 0 1 7 7h2"/>
-    <path d="M15 7h2a5 5 0 1 1 0 10h-2"/>
-    <line x1="8" x2="16" y1="12" y2="12"/>
-  </g>
+  />
+  <path
+    d="M32 7h24a15 15 0 0 1 0 30H32"
+    stroke="#F37021"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
 </svg>

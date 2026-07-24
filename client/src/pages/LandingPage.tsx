@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   ArrowRight,
   Handshake,
-  Link2,
   Leaf,
   Users,
   Wrench,
@@ -11,6 +10,7 @@ import { LoginModal } from '../components/auth/LoginModal';
 import { RegisterModal } from '../components/auth/RegisterModal';
 import { LanguageSelector } from '../components/layout/LanguageSelector';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
+import { BisyncMarkTile } from '../components/layout/BisyncMark';
 import { useAppTranslation } from '../i18n/useAppTranslation';
 
 /** Owned CubeValue photography — same company as Bisync. */
@@ -53,17 +53,6 @@ const PRODUCT_COLUMNS = [
   },
 ] as const;
 
-function BisyncMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
-  const box = size === 'md' ? 'h-9 w-9' : 'h-7 w-7';
-  const icon = size === 'md' ? 20 : 16;
-  return (
-    <div className={`${box} relative flex shrink-0 items-center justify-center overflow-hidden rounded-sm bg-[#2A2118] text-white`}>
-      <Link2 size={icon} strokeWidth={2.25} />
-      <div className="absolute inset-0 bg-gradient-to-tr from-[#F37021]/40 to-transparent" />
-    </div>
-  );
-}
-
 function SectionRule() {
   return <div className="mx-auto mt-3 h-0.5 w-16 bg-[#F37021]" aria-hidden />;
 }
@@ -92,7 +81,7 @@ export function LandingPage() {
       <header className="sticky top-0 z-40 border-b border-[#e8e8e8] bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-[1120px] items-center justify-between gap-4 px-5 sm:px-6">
           <a href="#top" className="flex min-w-0 items-center gap-2.5" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-            <BisyncMark />
+            <BisyncMarkTile />
             <BrandEngineLockup size="md" tone="onLight" />
           </a>
 
@@ -324,7 +313,7 @@ export function LandingPage() {
       <footer className="border-t border-[#e8e8e8] bg-white py-7">
         <div className="mx-auto flex max-w-[1120px] flex-col items-center justify-between gap-3 px-5 text-sm text-[#1f2430]/50 sm:flex-row sm:px-6">
           <div className="flex items-center gap-2">
-            <BisyncMark size="sm" />
+            <BisyncMarkTile size="sm" />
             <BrandEngineLockup size="sm" tone="onLight" />
           </div>
           <p>{t('landing.footer')}</p>
