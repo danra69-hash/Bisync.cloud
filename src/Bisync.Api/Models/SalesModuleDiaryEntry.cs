@@ -37,6 +37,9 @@ public class SalesModuleDiaryEntry
     /// <summary>JSON array of { name, position } contacts.</summary>
     public string ContactsJson { get; set; } = "[]";
 
+    /// <summary>Required free-text comment when logging a Status Change.</summary>
+    public string Comment { get; set; } = string.Empty;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string CreatedByEmail { get; set; } = string.Empty;
 }

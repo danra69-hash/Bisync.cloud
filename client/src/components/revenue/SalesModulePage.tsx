@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Upload, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -18,6 +18,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 import { SalesDiaryPanel } from './SalesDiaryPanel';
+import { ClientUpdateFollowupPanel } from './ClientUpdateFollowupPanel';
 
 type TabId = 'overview' | 'client-update' | 'sales-diary' | 'calendar';
 type OverviewView = 'week' | 'month';
@@ -103,7 +104,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
-  const [importingClientUpdates, setImportingClientUpdates] = useState(false);
+  const [followupRow, setFollowupRow] = useState<SalesModuleClientUpdate | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
@@ -123,7 +124,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [apptTeamMemberId, setApptTeamMemberId] = useState<number | ''>('');
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
-  const clientUpdateFileRef = useRef<HTMLInputElement | null>(null);
   const teamSelectionReadyRef = useRef(false);
   const engagedUserEmail = sessionEmail.trim();
 
@@ -377,25 +377,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       setError(err instanceof Error ? err.message : 'Failed to create company');
     } finally {
       setCreatingCompany(false);
-    }
-  }
-
-  async function handleImportClientUpdates(file: File) {
-    setImportingClientUpdates(true);
-    setClientUpdateMessage(null);
-    setError(null);
-    try {
-      const result = await api.importSalesModuleClientUpdates(file);
-      setClientUpdateMessage(
-        (result.messages?.length ? result.messages.join('\n') : null)
-          || `Imported ${result.imported} Weekly Update row(s).`,
-      );
-      await loadClientUpdates();
-    } catch (err) {
-      setClientUpdateMessage(err instanceof Error ? err.message : 'Client Update import failed.');
-    } finally {
-      setImportingClientUpdates(false);
-      if (clientUpdateFileRef.current) clientUpdateFileRef.current.value = '';
     }
   }
 
@@ -782,39 +763,18 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           }}
         />
         {tab === 'overview' ? null : tab === 'client-update' ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">
-                Weekly Update · last week + week-to-date ·{' '}
-                {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
-                {selectedTeamMember
-                  ? ` · hunter ${selectedTeamMember.name}`
-                  : ' · all hunters'}
-                {' · '}hunters tagged to Sales Team · blank Date Created / Hunter / Company / Brand / No. of Location can be filled in
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={clientUpdateFileRef}
-                type="file"
-                accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                className="hidden"
-                onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleImportClientUpdates(file);
-                }}
-              />
-              <button
-                type="button"
-                disabled={importingClientUpdates}
-                onClick={() => clientUpdateFileRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
-                title="Import Instant Sales Update.xlsx — Weekly Update sheet only"
-              >
-                <Upload size={12} />
-                {importingClientUpdates ? 'Importing…' : 'Import Weekly Update'}
-              </button>
-            </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Client Update · last week + week-to-date ·{' '}
+              {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
+              {selectedTeamMember
+                ? ` · hunter ${selectedTeamMember.name}`
+                : ' · all hunters'}
+              {' · '}use Followup on each row to send appointments or change status
+            </p>
+            {clientUpdateMessage ? (
+              <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{clientUpdateMessage}</p>
+            ) : null}
           </div>
         ) : tab === 'sales-diary' ? (
           <p className="text-xs text-muted-foreground">
@@ -853,9 +813,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
             </button>
           </div>
         )}
-        {tab === 'client-update' && clientUpdateMessage ? (
-          <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{clientUpdateMessage}</p>
-        ) : null}
         {tab === 'calendar' && teamSyncMessage ? (
           <p className="text-[11px] text-muted-foreground">{teamSyncMessage}</p>
         ) : null}
@@ -939,15 +896,16 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 <th className="px-2 py-1.5 text-left">Note</th>
                 <th className="px-2 py-1.5 text-left">Follow Up Reminder</th>
                 <th className="px-2 py-1.5 text-left">Appointment</th>
+                <th className="px-2 py-1.5 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               {clientUpdatesLoading ? (
-                <TableLoadingRow colSpan={12} label="Loading client updates…" />
+                <TableLoadingRow colSpan={13} label="Loading client updates…" />
               ) : clientUpdates.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
-                    No Weekly Update rows for last week or week-to-date. Import Instant Sales Update.xlsx or check Overview for older periods.
+                  <td colSpan={13} className="px-3 py-8 text-center text-muted-foreground">
+                    No Client Update rows for last week or week-to-date.
                   </td>
                 </tr>
               ) : (
@@ -1010,6 +968,15 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                     <td className="px-2 py-1.5 max-w-[18rem] truncate" title={row.note}>{row.note || '—'}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.followUpReminder)}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{row.appointment || '—'}</td>
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setFollowupRow(row)}
+                        className="px-2 py-1 rounded-md text-[11px] font-semibold border border-border hover:bg-muted"
+                      >
+                        Followup
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -1183,6 +1150,26 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         }}
         onChanged={setTeamMembers}
       />
+
+      {followupRow ? (
+        <ClientUpdateFollowupPanel
+          row={followupRow}
+          createdByEmail={engagedUserEmail}
+          onClose={() => setFollowupRow(null)}
+          onSaved={result => {
+            setClientUpdates(prev => prev.map(r => (r.id === result.clientUpdate.id ? result.clientUpdate : r)));
+            setClientUpdateMessage(
+              result.outlookSynced
+                ? 'Followup saved · Outlook appointment synced.'
+                : result.appointment
+                  ? 'Followup saved · appointment created.'
+                  : 'Followup saved.',
+            );
+            setFollowupRow(null);
+            void loadClientUpdates();
+          }}
+        />
+      ) : null}
 
       {apptFormOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

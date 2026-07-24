@@ -253,6 +253,7 @@ function StatusChangePopup({
   onSaved: (entry: SalesModuleDiaryEntry) => void;
 }) {
   const [statuses, setStatuses] = useState<SalesDiaryStatus[]>([]);
+  const [comment, setComment] = useState('');
   const [contactDate, setContactDate] = useState(todayDateInputValue);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -266,6 +267,10 @@ function StatusChangePopup({
       setError('Tick at least one status.');
       return;
     }
+    if (!comment.trim()) {
+      setError('Comment is required when changing status.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -275,6 +280,7 @@ function StatusChangePopup({
         salesModuleCompanyId: companyId,
         contactDate: `${contactDate}T00:00:00.000Z`,
         statuses,
+        comment: comment.trim(),
         createdByEmail,
       };
       const saved = await api.createSalesModuleDiaryEntry(payload);
@@ -319,6 +325,16 @@ function StatusChangePopup({
             ))}
           </div>
         </div>
+        <label className="block space-y-1 text-xs">
+          <span className="text-muted-foreground uppercase tracking-wide">Comment (required)</span>
+          <textarea
+            value={comment}
+            onChange={e => setComment(e.target.value)}
+            rows={3}
+            placeholder="Why is the status changing?"
+            className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+          />
+        </label>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs rounded-md border border-border">Cancel</button>

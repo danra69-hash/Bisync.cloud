@@ -1529,6 +1529,41 @@ public class CreateSalesModuleDiaryEntryRequest
 
     public List<SalesModuleDiaryContactRequest> Contacts { get; set; } = [];
 
+    /// <summary>Required when ActivityType is Status Change.</summary>
+    [MaxLength(2000)]
+    public string? Comment { get; set; }
+
+    [MaxLength(256)]
+    public string? CreatedByEmail { get; set; }
+}
+
+/// <summary>Client Update row Followup: send appointment and/or change status with comment.</summary>
+public class ClientUpdateFollowupRequest
+{
+    public bool SendAppointment { get; set; }
+
+    [MaxLength(200)]
+    public string? AppointmentTitle { get; set; }
+
+    public DateTime? StartsAt { get; set; }
+    public DateTime? EndsAt { get; set; }
+
+    [MaxLength(300)]
+    public string? Location { get; set; }
+
+    [MaxLength(4000)]
+    public string? AppointmentNotes { get; set; }
+
+    public bool ChangeStatus { get; set; }
+
+    public List<string> Statuses { get; set; } = [];
+
+    /// <summary>Required when ChangeStatus is true.</summary>
+    [MaxLength(2000)]
+    public string? Comment { get; set; }
+
+    public DateTime? ContactDate { get; set; }
+
     [MaxLength(256)]
     public string? CreatedByEmail { get; set; }
 }
