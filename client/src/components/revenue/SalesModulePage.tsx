@@ -124,7 +124,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [apptTeamMemberId, setApptTeamMemberId] = useState<number | ''>('');
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
-  const teamSelectionReadyRef = useRef(false);
   const engagedUserEmail = sessionEmail.trim();
 
   const activeTeamMembers = useMemo(
@@ -141,11 +140,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     setTeamMembers(rows);
     setSelectedTeamMemberId(prev => {
       const hunters = rows.filter(m => m.active && m.isHunter !== false);
+      // Keep a still-valid hunter selection; otherwise default to All (null).
       if (prev && hunters.some(m => m.id === prev)) return prev;
-      // Preserve Client Update "All" after the first default selection.
-      if (teamSelectionReadyRef.current && prev === null) return null;
-      teamSelectionReadyRef.current = true;
-      return hunters[0]?.id ?? rows.find(m => m.active)?.id ?? null;
+      return null;
     });
   }, []);
 
