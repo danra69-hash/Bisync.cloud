@@ -9,6 +9,7 @@ import { AutomatedQaPanel } from '../components/dev/AutomatedQaPanel';
 import { AuditTrailPanel } from '../components/dev/AuditTrailPanel';
 import { SystemAuditTrailTab } from '../components/admin/SystemAuditTrailTab';
 import { GhostSupportTab } from '../components/admin/GhostSupportTab';
+import { RefLibraryTab } from '../components/dev/RefLibraryTab';
 import { SalesModulePage } from '../components/revenue/SalesModulePage';
 import { DEV_CONSOLE_PATH } from '../config/devConsole';
 import { clearDevConsoleSession, getDevConsoleToken } from '../data/devConsoleSession';
@@ -26,7 +27,8 @@ type DevConsoleTab =
   | 'automated-qa'
   | 'qa-history'
   | 'audit-trail'
-  | 'ghost-support';
+  | 'ghost-support'
+  | 'ref-library';
 
 const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -36,6 +38,7 @@ const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'qa-history', label: 'QA History' },
   { id: 'audit-trail', label: 'Audit Trail' },
   { id: 'ghost-support', label: 'Ghost Support' },
+  { id: 'ref-library', label: 'Ref & Library' },
 ];
 
 type DevSessionUser = {
@@ -187,6 +190,9 @@ export function DevConsolePage() {
             isDevConsoleRoot={sessionUser.isRoot}
             devConsoleEmail={sessionUser.email}
           />
+        )}
+        {tab === 'ref-library' && (
+          <RefLibraryTab />
         )}
       </main>
     </div>

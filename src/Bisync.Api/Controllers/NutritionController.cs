@@ -2,6 +2,7 @@ using Bisync.Api.Data;
 using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Bisync.Api.Controllers;
 
@@ -10,27 +11,19 @@ namespace Bisync.Api.Controllers;
 public class NutritionController(
     BisyncDbContext db,
     NutritionLibrarySyncService syncService,
-    ProductNutrientEstimateService estimateService) : ControllerBase
+    ProductNutrientEstimateService estimateService,
+    IOptions<NutritionLibraryOptions> options) : ControllerBase
 {
+    const string PortalUrl = "https://fdc.nal.usda.gov/";
+
     [HttpGet("library/status")]
     public async Task<ActionResult<object>> LibraryStatus(CancellationToken cancellationToken)
     {
         await syncService.EnsureReadyAsync(cancellationToken);
         var meta = await syncService.GetStatusAsync(cancellationToken);
         var foodCount = await db.NutritionLibraryFoods.CountAsync(cancellationToken);
-        return Ok(new
-        {
-            version = meta.Version,
-            sourceLabel = meta.SourceLabel,
-            citation = meta.Citation,
-            basis = meta.Basis,
-            entryCount = Math.Max(meta.EntryCount, foodCount),
-            lastSyncedAt = meta.LastSyncedAt,
-            lastCheckedAt = meta.LastCheckedAt,
-            lastSyncStatus = meta.LastSyncStatus,
-            lastSyncError = meta.LastSyncError,
-            changedOnLastSync = meta.ChangedOnLastSync,
-        });
+        var opts = options.Value;
+        return Ok(MapStatus(meta, foodCount, opts));
     }
 
     [HttpPost("library/sync")]
@@ -41,15 +34,8 @@ public class NutritionController(
         try
         {
             var meta = await syncService.SyncAsync(force, cancellationToken);
-            return Ok(new
-            {
-                version = meta.Version,
-                entryCount = meta.EntryCount,
-                lastSyncedAt = meta.LastSyncedAt,
-                lastSyncStatus = meta.LastSyncStatus,
-                changedOnLastSync = meta.ChangedOnLastSync,
-                lastSyncError = meta.LastSyncError,
-            });
+            var foodCount = await db.NutritionLibraryFoods.CountAsync(cancellationToken);
+            return Ok(MapStatus(meta, foodCount, options.Value));
         }
         catch (Exception ex)
         {
@@ -69,4 +55,22 @@ public class NutritionController(
         var meta = await syncService.GetStatusAsync(cancellationToken);
         return Ok(ProductNutrientEstimateService.MapEstimate(estimate, meta));
     }
+
+    static object MapStatus(Models.NutritionLibraryMeta meta, int foodCount, NutritionLibraryOptions opts) => new
+    {
+        version = meta.Version,
+        sourceLabel = meta.SourceLabel,
+        citation = meta.Citation,
+        basis = meta.Basis,
+        entryCount = Math.Max(meta.EntryCount, foodCount),
+        lastSyncedAt = meta.LastSyncedAt,
+        lastCheckedAt = meta.LastCheckedAt,
+        lastSyncStatus = meta.LastSyncStatus,
+        lastSyncError = meta.LastSyncError,
+        changedOnLastSync = meta.ChangedOnLastSync,
+        portalUrl = PortalUrl,
+        foundationZipUrl = opts.FoundationZipUrl,
+        srLegacyZipUrl = opts.SrLegacyZipUrl,
+        checkIntervalHours = opts.CheckIntervalHours,
+    };
 }
