@@ -16,6 +16,7 @@ import { formatProductParStock } from '../../data/productParStock';
 import { SubProductBatchAdditionalUoms } from './SubProductBatchUomSection';
 import { SubProductBatchProduceFields } from './SubProductBatchProduceFields';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { ProductEstimatedNutrientBox } from './ProductEstimatedNutrientBox';
 
 const fieldCls =
   'w-full rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground';
@@ -485,6 +486,12 @@ export function ProductReadOnlyView({
         totalCost={product.totalCost}
         totalLabel="Total cost"
         onOpenProductionMethod={onOpenProductionMethod}
+      />
+
+      <ProductEstimatedNutrientBox
+        components={items}
+        yieldQuantity={product.isSubProduct && product.yieldQuantity > 0 ? product.yieldQuantity : 1}
+        productName={product.name}
       />
 
       <ComponentItemsTable
