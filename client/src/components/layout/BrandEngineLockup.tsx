@@ -10,18 +10,18 @@ type Props = {
   size?: 'sm' | 'md';
   showBisyncWordmark?: boolean;
   /**
-   * onDark — white wordmark (Header / Sidebar #2C1A0A).
-   * onLight — near-black wordmark (Dev Console / light cards).
+   * onDark — white wordmark (Header / Sidebar saddle chrome).
+   * onLight — saddle wordmark (landing / light cards).
    */
   tone?: Tone;
 };
 
 function wordmarkClass(tone: Tone) {
-  return tone === 'onLight' ? 'text-[#2C1A0A]' : 'text-white';
+  return tone === 'onLight' ? 'text-[#2A2118]' : 'text-white';
 }
 
 function mutedStrokeClass(tone: Tone) {
-  return tone === 'onLight' ? 'text-[#2C1A0A]/55' : 'text-white/55';
+  return tone === 'onLight' ? 'text-[#2A2118]/55' : 'text-white/55';
 }
 
 /** Hermes-accented .ai + contrast-aware "pasar" wordmark. */

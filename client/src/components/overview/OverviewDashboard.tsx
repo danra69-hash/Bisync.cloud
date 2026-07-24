@@ -104,7 +104,7 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
       {data.map(d => (
         <div key={d.label} className="flex-1 flex flex-col items-center gap-1">
           <div className="w-full flex gap-0.5 items-end h-32">
-            <div className="flex-1 rounded-t bg-[#C9963A]/60" style={{ height: `${(d.priorValue / max) * 100}%` }} title={`Prior: ${fmtUsd(d.priorValue)}`} />
+            <div className="flex-1 rounded-t bg-[#F37021]/60" style={{ height: `${(d.priorValue / max) * 100}%` }} title={`Prior: ${fmtUsd(d.priorValue)}`} />
             <div className="flex-1 rounded-t bg-primary" style={{ height: `${(d.currentValue / max) * 100}%` }} title={`Current: ${fmtUsd(d.currentValue)}`} />
           </div>
           <span className="text-xs text-muted-foreground">{d.label}</span>

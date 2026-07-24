@@ -78,7 +78,7 @@ export function SampleRequestPortalPage({ token }: Props) {
 
   return (
     <div className="min-h-screen bg-[#F7F3EE]">
-      <header className="border-b border-border bg-[#2C1A0A] text-white px-4 py-4 print:bg-white print:text-black">
+      <header className="border-b border-border bg-[#2A2118] text-white px-4 py-4 print:bg-white print:text-black">
         <div className="w-full max-w-none mx-auto flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-white/60 print:text-muted-foreground">pasar.ai · Bisync.cloud</p>
@@ -164,7 +164,7 @@ export function SampleRequestPortalPage({ token }: Props) {
                     type="button"
                     disabled={accepting}
                     onClick={() => void handleAccept()}
-                    className="px-4 py-2 rounded-md text-sm font-bold bg-[#2C1A0A] text-white disabled:opacity-50"
+                    className="px-4 py-2 rounded-md text-sm font-bold bg-[#2A2118] text-white disabled:opacity-50"
                   >
                     {accepting ? 'Accepting…' : 'Accept sample request'}
                   </button>

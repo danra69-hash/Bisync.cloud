@@ -213,7 +213,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
 
         {successEmail ? (
           <div className="p-8 pt-10">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#C9963A]">{t('auth.register')}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#F37021]">{t('auth.register')}</p>
             <h2 id="register-title" className="mt-1 text-2xl font-bold text-herme-ink">
               {t('auth.checkEmailTitle')}
             </h2>
@@ -225,7 +225,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
                 <p className="font-semibold">{t('auth.activationLinkHint')}</p>
                 <a
                   href={activationUrl}
-                  className="mt-2 block break-all text-[#C9963A] underline hover:text-[#A87A2E]"
+                  className="mt-2 block break-all text-[#F37021] underline hover:text-[#D4550A]"
                 >
                   {activationUrl}
                 </a>
@@ -253,7 +253,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-8 pt-10">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#C9963A]">{t('auth.createAccount')}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#F37021]">{t('auth.createAccount')}</p>
             <h2 id="register-title" className="mt-1 text-2xl font-bold text-herme-ink">
               {t('auth.registerTitle')}
             </h2>
@@ -406,7 +406,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
             <button
               type="submit"
               disabled={submitting}
-              className="mt-6 w-full rounded-xl bg-[#C9963A] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#A87A2E] disabled:opacity-60"
+              className="mt-6 w-full rounded-xl bg-[#F37021] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#D4550A] disabled:opacity-60"
             >
               {submitting ? t('auth.registering') : t('auth.registerButton')}
             </button>

@@ -32,7 +32,7 @@ export function ActivateAccountPage({ token }: Props) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-herme-cream px-4">
       <div className="w-full max-w-md rounded-2xl border border-herme-muted/60 bg-white p-8 shadow-xl">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#C9963A]">
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#F37021]">
           {t('auth.confirmActivation')}
         </p>
         <h1 className="mt-1 text-2xl font-bold text-herme-ink">
