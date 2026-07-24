@@ -125,6 +125,7 @@ export const id = {
       vendorListProducts: 'Daftar Vendor & Produk',
       comparePrice: 'Bandingkan Harga',
       products: 'Produk',
+      productAudit: 'Product Audit',
       externalPosMapping: 'Pemetaan POS Eksternal',
       activeSalesOrder: 'Sales Order',
 

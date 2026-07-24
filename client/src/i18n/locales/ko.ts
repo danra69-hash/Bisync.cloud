@@ -125,6 +125,7 @@ export const ko = {
       vendorListProducts: '공급업체 및 제품 목록',
       comparePrice: '가격 비교',
       products: '제품',
+      productAudit: 'Product Audit',
       externalPosMapping: '외부 POS 매핑',
       activeSalesOrder: 'Sales Order',
 

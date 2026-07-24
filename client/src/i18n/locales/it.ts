@@ -125,6 +125,7 @@ export const it = {
       vendorListProducts: 'Elenco fornitori e prodotti',
       comparePrice: 'Confronta prezzi',
       products: 'Prodotti',
+      productAudit: 'Product Audit',
       externalPosMapping: 'Mappatura POS esterno',
       activeSalesOrder: 'Sales Order',
 

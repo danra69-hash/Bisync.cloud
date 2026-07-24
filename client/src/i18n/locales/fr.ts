@@ -125,6 +125,7 @@ export const fr = {
       vendorListProducts: 'Liste fournisseurs et produits',
       comparePrice: 'Comparer les prix',
       products: 'Produits',
+      productAudit: 'Product Audit',
       externalPosMapping: 'Correspondance POS externe',
       activeSalesOrder: 'Sales Order',
 

@@ -145,7 +145,8 @@ public static class ProductBomChangeRecorder
 
     static bool SameLine(BomLineSnapshot a, BomLineSnapshot b) =>
         string.Equals(a.ComponentUom, b.ComponentUom, StringComparison.OrdinalIgnoreCase)
-        && a.Quantity == b.Quantity;
+        && a.Quantity == b.Quantity
+        && a.UnitPrice == b.UnitPrice;
 
     static string DescribeAdjustment(BomLineSnapshot oldLine, BomLineSnapshot newLine)
     {
@@ -154,6 +155,8 @@ public static class ProductBomChangeRecorder
             parts.Add($"UOM {oldLine.ComponentUom} → {newLine.ComponentUom}");
         if (oldLine.Quantity != newLine.Quantity)
             parts.Add($"Qty {oldLine.Quantity} → {newLine.Quantity}");
+        if (oldLine.UnitPrice != newLine.UnitPrice)
+            parts.Add($"Unit price {oldLine.UnitPrice} → {newLine.UnitPrice}");
         return parts.Count > 0
             ? string.Join("; ", parts)
             : "Line adjusted";

@@ -19,6 +19,7 @@ import { WastagePage } from './WastagePage';
 import { TransferPage } from './TransferPage';
 import { CogsAuditPage } from './CogsAuditPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
+import { ProductAuditPage } from './ProductAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
@@ -135,6 +136,10 @@ function renderRevMgmtContent(
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />
+      );
+    case 'Product Audit':
+      return (
+        <ProductAuditPage selectedCompanyId={selectedCompanyId} />
       );
     case 'Production':
       return (

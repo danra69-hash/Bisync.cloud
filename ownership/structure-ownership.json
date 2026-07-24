@@ -200,6 +200,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.product-audit",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ProductAuditPage.tsx",
+      "symbol": "ProductAuditPage",
+      "route": "/revenue/products/product-audit",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-24",
+      "notes": "Revenue Management / Products — month-filtered product field and BOM change audit"
+    },
+    {
       "id": "dr.page.product-list",
       "kind": "client-page",
       "path": "client/src/components/revenue/ProductListPage.tsx",
