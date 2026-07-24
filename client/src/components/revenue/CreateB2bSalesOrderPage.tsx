@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ShoppingCart } from 'lucide-react';
 import {
   api,
+  type ActiveComboPromotion,
   type B2bCustomer,
   type B2bSalesOrder,
   type Location,
@@ -33,6 +34,10 @@ type Props = {
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
+function comboKey(promotionId: number) {
+  return `combo:${promotionId}`;
+}
+
 export function CreateB2bSalesOrderPage({
   companyId,
   customers,
@@ -46,6 +51,7 @@ export function CreateB2bSalesOrderPage({
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [activeCombos, setActiveCombos] = useState<ActiveComboPromotion[]>([]);
   const [customerExternalId, setCustomerExternalId] = useState(initialCustomerExternalId);
   const [locationExternalId, setLocationExternalId] = useState('');
   const [lockPeriodDays, setLockPeriodDays] = useState('7');
@@ -57,12 +63,17 @@ export function CreateB2bSalesOrderPage({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([api.locations(), api.products(companyId)])
-      .then(([locs, productRows]) => {
+    Promise.all([
+      api.locations(),
+      api.products(companyId),
+      api.promotionActiveCombos(companyId).catch(() => [] as ActiveComboPromotion[]),
+    ])
+      .then(([locs, productRows, combos]) => {
         if (cancelled) return;
         const companyLocs = locs.filter(l => l.companyId === companyId);
         setLocations(companyLocs);
         setProducts(productRows.filter(p => p.active && p.b2bEnabled && !p.isSubProduct));
+        setActiveCombos(combos.filter(c => c.components.length >= 2));
         const preferred = selectedLocationIds.find(id => companyLocs.some(l => l.externalId === id))
           ?? companyLocs[0]?.externalId
           ?? '';
@@ -72,6 +83,7 @@ export function CreateB2bSalesOrderPage({
         if (cancelled) return;
         setLocations([]);
         setProducts([]);
+        setActiveCombos([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -110,9 +122,15 @@ export function CreateB2bSalesOrderPage({
           next[unit.key] = selling > 0 ? String(selling) : '';
         }
       }
+      for (const combo of activeCombos) {
+        const key = comboKey(combo.promotionId);
+        if (next[key] == null || next[key] === '') {
+          next[key] = String(combo.comboPrice);
+        }
+      }
       return next;
     });
-  }, [taggedUnits]);
+  }, [taggedUnits, activeCombos]);
 
   useEffect(() => {
     if (!companyId || taggedUnits.length === 0) return;
@@ -138,33 +156,55 @@ export function CreateB2bSalesOrderPage({
   }, [companyId, taggedUnits]);
 
   const cartLines: SalesOrderCartLine[] = useMemo(() => {
-    return taggedUnits
-      .map(unit => {
-        const qty = parseFloat(qtyByKey[unit.key] ?? '');
-        const fallback = unit.sellingRrp > 0 ? unit.sellingRrp : unit.rrp;
-        const price = parseFloat(priceByKey[unit.key] ?? String(fallback));
-        if (!Number.isFinite(qty) || qty <= 0) return null;
-        const displayName = unit.aliasName?.trim() || unit.productName;
-        return {
-          key: unit.key,
-          productId: unit.productId,
-          productAliasId: unit.aliasId,
-          productName: displayName,
-          deliveryUom: (unit.deliveryPath && unit.deliveryPath !== '—')
-            ? unit.deliveryPath
-            : (unit.unitTitle || 'box'),
-          quantity: qty,
-          unitPrice: Number.isFinite(price) && price >= 0 ? price : 0,
-          locationExternalId,
-        } satisfies SalesOrderCartLine;
-      })
-      .filter((row): row is SalesOrderCartLine => row != null);
-  }, [taggedUnits, qtyByKey, priceByKey, locationExternalId]);
+    const lines: SalesOrderCartLine[] = [];
+
+    for (const unit of taggedUnits) {
+      const qty = parseFloat(qtyByKey[unit.key] ?? '');
+      const fallback = unit.sellingRrp > 0 ? unit.sellingRrp : unit.rrp;
+      const price = parseFloat(priceByKey[unit.key] ?? String(fallback));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const displayName = unit.aliasName?.trim() || unit.productName;
+      lines.push({
+        key: unit.key,
+        productId: unit.productId,
+        productAliasId: unit.aliasId,
+        productName: displayName,
+        deliveryUom: (unit.deliveryPath && unit.deliveryPath !== '—')
+          ? unit.deliveryPath
+          : (unit.unitTitle || 'box'),
+        quantity: qty,
+        unitPrice: Number.isFinite(price) && price >= 0 ? price : 0,
+        locationExternalId,
+      });
+    }
+
+    for (const combo of activeCombos) {
+      const key = comboKey(combo.promotionId);
+      const qty = parseFloat(qtyByKey[key] ?? '');
+      const price = parseFloat(priceByKey[key] ?? String(combo.comboPrice));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const anchorProductId = combo.components[0]?.productId ?? 0;
+      lines.push({
+        key,
+        productId: anchorProductId,
+        productAliasId: null,
+        promotionId: combo.promotionId,
+        productName: combo.name,
+        deliveryUom: 'combo',
+        quantity: qty,
+        unitPrice: Number.isFinite(price) && price >= 0 ? price : combo.comboPrice,
+        locationExternalId,
+      });
+    }
+
+    return lines;
+  }, [taggedUnits, activeCombos, qtyByKey, priceByKey, locationExternalId]);
 
   const cartCount = cartLines.length;
   const contact = selectedCustomer
     ? getDefaultContact(parseB2bCustomerContacts(selectedCustomer))
     : null;
+  const hasSelectableRows = taggedUnits.length > 0 || activeCombos.length > 0;
 
   return (
     <div className={pageShellClass()}>
@@ -280,9 +320,9 @@ export function CreateB2bSalesOrderPage({
         <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-8 text-center">
           Choose a customer to start the sales order.
         </p>
-      ) : taggedUnits.length === 0 ? (
+      ) : !hasSelectableRows ? (
         <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg px-4 py-8 text-center">
-          No products are tagged for this customer. Open My Product on the customer to tag units first.
+          No products are tagged for this customer and no active combo promotions are available.
         </p>
       ) : (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -298,6 +338,56 @@ export function CreateB2bSalesOrderPage({
                 </tr>
               </thead>
               <tbody>
+                {activeCombos.map(combo => {
+                  const key = comboKey(combo.promotionId);
+                  const qty = parseFloat(qtyByKey[key] ?? '');
+                  const price = parseFloat(priceByKey[key] ?? String(combo.comboPrice));
+                  const subtotal = Number.isFinite(qty) && qty > 0 && Number.isFinite(price)
+                    ? qty * price
+                    : 0;
+                  const contents = combo.components
+                    .map(c => `${c.productName} ×${c.qtyPerCombo}`)
+                    .join(', ');
+                  const remainingLabel = combo.comboPackRemaining != null
+                    ? ` · ${combo.comboPackRemaining} packs left`
+                    : '';
+                  return (
+                    <tr key={key} className="hover:bg-muted/20 bg-amber-500/5">
+                      <td className={tdCls}>
+                        <p className="font-medium text-foreground">{combo.name}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Combo{remainingLabel}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{contents}</p>
+                      </td>
+                      <td className={`${tdCls} text-muted-foreground`}>combo</td>
+                      <td className={tdCls}>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={qtyByKey[key] ?? ''}
+                          onChange={e => setQtyByKey(prev => ({ ...prev, [key]: e.target.value }))}
+                          placeholder="0"
+                          className="w-full text-right px-2 py-1.5 text-xs rounded-md border border-border bg-background"
+                        />
+                      </td>
+                      <td className={tdCls}>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={priceByKey[key] ?? ''}
+                          onChange={e => setPriceByKey(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="w-full text-right px-2 py-1.5 text-xs rounded-md border border-border bg-background"
+                        />
+                      </td>
+                      <td className={`${tdCls} text-right font-semibold`}>
+                        {subtotal > 0 ? rm(subtotal) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {taggedUnits.map(unit => {
                   const qty = parseFloat(qtyByKey[unit.key] ?? '');
                   const fallback = unit.sellingRrp > 0 ? unit.sellingRrp : unit.rrp;

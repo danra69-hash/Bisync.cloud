@@ -11,6 +11,8 @@ export type SalesOrderCartLine = {
   key: string;
   productId: number;
   productAliasId: number | null;
+  /** When set, this line is an active combo promotion pack. */
+  promotionId?: number | null;
   productName: string;
   deliveryUom: string;
   quantity: number;
