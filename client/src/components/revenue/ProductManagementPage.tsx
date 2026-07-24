@@ -795,7 +795,7 @@ export function ProductManagementPage({
                                           locationExternalIds: selectedLocationIds,
                                         });
                                       }}
-                                      className={`${inlineNumberCls} w-full max-w-[5rem]`}
+                                      className={inlineNumberCls}
                                       aria-label={row.isSubProduct
                                         ? `Batches in stock for ${row.name}`
                                         : `In stock for ${row.name}`}

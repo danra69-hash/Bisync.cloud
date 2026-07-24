@@ -1,5 +1,5 @@
 import type { Vendor } from '../api';
-import { formatCountryCurrency } from '../utils/numberFormat';
+import { formatCountryCurrency, roundToDbDecimal } from '../utils/numberFormat';
 import { fromApiUom, getConversion, resolveDetailConfigForRow, type ComponentRow } from './componentForm';
 import { resolveComparePriceCell } from './comparePrice';
 import {
@@ -333,8 +333,9 @@ export function buildCartItems(
   orderQtyByKey: Record<string, string>,
 ): OrderCartItem[] {
   return lines.flatMap(line => {
-    const quantity = parseFloat(orderQtyByKey[line.key] || '') || 0;
+    const quantity = roundToDbDecimal(parseFloat(orderQtyByKey[line.key] || '') || 0);
     if (quantity <= 0) return [];
+    const deliveryPrice = roundToDbDecimal(line.deliveryPrice);
     return [{
       lineKey: line.key,
       componentId: line.component.componentId,
@@ -345,9 +346,9 @@ export function buildCartItems(
       vendorName: line.vendorProduct.vendorName,
       productName: line.vendorProduct.productName,
       deliveryUnitLabel: line.deliveryUnitLabel,
-      deliveryPrice: line.deliveryPrice,
+      deliveryPrice,
       quantity,
-      lineTotal: quantity * line.deliveryPrice,
+      lineTotal: roundToDbDecimal(quantity * deliveryPrice),
     }];
   });
 }

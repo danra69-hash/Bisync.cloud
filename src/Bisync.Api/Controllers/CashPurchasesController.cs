@@ -77,7 +77,7 @@ public class CashPurchasesController(
             await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
 
         var unitCost = request.Quantity > 0
-            ? Math.Round(request.DeliveryPrice / request.Quantity, 4, MidpointRounding.AwayFromZero)
+            ? DecimalRounding.ToDb(request.DeliveryPrice / request.Quantity)
             : request.DeliveryPrice;
 
         var receiptBase64 = request.ReceiptFileBase64?.Trim() ?? string.Empty;
@@ -92,8 +92,8 @@ public class CashPurchasesController(
             ComponentName = componentName,
             StoreProductName = storeProductName,
             DeliveryUnit = deliveryUnit,
-            DeliveryPrice = request.DeliveryPrice,
-            Quantity = request.Quantity,
+            DeliveryPrice = DecimalRounding.ToDb(request.DeliveryPrice),
+            Quantity = DecimalRounding.ToDb(request.Quantity),
             ComponentUom = componentUom,
             ReceiptNumber = request.ReceiptNumber?.Trim() ?? string.Empty,
             ReceiptFileName = request.ReceiptFileName?.Trim() ?? string.Empty,

@@ -198,7 +198,7 @@ public class SplitUseService(BisyncDbContext db)
                     WastedDate = DateOnly.FromDateTime(createdAt),
                     Reason = $"Split Use from {parent.Name}",
                     UnitPrice = StockCardFifoEngine.RoundUnitPrice(lineUnitPrice),
-                    TotalValue = Math.Round(lineValue, 2, MidpointRounding.AwayFromZero),
+                    TotalValue = DecimalRounding.ToDb(lineValue),
                     SourceReferenceType = sourceType,
                     SourceReferenceId = sourceId,
                     SplitUseLineKey = line.Key,

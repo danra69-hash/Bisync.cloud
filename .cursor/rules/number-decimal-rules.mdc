@@ -1,0 +1,28 @@
+# Number rules (permanent)
+
+Apply these rules for every quantity, price, cost, rate, and similar numeric field.
+
+## Database / API storage
+
+- Persist numbers at **4 decimal places** (`0.0000`).
+- Round the **5th** decimal half **away from zero** (`MidpointRounding.AwayFromZero` / client `roundToDbDecimal`).
+- Server helper: `src/Bisync.Api/Services/DecimalRounding.cs` (`ToDb`).
+- Client helper: `client/src/utils/numberFormat.ts` (`roundToDbDecimal`, `parsePlatformNumber`).
+
+## Platform display
+
+- Default display: **2** decimal places (`1.20`, `0.00`).
+- Include the **3rd** decimal only when that digit is non-zero (`1.234`).
+- Include the **4th** decimal only when that digit is non-zero (`1.2345`).
+- Always round to 4dp before choosing display length (`formatPlatformNumber` / `formatCountryNumber`).
+
+## Number inputs
+
+- Size fields for at least **4 integer digits + 4 decimals** (`9999.9999`).
+- Use `inlineNumberCls` / `numberCls` (`.bisync-inline-number`, `.bisync-number-field`) and `PLATFORM_NUMBER_INPUT_PROPS` (`step={0.0001}`).
+- On blur / save, normalize with `parsePlatformNumber` or `normalizeNumberInputValue`.
+
+## Do not
+
+- Hard-code `toFixed(2)` for money/qty in new UI — use `formatPlatformNumber` / `useCountryFormatters().number|rm`.
+- Store unbounded float noise without `DecimalRounding.ToDb` / `roundToDbDecimal` on write paths.

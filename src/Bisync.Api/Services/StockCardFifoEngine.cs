@@ -7,8 +7,8 @@ namespace Bisync.Api.Services;
 /// </summary>
 public static class StockCardFifoEngine
 {
-    public static decimal RoundUnitPrice(decimal value) =>
-        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+    /// <summary>Unit prices persist at platform DB scale (4dp).</summary>
+    public static decimal RoundUnitPrice(decimal value) => DecimalRounding.ToDb(value);
 
     public static decimal ComputeAverageCogs(IReadOnlyList<FifoLayer> layers)
     {

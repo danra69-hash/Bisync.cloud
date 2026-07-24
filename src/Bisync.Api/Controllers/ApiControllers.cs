@@ -908,12 +908,12 @@ public class PurchaseOrdersController(
                 if (patch.Quantity is decimal qty && qty > 0 && qty != item.Quantity)
                 {
                     notes.Add($"{item.Name}: qty {item.Quantity:0.####} → {qty:0.####}");
-                    item.Quantity = qty;
+                    item.Quantity = DecimalRounding.ToDb(qty);
                 }
                 if (patch.UnitPrice is decimal price && price >= 0 && price != item.UnitPrice)
                 {
                     notes.Add($"{item.Name}: price {item.UnitPrice:0.####} → {price:0.####}");
-                    item.UnitPrice = price;
+                    item.UnitPrice = DecimalRounding.ToDb(price);
                 }
             }
         }
@@ -1031,9 +1031,9 @@ public class PurchaseOrdersController(
                     ComponentName = string.IsNullOrWhiteSpace(i.ComponentName) ? i.Name.Trim() : i.ComponentName.Trim(),
                     VendorProductId = i.VendorProductId?.Trim() ?? string.Empty,
                     Name = i.Name.Trim(),
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice,
-                    IssuedUnitPrice = i.UnitPrice,
+                    Quantity = DecimalRounding.ToDb(i.Quantity),
+                    UnitPrice = DecimalRounding.ToDb(i.UnitPrice),
+                    IssuedUnitPrice = DecimalRounding.ToDb(i.UnitPrice),
                     Unit = i.Unit.Trim(),
                     ComponentUom = i.ComponentUom?.Trim() ?? i.Unit.Trim(),
                     DeliveryPackage = i.DeliveryPackage.Trim(),
@@ -1310,8 +1310,8 @@ public class PurchaseOrdersController(
             if (workflow == "receive")
             {
                 // Keep Quantity / UnitPrice as ordered; store physical receipt separately.
-                item.ReceivedQuantity = line.Quantity;
-                item.ReceivedUnitPrice = line.UnitPrice;
+                item.ReceivedQuantity = DecimalRounding.ToDb(line.Quantity);
+                item.ReceivedUnitPrice = DecimalRounding.ToDb(line.UnitPrice);
                 item.TaxAmount = line.TaxAmount;
                 item.HalalCertNo = line.HalalCertNo?.Trim() ?? string.Empty;
                 item.ProductExpiryDate = NormalizeOptionalDate(line.ProductExpiryDate);
@@ -1321,8 +1321,8 @@ public class PurchaseOrdersController(
             }
             else
             {
-                item.ReconciledQuantity = line.Quantity;
-                item.ReconciledUnitPrice = line.UnitPrice;
+                item.ReconciledQuantity = DecimalRounding.ToDb(line.Quantity);
+                item.ReconciledUnitPrice = DecimalRounding.ToDb(line.UnitPrice);
                 if (line.ReceivedTemperature.HasValue)
                     item.ReceivedTemperature = line.ReceivedTemperature;
                 if (!string.IsNullOrWhiteSpace(line.ComponentUom))
