@@ -2179,6 +2179,7 @@ export function ProductsPage({
                 selectedProductId ? Number(selectedProductId) : null,
                 productId,
               )}
+              productId={selectedProductId ? Number(selectedProductId) : null}
               components={mapProductLinesToComponentItems(lines)}
               yieldQuantity={parseFloat(yieldQuantity) || 1}
               onClose={() => setProductionMethodOpen(false)}

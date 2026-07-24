@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Printer, X } from 'lucide-react';
-import type { ProductComponentItem } from '../../api';
+import { api, type ProductComponentItem, type ProductNutrientEstimateRow } from '../../api';
 import { fieldCls } from '../../data/componentForm';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { downloadProductionMethodPdf } from '../../data/generateProductionMethodPdf';
@@ -13,10 +13,6 @@ import {
   saveProductionMethod,
   type ProductProductionMethod,
 } from '../../data/productProductionMethod';
-import {
-  estimateProductNutrientsFromFndds,
-  loadFnddsNutrientCatalog,
-} from '../../data/fnddsNutrientCatalog';
 import { MODAL_OVERLAY_CLS } from '../layout/sidePanelShared';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
@@ -25,6 +21,7 @@ type Props = {
   group?: string;
   productName: string;
   productKey: string;
+  productId?: number | null;
   components: ProductComponentItem[];
   yieldQuantity?: number;
   onClose: () => void;
@@ -35,6 +32,7 @@ export function ProductionMethodModal({
   group = '',
   productName,
   productKey,
+  productId,
   components,
   yieldQuantity = 1,
   onClose,
@@ -42,7 +40,7 @@ export function ProductionMethodModal({
   const { rm, countryCode } = useCountryFormatters();
   const [draft, setDraft] = useState<ProductProductionMethod>(() => loadProductionMethod(productKey));
   const [printing, setPrinting] = useState(false);
-  const [fnddsReady, setFnddsReady] = useState(false);
+  const [apiRows, setApiRows] = useState<ProductNutrientEstimateRow[] | null>(null);
   const fileInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
@@ -50,12 +48,20 @@ export function ProductionMethodModal({
   }, [productKey]);
 
   useEffect(() => {
+    if (!productId || productId <= 0) {
+      setApiRows(null);
+      return;
+    }
     let cancelled = false;
-    loadFnddsNutrientCatalog().then(() => {
-      if (!cancelled) setFnddsReady(true);
-    });
+    api.productNutrients(productId)
+      .then(data => {
+        if (!cancelled) setApiRows(data.rows);
+      })
+      .catch(() => {
+        if (!cancelled) setApiRows(null);
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [productId]);
 
   const sequencedComponents = useMemo(
     () => components
@@ -65,11 +71,9 @@ export function ProductionMethodModal({
   );
 
   const nutritionRows = useMemo(() => {
-    if (fnddsReady) {
-      return estimateProductNutrientsFromFndds(sequencedComponents, { yieldQuantity }).rows;
-    }
+    if (apiRows && apiRows.length > 0) return apiRows;
     return estimateNutritionalFactors(sequencedComponents, draft.methodText, yieldQuantity);
-  }, [fnddsReady, sequencedComponents, draft.methodText, yieldQuantity]);
+  }, [apiRows, sequencedComponents, draft.methodText, yieldQuantity]);
 
   function updateImage(index: number, patch: Partial<ProductProductionMethod['images'][number]>) {
     setDraft(prev => ({
@@ -254,7 +258,10 @@ export function ProductionMethodModal({
             <div className="px-4 py-3 border-b border-border bg-muted/20">
               <h3 className="text-sm font-semibold">Nutritional factors</h3>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Estimated per serving from components and cooking method{yieldQuantity > 0 ? ` (yield ${yieldQuantity})` : ''}.
+                {apiRows
+                  ? 'From USDA FoodData Central nutrition library (Foundation Foods + SR Legacy)'
+                  : 'Heuristic estimate until the product is saved and matched to the nutrition library'}
+                {yieldQuantity > 0 ? ` (yield ${yieldQuantity})` : ''}.
               </p>
             </div>
             <table className="w-full table-fixed text-xs">

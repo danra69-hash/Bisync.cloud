@@ -58,6 +58,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProductAlias> ProductAliases => Set<ProductAlias>();
     public DbSet<ProductBomChange> ProductBomChanges => Set<ProductBomChange>();
     public DbSet<ProductFieldChange> ProductFieldChanges => Set<ProductFieldChange>();
+    public DbSet<NutritionLibraryFood> NutritionLibraryFoods => Set<NutritionLibraryFood>();
+    public DbSet<NutritionLibraryMeta> NutritionLibraryMeta => Set<NutritionLibraryMeta>();
+    public DbSet<ProductNutrientEstimate> ProductNutrientEstimates => Set<ProductNutrientEstimate>();
     public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
     public DbSet<B2bSalesOrder> B2bSalesOrders => Set<B2bSalesOrder>();
     public DbSet<B2bSalesOrderLine> B2bSalesOrderLines => Set<B2bSalesOrderLine>();
@@ -365,6 +368,30 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasOne(x => x.Product)
                 .WithMany()
                 .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<NutritionLibraryFood>(e =>
+        {
+            e.HasIndex(x => x.FdcId).IsUnique();
+            e.HasIndex(x => x.NormalizedName);
+            e.HasIndex(x => x.Source);
+            e.Property(x => x.Source).HasMaxLength(40);
+            e.Property(x => x.Description).HasMaxLength(400);
+            e.Property(x => x.NormalizedName).HasMaxLength(400);
+            e.Property(x => x.NdbNumber).HasMaxLength(40);
+        });
+        modelBuilder.Entity<NutritionLibraryMeta>(e =>
+        {
+            e.Property(x => x.Version).HasMaxLength(80);
+            e.Property(x => x.LastSyncStatus).HasMaxLength(40);
+        });
+        modelBuilder.Entity<ProductNutrientEstimate>(e =>
+        {
+            e.HasKey(x => x.ProductId);
+            e.HasIndex(x => x.LibraryVersion);
+            e.HasOne(x => x.Product)
+                .WithOne()
+                .HasForeignKey<ProductNutrientEstimate>(x => x.ProductId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<ProductB2bLocationStock>(e =>
