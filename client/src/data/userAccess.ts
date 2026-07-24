@@ -81,6 +81,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
     tasks: [
       { id: 'viewProductSubProduct', label: 'View Products' },
       { id: 'manageProductSubProduct', label: 'Manage Products & Sub-Products' },
+      { id: 'productAudit', label: 'Product Audit' },
       { id: 'externalPosMapping', label: 'External POS Mapping' },
       { id: 'accountMapping', label: 'Account Mapping' },
     ],

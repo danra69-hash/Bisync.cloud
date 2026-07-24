@@ -57,6 +57,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProductPackagingItem> ProductPackagingItems => Set<ProductPackagingItem>();
     public DbSet<ProductAlias> ProductAliases => Set<ProductAlias>();
     public DbSet<ProductBomChange> ProductBomChanges => Set<ProductBomChange>();
+    public DbSet<ProductFieldChange> ProductFieldChanges => Set<ProductFieldChange>();
     public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
     public DbSet<B2bSalesOrder> B2bSalesOrders => Set<B2bSalesOrder>();
     public DbSet<B2bSalesOrderLine> B2bSalesOrderLines => Set<B2bSalesOrderLine>();
@@ -350,6 +351,17 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.HasIndex(x => new { x.ProductId, x.ChangedAt });
             e.HasIndex(x => new { x.CompanyId, x.ChangedAt });
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ProductFieldChange>(e =>
+        {
+            e.HasIndex(x => new { x.ProductId, x.ChangedAt });
+            e.HasIndex(x => new { x.CompanyId, x.ChangedAt });
+            e.Property(x => x.FieldName).HasMaxLength(80);
+            e.Property(x => x.FieldLabel).HasMaxLength(120);
             e.HasOne(x => x.Product)
                 .WithMany()
                 .HasForeignKey(x => x.ProductId)

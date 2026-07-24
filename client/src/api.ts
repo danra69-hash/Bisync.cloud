@@ -1926,6 +1926,24 @@ export interface ProductBomChange {
   note: string;
 }
 
+export interface ProductAuditRow {
+  productId: string;
+  productName: string;
+  changes: string;
+  changesFrom: string;
+  changesTo: string;
+  effectiveDate: string;
+}
+
+export interface ProductAuditResult {
+  companyId: number;
+  month: string;
+  from: string;
+  to: string;
+  count: number;
+  rows: ProductAuditRow[];
+}
+
 export interface ProductAlias {
   id: number;
   name: string;
@@ -3116,6 +3134,10 @@ export const api = {
     fetchJsonWithMethod<void>(`/api/products/${id}`, 'DELETE'),
   productBomChanges: (id: number, take = 200) =>
     fetchJson<ProductBomChange[]>(`/api/products/${id}/bom-changes?take=${take}`),
+  productAudit: (companyId: number, month: string) =>
+    fetchJson<ProductAuditResult>(
+      `/api/products/audit?companyId=${companyId}&month=${encodeURIComponent(month)}`,
+    ),
   productManagement: (companyId: number | undefined, locationIds: string[], view?: 'b2b' | 'sub-product') => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));

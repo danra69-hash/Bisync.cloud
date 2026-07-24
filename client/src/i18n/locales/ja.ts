@@ -125,6 +125,7 @@ export const ja = {
       vendorListProducts: '仕入先一覧と商品',
       comparePrice: '価格比較',
       products: '商品',
+      productAudit: 'Product Audit',
       externalPosMapping: '外部POSマッピング',
       activeSalesOrder: 'Sales Order',
 

@@ -123,6 +123,7 @@ export const en = {
       vendorListProducts: 'Vendor List & Products',
       comparePrice: 'Compare Price',
       products: 'Products',
+      productAudit: 'Product Audit',
       externalPosMapping: 'External POS Mapping',
       activeSalesOrder: 'Sales Order',
       customerList: 'Customer List',

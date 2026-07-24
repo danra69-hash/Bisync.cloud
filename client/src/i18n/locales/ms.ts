@@ -125,6 +125,7 @@ export const ms = {
       vendorListProducts: 'Senarai Vendor & Produk',
       comparePrice: 'Banding Harga',
       products: 'Produk',
+      productAudit: 'Product Audit',
       externalPosMapping: 'Pemetaan POS Luaran',
       activeSalesOrder: 'Sales Order',
 

@@ -125,6 +125,7 @@ export const th = {
       vendorListProducts: 'รายชื่อผู้จำหน่ายและสินค้า',
       comparePrice: 'เปรียบเทียบราคา',
       products: 'สินค้า',
+      productAudit: 'Product Audit',
       externalPosMapping: 'การแมป POS ภายนอก',
       activeSalesOrder: 'Sales Order',
 

@@ -37,6 +37,64 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         return Ok(rows.Select(MapProduct));
     }
 
+    /// <summary>
+    /// Company-wide product change audit for a calendar month (YYYY-MM).
+    /// Unions header field changes and BOM/recipe changes.
+    /// </summary>
+    [HttpGet("audit")]
+    public async Task<ActionResult<object>> Audit(
+        [FromQuery] int companyId,
+        [FromQuery] string month,
+        CancellationToken cancellationToken)
+    {
+        if (companyId <= 0)
+            return BadRequest(new { message = "companyId is required." });
+        if (string.IsNullOrWhiteSpace(month)
+            || !DateOnly.TryParseExact(month.Trim() + "-01", "yyyy-MM-dd", out var monthStart))
+            return BadRequest(new { message = "month must be YYYY-MM." });
+
+        var fromUtc = DateTime.SpecifyKind(monthStart.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var toUtc = DateTime.SpecifyKind(monthStart.AddMonths(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+
+        var fieldRows = await db.ProductFieldChanges.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.ChangedAt >= fromUtc && c.ChangedAt < toUtc)
+            .OrderByDescending(c => c.ChangedAt)
+            .ThenByDescending(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        var bomRows = await db.ProductBomChanges.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.ChangedAt >= fromUtc && c.ChangedAt < toUtc)
+            .OrderByDescending(c => c.ChangedAt)
+            .ThenByDescending(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        var rows = fieldRows.Select(MapFieldAuditRow)
+            .Concat(bomRows.Select(MapBomAuditRow))
+            .OrderByDescending(r => r.EffectiveDate)
+            .ThenBy(r => r.ProductName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Changes, StringComparer.OrdinalIgnoreCase)
+            .Select(r => new
+            {
+                productId = r.ProductId,
+                productName = r.ProductName,
+                changes = r.Changes,
+                changesFrom = r.ChangesFrom,
+                changesTo = r.ChangesTo,
+                effectiveDate = r.EffectiveDate,
+            })
+            .ToList();
+
+        return Ok(new
+        {
+            companyId,
+            month = monthStart.ToString("yyyy-MM"),
+            from = fromUtc,
+            to = toUtc,
+            count = rows.Count,
+            rows,
+        });
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<object>> Get(int id)
     {
@@ -130,11 +188,11 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
                 product, ProductBomChangeRecorder.LineKindPackaging, [], afterPackaging,
                 actorId, actorEmail, actorName, product.CreatedAt))
             .ToList();
+        db.ProductFieldChanges.Add(ProductFieldChangeRecorder.Created(
+            product, actorId, actorEmail, actorName, product.CreatedAt));
         if (bomChanges.Count > 0)
-        {
             db.ProductBomChanges.AddRange(bomChanges);
-            await db.SaveChangesAsync();
-        }
+        await db.SaveChangesAsync();
 
         product = await db.Products
             .AsNoTracking()
@@ -161,6 +219,16 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
 
         if (product is null)
             return NotFound();
+
+        var beforeFields = ProductFieldChangeRecorder.Snapshot(product);
+        var beforeRecipe = product.Items
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
+        var beforePackaging = product.PackagingItems
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
 
         var productId = string.IsNullOrWhiteSpace(request.ProductId)
             ? product.ProductId
@@ -225,15 +293,6 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         product.LocationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(request.LocationExternalIds ?? []);
         product.UpdatedAt = DateTime.UtcNow;
 
-        var beforeRecipe = product.Items
-            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
-                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
-            .ToList();
-        var beforePackaging = product.PackagingItems
-            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
-                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
-            .ToList();
-
         db.ProductComponentItems.RemoveRange(product.Items);
         product.Items = MapItems(request.Items);
         var newTotalCost = product.Items.Sum(i => i.Subtotal);
@@ -262,6 +321,12 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
 
         var (actorId, actorEmail, actorName) = await ProductBomChangeRecorder.ResolveActorAsync(db, HttpContext);
         var changedAt = product.UpdatedAt;
+        var afterFields = ProductFieldChangeRecorder.Snapshot(product);
+        var fieldChanges = ProductFieldChangeRecorder.Diff(
+            product, beforeFields, afterFields, actorId, actorEmail, actorName, changedAt);
+        if (fieldChanges.Count > 0)
+            db.ProductFieldChanges.AddRange(fieldChanges);
+
         var bomChanges = ProductBomChangeRecorder.Diff(
                 product, ProductBomChangeRecorder.LineKindRecipe, beforeRecipe, afterRecipe,
                 actorId, actorEmail, actorName, changedAt)
@@ -314,6 +379,8 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         if (product is null)
             return NotFound();
 
+        var beforeFields = ProductFieldChangeRecorder.Snapshot(product);
+
         if (request.PosEnabled.HasValue)
             product.PosEnabled = request.PosEnabled.Value;
         if (request.PosDeliveryUnits is not null)
@@ -352,6 +419,14 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
 
         product.UpdatedAt = DateTime.UtcNow;
+
+        var (actorId, actorEmail, actorName) = await ProductBomChangeRecorder.ResolveActorAsync(db, HttpContext);
+        var afterFields = ProductFieldChangeRecorder.Snapshot(product);
+        var fieldChanges = ProductFieldChangeRecorder.Diff(
+            product, beforeFields, afterFields, actorId, actorEmail, actorName, product.UpdatedAt);
+        if (fieldChanges.Count > 0)
+            db.ProductFieldChanges.AddRange(fieldChanges);
+
         await db.SaveChangesAsync();
 
         return Ok(MapProduct(product));
@@ -595,4 +670,61 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         changedAt = change.ChangedAt,
         note = change.Note,
     };
+
+    sealed record AuditRowDto(
+        string ProductId,
+        string ProductName,
+        string Changes,
+        string ChangesFrom,
+        string ChangesTo,
+        DateTime EffectiveDate);
+
+    static AuditRowDto MapFieldAuditRow(ProductFieldChange change) =>
+        new(
+            change.ProductCode,
+            change.ProductName,
+            change.FieldLabel,
+            string.IsNullOrWhiteSpace(change.OldValue) ? "—" : change.OldValue,
+            string.IsNullOrWhiteSpace(change.NewValue) ? "—" : change.NewValue,
+            change.ChangedAt);
+
+    static AuditRowDto MapBomAuditRow(ProductBomChange change)
+    {
+        var kindLabel = string.Equals(change.LineKind, ProductBomChangeRecorder.LineKindPackaging, StringComparison.OrdinalIgnoreCase)
+            ? "Packaging"
+            : "Recipe";
+        var changeLabel = change.ChangeType switch
+        {
+            ProductBomChangeRecorder.ChangeIn => $"{kindLabel}: added {change.ComponentName}",
+            ProductBomChangeRecorder.ChangeOut => $"{kindLabel}: removed {change.ComponentName}",
+            ProductBomChangeRecorder.ChangeQty => $"{kindLabel}: {change.ComponentName}",
+            _ => $"{kindLabel}: {change.ComponentName}",
+        };
+
+        string FormatLine(string? uom, decimal? qty, decimal? unitPrice)
+        {
+            if (qty is null && string.IsNullOrWhiteSpace(uom) && unitPrice is null)
+                return "—";
+            var parts = new List<string>();
+            if (qty is not null) parts.Add(qty.Value.ToString("0.####"));
+            if (!string.IsNullOrWhiteSpace(uom)) parts.Add(uom!);
+            if (unitPrice is not null) parts.Add($"@{unitPrice.Value.ToString("0.####")}");
+            return parts.Count > 0 ? string.Join(" ", parts) : "—";
+        }
+
+        var from = change.ChangeType == ProductBomChangeRecorder.ChangeIn
+            ? "—"
+            : FormatLine(change.OldComponentUom, change.OldQuantity, change.OldUnitPrice);
+        var to = change.ChangeType == ProductBomChangeRecorder.ChangeOut
+            ? "—"
+            : FormatLine(change.NewComponentUom, change.NewQuantity, change.NewUnitPrice);
+
+        return new AuditRowDto(
+            change.ProductCode,
+            change.ProductName,
+            changeLabel,
+            from,
+            to,
+            change.ChangedAt);
+    }
 }

@@ -125,6 +125,7 @@ export const zh = {
       vendorListProducts: '供应商与产品',
       comparePrice: '比价',
       products: '产品',
+      productAudit: 'Product Audit',
       externalPosMapping: '外部 POS 映射',
       activeSalesOrder: 'Sales Order',
 
