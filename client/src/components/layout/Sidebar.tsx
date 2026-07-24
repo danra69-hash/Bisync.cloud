@@ -70,7 +70,7 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
 
         <div className="p-4 border-t border-white/10 space-y-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#F37021', color: '#2A2118' }}>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#F37021', color: '#FFFFFF' }}>
               {userInitials(displayName)}
             </div>
             <div className="min-w-0 flex-1">
