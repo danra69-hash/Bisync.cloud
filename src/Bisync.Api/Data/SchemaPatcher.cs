@@ -832,6 +832,14 @@ public static class SchemaPatcher
                 "LastTestResult" TEXT NOT NULL DEFAULT ''
             );
             """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "GraphTenantId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "GraphClientId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "GraphClientSecret", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "CalendarMailbox", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "CalendarDisplayName", "TEXT NOT NULL DEFAULT 'Cubevalue'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "UpdatedByEmail", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "LastTestAt", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "SalesModuleCalendarSettings", "LastTestResult", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             INSERT INTO "SalesModuleCalendarSettings" (
                 "Id", "Enabled", "GraphTenantId", "GraphClientId", "GraphClientSecret",
