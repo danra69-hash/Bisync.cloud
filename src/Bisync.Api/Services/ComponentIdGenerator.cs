@@ -36,8 +36,8 @@ public static class ComponentIdGenerator
 
         foreach (var tracked in db.ChangeTracker.Entries<Models.Ingredient>())
         {
-            if (excludeId is int eid && tracked.Entity.Id == eid) continue;
-            if (companyId is int cid && tracked.Entity.CompanyId != cid) continue;
+            if (excludeId is int excludeIngredientId && tracked.Entity.Id == excludeIngredientId) continue;
+            if (companyId is int scopedCompanyId && tracked.Entity.CompanyId != scopedCompanyId) continue;
             var componentId = tracked.Entity.ComponentId;
             if (string.IsNullOrWhiteSpace(componentId) || !componentId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 continue;
