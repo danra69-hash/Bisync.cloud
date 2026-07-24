@@ -1429,6 +1429,12 @@ public static class SchemaPatcher
             CREATE INDEX IF NOT EXISTS "IX_PromotionProducts_ProductId"
             ON "PromotionProducts" ("ProductId");
             """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Promotions", "ComboPrice", "NUMERIC");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Promotions", "ComboPackQty", "NUMERIC");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Promotions", "ComboPackRemaining", "NUMERIC");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PromotionProducts", "QtyPerCombo", "NUMERIC");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "B2bSalesOrderLines", "PromotionId", "INTEGER");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "B2bSalesOrderLines", "IsCombo", "BOOLEAN NOT NULL DEFAULT FALSE");
     }
 
     /// <summary>Public hook so Program can refresh registry after companies are seeded.</summary>

@@ -972,8 +972,9 @@ export interface CreateB2bSalesOrderPayload {
   source?: string;
   lockPeriodDays: number;
   lines: {
-    productId: number;
+    productId?: number;
     productAliasId?: number | null;
+    promotionId?: number | null;
     locationExternalId: string;
     quantityOrdered: number;
     uom?: string;
@@ -989,6 +990,7 @@ export interface PromotionProductLine {
   promoQty?: number | null;
   remainingQty?: number | null;
   knockedDownPrice?: number | null;
+  qtyPerCombo?: number | null;
 }
 
 export interface Promotion {
@@ -998,8 +1000,11 @@ export interface Promotion {
   durationMode: 'byDate' | 'byQty' | string;
   startDate: string;
   endDate?: string | null;
-  promotionType: 'discountPercent' | 'knockedDownPrice' | string;
+  promotionType: 'discountPercent' | 'knockedDownPrice' | 'combo' | string;
   discountPercent?: number | null;
+  comboPrice?: number | null;
+  comboPackQty?: number | null;
+  comboPackRemaining?: number | null;
   active: boolean;
   status: 'Active' | 'Inactive' | string;
   createdBy?: string;
@@ -1014,13 +1019,16 @@ export interface CreatePromotionPayload {
   durationMode: 'byDate' | 'byQty';
   startDate: string;
   endDate?: string;
-  promotionType: 'discountPercent' | 'knockedDownPrice';
+  promotionType: 'discountPercent' | 'knockedDownPrice' | 'combo';
   discountPercent?: number;
+  comboPrice?: number;
+  comboPackQty?: number;
   createdBy?: string;
   products: {
     productId: number;
     promoQty?: number;
     knockedDownPrice?: number;
+    qtyPerCombo?: number;
   }[];
 }
 
@@ -1031,6 +1039,22 @@ export interface PromotionActivePrice {
   promoRrp: number;
   remainingQty?: number | null;
   baseRrp: number;
+}
+
+export interface ActiveComboPromotion {
+  promotionId: number;
+  name: string;
+  comboPrice: number;
+  comboPackRemaining?: number | null;
+  durationMode: string;
+  startDate: string;
+  endDate?: string | null;
+  components: {
+    productId: number;
+    productName: string;
+    deliveryUnit: string;
+    qtyPerCombo: number;
+  }[];
 }
 
 export interface TaggedB2bProductUnit {
@@ -2866,6 +2890,8 @@ export const api = {
     if (productIds.length > 0) params.set('productIds', productIds.join(','));
     return fetchJson<PromotionActivePrice[]>(`/api/promotions/active-prices?${params}`);
   },
+  promotionActiveCombos: (companyId: number) =>
+    fetchJson<ActiveComboPromotion[]>(`/api/promotions/active-combos?companyId=${companyId}`),
   issueB2bSalesOrder: (id: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/issue`, 'POST'),
   markB2bSalesOrderLineReadyToShip: (orderId: number, lineId: number) =>

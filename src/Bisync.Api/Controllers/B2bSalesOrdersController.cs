@@ -127,12 +127,29 @@ public class B2bSalesOrdersController(
                     && c.CompanyId == request.CompanyId,
                 cancellationToken);
 
-        var productIds = request.Lines.Select(l => l.ProductId).Distinct().ToList();
+        var productIds = request.Lines
+            .Where(l => l.PromotionId is null or <= 0)
+            .Select(l => l.ProductId)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
         var products = await db.Products.AsNoTracking()
             .Include(p => p.Aliases)
             .Where(p => productIds.Contains(p.Id))
             .ToListAsync(cancellationToken);
         var productById = products.ToDictionary(p => p.Id);
+
+        var comboPromotionIds = request.Lines
+            .Where(l => l.PromotionId is > 0)
+            .Select(l => l.PromotionId!.Value)
+            .Distinct()
+            .ToList();
+        var comboPromotions = comboPromotionIds.Count == 0
+            ? new Dictionary<int, Promotion>()
+            : await db.Promotions
+                .Include(p => p.Products)
+                .Where(p => comboPromotionIds.Contains(p.Id) && p.CompanyId == request.CompanyId)
+                .ToDictionaryAsync(p => p.Id, cancellationToken);
 
         var orderNumber = await GenerateOrderNumberAsync(request.CompanyId, cancellationToken);
         var lockPeriodDays = request.LockPeriodDays > 0
@@ -141,14 +158,13 @@ public class B2bSalesOrdersController(
         var createdDate = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var baseRrpByProduct = new Dictionary<int, decimal>();
-        foreach (var line in request.Lines)
+        foreach (var line in request.Lines.Where(l => l.PromotionId is null or <= 0))
         {
             if (baseRrpByProduct.ContainsKey(line.ProductId)) continue;
             productById.TryGetValue(line.ProductId, out var product);
             var pricing = product is null
                 ? new B2bProductPricing.ResolvedB2bPricing(line.Rrp ?? 0, line.Uom?.Trim() ?? string.Empty, line.ProductAliasId, null)
                 : B2bProductPricing.ResolveForCustomerProduct(product, customer, line.ProductAliasId);
-            // Promo discount applies against published / customer RRP before client override.
             baseRrpByProduct[line.ProductId] = pricing.Rrp > 0 ? pricing.Rrp : (line.Rrp ?? 0);
         }
 
@@ -159,6 +175,92 @@ public class B2bSalesOrdersController(
             createdDate,
             cancellationToken);
         var promoQtyConsume = new Dictionary<int, decimal>();
+        var comboPackConsume = new Dictionary<int, decimal>();
+        var orderLines = new List<B2bSalesOrderLine>();
+
+        foreach (var line in request.Lines)
+        {
+            if (line.PromotionId is int comboPromoId and > 0)
+            {
+                if (!comboPromotions.TryGetValue(comboPromoId, out var combo)
+                    || !PromotionPricingService.IsCombo(combo)
+                    || !PromotionPricingService.IsEffectivelyActive(combo, createdDate))
+                    return BadRequest(new { message = "Selected combo promotion is not available." });
+
+                var components = combo.Products.Where(p => p.QtyPerCombo is > 0).ToList();
+                if (components.Count < 2)
+                    return BadRequest(new { message = $"Combo {combo.Name} is incomplete." });
+
+                if (combo.DurationMode == PromotionPricingService.DurationByQty
+                    && combo.ComboPackRemaining is decimal remaining
+                    && remaining < line.QuantityOrdered)
+                {
+                    return BadRequest(new { message = $"Only {remaining:0.##} packs remaining for combo {combo.Name}." });
+                }
+
+                var anchor = components[0];
+                var comboRrp = line.Rrp is > 0 ? line.Rrp.Value : (combo.ComboPrice ?? 0);
+                orderLines.Add(new B2bSalesOrderLine
+                {
+                    ProductId = anchor.ProductId,
+                    ProductAliasId = null,
+                    ProductName = combo.Name,
+                    LocationExternalId = line.LocationExternalId.Trim(),
+                    QuantityOrdered = line.QuantityOrdered,
+                    Uom = "combo",
+                    Rrp = comboRrp,
+                    PromotionId = combo.Id,
+                    IsCombo = true,
+                    Status = "open",
+                });
+
+                if (combo.ComboPackRemaining is not null)
+                {
+                    comboPackConsume.TryGetValue(combo.Id, out var prior);
+                    comboPackConsume[combo.Id] = prior + line.QuantityOrdered;
+                }
+
+                continue;
+            }
+
+            productById.TryGetValue(line.ProductId, out var product);
+            var pricing = product is null
+                ? new B2bProductPricing.ResolvedB2bPricing(line.Rrp ?? 0, line.Uom?.Trim() ?? string.Empty, line.ProductAliasId, null)
+                : B2bProductPricing.ResolveForCustomerProduct(product, customer, line.ProductAliasId);
+
+            var rrp = line.Rrp is > 0 ? line.Rrp.Value : pricing.Rrp;
+            if (promoHits.TryGetValue(line.ProductId, out var promo))
+            {
+                rrp = promo.PromoRrp;
+                if (promo.RemainingQty is not null)
+                {
+                    promoQtyConsume.TryGetValue(promo.PromotionProductId, out var prior);
+                    promoQtyConsume[promo.PromotionProductId] = prior + line.QuantityOrdered;
+                }
+            }
+
+            var uom = !string.IsNullOrWhiteSpace(line.Uom) ? line.Uom.Trim() : pricing.Uom;
+            var aliasId = line.ProductAliasId ?? pricing.ProductAliasId;
+            var productName = product?.Name ?? string.Empty;
+            if (aliasId is int id && product is not null)
+            {
+                var alias = product.Aliases.FirstOrDefault(a => a.Id == id);
+                if (alias is not null && !string.IsNullOrWhiteSpace(alias.Name))
+                    productName = alias.Name;
+            }
+
+            orderLines.Add(new B2bSalesOrderLine
+            {
+                ProductId = line.ProductId,
+                ProductAliasId = aliasId,
+                ProductName = productName,
+                LocationExternalId = line.LocationExternalId.Trim(),
+                QuantityOrdered = line.QuantityOrdered,
+                Uom = uom,
+                Rrp = rrp,
+                Status = "open",
+            });
+        }
 
         var order = new B2bSalesOrder
         {
@@ -173,50 +275,12 @@ public class B2bSalesOrdersController(
             ShareToken = Guid.NewGuid().ToString("N"),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
-            Lines = request.Lines.Select(line =>
-            {
-                productById.TryGetValue(line.ProductId, out var product);
-                var pricing = product is null
-                    ? new B2bProductPricing.ResolvedB2bPricing(line.Rrp ?? 0, line.Uom?.Trim() ?? string.Empty, line.ProductAliasId, null)
-                    : B2bProductPricing.ResolveForCustomerProduct(product, customer, line.ProductAliasId);
-
-                var rrp = line.Rrp is > 0 ? line.Rrp.Value : pricing.Rrp;
-                if (promoHits.TryGetValue(line.ProductId, out var promo))
-                {
-                    rrp = promo.PromoRrp;
-                    if (promo.RemainingQty is not null)
-                    {
-                        promoQtyConsume.TryGetValue(promo.PromotionProductId, out var prior);
-                        promoQtyConsume[promo.PromotionProductId] = prior + line.QuantityOrdered;
-                    }
-                }
-
-                var uom = !string.IsNullOrWhiteSpace(line.Uom) ? line.Uom.Trim() : pricing.Uom;
-                var aliasId = line.ProductAliasId ?? pricing.ProductAliasId;
-                var productName = product?.Name ?? string.Empty;
-                if (aliasId is int id && product is not null)
-                {
-                    var alias = product.Aliases.FirstOrDefault(a => a.Id == id);
-                    if (alias is not null && !string.IsNullOrWhiteSpace(alias.Name))
-                        productName = alias.Name;
-                }
-
-                return new B2bSalesOrderLine
-                {
-                    ProductId = line.ProductId,
-                    ProductAliasId = aliasId,
-                    ProductName = productName,
-                    LocationExternalId = line.LocationExternalId.Trim(),
-                    QuantityOrdered = line.QuantityOrdered,
-                    Uom = uom,
-                    Rrp = rrp,
-                    Status = "open",
-                };
-            }).ToList(),
+            Lines = orderLines,
         };
 
         db.B2bSalesOrders.Add(order);
         await PromotionPricingService.ConsumePromoQtyAsync(db, promoQtyConsume, cancellationToken);
+        await PromotionPricingService.ConsumeComboPacksAsync(db, comboPackConsume, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return Ok(MapOrder(order));
     }
@@ -353,6 +417,8 @@ public class B2bSalesOrdersController(
             quantityLocked = line.QuantityLocked,
             uom = line.Uom,
             rrp = line.Rrp,
+            promotionId = line.PromotionId,
+            isCombo = line.IsCombo,
             status = line.Status,
         }),
     };

@@ -41,6 +41,9 @@ public class B2bSalesOrderLine
     public decimal QuantityLocked { get; set; }
     public string Uom { get; set; } = string.Empty;
     public decimal Rrp { get; set; }
+    /// <summary>When set with IsCombo, this line is a combo pack from the promotion.</summary>
+    public int? PromotionId { get; set; }
+    public bool IsCombo { get; set; }
     /// <summary>open | locked | ready_to_ship | fulfilled | released</summary>
     public string Status { get; set; } = "open";
 }

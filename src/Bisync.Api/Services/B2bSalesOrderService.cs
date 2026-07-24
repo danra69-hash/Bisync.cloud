@@ -31,6 +31,12 @@ public class B2bSalesOrderService(BisyncDbContext db)
 
         foreach (var line in order.Lines)
         {
+            if (line.IsCombo && line.PromotionId is int promoId)
+            {
+                await LockComboComponentsAsync(line, promoId, cancellationToken);
+                continue;
+            }
+
             var product = await db.Products.AsNoTracking()
                 .FirstOrDefaultAsync(p => p.Id == line.ProductId && p.Active, cancellationToken)
                 ?? throw new InvalidOperationException($"Product not found for line: {line.ProductName}");
@@ -85,6 +91,12 @@ public class B2bSalesOrderService(BisyncDbContext db)
 
         foreach (var line in order.Lines.Where(l => l.QuantityLocked > 0))
         {
+            if (line.IsCombo && line.PromotionId is int promoId)
+            {
+                await FulfillComboComponentsAsync(order, line, promoId, cancellationToken);
+                continue;
+            }
+
             var stock = await EnsureStockRowAsync(line.ProductId, line.LocationExternalId, cancellationToken);
             var qty = Math.Min(line.QuantityLocked, stock.OnOrderQty);
             if (qty <= 0)
@@ -102,34 +114,17 @@ public class B2bSalesOrderService(BisyncDbContext db)
                 ? "online"
                 : "offline";
 
-            if (product.IsSubProduct)
+            db.ProductProductionLogs.Add(new ProductProductionLog
             {
-                db.ProductProductionLogs.Add(new ProductProductionLog
-                {
-                    ProductId = product.Id,
-                    EntryType = ProductSaleInventoryService.ChannelToReferenceType(channel),
-                    Quantity = qty,
-                    ProductionDate = order.FulfilledDate,
-                    UnitPrice = line.Rrp,
-                    LocationIdsJson = System.Text.Json.JsonSerializer.Serialize(new[] { line.LocationExternalId }),
-                    CompanyId = product.CompanyId,
-                    CreatedAt = DateTime.UtcNow,
-                });
-            }
-            else
-            {
-                db.ProductProductionLogs.Add(new ProductProductionLog
-                {
-                    ProductId = product.Id,
-                    EntryType = ProductSaleInventoryService.ChannelToReferenceType(channel),
-                    Quantity = qty,
-                    ProductionDate = order.FulfilledDate,
-                    UnitPrice = line.Rrp,
-                    LocationIdsJson = System.Text.Json.JsonSerializer.Serialize(new[] { line.LocationExternalId }),
-                    CompanyId = product.CompanyId,
-                    CreatedAt = DateTime.UtcNow,
-                });
-            }
+                ProductId = product.Id,
+                EntryType = ProductSaleInventoryService.ChannelToReferenceType(channel),
+                Quantity = qty,
+                ProductionDate = order.FulfilledDate,
+                UnitPrice = line.Rrp,
+                LocationIdsJson = System.Text.Json.JsonSerializer.Serialize(new[] { line.LocationExternalId }),
+                CompanyId = product.CompanyId,
+                CreatedAt = DateTime.UtcNow,
+            });
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -152,6 +147,13 @@ public class B2bSalesOrderService(BisyncDbContext db)
         {
             foreach (var line in order.Lines.Where(l => l.QuantityLocked > 0 && l.Status == "locked"))
             {
+                if (line.IsCombo && line.PromotionId is int promoId)
+                {
+                    await ReleaseComboComponentsAsync(line, promoId, cancellationToken);
+                    released++;
+                    continue;
+                }
+
                 var stock = await db.ProductB2bLocationStocks
                     .FirstOrDefaultAsync(
                         s => s.ProductId == line.ProductId && s.LocationExternalId == line.LocationExternalId,
@@ -176,6 +178,117 @@ public class B2bSalesOrderService(BisyncDbContext db)
             await db.SaveChangesAsync(cancellationToken);
 
         return released;
+    }
+
+    async Task LockComboComponentsAsync(B2bSalesOrderLine line, int promotionId, CancellationToken cancellationToken)
+    {
+        var promotion = await db.Promotions
+            .Include(p => p.Products)
+            .FirstOrDefaultAsync(p => p.Id == promotionId, cancellationToken)
+            ?? throw new InvalidOperationException($"Combo promotion not found for line: {line.ProductName}");
+
+        if (!PromotionPricingService.IsCombo(promotion))
+            throw new InvalidOperationException($"Promotion {promotion.Name} is not a combo.");
+
+        var components = promotion.Products.Where(p => p.QtyPerCombo is > 0).ToList();
+        if (components.Count < 2)
+            throw new InvalidOperationException($"Combo {promotion.Name} needs at least two component products.");
+
+        foreach (var component in components)
+        {
+            var need = component.QtyPerCombo!.Value * line.QuantityOrdered;
+            var stock = await EnsureStockRowAsync(component.ProductId, line.LocationExternalId, cancellationToken);
+            if (stock.InStock < need)
+            {
+                throw new InvalidOperationException(
+                    $"Insufficient on-hand stock for combo component {component.ProductName} at {line.LocationExternalId} (need {need:0.##}, have {stock.InStock:0.##}).");
+            }
+
+            stock.InStock -= need;
+            stock.OnOrderQty += need;
+            stock.UpdatedAt = DateTime.UtcNow;
+        }
+
+        line.QuantityLocked = line.QuantityOrdered;
+        line.Status = "locked";
+        if (string.IsNullOrWhiteSpace(line.ProductName))
+            line.ProductName = promotion.Name;
+        if (line.Rrp <= 0 && promotion.ComboPrice is > 0)
+            line.Rrp = promotion.ComboPrice.Value;
+        if (string.IsNullOrWhiteSpace(line.Uom))
+            line.Uom = "combo";
+    }
+
+    async Task FulfillComboComponentsAsync(
+        B2bSalesOrder order,
+        B2bSalesOrderLine line,
+        int promotionId,
+        CancellationToken cancellationToken)
+    {
+        var promotion = await db.Promotions
+            .Include(p => p.Products)
+            .FirstOrDefaultAsync(p => p.Id == promotionId, cancellationToken);
+        if (promotion is null) return;
+
+        var packs = line.QuantityLocked;
+        var channel = string.Equals(order.Source, "online_order", StringComparison.OrdinalIgnoreCase)
+            ? "online"
+            : "offline";
+
+        foreach (var component in promotion.Products.Where(p => p.QtyPerCombo is > 0))
+        {
+            var qty = component.QtyPerCombo!.Value * packs;
+            var stock = await EnsureStockRowAsync(component.ProductId, line.LocationExternalId, cancellationToken);
+            var clear = Math.Min(qty, stock.OnOrderQty);
+            stock.OnOrderQty = Math.Max(0, stock.OnOrderQty - clear);
+            stock.UpdatedAt = DateTime.UtcNow;
+
+            db.ProductProductionLogs.Add(new ProductProductionLog
+            {
+                ProductId = component.ProductId,
+                EntryType = ProductSaleInventoryService.ChannelToReferenceType(channel),
+                Quantity = clear,
+                ProductionDate = order.FulfilledDate,
+                UnitPrice = 0,
+                LocationIdsJson = System.Text.Json.JsonSerializer.Serialize(new[] { line.LocationExternalId }),
+                CompanyId = order.CompanyId,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+
+        line.Status = "fulfilled";
+    }
+
+    async Task ReleaseComboComponentsAsync(B2bSalesOrderLine line, int promotionId, CancellationToken cancellationToken)
+    {
+        var promotion = await db.Promotions
+            .Include(p => p.Products)
+            .FirstOrDefaultAsync(p => p.Id == promotionId, cancellationToken);
+        if (promotion is null)
+        {
+            line.QuantityLocked = 0;
+            line.Status = "released";
+            return;
+        }
+
+        var packs = line.QuantityLocked;
+        foreach (var component in promotion.Products.Where(p => p.QtyPerCombo is > 0))
+        {
+            var qty = component.QtyPerCombo!.Value * packs;
+            var stock = await db.ProductB2bLocationStocks
+                .FirstOrDefaultAsync(
+                    s => s.ProductId == component.ProductId && s.LocationExternalId == line.LocationExternalId,
+                    cancellationToken);
+            if (stock is null) continue;
+
+            var restore = Math.Min(qty, stock.OnOrderQty);
+            stock.OnOrderQty = Math.Max(0, stock.OnOrderQty - restore);
+            stock.InStock += restore;
+            stock.UpdatedAt = DateTime.UtcNow;
+        }
+
+        line.QuantityLocked = 0;
+        line.Status = "released";
     }
 
     async Task<B2bSalesOrder> LoadOrderAsync(int orderId, CancellationToken cancellationToken)

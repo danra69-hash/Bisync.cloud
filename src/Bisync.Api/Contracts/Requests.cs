@@ -951,9 +951,11 @@ public class CreateB2bSalesOrderRequest
 
 public class CreateB2bSalesOrderLineRequest
 {
-    [Range(1, int.MaxValue)]
+    /// <summary>Required for normal product lines. For combo lines, optional (server uses first component).</summary>
     public int ProductId { get; set; }
     public int? ProductAliasId { get; set; }
+    /// <summary>When set to an active combo promotion, this line is sold as a combo pack.</summary>
+    public int? PromotionId { get; set; }
     [MaxLength(80)]
     public string LocationExternalId { get; set; } = string.Empty;
     [Range(0.0001, 999999999)]
@@ -1583,11 +1585,17 @@ public class CreatePromotionRequest
     /// <summary>yyyy-MM-dd — required when DurationMode is byDate</summary>
     [MaxLength(16)]
     public string? EndDate { get; set; }
-    /// <summary>discountPercent | knockedDownPrice</summary>
+    /// <summary>discountPercent | knockedDownPrice | combo</summary>
     [MaxLength(40)]
     public string PromotionType { get; set; } = "discountPercent";
     [Range(0, 100)]
     public decimal? DiscountPercent { get; set; }
+    /// <summary>Required when PromotionType is combo — price for one combo pack.</summary>
+    [Range(0, 999999999)]
+    public decimal? ComboPrice { get; set; }
+    /// <summary>Required when combo + byQty — number of combo packs available.</summary>
+    [Range(0.0001, 999999999)]
+    public decimal? ComboPackQty { get; set; }
     [MaxLength(256)]
     public string? CreatedBy { get; set; }
     public List<CreatePromotionProductRequest> Products { get; set; } = [];
@@ -1601,6 +1609,9 @@ public class CreatePromotionProductRequest
     public decimal? PromoQty { get; set; }
     [Range(0, 999999999)]
     public decimal? KnockedDownPrice { get; set; }
+    /// <summary>Required for combo — qty of this product included in one combo pack.</summary>
+    [Range(0.0001, 999999999)]
+    public decimal? QtyPerCombo { get; set; }
 }
 
 public class SetPromotionActiveRequest

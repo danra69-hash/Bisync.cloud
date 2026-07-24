@@ -124,6 +124,7 @@ export function SalesOrderCartModal({
         lines: lines.map(line => ({
           productId: line.productId,
           productAliasId: line.productAliasId,
+          promotionId: line.promotionId ?? undefined,
           locationExternalId: line.locationExternalId || locationExternalId,
           quantityOrdered: line.quantity,
           uom: line.deliveryUom,

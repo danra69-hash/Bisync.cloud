@@ -88,6 +88,35 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
         }));
     }
 
+    [HttpGet("active-combos")]
+    public async Task<ActionResult<object>> ActiveCombos(
+        [FromQuery] int companyId,
+        CancellationToken cancellationToken)
+    {
+        if (companyId <= 0)
+            return BadRequest(new { message = "companyId is required." });
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var combos = await PromotionPricingService.ListActiveCombosAsync(db, companyId, today, cancellationToken);
+        return Ok(combos.Select(c => new
+        {
+            promotionId = c.PromotionId,
+            name = c.Name,
+            comboPrice = c.ComboPrice,
+            comboPackRemaining = c.ComboPackRemaining,
+            durationMode = c.DurationMode,
+            startDate = c.StartDate,
+            endDate = c.EndDate,
+            components = c.Components.Select(comp => new
+            {
+                productId = comp.ProductId,
+                productName = comp.ProductName,
+                deliveryUnit = comp.DeliveryUnit,
+                qtyPerCombo = comp.QtyPerCombo,
+            }),
+        }));
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<object>> Get(int id, CancellationToken cancellationToken)
     {
@@ -120,14 +149,16 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
             ? PromotionPricingService.DurationByQty
             : PromotionPricingService.DurationByDate;
 
-        var promotionType = (request.PromotionType ?? string.Empty).Trim();
-        if (!string.Equals(promotionType, PromotionPricingService.TypeDiscountPercent, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(promotionType, PromotionPricingService.TypeKnockedDownPrice, StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { message = "Promotion type must be discount % or knocked-down price." });
-
-        promotionType = string.Equals(promotionType, PromotionPricingService.TypeKnockedDownPrice, StringComparison.OrdinalIgnoreCase)
-            ? PromotionPricingService.TypeKnockedDownPrice
-            : PromotionPricingService.TypeDiscountPercent;
+        var rawType = (request.PromotionType ?? string.Empty).Trim();
+        string promotionType;
+        if (string.Equals(rawType, PromotionPricingService.TypeCombo, StringComparison.OrdinalIgnoreCase))
+            promotionType = PromotionPricingService.TypeCombo;
+        else if (string.Equals(rawType, PromotionPricingService.TypeKnockedDownPrice, StringComparison.OrdinalIgnoreCase))
+            promotionType = PromotionPricingService.TypeKnockedDownPrice;
+        else if (string.Equals(rawType, PromotionPricingService.TypeDiscountPercent, StringComparison.OrdinalIgnoreCase))
+            promotionType = PromotionPricingService.TypeDiscountPercent;
+        else
+            return BadRequest(new { message = "Promotion type must be discount %, knocked-down price, or combo." });
 
         if (!DateOnly.TryParse(request.StartDate, out var startDate))
             return BadRequest(new { message = "Promotion start date is required." });
@@ -143,6 +174,10 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
         }
 
         decimal? discountPercent = null;
+        decimal? comboPrice = null;
+        decimal? comboPackQty = null;
+        decimal? comboPackRemaining = null;
+
         if (promotionType == PromotionPricingService.TypeDiscountPercent)
         {
             if (request.DiscountPercent is null or < 0 or > 100)
@@ -150,13 +185,35 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
             discountPercent = request.DiscountPercent;
         }
 
+        if (promotionType == PromotionPricingService.TypeCombo)
+        {
+            if (request.ComboPrice is null or < 0)
+                return BadRequest(new { message = "Combo price is required." });
+            comboPrice = request.ComboPrice;
+            if (durationMode == PromotionPricingService.DurationByQty)
+            {
+                if (request.ComboPackQty is null or <= 0)
+                    return BadRequest(new { message = "Combo pack QTY is required when duration is By QTY." });
+                comboPackQty = request.ComboPackQty;
+                comboPackRemaining = request.ComboPackQty;
+            }
+        }
+
         var selected = (request.Products ?? [])
             .Where(p => p.ProductId > 0)
             .GroupBy(p => p.ProductId)
             .Select(g => g.First())
             .ToList();
-        if (selected.Count == 0)
+
+        if (promotionType == PromotionPricingService.TypeCombo)
+        {
+            if (selected.Count < 2)
+                return BadRequest(new { message = "A combo needs at least two products in the bucket." });
+        }
+        else if (selected.Count == 0)
+        {
             return BadRequest(new { message = "Select at least one product for this promotion." });
+        }
 
         var productIds = selected.Select(p => p.ProductId).ToList();
         var products = await db.Products.AsNoTracking()
@@ -172,20 +229,31 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
             var product = productById[row.ProductId];
             decimal? promoQty = null;
             decimal? remainingQty = null;
-            if (durationMode == PromotionPricingService.DurationByQty)
-            {
-                if (row.PromoQty is null or <= 0)
-                    return BadRequest(new { message = $"Promo QTY is required for {product.Name}." });
-                promoQty = row.PromoQty;
-                remainingQty = row.PromoQty;
-            }
-
+            decimal? qtyPerCombo = null;
             decimal? knockedDown = null;
-            if (promotionType == PromotionPricingService.TypeKnockedDownPrice)
+
+            if (promotionType == PromotionPricingService.TypeCombo)
             {
-                if (row.KnockedDownPrice is null or < 0)
-                    return BadRequest(new { message = $"Knocked-down price is required for {product.Name}." });
-                knockedDown = row.KnockedDownPrice;
+                if (row.QtyPerCombo is null or <= 0)
+                    return BadRequest(new { message = $"Combo QTY is required for {product.Name}." });
+                qtyPerCombo = row.QtyPerCombo;
+            }
+            else
+            {
+                if (durationMode == PromotionPricingService.DurationByQty)
+                {
+                    if (row.PromoQty is null or <= 0)
+                        return BadRequest(new { message = $"Promo QTY is required for {product.Name}." });
+                    promoQty = row.PromoQty;
+                    remainingQty = row.PromoQty;
+                }
+
+                if (promotionType == PromotionPricingService.TypeKnockedDownPrice)
+                {
+                    if (row.KnockedDownPrice is null or < 0)
+                        return BadRequest(new { message = $"Knocked-down price is required for {product.Name}." });
+                    knockedDown = row.KnockedDownPrice;
+                }
             }
 
             lines.Add(new PromotionProduct
@@ -196,6 +264,7 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
                 PromoQty = promoQty,
                 RemainingQty = remainingQty,
                 KnockedDownPrice = knockedDown,
+                QtyPerCombo = qtyPerCombo,
             });
         }
 
@@ -209,6 +278,9 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
             EndDate = endDate,
             PromotionType = promotionType,
             DiscountPercent = discountPercent,
+            ComboPrice = comboPrice,
+            ComboPackQty = comboPackQty,
+            ComboPackRemaining = comboPackRemaining,
             Active = true,
             CreatedBy = request.CreatedBy?.Trim() ?? string.Empty,
             CreatedAt = now,
@@ -249,6 +321,9 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
         endDate = p.EndDate?.ToString("yyyy-MM-dd"),
         promotionType = p.PromotionType,
         discountPercent = p.DiscountPercent,
+        comboPrice = p.ComboPrice,
+        comboPackQty = p.ComboPackQty,
+        comboPackRemaining = p.ComboPackRemaining,
         active = p.Active,
         status = PromotionPricingService.ResolveStatusLabel(p, asOf),
         createdBy = p.CreatedBy,
@@ -263,6 +338,7 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
             promoQty = line.PromoQty,
             remainingQty = line.RemainingQty,
             knockedDownPrice = line.KnockedDownPrice,
+            qtyPerCombo = line.QtyPerCombo,
         }),
     };
 }

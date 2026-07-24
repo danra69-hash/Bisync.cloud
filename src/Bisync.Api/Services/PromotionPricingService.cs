@@ -10,6 +10,7 @@ public static class PromotionPricingService
     public const string DurationByQty = "byQty";
     public const string TypeDiscountPercent = "discountPercent";
     public const string TypeKnockedDownPrice = "knockedDownPrice";
+    public const string TypeCombo = "combo";
 
     public sealed record PromoPriceHit(
         int PromotionId,
@@ -17,6 +18,25 @@ public static class PromotionPricingService
         string PromotionName,
         decimal PromoRrp,
         decimal? RemainingQty);
+
+    public sealed record ActiveComboDto(
+        int PromotionId,
+        string Name,
+        decimal ComboPrice,
+        decimal? ComboPackRemaining,
+        string DurationMode,
+        string StartDate,
+        string? EndDate,
+        IReadOnlyList<ActiveComboComponentDto> Components);
+
+    public sealed record ActiveComboComponentDto(
+        int ProductId,
+        string ProductName,
+        string DeliveryUnit,
+        decimal QtyPerCombo);
+
+    public static bool IsCombo(Promotion promotion) =>
+        string.Equals(promotion.PromotionType, TypeCombo, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsEffectivelyActive(Promotion promotion, DateOnly asOf)
     {
@@ -31,7 +51,11 @@ public static class PromotionPricingService
         }
 
         if (string.Equals(promotion.DurationMode, DurationByQty, StringComparison.OrdinalIgnoreCase))
+        {
+            if (IsCombo(promotion))
+                return promotion.ComboPackRemaining is > 0;
             return promotion.Products.Any(p => p.RemainingQty is > 0);
+        }
 
         return false;
     }
@@ -41,6 +65,9 @@ public static class PromotionPricingService
 
     public static decimal? ComputePromoRrp(Promotion promotion, PromotionProduct line, decimal baseRrp)
     {
+        if (IsCombo(promotion))
+            return null;
+
         if (string.Equals(promotion.PromotionType, TypeKnockedDownPrice, StringComparison.OrdinalIgnoreCase))
         {
             if (line.KnockedDownPrice is > 0)
@@ -74,7 +101,7 @@ public static class PromotionPricingService
 
         var promotions = await db.Promotions
             .Include(p => p.Products)
-            .Where(p => p.CompanyId == companyId && p.Active)
+            .Where(p => p.CompanyId == companyId && p.Active && p.PromotionType != TypeCombo)
             .OrderByDescending(p => p.CreatedAt)
             .ThenByDescending(p => p.Id)
             .ToListAsync(cancellationToken);
@@ -93,7 +120,6 @@ public static class PromotionPricingService
                     && line.RemainingQty is not > 0)
                     continue;
 
-                // Base RRP for discount is resolved by caller; store 0 placeholder and recompute when applying.
                 result[line.ProductId] = new PromoPriceHit(
                     promotion.Id,
                     line.Id,
@@ -138,6 +164,42 @@ public static class PromotionPricingService
         return result;
     }
 
+    public static async Task<List<ActiveComboDto>> ListActiveCombosAsync(
+        BisyncDbContext db,
+        int companyId,
+        DateOnly asOf,
+        CancellationToken cancellationToken = default)
+    {
+        var promotions = await db.Promotions
+            .AsNoTracking()
+            .Include(p => p.Products)
+            .Where(p => p.CompanyId == companyId && p.Active && p.PromotionType == TypeCombo)
+            .OrderByDescending(p => p.CreatedAt)
+            .ThenByDescending(p => p.Id)
+            .ToListAsync(cancellationToken);
+
+        return promotions
+            .Where(p => IsEffectivelyActive(p, asOf) && p.ComboPrice is > 0 && p.Products.Count >= 2)
+            .Select(p => new ActiveComboDto(
+                p.Id,
+                p.Name,
+                p.ComboPrice!.Value,
+                p.ComboPackRemaining,
+                p.DurationMode,
+                p.StartDate.ToString("yyyy-MM-dd"),
+                p.EndDate?.ToString("yyyy-MM-dd"),
+                p.Products
+                    .Where(c => c.QtyPerCombo is > 0)
+                    .Select(c => new ActiveComboComponentDto(
+                        c.ProductId,
+                        c.ProductName,
+                        c.DeliveryUnit,
+                        c.QtyPerCombo!.Value))
+                    .ToList()))
+            .Where(c => c.Components.Count >= 2)
+            .ToList();
+    }
+
     public static async Task ConsumePromoQtyAsync(
         BisyncDbContext db,
         IReadOnlyDictionary<int, decimal> qtyByPromotionProductId,
@@ -156,6 +218,28 @@ public static class PromotionPricingService
                 continue;
             if (line.RemainingQty is null) continue;
             line.RemainingQty = Math.Max(0, line.RemainingQty.Value - qty);
+        }
+    }
+
+    public static async Task ConsumeComboPacksAsync(
+        BisyncDbContext db,
+        IReadOnlyDictionary<int, decimal> packsByPromotionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (packsByPromotionId.Count == 0) return;
+
+        var ids = packsByPromotionId.Keys.ToList();
+        var promotions = await db.Promotions
+            .Where(p => ids.Contains(p.Id))
+            .ToListAsync(cancellationToken);
+
+        foreach (var promotion in promotions)
+        {
+            if (!packsByPromotionId.TryGetValue(promotion.Id, out var packs) || packs <= 0)
+                continue;
+            if (promotion.ComboPackRemaining is null) continue;
+            promotion.ComboPackRemaining = Math.Max(0, promotion.ComboPackRemaining.Value - packs);
+            promotion.UpdatedAt = DateTime.UtcNow;
         }
     }
 }
