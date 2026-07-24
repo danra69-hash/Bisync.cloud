@@ -15,6 +15,9 @@ public class Ingredient
     public decimal LastPriceInventory { get; set; }
     public decimal DailyUsage { get; set; }
     public int OrderFreqDays { get; set; }
+    /// <summary>User-adjustable par stock quantity (principal recipe UOM by default).</summary>
+    public decimal ParStock { get; set; }
+    public string ParStockUom { get; set; } = string.Empty;
     public string StorageJson { get; set; } = "[]";
     public string StorageNote { get; set; } = string.Empty;
     public string DetailConfigJson { get; set; } = "{}";

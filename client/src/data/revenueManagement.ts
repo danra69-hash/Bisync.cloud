@@ -50,7 +50,7 @@ export const revMgmtNav: RevMgmtSection[] = [
     subs: [
       {
         items: [
-          { label: 'Smart Component' },
+          { label: 'My Component (ingredient)' },
           { label: 'Component Config' },
           { label: 'Account Mapping' },
         ],

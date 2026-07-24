@@ -54,9 +54,10 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
   },
   {
     id: 'smartComponent',
-    label: 'Smart Component',
+    label: 'My Component (ingredient)',
     tasks: [
-      { id: 'createEdit', label: 'Smart Component' },
+      { id: 'createEdit', label: 'My Component (ingredient)' },
+      { id: 'editParStock', label: 'Edit Par Stock' },
       { id: 'componentConfig', label: 'Component Config' },
       { id: 'activateDeactivateVendorProducts', label: 'Activate/Deactivate Vendor Products' },
       { id: 'createEditComponentGroup', label: 'Create and Edit Component Group' },
@@ -265,4 +266,13 @@ export const RMS_APPROVE_SALES_ORDER_TASK = 'approveSalesOrder';
 /** Users with this task can issue a sales order immediately (no approval queue). */
 export function canIssueSalesOrderWithoutApproval(access: UserAccess): boolean {
   return hasRmsTask(access, RMS_APPROVE_SALES_ORDER_TASK);
+}
+
+export const RMS_EDIT_COMPONENT_PAR_STOCK_TASK = 'editParStock';
+export const RMS_CREATE_EDIT_COMPONENT_TASK = 'createEdit';
+
+/** Edit My Component par stock qty (also allowed with create/edit component). */
+export function canEditComponentParStock(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_EDIT_COMPONENT_PAR_STOCK_TASK)
+    || hasRmsTask(access, RMS_CREATE_EDIT_COMPONENT_TASK);
 }

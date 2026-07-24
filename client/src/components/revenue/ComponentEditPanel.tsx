@@ -918,7 +918,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       <div className={elevated ? DETAIL_PANEL_SHELL_ELEVATED_CLS : SIDE_PANEL_SHELL_DETAIL_CLS} onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
-            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Smart Component</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">My Component (ingredient)</p>
             <h3 className="text-sm font-semibold text-foreground">
               {isNew ? 'New Component' : row.name}
             </h3>

@@ -373,6 +373,11 @@ export type ComponentRow = {
   lastPriceInventory: number;
   dailyUsage: number;
   orderFreqDays: number;
+  parStock?: number;
+  parStockUom?: string;
+  onHandQty?: number;
+  dailyUsageAuto?: boolean;
+  orderFreqAuto?: boolean;
   storage: string[];
   storageNote?: string;
   attachedProducts: number;
@@ -441,6 +446,11 @@ export const blankComponentRow: ComponentRow = {
   lastPriceInventory: 0,
   dailyUsage: 0,
   orderFreqDays: 7,
+  parStock: 0,
+  parStockUom: 'g',
+  onHandQty: 0,
+  dailyUsageAuto: false,
+  orderFreqAuto: false,
   storage: ['Dry Store'],
   storageNote: '',
   attachedProducts: 0,

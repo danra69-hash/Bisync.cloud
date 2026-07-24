@@ -698,19 +698,109 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
 public class IngredientsController(
     BisyncDbContext db,
     ITenantContext tenant,
-    SplitUseService splitUse) : ControllerBase
+    SplitUseService splitUse,
+    IngredientUsageMetricsService usageMetrics,
+    StockCardService stockCardService) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Ingredient>>> GetAll([FromQuery] int? companyId = null)
+    public async Task<ActionResult<IEnumerable<object>>> GetAll(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationIds = null,
+        CancellationToken cancellationToken = default)
     {
         var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
         IQueryable<Ingredient> query = db.Ingredients.AsNoTracking();
         if (cid is int id)
             query = query.Where(i => i.CompanyId == id);
         else if (!TenantQuery.AllowsAllCompanies(tenant, cid))
-            return Ok(Array.Empty<Ingredient>());
+            return Ok(Array.Empty<object>());
 
-        return Ok(await query.OrderBy(i => i.Name).ToListAsync());
+        var ingredients = await query.OrderBy(i => i.Name).ToListAsync(cancellationToken);
+        if (ingredients.Count == 0)
+            return Ok(Array.Empty<object>());
+
+        var locationIdList = (locationIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (locationIdList.Count == 0 && cid is int companyForLocs)
+        {
+            locationIdList = await db.Locations.AsNoTracking()
+                .Where(l => l.CompanyId == companyForLocs)
+                .Select(l => l.ExternalId)
+                .ToListAsync(cancellationToken);
+        }
+
+        var metrics = cid is int companyForMetrics
+            ? await usageMetrics.ComputeAsync(companyForMetrics, locationIdList, cancellationToken)
+            : new IngredientUsageMetricsResult(
+                new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                IngredientUsageMetricsService.LookbackDays);
+
+        var onHandByKey = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        if (locationIdList.Count > 0)
+        {
+            var stockRows = await stockCardService.ListAsync(
+                cid,
+                locationIdList,
+                "component",
+                "recipe",
+                period: null,
+                cancellationToken);
+            foreach (var row in stockRows)
+            {
+                onHandByKey.TryGetValue(row.ItemKey, out var existing);
+                onHandByKey[row.ItemKey] = existing + row.OnHandQty;
+            }
+        }
+
+        return Ok(ingredients.Select(i =>
+        {
+            metrics.DailyUsageByComponentId.TryGetValue(i.ComponentId, out var computedUsage);
+            metrics.OrderFreqDaysByComponentId.TryGetValue(i.ComponentId, out var computedFreq);
+            onHandByKey.TryGetValue(i.ComponentId, out var onHand);
+            var dailyUsage = computedUsage > 0 ? computedUsage : i.DailyUsage;
+            var orderFreq = computedFreq > 0 ? computedFreq : i.OrderFreqDays;
+            var parStock = i.ParStock > 0
+                ? i.ParStock
+                : (dailyUsage > 0 && orderFreq > 0 ? dailyUsage * orderFreq : 0m);
+            var parStockUom = !string.IsNullOrWhiteSpace(i.ParStockUom)
+                ? i.ParStockUom
+                : i.RecipeUom;
+
+            return new
+            {
+                i.Id,
+                i.CompanyId,
+                i.ComponentId,
+                i.Name,
+                i.Category,
+                i.Group,
+                i.RecipeUom,
+                i.InventoryUom,
+                i.LastPriceRecipe,
+                i.LastPriceInventory,
+                dailyUsage,
+                orderFreqDays = orderFreq,
+                parStock,
+                parStockUom,
+                onHandQty = onHand,
+                metricsLookbackDays = metrics.LookbackDays,
+                dailyUsageAuto = computedUsage > 0,
+                orderFreqAuto = computedFreq > 0,
+                i.StorageJson,
+                i.StorageNote,
+                i.DetailConfigJson,
+                i.AttachedProducts,
+                i.AttachedVendors,
+                i.Active,
+                i.LocationsJson,
+                i.CreatedAt,
+                i.UpdatedAt,
+            };
+        }));
     }
 
     [HttpPut("{id:int}")]
@@ -754,6 +844,8 @@ public class IngredientsController(
         item.StorageNote = updated.StorageNote ?? string.Empty;
         item.DailyUsage = updated.DailyUsage;
         item.OrderFreqDays = updated.OrderFreqDays;
+        item.ParStock = updated.ParStock;
+        item.ParStockUom = updated.ParStockUom?.Trim() ?? string.Empty;
         item.AttachedProducts = updated.AttachedProducts;
         item.AttachedVendors = updated.AttachedVendors;
         item.LocationsJson = updated.LocationsJson;
@@ -805,6 +897,8 @@ public class IngredientsController(
         ingredient.CompanyId = companyId;
         ingredient.Name = name;
         ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId);
+        if (string.IsNullOrWhiteSpace(ingredient.ParStockUom))
+            ingredient.ParStockUom = ingredient.RecipeUom ?? string.Empty;
 
         var submittedDetailConfig = ingredient.DetailConfigJson;
         ingredient.DetailConfigJson = "{}";

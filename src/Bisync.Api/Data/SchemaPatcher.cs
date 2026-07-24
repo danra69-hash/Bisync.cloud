@@ -155,6 +155,8 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CreatedAt", "TIMESTAMP NOT NULL DEFAULT NOW()");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "UpdatedAt", "TIMESTAMP NOT NULL DEFAULT NOW()");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CompanyId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStock", "REAL NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStockUom", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");

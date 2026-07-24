@@ -117,7 +117,7 @@ export const en = {
       wastage: 'Wastage',
       transfer: 'Transfer',
       inventoryConfig: 'Inventory Config',
-      smartComponent: 'Smart Component',
+      smartComponent: 'My Component (ingredient)',
       componentConfig: 'Component Config',
       accountMapping: 'Account Mapping',
       vendorListProducts: 'Vendor List & Products',
