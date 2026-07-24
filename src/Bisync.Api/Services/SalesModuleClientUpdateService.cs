@@ -77,6 +77,9 @@ public class SalesModuleClientUpdateService(
         }
     }
 
+    /// <summary>Allow controllers to refresh Client Update list cache after external writes.</summary>
+    public void InvalidateListCachePublic() => InvalidateListCache();
+
     async Task<List<SalesModuleClientUpdate>> GetCachedRowsAsync(CancellationToken ct)
     {
         lock (CacheLock)
@@ -336,6 +339,7 @@ public class SalesModuleClientUpdateService(
         string contactType,
         DateTime contactDate,
         IReadOnlyList<(string Name, string Position)> contacts,
+        string? comment = null,
         CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);
@@ -349,7 +353,7 @@ public class SalesModuleClientUpdateService(
             ? "STATUS UPDATE"
             : (contactType ?? string.Empty).Trim();
         var contactPerson = FormatDiaryContacts(contacts);
-        var note = BuildDiaryNote(isStatusChange, statuses, resolvedContactType, locationVisited, emailsSent);
+        var note = BuildDiaryNote(isStatusChange, statuses, resolvedContactType, locationVisited, emailsSent, comment);
         var statusValue = isStatusChange && statuses.Count > 0
             ? string.Join(", ", statuses)
             : string.Empty;
@@ -442,12 +446,15 @@ public class SalesModuleClientUpdateService(
         IReadOnlyList<string> statuses,
         string contactType,
         string locationVisited,
-        int? emailsSent)
+        int? emailsSent,
+        string? comment = null)
     {
         if (isStatusChange)
         {
             var statusText = statuses.Count > 0 ? string.Join(", ", statuses) : "—";
-            return $"Sales Diary · Status Change · {statusText}";
+            var baseNote = $"Sales Diary · Status Change · {statusText}";
+            var trimmed = (comment ?? string.Empty).Trim();
+            return string.IsNullOrWhiteSpace(trimmed) ? baseNote : $"{baseNote} · {trimmed}";
         }
 
         var parts = new List<string> { "Sales Diary", contactType };

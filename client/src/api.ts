@@ -770,6 +770,7 @@ export interface SalesModuleDiaryEntry {
   contactType: string;
   contactDate: string;
   contacts: SalesModuleDiaryContact[];
+  comment?: string;
   createdAt: string;
   createdByEmail?: string;
 }
@@ -786,7 +787,33 @@ export interface CreateSalesModuleDiaryEntryPayload {
   contactType?: string;
   contactDate: string;
   contacts?: SalesModuleDiaryContact[];
+  comment?: string;
   createdByEmail?: string;
+}
+
+export interface ClientUpdateFollowupPayload {
+  sendAppointment?: boolean;
+  appointmentTitle?: string;
+  startsAt?: string;
+  endsAt?: string;
+  location?: string;
+  appointmentNotes?: string;
+  changeStatus?: boolean;
+  statuses?: string[];
+  comment?: string;
+  contactDate?: string;
+  createdByEmail?: string;
+}
+
+export interface SalesModuleClientUpdateFollowupResult {
+  clientUpdate: SalesModuleClientUpdate;
+  appointment?: SalesModuleAppointment | null;
+  diaryEntry?: SalesModuleDiaryEntry | null;
+  outlookSynced?: boolean;
+  outlookSyncError?: string | null;
+  whatsappMessage?: string | null;
+  whatsappMobile?: string | null;
+  graphConfigured?: boolean;
 }
 
 export interface SalesModuleOverviewPeriodWeek {
@@ -2614,6 +2641,12 @@ export const api = {
       locationCount?: number | null;
     },
   ) => fetchJsonWithMethod<SalesModuleClientUpdate>(`/api/sales-module/client-updates/${id}`, 'PATCH', data),
+  followupSalesModuleClientUpdate: (id: number, data: ClientUpdateFollowupPayload) =>
+    fetchJsonWithMethod<SalesModuleClientUpdateFollowupResult>(
+      `/api/sales-module/client-updates/${id}/followup`,
+      'POST',
+      data,
+    ),
   salesModuleDiary: (salesTeamMemberId: number) =>
     fetchJson<SalesModuleDiaryEntry[]>(`/api/sales-module/diary?salesTeamMemberId=${salesTeamMemberId}`),
   createSalesModuleDiaryEntry: (data: CreateSalesModuleDiaryEntryPayload) =>

@@ -889,6 +889,7 @@ public static class SchemaPatcher
                 "ContactType" TEXT NOT NULL DEFAULT '',
                 "ContactDate" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "ContactsJson" TEXT NOT NULL DEFAULT '[]',
+                "Comment" TEXT NOT NULL DEFAULT '',
                 "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "CreatedByEmail" TEXT NOT NULL DEFAULT ''
             );
@@ -896,6 +897,7 @@ public static class SchemaPatcher
         await TryCreateIndexAsync(db, "IX_SalesModuleDiaryEntries_Member", "SalesModuleDiaryEntries", "\"SalesTeamMemberId\"");
         await TryCreateIndexAsync(db, "IX_SalesModuleDiaryEntries_ContactDate", "SalesModuleDiaryEntries", "\"ContactDate\"");
         await TryCreateIndexAsync(db, "IX_SalesModuleDiaryEntries_Company", "SalesModuleDiaryEntries", "\"SalesModuleCompanyId\"");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleDiaryEntries", "Comment", "TEXT NOT NULL DEFAULT ''");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "AccessControlSettings" (

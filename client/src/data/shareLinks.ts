@@ -25,6 +25,15 @@ export function buildWhatsAppShareHref(message: string): string {
   return `https://wa.me/?text=${encodeURIComponent(message)}`;
 }
 
+/** Open WhatsApp to a phone (E.164 digits) with prefilled text, or recipient picker if no phone. */
+export function buildWhatsAppHref(message: string, mobileDigits?: string | null): string {
+  const digits = (mobileDigits ?? '').replace(/\D/g, '');
+  if (digits.length >= 8) {
+    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  }
+  return buildWhatsAppShareHref(message);
+}
+
 /** Prefill body with label + URL alone on its own line so WhatsApp linkifies it. */
 export function buildShareMessageWithLink(intro: string, url: string): string {
   const lead = intro.trim();

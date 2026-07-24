@@ -49,6 +49,8 @@ public class SalesModuleController(
         var activity = NormalizeDiaryActivity(request.ActivityType);
         if (string.IsNullOrEmpty(activity)) return "Activity must be Status Change or Sales Call.";
         if (request.ContactDate == default) return "Date of Contact is required.";
+        if (activity == "StatusChange" && string.IsNullOrWhiteSpace(request.Comment))
+            return "Comment is required when changing status.";
         if (activity == "SalesCall")
         {
             var contactType = (request.ContactType ?? string.Empty).Trim();
@@ -74,10 +76,12 @@ public class SalesModuleController(
                 "ContactType" TEXT NOT NULL DEFAULT '',
                 "ContactDate" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "ContactsJson" TEXT NOT NULL DEFAULT '[]',
+                "Comment" TEXT NOT NULL DEFAULT '',
                 "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "CreatedByEmail" TEXT NOT NULL DEFAULT ''
             );
             """, ct);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleDiaryEntries", "Comment", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE INDEX IF NOT EXISTS "IX_SalesModuleDiaryEntries_Member"
             ON "SalesModuleDiaryEntries" ("SalesTeamMemberId");
@@ -124,6 +128,7 @@ public class SalesModuleController(
             contactType = e.ContactType,
             contactDate = e.ContactDate,
             contacts,
+            comment = e.Comment,
             createdAt = e.CreatedAt,
             createdByEmail = e.CreatedByEmail,
         };
@@ -615,6 +620,331 @@ public class SalesModuleController(
         }
     }
 
+    /// <summary>
+    /// Client Update Followup: send an appointment (Outlook sync when Graph credentials exist)
+    /// and/or change status (comment required). WhatsApp message text is returned for the client.
+    /// </summary>
+    [HttpPost("client-updates/{id:int}/followup")]
+    public async Task<ActionResult<object>> FollowupClientUpdate(
+        int id,
+        [FromBody] ClientUpdateFollowupRequest request,
+        CancellationToken ct = default)
+    {
+        if (id <= 0) return BadRequest(new { message = "id is required." });
+        if (request is null || (!request.SendAppointment && !request.ChangeStatus))
+            return BadRequest(new { message = "Choose Send Appointment and/or Change Status." });
+
+        await EnsureSalesDiarySchemaAsync(ct);
+        await EnsureSalesCompanySchemaAsync(ct);
+
+        var row = await db.SalesModuleClientUpdates.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (row is null) return NotFound(new { message = "Client Update row not found." });
+
+        if (row.SalesTeamMemberId is not > 0)
+            return BadRequest(new { message = "Tag a Hunter on this Client Update row first." });
+
+        var member = await db.SalesModuleTeamMembers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == row.SalesTeamMemberId.Value && m.Active, ct);
+        if (member is null)
+            return BadRequest(new { message = "Sales team member not found or inactive." });
+
+        var companyName = !string.IsNullOrWhiteSpace(row.Company)
+            ? row.Company.Trim()
+            : (row.Brand ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(companyName))
+            return BadRequest(new { message = "Fill Company (or Brand) on this Client Update row first." });
+
+        object? appointmentDto = null;
+        object? diaryDto = null;
+        string? whatsappMessage = null;
+        string? whatsappMobile = null;
+        var outlookSynced = false;
+        string? outlookSyncError = null;
+
+        SalesModuleCompany company;
+        try
+        {
+            company = await ResolveOrCreateCompanyForFollowupAsync(companyName, member.Id, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
+        if (request.SendAppointment)
+        {
+            var title = (request.AppointmentTitle ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(title))
+                return BadRequest(new { message = "Appointment title is required." });
+            if (request.StartsAt is null || request.EndsAt is null)
+                return BadRequest(new { message = "Appointment start and end are required." });
+            var startsAt = DateTime.SpecifyKind(request.StartsAt.Value, DateTimeKind.Utc);
+            var endsAt = DateTime.SpecifyKind(request.EndsAt.Value, DateTimeKind.Utc);
+            if (endsAt <= startsAt)
+                return BadRequest(new { message = "End time must be after start time." });
+
+            var notes = (request.AppointmentNotes ?? string.Empty).Trim();
+            var location = (request.Location ?? string.Empty).Trim();
+
+            var customer = await ResolveOrCreateCustomerForFollowupAsync(
+                company, row, member, ct);
+
+            var appt = new SalesModuleAppointment
+            {
+                CompanyId = company.Id,
+                SalesModuleCustomerId = customer.Id,
+                Title = title,
+                Notes = notes,
+                StartsAt = startsAt,
+                EndsAt = endsAt,
+                Location = location,
+                EngagedUserId = 0,
+                EngagedUserEmail = member.Email,
+                SalesTeamMemberId = member.Id,
+                CreatedAt = DateTime.UtcNow,
+            };
+            db.SalesModuleAppointments.Add(appt);
+            await db.SaveChangesAsync(ct);
+
+            await calendarSync.PushCreateAsync(appt, customer, ct);
+            outlookSynced = !string.IsNullOrWhiteSpace(appt.OutlookEventId);
+            outlookSyncError = string.IsNullOrWhiteSpace(appt.OutlookSyncError) ? null : appt.OutlookSyncError;
+
+            row.Appointment = $"{startsAt:yyyy-MM-dd HH:mm} UTC · {title}";
+            row.LastContactDate = startsAt.Date;
+            await db.SaveChangesAsync(ct);
+            clientUpdateService.InvalidateListCachePublic();
+
+            appointmentDto = MapAppointment(appt, customer);
+            whatsappMessage = BuildAppointmentWhatsAppMessage(company.Name, appt, member.Name);
+            whatsappMobile = ExtractFirstMobile(customer.ContactsJson);
+        }
+
+        if (request.ChangeStatus)
+        {
+            var statuses = (request.Statuses ?? [])
+                .Select(s => s.Trim())
+                .Where(s => AllowedDiaryStatuses.Contains(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (statuses.Count == 0)
+                return BadRequest(new { message = "Tick at least one status." });
+
+            var comment = (request.Comment ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(comment))
+                return BadRequest(new { message = "Comment is required when changing status." });
+
+            var contactDate = request.ContactDate.HasValue
+                ? DateTime.SpecifyKind(request.ContactDate.Value.Date, DateTimeKind.Utc)
+                : DateTime.UtcNow.Date;
+
+            var diary = new SalesModuleDiaryEntry
+            {
+                SalesTeamMemberId = member.Id,
+                ActivityType = "StatusChange",
+                SalesModuleCompanyId = company.Id,
+                CompanyName = company.Name,
+                BrandName = (row.Brand ?? string.Empty).Trim(),
+                StatusesJson = JsonSerializer.Serialize(statuses, JsonOpts),
+                ContactDate = contactDate,
+                ContactsJson = "[]",
+                Comment = comment,
+                CreatedAt = DateTime.UtcNow,
+                CreatedByEmail = (request.CreatedByEmail ?? string.Empty).Trim().ToLowerInvariant(),
+            };
+            db.SalesModuleDiaryEntries.Add(diary);
+            await db.SaveChangesAsync(ct);
+
+            try
+            {
+                await clientUpdateService.ApplyDiaryEntryAsync(
+                    member.Id,
+                    member.Name,
+                    "StatusChange",
+                    company.Name,
+                    diary.BrandName,
+                    string.Empty,
+                    null,
+                    statuses,
+                    string.Empty,
+                    contactDate,
+                    Array.Empty<(string Name, string Position)>(),
+                    comment,
+                    ct);
+            }
+            catch
+            {
+                // Diary saved; Client Update sync is best-effort.
+            }
+
+            diaryDto = MapDiaryEntry(diary);
+        }
+
+        var refreshed = await db.SalesModuleClientUpdates.AsNoTracking()
+            .FirstAsync(r => r.Id == id, ct);
+
+        return Ok(new
+        {
+            clientUpdate = SalesModuleClientUpdateService.Map(refreshed),
+            appointment = appointmentDto,
+            diaryEntry = diaryDto,
+            outlookSynced,
+            outlookSyncError,
+            whatsappMessage,
+            whatsappMobile,
+            graphConfigured = outlookSynced || !string.IsNullOrWhiteSpace(outlookSyncError),
+        });
+    }
+
+    async Task<SalesModuleCompany> ResolveOrCreateCompanyForFollowupAsync(
+        string companyName,
+        int salesTeamMemberId,
+        CancellationToken ct)
+    {
+        var key = companyName.Trim().ToLowerInvariant();
+        var taggedIds = await db.SalesModuleCompanyMembers.AsNoTracking()
+            .Where(t => t.SalesTeamMemberId == salesTeamMemberId)
+            .Select(t => t.SalesModuleCompanyId)
+            .ToListAsync(ct);
+
+        var existing = await db.SalesModuleCompanies
+            .Where(c => c.Active && taggedIds.Contains(c.Id))
+            .ToListAsync(ct);
+        var match = existing.FirstOrDefault(c => c.Name.Trim().Equals(companyName.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (match is not null) return match;
+
+        var anyMatch = await db.SalesModuleCompanies
+            .FirstOrDefaultAsync(c => c.Active && c.Name.ToLower() == key, ct);
+        if (anyMatch is not null)
+        {
+            var alreadyTagged = await db.SalesModuleCompanyMembers.AsNoTracking()
+                .AnyAsync(
+                    t => t.SalesModuleCompanyId == anyMatch.Id && t.SalesTeamMemberId == salesTeamMemberId,
+                    ct);
+            if (!alreadyTagged)
+            {
+                db.SalesModuleCompanyMembers.Add(new SalesModuleCompanyMember
+                {
+                    SalesModuleCompanyId = anyMatch.Id,
+                    SalesTeamMemberId = salesTeamMemberId,
+                });
+                await db.SaveChangesAsync(ct);
+            }
+            return anyMatch;
+        }
+
+        var created = new SalesModuleCompany
+        {
+            Name = companyName.Trim(),
+            Active = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.SalesModuleCompanies.Add(created);
+        await db.SaveChangesAsync(ct);
+        db.SalesModuleCompanyMembers.Add(new SalesModuleCompanyMember
+        {
+            SalesModuleCompanyId = created.Id,
+            SalesTeamMemberId = salesTeamMemberId,
+        });
+        await db.SaveChangesAsync(ct);
+        return created;
+    }
+
+    async Task<SalesModuleCustomer> ResolveOrCreateCustomerForFollowupAsync(
+        SalesModuleCompany company,
+        SalesModuleClientUpdate row,
+        SalesModuleTeamMember member,
+        CancellationToken ct)
+    {
+        var customers = await db.SalesModuleCustomers
+            .Where(c => c.Active && c.CompanyId == company.Id)
+            .ToListAsync(ct);
+        var match = customers.FirstOrDefault(c =>
+            c.CompanyName.Trim().Equals(company.Name, StringComparison.OrdinalIgnoreCase));
+        if (match is not null) return match;
+        if (customers.Count == 1) return customers[0];
+
+        var contactName = !string.IsNullOrWhiteSpace(row.ContactPerson)
+            ? row.ContactPerson.Trim().Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()
+                ?? "Contact"
+            : "Contact";
+
+        var externalId = await NextCustomerExternalIdAsync(company.Id, ct);
+        var customer = new SalesModuleCustomer
+        {
+            CompanyId = company.Id,
+            ExternalId = externalId,
+            CompanyName = company.Name,
+            BrandsJson = string.IsNullOrWhiteSpace(row.Brand)
+                ? "[]"
+                : JsonSerializer.Serialize(new[] { new { name = row.Brand.Trim(), count = 1 } }, JsonOpts),
+            ContactsJson = JsonSerializer.Serialize(new[]
+            {
+                new
+                {
+                    id = Guid.NewGuid().ToString("N")[..8],
+                    name = contactName,
+                    position = "",
+                    email = "",
+                    mobile = "",
+                },
+            }, JsonOpts),
+            Status = "Prospect",
+            CreatedAt = DateTime.UtcNow,
+            LastChangedAt = DateTime.UtcNow,
+            LocationCount = row.LocationCount ?? 0,
+            HunterMemberId = member.Id,
+            HunterName = member.Name,
+            EngagedUserId = 0,
+            EngagedUserEmail = member.Email,
+            EngagedUserName = member.Name,
+            Active = true,
+        };
+        db.SalesModuleCustomers.Add(customer);
+        await db.SaveChangesAsync(ct);
+        return customer;
+    }
+
+    static string BuildAppointmentWhatsAppMessage(string companyName, SalesModuleAppointment appt, string hunterName)
+    {
+        var lines = new List<string>
+        {
+            $"Appointment · {companyName}",
+            appt.Title,
+            $"{appt.StartsAt:yyyy-MM-dd HH:mm} – {appt.EndsAt:HH:mm} UTC",
+        };
+        if (!string.IsNullOrWhiteSpace(appt.Location))
+            lines.Add($"Location: {appt.Location.Trim()}");
+        if (!string.IsNullOrWhiteSpace(appt.Notes))
+            lines.Add(appt.Notes.Trim());
+        lines.Add($"Hunter: {hunterName}");
+        return string.Join("\n", lines);
+    }
+
+    static string? ExtractFirstMobile(string contactsJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(contactsJson) ? "[]" : contactsJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.TryGetProperty("mobile", out var mobile) && mobile.ValueKind == JsonValueKind.String)
+                {
+                    var raw = mobile.GetString()?.Trim() ?? string.Empty;
+                    var digits = new string(raw.Where(char.IsDigit).ToArray());
+                    if (digits.Length >= 8) return digits;
+                }
+            }
+        }
+        catch
+        {
+            // ignore parse errors
+        }
+        return null;
+    }
+
     /// <summary>List Sales Diary entries for a Hunter (Sales Team member).</summary>
     [HttpGet("diary")]
     public async Task<ActionResult<IEnumerable<object>>> GetDiaryEntries(
@@ -724,6 +1054,10 @@ public class SalesModuleController(
         if (activity == "StatusChange" && statuses.Count == 0)
             return BadRequest(new { message = "Tick at least one status." });
 
+        var comment = (request.Comment ?? string.Empty).Trim();
+        if (activity == "StatusChange" && string.IsNullOrWhiteSpace(comment))
+            return BadRequest(new { message = "Comment is required when changing status." });
+
         var row = new SalesModuleDiaryEntry
         {
             SalesTeamMemberId = request.SalesTeamMemberId,
@@ -739,6 +1073,7 @@ public class SalesModuleController(
             ContactType = activity == "SalesCall" ? contactType : string.Empty,
             ContactDate = DateTime.SpecifyKind(request.ContactDate.Date, DateTimeKind.Utc),
             ContactsJson = JsonSerializer.Serialize(contacts, JsonOpts),
+            Comment = comment,
             CreatedAt = DateTime.UtcNow,
             CreatedByEmail = (request.CreatedByEmail ?? string.Empty).Trim().ToLowerInvariant(),
         };
@@ -763,6 +1098,7 @@ public class SalesModuleController(
                 row.ContactType,
                 row.ContactDate,
                 contactTuples,
+                comment,
                 ct);
         }
         catch
