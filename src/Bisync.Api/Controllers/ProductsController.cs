@@ -12,7 +12,8 @@ namespace Bisync.Api.Controllers;
 [Route("api/products")]
 public class ProductsController(
     BisyncDbContext db,
-    ProductNutrientEstimateService nutrientEstimates) : ControllerBase
+    ProductNutrientEstimateService nutrientEstimates,
+    NutritionLibrarySyncService nutritionLibrary) : ControllerBase
 {
     static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -195,6 +196,7 @@ public class ProductsController(
         if (bomChanges.Count > 0)
             db.ProductBomChanges.AddRange(bomChanges);
         await db.SaveChangesAsync();
+        await nutritionLibrary.EnsureReadyAsync();
         await nutrientEstimates.RecalculateForProductAsync(product.Id);
 
         product = await db.Products
@@ -341,6 +343,7 @@ public class ProductsController(
             db.ProductBomChanges.AddRange(bomChanges);
 
         await db.SaveChangesAsync();
+        await nutritionLibrary.EnsureReadyAsync();
         await nutrientEstimates.RecalculateForProductAsync(product.Id);
 
         product = await db.Products

@@ -129,6 +129,7 @@ jobs:
             --max-instances=2 \
             --timeout=600 \
             --cpu-boost \
+            --no-cpu-throttling \
             --add-cloudsql-instances="${SQL_CONNECTION}" \
             --set-secrets="DB_PASSWORD=bisync-db-password:latest" \
             --set-env-vars="ASPNETCORE_ENVIRONMENT=Production" \

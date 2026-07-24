@@ -46,6 +46,24 @@ public sealed class NutritionLibrarySyncService(
     }
 
     /// <summary>
+    /// Ensures the library is populated and that a weekly freshness check has run.
+    /// Used from request paths so Cloud Run CPU-throttling cannot strand the hosted sync.
+    /// </summary>
+    public async Task EnsureReadyAsync(CancellationToken ct = default)
+    {
+        var opts = options.Value;
+        var meta = await GetStatusAsync(ct);
+        var empty = !await db.NutritionLibraryFoods.AnyAsync(ct);
+        var stuck = string.Equals(meta.LastSyncStatus, "running", StringComparison.OrdinalIgnoreCase)
+            && (meta.LastCheckedAt is null || meta.LastCheckedAt < DateTime.UtcNow.AddMinutes(-15));
+        var due = meta.LastCheckedAt is null
+            || meta.LastCheckedAt < DateTime.UtcNow.AddHours(-Math.Max(1, opts.CheckIntervalHours));
+
+        if (empty || stuck || due)
+            await SyncAsync(force: empty || stuck, ct);
+    }
+
+    /// <summary>
     /// Downloads Foundation Foods + SR Legacy CSVs, rebuilds the library table,
     /// and marks product estimates stale when content changed.
     /// </summary>
@@ -58,6 +76,13 @@ public sealed class NutritionLibrarySyncService(
         var meta = await db.NutritionLibraryMeta.FirstOrDefaultAsync(ct)
             ?? new NutritionLibraryMeta { Id = 1 };
         if (meta.Id == 0) meta.Id = 1;
+
+        // Recover if a prior sync left status stuck on "running" (e.g. Cloud Run CPU throttle).
+        var stuckRunning = string.Equals(meta.LastSyncStatus, "running", StringComparison.OrdinalIgnoreCase)
+            && (meta.LastCheckedAt is null || meta.LastCheckedAt < DateTime.UtcNow.AddMinutes(-15));
+        if (stuckRunning)
+            force = true;
+
         meta.LastCheckedAt = DateTime.UtcNow;
         meta.LastSyncStatus = "running";
         meta.LastSyncError = string.Empty;
