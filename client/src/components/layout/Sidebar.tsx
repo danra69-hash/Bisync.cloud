@@ -7,6 +7,7 @@ import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { userInitials } from '../../context/currentUserContext';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 import { BrandEngineLockup } from './BrandEngineLockup';
+import { BisyncMarkTile } from './BisyncMark';
 
 type Props = {
   open: boolean;
@@ -31,7 +32,10 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
         style={{ background: '#2A2118' }}
       >
         <div className="px-4 py-4 flex items-center justify-between gap-2 border-b border-white/10">
-          <BrandEngineLockup className="min-w-0" />
+          <div className="flex min-w-0 items-center gap-2">
+            <BisyncMarkTile size="sm" />
+            <BrandEngineLockup className="min-w-0" />
+          </div>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-white/10 shrink-0">
             <X size={14} className="text-white/60" />
           </button>
