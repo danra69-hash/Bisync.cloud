@@ -1822,6 +1822,33 @@ export interface ProductComponentItem {
   sortOrder?: number;
 }
 
+export interface ProductBomChange {
+  id: number;
+  productId: number;
+  productCode: string;
+  productName: string;
+  companyId?: number | null;
+  lineKind: 'recipe' | 'packaging' | string;
+  changeType: 'component_in' | 'component_out' | 'quantity_adjustment' | string;
+  componentId: string;
+  componentName: string;
+  oldComponentId?: string | null;
+  oldComponentName?: string | null;
+  oldComponentUom?: string | null;
+  oldQuantity?: number | null;
+  oldUnitPrice?: number | null;
+  newComponentId?: string | null;
+  newComponentName?: string | null;
+  newComponentUom?: string | null;
+  newQuantity?: number | null;
+  newUnitPrice?: number | null;
+  changedByUserId?: number | null;
+  changedByEmail: string;
+  changedByName: string;
+  changedAt: string;
+  note: string;
+}
+
 export interface ProductAlias {
   id: number;
   name: string;
@@ -2994,6 +3021,8 @@ export const api = {
     fetchJsonWithMethod<Product>(`/api/products/${id}`, 'PATCH', payload),
   deleteProduct: (id: number) =>
     fetchJsonWithMethod<void>(`/api/products/${id}`, 'DELETE'),
+  productBomChanges: (id: number, take = 200) =>
+    fetchJson<ProductBomChange[]>(`/api/products/${id}/bom-changes?take=${take}`),
   productManagement: (companyId: number | undefined, locationIds: string[], view?: 'b2b' | 'sub-product') => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));

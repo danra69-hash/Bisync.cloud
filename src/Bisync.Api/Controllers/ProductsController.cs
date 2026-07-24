@@ -114,6 +114,28 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             await db.SaveChangesAsync();
         }
 
+        var (actorId, actorEmail, actorName) = await ProductBomChangeRecorder.ResolveActorAsync(db, HttpContext);
+        var afterRecipe = product.Items
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
+        var afterPackaging = product.PackagingItems
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
+        var bomChanges = ProductBomChangeRecorder.Diff(
+                product, ProductBomChangeRecorder.LineKindRecipe, [], afterRecipe,
+                actorId, actorEmail, actorName, product.CreatedAt)
+            .Concat(ProductBomChangeRecorder.Diff(
+                product, ProductBomChangeRecorder.LineKindPackaging, [], afterPackaging,
+                actorId, actorEmail, actorName, product.CreatedAt))
+            .ToList();
+        if (bomChanges.Count > 0)
+        {
+            db.ProductBomChanges.AddRange(bomChanges);
+            await db.SaveChangesAsync();
+        }
+
         product = await db.Products
             .AsNoTracking()
             .Include(p => p.Items)
@@ -203,6 +225,15 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         product.LocationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(request.LocationExternalIds ?? []);
         product.UpdatedAt = DateTime.UtcNow;
 
+        var beforeRecipe = product.Items
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
+        var beforePackaging = product.PackagingItems
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
+
         db.ProductComponentItems.RemoveRange(product.Items);
         product.Items = MapItems(request.Items);
         var newTotalCost = product.Items.Sum(i => i.Subtotal);
@@ -220,6 +251,27 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
         db.ProductAliases.RemoveRange(product.Aliases);
         product.Aliases = request.IsSubProduct ? [] : MapAliases(request.Aliases, product.Id);
 
+        var afterRecipe = product.Items
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
+        var afterPackaging = product.PackagingItems
+            .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
+                i.ComponentId, i.ComponentName, i.ComponentUom, i.Quantity, i.ComponentUomPrice))
+            .ToList();
+
+        var (actorId, actorEmail, actorName) = await ProductBomChangeRecorder.ResolveActorAsync(db, HttpContext);
+        var changedAt = product.UpdatedAt;
+        var bomChanges = ProductBomChangeRecorder.Diff(
+                product, ProductBomChangeRecorder.LineKindRecipe, beforeRecipe, afterRecipe,
+                actorId, actorEmail, actorName, changedAt)
+            .Concat(ProductBomChangeRecorder.Diff(
+                product, ProductBomChangeRecorder.LineKindPackaging, beforePackaging, afterPackaging,
+                actorId, actorEmail, actorName, changedAt))
+            .ToList();
+        if (bomChanges.Count > 0)
+            db.ProductBomChanges.AddRange(bomChanges);
+
         await db.SaveChangesAsync();
 
         product = await db.Products
@@ -230,6 +282,24 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
             .FirstAsync(p => p.Id == product.Id);
 
         return Ok(MapProduct(product));
+    }
+
+    [HttpGet("{id:int}/bom-changes")]
+    public async Task<ActionResult<IEnumerable<object>>> ListBomChanges(int id, [FromQuery] int take = 200)
+    {
+        var exists = await db.Products.AsNoTracking().AnyAsync(p => p.Id == id);
+        if (!exists)
+            return NotFound();
+
+        var limit = Math.Clamp(take, 1, 1000);
+        var rows = await db.ProductBomChanges.AsNoTracking()
+            .Where(c => c.ProductId == id)
+            .OrderByDescending(c => c.ChangedAt)
+            .ThenByDescending(c => c.Id)
+            .Take(limit)
+            .ToListAsync();
+
+        return Ok(rows.Select(MapBomChange));
     }
 
     [HttpPatch("{id:int}")]
@@ -496,5 +566,33 @@ public class ProductsController(BisyncDbContext db) : ControllerBase
                 subtotal = i.Subtotal,
                 sortOrder = i.SortOrder,
             }),
+    };
+
+    static object MapBomChange(ProductBomChange change) => new
+    {
+        change.Id,
+        productId = change.ProductId,
+        productCode = change.ProductCode,
+        productName = change.ProductName,
+        companyId = change.CompanyId,
+        lineKind = change.LineKind,
+        changeType = change.ChangeType,
+        componentId = change.ComponentId,
+        componentName = change.ComponentName,
+        oldComponentId = change.OldComponentId,
+        oldComponentName = change.OldComponentName,
+        oldComponentUom = change.OldComponentUom,
+        oldQuantity = change.OldQuantity,
+        oldUnitPrice = change.OldUnitPrice,
+        newComponentId = change.NewComponentId,
+        newComponentName = change.NewComponentName,
+        newComponentUom = change.NewComponentUom,
+        newQuantity = change.NewQuantity,
+        newUnitPrice = change.NewUnitPrice,
+        changedByUserId = change.ChangedByUserId,
+        changedByEmail = change.ChangedByEmail,
+        changedByName = change.ChangedByName,
+        changedAt = change.ChangedAt,
+        note = change.Note,
     };
 }
