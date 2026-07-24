@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileText, Ghost } from 'lucide-react';
-import { api, setApiTenantCompanyId, type MenuItem, type PurchaseOrder, type InventoryAlert, type RevenuePoint, type ProgressData } from './api';
+import {
+  api,
+  setApiTenantCompanyId,
+  type B2bSalesOrder,
+  type MenuItem,
+  type PurchaseOrder,
+  type InventoryAlert,
+  type RevenuePoint,
+  type ProgressData,
+} from './api';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { StickyChromeSync } from './components/layout/StickyChromeSync';
@@ -9,7 +18,12 @@ import { OverviewDashboard } from './components/overview/OverviewDashboard';
 import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
 import { HumanResourcesPage } from './components/hr/HumanResourcesPage';
 import { AccountingPage } from './components/accounting/AccountingPage';
-import { aggregateLocationMetrics } from './utils/locationMetrics';
+import {
+  aggregateDashboardMetrics,
+  filterPurchaseOrdersForOrg,
+} from './utils/locationMetrics';
+import { resolveDashboardActivityMode } from './data/companyProfile';
+import type { CreateOrderPrefillItem } from './data/createOrderPrefill';
 import { configLocationToDropdown, filterMetricsByOrg } from './utils/orgFilters';
 import { useOrgFilters } from './hooks/useOrgFilters';
 import { OrgCountryProvider } from './context/OrgCountryContext';
@@ -68,10 +82,16 @@ export default function App() {
   } = useOrgFilters();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [clientOrders, setClientOrders] = useState<B2bSalesOrder[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [modulesGoLive, setModulesGoLive] = useState<ModulesGoLiveMap | null>(null);
+  const [revenueIntent, setRevenueIntent] = useState<{
+    revItem: string;
+    createOrderPrefill?: CreateOrderPrefillItem[];
+  } | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -81,7 +101,6 @@ export default function App() {
     async function load() {
       const results = await Promise.allSettled([
         api.menu(),
-        api.purchaseOrders(),
         api.inventoryAlerts(),
         api.revenue(),
         api.progress(),
@@ -89,18 +108,50 @@ export default function App() {
       ]);
 
       if (results[0].status === 'fulfilled') setMenuItems(results[0].value);
-      if (results[1].status === 'fulfilled') setOrders(results[1].value);
-      if (results[2].status === 'fulfilled') setAlerts(results[2].value);
-      if (results[3].status === 'fulfilled') setRevenue(results[3].value);
-      if (results[4].status === 'fulfilled') setProgress(results[4].value);
-      if (results[5].status === 'fulfilled') {
-        setModulesGoLive(results[5].value.modulesGoLive ?? null);
+      if (results[1].status === 'fulfilled') setAlerts(results[1].value);
+      if (results[2].status === 'fulfilled') setRevenue(results[2].value);
+      if (results[3].status === 'fulfilled') setProgress(results[3].value);
+      if (results[4].status === 'fulfilled') {
+        setModulesGoLive(results[4].value.modulesGoLive ?? null);
       } else {
         setModulesGoLive(null);
       }
     }
     load();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCompanyOrders() {
+      if (!selectedCompanyId) {
+        setOrders([]);
+        setAllPurchaseOrders([]);
+        setClientOrders([]);
+        return;
+      }
+      const results = await Promise.allSettled([
+        api.activePurchaseOrders(selectedCompanyId),
+        api.purchaseOrders(),
+        api.b2bSalesOrders(selectedCompanyId),
+      ]);
+      if (cancelled) return;
+      if (results[0].status === 'fulfilled') setOrders(results[0].value);
+      else setOrders([]);
+      if (results[1].status === 'fulfilled') setAllPurchaseOrders(results[1].value);
+      else setAllPurchaseOrders([]);
+      if (results[2].status === 'fulfilled') {
+        setClientOrders(
+          results[2].value.filter(o =>
+            o.status === 'draft' || o.status === 'issued' || o.status === 'confirmed',
+          ),
+        );
+      } else {
+        setClientOrders([]);
+      }
+    }
+    void loadCompanyOrders();
+    return () => { cancelled = true; };
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     if (ghostSession) {
@@ -167,12 +218,64 @@ export default function App() {
   const activeLocations = selectedCompanyId
     ? filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds)
     : [];
-  const { totalSales, totalSalesPrev, totalCovers, totalCoversPrev, aov, aovPrev } = aggregateLocationMetrics(activeLocations);
+  const activityMode = useMemo(
+    () => resolveDashboardActivityMode(selectedCompany, configLocations, selectedLocationIds),
+    [selectedCompany, configLocations, selectedLocationIds],
+  );
+  const scopedPurchaseOrders = useMemo(
+    () => filterPurchaseOrdersForOrg(allPurchaseOrders, selectedCompanyId, selectedLocationIds),
+    [allPurchaseOrders, selectedCompanyId, selectedLocationIds],
+  );
+  const overviewOrders = useMemo(
+    () => filterPurchaseOrdersForOrg(orders, selectedCompanyId, selectedLocationIds),
+    [orders, selectedCompanyId, selectedLocationIds],
+  );
+  const overviewClientOrders = useMemo(() => {
+    if (!selectedCompanyId) return [];
+    if (selectedLocationIds.length === 0) return clientOrders;
+    return clientOrders.filter(order =>
+      (order.lines ?? []).some(line => selectedLocationIds.includes(line.locationExternalId))
+      || (order.lines ?? []).length === 0,
+    );
+  }, [clientOrders, selectedCompanyId, selectedLocationIds]);
+  const dashboardMetrics = useMemo(
+    () => aggregateDashboardMetrics(activeLocations, scopedPurchaseOrders, activityMode),
+    [activeLocations, scopedPurchaseOrders, activityMode],
+  );
   const overviewMenuItems = selectedCompanyId ? menuItems : [];
   const overviewAlerts = selectedCompanyId ? alerts : [];
-  const overviewOrders = selectedCompanyId ? orders : [];
   const overviewRevenue = selectedCompanyId ? revenue : [];
   const overviewProgress = selectedCompanyId ? progress : null;
+
+  const handleOrderNowFromAlerts = useCallback(async () => {
+    if (!selectedCompanyId || overviewAlerts.length === 0) return;
+    let prefill: CreateOrderPrefillItem[] = overviewAlerts.map(alert => ({
+      name: alert.itemName,
+    }));
+    try {
+      const ingredients = await api.ingredients();
+      const byName = new Map(
+        ingredients.map(ing => [ing.name.trim().replace(/\s+/g, ' ').toLowerCase(), ing]),
+      );
+      prefill = overviewAlerts.map(alert => {
+        const key = alert.itemName.trim().replace(/\s+/g, ' ').toLowerCase();
+        const match = byName.get(key);
+        return {
+          componentId: match?.componentId || undefined,
+          name: alert.itemName,
+        };
+      });
+    } catch {
+      // Name-only prefill still applied in Create Order.
+    }
+    setRevenueIntent({
+      revItem: 'Operation||Order||My Order',
+      createOrderPrefill: prefill,
+    });
+    setActiveNav('Revenue Management');
+  }, [overviewAlerts, selectedCompanyId]);
+
+  const clearRevenueIntent = useCallback(() => setRevenueIntent(null), []);
 
   const isRevenueSection = activeNav === 'Revenue Management' || activeNav === 'Point-of-Sales';
   const isHrSection = activeNav === 'Human Resources';
@@ -244,20 +347,23 @@ export default function App() {
               menuItems={overviewMenuItems}
               alerts={overviewAlerts}
               orders={overviewOrders}
+              clientOrders={overviewClientOrders}
               revenue={overviewRevenue}
               progress={overviewProgress}
-              totalSales={totalSales}
-              totalSalesPrev={totalSalesPrev}
-              totalCovers={totalCovers}
-              totalCoversPrev={totalCoversPrev}
-              aov={aov}
-              aovPrev={aovPrev}
+              sales={dashboardMetrics.sales}
+              activity={dashboardMetrics.activity}
+              aov={dashboardMetrics.aov}
+              activityMode={dashboardMetrics.activityMode}
+              onOrderNowFromAlerts={handleOrderNowFromAlerts}
             />
           ) : isRevenueSection ? (
             <RevenueSection
               section={activeNav}
               selectedCompanyId={selectedCompanyId}
               selectedLocationIds={selectedLocationIds}
+              initialRevItem={revenueIntent?.revItem ?? null}
+              createOrderPrefill={revenueIntent?.createOrderPrefill}
+              onRevenueIntentConsumed={clearRevenueIntent}
             />
           ) : activeNav === 'System Configuration' ? (
             <SystemConfigurationPage
