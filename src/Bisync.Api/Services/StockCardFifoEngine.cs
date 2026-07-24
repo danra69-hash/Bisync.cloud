@@ -2,13 +2,19 @@ namespace Bisync.Api.Services;
 
 /// <summary>
 /// First-in / first-out (FIFO) costing for stock card layers.
-/// Supports negative stock (zero COGS), multi-tranche splits, and retroactive
-/// COGS backfill when inbound arrives after uncovered outbound.
+/// Basis matches Bisync STOCK Analyzer (<c>computeIngredientFIFO</c>):
+/// perpetual multi-tranche layers (no monthly average collapse),
+/// uncovered outbound at zero COGS with deficit registry,
+/// inbound pays earliest shortfalls first at the arriving layer price (retro COGS),
+/// then surplus becomes a new available layer.
 /// </summary>
 public static class StockCardFifoEngine
 {
-    public static decimal RoundUnitPrice(decimal value) =>
-        Math.Round(value, 2, MidpointRounding.AwayFromZero);
+    /// <summary>Qty comparisons — Analyzer uses 1e-9.</summary>
+    public const decimal QtyEpsilon = 0.000000001m;
+
+    /// <summary>Unit prices at Analyzer display scale (4dp).</summary>
+    public static decimal RoundUnitPrice(decimal value) => DecimalRounding.ToDb(value);
 
     public static decimal ComputeAverageCogs(IReadOnlyList<FifoLayer> layers)
     {
@@ -16,7 +22,7 @@ public static class StockCardFifoEngine
             return 0;
 
         var totalQty = layers.Sum(l => l.Quantity);
-        if (totalQty <= 0)
+        if (totalQty <= QtyEpsilon)
             return 0;
 
         var totalValue = layers.Sum(l => l.Quantity * l.UnitPrice);
@@ -25,7 +31,7 @@ public static class StockCardFifoEngine
 
     public static FifoConsumeResult Consume(ref List<FifoLayer> layers, decimal quantity)
     {
-        if (quantity <= 0)
+        if (quantity <= QtyEpsilon)
             return new FifoConsumeResult();
 
         var remaining = quantity;
@@ -34,9 +40,9 @@ public static class StockCardFifoEngine
 
         foreach (var layer in layers.OrderBy(l => l.ReceivedAt).ThenBy(l => l.SourceId))
         {
-            if (remaining <= 0)
+            if (remaining <= QtyEpsilon)
                 break;
-            if (layer.Quantity <= 0)
+            if (layer.Quantity <= QtyEpsilon)
                 continue;
 
             var take = Math.Min(layer.Quantity, remaining);
@@ -47,28 +53,30 @@ public static class StockCardFifoEngine
         }
 
         var consumed = quantity - remaining;
-        if (remaining > 0)
+        if (remaining > QtyEpsilon)
             parts.Add((remaining, 0m, IsShortage: true));
+        else
+            remaining = 0;
 
-        // Combined unit price ignores shortage slices (those stay at 0 on their own rows).
-        var covered = parts.Where(p => !p.IsShortage).Select(p => (p.Qty, p.UnitPrice)).ToList();
-        var coveredQty = covered.Sum(p => p.Qty);
-        var coveredCost = covered.Sum(p => p.Qty * p.UnitPrice);
-        var unitPrice = ResolveTrancheUnitPrice(covered, coveredQty, coveredCost);
+        // Blended unit price over the full requested qty (shortfall contributes 0),
+        // so callers that do unitPrice × qty match TotalCost (Analyzer fifoCost).
+        var unitPrice = quantity > QtyEpsilon
+            ? RoundUnitPrice(totalCost / quantity)
+            : 0m;
 
         var detailParts = parts
             .Select(p => p.IsShortage
-                ? $"{FormatQty(p.Qty)} @ RM 0.00 (short)"
-                : $"{FormatQty(p.Qty)} @ RM {p.UnitPrice:F2}")
+                ? $"{FormatQty(p.Qty)} @ RM 0.0000 (short)"
+                : $"{FormatQty(p.Qty)} @ RM {p.UnitPrice:F4}")
             .ToList();
 
-        layers.RemoveAll(l => l.Quantity <= 0);
+        layers.RemoveAll(l => l.Quantity <= QtyEpsilon);
 
         return new FifoConsumeResult
         {
             ConsumedQty = consumed,
             ShortfallQty = remaining,
-            TotalCost = totalCost,
+            TotalCost = RoundUnitPrice(totalCost),
             UnitPrice = unitPrice,
             Detail = detailParts.Count > 0 ? $"FIFO: {string.Join(" + ", detailParts)}" : string.Empty,
             Parts = parts
@@ -82,28 +90,6 @@ public static class StockCardFifoEngine
         };
     }
 
-    /// <summary>
-    /// When stock is drawn from a single cost tranche, use that tranche's unit price.
-    /// When an outbound spans multiple tranches, use the weighted average of priced parts only.
-    /// </summary>
-    static decimal ResolveTrancheUnitPrice(
-        IReadOnlyList<(decimal Qty, decimal UnitPrice)> parts,
-        decimal consumedQty,
-        decimal totalCost)
-    {
-        if (consumedQty <= 0 || parts.Count == 0)
-            return 0;
-
-        if (parts.Count == 1)
-            return RoundUnitPrice(parts[0].UnitPrice);
-
-        var distinctPrices = parts.Select(p => p.UnitPrice).Distinct().ToList();
-        if (distinctPrices.Count == 1)
-            return RoundUnitPrice(distinctPrices[0]);
-
-        return RoundUnitPrice(totalCost / consumedQty);
-    }
-
     public static void AddLayer(
         List<FifoLayer> layers,
         DateTime receivedAt,
@@ -112,7 +98,7 @@ public static class StockCardFifoEngine
         decimal unitPrice,
         string sourceLabel)
     {
-        if (quantity <= 0)
+        if (quantity <= QtyEpsilon)
             return;
 
         layers.Add(new FifoLayer
@@ -125,8 +111,11 @@ public static class StockCardFifoEngine
         });
     }
 
+    /// <summary>
+    /// Simulate perpetual FIFO (STOCK Analyzer basis). Month-boundary collapse is off by default.
+    /// </summary>
     public static FifoSimulationResult Simulate(IReadOnlyList<FifoEvent> events) =>
-        Simulate(events, collapseAtMonthBoundaries: true);
+        Simulate(events, collapseAtMonthBoundaries: false);
 
     public static FifoSimulationResult Simulate(
         IReadOnlyList<FifoEvent> events,
@@ -159,20 +148,26 @@ public static class StockCardFifoEngine
                 var layerPrice = entryType is "adjustment_in"
                     ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, evt.UnitPrice)
                     : unitPrice;
-                AddLayer(layers, evt.OccurredAt, evt.Id, evt.Quantity, layerPrice, evt.SourceLabel);
                 unitPrice = layerPrice;
                 if (entryType == "adjustment_in")
                 {
                     fifoDetail = evt.UnitPrice > 0
-                        ? $"Adjustment in at asserted RM {layerPrice:F2}"
+                        ? $"Adjustment in at asserted RM {layerPrice:F4}"
                         : lastAdjustmentOutUnitPrice is decimal matchedPrice && matchedPrice > 0
-                            ? $"Adjustment in at RM {layerPrice:F2} (matches count short)"
-                            : $"Adjustment in at FIFO layer RM {layerPrice:F2}";
+                            ? $"Adjustment in at RM {layerPrice:F4} (matches count short)"
+                            : $"Adjustment in at FIFO layer RM {layerPrice:F4}";
                     lastAdjustmentOutUnitPrice = null;
                 }
 
-                // Retroactive COGS: apply this inbound to earlier uncovered outbounds first.
-                ApplyInboundToUncoveredClaims(enriched, layers);
+                // Analyzer pushLayer: pay earliest shortfalls at arriving price, then surplus layer.
+                AcceptInboundPayingShortfalls(
+                    enriched,
+                    layers,
+                    evt.OccurredAt,
+                    evt.Id,
+                    evt.Quantity,
+                    layerPrice,
+                    evt.SourceLabel);
 
                 runningQty += evt.SignedQty;
                 enriched.Add(new FifoEnrichedEvent
@@ -226,11 +221,12 @@ public static class StockCardFifoEngine
     public static decimal ResolveAdjustmentInUnitPriceAsOf(
         IReadOnlyList<FifoEvent> events,
         DateTime asOfEnd,
-        bool collapseAtMonthBoundaries = true)
+        bool collapseAtMonthBoundaries = false)
     {
         var layers = new List<FifoLayer>();
         decimal? lastAdjustmentOutUnitPrice = null;
         DateTime? currentMonth = null;
+        var sink = new List<FifoEnrichedEvent>();
 
         foreach (var evt in events
                      .Where(e => e.OccurredAt <= asOfEnd)
@@ -253,18 +249,45 @@ public static class StockCardFifoEngine
                 var layerPrice = entryType is "adjustment_in"
                     ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, evt.UnitPrice)
                     : evt.UnitPrice;
-                AddLayer(layers, evt.OccurredAt, evt.Id, evt.Quantity, layerPrice, evt.SourceLabel);
+                AcceptInboundPayingShortfalls(
+                    sink,
+                    layers,
+                    evt.OccurredAt,
+                    evt.Id,
+                    evt.Quantity,
+                    layerPrice,
+                    evt.SourceLabel);
                 if (entryType == "adjustment_in")
                     lastAdjustmentOutUnitPrice = null;
-                // Mirror Simulate: inbound first fills prior uncovered claims.
-                var sink = new List<FifoEnrichedEvent>();
-                ApplyInboundToUncoveredClaims(sink, layers);
                 continue;
             }
 
             if (IsOutboundConsume(entryType) || entryType == "adjustment_out")
             {
                 var consumed = Consume(ref layers, evt.Quantity);
+                // Track shortage on sink so later inbound pays at arrival price (Analyzer).
+                if (consumed.ShortfallQty > QtyEpsilon)
+                {
+                    sink.Add(new FifoEnrichedEvent
+                    {
+                        Event = new FifoEvent
+                        {
+                            Id = evt.Id,
+                            OccurredAt = evt.OccurredAt,
+                            EntryType = entryType,
+                            Quantity = consumed.ShortfallQty,
+                            SignedQty = -consumed.ShortfallQty,
+                            Uom = evt.Uom,
+                            UnitPrice = 0,
+                            Reason = evt.Reason,
+                            ReferenceNumber = evt.ReferenceNumber,
+                            SourceLabel = evt.SourceLabel,
+                        },
+                        UnitPrice = 0,
+                        IsShortage = true,
+                        RunningBalance = 0,
+                    });
+                }
                 if (entryType == "adjustment_out" && consumed.UnitPrice > 0)
                     lastAdjustmentOutUnitPrice = consumed.UnitPrice;
             }
@@ -290,7 +313,7 @@ public static class StockCardFifoEngine
     static decimal GetOldestLayerUnitPrice(List<FifoLayer> layers)
     {
         var oldest = layers
-            .Where(l => l.Quantity > 0)
+            .Where(l => l.Quantity > QtyEpsilon)
             .OrderBy(l => l.ReceivedAt)
             .ThenBy(l => l.SourceId)
             .FirstOrDefault();
@@ -302,101 +325,80 @@ public static class StockCardFifoEngine
     }
 
     /// <summary>
-    /// Apply available FIFO layers to earlier shortage rows (oldest sale first).
-    /// Mutates shortage rows in <paramref name="enriched"/> to carry backfilled COGS.
+    /// Analyzer <c>pushLayer</c>: pay earliest uncovered outbounds at the arriving
+    /// layer price (retro COGS), then push any leftover qty as a new FIFO layer.
+    /// Does not drain older on-hand layers to price shortfalls.
     /// </summary>
-    static void ApplyInboundToUncoveredClaims(List<FifoEnrichedEvent> enriched, List<FifoLayer> layers)
+    static void AcceptInboundPayingShortfalls(
+        List<FifoEnrichedEvent> enriched,
+        List<FifoLayer> layers,
+        DateTime receivedAt,
+        int sourceId,
+        decimal quantity,
+        decimal unitPrice,
+        string sourceLabel)
     {
-        if (enriched.Count == 0 || layers.Count == 0)
+        if (quantity <= QtyEpsilon)
             return;
 
-        // Process shortage rows in chronological order (earliest uncovered outbound first).
-        for (var i = 0; i < enriched.Count; i++)
-        {
-            if (layers.Sum(l => l.Quantity) <= 0)
-                break;
+        var price = RoundUnitPrice(unitPrice);
+        var remainingInbound = quantity;
 
+        for (var i = 0; i < enriched.Count && remainingInbound > QtyEpsilon; i++)
+        {
             var row = enriched[i];
-            if (!row.IsShortage || row.Event.Quantity <= 0 || row.UnitPrice > 0)
+            if (!row.IsShortage || row.Event.Quantity <= QtyEpsilon || row.UnitPrice > 0)
                 continue;
 
             var need = row.Event.Quantity;
-            var fillParts = new List<(decimal Qty, decimal UnitPrice)>();
+            var take = Math.Min(need, remainingInbound);
+            remainingInbound -= take;
+            var remainShort = need - take;
 
-            foreach (var layer in layers.OrderBy(l => l.ReceivedAt).ThenBy(l => l.SourceId))
-            {
-                if (need <= 0)
-                    break;
-                if (layer.Quantity <= 0)
-                    continue;
-
-                var take = Math.Min(layer.Quantity, need);
-                layer.Quantity -= take;
-                need -= take;
-                fillParts.Add((take, layer.UnitPrice));
-            }
-
-            layers.RemoveAll(l => l.Quantity <= 0);
-            if (fillParts.Count == 0)
-                continue;
-
-            var filledQty = fillParts.Sum(p => p.Qty);
-            var remainShort = row.Event.Quantity - filledQty;
-            var displayParts = MergeConsecutiveConsumeParts(fillParts
-                .Select(p => new FifoConsumePart { Quantity = p.Qty, UnitPrice = p.UnitPrice })
-                .ToList());
-
-            // Replace the shortage row with priced backfill row(s) (+ residual short if any).
             var balanceAfter = row.RunningBalance;
             var avgAfter = row.AverageCogsAfter;
             var insertAt = i;
             enriched.RemoveAt(i);
 
-            var splitIndex = 0;
-            decimal qtyCursor = 0;
-            // Reconstruct progressive balances within this outbound's shortage slice.
-            // balanceAfter is after the full original shortage qty; walk forward from before.
             var balanceBeforeShortage = balanceAfter + row.Event.Quantity;
+            var progressiveBalance = balanceBeforeShortage - take;
 
-            foreach (var part in displayParts)
+            enriched.Insert(insertAt++, new FifoEnrichedEvent
             {
-                qtyCursor += part.Quantity;
-                var progressiveBalance = balanceBeforeShortage - qtyCursor;
-                enriched.Insert(insertAt++, new FifoEnrichedEvent
-                {
-                    Event = CloneEvent(row.Event, part.Quantity, -part.Quantity),
-                    UnitPrice = part.UnitPrice,
-                    FifoDetail = $"FIFO backfill: {FormatQty(part.Quantity)} @ RM {part.UnitPrice:F2}",
-                    RunningBalance = progressiveBalance,
-                    AverageCogsAfter = avgAfter,
-                    SplitIndex = row.SplitIndex + splitIndex,
-                    IsShortage = false,
-                    IsCogsBackfilled = true,
-                    IsNegativeBalance = progressiveBalance < 0,
-                });
-                splitIndex++;
-            }
+                Event = CloneEvent(row.Event, take, -take),
+                UnitPrice = price,
+                FifoDetail = $"FIFO backfill: {FormatQty(take)} @ RM {price:F4}",
+                RunningBalance = progressiveBalance,
+                AverageCogsAfter = avgAfter,
+                SplitIndex = row.SplitIndex,
+                IsShortage = false,
+                IsCogsBackfilled = true,
+                IsNegativeBalance = progressiveBalance < 0,
+            });
 
-            if (remainShort > 0)
+            if (remainShort > QtyEpsilon)
             {
-                qtyCursor += remainShort;
-                var progressiveBalance = balanceBeforeShortage - qtyCursor;
+                progressiveBalance = balanceBeforeShortage - take - remainShort;
                 enriched.Insert(insertAt++, new FifoEnrichedEvent
                 {
                     Event = CloneEvent(row.Event, remainShort, -remainShort),
                     UnitPrice = 0,
-                    FifoDetail = $"FIFO: {FormatQty(remainShort)} @ RM 0.00 (short — awaiting inbound)",
+                    FifoDetail = $"FIFO: {FormatQty(remainShort)} @ RM 0.0000 (short — awaiting inbound)",
                     RunningBalance = progressiveBalance,
                     AverageCogsAfter = avgAfter,
-                    SplitIndex = row.SplitIndex + splitIndex,
+                    SplitIndex = row.SplitIndex + 1,
                     IsShortage = true,
                     IsCogsBackfilled = false,
                     IsNegativeBalance = progressiveBalance < 0,
                 });
             }
 
-            // Continue scanning from the first inserted row.
             i = insertAt - 1;
+        }
+
+        if (remainingInbound > QtyEpsilon)
+        {
+            AddLayer(layers, receivedAt, sourceId, remainingInbound, price, sourceLabel);
         }
     }
 
@@ -443,9 +445,9 @@ public static class StockCardFifoEngine
                 UnitPrice = part.UnitPrice,
                 FifoDetail = string.IsNullOrEmpty(fifoDetailPrefix)
                     ? (part.IsShortage
-                        ? $"FIFO: {FormatQty(part.Quantity)} @ RM 0.00 (short — negative stock)"
+                        ? $"FIFO: {FormatQty(part.Quantity)} @ RM 0.0000 (short — negative stock)"
                         : consumed.Detail)
-                    : $"{fifoDetailPrefix}{(part.IsShortage ? $"FIFO: {FormatQty(part.Quantity)} @ RM 0.00 (short — negative stock)" : consumed.Detail)}",
+                    : $"{fifoDetailPrefix}{(part.IsShortage ? $"FIFO: {FormatQty(part.Quantity)} @ RM 0.0000 (short — negative stock)" : consumed.Detail)}",
                 RunningBalance = runningQty,
                 AverageCogsAfter = ComputeAverageCogs(layers),
                 IsShortage = part.IsShortage,
@@ -463,8 +465,8 @@ public static class StockCardFifoEngine
                 Event = CloneEvent(evt, part.Quantity, -part.Quantity),
                 UnitPrice = part.UnitPrice,
                 FifoDetail = part.IsShortage
-                    ? $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM 0.00 (short — negative stock)"
-                    : $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM {part.UnitPrice:F2}",
+                    ? $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM 0.0000 (short — negative stock)"
+                    : $"{fifoDetailPrefix}FIFO: {FormatQty(part.Quantity)} @ RM {part.UnitPrice:F4}",
                 RunningBalance = runningQty,
                 AverageCogsAfter = ComputeAverageCogs(layers),
                 SplitIndex = i,
@@ -481,7 +483,7 @@ public static class StockCardFifoEngine
         var merged = new List<FifoConsumePart>();
         foreach (var part in parts)
         {
-            if (part.Quantity <= 0)
+            if (part.Quantity <= QtyEpsilon)
                 continue;
 
             if (merged.Count > 0
@@ -525,6 +527,7 @@ public static class StockCardFifoEngine
             SourceLabel = source.SourceLabel,
         };
 
+    /// <summary>Optional hybrid — off by default (Analyzer uses perpetual layers).</summary>
     static void CollapseLayersAtMonthStart(List<FifoLayer> layers, DateTime monthStart)
     {
         var totalQty = layers.Sum(l => l.Quantity);

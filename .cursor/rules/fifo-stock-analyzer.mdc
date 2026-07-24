@@ -1,0 +1,24 @@
+# FIFO stock costing (STOCK Analyzer basis)
+
+Platform FIFO must match Bisync STOCK Analyzer `computeIngredientFIFO` /
+`pushLayer` / `depleteFIFO`.
+
+## Rules
+
+1. **Perpetual layers** — do not collapse remaining layers to monthly average B/F by default (`Simulate(..., collapseAtMonthBoundaries: false)`).
+2. **Sort** events by `OccurredAt`, then `Id`.
+3. **Outbound** depletes oldest layer first; multi-tranche segments kept; uncovered qty is shortfall at **zero COGS** (deficit).
+4. **Inbound** pays earliest shortfalls **first at the arriving layer price** (retro COGS), then surplus becomes a new layer — never drain older on-hand layers to price shortfalls.
+5. **Running qty** can go negative; physical queue value excludes deficit.
+6. **Unit prices** round to **4 decimal places** (`DecimalRounding.ToDb` / `RoundUnitPrice`).
+7. **Qty epsilon** ≈ `1e-9` (`StockCardFifoEngine.QtyEpsilon`).
+
+## Code anchors
+
+- Engine: `src/Bisync.Api/Services/StockCardFifoEngine.cs`
+- Live deductions: `src/Bisync.Api/Services/ComponentFifoCostingService.cs`
+- Stock card ledger: `src/Bisync.Api/Services/StockCardService.cs`
+
+## Source of truth
+
+Uploaded Analyzer HTML: `Bisync_STOCK_Analyzer_*.html` (`computeIngredientFIFO`).

@@ -6,8 +6,8 @@ namespace Bisync.Api.Services;
 
 /// <summary>
 /// Resolves FIFO unit cost for component deductions at a single location.
-/// Uses monthly B/F tranches: remaining stock at each calendar month boundary
-/// collapses to one layer at average COGS; outbounds consume oldest tranche first.
+/// Perpetual FIFO (Bisync STOCK Analyzer basis): multi-tranche layers across months,
+/// uncovered outbound at zero COGS, inbound pays earliest shortfalls at arrival price.
 /// </summary>
 public class ComponentFifoCostingService(BisyncDbContext db)
 {
