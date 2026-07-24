@@ -27,11 +27,15 @@ import { ensureRevMgmtConfig } from '../../data/revMgmtConfigStore';
 import { refreshVendorProductCatalog } from '../../data/vendorProductCatalog';
 import { isB2bProductNavLabel, isSupplySideNavLabel } from '../../data/revenueManagement';
 import { useOrgBusinessCapabilities } from '../../hooks/useOrgSupplyCapability';
+import type { CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  initialRevItem?: string | null;
+  createOrderPrefill?: CreateOrderPrefillItem[];
+  onRevenueIntentConsumed?: () => void;
 };
 
 function renderRevMgmtContent(
@@ -41,6 +45,7 @@ function renderRevMgmtContent(
   onSelectItem?: (id: string | null) => void,
   hasSupplyCapability = true,
   hasB2bProductCapability = true,
+  createOrderPrefill?: CreateOrderPrefillItem[],
 ) {
   if (!selectedItem) {
     return (
@@ -106,6 +111,7 @@ function renderRevMgmtContent(
         <OrderPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
+          initialPrefillItems={createOrderPrefill}
         />
       );
     case 'Cash Purchase':
@@ -201,10 +207,18 @@ function renderRevMgmtContent(
   }
 }
 
-export function RevenueSection({ section, selectedCompanyId, selectedLocationIds }: Props) {
+export function RevenueSection({
+  section,
+  selectedCompanyId,
+  selectedLocationIds,
+  initialRevItem = null,
+  createOrderPrefill,
+  onRevenueIntentConsumed,
+}: Props) {
   const { t } = useAppTranslation();
   const [revItem, setRevItem] = useState<string | null>(null);
   const [posItem, setPosItem] = useState<string | null>(null);
+  const [pendingPrefill, setPendingPrefill] = useState<CreateOrderPrefillItem[] | undefined>();
   const { hasSupplyCapability, hasB2bProductCapability } = useOrgBusinessCapabilities(
     selectedCompanyId,
     selectedLocationIds,
@@ -219,6 +233,13 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
     if (!selectedCompanyId) return;
     void ensureRevMgmtConfig(selectedCompanyId);
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (!initialRevItem) return;
+    setRevItem(initialRevItem);
+    setPendingPrefill(createOrderPrefill);
+    onRevenueIntentConsumed?.();
+  }, [initialRevItem, createOrderPrefill, onRevenueIntentConsumed]);
 
   useEffect(() => {
     if (!revItem) return;
@@ -249,7 +270,10 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
       <div data-module-bar className="bg-background border-b border-border shadow-sm">
         <RevMgmtBar
           selectedItem={revItem}
-          onSelectItem={setRevItem}
+          onSelectItem={item => {
+            setPendingPrefill(undefined);
+            setRevItem(item);
+          }}
           hasSupplyCapability={hasSupplyCapability}
           hasB2bProductCapability={hasB2bProductCapability}
         />
@@ -262,6 +286,7 @@ export function RevenueSection({ section, selectedCompanyId, selectedLocationIds
         setRevItem,
         hasSupplyCapability,
         hasB2bProductCapability,
+        pendingPrefill,
       )}
     </RevMgmtTitleProvider>
   );
