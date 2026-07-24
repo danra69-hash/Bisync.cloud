@@ -60,8 +60,15 @@ jobs:
         run: |
           cd src/Bisync.Api
           dotnet run --no-build -c Release &
-          sleep 10
-          curl -f http://localhost:5299/api/health || curl -f http://127.0.0.1:5299/api/health
+          for i in $(seq 1 36); do
+            if curl -sf http://localhost:5299/api/health || curl -sf http://127.0.0.1:5299/api/health; then
+              echo "API healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to become healthy within 36s"
+          exit 1
 
   build-client:
     runs-on: ubuntu-latest

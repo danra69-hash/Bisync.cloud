@@ -18,6 +18,7 @@ import { InventoryPage } from './InventoryPage';
 import { WastagePage } from './WastagePage';
 import { TransferPage } from './TransferPage';
 import { CogsAuditPage } from './CogsAuditPage';
+import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
@@ -198,6 +199,13 @@ function renderRevMgmtContent(
     case 'COGS Audit':
       return (
         <CogsAuditPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Promotion Scheduler':
+      return (
+        <PromotionSchedulerPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

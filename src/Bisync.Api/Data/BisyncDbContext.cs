@@ -60,6 +60,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
     public DbSet<B2bSalesOrder> B2bSalesOrders => Set<B2bSalesOrder>();
     public DbSet<B2bSalesOrderLine> B2bSalesOrderLines => Set<B2bSalesOrderLine>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
     public DbSet<InventoryCountSession> InventoryCountSessions => Set<InventoryCountSession>();
@@ -360,6 +362,26 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
                 .WithMany()
                 .HasForeignKey(x => x.ProductId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<Promotion>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Active });
+            e.HasIndex(x => new { x.CompanyId, x.StartDate });
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.DurationMode).HasMaxLength(20);
+            e.Property(x => x.PromotionType).HasMaxLength(40);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
+            e.HasMany(x => x.Products)
+                .WithOne(x => x.Promotion)
+                .HasForeignKey(x => x.PromotionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PromotionProduct>(e =>
+        {
+            e.HasIndex(x => new { x.PromotionId, x.ProductId }).IsUnique();
+            e.HasIndex(x => x.ProductId);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.DeliveryUnit).HasMaxLength(80);
         });
         modelBuilder.Entity<B2bSalesOrder>(e =>
         {

@@ -164,8 +164,6 @@ export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
   'Inventory Config',
   'Account Mapping',
   'External POS Mapping',
-  'Customer Group',
-  'Promotion Scheduler',
   'Itemized Sales Summary',
   'Inventory Summary',
   'Detailed Purchase Summary',

@@ -351,6 +351,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.promotion-scheduler",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PromotionSchedulerPage.tsx",
+      "symbol": "PromotionSchedulerPage",
+      "route": "/revenue/promotion-scheduler",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-24",
+      "notes": "Revenue Management / Sales — Active + Create Promotion tabs; RRP applied on B2B sales orders"
+    },
+    {
       "id": "dr.page.b2b-active-order",
       "kind": "client-page",
       "path": "client/src/components/revenue/B2bActiveOrderPage.tsx",
@@ -739,6 +750,17 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.promotions",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PromotionsController.cs",
+      "symbol": "PromotionsController",
+      "route": "api/promotions",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-24",
+      "notes": "Promotion Scheduler CRUD + active promo pricing for B2B sales orders"
     },
     {
       "id": "dr.api.sales-data",

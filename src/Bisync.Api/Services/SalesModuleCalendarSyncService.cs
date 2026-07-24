@@ -30,8 +30,11 @@ public class SalesModuleCalendarSyncService(
             """, ct);
 
         await db.Database.ExecuteSqlRawAsync("""
-            INSERT INTO "SalesModuleCalendarSettings" ("Id", "Enabled", "CalendarDisplayName")
-            SELECT 1, false, 'Cubevalue'
+            INSERT INTO "SalesModuleCalendarSettings" (
+                "Id", "Enabled", "GraphTenantId", "GraphClientId", "GraphClientSecret",
+                "CalendarMailbox", "CalendarDisplayName", "UpdatedAt", "UpdatedByEmail", "LastTestAt", "LastTestResult"
+            )
+            SELECT 1, false, '', '', '', '', 'Cubevalue', NOW(), '', '', ''
             WHERE NOT EXISTS (SELECT 1 FROM "SalesModuleCalendarSettings" WHERE "Id" = 1);
             """, ct);
     }

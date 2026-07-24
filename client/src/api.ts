@@ -981,6 +981,58 @@ export interface CreateB2bSalesOrderPayload {
   }[];
 }
 
+export interface PromotionProductLine {
+  id: number;
+  productId: number;
+  productName: string;
+  deliveryUnit: string;
+  promoQty?: number | null;
+  remainingQty?: number | null;
+  knockedDownPrice?: number | null;
+}
+
+export interface Promotion {
+  id: number;
+  companyId: number;
+  name: string;
+  durationMode: 'byDate' | 'byQty' | string;
+  startDate: string;
+  endDate?: string | null;
+  promotionType: 'discountPercent' | 'knockedDownPrice' | string;
+  discountPercent?: number | null;
+  active: boolean;
+  status: 'Active' | 'Inactive' | string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  products: PromotionProductLine[];
+}
+
+export interface CreatePromotionPayload {
+  companyId: number;
+  name: string;
+  durationMode: 'byDate' | 'byQty';
+  startDate: string;
+  endDate?: string;
+  promotionType: 'discountPercent' | 'knockedDownPrice';
+  discountPercent?: number;
+  createdBy?: string;
+  products: {
+    productId: number;
+    promoQty?: number;
+    knockedDownPrice?: number;
+  }[];
+}
+
+export interface PromotionActivePrice {
+  productId: number;
+  promotionId: number;
+  promotionName: string;
+  promoRrp: number;
+  remainingQty?: number | null;
+  baseRrp: number;
+}
+
 export interface TaggedB2bProductUnit {
   productId: number;
   aliasId: number | null;
@@ -2800,6 +2852,20 @@ export const api = {
     ),
   createB2bSalesOrder: (data: CreateB2bSalesOrderPayload) =>
     fetchJsonWithMethod<B2bSalesOrder>('/api/b2b-sales-orders', 'POST', data),
+  promotions: (companyId: number, status?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (status) params.set('status', status);
+    return fetchJson<Promotion[]>(`/api/promotions?${params}`);
+  },
+  createPromotion: (data: CreatePromotionPayload) =>
+    fetchJsonWithMethod<Promotion>('/api/promotions', 'POST', data),
+  setPromotionActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<Promotion>(`/api/promotions/${id}/active`, 'PATCH', { active }),
+  promotionActivePrices: (companyId: number, productIds: number[]) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (productIds.length > 0) params.set('productIds', productIds.join(','));
+    return fetchJson<PromotionActivePrice[]>(`/api/promotions/active-prices?${params}`);
+  },
   issueB2bSalesOrder: (id: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/issue`, 'POST'),
   markB2bSalesOrderLineReadyToShip: (orderId: number, lineId: number) =>

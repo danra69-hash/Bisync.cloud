@@ -34,6 +34,17 @@ public static class ComponentIdGenerator
             .Select(i => i.ComponentId)
             .ToListAsync();
 
+        foreach (var tracked in db.ChangeTracker.Entries<Models.Ingredient>())
+        {
+            if (excludeId is int excludeIngredientId && tracked.Entity.Id == excludeIngredientId) continue;
+            if (companyId is int scopedCompanyId && tracked.Entity.CompanyId != scopedCompanyId) continue;
+            var componentId = tracked.Entity.ComponentId;
+            if (string.IsNullOrWhiteSpace(componentId) || !componentId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!existing.Contains(componentId, StringComparer.OrdinalIgnoreCase))
+                existing.Add(componentId);
+        }
+
         var suffix = ComponentIdentityRules.GenerateSuffix(existing, code);
         return ComponentIdentityRules.BuildComponentId(code, suffix);
     }
