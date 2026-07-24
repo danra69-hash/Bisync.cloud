@@ -39,7 +39,7 @@ export function SalesDiaryPanel({
   const [error, setError] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<number | ''>('');
   const [activity, setActivity] = useState<SalesDiaryActivityType | ''>('');
-  const [popup, setPopup] = useState<'status' | 'call' | null>(null);
+  const [popup, setPopup] = useState<'choose' | 'status' | 'call' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,21 +61,17 @@ export function SalesDiaryPanel({
   useEffect(() => {
     setCompanyId(prev => {
       if (prev && companies.some(c => c.id === prev)) return prev;
-      return companies[0]?.id ?? '';
+      return '';
     });
   }, [companies]);
 
   function openActivityPopup() {
+    setError(null);
     if (!activity) {
-      setError('Select an activity.');
+      setPopup('choose');
       return;
     }
-    setError(null);
     if (activity === 'Status Change') {
-      if (!companyId) {
-        setError('Select a company tagged to this Hunter.');
-        return;
-      }
       setPopup('status');
       return;
     }
@@ -86,6 +82,12 @@ export function SalesDiaryPanel({
     setEntries(prev => [entry, ...prev.filter(e => e.id !== entry.id)]);
     setPopup(null);
     setActivity('');
+  }
+
+  function chooseActivity(next: SalesDiaryActivityType) {
+    setActivity(next);
+    setError(null);
+    setPopup(next === 'Status Change' ? 'status' : 'call');
   }
 
   async function removeEntry(id: number) {
@@ -212,11 +214,37 @@ export function SalesDiaryPanel({
         </table>
       </TableScrollContainer>
 
-      {popup === 'status' && typeof companyId === 'number' ? (
+      {popup === 'choose' ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-4 space-y-3 shadow-lg">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Log entry</h3>
+              <button type="button" onClick={() => setPopup(null)} className="p-1 rounded hover:bg-muted">
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">Choose an activity to continue.</p>
+            <div className="grid gap-2">
+              {SALES_DIARY_ACTIVITY_TYPES.map(a => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => chooseActivity(a)}
+                  className="px-3 py-2 text-xs font-semibold rounded-md border border-border hover:bg-muted text-left"
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {popup === 'status' ? (
         <StatusChangePopup
           salesTeamMemberId={salesTeamMemberId}
-          companyId={companyId}
-          companyName={companies.find(c => c.id === companyId)?.name ?? ''}
+          companies={companies}
+          initialCompanyId={typeof companyId === 'number' ? companyId : null}
           createdByEmail={createdByEmail}
           onClose={() => setPopup(null)}
           onSaved={handleSaved}
@@ -239,30 +267,37 @@ export function SalesDiaryPanel({
 
 function StatusChangePopup({
   salesTeamMemberId,
-  companyId,
-  companyName,
+  companies,
+  initialCompanyId,
   createdByEmail,
   onClose,
   onSaved,
 }: {
   salesTeamMemberId: number;
-  companyId: number;
-  companyName: string;
+  companies: SalesModuleCompany[];
+  initialCompanyId: number | null;
   createdByEmail: string;
   onClose: () => void;
   onSaved: (entry: SalesModuleDiaryEntry) => void;
 }) {
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>(initialCompanyId ?? '');
   const [statuses, setStatuses] = useState<SalesDiaryStatus[]>([]);
   const [comment, setComment] = useState('');
   const [contactDate, setContactDate] = useState(todayDateInputValue);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const companyName = companies.find(c => c.id === selectedCompanyId)?.name ?? '';
+
   function toggleStatus(status: SalesDiaryStatus) {
     setStatuses(prev => (prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]));
   }
 
   async function save() {
+    if (!selectedCompanyId) {
+      setError('Select a company tagged to this Hunter.');
+      return;
+    }
     if (statuses.length === 0) {
       setError('Tick at least one status.');
       return;
@@ -277,7 +312,7 @@ function StatusChangePopup({
       const payload: CreateSalesModuleDiaryEntryPayload = {
         salesTeamMemberId,
         activityType: 'Status Change',
-        salesModuleCompanyId: companyId,
+        salesModuleCompanyId: selectedCompanyId,
         contactDate: `${contactDate}T00:00:00.000Z`,
         statuses,
         comment: comment.trim(),
@@ -296,11 +331,24 @@ function StatusChangePopup({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-4 space-y-3 shadow-lg">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Status Change · {companyName}</h3>
+          <h3 className="text-sm font-semibold">Status Change{companyName ? ` · ${companyName}` : ''}</h3>
           <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted">
             <X size={14} />
           </button>
         </div>
+        <label className="block space-y-1 text-xs">
+          <span className="text-muted-foreground uppercase tracking-wide">Company</span>
+          <select
+            value={selectedCompanyId}
+            onChange={e => setSelectedCompanyId(e.target.value ? Number(e.target.value) : '')}
+            className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+          >
+            <option value="">Select company…</option>
+            {companies.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </label>
         <label className="block space-y-1 text-xs">
           <span className="text-muted-foreground uppercase tracking-wide">Date of Contact</span>
           <input
