@@ -1,0 +1,44 @@
+---
+description: Taste Skill (leonxlnx) — anti-slop frontend for landings / redesigns
+globs:
+alwaysApply: false
+---
+
+# Taste Skill (installed)
+
+Source: https://github.com/leonxlnx/taste-skill
+
+Project skill paths:
+
+- `.agents/skills/design-taste-frontend/` — default **v2** taste skill (`design-taste-frontend`)
+- `.agents/skills/redesign-existing-projects/` — audit-then-fix existing UI (`redesign-existing-projects`)
+
+Also present: Hallmark at `.agents/skills/hallmark/` (see `hallmark.mdc`).
+
+## When to load
+
+| Ask | Load |
+| --- | --- |
+| Landing page, marketing surface, portfolio-style promo, “taste skill”, anti-slop frontend | `design-taste-frontend/SKILL.md` |
+| Redesign / upgrade an **existing** screen without a greenfield rebuild | `redesign-existing-projects/SKILL.md` (then taste dials if needed) |
+| Ops console, dense tables, multi-step product workflows, Hermès corporate theme | Prefer **Hallmark** + Bisync Hermès defaults in `hallmark.mdc` |
+
+Taste Skill itself notes it is for landings / portfolios / redesigns — **not** dashboards, data tables, or multi-step product UI. For those, do not force Taste Skill aesthetics over Hallmark + existing Bisync chrome.
+
+## Bisync constraints (always)
+
+1. Read the skill file first; follow its brief-inference / dial / pre-flight steps.
+2. Prefer in-place edits; do not bulldoze routes or ownership (`structure-ownership.mdc`).
+3. Keep live Hermès-on-white product chrome unless the user asks for a different marketing theme:
+   - Ground `#FFFFFF` · Accent `#F37021` · Ink `#2A2118`
+4. Respect currency / country formatters and component-identity rules when touching money or ingredients UI.
+
+## Dial defaults for Bisync marketing (when using taste-skill)
+
+Unless the brief says otherwise:
+
+- Landing / promo: variance mid-high, motion moderate, density low–mid
+- Trust / B2B procurement: lower variance + motion; keep Hermès orange as the single accent
+- Never default to purple AI gradients, Inter-only stacks, or ivory/cream grounds that fight the live platform theme
+
+Live skill docs: https://tasteskill.dev · Install source: https://github.com/leonxlnx/taste-skill
