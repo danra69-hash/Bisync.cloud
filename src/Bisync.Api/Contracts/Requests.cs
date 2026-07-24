@@ -1529,7 +1529,7 @@ public class CreateSalesModuleDiaryEntryRequest
 
     public List<SalesModuleDiaryContactRequest> Contacts { get; set; } = [];
 
-    /// <summary>Required when ActivityType is Status Change.</summary>
+    /// <summary>Required for Status Change (comment) and Sales Call (post meeting note).</summary>
     [MaxLength(2000)]
     public string? Comment { get; set; }
 

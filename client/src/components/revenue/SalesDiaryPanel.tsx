@@ -206,6 +206,11 @@ export function SalesDiaryPanel({
                           row.locationVisited ? `Visited: ${row.locationVisited}` : null,
                           row.emailsSent != null ? `${row.emailsSent} emails` : null,
                         ].filter(Boolean).join(' · ') || '—'}
+                    {row.comment ? (
+                      <span className="block text-[10px] text-muted-foreground mt-0.5 max-w-[16rem] truncate" title={row.comment}>
+                        {row.activityType === 'StatusChange' ? row.comment : `Note: ${row.comment}`}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-2 py-1.5">
                     {(row.contacts ?? [])
@@ -657,6 +662,7 @@ function SalesCallPopup({
   const [emailsSent, setEmailsSent] = useState('');
   const [contactDate, setContactDate] = useState(todayDateInputValue);
   const [contacts, setContacts] = useState<SalesDiaryContactPerson[]>([blankDiaryContact()]);
+  const [postMeetingNote, setPostMeetingNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -695,6 +701,10 @@ function SalesCallPopup({
       setError('Add at least one contact person.');
       return;
     }
+    if (!postMeetingNote.trim()) {
+      setError('Post Meeting Note is required.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -710,6 +720,7 @@ function SalesCallPopup({
         contactType,
         contactDate: `${contactDate}T00:00:00.000Z`,
         contacts: cleanedContacts,
+        comment: postMeetingNote.trim(),
         createdByEmail,
       };
       const saved = await api.createSalesModuleDiaryEntry(payload);
@@ -851,6 +862,17 @@ function SalesCallPopup({
             ))}
           </div>
         ) : null}
+
+        <label className="block space-y-1 text-xs">
+          <span className="text-muted-foreground uppercase tracking-wide">Post Meeting Note (required)</span>
+          <textarea
+            value={postMeetingNote}
+            onChange={e => setPostMeetingNote(e.target.value)}
+            rows={3}
+            placeholder="What was discussed / next steps…"
+            className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+          />
+        </label>
 
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2">
