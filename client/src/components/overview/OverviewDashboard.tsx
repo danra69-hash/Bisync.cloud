@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Eye, EyeOff, GripVertical, ShoppingBag, TrendingUp, Users } from 'lucide-react';
-import type { B2bSalesOrder, InventoryAlert, MenuItem, ProgressData, PurchaseOrder, RevenuePoint } from '../../api';
+import { api, type B2bSalesOrder, type InventoryAlert, type MenuItem, type ProgressData, type PurchaseOrder, type RevenuePoint } from '../../api';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
@@ -9,6 +9,8 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { ProgressPanel } from './ProgressPanel';
+import { ActivePurchasePanel } from '../revenue/ActivePurchasePanel';
+import { B2bSalesOrderDetailPanel } from '../revenue/B2bSalesOrderDetailPanel';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 import {
   DEFAULT_OVERVIEW_LAYOUT,
@@ -146,6 +148,8 @@ type Props = {
   aov: PeriodTotals;
   activityMode: DashboardActivityMode;
   onOrderNowFromAlerts?: () => void;
+  onPurchaseOrderUpdated?: (order: PurchaseOrder) => void;
+  onClientOrderUpdated?: (order: B2bSalesOrder) => void;
 };
 
 function OverviewSectionShell({
@@ -224,11 +228,17 @@ export function OverviewDashboard({
   aov,
   activityMode,
   onOrderNowFromAlerts,
+  onPurchaseOrderUpdated,
+  onClientOrderUpdated,
 }: Props) {
   const { t } = useAppTranslation();
   const [layout, setLayout] = useState<OverviewLayoutState>(() => loadOverviewLayout());
   const [draggingId, setDraggingId] = useState<OverviewSectionId | null>(null);
   const [dropTargetId, setDropTargetId] = useState<OverviewSectionId | null>(null);
+  const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState<PurchaseOrder | null>(null);
+  const [selectedClientOrder, setSelectedClientOrder] = useState<B2bSalesOrder | null>(null);
+  const [openingPurchaseOrderId, setOpeningPurchaseOrderId] = useState<number | null>(null);
+  const [openingClientOrderId, setOpeningClientOrderId] = useState<number | null>(null);
   const wasEditingRef = useRef(false);
 
   useEffect(() => {
@@ -313,6 +323,32 @@ export function OverviewDashboard({
   const aovTitle = activityMode === 'purchaseOrders'
     ? t('overview.avgValuePerPo')
     : t('overview.avgOrderValue');
+
+  async function openPurchaseOrder(order: PurchaseOrder) {
+    setOpeningPurchaseOrderId(order.id);
+    setSelectedClientOrder(null);
+    try {
+      const fresh = await api.purchaseOrder(order.id);
+      setSelectedPurchaseOrder(fresh);
+    } catch {
+      setSelectedPurchaseOrder(order);
+    } finally {
+      setOpeningPurchaseOrderId(null);
+    }
+  }
+
+  async function openClientOrder(order: B2bSalesOrder) {
+    setOpeningClientOrderId(order.id);
+    setSelectedPurchaseOrder(null);
+    try {
+      const fresh = await api.b2bSalesOrder(order.id);
+      setSelectedClientOrder(fresh);
+    } catch {
+      setSelectedClientOrder(order);
+    } finally {
+      setOpeningClientOrderId(null);
+    }
+  }
 
   function renderSection(sectionId: OverviewSectionId) {
     switch (sectionId) {
@@ -446,9 +482,23 @@ export function OverviewDashboard({
                   <tbody>
                     {ordersScroll.visibleItems.map(o => {
                       const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+                      const opening = openingPurchaseOrderId === o.id;
                       return (
-                        <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                          <td className="px-4 py-3 font-sans text-primary">{o.poNumber}</td>
+                        <tr
+                          key={o.id}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Open purchase order ${o.poNumber}`}
+                          onClick={() => void openPurchaseOrder(o)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              void openPurchaseOrder(o);
+                            }
+                          }}
+                          className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${opening ? 'bg-primary/5' : ''} ${selectedPurchaseOrder?.id === o.id ? 'bg-primary/10' : ''}`}
+                        >
+                          <td className="px-4 py-3 font-sans text-primary underline-offset-2 group-hover:underline">{o.poNumber}</td>
                           <td className="px-4 py-3">{o.vendorName}</td>
                           <td className="px-4 py-3 font-sans text-muted-foreground">{o.deliveryDate}</td>
                           <td className="px-4 py-3 font-sans">${value.toFixed(2)}</td>
@@ -489,8 +539,22 @@ export function OverviewDashboard({
                     ) : null}
                     {clientOrdersScroll.visibleItems.map(o => {
                       const value = clientOrderTotal(o);
+                      const opening = openingClientOrderId === o.id;
                       return (
-                        <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                        <tr
+                          key={o.id}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Open order on hand ${o.orderNumber}`}
+                          onClick={() => void openClientOrder(o)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              void openClientOrder(o);
+                            }
+                          }}
+                          className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${opening ? 'bg-primary/5' : ''} ${selectedClientOrder?.id === o.id ? 'bg-primary/10' : ''}`}
+                        >
                           <td className="px-4 py-3 font-sans text-primary">{o.orderNumber}</td>
                           <td className="px-4 py-3">{o.customerName}</td>
                           <td className="px-4 py-3 font-sans text-muted-foreground">{clientOrderDate(o)}</td>
@@ -546,6 +610,32 @@ export function OverviewDashboard({
           </div>
         );
       })}
+
+      {selectedPurchaseOrder ? (
+        <ActivePurchasePanel
+          order={selectedPurchaseOrder}
+          onClose={() => setSelectedPurchaseOrder(null)}
+          onUpdated={updated => {
+            onPurchaseOrderUpdated?.(updated);
+            if (String(updated.status).toLowerCase() === 'reconciled') {
+              setSelectedPurchaseOrder(null);
+              return;
+            }
+            setSelectedPurchaseOrder(updated);
+          }}
+        />
+      ) : null}
+
+      {selectedClientOrder ? (
+        <B2bSalesOrderDetailPanel
+          order={selectedClientOrder}
+          onClose={() => setSelectedClientOrder(null)}
+          onUpdated={updated => {
+            onClientOrderUpdated?.(updated);
+            setSelectedClientOrder(updated);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
