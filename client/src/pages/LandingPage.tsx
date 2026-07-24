@@ -32,14 +32,24 @@ const APPROACH = [
   { key: 'digital', icon: Leaf },
 ] as const;
 
+const MODULE_HIGHLIGHTS = ['rms', 'pos', 'hrm', 'accounting'] as const;
+
 const PRODUCT_COLUMNS = [
   {
-    key: 'ops',
-    items: ['opsBuy', 'opsForecast', 'opsRecipe', 'opsCost', 'opsAnalytics', 'opsKitchen'] as const,
+    key: 'rms',
+    items: ['buy', 'forecast', 'recipe', 'cost', 'analytics', 'kitchen'] as const,
   },
   {
-    key: 'commerce',
-    items: ['comPos', 'comMobile', 'comMenu', 'comDelivery', 'comStore', 'comHr'] as const,
+    key: 'pos',
+    items: ['browser', 'mobile', 'menu', 'delivery', 'enterprise', 'store'] as const,
+  },
+  {
+    key: 'hrm',
+    items: ['schedule', 'leave', 'clock', 'payroll', 'broadcast', 'mobileHr'] as const,
+  },
+  {
+    key: 'accounting',
+    items: ['ledger', 'apAr', 'period', 'reports', 'costLink', 'export'] as const,
   },
 ] as const;
 
@@ -136,9 +146,19 @@ export function LandingPage() {
             <h1 className="mt-4 text-4xl font-semibold leading-[1.12] tracking-tight sm:text-5xl md:text-[3.25rem]">
               {t('landing.heroSlogan')}
             </h1>
-            <p className="mx-auto mt-4 max-w-[46ch] text-base leading-relaxed text-white/80 sm:text-lg">
+            <p className="mx-auto mt-4 max-w-[48ch] text-base leading-relaxed text-white/80 sm:text-lg">
               {t('landing.heroSubtitle')}
             </p>
+            <ul className="mx-auto mt-7 flex max-w-[40rem] flex-wrap items-center justify-center gap-2">
+              {MODULE_HIGHLIGHTS.map(mod => (
+                <li
+                  key={mod}
+                  className="rounded-sm border border-white/25 bg-white/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/90"
+                >
+                  {t(`landing.moduleLabels.${mod}`)}
+                </li>
+              ))}
+            </ul>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
@@ -150,10 +170,10 @@ export function LandingPage() {
               </button>
               <button
                 type="button"
-                onClick={() => scrollTo('about')}
+                onClick={() => scrollTo('products')}
                 className="inline-flex items-center gap-2 rounded-sm border border-white/35 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:border-white/70"
               >
-                {t('landing.navAbout')}
+                {t('landing.navProducts')}
               </button>
             </div>
           </div>
@@ -219,21 +239,24 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* Products — centered title + two balanced feature columns */}
+        {/* Products — four ERP modules including HR and Accounting */}
         <section id="products" className="scroll-mt-14 bg-white px-5 py-14 sm:px-6 sm:py-16">
           <div className="mx-auto max-w-[1120px]">
             <h2 className="text-center text-2xl font-semibold tracking-tight text-[#1f2430] sm:text-3xl">
               {t('landing.productsTitle')}
             </h2>
             <SectionRule />
-            <p className="mx-auto mt-5 max-w-[52ch] text-center text-[15px] leading-relaxed text-[#1f2430]/65">
+            <p className="mx-auto mt-5 max-w-[56ch] text-center text-[15px] leading-relaxed text-[#1f2430]/65">
               {t('landing.productsSubtitle')}
             </p>
 
-            <div className="mt-10 grid gap-8 md:grid-cols-2 md:gap-12">
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:gap-6">
               {PRODUCT_COLUMNS.map(col => (
-                <div key={col.key} className="border border-[#e8e8e8] bg-[#fafafa] px-6 py-6 sm:px-8">
-                  <h3 className="text-lg font-semibold tracking-tight text-[#1f2430]">
+                <div key={col.key} className="border border-[#e8e8e8] bg-[#fafafa] px-5 py-5 sm:px-6 sm:py-6">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#F37021]">
+                    {t(`landing.moduleLabels.${col.key}`)}
+                  </p>
+                  <h3 className="mt-1.5 text-lg font-semibold tracking-tight text-[#1f2430]">
                     {t(`landing.products.${col.key}.title`)}
                   </h3>
                   <ul className="mt-4 space-y-2.5">
