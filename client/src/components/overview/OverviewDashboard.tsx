@@ -464,7 +464,7 @@ export function OverviewDashboard({
               </TableScrollContainer>
             </div>
 
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="bg-card border border-border rounded-lg overflow-hidden min-h-[12rem]">
               <div className="p-2 border-b border-border">
                 <h2 className="text-sm font-semibold">{t('overview.activeClientOrders')}</h2>
               </div>
@@ -480,6 +480,13 @@ export function OverviewDashboard({
                     />
                   </thead>
                   <tbody>
+                    {sortedClientOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-xs text-muted-foreground text-center">
+                          {t('overview.noOrdersOnHand')}
+                        </td>
+                      </tr>
+                    ) : null}
                     {clientOrdersScroll.visibleItems.map(o => {
                       const value = clientOrderTotal(o);
                       return (

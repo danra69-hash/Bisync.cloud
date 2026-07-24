@@ -232,12 +232,16 @@ export default function App() {
   );
   const overviewClientOrders = useMemo(() => {
     if (!selectedCompanyId) return [];
-    if (selectedLocationIds.length === 0) return clientOrders;
+    // Supply-side Order on Hand is company selling capacity — keep all active
+    // sales orders when the selection is Central Kitchen / Warehouse / Distributor.
+    if (activityMode === 'purchaseOrders' || selectedLocationIds.length === 0) {
+      return clientOrders;
+    }
     return clientOrders.filter(order =>
       (order.lines ?? []).some(line => selectedLocationIds.includes(line.locationExternalId))
       || (order.lines ?? []).length === 0,
     );
-  }, [clientOrders, selectedCompanyId, selectedLocationIds]);
+  }, [clientOrders, selectedCompanyId, selectedLocationIds, activityMode]);
   const dashboardMetrics = useMemo(
     () => aggregateDashboardMetrics(activeLocations, scopedPurchaseOrders, activityMode),
     [activeLocations, scopedPurchaseOrders, activityMode],
@@ -269,7 +273,7 @@ export default function App() {
       // Name-only prefill still applied in Create Order.
     }
     setRevenueIntent({
-      revItem: 'Purchase||Order||My Order',
+      revItem: 'Operation||Order||My Order',
       createOrderPrefill: prefill,
     });
     setActiveNav('Revenue Management');
