@@ -535,7 +535,7 @@ public class SalesModuleController(
     /// <summary>
     /// Overview summary by Hunter: status changes, interactions (contact), and new leads.
     /// Requires view=week with weekStart, or view=month with year+month.
-    /// Optional salesTeamMemberId / companyId filters.
+    /// Returns all active Sales Team hunters for the period (optional legacy filters still accepted).
     /// </summary>
     [HttpGet("overview")]
     public async Task<ActionResult<object>> GetOverview(
