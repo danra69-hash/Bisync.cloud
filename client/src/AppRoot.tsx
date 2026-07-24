@@ -11,6 +11,7 @@ import { ActivateAccountPage, parseActivationToken } from './pages/ActivateAccou
 import { CompanyOnboardingPage } from './pages/CompanyOnboardingPage';
 import { LocationOnboardingPage } from './pages/LocationOnboardingPage';
 import { SubscriptionPlaceholderPage } from './pages/SubscriptionPlaceholderPage';
+import { EulaPage } from './pages/EulaPage';
 import {
   clearAwaitingLocation,
   clearAwaitingPayment,
@@ -33,6 +34,7 @@ export function AppRoot() {
   const activationToken = parseActivationToken(window.location.pathname);
   const salesOrderShare = parseSalesOrderShareTarget(window.location.pathname);
   const isDevConsole = matchDevConsolePath(window.location.pathname);
+  const isEulaPage = /^\/legal\/eula\/?$/i.test(window.location.pathname);
   const { isAuthenticated, loading, currentUser } = useCurrentUser();
   /** Explicit steps so next gate opens even if user sync races. */
   const [forceLocation, setForceLocation] = useState(false);
@@ -41,6 +43,10 @@ export function AppRoot() {
   // Dev Console must win before customer portal / share-link routing.
   if (isDevConsole) {
     return <DevConsolePage />;
+  }
+
+  if (isEulaPage) {
+    return <EulaPage />;
   }
 
   if (vendorShare) {

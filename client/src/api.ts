@@ -2601,11 +2601,17 @@ export const api = {
     confirmPassword: string;
     preferredLanguage?: string;
     phoneCountryCode?: string;
+    acceptedEula: boolean;
+    eulaVersion: string;
   }) =>
     fetchJsonWithMethod<{ message: string; email: string; activationUrl: string; preferredLanguage?: string }>(
       '/api/auth/register',
       'POST',
       data,
+    ),
+  eula: () =>
+    fetchJson<{ version: string; title: string; effectiveDate: string; provider: string }>(
+      '/api/auth/eula',
     ),
   registrationPolicy: () =>
     fetchJson<{

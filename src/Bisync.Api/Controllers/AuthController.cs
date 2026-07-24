@@ -23,6 +23,11 @@ public class AuthController(
     PlatformLaunchService platformLaunch,
     LocationSubscriptionService locationSubscriptions) : ControllerBase
 {
+    public const string CurrentEulaVersion = "2026-07-24";
+    public const string CurrentEulaEffectiveDate = "24 July 2026";
+    public const string CurrentEulaTitle = "Bisync.cloud End User License Agreement (EULA)";
+    public const string CurrentEulaProvider = "Cube Value Sdn Bhd (Company No. 1164413X)";
+
     public record LoginRequest(string Email, string Password);
 
     public record RegisterRequest(
@@ -33,7 +38,9 @@ public class AuthController(
         string Password,
         string ConfirmPassword,
         string? PreferredLanguage = null,
-        string? PhoneCountryCode = null);
+        string? PhoneCountryCode = null,
+        bool AcceptedEula = false,
+        string? EulaVersion = null);
 
     public record ConfirmActivationRequest(string Token);
 
@@ -185,6 +192,17 @@ public class AuthController(
         });
     }
 
+    /// <summary>Public current SaaS EULA metadata (full text is also published at /legal/eula).</summary>
+    [HttpGet("eula")]
+    public ActionResult<object> GetEula() => Ok(new
+    {
+        version = CurrentEulaVersion,
+        title = CurrentEulaTitle,
+        effectiveDate = CurrentEulaEffectiveDate,
+        provider = CurrentEulaProvider,
+        url = "/legal/eula",
+    });
+
     [HttpPost("register")]
     public async Task<ActionResult<object>> Register([FromBody] RegisterRequest request)
     {
@@ -213,6 +231,11 @@ public class AuthController(
             return BadRequest(new { message = "Password must be at least 8 characters." });
         if (!string.Equals(password, confirm, StringComparison.Ordinal))
             return BadRequest(new { message = "Password and confirmation do not match." });
+        if (!request.AcceptedEula)
+            return BadRequest(new { message = "You must accept the End User License Agreement to register." });
+        var eulaVersion = (request.EulaVersion ?? string.Empty).Trim();
+        if (!string.Equals(eulaVersion, CurrentEulaVersion, StringComparison.Ordinal))
+            return BadRequest(new { message = "Please review and accept the current End User License Agreement." });
 
         var mobileDigits = NormalizePhoneDigits(mobile);
         if (mobileDigits.Length < 8)
@@ -252,6 +275,8 @@ public class AuthController(
             ActivationTokenExpiresAt = DateTime.UtcNow.AddHours(48),
             PreferredLanguage = preferredLanguage,
             PhoneCountryCode = string.IsNullOrWhiteSpace(phoneCountryCode) ? null : phoneCountryCode,
+            EulaVersion = CurrentEulaVersion,
+            AcceptedEulaAt = DateTime.UtcNow,
         };
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "AppUsers");

@@ -1,6 +1,7 @@
 import { api, setApiTenantCompanyId } from '../api';
 import { DEMO_PASSWORD } from '../context/currentUserContext';
 import { EMPTY_COMPONENT_DETAIL_CONFIG, serializeDetailConfig } from './componentForm';
+import { CURRENT_EULA_VERSION } from './eula';
 import { calcCogsPercentValue, calcProductCogs } from './productForm';
 import { priceLocationLine, sumPricedLines } from './subscriptionPricing';
 import { allRmsTaskIds } from './userAccess';
@@ -302,6 +303,8 @@ const TASKS: TaskDef[] = [
         mobile,
         password,
         confirmPassword: password,
+        acceptedEula: true,
+        eulaVersion: CURRENT_EULA_VERSION,
       });
       await assert(!!registered.activationUrl, 'Register did not return activationUrl (SMTP stub link)');
       const token = extractActivationToken(registered.activationUrl);
