@@ -114,6 +114,29 @@ export function CreateB2bSalesOrderPage({
     });
   }, [taggedUnits]);
 
+  useEffect(() => {
+    if (!companyId || taggedUnits.length === 0) return;
+    let cancelled = false;
+    const productIds = [...new Set(taggedUnits.map(u => u.productId))];
+    api.promotionActivePrices(companyId, productIds)
+      .then(rows => {
+        if (cancelled || rows.length === 0) return;
+        const byProduct = new Map(rows.map(r => [r.productId, r.promoRrp]));
+        setPriceByKey(prev => {
+          const next = { ...prev };
+          for (const unit of taggedUnits) {
+            const promoRrp = byProduct.get(unit.productId);
+            if (promoRrp != null && promoRrp >= 0) {
+              next[unit.key] = String(promoRrp);
+            }
+          }
+          return next;
+        });
+      })
+      .catch(() => { /* keep customer/selling RRP */ });
+    return () => { cancelled = true; };
+  }, [companyId, taggedUnits]);
+
   const cartLines: SalesOrderCartLine[] = useMemo(() => {
     return taggedUnits
       .map(unit => {

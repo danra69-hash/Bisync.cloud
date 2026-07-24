@@ -1568,3 +1568,43 @@ public class ClientUpdateFollowupRequest
     public string? CreatedByEmail { get; set; }
 }
 
+public class CreatePromotionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    /// <summary>byDate | byQty</summary>
+    [MaxLength(20)]
+    public string DurationMode { get; set; } = "byDate";
+    /// <summary>yyyy-MM-dd</summary>
+    [MaxLength(16)]
+    public string StartDate { get; set; } = string.Empty;
+    /// <summary>yyyy-MM-dd — required when DurationMode is byDate</summary>
+    [MaxLength(16)]
+    public string? EndDate { get; set; }
+    /// <summary>discountPercent | knockedDownPrice</summary>
+    [MaxLength(40)]
+    public string PromotionType { get; set; } = "discountPercent";
+    [Range(0, 100)]
+    public decimal? DiscountPercent { get; set; }
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+    public List<CreatePromotionProductRequest> Products { get; set; } = [];
+}
+
+public class CreatePromotionProductRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal? PromoQty { get; set; }
+    [Range(0, 999999999)]
+    public decimal? KnockedDownPrice { get; set; }
+}
+
+public class SetPromotionActiveRequest
+{
+    public bool Active { get; set; }
+}
+

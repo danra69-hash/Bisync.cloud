@@ -139,6 +139,27 @@ public class B2bSalesOrdersController(
             ? request.LockPeriodDays
             : ResolveDefaultLockPeriodDays(productById.Values);
         var createdDate = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var baseRrpByProduct = new Dictionary<int, decimal>();
+        foreach (var line in request.Lines)
+        {
+            if (baseRrpByProduct.ContainsKey(line.ProductId)) continue;
+            productById.TryGetValue(line.ProductId, out var product);
+            var pricing = product is null
+                ? new B2bProductPricing.ResolvedB2bPricing(line.Rrp ?? 0, line.Uom?.Trim() ?? string.Empty, line.ProductAliasId, null)
+                : B2bProductPricing.ResolveForCustomerProduct(product, customer, line.ProductAliasId);
+            // Promo discount applies against published / customer RRP before client override.
+            baseRrpByProduct[line.ProductId] = pricing.Rrp > 0 ? pricing.Rrp : (line.Rrp ?? 0);
+        }
+
+        var promoHits = await PromotionPricingService.ResolvePromoRrpAsync(
+            db,
+            request.CompanyId,
+            baseRrpByProduct,
+            createdDate,
+            cancellationToken);
+        var promoQtyConsume = new Dictionary<int, decimal>();
+
         var order = new B2bSalesOrder
         {
             CompanyId = request.CompanyId,
@@ -160,6 +181,16 @@ public class B2bSalesOrdersController(
                     : B2bProductPricing.ResolveForCustomerProduct(product, customer, line.ProductAliasId);
 
                 var rrp = line.Rrp is > 0 ? line.Rrp.Value : pricing.Rrp;
+                if (promoHits.TryGetValue(line.ProductId, out var promo))
+                {
+                    rrp = promo.PromoRrp;
+                    if (promo.RemainingQty is not null)
+                    {
+                        promoQtyConsume.TryGetValue(promo.PromotionProductId, out var prior);
+                        promoQtyConsume[promo.PromotionProductId] = prior + line.QuantityOrdered;
+                    }
+                }
+
                 var uom = !string.IsNullOrWhiteSpace(line.Uom) ? line.Uom.Trim() : pricing.Uom;
                 var aliasId = line.ProductAliasId ?? pricing.ProductAliasId;
                 var productName = product?.Name ?? string.Empty;
@@ -185,6 +216,7 @@ public class B2bSalesOrdersController(
         };
 
         db.B2bSalesOrders.Add(order);
+        await PromotionPricingService.ConsumePromoQtyAsync(db, promoQtyConsume, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return Ok(MapOrder(order));
     }
