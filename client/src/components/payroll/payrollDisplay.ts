@@ -1,7 +1,8 @@
 import type { PayrollOtherAllowance } from '../../modules/hr/types';
+import { getCurrencySymbol } from '../../utils/numberFormat';
 
 export function payrollCurrencySymbol(countryCode = 'MY') {
-  return countryCode === 'MY' ? 'RM' : '$';
+  return getCurrencySymbol(countryCode);
 }
 
 export function formatPayrollAmount(amount: number | null | undefined, countryCode = 'MY') {

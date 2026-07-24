@@ -22,6 +22,7 @@ import { ingredientToRow } from './smartIngredientShared';
 import { fromApiUom } from '../../data/componentForm';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { formatPriceOrHidden } from '../../data/priceVisibility';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
@@ -115,12 +116,11 @@ function formatTransferDate(iso: string) {
   });
 }
 
-function formatMoney(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return '—';
-  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatMoneyMaybeHidden(hide: boolean, value: number | null | undefined) {
+function formatMoneyMaybeHidden(
+  hide: boolean,
+  value: number | null | undefined,
+  formatMoney: (value: number | null | undefined) => string,
+) {
   return formatPriceOrHidden(hide, () => formatMoney(value));
 }
 
@@ -140,7 +140,12 @@ const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted
 export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const { currentUser } = useCurrentUser();
   const hidePrices = useShouldHidePrices();
-  const money = (value: number | null | undefined) => formatMoneyMaybeHidden(hidePrices, value);
+  const { rm } = useCountryFormatters();
+  const formatMoney = (value: number | null | undefined) => {
+    if (value == null || !Number.isFinite(value)) return '—';
+    return rm(value);
+  };
+  const money = (value: number | null | undefined) => formatMoneyMaybeHidden(hidePrices, value, formatMoney);
   const orgReady = !!selectedCompanyId;
 
   const [month, setMonth] = useState(currentStockCardMonth);

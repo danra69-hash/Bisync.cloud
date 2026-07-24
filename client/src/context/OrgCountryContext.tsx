@@ -5,6 +5,7 @@ const DEFAULT_COUNTRY_CODE = 'MY';
 const OrgCountryContext = createContext(DEFAULT_COUNTRY_CODE);
 
 type Props = {
+  /** ISO country where the selected company was set up — drives currency formatting. */
   countryCode: string;
   children: React.ReactNode;
 };

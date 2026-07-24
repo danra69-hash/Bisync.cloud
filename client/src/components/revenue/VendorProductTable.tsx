@@ -21,7 +21,7 @@ import {
   VENDOR_PRODUCT_CATALOG,
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
-import { formatCountryNumber } from '../../utils/numberFormat';
+import { formatCountryCurrency, formatCountryNumber } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { tableHeaderCompactCls, TABLE_HEADER_LABEL_CLS } from '../shared/tableHeaderStyles';
 
@@ -113,7 +113,7 @@ function formatQty(n: number, countryCode: string): string {
 
 function formatPrice(n: number, countryCode: string): string {
   if (n <= 0) return '—';
-  return `$${formatCountryNumber(n, countryCode)}`;
+  return formatCountryCurrency(n, countryCode);
 }
 
 function VendorProductLocationModal({
@@ -332,7 +332,7 @@ export function VendorProductTableBody({
                     Delivery: {formatDeliveryBreakdown(product.delivery)}
                   </p>
                 </td>
-                <td className="px-2 py-2.5 font-sans">${formatCountryNumber(product.deliveryPrice, countryCode)}</td>
+                <td className="px-2 py-2.5 font-sans">{formatPrice(product.deliveryPrice, countryCode)}</td>
                 <td className="px-2 py-2.5">
                   <div className="relative">
                     <input

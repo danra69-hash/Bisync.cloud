@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,7 +39,7 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
     {
         var row = await db.SampleRequests.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
         if (row is null) return NotFound(new { message = "Sample request not found." });
-        return Ok(MapDetail(row));
+        return Ok(await MapDetailAsync(row));
     }
 
     [HttpPost]
@@ -165,7 +166,7 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         db.SampleRequests.Add(row);
         await db.SaveChangesAsync();
 
-        return Ok(MapDetail(row));
+        return Ok(await MapDetailAsync(row));
     }
 
     [HttpGet("share/{token}")]
@@ -180,7 +181,7 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         if (row is null)
             return NotFound(new { message = "Sample request link is invalid or has expired." });
 
-        return Ok(MapDetail(row));
+        return Ok(await MapDetailAsync(row));
     }
 
     [HttpPost("share/{token}/accept")]
@@ -195,7 +196,7 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
             return NotFound(new { message = "Sample request link is invalid or has expired." });
 
         if (row.VendorAcceptedAt is not null)
-            return Ok(MapDetail(row));
+            return Ok(await MapDetailAsync(row));
 
         var acceptedBy = body?.AcceptedBy?.Trim();
         if (string.IsNullOrWhiteSpace(acceptedBy))
@@ -207,7 +208,7 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         row.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        return Ok(MapDetail(row));
+        return Ok(await MapDetailAsync(row));
     }
 
     async Task<string> NextRequestNumberAsync(DateOnly dateRequested)
@@ -278,6 +279,21 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         }
     }
 
+    async Task<string> ResolveCompanyCountryCodeAsync(int companyId)
+    {
+        var code = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == companyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync();
+        return CountryCurrencies.NormalizeCountry(code);
+    }
+
+    async Task<object> MapDetailAsync(SampleRequest row)
+    {
+        var countryCode = await ResolveCompanyCountryCodeAsync(row.CompanyId);
+        return MapDetail(row, countryCode);
+    }
+
     static object MapSummary(SampleRequest row) => new
     {
         row.Id,
@@ -305,12 +321,13 @@ public class SampleRequestsController(BisyncDbContext db) : ControllerBase
         updatedAt = row.UpdatedAt,
     };
 
-    static object MapDetail(SampleRequest row) => new
+    static object MapDetail(SampleRequest row, string countryCode) => new
     {
         row.Id,
         requestNumber = row.RequestNumber,
         templateType = string.IsNullOrWhiteSpace(row.TemplateType) ? TemplateFlavours : row.TemplateType,
         row.CompanyId,
+        countryCode,
         dateRequested = row.DateRequested,
         contactEmployeeId = row.ContactEmployeeId,
         contactPersonName = row.ContactPersonName,

@@ -1,5 +1,5 @@
 import type { Employee, PayStructure } from '../../modules/hr/types';
-import { formatCountryCurrency } from '../../utils/numberFormat';
+import { formatCountryCurrency, getCurrencySymbol } from '../../utils/numberFormat';
 
 export const MALAYSIA_MOBILE_OPERATORS = ['Maxis', 'Celcom', 'Digi', 'U-Mobile', 'Yes'] as const;
 
@@ -59,7 +59,7 @@ export function formatBonusSummary(employee: Employee, countryCode = 'MY') {
   const freq = parts.length > 0 ? parts.join(' + ') : '—';
   const basis: string[] = [];
   if (employee.bonusAmount != null && employee.bonusAmount > 0) {
-    const symbol = countryCode === 'MY' ? 'RM' : '$';
+    const symbol = getCurrencySymbol(countryCode);
     basis.push(`${symbol} ${employee.bonusAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
   }
   if (employee.bonusByBasicSalary) basis.push('Basic Salary');

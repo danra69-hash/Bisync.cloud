@@ -146,7 +146,7 @@ export function ProductReadOnlyView({
   onToggleLocation,
   onOpenProductionMethod,
 }: Props) {
-  const { rm, currency, cogsPercent } = useCountryFormatters();
+  const { rm, currency, symbol, cogsPercent } = useCountryFormatters();
   const items = product.items ?? [];
   const packagingItems = product.packagingItems ?? [];
   const packagingCost = product.packagingCost ?? 0;
@@ -313,7 +313,7 @@ export function ProductReadOnlyView({
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">RRP</p>
                 <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-xs text-muted-foreground">RM</span>
+                  <span className="text-xs text-muted-foreground">{symbol}</span>
                   <input
                     type="number"
                     min="0"

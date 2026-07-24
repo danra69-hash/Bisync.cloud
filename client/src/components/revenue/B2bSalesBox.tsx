@@ -175,7 +175,7 @@ function SalesUnitCard({
   showDisableSwitch?: boolean;
   onChange: (line: B2bSalesUnitLine) => void;
 }) {
-  const { currency } = useCountryFormatters();
+  const { currency, symbol } = useCountryFormatters();
   const unitDisabled = Boolean(line.disabled);
   const fieldsDisabled = Boolean(disabled || unitDisabled);
   const summary = summarizeB2bSalesUnit(line, linkedSubProduct, alternateIndex, linkedSubProductBatchCogs);
@@ -226,7 +226,7 @@ function SalesUnitCard({
         <div className="pt-2 border-t border-border/60">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">RRP</p>
           <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-xs text-muted-foreground">RM</span>
+            <span className="text-xs text-muted-foreground">{symbol}</span>
             <input
               type="number"
               min="0"

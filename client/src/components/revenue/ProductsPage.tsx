@@ -174,7 +174,7 @@ function ComponentLinesSection({
   onOpenProductionMethod,
   estimateComponentPrice,
 }: ComponentLinesSectionProps) {
-  const { rm } = useCountryFormatters();
+  const { rm, symbol } = useCountryFormatters();
   const columns = includeSubProducts
     ? BOM_LINE_TABLE_COLUMNS.map(column => (
       column.key === 'component'
@@ -347,7 +347,7 @@ function ComponentLinesSection({
                   </td>
                   <td className={tdCls}>
                     <div className="flex items-center gap-1 min-w-[8rem]">
-                      <span className="text-muted-foreground">RM</span>
+                      <span className="text-muted-foreground">{symbol}</span>
                       <input
                         type="number"
                         min="0"
@@ -457,7 +457,7 @@ export function ProductsPage({
   onEditorRequestConsumed,
   onClose,
 }: Props) {
-  const { rm, cogsPercent } = useCountryFormatters();
+  const { rm, symbol, cogsPercent } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
   const hasB2bProductCapability = useOrgB2bProductCapability(selectedCompanyId, selectedLocationIds);
 
@@ -1722,7 +1722,7 @@ export function ProductsPage({
                             ) : (
                               <>
                                 <div className="flex items-center gap-1">
-                                  <span className="text-xs text-muted-foreground shrink-0">RM</span>
+                                  <span className="text-xs text-muted-foreground shrink-0">{symbol}</span>
                                   <input
                                     type="number"
                                     min="0"
@@ -1771,7 +1771,7 @@ export function ProductsPage({
                       </p>
                     ) : (
                       <div className="flex items-center gap-1.5 mt-1">
-                        <span className="text-xs text-muted-foreground">RM</span>
+                        <span className="text-xs text-muted-foreground">{symbol}</span>
                         <input
                           type="number"
                           min="0"

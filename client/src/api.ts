@@ -1399,6 +1399,7 @@ export interface SampleRequestDetail {
   requestNumber: string;
   templateType?: string;
   companyId: number;
+  countryCode?: string;
   dateRequested: string;
   contactEmployeeId?: number | null;
   contactPersonName: string;

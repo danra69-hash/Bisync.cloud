@@ -12,6 +12,7 @@ import { ProgressPanel } from './ProgressPanel';
 import { ActivePurchasePanel } from '../revenue/ActivePurchasePanel';
 import { B2bSalesOrderDetailPanel } from '../revenue/B2bSalesOrderDetailPanel';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import {
   DEFAULT_OVERVIEW_LAYOUT,
   loadOverviewLayout,
@@ -21,16 +22,6 @@ import {
   type OverviewLayoutState,
   type OverviewSectionId,
 } from '../../data/overviewLayout';
-
-function fmtUsd(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
-  return `$${n.toFixed(0)}`;
-}
-
-function fmtAov(n: number) {
-  return `$${n.toFixed(2)}`;
-}
 
 function fmtCount(n: number) {
   return n.toLocaleString();
@@ -97,15 +88,21 @@ function PeriodMetricCard({
   );
 }
 
-function RevenueChart({ data }: { data: RevenuePoint[] }) {
+function RevenueChart({
+  data,
+  formatValue,
+}: {
+  data: RevenuePoint[];
+  formatValue: (n: number) => string;
+}) {
   const max = Math.max(...data.flatMap(d => [d.currentValue, d.priorValue]), 1);
   return (
     <div className="flex items-end gap-2 h-40 mt-4">
       {data.map(d => (
         <div key={d.label} className="flex-1 flex flex-col items-center gap-1">
           <div className="w-full flex gap-0.5 items-end h-32">
-            <div className="flex-1 rounded-t bg-[#F37021]/60" style={{ height: `${(d.priorValue / max) * 100}%` }} title={`Prior: ${fmtUsd(d.priorValue)}`} />
-            <div className="flex-1 rounded-t bg-primary" style={{ height: `${(d.currentValue / max) * 100}%` }} title={`Current: ${fmtUsd(d.currentValue)}`} />
+            <div className="flex-1 rounded-t bg-[#F37021]/60" style={{ height: `${(d.priorValue / max) * 100}%` }} title={`Prior: ${formatValue(d.priorValue)}`} />
+            <div className="flex-1 rounded-t bg-primary" style={{ height: `${(d.currentValue / max) * 100}%` }} title={`Current: ${formatValue(d.currentValue)}`} />
           </div>
           <span className="text-xs text-muted-foreground">{d.label}</span>
         </div>
@@ -232,6 +229,7 @@ export function OverviewDashboard({
   onClientOrderUpdated,
 }: Props) {
   const { t } = useAppTranslation();
+  const { rm, compact } = useCountryFormatters();
   const [layout, setLayout] = useState<OverviewLayoutState>(() => loadOverviewLayout());
   const [draggingId, setDraggingId] = useState<OverviewSectionId | null>(null);
   const [dropTargetId, setDropTargetId] = useState<OverviewSectionId | null>(null);
@@ -358,7 +356,7 @@ export function OverviewDashboard({
             <PeriodMetricCard
               title={t('overview.salesToday')}
               totals={sales}
-              formatValue={fmtUsd}
+              formatValue={compact}
               icon={TrendingUp}
               accent
               vsLastYearLabel={t('overview.vsLastYear')}
@@ -377,7 +375,7 @@ export function OverviewDashboard({
             <PeriodMetricCard
               title={aovTitle}
               totals={aov}
-              formatValue={fmtAov}
+              formatValue={rm}
               icon={ShoppingBag}
               vsLastYearLabel={t('overview.vsLastYear')}
               wtdLabel={t('overview.wtd')}
@@ -391,7 +389,7 @@ export function OverviewDashboard({
             <div className="lg:col-span-2 bg-card border border-border rounded-lg p-3">
               <h2 className="text-sm font-semibold">{t('overview.revenueTrend')}</h2>
               <p className="text-xs text-muted-foreground mb-1">{t('overview.revenueTrendSubtitle')}</p>
-              <RevenueChart data={revenue} />
+              <RevenueChart data={revenue} formatValue={compact} />
             </div>
             <ProgressPanel progress={progress} />
           </div>
@@ -419,7 +417,7 @@ export function OverviewDashboard({
                       <tr key={m.id} className="border-b border-border last:border-0">
                         <td className="px-4 py-3 font-medium">{m.name}</td>
                         <td className="px-4 py-3 font-sans text-muted-foreground">{m.orders}</td>
-                        <td className="px-4 py-3 font-sans">${m.revenue.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-sans">{rm(m.revenue)}</td>
                         <td className="px-4 py-3 font-sans">{m.marginPercent}%</td>
                       </tr>
                     ))}
@@ -501,7 +499,7 @@ export function OverviewDashboard({
                           <td className="px-4 py-3 font-sans text-primary underline-offset-2 group-hover:underline">{o.poNumber}</td>
                           <td className="px-4 py-3">{o.vendorName}</td>
                           <td className="px-4 py-3 font-sans text-muted-foreground">{o.deliveryDate}</td>
-                          <td className="px-4 py-3 font-sans">${value.toFixed(2)}</td>
+                          <td className="px-4 py-3 font-sans">{rm(value)}</td>
                           <td className="px-4 py-3">
                             <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
                           </td>
@@ -558,7 +556,7 @@ export function OverviewDashboard({
                           <td className="px-4 py-3 font-sans text-primary">{o.orderNumber}</td>
                           <td className="px-4 py-3">{o.customerName}</td>
                           <td className="px-4 py-3 font-sans text-muted-foreground">{clientOrderDate(o)}</td>
-                          <td className="px-4 py-3 font-sans">${value.toFixed(2)}</td>
+                          <td className="px-4 py-3 font-sans">{rm(value)}</td>
                           <td className="px-4 py-3">
                             <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
                           </td>

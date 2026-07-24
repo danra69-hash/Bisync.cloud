@@ -13,6 +13,7 @@ import { getCompanyMessages } from '../../data/revMgmtCompanyMessages';
 import { filterPurchaseOrdersByOrg } from '../../utils/orgFilters';
 import { ActivePurchasePanel } from './ActivePurchasePanel';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -122,6 +123,7 @@ function toneClasses(tone: ActivityItem['tone']) {
 
 export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds, onOpenTransfer }: Props) {
   const { currentUser } = useCurrentUser();
+  const { rm } = useCountryFormatters();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
@@ -491,7 +493,7 @@ export function RevMgmtLandingPage({ selectedCompanyId, selectedLocationIds, onO
                       </td>
                       <td className="px-4 py-3">{order.vendorName}</td>
                       <td className="px-4 py-3 font-sans text-muted-foreground whitespace-nowrap">{order.deliveryDate}</td>
-                      <td className="px-4 py-3 font-sans whitespace-nowrap">${orderValue(order).toFixed(2)}</td>
+                      <td className="px-4 py-3 font-sans whitespace-nowrap">{rm(orderValue(order))}</td>
                       <td className="px-4 py-3">
                         <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400">
                           {order.status}

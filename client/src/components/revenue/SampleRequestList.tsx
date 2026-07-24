@@ -15,16 +15,12 @@ import { formatVendorPolicyLabel } from '../../data/vendorPolicyRules';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 
 type Props = {
   selectedCompanyId: number | null;
   refreshKey?: number;
 };
-
-function formatMoney(value?: number): string {
-  if (value == null || !Number.isFinite(value)) return '—';
-  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 function yesNo(value: boolean): string {
   return value ? 'Yes' : 'No';
@@ -41,6 +37,11 @@ function SampleRequestDetailPanel({
   detail: SampleRequestDetail;
   onClose: () => void;
 }) {
+  const { rm } = useCountryFormatters();
+  const formatMoney = (value?: number): string => {
+    if (value == null || !Number.isFinite(value)) return '—';
+    return rm(value);
+  };
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
