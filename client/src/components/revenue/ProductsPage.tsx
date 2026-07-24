@@ -7,7 +7,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { api, type Product } from '../../api';
+import { api, type InventoryPurchase, type Product, type Vendor } from '../../api';
 import { blankComponentRow, fromApiUom, toApiUom, type AltUnitEntry } from '../../data/componentForm';
 import { getDefaultCategoryAndGroup, loadComponentHierarchy } from '../../data/componentHierarchy';
 import {
@@ -25,6 +25,11 @@ import {
   serializeProductParStockUom,
 } from '../../data/productParStock';
 import { componentMatchesLocations } from '../../data/createOrder';
+import {
+  ensureBomPricingCatalogReady,
+  formatBomUnitPrice,
+  resolveBomComponentPrice,
+} from '../../data/resolveBomComponentPrice';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useOrgB2bProductCapability } from '../../hooks/useOrgSupplyCapability';
 import {
@@ -147,6 +152,7 @@ type ComponentLinesSectionProps = {
   onAddLine: () => void;
   onOpenAddComponent: (lineKey: string) => void;
   onOpenProductionMethod?: () => void;
+  estimateComponentPrice?: (component: ComponentRow, selectedUom: string) => string;
 };
 
 function ComponentLinesSection({
@@ -166,6 +172,7 @@ function ComponentLinesSection({
   onAddLine,
   onOpenAddComponent,
   onOpenProductionMethod,
+  estimateComponentPrice,
 }: ComponentLinesSectionProps) {
   const { rm } = useCountryFormatters();
   const columns = includeSubProducts
@@ -317,9 +324,13 @@ function ComponentLinesSection({
                         onChange={e => {
                           const selected = uomOptions.find(option => option.label === e.target.value);
                           if (!selected) return;
+                          const component = availableComponents.find(item => item.componentId === line.componentId);
+                          const estimated = component && estimateComponentPrice
+                            ? estimateComponentPrice(component, selected.label)
+                            : '';
                           onUpdateLine(line.key, {
                             componentUom: selected.label,
-                            componentUomPrice: selected.price > 0 ? String(selected.price) : '',
+                            componentUomPrice: estimated || (selected.price > 0 ? String(selected.price) : ''),
                           });
                         }}
                         className={`${fieldCls} min-w-[6rem] max-w-full`}
@@ -482,6 +493,8 @@ export function ProductsPage({
   const [b2bSalesConfig, setB2bSalesConfig] = useState<B2bSalesConfig>(() => blankB2bSalesConfig());
 
   const [components, setComponents] = useState<ReturnType<typeof ingredientToRow>[]>([]);
+  const [inventoryPurchases, setInventoryPurchases] = useState<InventoryPurchase[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [extraGroups, setExtraGroups] = useState<string[]>(() => loadExtraGroups());
   const [deletingGroup, setDeletingGroup] = useState<string | null>(null);
   const [deletingGroupError, setDeletingGroupError] = useState<string | null>(null);
@@ -545,6 +558,33 @@ export function ProductsPage({
   useEffect(() => {
     void loadComponents();
   }, [loadComponents]);
+
+  useEffect(() => {
+    if (!orgReady || !selectedCompanyId) {
+      setInventoryPurchases([]);
+      setVendors([]);
+      return;
+    }
+    void ensureBomPricingCatalogReady();
+    void api.inventoryPurchases(selectedCompanyId)
+      .then(setInventoryPurchases)
+      .catch(() => setInventoryPurchases([]));
+    void api.vendors(true, selectedCompanyId)
+      .then(setVendors)
+      .catch(() => setVendors([]));
+  }, [orgReady, selectedCompanyId]);
+
+  const estimateComponentPrice = useCallback((component: ComponentRow, selectedUom: string) => {
+    const resolved = resolveBomComponentPrice({
+      component,
+      selectedUom,
+      purchases: inventoryPurchases,
+      vendors,
+      companyId: selectedCompanyId,
+      locationIds: selectedLocationIds,
+    });
+    return formatBomUnitPrice(resolved.unitPrice);
+  }, [inventoryPurchases, selectedCompanyId, selectedLocationIds, vendors]);
 
   useEffect(() => {
     if (!selectedCompanyId) {
@@ -907,11 +947,12 @@ export function ProductsPage({
       return;
     }
     const next = productLineFromComponent(component);
+    const estimated = estimateComponentPrice(component, next.componentUom);
     updateLine(key, {
       componentId: next.componentId,
       componentName: next.componentName,
       componentUom: next.componentUom,
-      componentUomPrice: next.componentUomPrice,
+      componentUomPrice: estimated || next.componentUomPrice,
       sourceProductId: undefined,
     });
   }
@@ -1045,11 +1086,12 @@ export function ProductsPage({
       return;
     }
     const next = productLineFromComponent(component);
+    const estimated = estimateComponentPrice(component, next.componentUom);
     updatePackagingLine(key, {
       componentId: next.componentId,
       componentName: next.componentName,
       componentUom: next.componentUom,
-      componentUomPrice: next.componentUomPrice,
+      componentUomPrice: estimated || next.componentUomPrice,
     });
   }
 
@@ -1962,6 +2004,7 @@ export function ProductsPage({
             onAddLine={addLine}
             onOpenAddComponent={lineKey => openAddComponent(lineKey, 'product')}
             onOpenProductionMethod={() => setProductionMethodOpen(true)}
+            estimateComponentPrice={estimateComponentPrice}
           />
 
           <ComponentLinesSection
@@ -1976,6 +2019,7 @@ export function ProductsPage({
             onRemoveLine={removePackagingLine}
             onAddLine={addPackagingLine}
             onOpenAddComponent={lineKey => openAddComponent(lineKey, 'packaging')}
+            estimateComponentPrice={estimateComponentPrice}
           />
           </fieldset>
 
