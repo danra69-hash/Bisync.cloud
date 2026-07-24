@@ -33,6 +33,11 @@ public class Vendor
     public string EngageApprovedBy { get; set; } = string.Empty;
     /// <summary>halal | muslim-friendly | non-halal — classifies products supplied by this vendor.</summary>
     public string ProductPolicyTag { get; set; } = "non-halal";
+    /// <summary>
+    /// When true, POs for this vendor may be received/consolidated in shipments while staying active
+    /// as Partially Delivered until Final delivery completed.
+    /// </summary>
+    public bool AllowPartialDelivery { get; set; }
     /// <summary>Inactive vendors are hidden from new engage/order flows.</summary>
     public bool Active { get; set; } = true;
 }

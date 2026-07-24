@@ -610,6 +610,7 @@ public class CreateVendorRequest
     public string Email { get; set; } = string.Empty;
     [Required, MaxLength(30)]
     public string ProductPolicyTag { get; set; } = string.Empty;
+    public bool AllowPartialDelivery { get; set; }
 }
 
 public class UpdateVendorRequest
@@ -638,6 +639,7 @@ public class UpdateVendorRequest
     public string Email { get; set; } = string.Empty;
     [Required, MaxLength(30)]
     public string ProductPolicyTag { get; set; } = string.Empty;
+    public bool AllowPartialDelivery { get; set; }
 }
 
 public class SetVendorActiveRequest

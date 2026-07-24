@@ -33,6 +33,7 @@ function vendorToForm(vendor: Vendor): VendorUpdatePayload {
     mobile: vendor.mobile ?? '',
     email: vendor.email ?? '',
     productPolicyTag: resolveVendorProductPolicyTag(vendor),
+    allowPartialDelivery: Boolean(vendor.allowPartialDelivery),
   };
 }
 
@@ -237,6 +238,29 @@ export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Pro
               onChange={value => setField('productPolicyTag', value)}
             />
           </div>
+
+          <label
+            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+              form.allowPartialDelivery
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-primary/40'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(form.allowPartialDelivery)}
+              onChange={e => setField('allowPartialDelivery', e.target.checked)}
+              className="mt-0.5 rounded border-border"
+            />
+            <span className="min-w-0">
+              <span className="block text-xs font-medium text-foreground">Allow Partial Delivery</span>
+              <span className="block text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                When enabled, POs for this vendor can be received and consolidated in shipments while staying
+                active as Partially Delivered until Final delivery completed. Delivery rating is only scored
+                against the issued PO after final close (qty/price mismatch).
+              </span>
+            </span>
+          </label>
 
           <div className="rounded-lg border border-dashed border-border bg-muted/10 px-3 py-2.5">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">PO preview</p>
