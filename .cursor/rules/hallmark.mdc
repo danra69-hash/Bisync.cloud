@@ -1,0 +1,28 @@
+---
+description: Hallmark anti-AI-slop design skill — load for UI build/audit/redesign/study
+globs:
+alwaysApply: false
+---
+
+# Hallmark (installed)
+
+Project skill path: `.agents/skills/hallmark/`
+
+When the user asks to **build / redesign / audit / study** UI, or invokes Hallmark by name:
+
+1. Read `.agents/skills/hallmark/SKILL.md` and follow its verbs (`audit`, `redesign`, `study`, or default build).
+2. Load only the referenced files under `.agents/skills/hallmark/references/` that the skill asks for (do not dump the whole tree).
+3. Respect Bisync constraints: in-place edits preferred; do not bulldoze routes/ownership; keep corporate ops tone.
+
+## Bisync corporate defaults (when user has not named a theme)
+
+Prefer clean corporate fingerprints:
+
+1. **Cobalt + Workbench** — product screens as hero (ops consoles, stock, PO)
+2. **Cobalt + Narrative Workflow** — Order → Receive → Cost → Sell stories
+3. **Modern-minimal / Stat-Led** — KPI / dashboard marketing surfaces
+4. **Split Studio + Cobalt** — text + live UI proof
+
+Avoid for Bisync corporate: Carnival, Riso, Garden, Manifesto, Specimen/Newsprint, Lumen Night glow.
+
+Live theme browser: https://www.usehallmark.com (press `T` to cycle).
