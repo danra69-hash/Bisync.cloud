@@ -60,6 +60,26 @@
       "createdAt": "2026-07-24"
     },
     {
+      "id": "dr.page.privacy-policy",
+      "kind": "client-page",
+      "path": "client/src/pages/PrivacyPolicyPage.tsx",
+      "symbol": "PrivacyPolicyPage",
+      "route": "/legal/privacy",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-24"
+    },
+    {
+      "id": "dr.page.dpa",
+      "kind": "client-page",
+      "path": "client/src/pages/DpaPage.tsx",
+      "symbol": "DpaPage",
+      "route": "/legal/dpa",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-24"
+    },
+    {
       "id": "dr.page.activate-account",
       "kind": "client-page",
       "path": "client/src/pages/ActivateAccountPage.tsx",

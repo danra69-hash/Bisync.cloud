@@ -2603,6 +2603,10 @@ export const api = {
     phoneCountryCode?: string;
     acceptedEula: boolean;
     eulaVersion: string;
+    acceptedPrivacyPolicy: boolean;
+    privacyPolicyVersion: string;
+    acceptedDpa: boolean;
+    dpaVersion: string;
   }) =>
     fetchJsonWithMethod<{ message: string; email: string; activationUrl: string; preferredLanguage?: string }>(
       '/api/auth/register',
@@ -2613,6 +2617,12 @@ export const api = {
     fetchJson<{ version: string; title: string; effectiveDate: string; provider: string }>(
       '/api/auth/eula',
     ),
+  legalDocs: () =>
+    fetchJson<{
+      eula: { version: string; title: string; url: string };
+      privacyPolicy: { version: string; title: string; url: string };
+      dpa: { version: string; title: string; url: string };
+    }>('/api/auth/legal'),
   registrationPolicy: () =>
     fetchJson<{
       demoMode: boolean;
