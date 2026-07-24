@@ -1,24 +1,28 @@
-# FIFO stock costing (STOCK Analyzer basis)
+# FIFO stock costing (issue_fifo_stock)
 
-Platform FIFO must match Bisync STOCK Analyzer `computeIngredientFIFO` /
-`pushLayer` / `depleteFIFO`.
+Platform FIFO issuance is enforced by PostgreSQL `issue_fifo_stock` (strict oldest-batch-first,
+`FOR UPDATE` locking, per-batch audit lines, zero-tolerance insufficient stock).
 
 ## Rules
 
-1. **Perpetual layers** — do not collapse remaining layers to monthly average B/F by default (`Simulate(..., collapseAtMonthBoundaries: false)`).
-2. **Sort** events by `OccurredAt`, then `Id`.
-3. **Outbound** depletes oldest layer first; multi-tranche segments kept; uncovered qty is shortfall at **zero COGS** (deficit).
-4. **Inbound** pays earliest shortfalls **first at the arriving layer price** (retro COGS), then surplus becomes a new layer — never drain older on-hand layers to price shortfalls.
-5. **Running qty** can go negative; physical queue value excludes deficit.
-6. **Unit prices** round to **4 decimal places** (`DecimalRounding.ToDb` / `RoundUnitPrice`).
-7. **Qty epsilon** ≈ `1e-9` (`StockCardFifoEngine.QtyEpsilon`).
+1. **Batch + cost segregation on receipt** — every inbound shipment is a distinct `inventory_batches` row with receipt date, qty, and unit cost (never averaged).
+2. **Strict issuance** — deplete the oldest ACTIVE batch to zero before the next; no manual batch picking.
+3. **Zero tolerance** — if remaining demand cannot be filled, abort and roll back (`RAISE EXCEPTION`).
+4. **Concurrent safety** — select candidate batches `FOR UPDATE` so concurrent issues serialize.
+5. **Audit trail** — each issue writes `transactions` + `transaction_lines` (batch_id, qty_deducted, unit_cost).
+6. **Unit prices / qty** round to **4 decimal places** (`DecimalRounding.ToDb`).
+7. **Stock-take variances** — shortages deduct oldest batches; overages add to the latest/new adjustment batch at latest invoice cost (see Ref & Library guide steps 3–7).
 
 ## Code anchors
 
-- Engine: `src/Bisync.Api/Services/StockCardFifoEngine.cs`
-- Live deductions: `src/Bisync.Api/Services/ComponentFifoCostingService.cs`
-- Stock card ledger: `src/Bisync.Api/Services/StockCardService.cs`
+- SQL DDL + function: `src/Bisync.Api/Data/FifoIssueStockSql.cs`
+- Live issue / receipt batches: `src/Bisync.Api/Services/FifoBatchIssueService.cs`
+- Deduction entrypoint: `src/Bisync.Api/Services/ComponentStockService.cs`
+- Event rebuild / backfill helpers: `src/Bisync.Api/Services/ComponentFifoCostingService.cs`
+- Ledger simulation (display): `src/Bisync.Api/Services/StockCardFifoEngine.cs`
+- Ref & Library guide + SQL: `client/src/data/fifoStockGuide.ts`, `client/src/components/dev/RefLibraryTab.tsx`
 
-## Source of truth
+## Runtime adaptation
 
-Uploaded Analyzer HTML: `Bisync_STOCK_Analyzer_*.html` (`computeIngredientFIFO`).
+Canonical library SQL uses `p_product_id UUID`. Bisync installs an adapted signature keyed by
+`component_id` + `location_external_id` + `uom` to match Component identity and multi-location stock.

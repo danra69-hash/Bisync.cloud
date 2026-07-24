@@ -933,7 +933,8 @@ public class IngredientsController(
 public class PurchaseOrdersController(
     BisyncDbContext db,
     LocationPartitionService locationPartitions,
-    SplitUseService splitUse) : ControllerBase
+    SplitUseService splitUse,
+    FifoBatchIssueService fifoBatches) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
@@ -1369,6 +1370,15 @@ public class PurchaseOrdersController(
         order.ReconciledAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+
+        // Guide step 1: each reconciled inbound line becomes a distinct cost-segregated batch.
+        var receiptPurchases = await db.InventoryPurchases
+            .Where(p => p.PurchaseOrderId == order.Id
+                || (p.SplitSourceType == "purchase-order" && p.SplitSourceId == order.Id))
+            .ToListAsync();
+        foreach (var purchase in receiptPurchases)
+            await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
+
         await transaction.CommitAsync();
         return Ok(new
         {

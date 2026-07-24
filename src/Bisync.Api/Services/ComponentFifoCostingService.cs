@@ -6,8 +6,8 @@ namespace Bisync.Api.Services;
 
 /// <summary>
 /// Resolves FIFO unit cost for component deductions at a single location.
-/// Perpetual FIFO (Bisync STOCK Analyzer basis): multi-tranche layers across months,
-/// uncovered outbound at zero COGS, inbound pays earliest shortfalls at arrival price.
+/// Live issuance uses PostgreSQL <c>issue_fifo_stock</c> (see <see cref="FifoBatchIssueService"/>).
+/// This service rebuilds purchase/movement events for as-of estimates and batch backfill.
 /// </summary>
 public class ComponentFifoCostingService(BisyncDbContext db)
 {
@@ -56,6 +56,14 @@ public class ComponentFifoCostingService(BisyncDbContext db)
         var consumed = StockCardFifoEngine.Consume(ref layers, quantity);
         return consumed.UnitPrice;
     }
+
+    public Task<List<FifoEvent>> LoadInboundEventsForSyncAsync(
+        string componentId,
+        string locationExternalId,
+        string uom,
+        int? companyId,
+        CancellationToken cancellationToken = default) =>
+        LoadInboundEventsAsync(componentId, locationExternalId, uom, companyId, cancellationToken);
 
     async Task<List<FifoEvent>> LoadInboundEventsAsync(
         string componentId,
