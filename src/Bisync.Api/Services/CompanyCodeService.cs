@@ -21,6 +21,16 @@ public static class CompanyCodeService
             .Select(c => c.Code!)
             .ToListAsync();
 
+        // Include unsaved tracked companies so batch seeds do not collide on Code.
+        foreach (var tracked in db.ChangeTracker.Entries<Company>())
+        {
+            if (tracked.Entity == company) continue;
+            var code = tracked.Entity.Code;
+            if (string.IsNullOrWhiteSpace(code)) continue;
+            if (!existing.Contains(code, StringComparer.OrdinalIgnoreCase))
+                existing.Add(code);
+        }
+
         company.Code = ComponentIdentityRules.AllocateUniqueCompanyCode(company.Name, existing, company.Id);
     }
 
