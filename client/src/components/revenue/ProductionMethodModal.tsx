@@ -13,6 +13,10 @@ import {
   saveProductionMethod,
   type ProductProductionMethod,
 } from '../../data/productProductionMethod';
+import {
+  estimateProductNutrientsFromFndds,
+  loadFnddsNutrientCatalog,
+} from '../../data/fnddsNutrientCatalog';
 import { MODAL_OVERLAY_CLS } from '../layout/sidePanelShared';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
@@ -38,11 +42,20 @@ export function ProductionMethodModal({
   const { rm, countryCode } = useCountryFormatters();
   const [draft, setDraft] = useState<ProductProductionMethod>(() => loadProductionMethod(productKey));
   const [printing, setPrinting] = useState(false);
+  const [fnddsReady, setFnddsReady] = useState(false);
   const fileInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
     setDraft(loadProductionMethod(productKey));
   }, [productKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFnddsNutrientCatalog().then(() => {
+      if (!cancelled) setFnddsReady(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const sequencedComponents = useMemo(
     () => components
@@ -51,10 +64,12 @@ export function ProductionMethodModal({
     [components],
   );
 
-  const nutritionRows = useMemo(
-    () => estimateNutritionalFactors(sequencedComponents, draft.methodText, yieldQuantity),
-    [sequencedComponents, draft.methodText, yieldQuantity],
-  );
+  const nutritionRows = useMemo(() => {
+    if (fnddsReady) {
+      return estimateProductNutrientsFromFndds(sequencedComponents, { yieldQuantity }).rows;
+    }
+    return estimateNutritionalFactors(sequencedComponents, draft.methodText, yieldQuantity);
+  }, [fnddsReady, sequencedComponents, draft.methodText, yieldQuantity]);
 
   function updateImage(index: number, patch: Partial<ProductProductionMethod['images'][number]>) {
     setDraft(prev => ({
