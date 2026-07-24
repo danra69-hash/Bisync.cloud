@@ -425,7 +425,11 @@ public class VendorRatingService(BisyncDbContext db)
 
     static void AccumulatePoAndAccuracy(VendorMetrics metrics, PurchaseOrder order)
     {
-        if (order.ReceivedAt is null && order.ReconciledAt is null) return;
+        // Partial deliveries do not affect delivery/PO rating until Final delivery completed
+        // (status becomes Reconciled with ReconciledAt / FinalDeliveryCompletedAt set).
+        if (!string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (order.ReconciledAt is null && order.FinalDeliveryCompletedAt is null) return;
         var items = order.Items?.ToList() ?? [];
         if (items.Count == 0) return;
 
@@ -438,7 +442,10 @@ public class VendorRatingService(BisyncDbContext db)
 
         foreach (var item in items)
         {
-            var receivedQty = item.ReconciledQuantity ?? item.ReceivedQuantity ?? item.Quantity;
+            // Prefer cumulative delivered qty after partial shipments; else reconciled/received snapshot.
+            var receivedQty = item.DeliveredQuantity > 0
+                ? item.DeliveredQuantity
+                : (item.ReconciledQuantity ?? item.ReceivedQuantity ?? item.Quantity);
             var receivedPrice = item.ReconciledUnitPrice ?? item.ReceivedUnitPrice ?? item.UnitPrice;
             var qtyChanged = Math.Abs(receivedQty - item.Quantity) > 0.0001m;
             var priceChanged = Math.Abs(receivedPrice - item.UnitPrice) > 0.0001m;

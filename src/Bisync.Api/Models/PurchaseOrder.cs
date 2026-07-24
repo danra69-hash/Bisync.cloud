@@ -35,6 +35,8 @@ public class PurchaseOrder
     public string HygieneRating { get; set; } = string.Empty;
     /// <summary>Optional comment for hygiene & cleanliness rating.</summary>
     public string HygieneComment { get; set; } = string.Empty;
+    /// <summary>Set when Final delivery completed is clicked (partial-delivery vendors).</summary>
+    public DateTime? FinalDeliveryCompletedAt { get; set; }
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 
@@ -58,6 +60,8 @@ public class PurchaseOrderItem
     public decimal? ReceivedUnitPrice { get; set; }
     public decimal? ReconciledQuantity { get; set; }
     public decimal? ReconciledUnitPrice { get; set; }
+    /// <summary>Cumulative qty consolidated into inventory across partial shipments.</summary>
+    public decimal DeliveredQuantity { get; set; }
     public decimal TaxAmount { get; set; }
     public string HalalCertNo { get; set; } = string.Empty;
     /// <summary>Optional vendor product expiry date (yyyy-MM-dd) captured at receive.</summary>

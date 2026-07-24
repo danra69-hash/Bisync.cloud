@@ -424,6 +424,7 @@ export interface Vendor {
   engageApprovedAt?: string | null;
   engageApprovedBy?: string;
   productPolicyTag?: VendorProductPolicyTag;
+  allowPartialDelivery?: boolean;
   active?: boolean;
 }
 
@@ -531,6 +532,7 @@ export interface VendorCreatePayload {
   mobile: string;
   email: string;
   productPolicyTag: VendorProductPolicyTag;
+  allowPartialDelivery?: boolean;
 }
 
 export interface VendorUpdatePayload {
@@ -546,6 +548,7 @@ export interface VendorUpdatePayload {
   mobile: string;
   email: string;
   productPolicyTag: VendorProductPolicyTag;
+  allowPartialDelivery?: boolean;
 }
 
 export interface B2bCustomerContact {
@@ -1157,6 +1160,8 @@ export interface PurchaseOrderItem {
   receivedUnitPrice?: number | null;
   reconciledQuantity?: number | null;
   reconciledUnitPrice?: number | null;
+  deliveredQuantity?: number;
+  remainingQuantity?: number;
   taxAmount?: number;
   halalCertNo?: string;
   productExpiryDate?: string | null;
@@ -1179,6 +1184,7 @@ export interface PurchaseOrder {
   approvedAt?: string | null;
   receivedAt?: string | null;
   reconciledAt?: string | null;
+  finalDeliveryCompletedAt?: string | null;
   vendorShareToken?: string | null;
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;
@@ -1188,9 +1194,11 @@ export interface PurchaseOrder {
   productQualityComment?: string | null;
   hygieneRating?: string | null;
   hygieneComment?: string | null;
+  allowPartialDelivery?: boolean;
   canApprove?: boolean;
   canReceive?: boolean;
   canReconcile?: boolean;
+  canFinalizeDelivery?: boolean;
   items: PurchaseOrderItem[];
 }
 
@@ -3032,6 +3040,8 @@ export const api = {
     fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/receive`, 'POST', payload),
   reconcilePurchaseOrder: (id: number, payload: PurchaseOrderWorkflowPayload) =>
     fetchJsonWithMethod<ReconcilePurchaseOrderResult>(`/api/purchaseorders/${id}/reconcile`, 'POST', payload),
+  finalizePurchaseOrderDelivery: (id: number) =>
+    fetchJsonWithMethod<PurchaseOrder>(`/api/purchaseorders/${id}/finalize-delivery`, 'POST', {}),
   userNotifications: (userId: number, recipientName: string, unreadOnly = false) => {
     const params = new URLSearchParams({
       userId: String(userId),

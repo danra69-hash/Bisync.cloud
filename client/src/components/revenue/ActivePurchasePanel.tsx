@@ -55,17 +55,25 @@ type EditableLine = {
   productExpiryDate: string;
   /** Optional temperature °C at receive/consolidate. */
   receivedTemperature: string;
+  deliveredQuantity: number;
+  remainingQuantity: number;
 };
 
 function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 'reconcile' | 'view'): EditableLine[] {
+  const partial = Boolean(order.allowPartialDelivery);
   return order.items.map(item => {
     const issued = item.issuedUnitPrice ?? item.unitPrice;
     const orderedQty = item.quantity;
     const orderedPrice = item.unitPrice;
-    // On receive/view/reconcile, quantity/unitPrice are the physical receipt values.
+    const delivered = item.deliveredQuantity ?? 0;
+    const remaining = item.remainingQuantity ?? Math.max(0, orderedQty - delivered);
+    // On receive for partial POs, default shipment qty to remaining undelivered.
+    // Otherwise use last received qty or full ordered.
     const qty = mode === 'approve'
       ? orderedQty
-      : (item.receivedQuantity ?? orderedQty);
+      : mode === 'receive' && partial
+        ? remaining
+        : (item.receivedQuantity ?? (partial ? remaining : orderedQty));
     const price = mode === 'approve'
       ? orderedPrice
       : (item.receivedUnitPrice ?? orderedPrice);
@@ -89,6 +97,8 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       receivedTemperature: item.receivedTemperature != null && Number.isFinite(item.receivedTemperature)
         ? String(item.receivedTemperature)
         : '',
+      deliveredQuantity: delivered,
+      remainingQuantity: remaining,
     };
   });
 }
@@ -138,9 +148,22 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
   const vendorShareActionsLocked =
     mode === 'reconcile'
     || order.status === 'Received'
+    || order.status === 'Partially Delivered'
     || order.status === 'Reconciled'
     || Boolean(order.receivedAt)
-    || Boolean(order.reconciledAt);
+    || Boolean(order.reconciledAt)
+    || Boolean(order.finalDeliveryCompletedAt);
+  const canFinalizeDelivery = Boolean(
+    access && (canReceivePurchaseOrder(access) || canApprovePurchaseOrder(access)) && order.canFinalizeDelivery,
+  );
+  const showPartialDeliveryColumns = Boolean(order.allowPartialDelivery)
+    && (
+      mode === 'receive'
+      || mode === 'reconcile'
+      || mode === 'view'
+      || order.status === 'Partially Delivered'
+      || order.items.some(i => (i.deliveredQuantity ?? 0) > 0)
+    );
   const [lines, setLines] = useState(() => buildEditableLines(order, mode));
   const [vendorDoNumber, setVendorDoNumber] = useState(order.vendorDoNumber?.trim() ?? '');
   const [vendorInvoiceNumber, setVendorInvoiceNumber] = useState(order.vendorInvoiceNumber?.trim() ?? '');
@@ -239,7 +262,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     'Component',
     'Product',
     showOrderedReceivedColumns ? 'QTY Ordered' : 'Qty',
-    showOrderedReceivedColumns ? 'QTY Received' : null,
+    showPartialDeliveryColumns ? 'Delivered' : null,
+    showPartialDeliveryColumns ? 'Remaining' : null,
+    showOrderedReceivedColumns
+      ? (showPartialDeliveryColumns ? 'QTY This shipment' : 'QTY Received')
+      : null,
     'UOM',
     !hidePrices && mode === 'reconcile' ? 'Issued price' : null,
     !hidePrices ? (showOrderedReceivedColumns ? 'Unit Price Ordered' : 'Unit price') : null,
@@ -313,6 +340,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       setError('Received quantity cannot be negative. Use 0 for out of stock.');
       return;
     }
+    if (order.allowPartialDelivery) {
+      const over = lines.find(line => (parseFloat(line.quantity) || 0) > line.remainingQuantity + 0.0001);
+      if (over) {
+        setError(`Received qty for "${over.productName}" cannot exceed remaining ${over.remainingQuantity}.`);
+        return;
+      }
+    }
     const doNumber = vendorDoNumber.trim();
     const invoiceNumber = vendorInvoiceNumber.trim();
     if (!doNumber && !invoiceNumber) {
@@ -355,6 +389,13 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
       setError('Reconciled quantity cannot be negative. Use 0 for out of stock.');
       return;
     }
+    if (order.allowPartialDelivery) {
+      const over = lines.find(line => (parseFloat(line.quantity) || 0) > line.remainingQuantity + 0.0001);
+      if (over) {
+        setError(`Shipment qty for "${over.productName}" cannot exceed remaining ${over.remainingQuantity}.`);
+        return;
+      }
+    }
     if (!productQualityRating) {
       focusVendorRating('Select product quality (Satisfied, Acceptable, or Poor).');
       return;
@@ -385,21 +426,41 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     }
   }
 
+  async function handleFinalizeDelivery() {
+    if (!canFinalizeDelivery) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.finalizePurchaseOrderDelivery(order.id);
+      onUpdated(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to finalize delivery.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const title = mode === 'approve'
     ? 'Approve purchase request'
     : mode === 'receive'
-      ? 'Receive purchase order'
+      ? (order.status === 'Partially Delivered' ? 'Receive next shipment' : 'Receive purchase order')
       : mode === 'reconcile'
-        ? 'Reconcile purchase order'
+        ? (order.allowPartialDelivery ? 'Consolidate shipment' : 'Reconcile purchase order')
         : 'Purchase details';
 
   const subtitle = mode === 'approve'
     ? 'Approve to convert this PR into an open purchase order.'
     : mode === 'receive'
-      ? 'Confirm quantities and prices received from the vendor before posting to stock.'
+      ? (order.allowPartialDelivery
+        ? 'Enter qty for this shipment (defaults to remaining). Consolidate to stock; PO stays Partially Delivered until Final delivery completed.'
+        : 'Confirm quantities and prices received from the vendor before posting to stock.')
       : mode === 'reconcile'
-        ? 'Final review — stock will be created in inventory after reconciliation.'
-        : 'This purchase has no pending workflow action.';
+        ? (order.allowPartialDelivery
+          ? 'Post this shipment to inventory. PO remains active as Partially Delivered until you click Final delivery completed.'
+          : 'Final review — stock will be created in inventory after reconciliation.')
+        : order.canFinalizeDelivery
+          ? 'Partial deliveries are consolidated. Click Final delivery completed to close this PO (delivery rating uses final qty/price vs issued).'
+          : 'This purchase has no pending workflow action.';
 
   return createPortal(
     <>
@@ -425,6 +486,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         </div>
 
         <div ref={panelScrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {order.allowPartialDelivery || order.status === 'Partially Delivered' ? (
+            <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-800 dark:text-orange-300">
+              <p className="font-semibold">Partial delivery enabled for this vendor</p>
+              <p className="mt-0.5 leading-relaxed">
+                Delivered vs remaining is listed per line. Consolidate each shipment to stock; use
+                Final delivery completed to close the PO. Delivery rating is scored only after final close
+                if qty or price differs from the issued PO.
+              </p>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div>
               <p className="text-muted-foreground">Number</p>
@@ -609,6 +680,16 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             <td className="px-3 py-2">
                               <span className="font-sans text-muted-foreground">{line.orderedQuantity}</span>
                             </td>
+                            {showPartialDeliveryColumns ? (
+                              <>
+                                <td className="px-3 py-2 font-sans tabular-nums text-muted-foreground">
+                                  {line.deliveredQuantity}
+                                </td>
+                                <td className="px-3 py-2 font-sans tabular-nums">
+                                  {line.remainingQuantity}
+                                </td>
+                              </>
+                            ) : null}
                             <td className="px-3 py-2">
                               {canEditReceived ? (
                                 <input
@@ -966,7 +1047,22 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
             >
               <Check size={14} />
-              {saving ? 'Reconciling…' : 'Confirm reconcile & add to inventory'}
+              {saving
+                ? 'Reconciling…'
+                : order.allowPartialDelivery
+                  ? 'Confirm consolidate shipment'
+                  : 'Confirm reconcile & add to inventory'}
+            </button>
+          )}
+          {canFinalizeDelivery && (
+            <button
+              type="button"
+              onClick={() => void handleFinalizeDelivery()}
+              disabled={saving || !canFinalizeDelivery}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-primary text-primary bg-primary/5 text-xs font-semibold hover:bg-primary/10 disabled:opacity-50"
+            >
+              <Check size={14} />
+              {saving ? 'Finalizing…' : 'Final delivery completed'}
             </button>
           )}
         </div>

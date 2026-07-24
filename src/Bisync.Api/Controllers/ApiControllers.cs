@@ -311,6 +311,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             Mobile = request.Mobile.Trim(),
             Email = request.Email.Trim(),
             ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant(),
+            AllowPartialDelivery = request.AllowPartialDelivery,
             ContactsJson = JsonSerializer.Serialize(new[]
             {
                 new VendorContactRequest
@@ -361,6 +362,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         vendor.Mobile = request.Mobile.Trim();
         vendor.Email = request.Email.Trim();
         vendor.ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant();
+        vendor.AllowPartialDelivery = request.AllowPartialDelivery;
         vendor.ContactsJson = JsonSerializer.Serialize(
             SyncDefaultContact(vendor),
             ContactJsonOptions);
@@ -940,7 +942,8 @@ public class PurchaseOrdersController(
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
     {
         var orders = await BaseQuery().ToListAsync();
-        return Ok(orders.Select(PurchaseOrderWorkflow.MapOrder));
+        var flags = await ResolveAllowPartialFlagsAsync(orders);
+        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
     }
 
     [HttpGet("active")]
@@ -958,7 +961,8 @@ public class PurchaseOrdersController(
         var orders = await BaseQuery()
             .Where(p => orderIds.Contains(p.Id))
             .ToListAsync();
-        return Ok(orders.Select(PurchaseOrderWorkflow.MapOrder));
+        var flags = await ResolveAllowPartialFlagsAsync(orders);
+        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
     }
 
     /// <summary>
@@ -971,7 +975,8 @@ public class PurchaseOrdersController(
             return BadRequest(new { message = "companyId is required." });
 
         var orders = await OnlineVendorOrderBridge.ListInboundForVendorCompanyAsync(db, companyId);
-        return Ok(orders.Select(PurchaseOrderWorkflow.MapOrder));
+        var flags = await ResolveAllowPartialFlagsAsync(orders);
+        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
     }
 
     /// <summary>
@@ -984,7 +989,7 @@ public class PurchaseOrdersController(
         if (order is null) return NotFound();
 
         if (order.VendorAcceptedAt is not null)
-            return Ok(PurchaseOrderWorkflow.MapOrder(order));
+            return Ok(await MapPurchaseOrderAsync(order));
 
         if (!PurchaseOrderWorkflow.CanVendorAccept(order))
             return Conflict(new { message = "This purchase order can no longer be accepted." });
@@ -1048,7 +1053,7 @@ public class PurchaseOrdersController(
             }
         }
 
-        return Ok(PurchaseOrderWorkflow.MapOrder(order));
+        return Ok(await MapPurchaseOrderAsync(order));
     }
 
     [HttpPost("{id:int}/ensure-share-token")]
@@ -1059,7 +1064,7 @@ public class PurchaseOrdersController(
 
         PurchaseOrderShareService.EnsureShareToken(order);
         await db.SaveChangesAsync();
-        return Ok(PurchaseOrderWorkflow.MapOrder(order));
+        return Ok(await MapPurchaseOrderAsync(order));
     }
 
     [HttpGet("{id:int}")]
@@ -1067,7 +1072,7 @@ public class PurchaseOrdersController(
     {
         await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, [id]);
         var order = await LoadOrderAsync(id);
-        return order is null ? NotFound() : PurchaseOrderWorkflow.MapOrder(order);
+        return order is null ? NotFound() : await MapPurchaseOrderAsync(order);
     }
 
     [HttpPost("batch")]
@@ -1191,7 +1196,8 @@ public class PurchaseOrdersController(
                 await OnlineVendorOrderBridge.NotifyOnlineVendorOfPurchaseOrderAsync(db, order);
         }
 
-        return Ok(saved.Select(PurchaseOrderWorkflow.MapOrder));
+        var flags = await ResolveAllowPartialFlagsAsync(saved);
+        return Ok(saved.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
     }
 
     [HttpPost("{id:int}/approve")]
@@ -1211,7 +1217,7 @@ public class PurchaseOrdersController(
         await UserNotificationService.NotifyPurchaseRequestApprovedAsync(db, order, order.ApprovedBy);
         await OnlineVendorOrderBridge.NotifyOnlineVendorOfPurchaseOrderAsync(db, order);
 
-        return Ok(PurchaseOrderWorkflow.MapOrder(order));
+        return Ok(await MapPurchaseOrderAsync(order));
     }
 
     [HttpPost("{id:int}/receive")]
@@ -1219,8 +1225,9 @@ public class PurchaseOrdersController(
     {
         var order = await LoadOrderAsync(id, tracking: true);
         if (order is null) return NotFound();
-        if (!PurchaseOrderWorkflow.CanReceive(order))
-            return Conflict(new { message = "Only open purchase orders can be received." });
+        var allowPartial = await ResolveAllowPartialAsync(order);
+        if (!PurchaseOrderWorkflow.CanReceive(order, allowPartial))
+            return Conflict(new { message = "Only open (or partially delivered) purchase orders can be received." });
 
         if (request.Items is null || request.Items.Count == 0)
             return BadRequest(new { message = "At least one line item is required to receive." });
@@ -1245,6 +1252,25 @@ public class PurchaseOrdersController(
         if (hygiene is null)
             return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
 
+        if (!allowPartial)
+        {
+            // Non-partial vendors: receiving short of ordered is still allowed, but consolidates as a full close later.
+        }
+        else
+        {
+            foreach (var line in request.Items)
+            {
+                var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                if (item is null) continue;
+                var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
+                if (line.Quantity > remaining + 0.0001m)
+                    return BadRequest(new
+                    {
+                        message = $"Received qty for '{item.Name}' cannot exceed remaining {remaining:0.####}."
+                    });
+            }
+        }
+
         ApplyWorkflowLines(order, request.Items, workflow: "receive");
         order.VendorDoNumber = vendorDoNumber;
         order.VendorInvoiceNumber = vendorInvoiceNumber;
@@ -1256,7 +1282,7 @@ public class PurchaseOrdersController(
         order.ReceivedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
-        return Ok(PurchaseOrderWorkflow.MapOrder(order));
+        return Ok(await MapPurchaseOrderAsync(order, allowPartial));
     }
 
     [HttpPost("{id:int}/reconcile")]
@@ -1270,6 +1296,8 @@ public class PurchaseOrdersController(
         if (request.Items is null || request.Items.Count == 0)
             return BadRequest(new { message = "At least one line item is required to reconcile." });
 
+        var allowPartial = await ResolveAllowPartialAsync(order);
+
         // Quality/hygiene can be updated at consolidate if provided; otherwise keep receive values.
         var quality = VendorRatingRules.NormalizeCustomerLevel(request.ProductQualityRating);
         var hygiene = VendorRatingRules.NormalizeCustomerLevel(request.HygieneRating);
@@ -1279,6 +1307,8 @@ public class PurchaseOrdersController(
             return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
 
         await using var transaction = await db.Database.BeginTransactionAsync();
+        // Capture shipment qtys before cumulative update.
+        var shipmentByItemId = request.Items.ToDictionary(l => l.ItemId, l => l.Quantity);
         ApplyWorkflowLines(order, request.Items, workflow: "reconcile");
         if (quality is not null) order.ProductQualityRating = quality;
         if (hygiene is not null) order.HygieneRating = hygiene;
@@ -1307,7 +1337,25 @@ public class PurchaseOrdersController(
             var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
             if (item is null) continue;
 
-            var qty = item.ReconciledQuantity ?? line.Quantity;
+            var shipmentQty = shipmentByItemId.GetValueOrDefault(line.ItemId, line.Quantity);
+            if (allowPartial)
+            {
+                var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
+                if (shipmentQty > remaining + 0.0001m)
+                    return BadRequest(new
+                    {
+                        message = $"Consolidate qty for '{item.Name}' cannot exceed remaining {remaining:0.####}."
+                    });
+                item.DeliveredQuantity = DecimalRounding.ToDb(item.DeliveredQuantity + Math.Max(0m, shipmentQty));
+                item.ReconciledQuantity = item.DeliveredQuantity;
+            }
+            else
+            {
+                item.DeliveredQuantity = DecimalRounding.ToDb(Math.Max(0m, shipmentQty));
+                item.ReconciledQuantity = item.DeliveredQuantity;
+            }
+
+            var qty = shipmentQty;
             var price = item.ReconciledUnitPrice ?? line.UnitPrice;
             if (qty <= 0) continue; // out-of-stock / zero receipt — no inventory post
             var uom = string.IsNullOrWhiteSpace(line.ComponentUom)
@@ -1366,15 +1414,25 @@ public class PurchaseOrdersController(
             }
         }
 
-        order.Status = PurchaseOrderWorkflow.StatusReconciled;
-        order.ReconciledAt = DateTime.UtcNow;
+        if (allowPartial)
+        {
+            // Stay active until Final delivery completed — rating not applied yet.
+            order.Status = PurchaseOrderWorkflow.StatusPartiallyDelivered;
+            order.ReconciledAt = null;
+        }
+        else
+        {
+            order.Status = PurchaseOrderWorkflow.StatusReconciled;
+            order.ReconciledAt = DateTime.UtcNow;
+            order.FinalDeliveryCompletedAt = DateTime.UtcNow;
+        }
 
         await db.SaveChangesAsync();
 
         // Guide step 1: each reconciled inbound line becomes a distinct cost-segregated batch.
+        // Only register batches created in this shipment (avoid re-registering prior partial posts).
         var receiptPurchases = await db.InventoryPurchases
-            .Where(p => p.PurchaseOrderId == order.Id
-                || (p.SplitSourceType == "purchase-order" && p.SplitSourceId == order.Id))
+            .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
             .ToListAsync();
         foreach (var purchase in receiptPurchases)
             await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
@@ -1382,9 +1440,36 @@ public class PurchaseOrdersController(
         await transaction.CommitAsync();
         return Ok(new
         {
-            order = PurchaseOrderWorkflow.MapOrder(order),
+            order = await MapPurchaseOrderAsync(order, allowPartial),
             updatedVendorProductPrices,
         });
+    }
+
+    /// <summary>
+    /// Closes a partially delivered PO. Delivery rating uses final delivered qty/price vs issued PO.
+    /// </summary>
+    [HttpPost("{id:int}/finalize-delivery")]
+    public async Task<ActionResult<object>> FinalizeDelivery(int id)
+    {
+        var order = await LoadOrderAsync(id, tracking: true);
+        if (order is null) return NotFound();
+        var allowPartial = await ResolveAllowPartialAsync(order);
+        if (!PurchaseOrderWorkflow.CanFinalizeDelivery(order, allowPartial))
+            return Conflict(new { message = "Only partially delivered purchase orders can be finalized." });
+
+        order.Status = PurchaseOrderWorkflow.StatusReconciled;
+        order.ReconciledAt = DateTime.UtcNow;
+        order.FinalDeliveryCompletedAt = DateTime.UtcNow;
+        foreach (var item in order.Items)
+        {
+            // Final snapshot for rating: cumulative delivered vs issued.
+            item.ReconciledQuantity = item.DeliveredQuantity;
+            if (item.ReconciledUnitPrice is null)
+                item.ReconciledUnitPrice = item.ReceivedUnitPrice ?? item.UnitPrice;
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(await MapPurchaseOrderAsync(order, allowPartial));
     }
 
     IQueryable<PurchaseOrder> BaseQuery() =>
@@ -1399,6 +1484,53 @@ public class PurchaseOrdersController(
         var query = db.PurchaseOrders.Include(p => p.Items).AsQueryable();
         if (!tracking) query = query.AsNoTracking();
         return await query.FirstOrDefaultAsync(p => p.Id == id);
+    }
+
+    async Task<object> MapPurchaseOrderAsync(PurchaseOrder order, bool? allowPartialDelivery = null)
+    {
+        var allow = allowPartialDelivery ?? await ResolveAllowPartialAsync(order);
+        return PurchaseOrderWorkflow.MapOrder(order, allow);
+    }
+
+    async Task<bool> ResolveAllowPartialAsync(PurchaseOrder order)
+    {
+        var vendorExternalId = (order.VendorExternalId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(vendorExternalId))
+            return false;
+        return await db.Vendors.AsNoTracking()
+            .Where(v => v.ExternalId == vendorExternalId)
+            .Select(v => v.AllowPartialDelivery)
+            .FirstOrDefaultAsync();
+    }
+
+    async Task<Dictionary<int, bool>> ResolveAllowPartialFlagsAsync(IReadOnlyList<PurchaseOrder> orders)
+    {
+        var result = orders.ToDictionary(o => o.Id, _ => false);
+        var externalIds = orders
+            .Select(o => (o.VendorExternalId ?? string.Empty).Trim())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (externalIds.Count == 0)
+            return result;
+
+        var vendors = await db.Vendors.AsNoTracking()
+            .Where(v => externalIds.Contains(v.ExternalId))
+            .Select(v => new { v.ExternalId, v.AllowPartialDelivery })
+            .ToListAsync();
+        var byExternal = vendors.ToDictionary(
+            v => v.ExternalId,
+            v => v.AllowPartialDelivery,
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var order in orders)
+        {
+            var key = (order.VendorExternalId ?? string.Empty).Trim();
+            if (byExternal.TryGetValue(key, out var allow))
+                result[order.Id] = allow;
+        }
+
+        return result;
     }
 
     static void ApplyWorkflowLines(
@@ -1425,6 +1557,7 @@ public class PurchaseOrdersController(
             }
             else
             {
+                // Shipment qty/price for this consolidate; cumulative DeliveredQuantity updated by caller.
                 item.ReconciledQuantity = line.Quantity;
                 item.ReconciledUnitPrice = line.UnitPrice;
                 if (line.ReceivedTemperature.HasValue)

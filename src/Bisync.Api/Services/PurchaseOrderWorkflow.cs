@@ -13,6 +13,7 @@ public static class PurchaseOrderWorkflow
     public const string StatusConfirmed = "Confirmed";
     public const string StatusAccepted = "Accepted";
     public const string StatusReceived = "Received";
+    public const string StatusPartiallyDelivered = "Partially Delivered";
     public const string StatusReconciled = "Reconciled";
 
     public static bool IsActive(PurchaseOrder order) =>
@@ -24,18 +25,25 @@ public static class PurchaseOrderWorkflow
         return string.Equals(normalized, StatusPendingApproval, StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool IsPartiallyDelivered(PurchaseOrder order) =>
+        string.Equals(order.Status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase);
+
     public static bool CanApprove(PurchaseOrder order) =>
         IsPendingApprovalStatus(order.Status);
 
     public static bool CanVendorAccept(PurchaseOrder order) =>
         order.VendorAcceptedAt is null
         && !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase);
+        && !string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(order.Status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase);
 
-    public static bool CanReceive(PurchaseOrder order)
+    public static bool CanReceive(PurchaseOrder order, bool allowPartialDelivery = false)
     {
         if (!string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase))
             return false;
+
+        if (allowPartialDelivery && IsPartiallyDelivered(order))
+            return true;
 
         return string.Equals(order.Status, StatusOpen, StringComparison.OrdinalIgnoreCase)
             || string.Equals(order.Status, "Pending", StringComparison.OrdinalIgnoreCase)
@@ -47,6 +55,12 @@ public static class PurchaseOrderWorkflow
     public static bool CanReconcile(PurchaseOrder order) =>
         string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase)
         && string.Equals(order.Status, StatusReceived, StringComparison.OrdinalIgnoreCase);
+
+    public static bool CanFinalizeDelivery(PurchaseOrder order, bool allowPartialDelivery) =>
+        allowPartialDelivery
+        && string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase)
+        && IsPartiallyDelivered(order)
+        && order.FinalDeliveryCompletedAt is null;
 
     public static string ResolveDocumentType(string? documentType, string? status)
     {
@@ -68,6 +82,8 @@ public static class PurchaseOrderWorkflow
                 return StatusPendingApproval;
             if (string.Equals(trimmed, StatusReceived, StringComparison.OrdinalIgnoreCase))
                 return StatusReceived;
+            if (string.Equals(trimmed, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase))
+                return StatusPartiallyDelivered;
             if (string.Equals(trimmed, StatusReconciled, StringComparison.OrdinalIgnoreCase))
                 return StatusReconciled;
             if (string.Equals(trimmed, StatusOpen, StringComparison.OrdinalIgnoreCase))
@@ -84,75 +100,86 @@ public static class PurchaseOrderWorkflow
     public static string SerializeLocationIds(IEnumerable<string> locationIds) =>
         JsonSerializer.Serialize(locationIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.OrdinalIgnoreCase));
 
-    public static object MapOrder(PurchaseOrder order)
+    public static object MapOrder(PurchaseOrder order, bool allowPartialDelivery = false)
     {
         var documentType = IsPendingApprovalStatus(order.Status)
             ? DocumentTypePr
             : order.DocumentType;
 
         var status = order.Status?.Trim() ?? string.Empty;
-        if (order.VendorAcceptedAt is not null
-            && !string.Equals(status, StatusReceived, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase))
-        {
+        var isTerminalReceipt =
+            string.Equals(status, StatusReceived, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
+
+        if (order.VendorAcceptedAt is not null && !isTerminalReceipt)
             status = StatusAccepted;
-        }
 
         return new
-    {
-        order.Id,
-        poNumber = order.PoNumber,
-        vendorName = order.VendorName,
-        vendorExternalId = order.VendorExternalId,
-        orderDate = order.OrderDate,
-        deliveryDate = order.DeliveryDate,
-        documentType,
-        status,
-        companyId = order.CompanyId,
-        locationExternalIds = DeserializeLocationIds(order.LocationIdsJson),
-        initiatedBy = order.InitiatedBy,
-        approvedBy = order.ApprovedBy,
-        approvedAt = order.ApprovedAt,
-        receivedAt = order.ReceivedAt,
-        reconciledAt = order.ReconciledAt,
-        vendorShareToken = order.VendorShareToken,
-        vendorAcceptedAt = order.VendorAcceptedAt,
-        vendorAcceptedBy = order.VendorAcceptedBy,
-        vendorDoNumber = order.VendorDoNumber,
-        vendorInvoiceNumber = order.VendorInvoiceNumber,
-        productQualityRating = string.IsNullOrWhiteSpace(order.ProductQualityRating) ? null : order.ProductQualityRating,
-        productQualityComment = string.IsNullOrWhiteSpace(order.ProductQualityComment) ? null : order.ProductQualityComment,
-        hygieneRating = string.IsNullOrWhiteSpace(order.HygieneRating) ? null : order.HygieneRating,
-        hygieneComment = string.IsNullOrWhiteSpace(order.HygieneComment) ? null : order.HygieneComment,
-        canApprove = CanApprove(order),
-        canReceive = CanReceive(order),
-        canReconcile = CanReconcile(order),
-        items = order.Items.Select(MapItem).ToList(),
-    };
+        {
+            order.Id,
+            poNumber = order.PoNumber,
+            vendorName = order.VendorName,
+            vendorExternalId = order.VendorExternalId,
+            orderDate = order.OrderDate,
+            deliveryDate = order.DeliveryDate,
+            documentType,
+            status,
+            companyId = order.CompanyId,
+            locationExternalIds = DeserializeLocationIds(order.LocationIdsJson),
+            initiatedBy = order.InitiatedBy,
+            approvedBy = order.ApprovedBy,
+            approvedAt = order.ApprovedAt,
+            receivedAt = order.ReceivedAt,
+            reconciledAt = order.ReconciledAt,
+            finalDeliveryCompletedAt = order.FinalDeliveryCompletedAt,
+            vendorShareToken = order.VendorShareToken,
+            vendorAcceptedAt = order.VendorAcceptedAt,
+            vendorAcceptedBy = order.VendorAcceptedBy,
+            vendorDoNumber = order.VendorDoNumber,
+            vendorInvoiceNumber = order.VendorInvoiceNumber,
+            productQualityRating = string.IsNullOrWhiteSpace(order.ProductQualityRating) ? null : order.ProductQualityRating,
+            productQualityComment = string.IsNullOrWhiteSpace(order.ProductQualityComment) ? null : order.ProductQualityComment,
+            hygieneRating = string.IsNullOrWhiteSpace(order.HygieneRating) ? null : order.HygieneRating,
+            hygieneComment = string.IsNullOrWhiteSpace(order.HygieneComment) ? null : order.HygieneComment,
+            allowPartialDelivery,
+            canApprove = CanApprove(order),
+            canReceive = CanReceive(order, allowPartialDelivery),
+            canReconcile = CanReconcile(order),
+            canFinalizeDelivery = CanFinalizeDelivery(order, allowPartialDelivery),
+            items = order.Items.Select(MapItem).ToList(),
+        };
     }
 
-    public static object MapItem(PurchaseOrderItem item) => new
+    public static object MapItem(PurchaseOrderItem item)
     {
-        item.Id,
-        componentId = item.ComponentId,
-        componentName = string.IsNullOrWhiteSpace(item.ComponentName) ? item.Name : item.ComponentName,
-        vendorProductId = item.VendorProductId,
-        name = item.Name,
-        quantity = item.Quantity,
-        unitPrice = item.UnitPrice,
-        issuedUnitPrice = item.IssuedUnitPrice > 0 ? item.IssuedUnitPrice : item.UnitPrice,
-        unit = item.Unit,
-        componentUom = item.ComponentUom,
-        deliveryPackage = item.DeliveryPackage,
-        receivedQuantity = item.ReceivedQuantity,
-        receivedUnitPrice = item.ReceivedUnitPrice,
-        reconciledQuantity = item.ReconciledQuantity,
-        reconciledUnitPrice = item.ReconciledUnitPrice,
-        taxAmount = item.TaxAmount,
-        halalCertNo = item.HalalCertNo,
-        productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,
-        receivedTemperature = item.ReceivedTemperature,
-    };
+        var delivered = item.DeliveredQuantity;
+        var remaining = Math.Max(0m, item.Quantity - delivered);
+        return new
+        {
+            item.Id,
+            componentId = item.ComponentId,
+            componentName = string.IsNullOrWhiteSpace(item.ComponentName) ? item.Name : item.ComponentName,
+            vendorProductId = item.VendorProductId,
+            name = item.Name,
+            quantity = item.Quantity,
+            unitPrice = item.UnitPrice,
+            issuedUnitPrice = item.IssuedUnitPrice > 0 ? item.IssuedUnitPrice : item.UnitPrice,
+            unit = item.Unit,
+            componentUom = item.ComponentUom,
+            deliveryPackage = item.DeliveryPackage,
+            receivedQuantity = item.ReceivedQuantity,
+            receivedUnitPrice = item.ReceivedUnitPrice,
+            reconciledQuantity = item.ReconciledQuantity,
+            reconciledUnitPrice = item.ReconciledUnitPrice,
+            deliveredQuantity = delivered,
+            remainingQuantity = remaining,
+            taxAmount = item.TaxAmount,
+            halalCertNo = item.HalalCertNo,
+            productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,
+            receivedTemperature = item.ReceivedTemperature,
+        };
+    }
 
     public static List<string> DeserializeLocationIds(string? json)
     {

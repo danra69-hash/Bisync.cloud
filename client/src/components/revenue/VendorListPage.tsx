@@ -396,7 +396,16 @@ export function VendorListPage({
           </div>
         </td>
         <td className="px-4 py-3 text-foreground ">{v.products || '—'}</td>
-        <td className="px-4 py-3 text-foreground whitespace-nowrap">{formatVendorPolicyLabel(inferVendorPolicyTag(v))}</td>
+        <td className="px-4 py-3 text-foreground whitespace-nowrap">
+          <div className="flex flex-col gap-0.5">
+            <span>{formatVendorPolicyLabel(inferVendorPolicyTag(v))}</span>
+            {v.allowPartialDelivery ? (
+              <span className="text-[10px] font-sans text-amber-700 dark:text-amber-400">
+                Partial delivery
+              </span>
+            ) : null}
+          </div>
+        </td>
         <td className="px-4 py-3 text-muted-foreground ">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>

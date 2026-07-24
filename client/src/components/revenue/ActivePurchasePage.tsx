@@ -65,7 +65,8 @@ function statusBadge(order: PurchaseOrder) {
 function nextActionLabel(order: PurchaseOrder): string {
   if (order.canApprove) return 'Approve';
   if (order.canReceive) return 'Receive';
-  if (order.canReconcile) return 'Reconcile';
+  if (order.canReconcile) return order.allowPartialDelivery ? 'Consolidate' : 'Reconcile';
+  if (order.canFinalizeDelivery) return 'Finalize';
   return 'View';
 }
 
