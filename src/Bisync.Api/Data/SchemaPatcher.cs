@@ -186,6 +186,7 @@ public static class SchemaPatcher
         await BackfillTenantConnectionsAsync(db);
         await EnsureTenantRollupSnapshotsTableAsync(db);
         await EnsurePromotionsTablesAsync(db);
+        await EnsureFifoIssueStockAsync(db);
 
         // Resync identity sequences before seeders — SQLite→PostgreSQL migrations often leave sequences behind MAX(Id).
         await DatabaseSchemaHelper.ResyncCoreIdentitySequencesAsync(db);
@@ -1531,6 +1532,11 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "PromotionProducts", "QtyPerCombo", "NUMERIC");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "B2bSalesOrderLines", "PromotionId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "B2bSalesOrderLines", "IsCombo", "BOOLEAN NOT NULL DEFAULT FALSE");
+    }
+
+    static async Task EnsureFifoIssueStockAsync(BisyncDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync(FifoIssueStockSql.CreateTablesAndFunction);
     }
 
     /// <summary>Public hook so Program can refresh registry after companies are seeded.</summary>

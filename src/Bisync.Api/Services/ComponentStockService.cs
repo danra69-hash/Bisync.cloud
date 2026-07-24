@@ -1,58 +1,30 @@
 using Bisync.Api.Data;
-
 using Bisync.Api.Models;
-
-using Bisync.Api.Services;
-
 using Microsoft.EntityFrameworkCore;
-
-
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Bisync.Api.Services;
 
-
-
 public class ComponentStockService(
-
     BisyncDbContext db,
-
-    ComponentFifoCostingService fifoCosting)
-
+    FifoBatchIssueService fifoBatches)
 {
-
     public async Task<decimal> GetOnHandAsync(
-
         string componentId,
-
         string locationExternalId,
-
         string uom,
-
         CancellationToken cancellationToken = default)
-
     {
-
         var normalizedUom = NormalizeUom(uom);
-
         var purchases = await db.InventoryPurchases
-
             .AsNoTracking()
-
             .Where(p => p.ComponentId == componentId)
-
             .ToListAsync(cancellationToken);
 
-
-
         var purchaseQty = purchases
-
             .Where(p => StockLocationRules.PurchaseMatchesLocation(p.LocationIdsJson, locationExternalId))
-
             .Where(p => NormalizeUom(p.Uom) == normalizedUom)
-
             .Sum(p => p.Quantity);
-
-
 
         var movementRows = await db.InventoryMovements
             .AsNoTracking()
@@ -64,211 +36,141 @@ public class ComponentStockService(
             .Where(m => NormalizeUom(m.Uom) == normalizedUom)
             .Sum(m => m.QtyDelta);
 
-
-
         return purchaseQty + movementQty;
-
     }
-
-
 
     public void RecordDeduction(
-
         string componentId,
-
         string componentName,
-
         string locationExternalId,
-
         decimal quantity,
-
         string uom,
-
         string reason,
-
         string referenceType,
-
         int referenceId,
-
         int? companyId)
-
     {
-
         RecordDeductionAsync(
-
             componentId,
-
             componentName,
-
             locationExternalId,
-
             quantity,
-
             uom,
-
             reason,
-
             referenceType,
-
             referenceId,
-
             companyId).GetAwaiter().GetResult();
-
     }
-
-
 
     public async Task RecordDeductionAsync(
-
         string componentId,
-
         string componentName,
-
         string locationExternalId,
-
         decimal quantity,
-
         string uom,
-
         string reason,
-
         string referenceType,
-
         int referenceId,
-
         int? companyId,
-
         CancellationToken cancellationToken = default,
-
         DateTime? createdAt = null,
-
         decimal? unitPriceOverride = null)
-
     {
-
         if (quantity <= 0)
-
             return;
 
+        var ownsTx = db.Database.CurrentTransaction is null;
+        await using var tx = ownsTx
+            ? await db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
 
-
-        var unitPrice = unitPriceOverride ?? await fifoCosting.ResolveOutboundUnitPriceAsync(
-
-            componentId,
-
-            locationExternalId,
-
-            uom,
-
-            quantity,
-
-            companyId,
-
-            cancellationToken);
-
-
-
-        db.InventoryMovements.Add(new InventoryMovement
-
+        try
         {
+            var issue = await fifoBatches.IssueAsync(
+                componentId,
+                locationExternalId,
+                uom,
+                quantity,
+                referenceType,
+                referenceId.ToString(),
+                companyId,
+                cancellationToken);
 
-            ComponentId = componentId,
+            var unitPrice = unitPriceOverride ?? issue.UnitPrice;
 
-            ComponentName = componentName,
+            db.InventoryMovements.Add(new InventoryMovement
+            {
+                ComponentId = componentId,
+                ComponentName = componentName,
+                LocationExternalId = locationExternalId,
+                QtyDelta = -quantity,
+                Uom = uom.Trim(),
+                UnitPrice = StockCardFifoEngine.RoundUnitPrice(unitPrice),
+                Reason = $"{reason} [fifo:{issue.TransactionId:N}]",
+                ReferenceType = referenceType,
+                ReferenceId = referenceId,
+                CompanyId = companyId,
+                CreatedAt = createdAt ?? DateTime.UtcNow,
+            });
 
-            LocationExternalId = locationExternalId,
-
-            QtyDelta = -quantity,
-
-            Uom = uom.Trim(),
-
-            UnitPrice = unitPrice,
-
-            Reason = reason,
-
-            ReferenceType = referenceType,
-
-            ReferenceId = referenceId,
-
-            CompanyId = companyId,
-
-            CreatedAt = createdAt ?? DateTime.UtcNow,
-
-        });
-
+            if (ownsTx)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                await tx!.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            if (ownsTx && tx is not null)
+                await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
-
-
 
     public void RecordAddition(
-
         string componentId,
-
         string componentName,
-
         string locationExternalId,
-
         decimal quantity,
-
         string uom,
-
         string reason,
-
         string referenceType,
-
         int referenceId,
-
         int? companyId,
-
         DateTime? createdAt = null,
-
         decimal unitPrice = 0)
-
     {
-
         if (quantity <= 0) return;
 
-
+        var at = createdAt ?? DateTime.UtcNow;
+        var price = unitPrice > 0 ? StockCardFifoEngine.RoundUnitPrice(unitPrice) : 0m;
 
         db.InventoryMovements.Add(new InventoryMovement
-
         {
-
             ComponentId = componentId,
-
             ComponentName = componentName,
-
             LocationExternalId = locationExternalId,
-
             QtyDelta = quantity,
-
             Uom = uom.Trim(),
-
-            UnitPrice = unitPrice > 0 ? StockCardFifoEngine.RoundUnitPrice(unitPrice) : 0,
-
+            UnitPrice = price,
             Reason = reason,
-
             ReferenceType = referenceType,
-
             ReferenceId = referenceId,
-
             CompanyId = companyId,
-
-            CreatedAt = createdAt ?? DateTime.UtcNow,
-
+            CreatedAt = at,
         });
 
+        // Cost-segregated inbound batch (guide step 1 / overage step 6).
+        fifoBatches.RecordReceiptBatchAsync(
+            componentId,
+            locationExternalId,
+            uom,
+            quantity,
+            price,
+            at,
+            sourcePurchaseId: null,
+            companyId).GetAwaiter().GetResult();
     }
 
-
-
-    static bool MatchesLocation(string locationIdsJson, string locationExternalId)
-        => StockLocationRules.PurchaseMatchesLocation(locationIdsJson, locationExternalId);
-
-
-
     static string NormalizeUom(string uom) => uom.Trim().ToUpperInvariant();
-
 }
-
-

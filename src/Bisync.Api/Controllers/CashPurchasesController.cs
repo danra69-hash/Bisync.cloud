@@ -12,7 +12,8 @@ namespace Bisync.Api.Controllers;
 public class CashPurchasesController(
     BisyncDbContext db,
     LocationPartitionService locationPartitions,
-    SplitUseService splitUse) : ControllerBase
+    SplitUseService splitUse,
+    FifoBatchIssueService fifoBatches) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List([FromQuery] int? companyId)
@@ -156,6 +157,15 @@ public class CashPurchasesController(
             await db.SaveChangesAsync();
             cashPurchase.InventoryPurchaseId = inventoryPurchase.Id;
             await db.SaveChangesAsync();
+
+            // Guide step 1: each inbound shipment becomes a distinct cost-segregated batch.
+            var receiptPurchases = await db.InventoryPurchases
+                .Where(p => p.Id == inventoryPurchase.Id
+                    || (p.SplitSourceType == "cash-purchase" && p.SplitSourceId == cashPurchase.Id))
+                .ToListAsync();
+            foreach (var purchase in receiptPurchases)
+                await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
+
             await transaction.CommitAsync();
         }
         catch (InvalidOperationException ex)

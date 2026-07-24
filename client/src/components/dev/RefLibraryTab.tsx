@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BookOpen, ExternalLink, FileText, RefreshCw } from 'lucide-react';
+import { BookOpen, Check, Copy, ExternalLink, FileText, Layers, RefreshCw } from 'lucide-react';
 import { api, type NutritionLibraryStatus } from '../../api';
 import { CURRENT_DPA_VERSION, DPA_TITLE } from '../../data/dpa';
 import { CURRENT_EULA_VERSION, EULA_TITLE } from '../../data/eula';
+import {
+  FIFO_GUIDE_STEPS,
+  FIFO_GUIDE_SUMMARY,
+  FIFO_GUIDE_TITLE,
+  FIFO_ISSUE_STOCK_SQL,
+  FIFO_RUNTIME_NOTE,
+} from '../../data/fifoStockGuide';
 import { LEGAL_EFFECTIVE_DATE, LEGAL_PROVIDER } from '../../data/legalShared';
 import { CURRENT_PRIVACY_POLICY_VERSION, PRIVACY_POLICY_TITLE } from '../../data/privacyPolicy';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -40,6 +47,7 @@ export function RefLibraryTab() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sqlCopied, setSqlCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,7 +90,7 @@ export function RefLibraryTab() {
             Ref &amp; Library
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Reference data libraries and platform legal documents used by Bisync.
+            Reference data libraries, FIFO stock rules, and platform legal documents used by Bisync.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -137,6 +145,59 @@ export function RefLibraryTab() {
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="rounded-md border border-border/70 bg-muted/10 p-4 space-y-4">
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Layers size={12} />
+            FIFO stock library
+          </p>
+          <p className="text-sm font-medium">{FIFO_GUIDE_TITLE}</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{FIFO_GUIDE_SUMMARY}</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{FIFO_RUNTIME_NOTE}</p>
+        </div>
+
+        <ol className="space-y-3 border-t border-border/60 pt-3">
+          {FIFO_GUIDE_STEPS.map(step => (
+            <li key={step.id} className="grid gap-1 sm:grid-cols-[2.5rem_1fr]">
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                {step.number}.
+              </span>
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-xs font-semibold">{step.title}</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{step.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <div className="space-y-2 border-t border-border/60 pt-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+              Canonical SQL · issue_fifo_stock
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(FIFO_ISSUE_STOCK_SQL);
+                  setSqlCopied(true);
+                  window.setTimeout(() => setSqlCopied(false), 1600);
+                } catch {
+                  setSqlCopied(false);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-2.5 py-1 hover:bg-muted"
+            >
+              {sqlCopied ? <Check size={12} /> : <Copy size={12} />}
+              {sqlCopied ? 'Copied' : 'Copy SQL'}
+            </button>
+          </div>
+          <pre className="max-h-80 overflow-auto rounded-md border border-border/60 bg-background/80 p-3 text-[10px] leading-relaxed font-mono whitespace-pre">
+            {FIFO_ISSUE_STOCK_SQL}
+          </pre>
+        </div>
       </div>
 
       {error ? (

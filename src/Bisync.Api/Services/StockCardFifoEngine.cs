@@ -1,12 +1,10 @@
 namespace Bisync.Api.Services;
 
 /// <summary>
-/// First-in / first-out (FIFO) costing for stock card layers.
-/// Basis matches Bisync STOCK Analyzer (<c>computeIngredientFIFO</c>):
-/// perpetual multi-tranche layers (no monthly average collapse),
-/// uncovered outbound at zero COGS with deficit registry,
-/// inbound pays earliest shortfalls first at the arriving layer price (retro COGS),
-/// then surplus becomes a new available layer.
+/// FIFO layer simulation for stock-card ledger display and batch backfill.
+/// Live issuance is PostgreSQL <c>issue_fifo_stock</c> (see <see cref="FifoBatchIssueService"/>):
+/// oldest batch first, FOR UPDATE, zero-tolerance shortfall.
+/// This engine still rebuilds historical layers from purchases/movements for reports.
 /// </summary>
 public static class StockCardFifoEngine
 {
