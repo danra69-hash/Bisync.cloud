@@ -28,7 +28,7 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
       {open && <div className="fixed inset-0 z-40" onClick={onClose} />}
       <aside
         className={`fixed top-0 left-0 h-full w-56 z-50 transition-transform duration-200 flex flex-col ${open ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ background: '#2C1A0A' }}
+        style={{ background: '#2A2118' }}
       >
         <div className="px-4 py-4 flex items-center justify-between gap-2 border-b border-white/10">
           <BrandEngineLockup className="min-w-0" />
@@ -52,8 +52,8 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
               title={!moduleEnabled ? t('common.moduleNotEnabled') : comingSoon ? t('common.comingSoon') : undefined}
               className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               style={{
-                background: isActive && enabled ? '#E87722' : 'transparent',
-                color: isActive && enabled ? '#2C1A0A' : 'rgba(255,255,255,0.6)',
+                background: isActive && enabled ? '#F37021' : 'transparent',
+                color: isActive && enabled ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
                 fontWeight: isActive && enabled ? 700 : 500,
               }}
             >
@@ -70,7 +70,7 @@ export function Sidebar({ open, activeNav, enabledModules, modulesGoLive, onClos
 
         <div className="p-4 border-t border-white/10 space-y-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#E87722', color: '#2C1A0A' }}>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: '#F37021', color: '#FFFFFF' }}>
               {userInitials(displayName)}
             </div>
             <div className="min-w-0 flex-1">

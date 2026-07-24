@@ -123,7 +123,7 @@ export function LocationOnboardingPage({ onCompleted }: Props) {
       <header className="border-b border-herme-muted/40 bg-white">
         <div className="mx-auto flex w-full max-w-none items-center justify-between px-6 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#C9963A]">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#F37021]">
               {t('auth.onboardingStepLocation')}
             </p>
             <h1 className="text-xl font-bold text-herme-ink">{t('auth.locationRegistrationTitle')}</h1>
@@ -181,7 +181,7 @@ export function LocationOnboardingPage({ onCompleted }: Props) {
               type="button"
               disabled={saving}
               onClick={() => void save()}
-              className="rounded-xl bg-[#C9963A] px-6 py-3 text-sm font-semibold text-white hover:bg-[#A87A2E] disabled:opacity-60"
+              className="rounded-xl bg-[#F37021] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D4550A] disabled:opacity-60"
             >
               {saving ? t('auth.savingLocation') : t('auth.continueToPayment')}
             </button>

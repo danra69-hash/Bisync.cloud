@@ -5,16 +5,17 @@
 
 :root {
   --font-size: 16px;
-  --background: #FAF5EE;
-  --foreground: #2C1A0A;
+  /* Hermès platform palette: white ground · orange signal · saddle ink */
+  --background: #FFFFFF;
+  --foreground: #2A2118;
   --card: #FFFFFF;
-  --card-foreground: #2C1A0A;
-  --primary: #E87722;
+  --card-foreground: #2A2118;
+  --primary: #F37021;
   --primary-foreground: #FFFFFF;
-  --muted: #F0E6D6;
-  --muted-foreground: #5C4634;
-  --accent: #C9963A;
-  --border: rgba(44, 26, 10, 0.1);
+  --muted: #F5F2EE;
+  --muted-foreground: #6B5E52;
+  --accent: #F37021;
+  --border: rgba(42, 33, 24, 0.12);
   --radius: 0.375rem;
   /* Header ≈ 3.25rem; module/filter heights synced by StickyChromeSync when present */
   --app-header-height: 3.25rem;
@@ -27,13 +28,13 @@
 }
 
 .dark {
-  --background: #1A0D05;
-  --foreground: #F5EEE6;
-  --card: #2C1A0A;
-  --card-foreground: #F5EEE6;
-  --muted: #3A2210;
-  --muted-foreground: #D4B896;
-  --border: rgba(245, 238, 230, 0.1);
+  --background: #1C1612;
+  --foreground: #F7F1E8;
+  --card: #2A2118;
+  --card-foreground: #F7F1E8;
+  --muted: #3A3028;
+  --muted-foreground: #C4B5A5;
+  --border: rgba(247, 241, 232, 0.12);
 }
 
 @theme inline {
@@ -49,15 +50,15 @@
   --color-border: var(--border);
   --font-sans: "Nunito", ui-sans-serif, sans-serif;
   --font-mono: "Nunito", ui-sans-serif, sans-serif;
-  /* HR module (HrBackend) palette */
+  /* Hermès brand scale */
   --color-herme: #F37021;
-  --color-herme-dark: #C4561A;
-  --color-herme-darker: #8F3F12;
-  --color-herme-light: #FEF3EB;
+  --color-herme-dark: #D4550A;
+  --color-herme-darker: #A84208;
+  --color-herme-light: #FFF4EC;
   --color-herme-soft: #FDE8D8;
   --color-herme-muted: #F5C9A8;
-  --color-herme-cream: #FAF7F2;
-  --color-herme-ink: #1A1A1A;
+  --color-herme-cream: #FFFFFF;
+  --color-herme-ink: #2A2118;
 }
 
 @layer base {

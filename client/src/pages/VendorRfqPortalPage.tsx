@@ -101,7 +101,7 @@ export function VendorRfqPortalPage({ token }: Props) {
 
   return (
     <div className="min-h-screen bg-[#F7F3EE]">
-      <header className="border-b border-border bg-[#2C1A0A] text-white px-4 py-4">
+      <header className="border-b border-border bg-[#2A2118] text-white px-4 py-4">
         <div className="w-full max-w-none mx-auto">
           <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">pasar.ai · Bisync.cloud</p>
           <h1 className="text-lg font-semibold mt-1">Sample & Quote</h1>

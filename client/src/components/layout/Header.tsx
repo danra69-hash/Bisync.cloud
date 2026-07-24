@@ -41,7 +41,7 @@ export function Header({
   const selectableCompanies = companies.filter(c => c.active !== false);
 
   return (
-    <header className="shrink-0 z-30 px-2 sm:px-3 py-2 flex items-center gap-2" style={{ background: '#2C1A0A', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+    <header className="shrink-0 z-30 px-2 sm:px-3 py-2 flex items-center gap-2" style={{ background: '#2A2118', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="flex items-center gap-2 shrink-0">
         <button onClick={onToggleSidebar} className="p-2 rounded-md hover:bg-white/10">
           <Menu size={16} className="text-white" />
@@ -116,7 +116,7 @@ export function Header({
           <button
             onClick={onToggleEditLayout}
             className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-md transition-colors"
-            style={editLayout ? { background: '#E87722', color: '#2C1A0A' } : { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
+            style={editLayout ? { background: '#F37021', color: '#FFFFFF' } : { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
           >
             <GripHorizontal size={11} /> {editLayout ? t('header.editing') : t('header.editLayout')}
           </button>

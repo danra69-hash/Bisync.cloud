@@ -16,13 +16,20 @@ When the user asks to **build / redesign / audit / study** UI, or invokes Hallma
 
 ## Bisync corporate defaults (when user has not named a theme)
 
-Prefer clean corporate fingerprints:
+Prefer Hermès register on white:
 
-1. **Cobalt + Workbench** — product screens as hero (ops consoles, stock, PO)
-2. **Cobalt + Narrative Workflow** — Order → Receive → Cost → Sell stories
-3. **Modern-minimal / Stat-Led** — KPI / dashboard marketing surfaces
-4. **Split Studio + Cobalt** — text + live UI proof
+- Ground: `#FFFFFF`
+- Accent: Hermès orange `#F37021`
+- Ink: saddle `#2A2118`
+- Supporting muted warm greys for borders / secondary text
 
-Avoid for Bisync corporate: Carnival, Riso, Garden, Manifesto, Specimen/Newsprint, Lumen Night glow.
+Layout fingerprints that pair well:
+
+1. **Workbench** — product screens as hero (ops consoles, stock, PO)
+2. **Narrative Workflow** — Order → Receive → Cost → Sell stories
+3. **Stat-Led** — KPI / dashboard surfaces
+4. **Split Studio** — text + live UI proof
+
+Avoid for Bisync corporate: Carnival, Riso, Garden, Manifesto, Specimen/Newsprint, Lumen Night glow, ivory/cream page grounds.
 
 Live theme browser: https://www.usehallmark.com (press `T` to cycle).

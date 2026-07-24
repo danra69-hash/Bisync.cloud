@@ -233,7 +233,7 @@ export function PaymentPage({ onContinue }: Props) {
       <header className="border-b border-herme-muted/40 bg-white">
         <div className="mx-auto flex w-full max-w-none items-center justify-between px-6 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#C9963A]">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#F37021]">
               {t('auth.onboardingStepPayment')}
             </p>
             <h1 className="text-xl font-bold text-herme-ink">{t('auth.paymentTitle')}</h1>
@@ -283,7 +283,7 @@ export function PaymentPage({ onContinue }: Props) {
           <button
             type="button"
             onClick={() => setAddMode('choice')}
-            className="inline-flex items-center gap-2 rounded-xl border border-[#C9963A]/50 bg-white px-4 py-2.5 text-sm font-semibold text-[#C9963A] hover:bg-[#C9963A]/5"
+            className="inline-flex items-center gap-2 rounded-xl border border-[#F37021]/50 bg-white px-4 py-2.5 text-sm font-semibold text-[#F37021] hover:bg-[#F37021]/5"
           >
             <Plus size={16} />
             {t('auth.paymentAdd')}
@@ -321,7 +321,7 @@ export function PaymentPage({ onContinue }: Props) {
             type="button"
             disabled={saving || loading}
             onClick={() => void handleContinue()}
-            className="rounded-xl bg-[#C9963A] px-6 py-3 text-sm font-semibold text-white hover:bg-[#A87A2E] disabled:opacity-60"
+            className="rounded-xl bg-[#F37021] px-6 py-3 text-sm font-semibold text-white hover:bg-[#D4550A] disabled:opacity-60"
           >
             {saving ? t('auth.paymentSaving') : t('auth.continueToApp')}
           </button>
@@ -386,7 +386,7 @@ function CompanyRows({
         <td className="px-4 py-4 font-semibold text-herme-ink">{company.name}</td>
         <td className="px-4 py-4">
           <div className="space-y-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#C9963A]">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#F37021]">
               Can tick multiple
             </p>
             {COMPANY_BUSINESS_TYPES.map(type => (
@@ -409,7 +409,7 @@ function CompanyRows({
         </td>
         <td className="px-4 py-4">
           <div className="space-y-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#C9963A]">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#F37021]">
               Can tick multiple
             </p>
             {PLATFORM_MODULES.map(mod => (
@@ -658,14 +658,14 @@ function AddSetupModal({
             <p className="text-sm text-herme-ink/60">{t('auth.paymentAddHint')}</p>
             <button
               type="button"
-              className="w-full rounded-xl border border-border px-4 py-3 text-left text-sm font-semibold hover:border-[#C9963A]/50 hover:bg-[#C9963A]/5"
+              className="w-full rounded-xl border border-border px-4 py-3 text-left text-sm font-semibold hover:border-[#F37021]/50 hover:bg-[#F37021]/5"
               onClick={() => setMode('location')}
             >
               {t('auth.paymentAddLocation')}
             </button>
             <button
               type="button"
-              className="w-full rounded-xl border border-border px-4 py-3 text-left text-sm font-semibold hover:border-[#C9963A]/50 hover:bg-[#C9963A]/5"
+              className="w-full rounded-xl border border-border px-4 py-3 text-left text-sm font-semibold hover:border-[#F37021]/50 hover:bg-[#F37021]/5"
               onClick={() => setMode('company')}
             >
               {t('auth.paymentAddCompany')}
@@ -716,7 +716,7 @@ function AddSetupModal({
               type="button"
               disabled={submitting}
               onClick={() => void submitLocation()}
-              className="w-full rounded-xl bg-[#C9963A] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              className="w-full rounded-xl bg-[#F37021] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
             >
               {submitting ? t('auth.savingLocation') : t('auth.paymentAddConfirm')}
             </button>
@@ -793,7 +793,7 @@ function AddSetupModal({
               type="button"
               disabled={submitting}
               onClick={() => void submitCompany()}
-              className="w-full rounded-xl bg-[#C9963A] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              className="w-full rounded-xl bg-[#F37021] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
             >
               {submitting ? t('auth.savingCompany') : t('auth.paymentAddConfirm')}
             </button>
