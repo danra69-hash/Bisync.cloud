@@ -462,6 +462,9 @@ public class SalesModuleClientUpdateService(
             parts.Add($"Location: {locationVisited.Trim()}");
         if (emailsSent is > 0)
             parts.Add($"{emailsSent} emails sent");
+        var meetingNote = (comment ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(meetingNote))
+            parts.Add(meetingNote);
         return string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
     }
 

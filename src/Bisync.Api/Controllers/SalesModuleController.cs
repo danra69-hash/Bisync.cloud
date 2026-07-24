@@ -51,6 +51,8 @@ public class SalesModuleController(
         if (request.ContactDate == default) return "Date of Contact is required.";
         if (activity == "StatusChange" && string.IsNullOrWhiteSpace(request.Comment))
             return "Comment is required when changing status.";
+        if (activity == "SalesCall" && string.IsNullOrWhiteSpace(request.Comment))
+            return "Post Meeting Note is required.";
         if (activity == "SalesCall")
         {
             var contactType = (request.ContactType ?? string.Empty).Trim();
@@ -1057,6 +1059,8 @@ public class SalesModuleController(
         var comment = (request.Comment ?? string.Empty).Trim();
         if (activity == "StatusChange" && string.IsNullOrWhiteSpace(comment))
             return BadRequest(new { message = "Comment is required when changing status." });
+        if (activity == "SalesCall" && string.IsNullOrWhiteSpace(comment))
+            return BadRequest(new { message = "Post Meeting Note is required." });
 
         var row = new SalesModuleDiaryEntry
         {
