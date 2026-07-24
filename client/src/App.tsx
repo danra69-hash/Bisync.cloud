@@ -359,6 +359,29 @@ export default function App() {
               aov={dashboardMetrics.aov}
               activityMode={dashboardMetrics.activityMode}
               onOrderNowFromAlerts={handleOrderNowFromAlerts}
+              onPurchaseOrderUpdated={updated => {
+                setOrders(prev => {
+                  if (String(updated.status).toLowerCase() === 'reconciled') {
+                    return prev.filter(order => order.id !== updated.id);
+                  }
+                  const exists = prev.some(order => order.id === updated.id);
+                  return exists
+                    ? prev.map(order => (order.id === updated.id ? updated : order))
+                    : [updated, ...prev];
+                });
+              }}
+              onClientOrderUpdated={updated => {
+                setClientOrders(prev => {
+                  const active = updated.status === 'draft'
+                    || updated.status === 'issued'
+                    || updated.status === 'confirmed';
+                  if (!active) return prev.filter(order => order.id !== updated.id);
+                  const exists = prev.some(order => order.id === updated.id);
+                  return exists
+                    ? prev.map(order => (order.id === updated.id ? updated : order))
+                    : [updated, ...prev];
+                });
+              }}
             />
           ) : isRevenueSection ? (
             <RevenueSection
