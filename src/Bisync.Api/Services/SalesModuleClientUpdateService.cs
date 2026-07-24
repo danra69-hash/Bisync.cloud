@@ -524,7 +524,8 @@ public class SalesModuleClientUpdateService(
 
     /// <summary>
     /// Hunter summary for Overview: status changes, interactions (contact), and new leads
-    /// for a required week or month period. Optional Sales Team / company filters.
+    /// for a required week or month period. Always returns every active Sales Team hunter
+    /// (zeros when no activity). Optional salesTeamMemberId / companyId still accepted for API compat.
     /// </summary>
     public async Task<object> GetOverviewAsync(
         string view,
@@ -604,6 +605,25 @@ public class SalesModuleClientUpdateService(
             companyNameFilter = company.Name.Trim();
         }
 
+        // Seed every active hunter so Overview always lists the full Sales Team.
+        var teamHunters = await db.SalesModuleTeamMembers.AsNoTracking()
+            .Where(m => m.Active && m.IsHunter)
+            .OrderBy(m => m.Name)
+            .ThenBy(m => m.Id)
+            .ToListAsync(ct);
+
+        if (salesTeamMemberId is > 0)
+            teamHunters = teamHunters.Where(m => m.Id == salesTeamMemberId.Value).ToList();
+
+        var byHunter = new Dictionary<string, HunterTotals>(StringComparer.OrdinalIgnoreCase);
+        foreach (var member in teamHunters)
+        {
+            var name = string.IsNullOrWhiteSpace(member.Name) ? member.Email : member.Name.Trim();
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            if (!byHunter.ContainsKey(name))
+                byHunter[name] = new HunterTotals { Hunter = name };
+        }
+
         var rows = await GetCachedRowsAsync(ct);
         var inPeriod = rows.Where(r =>
         {
@@ -631,12 +651,13 @@ public class SalesModuleClientUpdateService(
             return true;
         });
 
-        var byHunter = new Dictionary<string, HunterTotals>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in inPeriod)
         {
             var hunter = string.IsNullOrWhiteSpace(row.Hunter) ? "(Unassigned)" : row.Hunter.Trim();
             if (!byHunter.TryGetValue(hunter, out var totals))
             {
+                // Keep unmatched Client Update hunters visible when not filtering to one team member.
+                if (salesTeamMemberId is > 0) continue;
                 totals = new HunterTotals { Hunter = hunter };
                 byHunter[hunter] = totals;
             }
@@ -646,8 +667,19 @@ public class SalesModuleClientUpdateService(
             if (IsNewLead(row)) totals.NewLeads++;
         }
 
+        var teamOrder = teamHunters
+            .Select(m => string.IsNullOrWhiteSpace(m.Name) ? m.Email.Trim() : m.Name.Trim())
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         var hunters = byHunter.Values
-            .OrderBy(h => h.Hunter, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(h =>
+            {
+                var idx = teamOrder.FindIndex(n => n.Equals(h.Hunter, StringComparison.OrdinalIgnoreCase));
+                return idx < 0 ? int.MaxValue : idx;
+            })
+            .ThenBy(h => h.Hunter, StringComparer.OrdinalIgnoreCase)
             .Select(h => new
             {
                 hunter = h.Hunter,

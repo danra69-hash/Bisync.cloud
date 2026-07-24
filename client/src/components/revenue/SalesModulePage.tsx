@@ -99,9 +99,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [overviewPeriods, setOverviewPeriods] = useState<SalesModuleOverviewPeriods | null>(null);
   const [overview, setOverview] = useState<SalesModuleOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
-  const [overviewSalesTeamId, setOverviewSalesTeamId] = useState<number | ''>('');
-  const [overviewCompanyId, setOverviewCompanyId] = useState<number | ''>('');
-  const [overviewCompanies, setOverviewCompanies] = useState<SalesModuleCompany[]>([]);
   const [overviewHasSearched, setOverviewHasSearched] = useState(false);
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
@@ -230,17 +227,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     });
   }, []);
 
-  const loadOverviewCompanies = useCallback(async (memberId: number | '') => {
-    const rows = await api.salesModuleCompanies(
-      memberId ? { salesTeamMemberId: memberId } : {},
-    );
-    setOverviewCompanies(rows);
-    setOverviewCompanyId(prev => {
-      if (prev && rows.some(c => c.id === prev)) return prev;
-      return '';
-    });
-  }, []);
-
   const runOverviewSearch = useCallback(async () => {
     if (overviewView === 'week' && !overviewWeekStart) {
       setError('Select a week to search.');
@@ -259,8 +245,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         const data = await api.salesModuleOverview({
           view: 'week',
           weekStart: overviewWeekStart,
-          salesTeamMemberId: overviewSalesTeamId || undefined,
-          companyId: overviewCompanyId || undefined,
         });
         setOverview(data);
         return;
@@ -274,8 +258,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         view: 'month',
         year: month.year,
         month: month.month,
-        salesTeamMemberId: overviewSalesTeamId || undefined,
-        companyId: overviewCompanyId || undefined,
       });
       setOverview(data);
     } catch (err) {
@@ -289,8 +271,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     overviewWeekStart,
     overviewMonthValue,
     overviewPeriods,
-    overviewSalesTeamId,
-    overviewCompanyId,
   ]);
 
   const loadAppointments = useCallback(async () => {
@@ -335,28 +315,31 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     return () => { cancelled = true; };
   }, [loadCustomers, loadAppointments]);
 
-  // Overview periods + company options when Overview tab is open (results load via Search).
+  // Overview periods when Overview tab is open; auto-load results when period is ready.
   useEffect(() => {
     if (tab !== 'overview') return;
     let cancelled = false;
-    setOverviewSalesTeamId(prev => {
-      if (prev !== '' && activeHunters.some(m => m.id === prev)) return prev;
-      return selectedTeamMemberId ?? '';
-    });
     void loadOverviewPeriods().catch(err => {
       if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview periods');
     });
     return () => { cancelled = true; };
-  }, [tab, loadOverviewPeriods, selectedTeamMemberId, activeHunters]);
+  }, [tab, loadOverviewPeriods]);
 
+  // Auto-load Overview when week/month selection is available.
   useEffect(() => {
     if (tab !== 'overview') return;
-    let cancelled = false;
-    void loadOverviewCompanies(overviewSalesTeamId).catch(err => {
-      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Overview companies');
-    });
-    return () => { cancelled = true; };
-  }, [tab, overviewSalesTeamId, loadOverviewCompanies]);
+    if (overviewView === 'week' && !overviewWeekStart) return;
+    if (overviewView === 'month' && !overviewMonthValue) return;
+    if (overviewView === 'month' && !overviewPeriods) return;
+    void runOverviewSearch();
+  }, [
+    tab,
+    overviewView,
+    overviewWeekStart,
+    overviewMonthValue,
+    overviewPeriods,
+    runOverviewSearch,
+  ]);
 
   // Calendar sync is only needed on the Appointment Calendar tab (and can be slow via Graph).
   useEffect(() => {
@@ -627,40 +610,6 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       <PageStickyFilters opaque className="space-y-2 pb-2">
         {tab === 'overview' ? (
           <div className="flex flex-wrap items-end gap-2">
-            <label className="inline-flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
-              <select
-                value={overviewSalesTeamId}
-                onChange={e => {
-                  setOverviewSalesTeamId(e.target.value ? Number(e.target.value) : '');
-                  setOverviewHasSearched(false);
-                  setOverview(null);
-                }}
-                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-              >
-                <option value="">All hunters</option>
-                {activeHunters.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="inline-flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-              <select
-                value={overviewCompanyId}
-                onChange={e => {
-                  setOverviewCompanyId(e.target.value ? Number(e.target.value) : '');
-                  setOverviewHasSearched(false);
-                  setOverview(null);
-                }}
-                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
-              >
-                <option value="">All companies</option>
-                {overviewCompanies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </label>
             <div className="inline-flex rounded-md border border-border overflow-hidden text-xs self-end">
               <button
                 type="button"
@@ -735,7 +684,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
             >
               <Search size={12} />
-              {overviewLoading ? 'Searching…' : 'Search'}
+              {overviewLoading ? 'Loading…' : 'Refresh'}
             </button>
             <button
               type="button"
@@ -750,8 +699,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
             </button>
             {overviewHasSearched && overview?.periodLabel ? (
               <p className="text-xs text-muted-foreground self-center">
-                Summary by Hunter · {overview.periodLabel}
-                {overview.companyName ? ` · ${overview.companyName}` : ''}
+                All Sales Team · {overview.periodLabel}
               </p>
             ) : null}
           </div>
@@ -936,21 +884,21 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               ) : !overviewHasSearched ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    Choose Sales Team, Company, and Week or Month, then click Search.
+                    Select a week or month to view Sales Team activity.
                   </td>
                 </tr>
               ) : (overviewView === 'week' && !overviewWeekStart) || (overviewView === 'month' && !overviewMonthValue) ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
                     {overviewView === 'week'
-                      ? 'Select a week to view the hunter summary.'
-                      : 'Select a month to view the hunter summary.'}
+                      ? 'Select a week to view Sales Team activity.'
+                      : 'Select a month to view Sales Team activity.'}
                   </td>
                 </tr>
               ) : !overview || overview.hunters.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    No Client Update activity for this filter.
+                    No Sales Team hunters yet. Add hunters in Sales Team first.
                   </td>
                 </tr>
               ) : (
