@@ -297,6 +297,23 @@ export function resolveOrgHasSupplySideCapability(
 }
 
 /**
+ * Dashboard "Cover Today" activity mode:
+ * - purchaseOrders when every effective type is supply-side (Central Kitchen / Warehouse, Manufacturer, Distributor)
+ * - covers otherwise (restaurant and mixed restaurant+supply selections)
+ */
+export function resolveDashboardActivityMode(
+  company: OrgCapabilityCompany | null | undefined,
+  locations: OrgCapabilityLocation[],
+  locationExternalIds: string[],
+): 'covers' | 'purchaseOrders' {
+  if (!company) return 'covers';
+  const types = resolveOrgEffectiveBusinessTypes(company, locations, locationExternalIds);
+  if (types.length === 0) return 'covers';
+  if (types.every(isSupplySideBusinessType)) return 'purchaseOrders';
+  return 'covers';
+}
+
+/**
  * Whether the org context can create/manage B2B products
  * (Central Kitchen / Warehouse or Manufacturer).
  */
