@@ -986,6 +986,13 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           hunterName={selectedTeamMember?.name ?? ''}
           companies={companies}
           createdByEmail={engagedUserEmail}
+          onCompanyCreated={created => {
+            setCompanies(prev => {
+              if (prev.some(c => c.id === created.id)) return prev;
+              return [...prev, created].sort((a, b) => a.name.localeCompare(b.name));
+            });
+            setSelectedCompanyId(created.id);
+          }}
         />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-4">

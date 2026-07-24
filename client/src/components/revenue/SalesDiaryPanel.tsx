@@ -26,6 +26,7 @@ type Props = {
   hunterName: string;
   companies: SalesModuleCompany[];
   createdByEmail?: string;
+  onCompanyCreated?: (company: SalesModuleCompany) => void;
 };
 
 export function SalesDiaryPanel({
@@ -33,6 +34,7 @@ export function SalesDiaryPanel({
   hunterName,
   companies,
   createdByEmail = '',
+  onCompanyCreated,
 }: Props) {
   const [entries, setEntries] = useState<SalesModuleDiaryEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,11 @@ export function SalesDiaryPanel({
   const [companyId, setCompanyId] = useState<number | ''>('');
   const [activity, setActivity] = useState<SalesDiaryActivityType | ''>('');
   const [popup, setPopup] = useState<'choose' | 'status' | 'call' | null>(null);
+  const [localCompanies, setLocalCompanies] = useState<SalesModuleCompany[]>(companies);
+
+  useEffect(() => {
+    setLocalCompanies(companies);
+  }, [companies]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,10 +67,19 @@ export function SalesDiaryPanel({
 
   useEffect(() => {
     setCompanyId(prev => {
-      if (prev && companies.some(c => c.id === prev)) return prev;
+      if (prev && localCompanies.some(c => c.id === prev)) return prev;
       return '';
     });
-  }, [companies]);
+  }, [localCompanies]);
+
+  function handleCompanyCreated(company: SalesModuleCompany) {
+    setLocalCompanies(prev => {
+      if (prev.some(c => c.id === company.id)) return prev;
+      return [...prev, company].sort((a, b) => a.name.localeCompare(b.name));
+    });
+    setCompanyId(company.id);
+    onCompanyCreated?.(company);
+  }
 
   function openActivityPopup() {
     setError(null);
@@ -110,7 +126,7 @@ export function SalesDiaryPanel({
             className="rounded-md border border-border bg-background px-2 py-1.5"
           >
             <option value="">Select company…</option>
-            {companies.map(c => (
+            {localCompanies.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
@@ -138,7 +154,7 @@ export function SalesDiaryPanel({
         </button>
         <p className="text-[11px] text-muted-foreground self-center">
           Hunter {hunterName}
-          {companies.length === 0 ? ' · no tagged companies yet' : ''}
+          {localCompanies.length === 0 ? ' · no tagged companies yet' : ''}
           {activity === 'Sales Call' ? ' · Cold Call / Email Blast do not require tagged company' : ''}
           {' · '}entries also update Client Update
         </p>
@@ -243,9 +259,10 @@ export function SalesDiaryPanel({
       {popup === 'status' ? (
         <StatusChangePopup
           salesTeamMemberId={salesTeamMemberId}
-          companies={companies}
+          companies={localCompanies}
           initialCompanyId={typeof companyId === 'number' ? companyId : null}
           createdByEmail={createdByEmail}
+          onCompanyCreated={handleCompanyCreated}
           onClose={() => setPopup(null)}
           onSaved={handleSaved}
         />
@@ -254,12 +271,230 @@ export function SalesDiaryPanel({
       {popup === 'call' ? (
         <SalesCallPopup
           salesTeamMemberId={salesTeamMemberId}
-          companies={companies}
+          companies={localCompanies}
           initialCompanyId={typeof companyId === 'number' ? companyId : null}
           createdByEmail={createdByEmail}
+          onCompanyCreated={handleCompanyCreated}
           onClose={() => setPopup(null)}
           onSaved={handleSaved}
         />
+      ) : null}
+    </div>
+  );
+}
+
+/** Company dropdown with expandable +Company form for new clients. */
+function DiaryCompanySelect({
+  salesTeamMemberId,
+  companies,
+  value,
+  onChange,
+  onCompanyCreated,
+  createdByEmail = '',
+}: {
+  salesTeamMemberId: number;
+  companies: SalesModuleCompany[];
+  value: number | '';
+  onChange: (id: number | '') => void;
+  onCompanyCreated: (company: SalesModuleCompany) => void;
+  createdByEmail?: string;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [active, setActive] = useState(true);
+  const [contactName, setContactName] = useState('');
+  const [contactPosition, setContactPosition] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactMobile, setContactMobile] = useState('');
+  const [brand, setBrand] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function createCompany() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Company name is required.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await api.createSalesModuleCompany({
+        name: trimmed,
+        active,
+        salesTeamMemberIds: [salesTeamMemberId],
+      });
+
+      try {
+        await api.createSalesModuleCustomer({
+          companyId: created.id,
+          companyName: created.name,
+          brands: brand.trim() ? [{ name: brand.trim(), count: 1 }] : [],
+          contacts: [{
+            id: '',
+            name: contactName.trim() || 'Contact',
+            position: contactPosition.trim(),
+            email: contactEmail.trim(),
+            mobile: contactMobile.trim(),
+          }],
+          status: 'Prospect',
+          lastDiscussionBrief: '',
+          locationCount: 0,
+          engagedUserId: 0,
+          engagedUserEmail: createdByEmail,
+          engagedUserName: '',
+          hunterMemberId: salesTeamMemberId,
+          active: true,
+        });
+      } catch {
+        // Company is enough for diary; customer seed is best-effort.
+      }
+
+      onCompanyCreated(created);
+      onChange(created.id);
+      setCreating(false);
+      setName('');
+      setBrand('');
+      setContactName('');
+      setContactPosition('');
+      setContactEmail('');
+      setContactMobile('');
+      setActive(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create company');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-end gap-2">
+        <label className="block space-y-1 text-xs flex-1 min-w-0">
+          <span className="text-muted-foreground uppercase tracking-wide">Company</span>
+          <select
+            value={value}
+            onChange={e => onChange(e.target.value ? Number(e.target.value) : '')}
+            className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+          >
+            <option value="">Select company…</option>
+            {companies.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            setCreating(v => !v);
+            setError(null);
+          }}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-md border border-border hover:bg-muted shrink-0"
+        >
+          <Plus size={12} />
+          Company
+        </button>
+      </div>
+
+      {creating ? (
+        <div className="rounded-md border border-dashed border-border bg-muted/20 p-3 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            New client company
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            Creates a company tagged to this Hunter. Optional contact seeds the CRM customer for appointments.
+          </p>
+          <label className="block space-y-1 text-xs">
+            <span className="text-muted-foreground uppercase tracking-wide">Company name (required)</span>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              placeholder="Company name…"
+              autoFocus
+            />
+          </label>
+          <label className="block space-y-1 text-xs">
+            <span className="text-muted-foreground uppercase tracking-wide">Brand</span>
+            <input
+              value={brand}
+              onChange={e => setBrand(e.target.value)}
+              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+              placeholder="Brand (optional)…"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Contact person</span>
+              <input
+                value={contactName}
+                onChange={e => setContactName(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+                placeholder="Name…"
+              />
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Position</span>
+              <input
+                value={contactPosition}
+                onChange={e => setContactPosition(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+                placeholder="Position…"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Email</span>
+              <input
+                type="email"
+                value={contactEmail}
+                onChange={e => setContactEmail(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+                placeholder="email@…"
+              />
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Mobile</span>
+              <input
+                value={contactMobile}
+                onChange={e => setContactMobile(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5"
+                placeholder="Mobile…"
+              />
+            </label>
+          </div>
+          <label className="inline-flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={e => setActive(e.target.checked)}
+            />
+            Active company
+          </label>
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCreating(false);
+                setError(null);
+              }}
+              className="px-3 py-1.5 text-xs rounded-md border border-border"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saving || !name.trim()}
+              onClick={() => void createCompany()}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              <Plus size={12} />
+              {saving ? 'Creating…' : 'Create company'}
+            </button>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -270,6 +505,7 @@ function StatusChangePopup({
   companies,
   initialCompanyId,
   createdByEmail,
+  onCompanyCreated,
   onClose,
   onSaved,
 }: {
@@ -277,6 +513,7 @@ function StatusChangePopup({
   companies: SalesModuleCompany[];
   initialCompanyId: number | null;
   createdByEmail: string;
+  onCompanyCreated: (company: SalesModuleCompany) => void;
   onClose: () => void;
   onSaved: (entry: SalesModuleDiaryEntry) => void;
 }) {
@@ -329,26 +566,21 @@ function StatusChangePopup({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-4 space-y-3 shadow-lg">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card p-4 space-y-3 shadow-lg">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Status Change{companyName ? ` · ${companyName}` : ''}</h3>
           <button type="button" onClick={onClose} className="p-1 rounded hover:bg-muted">
             <X size={14} />
           </button>
         </div>
-        <label className="block space-y-1 text-xs">
-          <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-          <select
-            value={selectedCompanyId}
-            onChange={e => setSelectedCompanyId(e.target.value ? Number(e.target.value) : '')}
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-          >
-            <option value="">Select company…</option>
-            {companies.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
+        <DiaryCompanySelect
+          salesTeamMemberId={salesTeamMemberId}
+          companies={companies}
+          value={selectedCompanyId}
+          onChange={setSelectedCompanyId}
+          onCompanyCreated={onCompanyCreated}
+          createdByEmail={createdByEmail}
+        />
         <label className="block space-y-1 text-xs">
           <span className="text-muted-foreground uppercase tracking-wide">Date of Contact</span>
           <input
@@ -405,6 +637,7 @@ function SalesCallPopup({
   companies,
   initialCompanyId,
   createdByEmail,
+  onCompanyCreated,
   onClose,
   onSaved,
 }: {
@@ -412,6 +645,7 @@ function SalesCallPopup({
   companies: SalesModuleCompany[];
   initialCompanyId: number | null;
   createdByEmail: string;
+  onCompanyCreated: (company: SalesModuleCompany) => void;
   onClose: () => void;
   onSaved: (entry: SalesModuleDiaryEntry) => void;
 }) {
@@ -512,19 +746,14 @@ function SalesCallPopup({
         </label>
 
         {!skipsCompany ? (
-          <label className="block space-y-1 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wide">Company</span>
-            <select
-              value={companyId}
-              onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : '')}
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5"
-            >
-              <option value="">Select company…</option>
-              {companies.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </label>
+          <DiaryCompanySelect
+            salesTeamMemberId={salesTeamMemberId}
+            companies={companies}
+            value={companyId}
+            onChange={setCompanyId}
+            onCompanyCreated={onCompanyCreated}
+            createdByEmail={createdByEmail}
+          />
         ) : null}
 
         {contactType === 'Cold Call' ? (
