@@ -332,7 +332,56 @@ export const es = {
   landing: {
     login: 'Iniciar sesión',
     register: 'Register',
-    badge: 'SO de hostelería nativo en IA',
+
+    navAbout: 'About us',
+    navApproach: 'Our approach',
+    navProducts: 'Products',
+    heroSlogan: 'Chaotic Processes… Simplified!',
+    aboutTitle: 'About us…',
+    aboutP1: 'A small project that started many years ago — merely to innovate our own back-office process for restaurant operations — has grown into a complete ecosystem today.',
+    aboutP2: 'Named Bisync Cloud, our platform helps operators meet suppliers online, trade instantly, and automate administrative work wherever possible. Results are instant and live — so teams can focus on building the business on a solid foundation.',
+    aboutImageAlt: 'Hospitality operations',
+    approachTitle: 'Our approach',
+    approach: {
+      veterans: {
+        title: 'Industry veterans',
+        body: 'Key members, including our CEO, have worked across hospitality, retail, warehouse, trading, and FMCG — so we understand each industry’s pain points.',
+      },
+      implementation: {
+        title: 'Implementation experts',
+        body: 'Every situation is different. Implementation should be highly structured and collaborative.',
+      },
+      collaboration: {
+        title: 'Committed to collaboration',
+        body: 'Communication is the most effective tool for a successful go-live. We bring best practice — and stay flexible to your needs.',
+      },
+      digital: {
+        title: 'Digital foundation',
+        body: 'We innovate and digitalise process — helping industries grow sustainably, with less paper, less printing, and less wasted energy.',
+      },
+    },
+    productsTitle: 'Products',
+    productsSubtitle: 'One connected stack for buying, stocking, costing, selling, and people — built for multi-outlet hospitality.',
+    products: {
+      ops: {
+        title: 'Bisync Cloud — Operations',
+        opsBuy: 'Complete procurement online',
+        opsForecast: 'Forecasted purchase',
+        opsRecipe: 'Product / recipe engineering & management',
+        opsCost: 'Accurate theoretical & actual cost',
+        opsAnalytics: 'Smart business analytics',
+        opsKitchen: 'Central kitchen / vendor module',
+      },
+      commerce: {
+        title: 'Commerce & people',
+        comPos: 'Lightweight browser-driven POS',
+        comMobile: 'True mobile POS',
+        comMenu: 'Integrated e-menu / QR order',
+        comDelivery: 'Access to major delivery platforms',
+        comStore: 'Online store connected to the same engine',
+        comHr: 'Mobile HR — schedule, leave, clock-in, payroll',
+      },
+    },    badge: 'SO de hostelería nativo en IA',
     heroTitle: 'El futuro de las',
     heroTitleHighlight: 'operaciones inteligentes',
     heroSubtitle: 'Bisync.cloud fusiona compras, inventario y control de costes en una plataforma autónoma — impulsada por IA predictiva que aprende de cada local, cada turno y cada servicio.',
