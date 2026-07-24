@@ -88,7 +88,6 @@ export const revMgmtNav: RevMgmtSection[] = [
         items: [
           { label: 'Sales Order' },
           { label: 'Customer List' },
-          { label: 'Customer Group' },
           { label: 'Promotion Scheduler' },
           { label: 'Account Mapping' },
         ],
