@@ -233,8 +233,14 @@
     @apply focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
   }
 
+  /* Sized for at least 4 integer digits + 4 decimals (9999.9999). */
   .bisync-inline-number {
-    @apply bg-card border-2 border-border rounded px-1.5 py-0.5 min-h-7 w-full max-w-[4.5rem] text-sm font-semibold tabular-nums text-foreground shadow-sm;
+    @apply bg-card border-2 border-border rounded px-1.5 py-0.5 min-h-7 w-full min-w-[8.5rem] max-w-[8.5rem] text-sm font-semibold tabular-nums text-right text-foreground shadow-sm;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
+  }
+
+  .bisync-number-field {
+    @apply bg-card border-2 border-border rounded-md px-2 py-1 min-h-8 min-w-[8.5rem] w-full max-w-[10rem] text-sm font-semibold tabular-nums text-right text-foreground shadow-sm;
     @apply focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
   }
 

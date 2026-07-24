@@ -56,7 +56,7 @@ public class WastageService(
                 asOfEnd,
                 cancellationToken);
 
-            var totalValue = Math.Round(unitPrice * deductQty, 2, MidpointRounding.AwayFromZero);
+            var totalValue = DecimalRounding.ToDb(unitPrice * deductQty);
             return (StockCardFifoEngine.RoundUnitPrice(unitPrice), totalValue, deductUom);
         }
 
@@ -88,7 +88,7 @@ public class WastageService(
             .ToList();
 
         var consumed = StockCardFifoEngine.Consume(ref layers, quantity);
-        var total = Math.Round(consumed.TotalCost, 2, MidpointRounding.AwayFromZero);
+        var total = DecimalRounding.ToDb(consumed.TotalCost);
         return (
             StockCardFifoEngine.RoundUnitPrice(consumed.UnitPrice),
             total,

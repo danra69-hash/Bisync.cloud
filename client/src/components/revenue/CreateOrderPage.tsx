@@ -25,6 +25,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { PLATFORM_NUMBER_INPUT_PROPS, parsePlatformNumber } from '../../utils/numberFormat';
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
@@ -385,9 +386,17 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
                         <input
                           type="number"
                           min={0}
-                          step={1}
+                          {...PLATFORM_NUMBER_INPUT_PROPS}
                           value={orderQtyByKey[line.key] ?? ''}
                           onChange={e => setOrderQty(line.key, e.target.value)}
+                          onBlur={e => {
+                            const parsed = parsePlatformNumber(e.target.value);
+                            if (parsed == null) {
+                              setOrderQty(line.key, '');
+                              return;
+                            }
+                            setOrderQty(line.key, String(parsed));
+                          }}
                           placeholder="0"
                           className={inlineNumberCls}
                         />

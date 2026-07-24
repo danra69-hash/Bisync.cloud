@@ -4,6 +4,8 @@ import {
   formatCountryCurrency,
   formatCountryNumber,
   formatCountryPercent,
+  parsePlatformNumber,
+  roundToDbDecimal,
 } from '../utils/numberFormat';
 import { useOrgCountryCode } from '../context/OrgCountryContext';
 
@@ -17,5 +19,7 @@ export function useCountryFormatters() {
     percent: (value: number) => formatCountryPercent(value, countryCode),
     rm: (value: number) => formatCountryCurrency(value, countryCode),
     cogsPercent: (cogs: number, rrp: number) => formatCogsPercent(cogs, rrp, countryCode),
+    roundDb: roundToDbDecimal,
+    parseNumber: parsePlatformNumber,
   }), [countryCode]);
 }

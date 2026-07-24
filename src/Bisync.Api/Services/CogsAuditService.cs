@@ -323,9 +323,9 @@ public class CogsAuditService(StockCardService stockCards)
         _ => entryType.ToUpperInvariant(),
     };
 
-    static decimal RoundQty(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
-    static decimal RoundMoney(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
-    static decimal RoundUnit(decimal v) => Math.Round(v, 4, MidpointRounding.AwayFromZero);
+    static decimal RoundQty(decimal v) => DecimalRounding.ToDb(v);
+    static decimal RoundMoney(decimal v) => DecimalRounding.ToDb(v);
+    static decimal RoundUnit(decimal v) => DecimalRounding.ToDb(v);
 }
 
 public sealed class CogsAuditSummaryResult

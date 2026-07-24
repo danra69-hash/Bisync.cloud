@@ -564,8 +564,8 @@ public class TransferService(
     static decimal ResolveProductTransferUnitCost(Product product)
     {
         if (product.IsSubProduct && product.YieldQuantity > 0)
-            return Math.Round(product.TotalCost / product.YieldQuantity, 4, MidpointRounding.AwayFromZero);
-        return Math.Round(product.TotalCost, 4, MidpointRounding.AwayFromZero);
+            return DecimalRounding.ToDb(product.TotalCost / product.YieldQuantity);
+        return DecimalRounding.ToDb(product.TotalCost);
     }
 
     async Task<ProductB2bLocationStock> EnsureStockRowAsync(

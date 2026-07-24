@@ -242,7 +242,7 @@ public class TransfersController(
             quantity = t.Quantity,
             uom = t.Uom,
             unitPrice,
-            totalValue = Math.Round(unitPrice * qty, 2, MidpointRounding.AwayFromZero),
+            totalValue = DecimalRounding.ToDb(unitPrice * qty),
             transferDate = t.TransferDate.ToString("yyyy-MM-dd"),
             status = t.Status,
             initiatedBy = t.InitiatedBy,

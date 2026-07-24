@@ -949,7 +949,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                         onChange={e => updateRecipeQty(key, e.target.value)}
                         placeholder="0"
                         disabled={isReadOnly || !isComponent}
-                        className={`${inlineNumberCls} w-full max-w-[6rem] ml-auto disabled:opacity-60`}
+                        className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
                         aria-label={`Principal component quantity for ${row.name}`}
                       />
                     </td>
@@ -962,7 +962,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                         onChange={e => updateInventoryQty(key, e.target.value)}
                         placeholder="0"
                         disabled={isReadOnly}
-                        className={`${inlineNumberCls} w-full max-w-[6rem] ml-auto disabled:opacity-60`}
+                        className={`${inlineNumberCls} ml-auto disabled:opacity-60`}
                         aria-label={`Inventory quantity for ${row.name}`}
                       />
                     </td>

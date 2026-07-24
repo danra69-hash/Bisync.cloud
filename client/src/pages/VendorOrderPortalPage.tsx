@@ -7,6 +7,8 @@ import {
   downloadPurchaseOrderPdf,
 } from '../data/generatePurchaseOrderPdf';
 import { formatRm } from '../data/createOrder';
+import { PLATFORM_NUMBER_INPUT_PROPS, roundToDbDecimal } from '../utils/numberFormat';
+import { inlineNumberCls } from '../components/layout/formControls';
 import { buildVendorOrderPortalUrl } from '../data/vendorOrderShare';
 import { PurchaseOrderPdfPreview } from '../components/revenue/PurchaseOrderPdfPreview';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
@@ -94,8 +96,8 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
     try {
       const lines = lineDrafts.map(d => ({
         id: d.id,
-        quantity: Number(d.quantity),
-        unitPrice: Number(d.unitPrice),
+        quantity: roundToDbDecimal(Number(d.quantity) || 0),
+        unitPrice: roundToDbDecimal(Number(d.unitPrice) || 0),
       }));
       const updated = await api.acceptVendorOrder(
         token,
@@ -333,7 +335,10 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
                               <td className="px-2 py-1.5 font-medium">{item.name}</td>
                               <td className="px-2 py-1.5 text-right">
                                 <input
-                                  className="w-24 ml-auto px-2 py-1 rounded border border-border bg-background text-right"
+                                  type="number"
+                                  {...PLATFORM_NUMBER_INPUT_PROPS}
+                                  min={0}
+                                  className={`${inlineNumberCls} ml-auto`}
                                   value={draft.quantity}
                                   onChange={e => {
                                     const value = e.target.value;
@@ -343,7 +348,10 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
                               </td>
                               <td className="px-2 py-1.5 text-right">
                                 <input
-                                  className="w-28 ml-auto px-2 py-1 rounded border border-border bg-background text-right"
+                                  type="number"
+                                  {...PLATFORM_NUMBER_INPUT_PROPS}
+                                  min={0}
+                                  className={`${inlineNumberCls} ml-auto`}
                                   value={draft.unitPrice}
                                   onChange={e => {
                                     const value = e.target.value;

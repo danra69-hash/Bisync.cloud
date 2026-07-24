@@ -567,14 +567,14 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
         if (locationIds.Count == 0 || totalQuantity <= 0)
             return [];
 
-        var perLocation = Math.Round(totalQuantity / locationIds.Count, 3, MidpointRounding.AwayFromZero);
+        var perLocation = DecimalRounding.ToDb(totalQuantity / locationIds.Count);
         var allocations = new List<(string LocationId, decimal Quantity)>();
         var allocated = 0m;
 
         for (var i = 0; i < locationIds.Count; i++)
         {
             var qty = i == locationIds.Count - 1
-                ? Math.Round(totalQuantity - allocated, 3, MidpointRounding.AwayFromZero)
+                ? DecimalRounding.ToDb(totalQuantity - allocated)
                 : perLocation;
             if (qty > 0)
                 allocations.Add((locationIds[i], qty));
@@ -601,8 +601,8 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
             var locationId = locationIds[i];
             var onHand = onHandByLocation.TryGetValue(locationId, out var qty) ? qty : 0;
             var share = i == locationIds.Count - 1
-                ? Math.Round(totalQuantity - allocated, 3, MidpointRounding.AwayFromZero)
-                : Math.Round(totalQuantity * (onHand / totalOnHand), 3, MidpointRounding.AwayFromZero);
+                ? DecimalRounding.ToDb(totalQuantity - allocated)
+                : DecimalRounding.ToDb(totalQuantity * (onHand / totalOnHand));
 
             if (share > 0)
                 allocations.Add((locationId, share));
@@ -725,7 +725,7 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
         if (varianceQty is not decimal variance || systemQty == 0)
             return null;
 
-        return Math.Round((variance / systemQty) * 100m, 2, MidpointRounding.AwayFromZero);
+        return DecimalRounding.ToDb((variance / systemQty) * 100m);
     }
 
     static bool IsPendingConfirmation(string status) =>
@@ -844,12 +844,12 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
     static (decimal SystemValue, decimal? ActualValue, decimal? VarianceValue) ComputeLineValues(InventoryCountSessionLine line)
     {
         var unitPrice = line.SystemUnitPrice ?? 0m;
-        var systemValue = Math.Round(line.SystemQty * unitPrice, 2, MidpointRounding.AwayFromZero);
+        var systemValue = DecimalRounding.ToDb(line.SystemQty * unitPrice);
         decimal? actualValue = line.CountedQty is decimal counted
-            ? Math.Round(counted * unitPrice, 2, MidpointRounding.AwayFromZero)
+            ? DecimalRounding.ToDb(counted * unitPrice)
             : null;
         decimal? varianceValue = line.VarianceQty is decimal variance
-            ? Math.Round(variance * unitPrice, 2, MidpointRounding.AwayFromZero)
+            ? DecimalRounding.ToDb(variance * unitPrice)
             : null;
 
         return (systemValue, actualValue, varianceValue);

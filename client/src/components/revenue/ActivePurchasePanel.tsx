@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { inlineNumberCls } from '../layout/formControls';
+import { PLATFORM_NUMBER_INPUT_PROPS } from '../../utils/numberFormat';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -612,12 +614,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             <td className="px-3 py-2">
                               {canEditReceived ? (
                                 <input
-                                  type="number"
+                                  type="number" {...PLATFORM_NUMBER_INPUT_PROPS}
                                   min="0"
-                                  step="any"
                                   value={line.quantity}
                                   onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
-                                  className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                  className={inlineNumberCls}
                                 />
                               ) : (
                                 <span className="font-sans">{line.quantity}</span>
@@ -630,12 +631,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                               <span className="font-sans">{line.quantity}</span>
                             ) : (
                               <input
-                                type="number"
+                                type="number" {...PLATFORM_NUMBER_INPUT_PROPS}
                                 min="0"
-                                step="any"
                                 value={line.quantity}
                                 onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
-                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                className={inlineNumberCls}
                               />
                             )}
                           </td>
@@ -666,12 +666,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                               <td className="px-3 py-2">
                                 {canEditReceived ? (
                                   <input
-                                    type="number"
+                                    type="number" {...PLATFORM_NUMBER_INPUT_PROPS}
                                     min="0"
-                                    step="0.01"
                                     value={line.unitPrice}
                                     onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
-                                    className="w-24 rounded border border-border bg-background px-2 py-1 font-sans"
+                                    className={inlineNumberCls}
                                   />
                                 ) : (
                                   <span className="font-sans">{rm(price)}</span>
@@ -698,12 +697,11 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 <span className="font-sans">{rm(price)}</span>
                               ) : (
                                 <input
-                                  type="number"
+                                  type="number" {...PLATFORM_NUMBER_INPUT_PROPS}
                                   min="0"
-                                  step="0.01"
                                   value={line.unitPrice}
                                   onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
-                                  className="w-24 rounded border border-border bg-background px-2 py-1 font-sans"
+                                  className={inlineNumberCls}
                                 />
                               )}
                             </td>
@@ -713,13 +711,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           <td className="px-3 py-2">
                             {mode === 'receive' && !readOnly ? (
                               <input
-                                type="number"
+                                type="number" {...PLATFORM_NUMBER_INPUT_PROPS}
                                 min="0"
-                                step="0.01"
                                 value={line.taxAmount}
                                 onChange={e => updateLine(line.itemId, { taxAmount: e.target.value })}
                                 placeholder="0.00"
-                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                className={inlineNumberCls}
                               />
                             ) : (
                               <span className="font-sans">{tax > 0 ? rm(tax) : '—'}</span>
@@ -759,13 +756,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           <td className="px-3 py-2">
                             {canEditReceived ? (
                               <input
-                                type="number"
-                                step="0.1"
+                                type="number" {...PLATFORM_NUMBER_INPUT_PROPS}
                                 value={line.receivedTemperature}
                                 onChange={e => updateLine(line.itemId, { receivedTemperature: e.target.value })}
                                 placeholder="—"
                                 title="Optional temperature check (°C)"
-                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                className={inlineNumberCls}
                               />
                             ) : (
                               <span className="font-sans">
