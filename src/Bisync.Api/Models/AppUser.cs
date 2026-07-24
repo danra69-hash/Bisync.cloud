@@ -21,4 +21,8 @@ public class AppUser
     public string PreferredLanguage { get; set; } = "en";
     /// <summary>ISO country code used for the phone dial prefix at registration.</summary>
     public string? PhoneCountryCode { get; set; }
+    /// <summary>EULA version accepted at registration (e.g. 2026-07-24).</summary>
+    public string? EulaVersion { get; set; }
+    /// <summary>UTC timestamp when the user accepted the EULA.</summary>
+    public DateTime? AcceptedEulaAt { get; set; }
 }

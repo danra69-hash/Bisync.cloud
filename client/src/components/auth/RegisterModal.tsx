@@ -16,7 +16,9 @@ import {
   getPhoneCountry,
   preferredLanguageForCountry,
 } from '../../data/phoneCountries';
+import { CURRENT_EULA_VERSION } from '../../data/eula';
 import { RegisterPhoneInput } from './RegisterPhoneInput';
+import { EulaModal } from './EulaModal';
 
 type Props = {
   onClose: () => void;
@@ -42,6 +44,8 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
   const [geoStatus, setGeoStatus] = useState<'loading' | 'ready'>('loading');
   const [demoRestricted, setDemoRestricted] = useState(false);
   const [allowedDomains, setAllowedDomains] = useState<string[]>(['cubevalue.com', 'pasar.ai']);
+  const [acceptedEula, setAcceptedEula] = useState(false);
+  const [eulaOpen, setEulaOpen] = useState(false);
   const countryManualRef = useRef(false);
   const languageManualRef = useRef(false);
 
@@ -154,6 +158,10 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
         return;
       }
     }
+    if (!acceptedEula) {
+      setError(t('auth.eulaRequired'));
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -166,6 +174,8 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
         confirmPassword,
         preferredLanguage,
         phoneCountryCode,
+        acceptedEula: true,
+        eulaVersion: CURRENT_EULA_VERSION,
       });
       setSuccessEmail(result.email);
       setActivationUrl(result.activationUrl);
@@ -395,6 +405,39 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
                   className={inputCls}
                 />
               </div>
+
+              <div className="rounded-xl border border-herme-muted/60 bg-herme-cream/60 px-3 py-3">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    id="reg-eula"
+                    type="checkbox"
+                    checked={acceptedEula}
+                    onChange={e => {
+                      setAcceptedEula(e.target.checked);
+                      setError(null);
+                    }}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-herme-muted text-[#F37021] focus:ring-[#F37021]"
+                    required
+                  />
+                  <span className="text-xs leading-relaxed text-herme-ink/75">
+                    {t('auth.eulaAcceptPrefix')}{' '}
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.preventDefault();
+                        setEulaOpen(true);
+                      }}
+                      className="font-semibold text-[#F37021] underline hover:text-[#D4550A]"
+                    >
+                      {t('auth.eulaLink')}
+                    </button>
+                    {' '}{t('auth.eulaAcceptSuffix')}
+                  </span>
+                </label>
+                <p className="mt-1.5 pl-6 text-[11px] text-herme-ink/45">
+                  {t('auth.eulaVersionHint', { version: CURRENT_EULA_VERSION })}
+                </p>
+              </div>
             </div>
 
             {error && (
@@ -405,7 +448,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !acceptedEula}
               className="mt-6 w-full rounded-xl bg-[#F37021] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#D4550A] disabled:opacity-60"
             >
               {submitting ? t('auth.registering') : t('auth.registerButton')}
@@ -413,6 +456,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
           </form>
         )}
       </div>
+      {eulaOpen ? <EulaModal onClose={() => setEulaOpen(false)} /> : null}
     </div>,
     document.body,
   );
