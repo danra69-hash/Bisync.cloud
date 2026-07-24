@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BookOpen, ExternalLink, RefreshCw } from 'lucide-react';
+import { BookOpen, ExternalLink, FileText, RefreshCw } from 'lucide-react';
 import { api, type NutritionLibraryStatus } from '../../api';
+import { CURRENT_DPA_VERSION, DPA_TITLE } from '../../data/dpa';
+import { CURRENT_EULA_VERSION, EULA_TITLE } from '../../data/eula';
+import { LEGAL_EFFECTIVE_DATE, LEGAL_PROVIDER } from '../../data/legalShared';
+import { CURRENT_PRIVACY_POLICY_VERSION, PRIVACY_POLICY_TITLE } from '../../data/privacyPolicy';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 function formatDateTime(value: string | null | undefined): string {
@@ -9,6 +13,27 @@ function formatDateTime(value: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString();
 }
+
+const LEGAL_DOCUMENTS = [
+  {
+    id: 'eula',
+    title: EULA_TITLE,
+    path: '/legal/eula',
+    version: CURRENT_EULA_VERSION,
+  },
+  {
+    id: 'privacy',
+    title: PRIVACY_POLICY_TITLE,
+    path: '/legal/privacy',
+    version: CURRENT_PRIVACY_POLICY_VERSION,
+  },
+  {
+    id: 'dpa',
+    title: DPA_TITLE,
+    path: '/legal/dpa',
+    version: CURRENT_DPA_VERSION,
+  },
+] as const;
 
 export function RefLibraryTab() {
   const [status, setStatus] = useState<NutritionLibraryStatus | null>(null);
@@ -57,7 +82,7 @@ export function RefLibraryTab() {
             Ref &amp; Library
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Reference data libraries used by Bisync, starting with USDA FoodData Central for product nutrient estimates.
+            Reference data libraries and platform legal documents used by Bisync.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -79,6 +104,39 @@ export function RefLibraryTab() {
             {syncing ? 'Syncing…' : 'Sync now'}
           </button>
         </div>
+      </div>
+
+      <div className="rounded-md border border-border/70 bg-muted/10 p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <FileText size={12} />
+              Legal documents
+            </p>
+            <p className="text-sm font-medium">EULA, Privacy Policy, and Data Processing Addendum</p>
+            <p className="text-[11px] text-muted-foreground">
+              {LEGAL_PROVIDER} · Effective {LEGAL_EFFECTIVE_DATE}
+            </p>
+          </div>
+        </div>
+        <ul className="space-y-2 pt-1 border-t border-border/60">
+          {LEGAL_DOCUMENTS.map(doc => (
+            <li key={doc.id} className="flex items-center justify-between gap-3 flex-wrap">
+              <a
+                href={doc.path}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline min-w-0"
+              >
+                <span className="truncate">{doc.title}</span>
+                <ExternalLink size={12} className="shrink-0" />
+              </a>
+              <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                v{doc.version}
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {error ? (
