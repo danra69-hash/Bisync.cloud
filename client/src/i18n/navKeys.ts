@@ -38,6 +38,7 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   Wastage: 'revMgmt.items.wastage',
   Transfer: 'revMgmt.items.transfer',
   'Inventory Config': 'revMgmt.items.inventoryConfig',
+  'My Component (ingredient)': 'revMgmt.items.smartComponent',
   'Smart Component': 'revMgmt.items.smartComponent',
   'Component Config': 'revMgmt.items.componentConfig',
   'Account Mapping': 'revMgmt.items.accountMapping',

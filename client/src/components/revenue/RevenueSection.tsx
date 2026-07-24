@@ -76,6 +76,7 @@ function renderRevMgmtContent(
 
   switch (label) {
     case 'Smart Component':
+    case 'My Component (ingredient)':
       return (
         <SmartIngredientPage
           selectedCompanyId={selectedCompanyId}

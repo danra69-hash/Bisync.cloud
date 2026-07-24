@@ -80,6 +80,7 @@ builder.Services.AddScoped<SplitUseService>();
 builder.Services.AddScoped<ProductSaleInventoryService>();
 builder.Services.AddScoped<ProductionInventoryService>();
 builder.Services.AddScoped<StockCardService>();
+builder.Services.AddScoped<IngredientUsageMetricsService>();
 builder.Services.AddScoped<CogsAuditService>();
 builder.Services.AddSingleton<SystemCogsAuditHistoryStore>();
 builder.Services.AddScoped<SystemCogsAuditSnapshotService>();

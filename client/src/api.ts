@@ -2241,6 +2241,12 @@ export interface Ingredient {
   lastPriceInventory: number;
   dailyUsage: number;
   orderFreqDays: number;
+  parStock?: number;
+  parStockUom?: string;
+  onHandQty?: number;
+  metricsLookbackDays?: number;
+  dailyUsageAuto?: boolean;
+  orderFreqAuto?: boolean;
   storageJson: string;
   storageNote?: string;
   detailConfigJson?: string;
@@ -2978,8 +2984,13 @@ export const api = {
     fetchJsonWithMethod<VendorEngagement>(`/api/vendors/${externalId}/approve-engagement`, 'POST', data),
   rejectVendorEngagement: (externalId: string, data?: { rejectedBy?: string; reason?: string }) =>
     fetchJsonWithMethod<VendorEngagement>(`/api/vendors/${externalId}/reject-engagement`, 'POST', data ?? {}),
-  ingredients: (companyId?: number) =>
-    fetchJson<Ingredient[]>(`/api/ingredients${companyId ? `?companyId=${companyId}` : ''}`),
+  ingredients: (companyId?: number, locationIds?: string[]) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds && locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    const query = params.toString();
+    return fetchJson<Ingredient[]>(`/api/ingredients${query ? `?${query}` : ''}`);
+  },
   createIngredient: (data: Omit<Ingredient, 'id'>) => fetchJsonWithMethod<Ingredient>('/api/ingredients', 'POST', data),
   updateIngredient: (id: number, data: Ingredient) => fetchJsonWithMethod<Ingredient>(`/api/ingredients/${id}`, 'PUT', data),
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),
