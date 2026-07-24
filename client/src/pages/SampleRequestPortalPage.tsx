@@ -3,13 +3,14 @@ import { api, type SampleRequestDetail } from '../api';
 import { formatVendorPolicyLabel } from '../data/vendorPolicyRules';
 import { sampleRequestTemplateTitle } from '../data/requestForSample';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
+import { formatCountryCurrency } from '../utils/numberFormat';
 
 type Props = {
   token: string;
 };
 
-function formatMoney(value: number): string {
-  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatMoney(value: number, countryCode?: string): string {
+  return formatCountryCurrency(value, countryCode || 'MY');
 }
 
 function yesNo(value: boolean): string {
@@ -202,9 +203,9 @@ export function SampleRequestPortalPage({ token }: Props) {
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Commercial</p>
               <p className="text-sm text-foreground"><span className="text-muted-foreground">Delivery unit:</span> {labelOrDash(request.deliveryUnit)}</p>
               <p className="text-sm text-foreground"><span className="text-muted-foreground">Expected QTY / year:</span> {request.expectedQtyPerYear}</p>
-              <p className="text-sm text-foreground"><span className="text-muted-foreground">Expected price:</span> {formatMoney(request.expectedPrice)}</p>
+              <p className="text-sm text-foreground"><span className="text-muted-foreground">Expected price:</span> {formatMoney(request.expectedPrice, request.countryCode)}</p>
               <p className="text-sm font-semibold text-foreground">
-                Expected sales / year: {formatMoney(request.expectedSalesAmountPerYear)}
+                Expected sales / year: {formatMoney(request.expectedSalesAmountPerYear, request.countryCode)}
               </p>
             </section>
 

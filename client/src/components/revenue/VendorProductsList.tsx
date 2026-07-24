@@ -82,7 +82,7 @@ export function VendorProductsList({
   engageVendorRequest,
   onEngageVendorRequestHandled,
 }: Props) {
-  const { number } = useCountryFormatters();
+  const { rm } = useCountryFormatters();
   const [vendorMap, setVendorMap] = useState(() => new Map(vendors.map(v => [v.externalId, v])));
   const [engageVendor, setEngageVendor] = useState<Vendor | null>(null);
   const [engaging, setEngaging] = useState(false);
@@ -420,7 +420,7 @@ export function VendorProductsList({
                     <td className="px-3 py-2.5 font-sans text-foreground border-r border-border whitespace-nowrap">
                       {deliveryUnit}
                     </td>
-                    <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border">${number(product.deliveryPrice)}</td>
+                    <td className="px-3 py-2.5 font-sans font-medium text-foreground border-r border-border">{rm(product.deliveryPrice)}</td>
                     {showVendorColumn && (
                       <td className="px-3 py-2.5 border-r border-border ">
                         <div className="flex flex-col gap-1">

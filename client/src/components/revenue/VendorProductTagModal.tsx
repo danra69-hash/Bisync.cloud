@@ -93,7 +93,7 @@ export function VendorProductTagModal({
 
 }: Props) {
 
-  const { number } = useCountryFormatters();
+  const { rm } = useCountryFormatters();
   const [loading, setLoading] = useState(true);
 
   const [saving, setSaving] = useState(false);
@@ -465,7 +465,7 @@ export function VendorProductTagModal({
 
             <h3 className="text-sm font-semibold text-foreground mt-0.5">{product.productName}</h3>
 
-            <p className="text-xs text-muted-foreground mt-0.5 font-sans">{product.id} · ${number(product.deliveryPrice)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 font-sans">{product.id} · {rm(product.deliveryPrice)}</p>
 
           </div>
 

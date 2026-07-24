@@ -80,7 +80,7 @@ export function SmartIngredientPage({
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 }) {
-  const { number } = useCountryFormatters();
+  const { rm } = useCountryFormatters();
   const hidePrices = useShouldHidePrices();
   const tableColumns = useMemo(
     () => (hidePrices
@@ -454,7 +454,7 @@ export function SmartIngredientPage({
                     </td>
                     <td className="px-4 py-3 font-sans text-foreground">{uom(row)}</td>
                     {!hidePrices && (
-                      <td className="px-4 py-3 font-sans text-foreground">${number(price(row))}</td>
+                      <td className="px-4 py-3 font-sans text-foreground">{rm(price(row))}</td>
                     )}
                     <td className="px-4 py-3 font-sans text-muted-foreground">
                       {row.dailyUsage > 0 ? `${row.dailyUsage} ${uom(row)}/day` : '—'}
