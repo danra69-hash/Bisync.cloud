@@ -27,6 +27,10 @@ public class AuthController(
     public const string CurrentEulaEffectiveDate = "24 July 2026";
     public const string CurrentEulaTitle = "Bisync.cloud End User License Agreement (EULA)";
     public const string CurrentEulaProvider = "Cube Value Sdn Bhd (Company No. 1164413X)";
+    public const string CurrentPrivacyPolicyVersion = "2026-07-24";
+    public const string CurrentPrivacyPolicyTitle = "Bisync.cloud Privacy Policy";
+    public const string CurrentDpaVersion = "2026-07-24";
+    public const string CurrentDpaTitle = "Bisync.cloud Data Processing Addendum";
 
     public record LoginRequest(string Email, string Password);
 
@@ -40,7 +44,11 @@ public class AuthController(
         string? PreferredLanguage = null,
         string? PhoneCountryCode = null,
         bool AcceptedEula = false,
-        string? EulaVersion = null);
+        string? EulaVersion = null,
+        bool AcceptedPrivacyPolicy = false,
+        string? PrivacyPolicyVersion = null,
+        bool AcceptedDpa = false,
+        string? DpaVersion = null);
 
     public record ConfirmActivationRequest(string Token);
 
@@ -203,6 +211,34 @@ public class AuthController(
         url = "/legal/eula",
     });
 
+    /// <summary>Public metadata for all registration legal documents.</summary>
+    [HttpGet("legal")]
+    public ActionResult<object> GetLegalDocs() => Ok(new
+    {
+        eula = new
+        {
+            version = CurrentEulaVersion,
+            title = CurrentEulaTitle,
+            effectiveDate = CurrentEulaEffectiveDate,
+            url = "/legal/eula",
+        },
+        privacyPolicy = new
+        {
+            version = CurrentPrivacyPolicyVersion,
+            title = CurrentPrivacyPolicyTitle,
+            effectiveDate = CurrentEulaEffectiveDate,
+            url = "/legal/privacy",
+        },
+        dpa = new
+        {
+            version = CurrentDpaVersion,
+            title = CurrentDpaTitle,
+            effectiveDate = CurrentEulaEffectiveDate,
+            url = "/legal/dpa",
+        },
+        provider = CurrentEulaProvider,
+    });
+
     [HttpPost("register")]
     public async Task<ActionResult<object>> Register([FromBody] RegisterRequest request)
     {
@@ -231,11 +267,17 @@ public class AuthController(
             return BadRequest(new { message = "Password must be at least 8 characters." });
         if (!string.Equals(password, confirm, StringComparison.Ordinal))
             return BadRequest(new { message = "Password and confirmation do not match." });
-        if (!request.AcceptedEula)
-            return BadRequest(new { message = "You must accept the End User License Agreement to register." });
+        if (!request.AcceptedEula
+            || !request.AcceptedPrivacyPolicy
+            || !request.AcceptedDpa)
+            return BadRequest(new { message = "You must accept the EULA, Privacy Policy, and Data Processing Addendum to register." });
         var eulaVersion = (request.EulaVersion ?? string.Empty).Trim();
-        if (!string.Equals(eulaVersion, CurrentEulaVersion, StringComparison.Ordinal))
-            return BadRequest(new { message = "Please review and accept the current End User License Agreement." });
+        var privacyVersion = (request.PrivacyPolicyVersion ?? string.Empty).Trim();
+        var dpaVersion = (request.DpaVersion ?? string.Empty).Trim();
+        if (!string.Equals(eulaVersion, CurrentEulaVersion, StringComparison.Ordinal)
+            || !string.Equals(privacyVersion, CurrentPrivacyPolicyVersion, StringComparison.Ordinal)
+            || !string.Equals(dpaVersion, CurrentDpaVersion, StringComparison.Ordinal))
+            return BadRequest(new { message = "Please review and accept the current EULA, Privacy Policy, and Data Processing Addendum." });
 
         var mobileDigits = NormalizePhoneDigits(mobile);
         if (mobileDigits.Length < 8)
@@ -277,6 +319,10 @@ public class AuthController(
             PhoneCountryCode = string.IsNullOrWhiteSpace(phoneCountryCode) ? null : phoneCountryCode,
             EulaVersion = CurrentEulaVersion,
             AcceptedEulaAt = DateTime.UtcNow,
+            PrivacyPolicyVersion = CurrentPrivacyPolicyVersion,
+            AcceptedPrivacyPolicyAt = DateTime.UtcNow,
+            DpaVersion = CurrentDpaVersion,
+            AcceptedDpaAt = DateTime.UtcNow,
         };
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "AppUsers");

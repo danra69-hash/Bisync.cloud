@@ -151,6 +151,10 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "AppUsers", "PhoneCountryCode", "TEXT");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "AppUsers", "EulaVersion", "TEXT");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "AppUsers", "AcceptedEulaAt", "TIMESTAMP");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "AppUsers", "PrivacyPolicyVersion", "TEXT");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "AppUsers", "AcceptedPrivacyPolicyAt", "TIMESTAMP");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "AppUsers", "DpaVersion", "TEXT");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "AppUsers", "AcceptedDpaAt", "TIMESTAMP");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ComponentId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "StorageNote", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "DetailConfigJson", "TEXT NOT NULL DEFAULT '{}'");

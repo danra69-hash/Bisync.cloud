@@ -25,4 +25,12 @@ public class AppUser
     public string? EulaVersion { get; set; }
     /// <summary>UTC timestamp when the user accepted the EULA.</summary>
     public DateTime? AcceptedEulaAt { get; set; }
+    /// <summary>Privacy Policy version accepted at registration.</summary>
+    public string? PrivacyPolicyVersion { get; set; }
+    /// <summary>UTC timestamp when the user accepted the Privacy Policy.</summary>
+    public DateTime? AcceptedPrivacyPolicyAt { get; set; }
+    /// <summary>Data Processing Addendum version accepted at registration.</summary>
+    public string? DpaVersion { get; set; }
+    /// <summary>UTC timestamp when the user accepted the DPA.</summary>
+    public DateTime? AcceptedDpaAt { get; set; }
 }

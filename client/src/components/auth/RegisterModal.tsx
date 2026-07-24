@@ -17,8 +17,12 @@ import {
   preferredLanguageForCountry,
 } from '../../data/phoneCountries';
 import { CURRENT_EULA_VERSION } from '../../data/eula';
+import { CURRENT_PRIVACY_POLICY_VERSION } from '../../data/privacyPolicy';
+import { CURRENT_DPA_VERSION } from '../../data/dpa';
 import { RegisterPhoneInput } from './RegisterPhoneInput';
 import { EulaModal } from './EulaModal';
+import { PrivacyPolicyModal } from './PrivacyPolicyModal';
+import { DpaModal } from './DpaModal';
 
 type Props = {
   onClose: () => void;
@@ -45,7 +49,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
   const [demoRestricted, setDemoRestricted] = useState(false);
   const [allowedDomains, setAllowedDomains] = useState<string[]>(['cubevalue.com', 'pasar.ai']);
   const [acceptedEula, setAcceptedEula] = useState(false);
-  const [eulaOpen, setEulaOpen] = useState(false);
+  const [legalDocOpen, setLegalDocOpen] = useState<'eula' | 'privacy' | 'dpa' | null>(null);
   const countryManualRef = useRef(false);
   const languageManualRef = useRef(false);
 
@@ -159,7 +163,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
       }
     }
     if (!acceptedEula) {
-      setError(t('auth.eulaRequired'));
+      setError(t('auth.legalRequired'));
       return;
     }
 
@@ -176,6 +180,10 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
         phoneCountryCode,
         acceptedEula: true,
         eulaVersion: CURRENT_EULA_VERSION,
+        acceptedPrivacyPolicy: true,
+        privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+        acceptedDpa: true,
+        dpaVersion: CURRENT_DPA_VERSION,
       });
       setSuccessEmail(result.email);
       setActivationUrl(result.activationUrl);
@@ -409,7 +417,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
               <div className="rounded-xl border border-herme-muted/60 bg-herme-cream/60 px-3 py-3">
                 <label className="flex items-start gap-2.5 cursor-pointer select-none">
                   <input
-                    id="reg-eula"
+                    id="reg-legal"
                     type="checkbox"
                     checked={acceptedEula}
                     onChange={e => {
@@ -420,22 +428,49 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
                     required
                   />
                   <span className="text-xs leading-relaxed text-herme-ink/75">
-                    {t('auth.eulaAcceptPrefix')}{' '}
+                    {t('auth.legalAcceptPrefix')}{' '}
                     <button
                       type="button"
                       onClick={e => {
                         e.preventDefault();
-                        setEulaOpen(true);
+                        setLegalDocOpen('eula');
                       }}
                       className="font-semibold text-[#F37021] underline hover:text-[#D4550A]"
                     >
                       {t('auth.eulaLink')}
                     </button>
-                    {' '}{t('auth.eulaAcceptSuffix')}
+                    {', '}
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.preventDefault();
+                        setLegalDocOpen('privacy');
+                      }}
+                      className="font-semibold text-[#F37021] underline hover:text-[#D4550A]"
+                    >
+                      {t('auth.privacyLink')}
+                    </button>
+                    {', '}
+                    {t('auth.legalAcceptAnd')}{' '}
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.preventDefault();
+                        setLegalDocOpen('dpa');
+                      }}
+                      className="font-semibold text-[#F37021] underline hover:text-[#D4550A]"
+                    >
+                      {t('auth.dpaLink')}
+                    </button>
+                    .
                   </span>
                 </label>
                 <p className="mt-1.5 pl-6 text-[11px] text-herme-ink/45">
-                  {t('auth.eulaVersionHint', { version: CURRENT_EULA_VERSION })}
+                  {t('auth.legalVersionHint', {
+                    eula: CURRENT_EULA_VERSION,
+                    privacy: CURRENT_PRIVACY_POLICY_VERSION,
+                    dpa: CURRENT_DPA_VERSION,
+                  })}
                 </p>
               </div>
             </div>
@@ -456,7 +491,9 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
           </form>
         )}
       </div>
-      {eulaOpen ? <EulaModal onClose={() => setEulaOpen(false)} /> : null}
+      {legalDocOpen === 'eula' ? <EulaModal onClose={() => setLegalDocOpen(null)} /> : null}
+      {legalDocOpen === 'privacy' ? <PrivacyPolicyModal onClose={() => setLegalDocOpen(null)} /> : null}
+      {legalDocOpen === 'dpa' ? <DpaModal onClose={() => setLegalDocOpen(null)} /> : null}
     </div>,
     document.body,
   );
