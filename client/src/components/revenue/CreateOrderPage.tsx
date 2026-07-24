@@ -25,6 +25,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { buildOrderQtyFromPrefill, type CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 
@@ -59,9 +60,15 @@ type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
   embedded?: boolean;
+  initialPrefillItems?: CreateOrderPrefillItem[];
 };
 
-export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedded = false }: Props) {
+export function CreateOrderPage({
+  selectedCompanyId,
+  selectedLocationIds,
+  embedded = false,
+  initialPrefillItems,
+}: Props) {
   const { number, rm } = useCountryFormatters();
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -73,6 +80,7 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const pendingTemplateRef = useRef<OrderTemplate | null>(null);
+  const prefillAppliedRef = useRef(false);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CreateOrderSortColumn>();
 
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -202,6 +210,25 @@ export function CreateOrderPage({ selectedCompanyId, selectedLocationIds, embedd
     pendingTemplateRef.current = null;
     applyTemplateNow(template, lines);
   }, [lines]);
+
+  useEffect(() => {
+    prefillAppliedRef.current = false;
+  }, [initialPrefillItems, selectedCompanyId, selectedLocationIds]);
+
+  useEffect(() => {
+    if (!initialPrefillItems?.length || lines.length === 0 || prefillAppliedRef.current) return;
+    const updates = buildOrderQtyFromPrefill(initialPrefillItems, lines);
+    if (Object.keys(updates).length === 0) {
+      setTemplateNotice('Could not match inventory alert items to order lines for the current filters.');
+      prefillAppliedRef.current = true;
+      return;
+    }
+    setOrderQtyByKey(prev => ({ ...prev, ...updates }));
+    setTemplateNotice(
+      `Added ${Object.keys(updates).length} inventory alert item${Object.keys(updates).length === 1 ? '' : 's'} to the order.`,
+    );
+    prefillAppliedRef.current = true;
+  }, [initialPrefillItems, lines]);
 
   function handleApplyTemplate(template: OrderTemplate) {
     setShowTemplatePicker(false);

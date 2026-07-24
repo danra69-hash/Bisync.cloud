@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Eye, EyeOff, GripVertical, Package, ShoppingBag, TrendingUp, Users } from 'lucide-react';
-import type { InventoryAlert, MenuItem, ProgressData, PurchaseOrder, RevenuePoint } from '../../api';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Eye, EyeOff, GripVertical, ShoppingBag, TrendingUp, Users } from 'lucide-react';
+import type { B2bSalesOrder, InventoryAlert, MenuItem, ProgressData, PurchaseOrder, RevenuePoint } from '../../api';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
+import type { DashboardActivityMode, PeriodTotals } from '../../utils/locationMetrics';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -25,20 +26,49 @@ function fmtUsd(n: number) {
   return `$${n.toFixed(0)}`;
 }
 
+function fmtAov(n: number) {
+  return `$${n.toFixed(2)}`;
+}
+
+function fmtCount(n: number) {
+  return n.toLocaleString();
+}
+
 function delta(current: number, prev: number) {
-  if (prev === 0) return 0;
+  if (prev === 0) return current === 0 ? 0 : 100;
   return Math.round(((current - prev) / prev) * 1000) / 10;
 }
 
-function MetricCard({ title, value, deltaVal, icon: Icon, accent, deltaLabel }: {
+function DeltaBadge({ current, prev, label }: { current: number; prev: number; label: string }) {
+  const deltaVal = delta(current, prev);
+  const up = deltaVal >= 0;
+  return (
+    <div className={`flex items-center gap-1 text-xs font-sans ${up ? 'text-[#5A7A2A]' : 'text-accent'}`}>
+      {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+      {up ? '+' : ''}{deltaVal}% {label}
+    </div>
+  );
+}
+
+function PeriodMetricCard({
+  title,
+  totals,
+  formatValue,
+  icon: Icon,
+  accent,
+  vsLastYearLabel,
+  wtdLabel,
+  mtdLabel,
+}: {
   title: string;
-  value: string;
-  deltaVal: number;
+  totals: PeriodTotals;
+  formatValue: (n: number) => string;
   icon: React.ElementType;
   accent?: boolean;
-  deltaLabel: string;
+  vsLastYearLabel: string;
+  wtdLabel: string;
+  mtdLabel: string;
 }) {
-  const up = deltaVal >= 0;
   return (
     <div className={`rounded-lg p-3 border border-border flex flex-col gap-2 ${accent ? 'bg-primary/10' : 'bg-card'}`}>
       <div className="flex items-center justify-between">
@@ -47,10 +77,19 @@ function MetricCard({ title, value, deltaVal, icon: Icon, accent, deltaLabel }: 
           <Icon size={13} className={accent ? 'text-primary' : 'text-muted-foreground'} />
         </div>
       </div>
-      <p className="text-2xl font-semibold leading-none">{value}</p>
-      <div className={`flex items-center gap-1 text-xs font-sans ${up ? 'text-[#5A7A2A]' : 'text-accent'}`}>
-        {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-        {up ? '+' : ''}{deltaVal}% {deltaLabel}
+      <p className="text-2xl font-semibold leading-none">{formatValue(totals.today)}</p>
+      <DeltaBadge current={totals.today} prev={totals.todayPrev} label={vsLastYearLabel} />
+      <div className="mt-1 space-y-1.5 border-t border-border/70 pt-2">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-muted-foreground font-sans uppercase tracking-wide">{wtdLabel}</span>
+          <span className="font-medium tabular-nums">{formatValue(totals.wtd)}</span>
+        </div>
+        <DeltaBadge current={totals.wtd} prev={totals.wtdPrev} label={vsLastYearLabel} />
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-muted-foreground font-sans uppercase tracking-wide">{mtdLabel}</span>
+          <span className="font-medium tabular-nums">{formatValue(totals.mtd)}</span>
+        </div>
+        <DeltaBadge current={totals.mtd} prev={totals.mtdPrev} label={vsLastYearLabel} />
       </div>
     </div>
   );
@@ -73,29 +112,40 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
   );
 }
 
+function clientOrderTotal(order: B2bSalesOrder): number {
+  return (order.lines ?? []).reduce((sum, line) => sum + line.quantityOrdered * line.rrp, 0);
+}
+
+function clientOrderDate(order: B2bSalesOrder): string {
+  if (order.issuedDate?.trim()) return order.issuedDate.trim().slice(0, 10);
+  if (!order.createdAt) return '—';
+  return order.createdAt.slice(0, 10);
+}
+
 const SECTION_LABELS: Record<OverviewSectionId, string> = {
   metrics: 'Key metrics',
   'revenue-progress': 'Revenue & progress',
-  'menu-alerts': 'Menu & inventory alerts',
-  'purchase-orders': 'Active purchase orders',
+  'menu-alerts': 'Product & inventory alerts',
+  'purchase-orders': 'Active orders',
 };
 
 type MenuSortColumn = 'item' | 'orders' | 'revenue' | 'margin';
 type OrderSortColumn = 'po' | 'vendor' | 'delivery' | 'value' | 'status';
+type ClientOrderSortColumn = 'so' | 'customer' | 'date' | 'value' | 'status';
 
 type Props = {
   editLayout: boolean;
   menuItems: MenuItem[];
   alerts: InventoryAlert[];
   orders: PurchaseOrder[];
+  clientOrders: B2bSalesOrder[];
   revenue: RevenuePoint[];
   progress: ProgressData | null;
-  totalSales: number;
-  totalSalesPrev: number;
-  totalCovers: number;
-  totalCoversPrev: number;
-  aov: number;
-  aovPrev: number;
+  sales: PeriodTotals;
+  activity: PeriodTotals;
+  aov: PeriodTotals;
+  activityMode: DashboardActivityMode;
+  onOrderNowFromAlerts?: () => void;
 };
 
 function OverviewSectionShell({
@@ -166,14 +216,14 @@ export function OverviewDashboard({
   menuItems,
   alerts,
   orders,
+  clientOrders,
   revenue,
   progress,
-  totalSales,
-  totalSalesPrev,
-  totalCovers,
-  totalCoversPrev,
+  sales,
+  activity,
   aov,
-  aovPrev,
+  activityMode,
+  onOrderNowFromAlerts,
 }: Props) {
   const { t } = useAppTranslation();
   const [layout, setLayout] = useState<OverviewLayoutState>(() => loadOverviewLayout());
@@ -203,10 +253,20 @@ export function OverviewDashboard({
     { key: 'status', label: t('common.status') },
   ], [t]);
 
+  const clientOrdersTableColumns = useMemo<SortableColumnDef<ClientOrderSortColumn>[]>(() => [
+    { key: 'so', label: t('overview.so') },
+    { key: 'customer', label: t('overview.customer') },
+    { key: 'date', label: t('overview.orderDate') },
+    { key: 'value', label: t('overview.value'), align: 'right' },
+    { key: 'status', label: t('common.status') },
+  ], [t]);
+
   const { sortColumn: menuSortColumn, sortDirection: menuSortDirection, toggleSort: toggleMenuSort } =
     useTableSort<MenuSortColumn>();
   const { sortColumn: ordersSortColumn, sortDirection: ordersSortDirection, toggleSort: toggleOrdersSort } =
     useTableSort<OrderSortColumn>();
+  const { sortColumn: clientSortColumn, sortDirection: clientSortDirection, toggleSort: toggleClientSort } =
+    useTableSort<ClientOrderSortColumn>();
 
   const sortedMenuItems = useMemo(
     () => sortTableRows(menuItems, menuSortColumn, menuSortDirection, {
@@ -229,20 +289,64 @@ export function OverviewDashboard({
     [orders, ordersSortColumn, ordersSortDirection],
   );
 
+  const sortedClientOrders = useMemo(
+    () => sortTableRows(clientOrders, clientSortColumn, clientSortDirection, {
+      so: row => row.orderNumber,
+      customer: row => row.customerName,
+      date: row => clientOrderDate(row),
+      value: row => clientOrderTotal(row),
+      status: row => row.status,
+    }),
+    [clientOrders, clientSortColumn, clientSortDirection],
+  );
+
   const menuScrollRef = useRef<HTMLDivElement>(null);
   const ordersScrollRef = useRef<HTMLDivElement>(null);
+  const clientOrdersScrollRef = useRef<HTMLDivElement>(null);
   const menuScroll = useInfiniteScrollSlice(sortedMenuItems, { scrollRootRef: menuScrollRef });
   const ordersScroll = useInfiniteScrollSlice(sortedOrders, { scrollRootRef: ordersScrollRef });
+  const clientOrdersScroll = useInfiniteScrollSlice(sortedClientOrders, { scrollRootRef: clientOrdersScrollRef });
+
+  const activityTitle = activityMode === 'purchaseOrders'
+    ? t('overview.purchaseOrdersToday')
+    : t('overview.coversToday');
+  const aovTitle = activityMode === 'purchaseOrders'
+    ? t('overview.avgValuePerPo')
+    : t('overview.avgOrderValue');
 
   function renderSection(sectionId: OverviewSectionId) {
     switch (sectionId) {
       case 'metrics':
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-            <MetricCard title={t('overview.salesToday')} value={fmtUsd(totalSales)} deltaVal={delta(totalSales, totalSalesPrev)} icon={TrendingUp} accent deltaLabel={t('common.vsPriorPeriod')} />
-            <MetricCard title={t('overview.coversToday')} value={totalCovers.toLocaleString()} deltaVal={delta(totalCovers, totalCoversPrev)} icon={Users} deltaLabel={t('common.vsPriorPeriod')} />
-            <MetricCard title={t('overview.avgOrderValue')} value={`$${aov.toFixed(2)}`} deltaVal={delta(aov, aovPrev)} icon={ShoppingBag} deltaLabel={t('common.vsPriorPeriod')} />
-            <MetricCard title={t('overview.openPOs')} value={String(orders.length)} deltaVal={0} icon={Package} deltaLabel={t('common.vsPriorPeriod')} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <PeriodMetricCard
+              title={t('overview.salesToday')}
+              totals={sales}
+              formatValue={fmtUsd}
+              icon={TrendingUp}
+              accent
+              vsLastYearLabel={t('overview.vsLastYear')}
+              wtdLabel={t('overview.wtd')}
+              mtdLabel={t('overview.mtd')}
+            />
+            <PeriodMetricCard
+              title={activityTitle}
+              totals={activity}
+              formatValue={fmtCount}
+              icon={Users}
+              vsLastYearLabel={t('overview.vsLastYear')}
+              wtdLabel={t('overview.wtd')}
+              mtdLabel={t('overview.mtd')}
+            />
+            <PeriodMetricCard
+              title={aovTitle}
+              totals={aov}
+              formatValue={fmtAov}
+              icon={ShoppingBag}
+              vsLastYearLabel={t('overview.vsLastYear')}
+              wtdLabel={t('overview.wtd')}
+              mtdLabel={t('overview.mtd')}
+            />
           </div>
         );
       case 'revenue-progress':
@@ -261,7 +365,7 @@ export function OverviewDashboard({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
             <div className="bg-card border border-border rounded-lg overflow-hidden">
               <div className="p-2 border-b border-border">
-                <h2 className="text-sm font-semibold">{t('overview.menuPerformance')}</h2>
+                <h2 className="text-sm font-semibold">{t('overview.productPerformance')}</h2>
               </div>
               <TableScrollContainer ref={menuScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                 <table className="w-full table-fixed text-xs">
@@ -290,60 +394,118 @@ export function OverviewDashboard({
             </div>
 
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="p-2 border-b border-border">
+              <div className="p-2 border-b border-border flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">{t('overview.inventoryAlerts')}</h2>
+                {alerts.length > 0 && onOrderNowFromAlerts ? (
+                  <button
+                    type="button"
+                    onClick={onOrderNowFromAlerts}
+                    className="rounded-md border border-border bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90"
+                  >
+                    {t('overview.orderNow')}
+                  </button>
+                ) : null}
               </div>
               <div className="divide-y divide-border">
-                {alerts.map(a => (
-                  <div key={a.id} className="px-5 py-4 flex items-start gap-3">
-                    <AlertTriangle size={13} className={`mt-0.5 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
-                    <div className="flex-1">
-                      <p className="text-xs font-medium">{a.itemName}</p>
-                      <p className="text-xs text-muted-foreground">{t('overview.stockMin', { stock: a.stock, min: a.threshold })}</p>
+                {alerts.length === 0 ? (
+                  <p className="px-5 py-4 text-xs text-muted-foreground">{t('overview.noInventoryAlerts')}</p>
+                ) : (
+                  alerts.map(a => (
+                    <div key={a.id} className="px-5 py-4 flex items-start gap-3">
+                      <AlertTriangle size={13} className={`mt-0.5 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
+                      <div className="flex-1">
+                        <p className="text-xs font-medium">{a.itemName}</p>
+                        <p className="text-xs text-muted-foreground">{t('overview.stockMin', { stock: a.stock, min: a.threshold })}</p>
+                      </div>
+                      <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
                     </div>
-                    <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
         );
       case 'purchase-orders':
         return (
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="p-2 border-b border-border">
-              <h2 className="text-sm font-semibold">{t('overview.activePurchaseOrders')}</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="p-2 border-b border-border">
+                <h2 className="text-sm font-semibold">{t('overview.activePurchaseOrders')}</h2>
+              </div>
+              <TableScrollContainer ref={ordersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                <table className="w-full table-fixed text-xs">
+                  <thead>
+                    <SortableTableHeaderRow
+                      columns={ordersTableColumns}
+                      sortColumn={ordersSortColumn}
+                      sortDirection={ordersSortDirection}
+                      onSort={toggleOrdersSort}
+                      className="border-b border-border"
+                    />
+                  </thead>
+                  <tbody>
+                    {ordersScroll.visibleItems.map(o => {
+                      const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+                      return (
+                        <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                          <td className="px-4 py-3 font-sans text-primary">{o.poNumber}</td>
+                          <td className="px-4 py-3">{o.vendorName}</td>
+                          <td className="px-4 py-3 font-sans text-muted-foreground">{o.deliveryDate}</td>
+                          <td className="px-4 py-3 font-sans">${value.toFixed(2)}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <InfiniteScrollTableSentinel colSpan={5} hasMore={ordersScroll.hasMore} onLoadMore={ordersScroll.loadMore} nextPageSize={ordersScroll.nextPageSize} sentinelRef={ordersScroll.sentinelRef} totalCount={ordersScroll.totalCount} visibleCount={ordersScroll.visibleCount} />
+                  </tbody>
+                </table>
+              </TableScrollContainer>
             </div>
-            <TableScrollContainer ref={ordersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
-                <thead>
-                  <SortableTableHeaderRow
-                    columns={ordersTableColumns}
-                    sortColumn={ordersSortColumn}
-                    sortDirection={ordersSortDirection}
-                    onSort={toggleOrdersSort}
-                    className="border-b border-border"
-                  />
-                </thead>
-                <tbody>
-                  {ordersScroll.visibleItems.map(o => {
-                    const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-                    return (
-                      <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                        <td className="px-4 py-3 font-sans text-primary">{o.poNumber}</td>
-                        <td className="px-4 py-3">{o.vendorName}</td>
-                        <td className="px-4 py-3 font-sans text-muted-foreground">{o.deliveryDate}</td>
-                        <td className="px-4 py-3 font-sans">${value.toFixed(2)}</td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
+
+            <div className="bg-card border border-border rounded-lg overflow-hidden min-h-[12rem]">
+              <div className="p-2 border-b border-border">
+                <h2 className="text-sm font-semibold">{t('overview.activeClientOrders')}</h2>
+              </div>
+              <TableScrollContainer ref={clientOrdersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+                <table className="w-full table-fixed text-xs">
+                  <thead>
+                    <SortableTableHeaderRow
+                      columns={clientOrdersTableColumns}
+                      sortColumn={clientSortColumn}
+                      sortDirection={clientSortDirection}
+                      onSort={toggleClientSort}
+                      className="border-b border-border"
+                    />
+                  </thead>
+                  <tbody>
+                    {sortedClientOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-xs text-muted-foreground text-center">
+                          {t('overview.noOrdersOnHand')}
                         </td>
                       </tr>
-                    );
-                  })}
-                  <InfiniteScrollTableSentinel colSpan={5} hasMore={ordersScroll.hasMore} onLoadMore={ordersScroll.loadMore} nextPageSize={ordersScroll.nextPageSize} sentinelRef={ordersScroll.sentinelRef} totalCount={ordersScroll.totalCount} visibleCount={ordersScroll.visibleCount} />
-                </tbody>
-              </table>
-            </TableScrollContainer>
+                    ) : null}
+                    {clientOrdersScroll.visibleItems.map(o => {
+                      const value = clientOrderTotal(o);
+                      return (
+                        <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                          <td className="px-4 py-3 font-sans text-primary">{o.orderNumber}</td>
+                          <td className="px-4 py-3">{o.customerName}</td>
+                          <td className="px-4 py-3 font-sans text-muted-foreground">{clientOrderDate(o)}</td>
+                          <td className="px-4 py-3 font-sans">${value.toFixed(2)}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <InfiniteScrollTableSentinel colSpan={5} hasMore={clientOrdersScroll.hasMore} onLoadMore={clientOrdersScroll.loadMore} nextPageSize={clientOrdersScroll.nextPageSize} sentinelRef={clientOrdersScroll.sentinelRef} totalCount={clientOrdersScroll.totalCount} visibleCount={clientOrdersScroll.visibleCount} />
+                  </tbody>
+                </table>
+              </TableScrollContainer>
+            </div>
           </div>
         );
       default:

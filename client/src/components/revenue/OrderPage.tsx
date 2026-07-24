@@ -6,6 +6,7 @@ import { B2bActiveOrderPage } from './B2bActiveOrderPage';
 import { CreateOrderPage } from './CreateOrderPage';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
+import type { CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
 const ORDER_TABS = [
   { id: 'create', label: 'My Order' },
@@ -19,9 +20,15 @@ type Props = {
   initialTab?: OrderTabId;
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
+  initialPrefillItems?: CreateOrderPrefillItem[];
 };
 
-export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLocationIds }: Props) {
+export function OrderPage({
+  initialTab = 'create',
+  selectedCompanyId,
+  selectedLocationIds,
+  initialPrefillItems,
+}: Props) {
   const hasSupplyCapability = useOrgSupplyCapability(selectedCompanyId, selectedLocationIds);
   const visibleTabs = useMemo(
     () => (hasSupplyCapability
@@ -31,9 +38,10 @@ export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLo
   );
 
   const resolvedInitial = useMemo((): OrderTabId => {
+    if (initialPrefillItems && initialPrefillItems.length > 0) return 'create';
     if (initialTab === 'active-sales' && !hasSupplyCapability) return 'create';
     return initialTab;
-  }, [initialTab, hasSupplyCapability]);
+  }, [initialTab, hasSupplyCapability, initialPrefillItems]);
 
   const [tab, setTab] = useState<OrderTabId>(resolvedInitial);
 
@@ -61,6 +69,7 @@ export function OrderPage({ initialTab = 'create', selectedCompanyId, selectedLo
           embedded
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
+          initialPrefillItems={initialPrefillItems}
         />
       ) : tab === 'active-sales' && hasSupplyCapability ? (
         <B2bActiveOrderPage
