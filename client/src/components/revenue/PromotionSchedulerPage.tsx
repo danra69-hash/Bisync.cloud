@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import {
   api,
   type Product,
@@ -33,6 +34,43 @@ type ProductDraft = {
   knockedDownPrice: string;
   qtyPerCombo: string;
 };
+
+type ComboDraft = {
+  id: string;
+  name: string;
+  comboPrice: string;
+  comboPackQty: string;
+  draftByProductId: Record<number, ProductDraft>;
+};
+
+function emptyProductDraft(): ProductDraft {
+  return { selected: false, promoQty: '', knockedDownPrice: '', qtyPerCombo: '' };
+}
+
+function createEmptyComboDraft(productIds: number[] = []): ComboDraft {
+  const draftByProductId: Record<number, ProductDraft> = {};
+  for (const id of productIds) {
+    draftByProductId[id] = emptyProductDraft();
+  }
+  return {
+    id: `combo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: '',
+    comboPrice: '',
+    comboPackQty: '',
+    draftByProductId,
+  };
+}
+
+function seedProductDrafts(
+  productIds: number[],
+  existing?: Record<number, ProductDraft>,
+): Record<number, ProductDraft> {
+  const next: Record<number, ProductDraft> = {};
+  for (const id of productIds) {
+    next[id] = existing?.[id] ?? emptyProductDraft();
+  }
+  return next;
+}
 
 function toDateInputValue(date: Date) {
   const y = date.getFullYear();
@@ -88,12 +126,13 @@ export function PromotionSchedulerPage({
   const [endDate, setEndDate] = useState('');
   const [promotionType, setPromotionType] = useState<PromotionType>('discountPercent');
   const [discountPercent, setDiscountPercent] = useState('');
-  const [comboPrice, setComboPrice] = useState('');
-  const [comboPackQty, setComboPackQty] = useState('');
   const [draftByProductId, setDraftByProductId] = useState<Record<number, ProductDraft>>({});
+  const [comboDrafts, setComboDrafts] = useState<ComboDraft[]>([createEmptyComboDraft()]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<string | null>(null);
+
+  const productIds = useMemo(() => products.map(p => p.id), [products]);
 
   const loadPromotions = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -130,6 +169,7 @@ export function PromotionSchedulerPage({
         if (cancelled) return;
         const b2b = productRows.filter(p => p.active && p.b2bEnabled && !p.isSubProduct);
         setProducts(b2b);
+        const ids = b2b.map(p => p.id);
         const stockMap: Record<number, number> = {};
         for (const row of stockRows) {
           if (row.isSummaryRow) {
@@ -142,14 +182,13 @@ export function PromotionSchedulerPage({
           }
         }
         setStockByProduct(stockMap);
-        setDraftByProductId(prev => {
-          const next = { ...prev };
-          for (const p of b2b) {
-            if (!next[p.id]) {
-              next[p.id] = { selected: false, promoQty: '', knockedDownPrice: '', qtyPerCombo: '' };
-            }
-          }
-          return next;
+        setDraftByProductId(prev => seedProductDrafts(ids, prev));
+        setComboDrafts(prev => {
+          const base = prev.length > 0 ? prev : [createEmptyComboDraft(ids)];
+          return base.map(combo => ({
+            ...combo,
+            draftByProductId: seedProductDrafts(ids, combo.draftByProductId),
+          }));
         });
       })
       .catch(() => {
@@ -176,15 +215,8 @@ export function PromotionSchedulerPage({
     setEndDate('');
     setPromotionType('discountPercent');
     setDiscountPercent('');
-    setComboPrice('');
-    setComboPackQty('');
-    setDraftByProductId(prev => {
-      const next: Record<number, ProductDraft> = {};
-      for (const id of Object.keys(prev)) {
-        next[Number(id)] = { selected: false, promoQty: '', knockedDownPrice: '', qtyPerCombo: '' };
-      }
-      return next;
-    });
+    setDraftByProductId(seedProductDrafts(productIds));
+    setComboDrafts([createEmptyComboDraft(productIds)]);
     setSaveError(null);
   };
 
@@ -192,13 +224,49 @@ export function PromotionSchedulerPage({
     setDraftByProductId(prev => ({
       ...prev,
       [productId]: {
-        selected: prev[productId]?.selected ?? false,
-        promoQty: prev[productId]?.promoQty ?? '',
-        knockedDownPrice: prev[productId]?.knockedDownPrice ?? '',
-        qtyPerCombo: prev[productId]?.qtyPerCombo ?? '',
+        ...(prev[productId] ?? emptyProductDraft()),
         ...patch,
       },
     }));
+  };
+
+  const updateComboDraft = (comboId: string, patch: Partial<Pick<ComboDraft, 'name' | 'comboPrice' | 'comboPackQty'>>) => {
+    setComboDrafts(prev => prev.map(c => (c.id === comboId ? { ...c, ...patch } : c)));
+  };
+
+  const updateComboProductDraft = (
+    comboId: string,
+    productId: number,
+    patch: Partial<ProductDraft>,
+  ) => {
+    setComboDrafts(prev => prev.map(c => {
+      if (c.id !== comboId) return c;
+      return {
+        ...c,
+        draftByProductId: {
+          ...c.draftByProductId,
+          [productId]: {
+            ...(c.draftByProductId[productId] ?? emptyProductDraft()),
+            ...patch,
+          },
+        },
+      };
+    }));
+  };
+
+  const addComboDraft = () => {
+    setComboDrafts(prev => [...prev, createEmptyComboDraft(productIds)]);
+  };
+
+  const removeComboDraft = (comboId: string) => {
+    setComboDrafts(prev => (prev.length <= 1 ? prev : prev.filter(c => c.id !== comboId)));
+  };
+
+  const selectPromotionType = (next: PromotionType) => {
+    setPromotionType(next);
+    if (next === 'combo' && comboDrafts.length === 0) {
+      setComboDrafts([createEmptyComboDraft(productIds)]);
+    }
   };
 
   const handleSave = async () => {
@@ -206,34 +274,103 @@ export function PromotionSchedulerPage({
     setSaveError(null);
     setSaveOk(null);
 
-    const selectedProducts = products
-      .filter(p => draftByProductId[p.id]?.selected)
-      .map(p => {
-        const draft = draftByProductId[p.id];
-        return {
-          productId: p.id,
-          promoQty: durationMode === 'byQty' && promotionType !== 'combo'
-            ? parseFloat(draft?.promoQty ?? '')
-            : undefined,
-          knockedDownPrice: promotionType === 'knockedDownPrice'
-            ? parseFloat(draft?.knockedDownPrice ?? '')
-            : undefined,
-          qtyPerCombo: promotionType === 'combo'
-            ? parseFloat(draft?.qtyPerCombo ?? '')
-            : undefined,
-        };
-      });
-
-    if (!name.trim()) {
-      setSaveError('Promotion name is required.');
-      return;
-    }
     if (!startDate) {
       setSaveError('Promotion start date is required.');
       return;
     }
     if (durationMode === 'byDate' && !endDate) {
       setSaveError('End date is required when duration is By Date.');
+      return;
+    }
+
+    if (promotionType === 'combo') {
+      for (let i = 0; i < comboDrafts.length; i += 1) {
+        const combo = comboDrafts[i];
+        const label = `Combo ${i + 1}`;
+        if (!combo.name.trim()) {
+          setSaveError(`${label}: enter a name for this combo product.`);
+          return;
+        }
+        const price = parseFloat(combo.comboPrice);
+        if (!Number.isFinite(price) || price < 0) {
+          setSaveError(`${label}: enter a combo price.`);
+          return;
+        }
+        const selected = products
+          .filter(p => combo.draftByProductId[p.id]?.selected)
+          .map(p => ({
+            productId: p.id,
+            qtyPerCombo: parseFloat(combo.draftByProductId[p.id]?.qtyPerCombo ?? ''),
+          }));
+        if (selected.length < 2) {
+          setSaveError(`${label}: add at least two products to the combo bucket.`);
+          return;
+        }
+        if (selected.some(p => !Number.isFinite(p.qtyPerCombo) || p.qtyPerCombo <= 0)) {
+          setSaveError(`${label}: enter QTY in combo for each selected product.`);
+          return;
+        }
+        if (durationMode === 'byQty') {
+          const packs = parseFloat(combo.comboPackQty);
+          if (!Number.isFinite(packs) || packs <= 0) {
+            setSaveError(`${label}: enter how many combo packs are available.`);
+            return;
+          }
+        }
+      }
+
+      setSaving(true);
+      try {
+        for (const combo of comboDrafts) {
+          const selected = products
+            .filter(p => combo.draftByProductId[p.id]?.selected)
+            .map(p => ({
+              productId: p.id,
+              qtyPerCombo: parseFloat(combo.draftByProductId[p.id]?.qtyPerCombo ?? ''),
+            }));
+          await api.createPromotion({
+            companyId: selectedCompanyId,
+            name: combo.name.trim(),
+            durationMode,
+            startDate,
+            endDate: durationMode === 'byDate' ? endDate : undefined,
+            promotionType: 'combo',
+            comboPrice: parseFloat(combo.comboPrice),
+            comboPackQty: durationMode === 'byQty' ? parseFloat(combo.comboPackQty) : undefined,
+            products: selected,
+          });
+        }
+        setSaveOk(
+          comboDrafts.length === 1
+            ? 'Combo product saved.'
+            : `${comboDrafts.length} combo products saved.`,
+        );
+        resetCreateForm();
+        await loadPromotions();
+        setTab('active');
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'Failed to save combo products.');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    const selectedProducts = products
+      .filter(p => draftByProductId[p.id]?.selected)
+      .map(p => {
+        const draft = draftByProductId[p.id];
+        return {
+          productId: p.id,
+          promoQty: durationMode === 'byQty' ? parseFloat(draft?.promoQty ?? '') : undefined,
+          knockedDownPrice: promotionType === 'knockedDownPrice'
+            ? parseFloat(draft?.knockedDownPrice ?? '')
+            : undefined,
+        };
+      });
+
+    if (!name.trim()) {
+      setSaveError('Promotion name is required.');
       return;
     }
     if (promotionType === 'discountPercent') {
@@ -243,41 +380,18 @@ export function PromotionSchedulerPage({
         return;
       }
     }
-    if (promotionType === 'combo') {
-      const price = parseFloat(comboPrice);
-      if (!Number.isFinite(price) || price < 0) {
-        setSaveError('Enter a combo price.');
-        return;
-      }
-      if (selectedProducts.length < 2) {
-        setSaveError('Add at least two products to the combo bucket.');
-        return;
-      }
-      if (selectedProducts.some(p => !Number.isFinite(p.qtyPerCombo) || (p.qtyPerCombo ?? 0) <= 0)) {
-        setSaveError('Enter QTY in combo for each selected product.');
-        return;
-      }
-      if (durationMode === 'byQty') {
-        const packs = parseFloat(comboPackQty);
-        if (!Number.isFinite(packs) || packs <= 0) {
-          setSaveError('Enter how many combo packs are available.');
-          return;
-        }
-      }
-    } else {
-      if (selectedProducts.length === 0) {
-        setSaveError('Tick at least one product for this promotion.');
-        return;
-      }
-      if (durationMode === 'byQty' && selectedProducts.some(p => !Number.isFinite(p.promoQty) || (p.promoQty ?? 0) <= 0)) {
-        setSaveError('Enter Promo QTY for each selected product.');
-        return;
-      }
-      if (promotionType === 'knockedDownPrice'
-        && selectedProducts.some(p => !Number.isFinite(p.knockedDownPrice) || (p.knockedDownPrice ?? 0) < 0)) {
-        setSaveError('Enter a knocked-down price for each selected product.');
-        return;
-      }
+    if (selectedProducts.length === 0) {
+      setSaveError('Tick at least one product for this promotion.');
+      return;
+    }
+    if (durationMode === 'byQty' && selectedProducts.some(p => !Number.isFinite(p.promoQty) || (p.promoQty ?? 0) <= 0)) {
+      setSaveError('Enter Promo QTY for each selected product.');
+      return;
+    }
+    if (promotionType === 'knockedDownPrice'
+      && selectedProducts.some(p => !Number.isFinite(p.knockedDownPrice) || (p.knockedDownPrice ?? 0) < 0)) {
+      setSaveError('Enter a knocked-down price for each selected product.');
+      return;
     }
 
     setSaving(true);
@@ -290,15 +404,10 @@ export function PromotionSchedulerPage({
         endDate: durationMode === 'byDate' ? endDate : undefined,
         promotionType,
         discountPercent: promotionType === 'discountPercent' ? parseFloat(discountPercent) : undefined,
-        comboPrice: promotionType === 'combo' ? parseFloat(comboPrice) : undefined,
-        comboPackQty: promotionType === 'combo' && durationMode === 'byQty'
-          ? parseFloat(comboPackQty)
-          : undefined,
         products: selectedProducts.map(p => ({
           productId: p.productId,
-          promoQty: promotionType !== 'combo' && durationMode === 'byQty' ? p.promoQty : undefined,
+          promoQty: durationMode === 'byQty' ? p.promoQty : undefined,
           knockedDownPrice: promotionType === 'knockedDownPrice' ? p.knockedDownPrice : undefined,
-          qtyPerCombo: promotionType === 'combo' ? p.qtyPerCombo : undefined,
         })),
       });
       setSaveOk('Promotion saved.');
@@ -318,7 +427,7 @@ export function PromotionSchedulerPage({
       await api.setPromotionActive(promo.id, !promo.active);
       await loadPromotions();
     } catch {
-      // keep list as-is; surface via reload error if needed
+      // keep list as-is
     } finally {
       setTogglingId(null);
     }
@@ -439,17 +548,31 @@ export function PromotionSchedulerPage({
         </div>
       ) : (
         <div className="space-y-4 pt-3 max-w-5xl">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-foreground">Name of Promotion</span>
-              <input
-                className={inputCls}
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="e.g. Summer Bundle"
-              />
-            </label>
-            <label className="block space-y-1">
+          {promotionType !== 'combo' && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-foreground">Name of Promotion</span>
+                <input
+                  className={inputCls}
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Summer Bundle"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-foreground">Promotion start date</span>
+                <input
+                  type="date"
+                  className={inputCls}
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
+
+          {promotionType === 'combo' && (
+            <label className="block space-y-1 max-w-xs">
               <span className="text-xs font-medium text-foreground">Promotion start date</span>
               <input
                 type="date"
@@ -458,7 +581,7 @@ export function PromotionSchedulerPage({
                 onChange={e => setStartDate(e.target.value)}
               />
             </label>
-          </div>
+          )}
 
           <fieldset className="space-y-2">
             <legend className="text-xs font-medium text-foreground">Duration of promotion</legend>
@@ -501,7 +624,7 @@ export function PromotionSchedulerPage({
                 <input
                   type="checkbox"
                   checked={promotionType === 'discountPercent'}
-                  onChange={() => setPromotionType('discountPercent')}
+                  onChange={() => selectPromotionType('discountPercent')}
                 />
                 By discount %
               </label>
@@ -509,7 +632,7 @@ export function PromotionSchedulerPage({
                 <input
                   type="checkbox"
                   checked={promotionType === 'knockedDownPrice'}
-                  onChange={() => setPromotionType('knockedDownPrice')}
+                  onChange={() => selectPromotionType('knockedDownPrice')}
                 />
                 By knocked-down price
               </label>
@@ -517,7 +640,7 @@ export function PromotionSchedulerPage({
                 <input
                   type="checkbox"
                   checked={promotionType === 'combo'}
-                  onChange={() => setPromotionType('combo')}
+                  onChange={() => selectPromotionType('combo')}
                 />
                 Combo
               </label>
@@ -547,151 +670,254 @@ export function PromotionSchedulerPage({
                 Tick products and enter the promo price for each selected line.
               </p>
             )}
-            {promotionType === 'combo' && (
-              <div className="grid gap-3 sm:grid-cols-2 max-w-lg">
-                <label className="block space-y-1">
-                  <span className="text-xs text-muted-foreground">Combo price</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    className={inputCls}
-                    value={comboPrice}
-                    onChange={e => setComboPrice(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </label>
-                {durationMode === 'byQty' && (
-                  <label className="block space-y-1">
-                    <span className="text-xs text-muted-foreground">Combo packs available</span>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      className={inputCls}
-                      value={comboPackQty}
-                      onChange={e => setComboPackQty(e.target.value)}
-                      placeholder="Packs"
-                    />
-                  </label>
-                )}
-                <p className="text-[11px] text-muted-foreground sm:col-span-2">
-                  Add two or more products with QTY in each combo. The combo appears on Sales Orders as one selectable item; selling depletes each product by its QTY × packs sold.
-                </p>
-              </div>
-            )}
           </fieldset>
 
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {promotionType === 'combo' ? 'Combo bucket' : 'B2B products for promotion'}
-            </h3>
-            {catalogLoading ? (
-              <div className="flex justify-center py-8"><MillstoneLoader /></div>
-            ) : products.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No active B2B products for this company.</p>
-            ) : (
-              <TableScrollContainer>
-                <table className="w-full min-w-[680px] text-left border-collapse">
-                  <thead>
-                    <tr className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-2 font-semibold border-b border-border w-10" />
-                      <th className="px-3 py-2 font-semibold border-b border-border">Product</th>
-                      <th className="px-3 py-2 font-semibold border-b border-border">Delivery unit</th>
-                      <th className="px-3 py-2 font-semibold border-b border-border">QTY on hand</th>
-                      <th className="px-3 py-2 font-semibold border-b border-border">Current RRP</th>
-                      {promotionType === 'combo' ? (
-                        <th className="px-3 py-2 font-semibold border-b border-border">QTY in combo</th>
-                      ) : (
-                        <>
-                          {durationMode === 'byQty' && (
-                            <th className="px-3 py-2 font-semibold border-b border-border">Promo QTY</th>
-                          )}
-                          {promotionType === 'knockedDownPrice' && (
-                            <th className="px-3 py-2 font-semibold border-b border-border">Promo price</th>
-                          )}
-                        </>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map(product => {
-                      const draft = draftByProductId[product.id] ?? {
-                        selected: false,
-                        promoQty: '',
-                        knockedDownPrice: '',
-                        qtyPerCombo: '',
-                      };
-                      return (
-                        <tr key={product.id} className="text-xs hover:bg-muted/20">
-                          <td className="px-3 py-2 border-b border-border">
-                            <input
-                              type="checkbox"
-                              checked={draft.selected}
-                              onChange={e => updateDraft(product.id, { selected: e.target.checked })}
-                            />
-                          </td>
-                          <td className="px-3 py-2 border-b border-border font-medium">{product.name}</td>
-                          <td className="px-3 py-2 border-b border-border">
-                            {product.b2bPackageUnit?.trim() || 'pcs'}
-                          </td>
-                          <td className="px-3 py-2 border-b border-border">
-                            {stockByProduct[product.id] ?? 0}
-                          </td>
-                          <td className="px-3 py-2 border-b border-border">
-                            {rm(product.rrp ?? 0)}
-                          </td>
-                          {promotionType === 'combo' ? (
+          {promotionType === 'combo' ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Combo products
+                </h3>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={addComboDraft}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/40 disabled:opacity-50"
+                >
+                  <Plus size={14} />
+                  Add combo product
+                </button>
+              </div>
+
+              {comboDrafts.map((combo, index) => (
+                <div
+                  key={combo.id}
+                  className="rounded-lg border border-border bg-card p-4 space-y-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-foreground">
+                      Combo product {index + 1}
+                    </p>
+                    {comboDrafts.length > 1 && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => removeComboDraft(combo.id)}
+                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
+                        title="Remove this combo product"
+                      >
+                        <Trash2 size={13} />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  <label className="block space-y-1">
+                    <span className="text-xs font-medium text-foreground">Name of this combo product</span>
+                    <input
+                      className={inputCls}
+                      value={combo.name}
+                      onChange={e => updateComboDraft(combo.id, { name: e.target.value })}
+                      placeholder="e.g. Breakfast Pack"
+                      disabled={saving}
+                    />
+                  </label>
+
+                  <div className="grid gap-3 sm:grid-cols-2 max-w-lg">
+                    <label className="block space-y-1">
+                      <span className="text-xs text-muted-foreground">Combo price</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        className={inputCls}
+                        value={combo.comboPrice}
+                        onChange={e => updateComboDraft(combo.id, { comboPrice: e.target.value })}
+                        placeholder="0.00"
+                        disabled={saving}
+                      />
+                    </label>
+                    {durationMode === 'byQty' && (
+                      <label className="block space-y-1">
+                        <span className="text-xs text-muted-foreground">Combo packs available</span>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className={inputCls}
+                          value={combo.comboPackQty}
+                          onChange={e => updateComboDraft(combo.id, { comboPackQty: e.target.value })}
+                          placeholder="Packs"
+                          disabled={saving}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-muted-foreground">
+                    Tick two or more products and set QTY included in this combo. It appears on Sales Orders under this name.
+                  </p>
+
+                  {catalogLoading ? (
+                    <div className="flex justify-center py-6"><MillstoneLoader /></div>
+                  ) : products.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No active B2B products for this company.</p>
+                  ) : (
+                    <TableScrollContainer>
+                      <table className="w-full min-w-[680px] text-left border-collapse">
+                        <thead>
+                          <tr className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                            <th className="px-3 py-2 font-semibold border-b border-border w-10" />
+                            <th className="px-3 py-2 font-semibold border-b border-border">Product</th>
+                            <th className="px-3 py-2 font-semibold border-b border-border">Delivery unit</th>
+                            <th className="px-3 py-2 font-semibold border-b border-border">QTY on hand</th>
+                            <th className="px-3 py-2 font-semibold border-b border-border">Current RRP</th>
+                            <th className="px-3 py-2 font-semibold border-b border-border">QTY in combo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {products.map(product => {
+                            const draft = combo.draftByProductId[product.id] ?? emptyProductDraft();
+                            return (
+                              <tr key={product.id} className="text-xs hover:bg-muted/20">
+                                <td className="px-3 py-2 border-b border-border">
+                                  <input
+                                    type="checkbox"
+                                    checked={draft.selected}
+                                    disabled={saving}
+                                    onChange={e => updateComboProductDraft(combo.id, product.id, {
+                                      selected: e.target.checked,
+                                    })}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 border-b border-border font-medium">{product.name}</td>
+                                <td className="px-3 py-2 border-b border-border">
+                                  {product.b2bPackageUnit?.trim() || 'pcs'}
+                                </td>
+                                <td className="px-3 py-2 border-b border-border">
+                                  {stockByProduct[product.id] ?? 0}
+                                </td>
+                                <td className="px-3 py-2 border-b border-border">
+                                  {rm(product.rrp ?? 0)}
+                                </td>
+                                <td className="px-3 py-2 border-b border-border">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={0.01}
+                                    className={`${inputCls} min-w-[5rem]`}
+                                    disabled={saving || !draft.selected}
+                                    value={draft.qtyPerCombo}
+                                    onChange={e => updateComboProductDraft(combo.id, product.id, {
+                                      qtyPerCombo: e.target.value,
+                                    })}
+                                    placeholder="QTY"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </TableScrollContainer>
+                  )}
+                </div>
+              ))}
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={addComboDraft}
+                className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/30 disabled:opacity-50"
+              >
+                <Plus size={14} />
+                Add another combo product
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                B2B products for promotion
+              </h3>
+              {catalogLoading ? (
+                <div className="flex justify-center py-8"><MillstoneLoader /></div>
+              ) : products.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No active B2B products for this company.</p>
+              ) : (
+                <TableScrollContainer>
+                  <table className="w-full min-w-[680px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="px-3 py-2 font-semibold border-b border-border w-10" />
+                        <th className="px-3 py-2 font-semibold border-b border-border">Product</th>
+                        <th className="px-3 py-2 font-semibold border-b border-border">Delivery unit</th>
+                        <th className="px-3 py-2 font-semibold border-b border-border">QTY on hand</th>
+                        <th className="px-3 py-2 font-semibold border-b border-border">Current RRP</th>
+                        {durationMode === 'byQty' && (
+                          <th className="px-3 py-2 font-semibold border-b border-border">Promo QTY</th>
+                        )}
+                        {promotionType === 'knockedDownPrice' && (
+                          <th className="px-3 py-2 font-semibold border-b border-border">Promo price</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map(product => {
+                        const draft = draftByProductId[product.id] ?? emptyProductDraft();
+                        return (
+                          <tr key={product.id} className="text-xs hover:bg-muted/20">
                             <td className="px-3 py-2 border-b border-border">
                               <input
-                                type="number"
-                                min={0}
-                                step={0.01}
-                                className={`${inputCls} min-w-[5rem]`}
-                                disabled={!draft.selected}
-                                value={draft.qtyPerCombo}
-                                onChange={e => updateDraft(product.id, { qtyPerCombo: e.target.value })}
-                                placeholder="QTY"
+                                type="checkbox"
+                                checked={draft.selected}
+                                onChange={e => updateDraft(product.id, { selected: e.target.checked })}
                               />
                             </td>
-                          ) : (
-                            <>
-                              {durationMode === 'byQty' && (
-                                <td className="px-3 py-2 border-b border-border">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step={0.01}
-                                    className={`${inputCls} min-w-[5rem]`}
-                                    disabled={!draft.selected}
-                                    value={draft.promoQty}
-                                    onChange={e => updateDraft(product.id, { promoQty: e.target.value })}
-                                  />
-                                </td>
-                              )}
-                              {promotionType === 'knockedDownPrice' && (
-                                <td className="px-3 py-2 border-b border-border">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step={0.01}
-                                    className={`${inputCls} min-w-[5rem]`}
-                                    disabled={!draft.selected}
-                                    value={draft.knockedDownPrice}
-                                    onChange={e => updateDraft(product.id, { knockedDownPrice: e.target.value })}
-                                  />
-                                </td>
-                              )}
-                            </>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </TableScrollContainer>
-            )}
-          </div>
+                            <td className="px-3 py-2 border-b border-border font-medium">{product.name}</td>
+                            <td className="px-3 py-2 border-b border-border">
+                              {product.b2bPackageUnit?.trim() || 'pcs'}
+                            </td>
+                            <td className="px-3 py-2 border-b border-border">
+                              {stockByProduct[product.id] ?? 0}
+                            </td>
+                            <td className="px-3 py-2 border-b border-border">
+                              {rm(product.rrp ?? 0)}
+                            </td>
+                            {durationMode === 'byQty' && (
+                              <td className="px-3 py-2 border-b border-border">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  className={`${inputCls} min-w-[5rem]`}
+                                  disabled={!draft.selected}
+                                  value={draft.promoQty}
+                                  onChange={e => updateDraft(product.id, { promoQty: e.target.value })}
+                                />
+                              </td>
+                            )}
+                            {promotionType === 'knockedDownPrice' && (
+                              <td className="px-3 py-2 border-b border-border">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  className={`${inputCls} min-w-[5rem]`}
+                                  disabled={!draft.selected}
+                                  value={draft.knockedDownPrice}
+                                  onChange={e => updateDraft(product.id, { knockedDownPrice: e.target.value })}
+                                />
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableScrollContainer>
+              )}
+            </div>
+          )}
 
           {saveError && <p className="text-sm text-destructive">{saveError}</p>}
           {saveOk && <p className="text-sm text-emerald-700">{saveOk}</p>}
