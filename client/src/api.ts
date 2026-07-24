@@ -1944,6 +1944,47 @@ export interface ProductAuditResult {
   rows: ProductAuditRow[];
 }
 
+export interface ProductNutrientEstimateRow {
+  factor: string;
+  perRecipe: number;
+  unit: string;
+}
+
+export interface ProductNutrientEstimate {
+  productId: number;
+  energyKcal: number;
+  proteinG: number;
+  carbG: number;
+  sugarsG: number;
+  fiberG: number;
+  fatG: number;
+  satFatG: number;
+  sodiumMg: number;
+  cholesterolMg: number;
+  matchedCount: number;
+  totalCount: number;
+  coverageGrams: number;
+  libraryVersion: string;
+  isStale: boolean;
+  calculatedAt: string;
+  sourceLabel: string;
+  basisLabel: string;
+  rows: ProductNutrientEstimateRow[];
+}
+
+export interface NutritionLibraryStatus {
+  version: string;
+  sourceLabel: string;
+  citation: string;
+  basis: string;
+  entryCount: number;
+  lastSyncedAt: string | null;
+  lastCheckedAt: string | null;
+  lastSyncStatus: string;
+  lastSyncError: string;
+  changedOnLastSync: boolean;
+}
+
 export interface ProductAlias {
   id: number;
   name: string;
@@ -3137,6 +3178,17 @@ export const api = {
   productAudit: (companyId: number, month: string) =>
     fetchJson<ProductAuditResult>(
       `/api/products/audit?companyId=${companyId}&month=${encodeURIComponent(month)}`,
+    ),
+  productNutrients: (productId: number, force = false) =>
+    fetchJson<ProductNutrientEstimate>(
+      `/api/nutrition/products/${productId}${force ? '?force=true' : ''}`,
+    ),
+  nutritionLibraryStatus: () =>
+    fetchJson<NutritionLibraryStatus>('/api/nutrition/library/status'),
+  nutritionLibrarySync: (force = false) =>
+    fetchJsonWithMethod<NutritionLibraryStatus>(
+      `/api/nutrition/library/sync?force=${force ? 'true' : 'false'}`,
+      'POST',
     ),
   productManagement: (companyId: number | undefined, locationIds: string[], view?: 'b2b' | 'sub-product') => {
     const params = new URLSearchParams();

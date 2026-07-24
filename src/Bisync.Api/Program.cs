@@ -107,6 +107,12 @@ builder.Services.AddScoped<Bisync.Api.Tenancy.ITenantContext>(sp =>
     sp.GetRequiredService<Bisync.Api.Tenancy.TenantContext>());
 builder.Services.Configure<StockCardArchiveOptions>(
     builder.Configuration.GetSection(StockCardArchiveOptions.SectionName));
+builder.Services.Configure<NutritionLibraryOptions>(
+    builder.Configuration.GetSection(NutritionLibraryOptions.SectionName));
+builder.Services.AddHttpClient("nutrition-library");
+builder.Services.AddScoped<NutritionLibrarySyncService>();
+builder.Services.AddScoped<ProductNutrientEstimateService>();
+builder.Services.AddHostedService<NutritionLibrarySyncHostedService>();
 builder.Services.AddDbContext<StockCardArchiveDbContext>((sp, options) =>
     options.UseNpgsql(ResolveArchiveConnection(sp)));
 builder.Services.AddScoped<StockCardArchiveService>();

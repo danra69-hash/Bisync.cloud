@@ -315,6 +315,7 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
           group={product.group}
           productName={product.name}
           productKey={productKeyFromParts(product.id, product.productId)}
+          productId={product.id}
           components={product.items ?? []}
           yieldQuantity={product.yieldQuantity || 1}
           onClose={() => setProductionMethodOpen(false)}

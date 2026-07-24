@@ -489,7 +489,7 @@ export function ProductReadOnlyView({
       />
 
       <ProductEstimatedNutrientBox
-        components={items}
+        productId={product.id}
         yieldQuantity={product.isSubProduct && product.yieldQuantity > 0 ? product.yieldQuantity : 1}
         productName={product.name}
       />

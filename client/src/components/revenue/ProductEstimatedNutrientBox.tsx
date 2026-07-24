@@ -1,62 +1,63 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ProductComponentItem } from '../../api';
-import {
-  estimateProductNutrientsFromFndds,
-  formatNutritionValue,
-  loadFnddsNutrientCatalog,
-  type EstimatedNutrientResult,
-} from '../../data/fnddsNutrientCatalog';
+import { useEffect, useState } from 'react';
+import { api, type ProductNutrientEstimate } from '../../api';
+import { formatNutritionValue } from '../../data/productProductionMethod';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
-  components: ProductComponentItem[];
+  productId: number;
   yieldQuantity?: number;
   productName?: string;
 };
 
 export function ProductEstimatedNutrientBox({
-  components,
+  productId,
   yieldQuantity = 1,
   productName,
 }: Props) {
   const countryCode = useOrgCountryCode();
   const [loading, setLoading] = useState(true);
-  const [result, setResult] = useState<EstimatedNutrientResult | null>(null);
-
-  const componentsKey = useMemo(
-    () => components.map(c => `${c.componentId}|${c.componentName}|${c.componentUom}|${c.quantity}`).join(';'),
-    [components],
-  );
+  const [result, setResult] = useState<ProductNutrientEstimate | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!productId || productId <= 0) {
+      setResult(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
-    loadFnddsNutrientCatalog()
-      .then(catalog => {
+    setError(null);
+    api.productNutrients(productId)
+      .then(data => {
         if (cancelled) return;
-        setResult(estimateProductNutrientsFromFndds(components, { yieldQuantity, catalog }));
+        setResult(data);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setResult(null);
+        setError(err instanceof Error ? err.message : 'Failed to load nutrient estimate.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-    // componentsKey captures recipe line identity; yieldQuantity scales the result.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [componentsKey, yieldQuantity]);
+  }, [productId]);
 
-  const coverageLabel = useMemo(() => {
+  const coverageLabel = (() => {
     if (!result) return '';
     if (result.totalCount === 0) return 'No recipe components to estimate.';
-    return `${result.matchedCount} of ${result.totalCount} components matched to USDA FNDDS`;
-  }, [result]);
+    return `${result.matchedCount} of ${result.totalCount} components matched to USDA FoodData Central`;
+  })();
 
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="px-4 py-3 border-b border-border bg-muted/20">
         <h3 className="text-sm font-semibold">Estimated Nutrient Value</h3>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          Calculated from recipe smart components using USDA FNDDS 2021–2023
+          Calculated from recipe smart components using USDA Foundation Foods + SR Legacy
           {productName ? ` for ${productName}` : ''}.
         </p>
       </div>
@@ -65,6 +66,8 @@ export function ProductEstimatedNutrientBox({
         <div className="flex justify-center py-8">
           <MillstoneLoader size="sm" />
         </div>
+      ) : error ? (
+        <p className="text-xs text-muted-foreground px-4 py-8 text-center">{error}</p>
       ) : !result || result.totalCount === 0 ? (
         <p className="text-xs text-muted-foreground px-4 py-8 text-center">
           Add recipe components to estimate nutrient values.
@@ -92,10 +95,11 @@ export function ProductEstimatedNutrientBox({
             <p>{coverageLabel}</p>
             <p>
               Values are per {yieldQuantity > 1 ? `yield unit (÷${yieldQuantity})` : 'full recipe batch'}.
-              Unmatched or non-gram components use a kitchen heuristic fallback.
+              Unmatched or non-gram components are omitted from the total.
             </p>
             <p className="text-[10px] leading-relaxed">
               Source: {result.sourceLabel}. {result.basisLabel}.
+              {result.libraryVersion ? ` Library ${result.libraryVersion}.` : ''}
             </p>
           </div>
         </div>
