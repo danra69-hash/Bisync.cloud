@@ -104,6 +104,16 @@ export const zh = {
       hrm: '人事、考勤、休假与人力设置。',
       accounting: '薪资关联、账簿与财务结账。',
     },
+    messages: {
+      title: '消息',
+      subtitle: '公司与团队更新',
+      empty: '暂无消息。',
+    },
+    todoToday: {
+      title: '今日待办',
+      subtitle: '今天需要处理的事项',
+      empty: '今天没有安排。',
+    },
   },
   revMgmt: {
     sections: {

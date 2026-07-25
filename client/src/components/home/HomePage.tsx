@@ -1,6 +1,8 @@
 import {
   Calculator,
+  CheckSquare,
   ChevronRight,
+  MessageSquare,
   ShoppingBag,
   TrendingUp,
   Users,
@@ -182,6 +184,42 @@ export function HomePage({ enabledModules, modulesGoLive, onOpenModule }: Props)
             </button>
           );
         })}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <section className="bg-card border border-border rounded-xl overflow-hidden flex flex-col min-h-[10.5rem]">
+          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-primary/10">
+              <MessageSquare size={13} className="text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold leading-tight">{t('home.messages.title')}</h2>
+              <p className="text-[11px] text-muted-foreground leading-snug">{t('home.messages.subtitle')}</p>
+            </div>
+          </div>
+          <div className="flex-1 px-3 py-3 flex items-center justify-center">
+            <p className="text-xs text-muted-foreground text-center leading-snug">
+              {t('home.messages.empty')}
+            </p>
+          </div>
+        </section>
+
+        <section className="bg-card border border-border rounded-xl overflow-hidden flex flex-col min-h-[10.5rem]">
+          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-primary/10">
+              <CheckSquare size={13} className="text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold leading-tight">{t('home.todoToday.title')}</h2>
+              <p className="text-[11px] text-muted-foreground leading-snug">{t('home.todoToday.subtitle')}</p>
+            </div>
+          </div>
+          <div className="flex-1 px-3 py-3 flex items-center justify-center">
+            <p className="text-xs text-muted-foreground text-center leading-snug">
+              {t('home.todoToday.empty')}
+            </p>
+          </div>
+        </section>
       </div>
     </div>
   );

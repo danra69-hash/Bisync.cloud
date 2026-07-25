@@ -104,6 +104,16 @@ export const id = {
       hrm: 'SDM, absensi, cuti, dan pengaturan tenaga kerja.',
       accounting: 'Penggajian, buku besar, dan penutupan keuangan.',
     },
+    messages: {
+      title: 'Pesan',
+      subtitle: 'Pembaruan perusahaan dan tim',
+      empty: 'Belum ada pesan.',
+    },
+    todoToday: {
+      title: 'Tugas Hari Ini',
+      subtitle: 'Tindakan untuk hari ini',
+      empty: 'Tidak ada jadwal untuk hari ini.',
+    },
   },
   revMgmt: {
     sections: {

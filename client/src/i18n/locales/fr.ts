@@ -104,6 +104,16 @@ export const fr = {
       hrm: 'RH, présence, congés et organisation.',
       accounting: 'Paie, grands livres et clôture financière.',
     },
+    messages: {
+      title: 'Messages',
+      subtitle: 'Mises à jour entreprise et équipe',
+      empty: 'Aucun message pour le moment.',
+    },
+    todoToday: {
+      title: 'À faire aujourd\'hui',
+      subtitle: 'Actions du jour',
+      empty: 'Rien de prévu pour aujourd\'hui.',
+    },
   },
   revMgmt: {
     sections: {

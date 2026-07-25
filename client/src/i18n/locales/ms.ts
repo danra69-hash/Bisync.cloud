@@ -104,6 +104,16 @@ export const ms = {
       hrm: 'HR, kehadiran, cuti dan tetapan tenaga kerja.',
       accounting: 'Penggajian, lejar dan penutupan kewangan.',
     },
+    messages: {
+      title: 'Mesej',
+      subtitle: 'Kemas kini syarikat dan pasukan',
+      empty: 'Tiada mesej lagi.',
+    },
+    todoToday: {
+      title: 'Tugasan Hari Ini',
+      subtitle: 'Tindakan untuk hari ini',
+      empty: 'Tiada jadual untuk hari ini.',
+    },
   },
   revMgmt: {
     sections: {

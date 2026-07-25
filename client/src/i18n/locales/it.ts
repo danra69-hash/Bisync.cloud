@@ -104,6 +104,16 @@ export const it = {
       hrm: 'Personale, presenza, ferie e setup HR.',
       accounting: 'Paghe, libri contabili e chiusura finanziaria.',
     },
+    messages: {
+      title: 'Messaggi',
+      subtitle: 'Aggiornamenti azienda e team',
+      empty: 'Nessun messaggio ancora.',
+    },
+    todoToday: {
+      title: 'Da fare oggi',
+      subtitle: 'Azioni di oggi',
+      empty: 'Niente in programma per oggi.',
+    },
   },
   revMgmt: {
     sections: {
