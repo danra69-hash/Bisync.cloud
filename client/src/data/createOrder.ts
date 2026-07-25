@@ -18,6 +18,14 @@ import {
 import { filterTaggedVendorProductIdsForLocations, isVendorProductTaggedAtLocations } from './vendorProductTagging';
 import { calcBaseParStockInRecipeUom } from './componentParStock';
 
+export type CreateOrderLineCommitment = {
+  poId: number;
+  poNumber: string;
+  remaining: number;
+  unitPrice: number;
+  deliveryUnitLabel: string;
+};
+
 export type CreateOrderLine = {
   key: string;
   component: ComponentRow;
@@ -28,7 +36,84 @@ export type CreateOrderLine = {
   suggestedDeliveryUnits: number | null;
   deliveryUnitLabel: string;
   deliveryPrice: number;
+  /** Present when an active Pre-committed PO covers this vendor product for the current locations. */
+  commitment?: CreateOrderLineCommitment | null;
 };
+
+type PurchaseOrderLike = {
+  id: number;
+  poNumber: string;
+  orderDate?: string;
+  commitmentStartDate?: string | null;
+  items: Array<{
+    vendorProductId?: string;
+    componentId?: string;
+    quantity: number;
+    unitPrice: number;
+    unit?: string;
+    deliveryPackage?: string;
+    drawnQuantity?: number;
+    remainingQuantity?: number;
+    remainingCommitmentQuantity?: number;
+  }>;
+};
+
+/** Overlay active Pre-committed price / delivery unit onto My Order lines. */
+export function applyCommitmentOverlays(
+  lines: CreateOrderLine[],
+  committedPos: PurchaseOrderLike[],
+): CreateOrderLine[] {
+  if (committedPos.length === 0) return lines.map(line => ({ ...line, commitment: null }));
+
+  type Match = CreateOrderLineCommitment & { start: string };
+  const byVendorProduct = new Map<string, Match>();
+  const byComponent = new Map<string, Match>();
+
+  for (const po of committedPos) {
+    for (const item of po.items) {
+      const remaining = item.remainingCommitmentQuantity
+        ?? item.remainingQuantity
+        ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+      if (remaining <= 0.0001) continue;
+      const match: Match = {
+        poId: po.id,
+        poNumber: po.poNumber,
+        remaining,
+        unitPrice: item.unitPrice,
+        deliveryUnitLabel: (item.deliveryPackage || item.unit || '').trim(),
+        start: po.commitmentStartDate ?? po.orderDate ?? '',
+      };
+      const vp = (item.vendorProductId || '').trim();
+      if (vp) {
+        const prev = byVendorProduct.get(vp);
+        if (!prev || match.start < prev.start) byVendorProduct.set(vp, match);
+      }
+      const comp = (item.componentId || '').trim();
+      if (comp) {
+        const prev = byComponent.get(comp);
+        if (!prev || match.start < prev.start) byComponent.set(comp, match);
+      }
+    }
+  }
+
+  return lines.map(line => {
+    const match = byVendorProduct.get(line.vendorProduct.id)
+      ?? byComponent.get(line.component.componentId);
+    if (!match) return { ...line, commitment: null };
+    return {
+      ...line,
+      deliveryPrice: match.unitPrice,
+      deliveryUnitLabel: match.deliveryUnitLabel || line.deliveryUnitLabel,
+      commitment: {
+        poId: match.poId,
+        poNumber: match.poNumber,
+        remaining: match.remaining,
+        unitPrice: match.unitPrice,
+        deliveryUnitLabel: match.deliveryUnitLabel || line.deliveryUnitLabel,
+      },
+    };
+  });
+}
 
 export function componentMatchesLocations(
   component: ComponentRow,

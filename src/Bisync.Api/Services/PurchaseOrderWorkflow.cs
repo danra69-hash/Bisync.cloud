@@ -137,7 +137,13 @@ public static class PurchaseOrderWorkflow
     public static string SerializeLocationIds(IEnumerable<string> locationIds) =>
         JsonSerializer.Serialize(locationIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.OrdinalIgnoreCase));
 
-    public static object MapOrder(PurchaseOrder order, bool allowPartialDelivery = false)
+    /// <param name="consolidatedByItemId">
+    /// For pre-committed masters: qty received &amp; consolidated on linked release POs, keyed by master item id.
+    /// </param>
+    public static object MapOrder(
+        PurchaseOrder order,
+        bool allowPartialDelivery = false,
+        IReadOnlyDictionary<int, decimal>? consolidatedByItemId = null)
     {
         var documentType = IsPendingApprovalStatus(order.Status)
             ? DocumentTypePr
@@ -153,6 +159,15 @@ public static class PurchaseOrderWorkflow
 
         if (order.VendorAcceptedAt is not null && !isTerminalReceipt)
             status = StatusAccepted;
+
+        var committedQuantity = order.Items.Sum(i => i.Quantity);
+        var drawnQuantityTotal = order.Items.Sum(i => i.DrawnQuantity);
+        var consolidatedQuantity = 0m;
+        if (order.IsPreCommitted && consolidatedByItemId is not null)
+        {
+            foreach (var item in order.Items)
+                consolidatedQuantity += consolidatedByItemId.GetValueOrDefault(item.Id);
+        }
 
         return new
         {
@@ -180,6 +195,9 @@ public static class PurchaseOrderWorkflow
             drawdownLocationExternalIds = order.IsPreCommitted
                 ? DeserializeLocationIds(order.LocationIdsJson)
                 : null,
+            committedQuantity = order.IsPreCommitted ? committedQuantity : (decimal?)null,
+            drawnQuantityTotal = order.IsPreCommitted ? drawnQuantityTotal : (decimal?)null,
+            consolidatedQuantity = order.IsPreCommitted ? consolidatedQuantity : (decimal?)null,
             vendorShareToken = order.VendorShareToken,
             vendorAcceptedAt = order.VendorAcceptedAt,
             vendorAcceptedBy = order.VendorAcceptedBy,
@@ -194,11 +212,17 @@ public static class PurchaseOrderWorkflow
             canReceive = CanReceive(order, allowPartialDelivery),
             canReconcile = CanReconcile(order),
             canFinalizeDelivery = CanFinalizeDelivery(order, allowPartialDelivery),
-            items = order.Items.Select(i => MapItem(i, order.IsPreCommitted)).ToList(),
+            items = order.Items.Select(i => MapItem(
+                i,
+                order.IsPreCommitted,
+                consolidatedByItemId?.GetValueOrDefault(i.Id) ?? 0m)).ToList(),
         };
     }
 
-    public static object MapItem(PurchaseOrderItem item, bool isPreCommitted = false)
+    public static object MapItem(
+        PurchaseOrderItem item,
+        bool isPreCommitted = false,
+        decimal consolidatedQuantity = 0)
     {
         var delivered = item.DeliveredQuantity;
         var drawn = item.DrawnQuantity;
@@ -225,6 +249,8 @@ public static class PurchaseOrderWorkflow
             remainingQuantity = isPreCommitted ? remainingCommitment : remainingDelivery,
             drawnQuantity = drawn,
             remainingCommitmentQuantity = remainingCommitment,
+            // Stocked qty from release POs that drew from this master line (receive + consolidate).
+            consolidatedQuantity = isPreCommitted ? consolidatedQuantity : delivered,
             taxAmount = item.TaxAmount,
             halalCertNo = item.HalalCertNo,
             productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,

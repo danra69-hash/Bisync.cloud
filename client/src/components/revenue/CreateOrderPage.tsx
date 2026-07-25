@@ -5,6 +5,7 @@ import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { api, type OrderTemplate, type PurchaseOrder, type Vendor } from '../../api';
 import {
+  applyCommitmentOverlays,
   buildCartItems,
   buildCreateOrderLines,
   countCartItems,
@@ -82,6 +83,7 @@ export function CreateOrderPage({
   const [showCart, setShowCart] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
+  const [committedPos, setCommittedPos] = useState<PurchaseOrder[]>([]);
   const pendingTemplateRef = useRef<OrderTemplate | null>(null);
   const pendingCommittedPoIdRef = useRef<number | null>(null);
   const pendingCommittedPoRef = useRef<PurchaseOrder | null>(null);
@@ -144,7 +146,17 @@ export function CreateOrderPage({
     }
   }, [vendorFilter, vendorOptions]);
 
-  const lines = useMemo(
+  useEffect(() => {
+    if (!selectedCompanyId || selectedLocationIds.length === 0) {
+      setCommittedPos([]);
+      return;
+    }
+    api.committedPurchaseOrders(selectedCompanyId, selectedLocationIds)
+      .then(setCommittedPos)
+      .catch(() => setCommittedPos([]));
+  }, [selectedCompanyId, selectedLocationIds]);
+
+  const baseLines = useMemo(
     () => buildCreateOrderLines(
       components,
       selectedLocationIds,
@@ -155,6 +167,11 @@ export function CreateOrderPage({
       orgPolicyTags,
     ),
     [components, selectedLocationIds, vendorFilter, categoryFilter, search, vendors, orgPolicyTags],
+  );
+
+  const lines = useMemo(
+    () => applyCommitmentOverlays(baseLines, committedPos),
+    [baseLines, committedPos],
   );
 
   const sortedLines = useMemo(
@@ -264,7 +281,6 @@ export function CreateOrderPage({
       });
       if (!match) continue;
       updates[match.key] = String(remaining);
-      // Prefer committed special price already on the line's vendor product; drawdown reapplies on create.
       applied += 1;
     }
     if (applied === 0) {
@@ -274,7 +290,7 @@ export function CreateOrderPage({
     pendingCommittedPoIdRef.current = po.id;
     setOrderQtyByKey(prev => ({ ...prev, ...updates }));
     setTemplateNotice(
-      `Applied Pre-committed PO ${po.poNumber} (${applied} line${applied === 1 ? '' : 's'} remaining). Confirm My Carte to draw down.`,
+      `Applied Pre-committed PO ${po.poNumber} (${applied} line${applied === 1 ? '' : 's'}). Delivery unit and bulk price follow the commitment; confirm My Carte to draw down.`,
     );
   }
 
@@ -319,6 +335,16 @@ export function CreateOrderPage({
     () => cartItems.reduce((sum, item) => sum + item.lineTotal, 0),
     [cartItems],
   );
+
+  const cartSourceCommittedPoId = useMemo(() => {
+    if (pendingCommittedPoIdRef.current) return pendingCommittedPoIdRef.current;
+    const ids = new Set(
+      lines
+        .filter(line => (parseFloat(orderQtyByKey[line.key] || '') || 0) > 0 && line.commitment)
+        .map(line => line.commitment!.poId),
+    );
+    return ids.size === 1 ? [...ids][0] : null;
+  }, [lines, orderQtyByKey]);
 
   function setOrderQty(key: string, value: string) {
     setOrderQtyByKey(prev => ({ ...prev, [key]: value }));
@@ -487,17 +513,35 @@ export function CreateOrderPage({
                         <p className="font-medium">{line.vendorProduct.productName}</p>
                         <p className="text-xs text-muted-foreground font-sans">{line.vendorProduct.vendorName}</p>
                       </td>
-                      <td className={`${tdCls} font-sans text-muted-foreground`}>{line.deliveryUnitLabel}</td>
-                      <td className={`${tdCls} font-sans text-foreground`}>{rm(line.deliveryPrice)}</td>
+                      <td className={`${tdCls} font-sans text-muted-foreground`}>
+                        <p>{line.deliveryUnitLabel}</p>
+                        {line.commitment ? (
+                          <p className="text-[10px] text-teal-700 dark:text-teal-400 mt-0.5">
+                            Pre-committed
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className={`${tdCls} font-sans text-foreground`}>
+                        <p>{rm(line.deliveryPrice)}</p>
+                        {line.commitment ? (
+                          <p className="text-[10px] text-teal-700 dark:text-teal-400 mt-0.5">
+                            {line.commitment.poNumber} · {line.commitment.remaining} left
+                          </p>
+                        ) : null}
+                      </td>
                       <td className={tdCls}>
                         <input
                           type="number"
                           min={0}
                           step={1}
+                          max={line.commitment ? line.commitment.remaining : undefined}
                           value={orderQtyByKey[line.key] ?? ''}
                           onChange={e => setOrderQty(line.key, e.target.value)}
                           placeholder="0"
                           className={inlineNumberCls}
+                          title={line.commitment
+                            ? `Against commitment ${line.commitment.poNumber} (${line.commitment.remaining} remaining)`
+                            : undefined}
                         />
                       </td>
                       <td className={`${tdCls} font-sans font-semibold text-foreground`}>
@@ -541,7 +585,7 @@ export function CreateOrderPage({
           items={cartItems}
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
-          sourceCommittedPurchaseOrderId={pendingCommittedPoIdRef.current}
+          sourceCommittedPurchaseOrderId={cartSourceCommittedPoId}
           onClose={() => setShowCart(false)}
           onConfirmed={clearedLineKeys => {
             setOrderQtyByKey(prev => {
@@ -550,6 +594,11 @@ export function CreateOrderPage({
               return next;
             });
             pendingCommittedPoIdRef.current = null;
+            if (selectedCompanyId && selectedLocationIds.length > 0) {
+              void api.committedPurchaseOrders(selectedCompanyId, selectedLocationIds)
+                .then(setCommittedPos)
+                .catch(() => undefined);
+            }
           }}
         />
       )}
