@@ -91,7 +91,12 @@ export function VendorProductsPanel({
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4">
-          <VendorDetailEditor countryCode={countryCode} vendor={panelVendor} onVendorUpdated={handleVendorUpdated} />
+          <VendorDetailEditor
+            countryCode={countryCode}
+            vendor={panelVendor}
+            selectedCompanyId={selectedCompanyId}
+            onVendorUpdated={handleVendorUpdated}
+          />
 
           <VendorProductImportSection
             vendor={panelVendor}

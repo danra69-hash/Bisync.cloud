@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check } from 'lucide-react';
-import { api, type Vendor, type VendorProductPolicyTag, type VendorUpdatePayload } from '../../api';
+import { Check, Plus, X } from 'lucide-react';
+import {
+  api,
+  type LocationConfig,
+  type Vendor,
+  type VendorProductPolicyTag,
+  type VendorUpdatePayload,
+} from '../../api';
 import { inputCls, selectCls } from '../../data/componentForm';
 import {
   formatVendorAddress,
@@ -16,8 +22,23 @@ import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 type Props = {
   countryCode: string;
   vendor: Vendor;
+  selectedCompanyId: number | null;
   onVendorUpdated: (vendor: Vendor) => void;
 };
+
+function parseEngagedLocationIds(vendor: Vendor): string[] {
+  const raw = vendor.engagedLocationIdsJson?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(id => String(id ?? '').trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 
 function vendorToForm(vendor: Vendor): VendorUpdatePayload {
   return {
@@ -34,6 +55,7 @@ function vendorToForm(vendor: Vendor): VendorUpdatePayload {
     email: vendor.email ?? '',
     productPolicyTag: resolveVendorProductPolicyTag(vendor),
     allowPartialDelivery: Boolean(vendor.allowPartialDelivery),
+    engagedLocationIds: parseEngagedLocationIds(vendor),
   };
 }
 
@@ -73,18 +95,133 @@ export function VendorProductPolicySingleSelect({
   );
 }
 
-export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Props) {
+function VendorEngagedLocationsModal({
+  locations,
+  selectedIds,
+  onChange,
+  onClose,
+}: {
+  locations: LocationConfig[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  function toggleLocation(externalId: string) {
+    if (selectedIds.includes(externalId)) {
+      onChange(selectedIds.filter(id => id !== externalId));
+    } else {
+      onChange([...selectedIds, externalId]);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-[70]" onClick={onClose} role="presentation" aria-hidden />
+      <div
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[71] w-full max-w-sm bg-card border border-border rounded-lg shadow-xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Engaged Locations</p>
+            <p className="text-sm font-semibold text-foreground mt-0.5">Select company locations</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Locations where this vendor is engaged.</p>
+          </div>
+          <button type="button" onClick={onClose} className="p-1 rounded-md hover:bg-muted transition-colors shrink-0">
+            <X size={14} className="text-muted-foreground" />
+          </button>
+        </div>
+        <div className="px-4 py-3 max-h-64 overflow-y-auto space-y-1">
+          {locations.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-4 text-center">No locations found for this company.</p>
+          ) : (
+            locations.map(loc => {
+              const checked = selectedIds.includes(loc.externalId);
+              return (
+                <label
+                  key={loc.externalId}
+                  className={`flex items-center gap-2.5 px-2 py-2 rounded-md cursor-pointer transition-colors ${checked ? 'bg-primary/10' : 'hover:bg-muted/50'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleLocation(loc.externalId)}
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                  />
+                  <span className="text-xs text-foreground">{loc.name}</span>
+                </label>
+              );
+            })
+          )}
+        </div>
+        <div className="px-4 py-3 border-t border-border flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground font-sans">
+            {selectedIds.length} of {locations.length} selected
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-3 py-1.5 hover:bg-primary/90 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function VendorDetailEditor({ countryCode, vendor, selectedCompanyId, onVendorUpdated }: Props) {
   const [form, setForm] = useState(() => vendorToForm(vendor));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
+  const [companyLocations, setCompanyLocations] = useState<LocationConfig[]>([]);
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
 
   useEffect(() => {
     setForm(vendorToForm(vendor));
     setError(null);
     setSuccess(null);
   }, [vendor]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (selectedCompanyId == null) {
+      setCompanyLocations([]);
+      return;
+    }
+    api.locationsConfig()
+      .then(rows => {
+        if (cancelled) return;
+        setCompanyLocations(rows.filter(loc => loc.companyId === selectedCompanyId));
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyLocations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId]);
+
+  const engagedLocationIds = form.engagedLocationIds ?? [];
+
+  const engagedLocationChips = useMemo(() => {
+    const byId = new Map(companyLocations.map(loc => [loc.externalId, loc.name]));
+    return engagedLocationIds.map(id => ({
+      id,
+      name: byId.get(id) ?? id,
+    }));
+  }, [companyLocations, engagedLocationIds]);
 
   const poPreview = useMemo(() => ({
     address: formatVendorAddress({
@@ -110,6 +247,13 @@ export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Pro
   function setField<K extends keyof VendorUpdatePayload>(key: K, value: VendorUpdatePayload[K]) {
     setSuccess(null);
     setForm(prev => ({ ...prev, [key]: value }));
+  }
+
+  function removeEngagedLocation(externalId: string) {
+    setField(
+      'engagedLocationIds',
+      engagedLocationIds.filter(id => id !== externalId),
+    );
   }
 
   async function handleSave() {
@@ -138,6 +282,7 @@ export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Pro
         contactPosition: form.contactPosition.trim(),
         mobile: form.mobile.trim(),
         email: form.email.trim(),
+        engagedLocationIds,
       });
       onVendorUpdated(updated);
       setSuccess('Vendor details saved.');
@@ -231,12 +376,58 @@ export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Pro
             </div>
           </div>
 
-          <div>
-            <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-2">Product policy *</p>
-            <VendorProductPolicySingleSelect
-              selected={form.productPolicyTag}
-              onChange={value => setField('productPolicyTag', value)}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-2">Product policy *</p>
+              <VendorProductPolicySingleSelect
+                selected={form.productPolicyTag}
+                onChange={value => setField('productPolicyTag', value)}
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Engaged Locations</p>
+                <button
+                  type="button"
+                  onClick={() => setLocationModalOpen(true)}
+                  disabled={selectedCompanyId == null}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:opacity-50"
+                  title={selectedCompanyId == null ? 'Select a company first' : 'Add location'}
+                  aria-label="Add engaged location"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+              <div className="rounded-lg border border-border px-3 py-2.5 min-h-[8.5rem]">
+                {engagedLocationChips.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground py-2">
+                    {selectedCompanyId == null
+                      ? 'Select a company to assign engaged locations.'
+                      : 'No engaged locations yet. Use + to add from the company location list.'}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {engagedLocationChips.map(loc => (
+                      <span
+                        key={loc.id}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-foreground"
+                      >
+                        {loc.name}
+                        <button
+                          type="button"
+                          onClick={() => removeEngagedLocation(loc.id)}
+                          className="p-0.5 rounded hover:bg-muted transition-colors"
+                          aria-label={`Remove ${loc.name}`}
+                        >
+                          <X size={11} className="text-muted-foreground" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <label
@@ -289,6 +480,15 @@ export function VendorDetailEditor({ countryCode, vendor, onVendorUpdated }: Pro
             </button>
           </div>
         </div>
+      )}
+
+      {locationModalOpen && (
+        <VendorEngagedLocationsModal
+          locations={companyLocations}
+          selectedIds={engagedLocationIds}
+          onChange={ids => setField('engagedLocationIds', ids)}
+          onClose={() => setLocationModalOpen(false)}
+        />
       )}
     </div>
   );

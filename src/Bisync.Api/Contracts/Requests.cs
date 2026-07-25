@@ -611,6 +611,7 @@ public class CreateVendorRequest
     [Required, MaxLength(30)]
     public string ProductPolicyTag { get; set; } = string.Empty;
     public bool AllowPartialDelivery { get; set; }
+    public List<string>? EngagedLocationIds { get; set; }
 }
 
 public class UpdateVendorRequest
@@ -640,6 +641,7 @@ public class UpdateVendorRequest
     [Required, MaxLength(30)]
     public string ProductPolicyTag { get; set; } = string.Empty;
     public bool AllowPartialDelivery { get; set; }
+    public List<string>? EngagedLocationIds { get; set; }
 }
 
 public class SetVendorActiveRequest

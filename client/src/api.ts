@@ -433,6 +433,8 @@ export interface Vendor {
   engageApprovedBy?: string;
   productPolicyTag?: VendorProductPolicyTag;
   allowPartialDelivery?: boolean;
+  /** JSON array of location external IDs where this vendor is engaged. */
+  engagedLocationIdsJson?: string;
   active?: boolean;
 }
 
@@ -541,6 +543,7 @@ export interface VendorCreatePayload {
   email: string;
   productPolicyTag: VendorProductPolicyTag;
   allowPartialDelivery?: boolean;
+  engagedLocationIds?: string[];
 }
 
 export interface VendorUpdatePayload {
@@ -557,6 +560,7 @@ export interface VendorUpdatePayload {
   email: string;
   productPolicyTag: VendorProductPolicyTag;
   allowPartialDelivery?: boolean;
+  engagedLocationIds?: string[];
 }
 
 export interface B2bCustomerContact {
