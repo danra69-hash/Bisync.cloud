@@ -4,12 +4,14 @@ import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { ActivePurchasePage } from './ActivePurchasePage';
 import { B2bActiveOrderPage } from './B2bActiveOrderPage';
 import { CreateOrderPage } from './CreateOrderPage';
+import { PreCommittedPoPage } from './PreCommittedPoPage';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { useOrgSupplyCapability } from '../../hooks/useOrgSupplyCapability';
 import type { CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
 const ORDER_TABS = [
   { id: 'create', label: 'My Order' },
+  { id: 'pre-committed', label: 'Pre-committed PO' },
   { id: 'active', label: 'Active Purchase' },
   { id: 'active-sales', label: 'Active Sales' },
 ] as const;
@@ -70,6 +72,13 @@ export function OrderPage({
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
           initialPrefillItems={initialPrefillItems}
+          onOpenPreCommitted={() => setTab('pre-committed')}
+        />
+      ) : tab === 'pre-committed' ? (
+        <PreCommittedPoPage
+          embedded
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
         />
       ) : tab === 'active-sales' && hasSupplyCapability ? (
         <B2bActiveOrderPage

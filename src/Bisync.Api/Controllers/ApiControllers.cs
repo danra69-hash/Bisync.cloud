@@ -969,7 +969,9 @@ public class PurchaseOrdersController(
 
     /// <summary>Active pre-committed (blanket) POs available for drawdown / PO Template apply.</summary>
     [HttpGet("committed")]
-    public async Task<ActionResult<IEnumerable<object>>> GetCommitted([FromQuery] int? companyId)
+    public async Task<ActionResult<IEnumerable<object>>> GetCommitted(
+        [FromQuery] int? companyId,
+        [FromQuery] string? locationExternalIds = null)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var query = BaseQuery()
@@ -986,6 +988,23 @@ public class PurchaseOrdersController(
         orders = orders
             .Where(o => o.Items.Any(i => i.Quantity - i.DrawnQuantity > 0.0001m))
             .ToList();
+
+        var filterLocs = (locationExternalIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (filterLocs.Count > 0)
+        {
+            orders = orders
+                .Where(o =>
+                {
+                    var allowed = PurchaseOrderWorkflow.DeserializeLocationIds(o.LocationIdsJson);
+                    return allowed.Any(a => filterLocs.Contains(a, StringComparer.OrdinalIgnoreCase));
+                })
+                .ToList();
+        }
+
         var flags = await ResolveAllowPartialFlagsAsync(orders);
         return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
     }
@@ -1179,6 +1198,10 @@ public class PurchaseOrdersController(
             var isPreCommitted = orderRequest.IsPreCommitted;
             if (isPreCommitted)
             {
+                if (request.CompanyId is null or <= 0)
+                    return BadRequest(new { message = "Company is required for Pre-committed POs (company-level commitment)." });
+                if (locationExternalIds.Count == 0)
+                    return BadRequest(new { message = "Select at least one location that may draw down this Pre-committed PO." });
                 if (orderRequest.CommitmentStartDate is null || orderRequest.CommitmentEndDate is null)
                     return BadRequest(new { message = "Commitment Date from and to are required for Pre-committed POs." });
                 if (orderRequest.CommitmentEndDate < orderRequest.CommitmentStartDate)

@@ -7,6 +7,7 @@ namespace Bisync.Api.Services;
 /// <summary>
 /// Draws release-order quantities from active pre-committed (blanket) POs,
 /// applying the committed special unit price when a match is found.
+/// Masters are company-scoped; LocationIdsJson lists outlets allowed to draw down.
 /// </summary>
 public class PreCommittedPoDrawdownService(BisyncDbContext db)
 {
@@ -18,6 +19,11 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
             return;
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var companyIds = releaseOrders
+            .Where(o => o.CompanyId is not null)
+            .Select(o => o.CompanyId!.Value)
+            .Distinct()
+            .ToList();
         var vendorKeys = releaseOrders
             .Select(o => (o.VendorExternalId ?? string.Empty).Trim())
             .Where(v => !string.IsNullOrWhiteSpace(v))
@@ -29,13 +35,17 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var masters = await db.PurchaseOrders
+        var mastersQuery = db.PurchaseOrders
             .Include(p => p.Items)
             .Where(p => p.IsPreCommitted && p.Status == PurchaseOrderWorkflow.StatusCommitted)
             .Where(p =>
                 (p.CommitmentStartDate == null || p.CommitmentStartDate <= today)
-                && (p.CommitmentEndDate == null || p.CommitmentEndDate >= today))
-            .ToListAsync(cancellationToken);
+                && (p.CommitmentEndDate == null || p.CommitmentEndDate >= today));
+
+        if (companyIds.Count > 0)
+            mastersQuery = mastersQuery.Where(p => p.CompanyId == null || companyIds.Contains(p.CompanyId.Value));
+
+        var masters = await mastersQuery.ToListAsync(cancellationToken);
 
         masters = masters
             .Where(m =>
@@ -66,6 +76,7 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
                     continue;
 
                 var candidates = masters
+                    .Where(m => PurchaseOrderWorkflow.AllowsDrawdownFrom(m, release))
                     .Where(m => VendorMatches(m, release))
                     .Where(m => preferredMasterId is null || m.Id == preferredMasterId)
                     .SelectMany(m => m.Items.Select(ci => (Master: m, Line: ci)))
@@ -87,7 +98,7 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
 
                     var take = Math.Min(available, remainingToCover);
                     committedLine.DrawnQuantity = DecimalRounding.ToDb(committedLine.DrawnQuantity + take);
-                    // Special committed price for the release line.
+                    // Special committed (bulk) price for the release line.
                     item.UnitPrice = committedLine.UnitPrice;
                     item.IssuedUnitPrice = committedLine.UnitPrice;
                     release.SourceCommittedPurchaseOrderId ??= master.Id;

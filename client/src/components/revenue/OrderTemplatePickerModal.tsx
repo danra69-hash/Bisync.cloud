@@ -46,7 +46,7 @@ export function OrderTemplatePickerModal({
     setLoading(true);
     Promise.all([
       api.orderTemplates(selectedCompanyId),
-      api.committedPurchaseOrders(selectedCompanyId),
+      api.committedPurchaseOrders(selectedCompanyId, selectedLocationIds),
     ])
       .then(([rows, committed]) => {
         setTemplates(rows);
@@ -57,7 +57,7 @@ export function OrderTemplatePickerModal({
         setCommittedPos([]);
       })
       .finally(() => setLoading(false));
-  }, [selectedCompanyId]);
+  }, [selectedCompanyId, selectedLocationIds]);
 
   const scheduleTemplates = useMemo(
     () => filterOrderTemplatesForToday(
@@ -123,6 +123,11 @@ export function OrderTemplatePickerModal({
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Commitment {po.commitmentStartDate ?? '—'} → {po.commitmentEndDate ?? '—'}
                       </p>
+                      {(po.drawdownLocationExternalIds ?? po.locationExternalIds)?.length ? (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Drawdown locations: {(po.drawdownLocationExternalIds ?? po.locationExternalIds)!.length}
+                        </p>
+                      ) : null}
                     </div>
                     <button
                       type="button"

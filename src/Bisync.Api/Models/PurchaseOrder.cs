@@ -14,6 +14,10 @@ public class PurchaseOrder
     public string DocumentType { get; set; } = "PO";
     public string Status { get; set; } = "Open";
     public int? CompanyId { get; set; }
+    /// <summary>
+    /// For regular POs: delivery / receiving locations.
+    /// For pre-committed masters: locations allowed to draw down from this company-level commitment.
+    /// </summary>
     public string LocationIdsJson { get; set; } = "[]";
     public string InitiatedBy { get; set; } = string.Empty;
     public string ApprovedBy { get; set; } = string.Empty;

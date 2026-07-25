@@ -26,6 +26,29 @@ public static class PurchaseOrderWorkflow
         order.IsPreCommitted
         && string.Equals(order.Status, StatusCommitted, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Pre-committed masters are company-scoped; LocationIdsJson lists outlets allowed to draw down.
+    /// A release may draw when company matches and at least one release location is allowed.
+    /// </summary>
+    public static bool AllowsDrawdownFrom(PurchaseOrder master, PurchaseOrder release)
+    {
+        if (!master.IsPreCommitted)
+            return false;
+
+        if (master.CompanyId is int masterCompany
+            && release.CompanyId is int releaseCompany
+            && masterCompany != releaseCompany)
+            return false;
+
+        var allowed = DeserializeLocationIds(master.LocationIdsJson);
+        var releaseLocs = DeserializeLocationIds(release.LocationIdsJson);
+        if (allowed.Count == 0 || releaseLocs.Count == 0)
+            return false;
+
+        return releaseLocs.Any(id =>
+            allowed.Contains(id, StringComparer.OrdinalIgnoreCase));
+    }
+
     public static bool IsPendingApprovalStatus(string? status)
     {
         var normalized = status?.Trim() ?? string.Empty;
@@ -153,6 +176,10 @@ public static class PurchaseOrderWorkflow
             commitmentStartDate = order.CommitmentStartDate,
             commitmentEndDate = order.CommitmentEndDate,
             sourceCommittedPurchaseOrderId = order.SourceCommittedPurchaseOrderId,
+            // Alias for UI: on masters these are the outlets permitted to draw down.
+            drawdownLocationExternalIds = order.IsPreCommitted
+                ? DeserializeLocationIds(order.LocationIdsJson)
+                : null,
             vendorShareToken = order.VendorShareToken,
             vendorAcceptedAt = order.VendorAcceptedAt,
             vendorAcceptedBy = order.VendorAcceptedBy,
