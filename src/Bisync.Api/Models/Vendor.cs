@@ -38,6 +38,8 @@ public class Vendor
     /// as Partially Delivered until Final delivery completed.
     /// </summary>
     public bool AllowPartialDelivery { get; set; }
+    /// <summary>JSON array of location external IDs where this vendor is engaged for the company.</summary>
+    public string EngagedLocationIdsJson { get; set; } = "[]";
     /// <summary>Inactive vendors are hidden from new engage/order flows.</summary>
     public bool Active { get; set; } = true;
 }

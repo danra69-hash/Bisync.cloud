@@ -265,6 +265,17 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
+
+    static string SerializeEngagedLocationIds(IEnumerable<string>? locationIds)
+    {
+        var normalized = (locationIds ?? Enumerable.Empty<string>())
+            .Select(id => id?.Trim() ?? string.Empty)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return JsonSerializer.Serialize(normalized);
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Vendor>>> GetAll([FromQuery] bool? engaged = null)
     {
@@ -312,6 +323,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             Email = request.Email.Trim(),
             ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant(),
             AllowPartialDelivery = request.AllowPartialDelivery,
+            EngagedLocationIdsJson = SerializeEngagedLocationIds(request.EngagedLocationIds),
             ContactsJson = JsonSerializer.Serialize(new[]
             {
                 new VendorContactRequest
@@ -363,6 +375,8 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         vendor.Email = request.Email.Trim();
         vendor.ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant();
         vendor.AllowPartialDelivery = request.AllowPartialDelivery;
+        if (request.EngagedLocationIds is not null)
+            vendor.EngagedLocationIdsJson = SerializeEngagedLocationIds(request.EngagedLocationIds);
         vendor.ContactsJson = JsonSerializer.Serialize(
             SyncDefaultContact(vendor),
             ContactJsonOptions);
