@@ -61,6 +61,8 @@ type Props = {
   selectedLocationIds: string[];
   embedded?: boolean;
   initialPrefillItems?: CreateOrderPrefillItem[];
+  /** Opens the company-level Pre-committed PO editor (Order tab). */
+  onOpenPreCommitted?: () => void;
 };
 
 export function CreateOrderPage({
@@ -68,6 +70,7 @@ export function CreateOrderPage({
   selectedLocationIds,
   embedded = false,
   initialPrefillItems,
+  onOpenPreCommitted,
 }: Props) {
   const { number, rm } = useCountryFormatters();
   const [loading, setLoading] = useState(false);
@@ -78,7 +81,6 @@ export function CreateOrderPage({
   const [orderQtyByKey, setOrderQtyByKey] = useState<Record<string, string>>({});
   const [showCart, setShowCart] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
-  const [showPreCommitted, setShowPreCommitted] = useState(false);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const pendingTemplateRef = useRef<OrderTemplate | null>(null);
   const pendingCommittedPoIdRef = useRef<number | null>(null);
@@ -383,15 +385,14 @@ export function CreateOrderPage({
               <button
                 type="button"
                 onClick={() => {
-                  if (cartCount === 0) {
-                    setTemplateNotice('Enter Order Qty on at least one line, then click Pre-committed PO.');
+                  if (onOpenPreCommitted) {
+                    onOpenPreCommitted();
                     return;
                   }
-                  setTemplateNotice(null);
-                  setShowPreCommitted(true);
+                  setTemplateNotice('Open My Order → Pre-committed PO tab to create a company-level commitment.');
                 }}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors"
-                title="Commit large qty to a vendor at a special price over a date range"
+                title="Company-level Pre-committed PO with drawdown locations and bulk pricing"
               >
                 <Handshake size={16} />
                 Pre-committed PO
@@ -520,28 +521,6 @@ export function CreateOrderPage({
           onClose={() => setShowTemplatePicker(false)}
           onApply={handleApplyTemplate}
           onApplyCommittedPo={handleApplyCommittedPo}
-        />
-      )}
-
-      {showPreCommitted && selectedCompanyId && (
-        <OrderCartModal
-          mode="pre_committed"
-          items={cartItems}
-          selectedCompanyId={selectedCompanyId}
-          selectedLocationIds={selectedLocationIds}
-          onClose={() => setShowPreCommitted(false)}
-          onConfirmed={clearedLineKeys => {
-            // Keep modal mounted for PDF success step; clear qty only.
-            setOrderQtyByKey(prev => {
-              const next = { ...prev };
-              for (const key of clearedLineKeys) delete next[key];
-              return next;
-            });
-            pendingCommittedPoIdRef.current = null;
-            setTemplateNotice(
-              'Pre-committed PO created. It remains under Committed until later orders draw down the quantity.',
-            );
-          }}
         />
       )}
 

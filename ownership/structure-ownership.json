@@ -321,6 +321,16 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.pre-committed-po",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PreCommittedPoPage.tsx",
+      "symbol": "PreCommittedPoPage",
+      "route": "/revenue/pre-committed-po",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-25"
+    },
+    {
       "id": "dr.page.cash-purchase",
       "kind": "client-page",
       "path": "client/src/components/revenue/CashPurchasePage.tsx",

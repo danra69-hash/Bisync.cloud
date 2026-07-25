@@ -1191,6 +1191,8 @@ export interface PurchaseOrder {
   commitmentStartDate?: string | null;
   commitmentEndDate?: string | null;
   sourceCommittedPurchaseOrderId?: number | null;
+  /** On Pre-committed masters: outlets allowed to draw down (same as locationExternalIds). */
+  drawdownLocationExternalIds?: string[] | null;
   vendorShareToken?: string | null;
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;
@@ -3034,8 +3036,13 @@ export const api = {
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),
   activePurchaseOrders: (companyId?: number) =>
     fetchJson<PurchaseOrder[]>(`/api/purchaseorders/active${companyId ? `?companyId=${companyId}` : ''}`),
-  committedPurchaseOrders: (companyId?: number) =>
-    fetchJson<PurchaseOrder[]>(`/api/purchaseorders/committed${companyId ? `?companyId=${companyId}` : ''}`),
+  committedPurchaseOrders: (companyId?: number, locationExternalIds?: string[]) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationExternalIds?.length) params.set('locationExternalIds', locationExternalIds.join(','));
+    const query = params.toString();
+    return fetchJson<PurchaseOrder[]>(`/api/purchaseorders/committed${query ? `?${query}` : ''}`);
+  },
   inboundSalesOrders: (companyId: number) =>
     fetchJson<PurchaseOrder[]>(`/api/purchaseorders/inbound-sales?companyId=${companyId}`),
   vendorApprovePurchaseOrder: (

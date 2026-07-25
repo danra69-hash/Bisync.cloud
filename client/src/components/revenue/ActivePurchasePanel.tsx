@@ -534,6 +534,19 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                   : order.deliveryDate}
               </p>
             </div>
+            {order.isPreCommitted ? (
+              <div className="sm:col-span-2">
+                <p className="text-muted-foreground">Drawdown locations</p>
+                <p className="mt-0.5 leading-relaxed">
+                  {(order.drawdownLocationExternalIds ?? order.locationExternalIds)?.length
+                    ? (order.drawdownLocationExternalIds ?? order.locationExternalIds)!.join(', ')
+                    : '—'}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Company-level commitment — only these outlets may draw down remaining quantity.
+                </p>
+              </div>
+            ) : null}
             <div>
               <p className="text-muted-foreground">Initiated by</p>
               <p className="mt-0.5">{order.initiatedBy || '—'}</p>
