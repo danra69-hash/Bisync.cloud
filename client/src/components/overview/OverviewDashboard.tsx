@@ -444,16 +444,49 @@ export function OverviewDashboard({
                 {alerts.length === 0 ? (
                   <p className="px-5 py-4 text-xs text-muted-foreground">{t('overview.noInventoryAlerts')}</p>
                 ) : (
-                  alerts.map(a => (
-                    <div key={a.id} className="px-5 py-4 flex items-start gap-3">
-                      <AlertTriangle size={13} className={`mt-0.5 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
-                      <div className="flex-1">
-                        <p className="text-xs font-medium">{a.itemName}</p>
-                        <p className="text-xs text-muted-foreground">{t('overview.stockMin', { stock: a.stock, min: a.threshold })}</p>
+                  alerts.map(a => {
+                    const isParstock = a.alertType === 'parstock';
+                    const isSystem = a.alertType === 'system';
+                    const typeLabel = isParstock
+                      ? t('overview.alertTypeParstock')
+                      : isSystem
+                        ? t('overview.alertTypeSystem')
+                        : (a.basisLabel || a.alertType || 'Alert');
+                    return (
+                      <div key={`${a.alertType ?? 'alert'}-${a.componentId ?? a.id}-${a.id}`} className="px-5 py-4 flex items-start gap-3">
+                        <AlertTriangle size={13} className={`mt-0.5 shrink-0 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="text-xs font-medium">{a.itemName}</p>
+                            <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${
+                              isParstock
+                                ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                : 'bg-sky-500/15 text-sky-800 dark:text-sky-300'
+                            }`}>
+                              {typeLabel}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {isParstock
+                              ? t('overview.stockPar', { stock: a.stock, par: a.threshold })
+                              : isSystem
+                                ? t('overview.stockCover', {
+                                  stock: a.stock,
+                                  cover: a.daysOfCover != null ? String(a.daysOfCover) : '—',
+                                  cycle: a.deliveryCycleDays != null ? String(a.deliveryCycleDays) : a.threshold,
+                                })
+                                : t('overview.stockMin', { stock: a.stock, min: a.threshold })}
+                          </p>
+                          {a.detail ? (
+                            <p className="text-[11px] text-muted-foreground">{a.detail}</p>
+                          ) : a.basisLabel ? (
+                            <p className="text-[11px] text-muted-foreground">{a.basisLabel}</p>
+                          ) : null}
+                        </div>
+                        <span className={`text-xs font-sans px-1.5 py-0.5 rounded shrink-0 ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
                       </div>
-                      <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

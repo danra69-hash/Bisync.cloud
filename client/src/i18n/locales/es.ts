@@ -222,6 +222,10 @@ export const es = {
     wtd: 'WTD',
     mtd: 'MTD',
     vsLastYear: 'vs año pasado',
+    alertTypeParstock: 'Stock mínimo',
+    alertTypeSystem: 'Sistema',
+    stockPar: 'Stock: {{stock}} · Par: {{par}}',
+    stockCover: 'Stock: {{stock}} · ~{{cover}}d cobertura vs {{cycle}}d ciclo',
     stockMin: 'Stock: {{stock}} · Mín: {{min}}',
   },
   auth: {

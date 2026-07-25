@@ -101,24 +101,44 @@ export default function App() {
     async function load() {
       const results = await Promise.allSettled([
         api.menu(),
-        api.inventoryAlerts(),
         api.revenue(),
         api.progress(),
         api.registrationPolicy(),
       ]);
 
       if (results[0].status === 'fulfilled') setMenuItems(results[0].value);
-      if (results[1].status === 'fulfilled') setAlerts(results[1].value);
-      if (results[2].status === 'fulfilled') setRevenue(results[2].value);
-      if (results[3].status === 'fulfilled') setProgress(results[3].value);
-      if (results[4].status === 'fulfilled') {
-        setModulesGoLive(results[4].value.modulesGoLive ?? null);
+      if (results[1].status === 'fulfilled') setRevenue(results[1].value);
+      if (results[2].status === 'fulfilled') setProgress(results[2].value);
+      if (results[3].status === 'fulfilled') {
+        setModulesGoLive(results[3].value.modulesGoLive ?? null);
       } else {
         setModulesGoLive(null);
       }
     }
     load();
   }, []);
+
+  // Inventory alerts are company/location scoped and recomputed from live stock + usage.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAlerts() {
+      if (!selectedCompanyId) {
+        setAlerts([]);
+        return;
+      }
+      try {
+        const rows = await api.inventoryAlerts(
+          selectedCompanyId,
+          selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
+        );
+        if (!cancelled) setAlerts(rows);
+      } catch {
+        if (!cancelled) setAlerts([]);
+      }
+    }
+    void loadAlerts();
+    return () => { cancelled = true; };
+  }, [selectedCompanyId, selectedLocationIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -253,31 +273,47 @@ export default function App() {
 
   const handleOrderNowFromAlerts = useCallback(async () => {
     if (!selectedCompanyId || overviewAlerts.length === 0) return;
-    let prefill: CreateOrderPrefillItem[] = overviewAlerts.map(alert => ({
-      name: alert.itemName,
-    }));
-    try {
-      const ingredients = await api.ingredients();
-      const byName = new Map(
-        ingredients.map(ing => [ing.name.trim().replace(/\s+/g, ' ').toLowerCase(), ing]),
-      );
-      prefill = overviewAlerts.map(alert => {
-        const key = alert.itemName.trim().replace(/\s+/g, ' ').toLowerCase();
-        const match = byName.get(key);
-        return {
-          componentId: match?.componentId || undefined,
-          name: alert.itemName,
-        };
+    // Dedupe by component so parstock + system alerts for the same item prefill once.
+    const seen = new Set<string>();
+    let prefill: CreateOrderPrefillItem[] = [];
+    for (const alert of overviewAlerts) {
+      const key = (alert.componentId || alert.itemName).trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      prefill.push({
+        componentId: alert.componentId || undefined,
+        name: alert.itemName,
       });
-    } catch {
-      // Name-only prefill still applied in Create Order.
+    }
+    if (prefill.some(p => !p.componentId)) {
+      try {
+        const ingredients = await api.ingredients(
+          selectedCompanyId,
+          selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
+        );
+        const byName = new Map(
+          ingredients.map(ing => [ing.name.trim().replace(/\s+/g, ' ').toLowerCase(), ing]),
+        );
+        prefill = prefill.map(item => {
+          if (item.componentId) return item;
+          const name = item.name ?? '';
+          const key = name.trim().replace(/\s+/g, ' ').toLowerCase();
+          const match = byName.get(key);
+          return {
+            componentId: match?.componentId || undefined,
+            name,
+          };
+        });
+      } catch {
+        // Name-only prefill still applied in Create Order.
+      }
     }
     setRevenueIntent({
       revItem: 'Operation||Order||My Order',
       createOrderPrefill: prefill,
     });
     setActiveNav('Revenue Management');
-  }, [overviewAlerts, selectedCompanyId]);
+  }, [overviewAlerts, selectedCompanyId, selectedLocationIds]);
 
   const clearRevenueIntent = useCallback(() => setRevenueIntent(null), []);
 
