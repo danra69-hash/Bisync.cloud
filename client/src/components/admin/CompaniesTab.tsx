@@ -7,7 +7,7 @@ import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/Sortab
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
-import { Plus, X, Mail } from 'lucide-react';
+import { ImagePlus, Plus, X, Mail } from 'lucide-react';
 import { api, type Company } from '../../api';
 import {
   parseStringArrayJson,
@@ -97,6 +97,55 @@ function CompanyAccessControlCell({
 
 type CompanyDraft = Omit<Company, 'id' | 'locationCount'>;
 
+const MAX_COMPANY_LOGO_BYTES = 1_000_000;
+const ALLOWED_COMPANY_LOGO_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+]);
+
+function companyLogoPreviewSrc(logoBase64?: string, logoContentType?: string): string | null {
+  const raw = (logoBase64 ?? '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('data:')) return raw;
+  const type = (logoContentType ?? '').trim() || 'image/png';
+  return `data:${type};base64,${raw}`;
+}
+
+function readCompanyLogoFile(file: File): Promise<{ fileName: string; contentType: string; base64: string }> {
+  return new Promise((resolve, reject) => {
+    const type = (file.type || '').toLowerCase();
+    if (!ALLOWED_COMPANY_LOGO_TYPES.has(type)) {
+      reject(new Error('Company logo must be PNG, JPEG, WebP, GIF, or SVG.'));
+      return;
+    }
+    if (file.size > MAX_COMPANY_LOGO_BYTES) {
+      reject(new Error('Company logo is too large (max 1 MB).'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const comma = result.indexOf(',');
+      const base64 = comma >= 0 ? result.slice(comma + 1) : result;
+      if (!base64) {
+        reject(new Error('Failed to read company logo.'));
+        return;
+      }
+      resolve({
+        fileName: file.name,
+        contentType: type === 'image/jpg' ? 'image/jpeg' : type,
+        base64,
+      });
+    };
+    reader.onerror = () => reject(new Error('Failed to read company logo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 const blankCompany = (): CompanyDraft => ({
   name: '',
   brn: '',
@@ -114,6 +163,10 @@ const blankCompany = (): CompanyDraft => ({
   businessTypesJson: '[]',
   vendorPolicyTagsJson: '[]',
   modulesJson: '[]',
+  logoFileName: '',
+  logoContentType: '',
+  logoBase64: '',
+  logoSet: false,
   smtpHost: '',
   smtpPort: 587,
   smtpUseSsl: true,
@@ -158,6 +211,7 @@ function CompanyPanel({
     kind: 'ok' | 'error' | 'info';
     text: string;
   } | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Reset panel form only when switching companies — do not wipe outbound feedback when the
   // parent refreshes the same company after save (that previously cleared errors silently).
@@ -170,6 +224,10 @@ function CompanyPanel({
     const defaults = defaultsForOutboundProvider(mode, email);
     setForm({
       ...company,
+      logoFileName: company.logoFileName ?? '',
+      logoContentType: company.logoContentType ?? '',
+      logoBase64: company.logoBase64 ?? '',
+      logoSet: Boolean(company.logoSet || company.logoBase64),
       smtpProviderMode: mode,
       smtpHost: (company.smtpHost ?? '').trim() || defaults.host,
       smtpPort: normalizeSmtpPort(
@@ -191,6 +249,7 @@ function CompanyPanel({
     setTestToEmail(company.email || company.smtpFromEmail || '');
     setOutboundFeedback(null);
     setError(null);
+    if (logoInputRef.current) logoInputRef.current.value = '';
   }, [companyKey]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: reset on company switch only
 
   function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
@@ -235,12 +294,17 @@ function CompanyPanel({
       ? 'graph.microsoft.com'
       : ((form.smtpHost ?? '').trim() || defaults.host);
     const username = (form.smtpUsername ?? '').trim() || outboundEmail;
+    const logoBase64 = (form.logoBase64 ?? '').trim();
     return {
       ...form,
       active,
       businessTypesJson: serializeStringArray(businessTypes),
       vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
       modulesJson: serializeStringArray(modules),
+      logoFileName: logoBase64 ? (form.logoFileName ?? '').trim() : '',
+      logoContentType: logoBase64 ? (form.logoContentType ?? '').trim() : '',
+      logoBase64,
+      logoSet: Boolean(logoBase64),
       smtpProviderMode: mode,
       smtpFromEmail: outboundEmail,
       smtpUsername: username,
@@ -259,6 +323,39 @@ function CompanyPanel({
       graphClientSecret: graphClientSecretDraft.trim(),
     };
   }
+
+  async function handleLogoPick(file: File | null) {
+    if (!file) return;
+    try {
+      const logo = await readCompanyLogoFile(file);
+      setForm(f => ({
+        ...f,
+        logoFileName: logo.fileName,
+        logoContentType: logo.contentType,
+        logoBase64: logo.base64,
+        logoSet: true,
+      }));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to read company logo.');
+    } finally {
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  }
+
+  function clearLogo() {
+    setForm(f => ({
+      ...f,
+      logoFileName: '',
+      logoContentType: '',
+      logoBase64: '',
+      logoSet: false,
+    }));
+    setError(null);
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  }
+
+  const logoPreviewSrc = companyLogoPreviewSrc(form.logoBase64, form.logoContentType);
 
   const canTestOutbound =
     !isNew
@@ -495,6 +592,63 @@ function CompanyPanel({
           <div className="grid grid-cols-1 gap-3">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Company Name *</label>
             <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Bisync Hospitality Sdn Bhd" />
+
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-3">
+              <div className="flex items-start gap-3">
+                <div className="h-16 w-16 shrink-0 rounded-md border border-dashed border-border bg-background flex items-center justify-center overflow-hidden">
+                  {logoPreviewSrc ? (
+                    <img
+                      src={logoPreviewSrc}
+                      alt={`${form.name || 'Company'} logo`}
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <ImagePlus size={18} className="text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div>
+                    <p className="text-xs font-medium">Company Logo</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      PNG, JPEG, WebP, GIF, or SVG up to 1 MB. Saved with the company profile.
+                    </p>
+                    {form.logoFileName ? (
+                      <p className="text-[11px] text-muted-foreground mt-1 truncate" title={form.logoFileName}>
+                        {form.logoFileName}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => logoInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+                    >
+                      <ImagePlus size={12} />
+                      {logoPreviewSrc ? 'Replace Logo' : 'Company Logo'}
+                    </button>
+                    {logoPreviewSrc ? (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={clearLogo}
+                        className="text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                    className="hidden"
+                    onChange={e => void handleLogoPick(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+              </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>

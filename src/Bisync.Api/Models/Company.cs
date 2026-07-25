@@ -21,6 +21,13 @@ public class Company
     /// <summary>UTC timestamp when the company tenant was first registered.</summary>
     public DateTime? RegisteredAt { get; set; }
 
+    /// <summary>Original filename for the company logo (optional).</summary>
+    public string LogoFileName { get; set; } = string.Empty;
+    /// <summary>MIME type of the company logo, e.g. image/png.</summary>
+    public string LogoContentType { get; set; } = string.Empty;
+    /// <summary>Raw base64 company logo bytes (no data-URL prefix).</summary>
+    public string LogoBase64 { get; set; } = string.Empty;
+
     // --- Outbound email (SMTP / Microsoft Graph) for Purchase Order / vendor mail ---
     /// <summary>auto | microsoft | microsoft-graph | google | custom</summary>
     public string SmtpProviderMode { get; set; } = "auto";
