@@ -224,8 +224,10 @@ export const ja = {
     vsLastYear: '対前年',
     alertTypeParstock: 'パーストック',
     alertTypeSystem: 'システム',
+    alertTypeExpiry: '期限',
     stockPar: '在庫: {{stock}} · パー: {{par}}',
     stockCover: '在庫: {{stock}} · 約{{cover}}日分 vs {{cycle}}日サイクル',
+    stockExpiry: '在庫: {{stock}} · 期限 {{expiry}}（{{days}}日）· リスク: {{atRisk}}',
     stockMin: '在庫: {{stock}} · 最小: {{min}}',
   },
   auth: {

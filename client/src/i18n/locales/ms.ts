@@ -224,8 +224,10 @@ export const ms = {
     vsLastYear: 'vs tahun lepas',
     alertTypeParstock: 'Stok par',
     alertTypeSystem: 'Sistem',
+    alertTypeExpiry: 'Tamat tempoh',
     stockPar: 'Stok: {{stock}} · Par: {{par}}',
     stockCover: 'Stok: {{stock}} · ~{{cover}}h liputan vs {{cycle}}h kitaran',
+    stockExpiry: 'Stok: {{stock}} · Tamat {{expiry}} ({{days}}h) · Berisiko: {{atRisk}}',
     stockMin: 'Stok: {{stock}} · Min: {{min}}',
   },
   auth: {

@@ -1,7 +1,10 @@
+using System.Data;
 using System.Globalization;
+using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Bisync.Api.Services;
 
@@ -10,6 +13,8 @@ namespace Bisync.Api.Services;
 /// 1) Par-stock — on-hand near (within 10% above) or below configured/derived par stock.
 /// 2) System — days of cover from avg component usage (product sales BOM) vs delivery cycle
 ///    (order frequency, weekend-aware next delivery).
+/// 3) Expiry — consolidated lots with a product expiry date that will not be fully consumed
+///    before expiry at average daily usage (FIFO-aware).
 /// </summary>
 public sealed class InventoryAlertComputationService(
     BisyncDbContext db,
@@ -67,6 +72,8 @@ public sealed class InventoryAlertComputationService(
             }
         }
 
+        var datedLotsByComponent = await LoadDatedLotsByComponentAsync(companyId, locationIdList, ct);
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var alerts = new List<ComputedInventoryAlert>();
         var seq = 1;
@@ -116,6 +123,21 @@ public sealed class InventoryAlertComputationService(
                 alerts.Add(systemAlert);
                 seq++;
             }
+
+            datedLotsByComponent.TryGetValue(ingredient.ComponentId, out var lots);
+            var expiryAlert = TryBuildExpiryAlert(
+                seq,
+                ingredient,
+                lots ?? [],
+                dailyUsage,
+                uom,
+                today,
+                computedUsage > 0);
+            if (expiryAlert is not null)
+            {
+                alerts.Add(expiryAlert);
+                seq++;
+            }
         }
 
         return alerts
@@ -123,6 +145,127 @@ public sealed class InventoryAlertComputationService(
             .ThenBy(a => a.ItemName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(a => a.AlertType, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    async Task<Dictionary<string, List<DatedLot>>> LoadDatedLotsByComponentAsync(
+        int companyId,
+        List<string> locationIdList,
+        CancellationToken ct)
+    {
+        var locationSet = new HashSet<string>(locationIdList, StringComparer.OrdinalIgnoreCase);
+        var purchases = await db.InventoryPurchases.AsNoTracking()
+            .Where(p => p.CompanyId == companyId && p.PurchaseOrderItemId > 0)
+            .ToListAsync(ct);
+        if (purchases.Count == 0)
+            return new Dictionary<string, List<DatedLot>>(StringComparer.OrdinalIgnoreCase);
+
+        if (locationSet.Count > 0)
+        {
+            purchases = purchases
+                .Where(p =>
+                {
+                    var loc = (p.LocationExternalId ?? string.Empty).Trim();
+                    if (!string.IsNullOrEmpty(loc))
+                        return locationSet.Contains(loc);
+                    var ids = PurchaseOrderWorkflow.DeserializeLocationIds(p.LocationIdsJson);
+                    return ids.Count == 0 || ids.Any(id => locationSet.Contains(id));
+                })
+                .ToList();
+        }
+
+        var poItemIds = purchases.Select(p => p.PurchaseOrderItemId).Distinct().ToList();
+        var expiryByPoItem = await db.PurchaseOrderItems.AsNoTracking()
+            .Where(i => poItemIds.Contains(i.Id))
+            .Select(i => new { i.Id, i.ProductExpiryDate })
+            .ToDictionaryAsync(i => i.Id, i => (i.ProductExpiryDate ?? string.Empty).Trim(), ct);
+
+        var remainingByPurchase = await LoadBatchRemainingByPurchaseAsync(companyId, ct);
+        var result = new Dictionary<string, List<DatedLot>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var purchase in purchases)
+        {
+            var expiryRaw = (purchase.ProductExpiryDate ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(expiryRaw)
+                && expiryByPoItem.TryGetValue(purchase.PurchaseOrderItemId, out var fromPo))
+            {
+                expiryRaw = fromPo;
+            }
+
+            if (string.IsNullOrWhiteSpace(expiryRaw)
+                || !DateOnly.TryParseExact(
+                    expiryRaw,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var expiryDate))
+            {
+                continue;
+            }
+
+            if (!remainingByPurchase.TryGetValue(purchase.Id, out var remaining) || remaining <= 0)
+                continue;
+
+            var componentId = (purchase.ComponentId ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(componentId)) continue;
+
+            if (!result.TryGetValue(componentId, out var list))
+            {
+                list = [];
+                result[componentId] = list;
+            }
+
+            list.Add(new DatedLot(
+                purchase.Id,
+                remaining,
+                (purchase.Uom ?? string.Empty).Trim(),
+                purchase.DateCreatedInStock,
+                expiryDate));
+        }
+
+        foreach (var key in result.Keys.ToList())
+        {
+            result[key] = result[key]
+                .OrderBy(l => l.ReceivedAt)
+                .ThenBy(l => l.PurchaseId)
+                .ToList();
+        }
+
+        return result;
+    }
+
+    async Task<Dictionary<int, decimal>> LoadBatchRemainingByPurchaseAsync(int companyId, CancellationToken ct)
+    {
+        var map = new Dictionary<int, decimal>();
+        await using var cmd = db.Database.GetDbConnection().CreateCommand();
+        if (cmd.Connection!.State != ConnectionState.Open)
+            await db.Database.OpenConnectionAsync(ct);
+        cmd.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+        cmd.CommandText =
+            """
+            SELECT source_purchase_id, COALESCE(SUM(remaining_qty), 0)
+            FROM inventory_batches
+            WHERE status = 'ACTIVE'
+              AND remaining_qty > 0
+              AND source_purchase_id IS NOT NULL
+              AND (company_id = @company_id OR company_id IS NULL)
+            GROUP BY source_purchase_id
+            """;
+        var p = cmd.CreateParameter();
+        p.ParameterName = "@company_id";
+        p.Value = companyId;
+        cmd.Parameters.Add(p);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (reader.IsDBNull(0)) continue;
+            var purchaseId = Convert.ToInt32(reader.GetValue(0));
+            var remaining = Convert.ToDecimal(reader.GetValue(1));
+            if (purchaseId > 0 && remaining > 0)
+                map[purchaseId] = remaining;
+        }
+
+        return map;
     }
 
     static ComputedInventoryAlert? TryBuildParStockAlert(
@@ -161,7 +304,10 @@ public sealed class InventoryAlertComputationService(
             OrderFreqDays: 0,
             DeliveryCycleDays: 0,
             DaysOfCover: 0,
-            Uom: uom);
+            Uom: uom,
+            ExpiryDate: null,
+            DaysUntilExpiry: null,
+            AtRiskQty: null);
     }
 
     static ComputedInventoryAlert? TryBuildSystemAlert(
@@ -202,8 +348,160 @@ public sealed class InventoryAlertComputationService(
             OrderFreqDays: orderFreqDays,
             DeliveryCycleDays: deliveryCycleDays,
             DaysOfCover: daysOfCover,
-            Uom: uom);
+            Uom: uom,
+            ExpiryDate: null,
+            DaysUntilExpiry: null,
+            AtRiskQty: null);
     }
+
+    /// <summary>
+    /// FIFO-aware expiry risk: only lots consolidated with an expiry date.
+    /// Alerts when remaining qty cannot be consumed before expiry at average daily usage.
+    /// </summary>
+    static ComputedInventoryAlert? TryBuildExpiryAlert(
+        int id,
+        Ingredient ingredient,
+        IReadOnlyList<DatedLot> lots,
+        decimal dailyUsage,
+        string displayUom,
+        DateOnly today,
+        bool usageFromSales)
+    {
+        if (lots.Count == 0 || dailyUsage <= 0) return null;
+
+        decimal virtualDay = 0;
+        decimal atRiskQty = 0;
+        DateOnly? worstExpiry = null;
+        int? worstDaysLeft = null;
+        var anyDated = false;
+
+        foreach (var lot in lots)
+        {
+            anyDated = true;
+            var remainingRecipe = ToRecipeQty(lot.RemainingQty, lot.Uom, ingredient);
+            if (remainingRecipe <= 0) continue;
+
+            var daysToDrain = remainingRecipe / dailyUsage;
+            var daysLeft = lot.ExpiryDate.DayNumber - today.DayNumber;
+
+            if (daysLeft < 0)
+            {
+                atRiskQty += remainingRecipe;
+                worstExpiry = worstExpiry is null || lot.ExpiryDate < worstExpiry
+                    ? lot.ExpiryDate
+                    : worstExpiry;
+                worstDaysLeft = worstDaysLeft is null
+                    ? daysLeft
+                    : Math.Min(worstDaysLeft.Value, daysLeft);
+            }
+            else
+            {
+                var consumableBeforeExpiry = dailyUsage * Math.Max(0m, daysLeft - virtualDay);
+                var uneaten = remainingRecipe - consumableBeforeExpiry;
+                if (uneaten > StockCardFifoEngine.QtyEpsilon)
+                {
+                    atRiskQty += uneaten;
+                    worstExpiry = worstExpiry is null || lot.ExpiryDate < worstExpiry
+                        ? lot.ExpiryDate
+                        : worstExpiry;
+                    worstDaysLeft = worstDaysLeft is null
+                        ? daysLeft
+                        : Math.Min(worstDaysLeft.Value, daysLeft);
+                }
+            }
+
+            virtualDay += daysToDrain;
+        }
+
+        if (!anyDated || atRiskQty <= StockCardFifoEngine.QtyEpsilon || worstExpiry is null)
+            return null;
+
+        var daysUntil = worstDaysLeft ?? (worstExpiry.Value.DayNumber - today.DayNumber);
+        var status = daysUntil <= 0 || atRiskQty >= dailyUsage * 3m ? "critical" : "low";
+        var usageBasis = usageFromSales ? "avg product sales" : "configured daily usage";
+        var expiryLabel = worstExpiry.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        return new ComputedInventoryAlert(
+            Id: id,
+            ItemName: ingredient.Name,
+            ComponentId: ingredient.ComponentId,
+            Stock: FormatQty(
+                lots.Sum(l => ToRecipeQty(l.RemainingQty, l.Uom, ingredient)),
+                displayUom),
+            Status: status,
+            Threshold: expiryLabel,
+            AlertType: "expiry",
+            BasisLabel: "Based on expiry & average usage",
+            Detail: daysUntil < 0
+                ? $"Expired stock on hand ({expiryLabel}) · ~{FormatQty(atRiskQty, displayUom)} at risk from consolidated lots with expiry."
+                : $"~{FormatQty(atRiskQty, displayUom)} may expire before use ({usageBasis}) · earliest expiry {expiryLabel} ({daysUntil}d left).",
+            OnHandQty: lots.Sum(l => ToRecipeQty(l.RemainingQty, l.Uom, ingredient)),
+            ParStock: 0,
+            DailyUsage: dailyUsage,
+            OrderFreqDays: 0,
+            DeliveryCycleDays: 0,
+            DaysOfCover: decimal.Round(
+                lots.Sum(l => ToRecipeQty(l.RemainingQty, l.Uom, ingredient)) / dailyUsage,
+                2,
+                MidpointRounding.AwayFromZero),
+            Uom: displayUom,
+            ExpiryDate: expiryLabel,
+            DaysUntilExpiry: daysUntil,
+            AtRiskQty: decimal.Round(atRiskQty, 4, MidpointRounding.AwayFromZero));
+    }
+
+    static decimal ToRecipeQty(decimal qty, string lotUom, Ingredient ingredient)
+    {
+        if (qty <= 0) return 0;
+        var lot = NormalizeUom(lotUom);
+        var recipe = NormalizeUom(ingredient.RecipeUom);
+        var inventory = NormalizeUom(ingredient.InventoryUom);
+
+        if (string.IsNullOrEmpty(lot) || string.IsNullOrEmpty(recipe) || lot == recipe)
+            return qty;
+
+        if (lot == inventory && TryReadConversion(ingredient.DetailConfigJson, out var fromInv, out var toRecipe)
+            && fromInv > 0)
+        {
+            return qty * (toRecipe / fromInv);
+        }
+
+        // Unknown UOM mapping — treat as already recipe-compatible rather than drop the lot.
+        return qty;
+    }
+
+    static bool TryReadConversion(string? json, out decimal inventoryQty, out decimal recipeQty)
+    {
+        inventoryQty = recipeQty = 0;
+        if (string.IsNullOrWhiteSpace(json) || json is "{}") return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            inventoryQty = ReadDecimal(root, "convertFromInventoryQty", "ConvertFromInventoryQty");
+            recipeQty = ReadDecimal(root, "convertToRecipeQty", "ConvertToRecipeQty");
+            return inventoryQty > 0 && recipeQty > 0;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    static decimal ReadDecimal(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!root.TryGetProperty(name, out var prop)) continue;
+            if (prop.ValueKind == JsonValueKind.Number && prop.TryGetDecimal(out var n)) return n;
+            if (prop.ValueKind == JsonValueKind.String
+                && decimal.TryParse(prop.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var s))
+                return s;
+        }
+        return 0;
+    }
+
+    static string NormalizeUom(string? uom) => (uom ?? string.Empty).Trim().ToLowerInvariant();
 
     /// <summary>
     /// Calendar days until the next typical delivery, starting from today + order frequency,
@@ -226,6 +524,13 @@ public sealed class InventoryAlertComputationService(
 
     static string FormatNumber(decimal value) =>
         value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    sealed record DatedLot(
+        int PurchaseId,
+        decimal RemainingQty,
+        string Uom,
+        DateTime ReceivedAt,
+        DateOnly ExpiryDate);
 }
 
 public sealed record ComputedInventoryAlert(
@@ -244,4 +549,7 @@ public sealed record ComputedInventoryAlert(
     int OrderFreqDays,
     int DeliveryCycleDays,
     decimal DaysOfCover,
-    string Uom);
+    string Uom,
+    string? ExpiryDate,
+    int? DaysUntilExpiry,
+    decimal? AtRiskQty);

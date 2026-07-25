@@ -224,8 +224,10 @@ export const zh = {
     vsLastYear: '同比去年',
     alertTypeParstock: '标准库存',
     alertTypeSystem: '系统',
+    alertTypeExpiry: '效期',
     stockPar: '库存：{{stock}} · 标准：{{par}}',
     stockCover: '库存：{{stock}} · 约{{cover}}天覆盖 vs {{cycle}}天周期',
+    stockExpiry: '库存：{{stock}} · 到期 {{expiry}}（{{days}}天）· 风险：{{atRisk}}',
     stockMin: '库存：{{stock}} · 最低：{{min}}',
   },
   auth: {

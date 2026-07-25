@@ -224,8 +224,10 @@ export const es = {
     vsLastYear: 'vs año pasado',
     alertTypeParstock: 'Stock mínimo',
     alertTypeSystem: 'Sistema',
+    alertTypeExpiry: 'Caducidad',
     stockPar: 'Stock: {{stock}} · Par: {{par}}',
     stockCover: 'Stock: {{stock}} · ~{{cover}}d cobertura vs {{cycle}}d ciclo',
+    stockExpiry: 'Stock: {{stock}} · Caduca {{expiry}} ({{days}}d) · En riesgo: {{atRisk}}',
     stockMin: 'Stock: {{stock}} · Mín: {{min}}',
   },
   auth: {

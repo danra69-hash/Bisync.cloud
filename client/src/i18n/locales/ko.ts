@@ -224,8 +224,10 @@ export const ko = {
     vsLastYear: '전년 대비',
     alertTypeParstock: '파 스톡',
     alertTypeSystem: '시스템',
+    alertTypeExpiry: '유통기한',
     stockPar: '재고: {{stock}} · 파: {{par}}',
     stockCover: '재고: {{stock}} · 약 {{cover}}일 재고 vs {{cycle}}일 주기',
+    stockExpiry: '재고: {{stock}} · 만료 {{expiry}} ({{days}}일) · 위험: {{atRisk}}',
     stockMin: '재고: {{stock}} · 최소: {{min}}',
   },
   auth: {
