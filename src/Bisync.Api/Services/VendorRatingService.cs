@@ -425,8 +425,10 @@ public class VendorRatingService(BisyncDbContext db)
 
     static void AccumulatePoAndAccuracy(VendorMetrics metrics, PurchaseOrder order)
     {
-        // Partial deliveries do not affect delivery/PO rating until Final delivery completed
-        // (status becomes Reconciled with ReconciledAt / FinalDeliveryCompletedAt set).
+        // Partial deliveries / pre-committed masters do not affect delivery rating until
+        // a release PO is finally reconciled (or Final delivery completed).
+        if (order.IsPreCommitted)
+            return;
         if (!string.Equals(order.Status, PurchaseOrderWorkflow.StatusReconciled, StringComparison.OrdinalIgnoreCase))
             return;
         if (order.ReconciledAt is null && order.FinalDeliveryCompletedAt is null) return;

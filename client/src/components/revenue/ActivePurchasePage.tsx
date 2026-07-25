@@ -42,7 +42,7 @@ const ACTIVE_PURCHASE_TABLE_COLUMNS: SortableColumnDef<ActivePurchaseSortColumn>
   { key: 'number', label: 'Number' },
   { key: 'vendor', label: 'Vendor' },
   { key: 'ordered', label: 'Ordered' },
-  { key: 'delivery', label: 'Delivery' },
+  { key: 'delivery', label: 'Delivery / Commitment' },
   { key: 'items', label: 'Items', align: 'right' },
   { key: 'total', label: 'Total', align: 'right' },
   { key: 'status', label: 'Status' },
@@ -62,7 +62,23 @@ function statusBadge(order: PurchaseOrder) {
   );
 }
 
+function documentTypeLabel(order: PurchaseOrder): string {
+  if (order.isPreCommitted) return 'Pre-PO';
+  if (order.documentType === 'PR') return 'PR';
+  return 'PO';
+}
+
+function deliveryOrCommitmentLabel(order: PurchaseOrder): string {
+  if (order.isPreCommitted) {
+    const from = order.commitmentStartDate ?? '—';
+    const to = order.commitmentEndDate ?? '—';
+    return `${from} → ${to}`;
+  }
+  return order.deliveryDate;
+}
+
 function nextActionLabel(order: PurchaseOrder): string {
+  if (order.isPreCommitted) return 'View';
   if (order.canApprove) return 'Approve';
   if (order.canReceive) return 'Receive';
   if (order.canReconcile) return order.allowPartialDelivery ? 'Consolidate' : 'Reconcile';
@@ -126,7 +142,11 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     [orders],
   );
   const purchaseOrders = useMemo(
-    () => orders.filter(o => !(o.documentType === 'PR' || o.status === 'Pending Approval')),
+    () => orders.filter(o => !(o.documentType === 'PR' || o.status === 'Pending Approval') && !o.isPreCommitted),
+    [orders],
+  );
+  const committedOrders = useMemo(
+    () => orders.filter(o => o.isPreCommitted),
     [orders],
   );
 
@@ -137,11 +157,11 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         sortColumn,
         sortDirection,
         {
-          type: o => (o.documentType === 'PR' ? 'PR' : 'PO'),
+          type: o => documentTypeLabel(o),
           number: o => o.poNumber,
           vendor: o => o.vendorName,
           ordered: o => o.orderDate,
-          delivery: o => o.deliveryDate,
+          delivery: o => deliveryOrCommitmentLabel(o),
           items: o => o.items.length,
           total: o => orderTotal(o),
           status: o => resolvePurchaseOrderStatusLabel(o),
@@ -199,7 +219,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Open items</p>
           <p className="text-2xl font-semibold mt-1">{orders.length}</p>
@@ -211,6 +231,10 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Purchase orders</p>
           <p className="text-2xl font-semibold mt-1">{purchaseOrders.length}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Pre-committed</p>
+          <p className="text-2xl font-semibold mt-1">{committedOrders.length}</p>
         </div>
       </div>
 
@@ -245,11 +269,11 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                     className="hover:bg-muted/20 cursor-pointer"
                     onClick={() => setSelectedOrderId(order.id)}
                   >
-                    <td className={tdCls}>{order.documentType === 'PR' ? 'PR' : 'PO'}</td>
+                    <td className={tdCls}>{documentTypeLabel(order)}</td>
                     <td className={`${tdCls} font-sans text-primary`}>{order.poNumber}</td>
                     <td className={tdCls}>{order.vendorName}</td>
                     <td className={`${tdCls} font-sans text-muted-foreground`}>{order.orderDate}</td>
-                    <td className={`${tdCls} font-sans text-muted-foreground`}>{order.deliveryDate}</td>
+                    <td className={`${tdCls} font-sans text-muted-foreground`}>{deliveryOrCommitmentLabel(order)}</td>
                     <td className={tdCls}>{order.items.length}</td>
                     <td className={`${tdCls} font-sans`}>{rm(orderTotal(order))}</td>
                     <td className={tdCls}>{statusBadge(order)}</td>

@@ -6,6 +6,8 @@ public class OrderTemplate
     public string Name { get; set; } = string.Empty;
     public string VendorExternalId { get; set; } = string.Empty;
     public string VendorName { get; set; } = string.Empty;
+    /// <summary>schedule (default) | pre_committed — pre-committed templates are for blanket commitment lines.</summary>
+    public string TemplateKind { get; set; } = "schedule";
     public string ScheduleMode { get; set; } = string.Empty;
     public string WeekdaysJson { get; set; } = "[]";
     public string MonthDaysJson { get; set; } = "[]";

@@ -53,6 +53,7 @@ public class OrderTemplatesController(BisyncDbContext db) : ControllerBase
         var template = new OrderTemplate
         {
             Name = request.Name.Trim(),
+            TemplateKind = NormalizeTemplateKind(request.TemplateKind),
             VendorExternalId = request.VendorExternalId?.Trim() ?? string.Empty,
             VendorName = request.VendorName?.Trim() ?? string.Empty,
             ScheduleMode = request.ScheduleMode?.Trim() ?? string.Empty,
@@ -87,6 +88,7 @@ public class OrderTemplatesController(BisyncDbContext db) : ControllerBase
             return NotFound();
 
         template.Name = request.Name.Trim();
+        template.TemplateKind = NormalizeTemplateKind(request.TemplateKind);
         template.VendorExternalId = request.VendorExternalId?.Trim() ?? string.Empty;
         template.VendorName = request.VendorName?.Trim() ?? string.Empty;
         template.ScheduleMode = request.ScheduleMode?.Trim() ?? string.Empty;
@@ -117,6 +119,12 @@ public class OrderTemplatesController(BisyncDbContext db) : ControllerBase
         return NoContent();
     }
 
+    static string NormalizeTemplateKind(string? kind)
+    {
+        var value = (kind ?? string.Empty).Trim().ToLowerInvariant();
+        return value == "pre_committed" ? "pre_committed" : "schedule";
+    }
+
     static string? ValidateRequest(UpsertOrderTemplateRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -125,18 +133,22 @@ public class OrderTemplatesController(BisyncDbContext db) : ControllerBase
         if (request.Items is null || request.Items.Count == 0)
             return "Add at least one component to the template.";
 
+        var kind = NormalizeTemplateKind(request.TemplateKind);
         var scheduleMode = request.ScheduleMode?.Trim() ?? string.Empty;
         var weekdays = request.Weekdays?.Where(day => !string.IsNullOrWhiteSpace(day)).ToList() ?? [];
         var monthDays = request.MonthDays?.Distinct().ToList() ?? [];
 
-        if (scheduleMode == "weekday" && weekdays.Count == 0)
-            return "Select at least one day of the week.";
-        if (scheduleMode == "monthday" && monthDays.Count == 0)
-            return "Select at least one day of the month.";
-        if (scheduleMode == "weekday" && monthDays.Count > 0)
-            return "Use either days of the week or days of the month, not both.";
-        if (scheduleMode == "monthday" && weekdays.Count > 0)
-            return "Use either days of the week or days of the month, not both.";
+        if (kind == "schedule")
+        {
+            if (scheduleMode == "weekday" && weekdays.Count == 0)
+                return "Select at least one day of the week.";
+            if (scheduleMode == "monthday" && monthDays.Count == 0)
+                return "Select at least one day of the month.";
+            if (scheduleMode == "weekday" && monthDays.Count > 0)
+                return "Use either days of the week or days of the month, not both.";
+            if (scheduleMode == "monthday" && weekdays.Count > 0)
+                return "Use either days of the week or days of the month, not both.";
+        }
 
         foreach (var item in request.Items)
         {
@@ -198,6 +210,7 @@ public class OrderTemplatesController(BisyncDbContext db) : ControllerBase
     {
         template.Id,
         name = template.Name,
+        templateKind = string.IsNullOrWhiteSpace(template.TemplateKind) ? "schedule" : template.TemplateKind,
         vendorExternalId = template.VendorExternalId,
         vendorName = template.VendorName,
         scheduleMode = template.ScheduleMode,

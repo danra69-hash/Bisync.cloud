@@ -76,6 +76,7 @@ builder.Services.AddScoped<IncomeTaxService>();
 builder.Services.AddScoped<ReplacementPublicHolidayService>();
 builder.Services.AddScoped<ComponentFifoCostingService>();
 builder.Services.AddScoped<FifoBatchIssueService>();
+builder.Services.AddScoped<PreCommittedPoDrawdownService>();
 builder.Services.AddScoped<ComponentStockService>();
 builder.Services.AddScoped<SplitUseService>();
 builder.Services.AddScoped<ProductSaleInventoryService>();

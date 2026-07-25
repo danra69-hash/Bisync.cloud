@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Plus, Search, Trash2, X } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
-import { api, type OrderTemplate, type Vendor } from '../../api';
+import { api, type OrderTemplate, type OrderTemplateKind, type Vendor } from '../../api';
 import {
   applyVendorProductOverrides,
   formatDeliveryUnitPath,
@@ -174,6 +174,7 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
   const [vendorFilter, setVendorFilter] = useState('');
   const [search, setSearch] = useState('');
   const [templateName, setTemplateName] = useState('');
+  const [templateKind, setTemplateKind] = useState<OrderTemplateKind>('schedule');
   const [templateLines, setTemplateLines] = useState<TemplateLine[]>([]);
   const [scheduleMode, setScheduleMode] = useState<'weekday' | 'monthday' | ''>('');
   const [weekdays, setWeekdays] = useState<string[]>([]);
@@ -264,6 +265,7 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
   function resetEditor() {
     setSelectedTemplateId('');
     setTemplateName('');
+    setTemplateKind('schedule');
     setTemplateLines([]);
     setVendorFilter('');
     setSearch('');
@@ -279,6 +281,7 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
   function loadTemplate(template: OrderTemplate) {
     setSelectedTemplateId(String(template.id));
     setTemplateName(template.name);
+    setTemplateKind(template.templateKind === 'pre_committed' ? 'pre_committed' : 'schedule');
     setVendorFilter(template.vendorExternalId || '');
     setScheduleMode(template.scheduleMode || '');
     setWeekdays(template.weekdays ?? []);
@@ -359,17 +362,19 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
       setError('Add at least one component to the template.');
       return;
     }
-    if (scheduleMode === 'weekday' && weekdays.length === 0) {
-      setError('Select at least one day of the week.');
-      return;
-    }
-    if (scheduleMode === 'monthday' && monthDays.length === 0) {
-      setError('Select at least one day of the month.');
-      return;
-    }
-    if (!scheduleMode) {
-      setError('Choose either days of the week or days of the month.');
-      return;
+    if (templateKind === 'schedule') {
+      if (scheduleMode === 'weekday' && weekdays.length === 0) {
+        setError('Select at least one day of the week.');
+        return;
+      }
+      if (scheduleMode === 'monthday' && monthDays.length === 0) {
+        setError('Select at least one day of the month.');
+        return;
+      }
+      if (!scheduleMode) {
+        setError('Choose either days of the week or days of the month.');
+        return;
+      }
     }
 
     const items = [];
@@ -398,12 +403,13 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
 
     const payload = {
       name: templateName.trim(),
+      templateKind,
       vendorExternalId: vendorFilter || undefined,
       vendorName: selectedVendor?.name,
-      scheduleMode,
-      weekdays: scheduleMode === 'weekday' ? weekdays : [],
-      monthDays: scheduleMode === 'monthday' ? monthDays : [],
-      repeatEnabled,
+      scheduleMode: templateKind === 'schedule' ? scheduleMode : '',
+      weekdays: templateKind === 'schedule' && scheduleMode === 'weekday' ? weekdays : [],
+      monthDays: templateKind === 'schedule' && scheduleMode === 'monthday' ? monthDays : [],
+      repeatEnabled: templateKind === 'schedule' ? repeatEnabled : false,
       companyId: selectedCompanyId,
       locationExternalIds: selectedLocationIds,
       items,
@@ -448,7 +454,9 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
           >
             <option value="">New template</option>
             {savedTemplates.map(template => (
-              <option key={template.id} value={String(template.id)}>{template.name}</option>
+              <option key={template.id} value={String(template.id)}>
+                {template.templateKind === 'pre_committed' ? `[Pre-committed] ${template.name}` : template.name}
+              </option>
             ))}
           </select>
           <button
@@ -473,22 +481,39 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
             <div>
               <h3 className="text-sm font-semibold">Template conditions</h3>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Use either day of the week or day of the month, not both.
+                {templateKind === 'pre_committed'
+                  ? 'Pre-committed templates store commitment line quantities for use from My Order → PO Template.'
+                  : 'Use either day of the week or day of the month, not both.'}
               </p>
             </div>
 
-            <div className="space-y-1.5 max-w-xl">
-              <label className={labelCls} htmlFor="template-name">Template name</label>
-              <input
-                id="template-name"
-                type="text"
-                value={templateName}
-                onChange={e => setTemplateName(e.target.value)}
-                placeholder="e.g. Weekly dry store order"
-                className={fieldCls}
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl">
+              <div className="space-y-1.5">
+                <label className={labelCls} htmlFor="template-name">Template name</label>
+                <input
+                  id="template-name"
+                  type="text"
+                  value={templateName}
+                  onChange={e => setTemplateName(e.target.value)}
+                  placeholder="e.g. Weekly dry store order"
+                  className={fieldCls}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className={labelCls} htmlFor="template-kind">Template type</label>
+                <select
+                  id="template-kind"
+                  value={templateKind}
+                  onChange={e => setTemplateKind(e.target.value === 'pre_committed' ? 'pre_committed' : 'schedule')}
+                  className={fieldCls}
+                >
+                  <option value="schedule">Scheduled PO template</option>
+                  <option value="pre_committed">Pre-committed PO</option>
+                </select>
+              </div>
             </div>
 
+            {templateKind === 'schedule' ? (
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_12rem] gap-4 items-start">
               <div className={`rounded-lg border border-border p-3 space-y-3 ${weekdayDisabled ? 'opacity-50' : ''}`}>
                 <p className={labelCls}>Day of the week</p>
@@ -562,6 +587,12 @@ export function OrderTemplatePage({ selectedCompanyId, selectedLocationIds }: Pr
                 </label>
               </div>
             </div>
+            ) : (
+              <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-800 dark:text-teal-300">
+                Save commitment line quantities here, then apply from My Order → PO Template and create a
+                Pre-committed PO with Commitment Date from / to.
+              </div>
+            )}
 
             <div className="flex items-center justify-between gap-3 pt-2 border-t border-border">
               {selectedTemplateId ? (

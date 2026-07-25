@@ -1162,6 +1162,8 @@ export interface PurchaseOrderItem {
   reconciledUnitPrice?: number | null;
   deliveredQuantity?: number;
   remainingQuantity?: number;
+  drawnQuantity?: number;
+  remainingCommitmentQuantity?: number;
   taxAmount?: number;
   halalCertNo?: string;
   productExpiryDate?: string | null;
@@ -1185,6 +1187,10 @@ export interface PurchaseOrder {
   receivedAt?: string | null;
   reconciledAt?: string | null;
   finalDeliveryCompletedAt?: string | null;
+  isPreCommitted?: boolean;
+  commitmentStartDate?: string | null;
+  commitmentEndDate?: string | null;
+  sourceCommittedPurchaseOrderId?: number | null;
   vendorShareToken?: string | null;
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;
@@ -1222,6 +1228,10 @@ export interface CreatePurchaseOrderPayload {
   orderDate?: string;
   deliveryDate?: string;
   status?: string;
+  isPreCommitted?: boolean;
+  commitmentStartDate?: string;
+  commitmentEndDate?: string;
+  sourceCommittedPurchaseOrderId?: number;
   items: CreatePurchaseOrderItemPayload[];
 }
 
@@ -1867,9 +1877,12 @@ export interface OrderTemplateItem {
   sortOrder?: number;
 }
 
+export type OrderTemplateKind = 'schedule' | 'pre_committed';
+
 export interface OrderTemplate {
   id: number;
   name: string;
+  templateKind?: OrderTemplateKind | string;
   vendorExternalId: string;
   vendorName: string;
   scheduleMode: 'weekday' | 'monthday' | '';
@@ -1885,6 +1898,7 @@ export interface OrderTemplate {
 
 export interface UpsertOrderTemplatePayload {
   name: string;
+  templateKind?: OrderTemplateKind | string;
   vendorExternalId?: string;
   vendorName?: string;
   scheduleMode?: 'weekday' | 'monthday' | '';
@@ -3020,6 +3034,8 @@ export const api = {
   purchaseOrders: () => fetchJson<PurchaseOrder[]>('/api/purchaseorders'),
   activePurchaseOrders: (companyId?: number) =>
     fetchJson<PurchaseOrder[]>(`/api/purchaseorders/active${companyId ? `?companyId=${companyId}` : ''}`),
+  committedPurchaseOrders: (companyId?: number) =>
+    fetchJson<PurchaseOrder[]>(`/api/purchaseorders/committed${companyId ? `?companyId=${companyId}` : ''}`),
   inboundSalesOrders: (companyId: number) =>
     fetchJson<PurchaseOrder[]>(`/api/purchaseorders/inbound-sales?companyId=${companyId}`),
   vendorApprovePurchaseOrder: (

@@ -5,13 +5,15 @@ export function isPurchaseOrderVendorAccepted(order: Pick<PurchaseOrder, 'status
 }
 
 export function resolvePurchaseOrderStatusLabel(
-  order: Pick<PurchaseOrder, 'status' | 'documentType' | 'vendorAcceptedAt'>,
+  order: Pick<PurchaseOrder, 'status' | 'documentType' | 'vendorAcceptedAt' | 'isPreCommitted'>,
 ): string {
   const status = order.status?.trim() ?? '';
   if (
     status === 'Partially Delivered'
     || status === 'Received'
     || status === 'Reconciled'
+    || status === 'Committed'
+    || status === 'Commitment Closed'
   ) {
     return status;
   }
@@ -26,6 +28,12 @@ export function purchaseOrderStatusBadgeClass(statusLabel: string): string {
   if (normalized.includes('pending')) return 'bg-amber-500/15 text-amber-700 dark:text-amber-400';
   if (normalized === 'partially delivered') {
     return 'bg-orange-500/15 text-orange-700 dark:text-orange-400';
+  }
+  if (normalized === 'committed') {
+    return 'bg-teal-500/15 text-teal-700 dark:text-teal-400';
+  }
+  if (normalized === 'commitment closed') {
+    return 'bg-muted text-muted-foreground';
   }
   if (normalized === 'open' || normalized === 'confirmed' || normalized === 'in transit') {
     return 'bg-primary/15 text-primary';

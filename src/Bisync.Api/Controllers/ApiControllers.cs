@@ -936,7 +936,8 @@ public class PurchaseOrdersController(
     BisyncDbContext db,
     LocationPartitionService locationPartitions,
     SplitUseService splitUse,
-    FifoBatchIssueService fifoBatches) : ControllerBase
+    FifoBatchIssueService fifoBatches,
+    PreCommittedPoDrawdownService preCommittedDrawdown) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
@@ -950,7 +951,8 @@ public class PurchaseOrdersController(
     public async Task<ActionResult<IEnumerable<object>>> GetActive([FromQuery] int? companyId)
     {
         var query = BaseQuery()
-            .Where(p => p.Status != PurchaseOrderWorkflow.StatusReconciled);
+            .Where(p => p.Status != PurchaseOrderWorkflow.StatusReconciled
+                && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed);
 
         if (companyId is int id)
             query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
@@ -961,6 +963,29 @@ public class PurchaseOrdersController(
         var orders = await BaseQuery()
             .Where(p => orderIds.Contains(p.Id))
             .ToListAsync();
+        var flags = await ResolveAllowPartialFlagsAsync(orders);
+        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
+    }
+
+    /// <summary>Active pre-committed (blanket) POs available for drawdown / PO Template apply.</summary>
+    [HttpGet("committed")]
+    public async Task<ActionResult<IEnumerable<object>>> GetCommitted([FromQuery] int? companyId)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var query = BaseQuery()
+            .Where(p => p.IsPreCommitted && p.Status == PurchaseOrderWorkflow.StatusCommitted)
+            .Where(p =>
+                (p.CommitmentStartDate == null || p.CommitmentStartDate <= today)
+                && (p.CommitmentEndDate == null || p.CommitmentEndDate >= today));
+
+        if (companyId is int id)
+            query = query.Where(p => p.CompanyId == null || p.CompanyId == id);
+
+        var orders = await query.ToListAsync();
+        // Only those with remaining commitment qty.
+        orders = orders
+            .Where(o => o.Items.Any(i => i.Quantity - i.DrawnQuantity > 0.0001m))
+            .ToList();
         var flags = await ResolveAllowPartialFlagsAsync(orders);
         return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
     }
@@ -1151,8 +1176,21 @@ public class PurchaseOrdersController(
             if (!reservedPoNumbers.Add(poNumber))
                 return Conflict(new { message = $"Purchase order number {poNumber} already exists." });
 
-            var documentType = PurchaseOrderWorkflow.ResolveDocumentType(orderRequest.DocumentType, orderRequest.Status);
-            var status = PurchaseOrderWorkflow.ResolveStatus(documentType, orderRequest.Status);
+            var isPreCommitted = orderRequest.IsPreCommitted;
+            if (isPreCommitted)
+            {
+                if (orderRequest.CommitmentStartDate is null || orderRequest.CommitmentEndDate is null)
+                    return BadRequest(new { message = "Commitment Date from and to are required for Pre-committed POs." });
+                if (orderRequest.CommitmentEndDate < orderRequest.CommitmentStartDate)
+                    return BadRequest(new { message = "Commitment end date must be on or after the start date." });
+            }
+
+            var documentType = isPreCommitted
+                ? PurchaseOrderWorkflow.DocumentTypePo
+                : PurchaseOrderWorkflow.ResolveDocumentType(orderRequest.DocumentType, orderRequest.Status);
+            var status = isPreCommitted
+                ? PurchaseOrderWorkflow.StatusCommitted
+                : PurchaseOrderWorkflow.ResolveStatus(documentType, orderRequest.Status);
 
             var order = new PurchaseOrder
             {
@@ -1160,17 +1198,26 @@ public class PurchaseOrdersController(
                 VendorName = vendorName,
                 VendorExternalId = orderRequest.VendorExternalId?.Trim() ?? string.Empty,
                 OrderDate = orderDate,
-                DeliveryDate = orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3)),
+                DeliveryDate = isPreCommitted
+                    ? (orderRequest.CommitmentEndDate ?? orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3)))
+                    : (orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3))),
                 DocumentType = documentType,
                 Status = status,
                 CompanyId = request.CompanyId,
                 LocationIdsJson = locationIdsJson,
                 InitiatedBy = initiatedBy,
                 ApprovedBy = approvedBy,
-                ApprovedAt = documentType == PurchaseOrderWorkflow.DocumentTypePo && !string.IsNullOrWhiteSpace(approvedBy) && !string.Equals(approvedBy, "Pending", StringComparison.OrdinalIgnoreCase)
+                ApprovedAt = documentType == PurchaseOrderWorkflow.DocumentTypePo
+                    && !isPreCommitted
+                    && !string.IsNullOrWhiteSpace(approvedBy)
+                    && !string.Equals(approvedBy, "Pending", StringComparison.OrdinalIgnoreCase)
                     ? DateTime.UtcNow
                     : null,
                 VendorShareToken = Guid.NewGuid().ToString("N"),
+                IsPreCommitted = isPreCommitted,
+                CommitmentStartDate = isPreCommitted ? orderRequest.CommitmentStartDate : null,
+                CommitmentEndDate = isPreCommitted ? orderRequest.CommitmentEndDate : null,
+                SourceCommittedPurchaseOrderId = isPreCommitted ? null : orderRequest.SourceCommittedPurchaseOrderId,
             };
 
             foreach (var item in items)
@@ -1182,6 +1229,11 @@ public class PurchaseOrdersController(
 
         await db.SaveChangesAsync();
 
+        // Release orders (non-committed) draw down matching pre-committed blanket qty/price.
+        var releaseOrders = created.Where(o => !o.IsPreCommitted).ToList();
+        if (releaseOrders.Count > 0)
+            await preCommittedDrawdown.ApplyDrawdownsAsync(releaseOrders);
+
         var ids = created.Select(c => c.Id).ToList();
         await PurchaseOrderShareService.BackfillMissingShareTokensAsync(db, ids);
 
@@ -1192,6 +1244,7 @@ public class PurchaseOrdersController(
         foreach (var order in saved)
         {
             // Notify online vendors only for issued POs (not pending PR approval).
+            // Pre-committed masters are also shared so the vendor can see the commitment.
             if (!PurchaseOrderWorkflow.IsPendingApprovalStatus(order.Status))
                 await OnlineVendorOrderBridge.NotifyOnlineVendorOfPurchaseOrderAsync(db, order);
         }

@@ -15,9 +15,16 @@ public static class PurchaseOrderWorkflow
     public const string StatusReceived = "Received";
     public const string StatusPartiallyDelivered = "Partially Delivered";
     public const string StatusReconciled = "Reconciled";
+    public const string StatusCommitted = "Committed";
+    public const string StatusCommitmentClosed = "Commitment Closed";
 
     public static bool IsActive(PurchaseOrder order) =>
-        !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
+        !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(order.Status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsPreCommittedActive(PurchaseOrder order) =>
+        order.IsPreCommitted
+        && string.Equals(order.Status, StatusCommitted, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsPendingApprovalStatus(string? status)
     {
@@ -39,6 +46,9 @@ public static class PurchaseOrderWorkflow
 
     public static bool CanReceive(PurchaseOrder order, bool allowPartialDelivery = false)
     {
+        if (order.IsPreCommitted)
+            return false; // Master commitments are drawn down by release orders, not warehouse-received.
+
         if (!string.Equals(order.DocumentType, DocumentTypePo, StringComparison.OrdinalIgnoreCase))
             return false;
 
@@ -86,6 +96,10 @@ public static class PurchaseOrderWorkflow
                 return StatusPartiallyDelivered;
             if (string.Equals(trimmed, StatusReconciled, StringComparison.OrdinalIgnoreCase))
                 return StatusReconciled;
+            if (string.Equals(trimmed, StatusCommitted, StringComparison.OrdinalIgnoreCase))
+                return StatusCommitted;
+            if (string.Equals(trimmed, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase))
+                return StatusCommitmentClosed;
             if (string.Equals(trimmed, StatusOpen, StringComparison.OrdinalIgnoreCase))
                 return StatusOpen;
             if (string.Equals(trimmed, "Pending", StringComparison.OrdinalIgnoreCase))
@@ -110,7 +124,9 @@ public static class PurchaseOrderWorkflow
         var isTerminalReceipt =
             string.Equals(status, StatusReceived, StringComparison.OrdinalIgnoreCase)
             || string.Equals(status, StatusPartiallyDelivered, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase);
+            || string.Equals(status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, StatusCommitted, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase);
 
         if (order.VendorAcceptedAt is not null && !isTerminalReceipt)
             status = StatusAccepted;
@@ -133,6 +149,10 @@ public static class PurchaseOrderWorkflow
             receivedAt = order.ReceivedAt,
             reconciledAt = order.ReconciledAt,
             finalDeliveryCompletedAt = order.FinalDeliveryCompletedAt,
+            isPreCommitted = order.IsPreCommitted,
+            commitmentStartDate = order.CommitmentStartDate,
+            commitmentEndDate = order.CommitmentEndDate,
+            sourceCommittedPurchaseOrderId = order.SourceCommittedPurchaseOrderId,
             vendorShareToken = order.VendorShareToken,
             vendorAcceptedAt = order.VendorAcceptedAt,
             vendorAcceptedBy = order.VendorAcceptedBy,
@@ -147,14 +167,16 @@ public static class PurchaseOrderWorkflow
             canReceive = CanReceive(order, allowPartialDelivery),
             canReconcile = CanReconcile(order),
             canFinalizeDelivery = CanFinalizeDelivery(order, allowPartialDelivery),
-            items = order.Items.Select(MapItem).ToList(),
+            items = order.Items.Select(i => MapItem(i, order.IsPreCommitted)).ToList(),
         };
     }
 
-    public static object MapItem(PurchaseOrderItem item)
+    public static object MapItem(PurchaseOrderItem item, bool isPreCommitted = false)
     {
         var delivered = item.DeliveredQuantity;
-        var remaining = Math.Max(0m, item.Quantity - delivered);
+        var drawn = item.DrawnQuantity;
+        var remainingDelivery = Math.Max(0m, item.Quantity - delivered);
+        var remainingCommitment = Math.Max(0m, item.Quantity - drawn);
         return new
         {
             item.Id,
@@ -173,7 +195,9 @@ public static class PurchaseOrderWorkflow
             reconciledQuantity = item.ReconciledQuantity,
             reconciledUnitPrice = item.ReconciledUnitPrice,
             deliveredQuantity = delivered,
-            remainingQuantity = remaining,
+            remainingQuantity = isPreCommitted ? remainingCommitment : remainingDelivery,
+            drawnQuantity = drawn,
+            remainingCommitmentQuantity = remainingCommitment,
             taxAmount = item.TaxAmount,
             halalCertNo = item.HalalCertNo,
             productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,
