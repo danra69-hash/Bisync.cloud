@@ -30,6 +30,8 @@ export type PurchaseOrderPdfData = {
   documentKind: 'purchase_order' | 'purchase_request' | 'sales_order';
   orderDate: string;
   deliveryDate: string;
+  /** Override label next to delivery/commitment date (default: Preferred Delivery Date). */
+  deliveryDateHeading?: string;
   countryCode?: string;
   company: PurchaseOrderPdfParty;
   deliveryLocations: PurchaseOrderPdfLocation[];
@@ -200,7 +202,11 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   const deliveryDateLabelY = y + 10;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('PREFERRED DELIVERY DATE', colRight, deliveryDateLabelY);
+  doc.text(
+    (data.deliveryDateHeading ?? 'PREFERRED DELIVERY DATE').toUpperCase(),
+    colRight,
+    deliveryDateLabelY,
+  );
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(data.deliveryDate, colRight, deliveryDateLabelY + 4.5);

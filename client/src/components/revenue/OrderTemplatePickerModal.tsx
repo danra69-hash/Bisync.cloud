@@ -74,7 +74,7 @@ export function OrderTemplatePickerModal({
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40">
       <div className="w-full max-w-2xl rounded-lg border border-border bg-card shadow-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
           <div>
