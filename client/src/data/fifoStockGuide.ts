@@ -2,6 +2,9 @@
 
 export const FIFO_GUIDE_TITLE = 'FIFO stock issuance (zero tolerance)';
 
+/** Last revised date shown in Ref & Library (display string). */
+export const FIFO_GUIDE_REVISED_DATE = '24 July 2026';
+
 export const FIFO_GUIDE_SUMMARY =
   'Platform FIFO issuance is enforced by PostgreSQL issue_fifo_stock: oldest active batch first, FOR UPDATE locking, audit lines per batch, and abort on insufficient stock. Live component deductions call this function; each inbound receipt is stored as a distinct cost-segregated batch.';
 
