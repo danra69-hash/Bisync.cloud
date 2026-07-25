@@ -104,24 +104,53 @@ public class SalesModuleClientUpdateService(
     }
 
     /// <summary>
-    /// Lists Client Update rows for last week (Mon–Sun) plus week-to-date (Mon–today),
-    /// using activity date = LastContactDate ?? DateCreated.
+    /// Lists Client Update rows for a week or month period, only including rows that have
+    /// any change signal in that period (status change, interaction, new lead, or last contact).
+    /// Activity date = LastContactDate ?? DateCreated.
+    /// When view is omitted, falls back to last week (Mon–Sun) plus week-to-date (Mon–today).
     /// Prefer salesTeamMemberId (tagged hunter); hunter string is a fallback / legacy filter.
     /// </summary>
     public async Task<List<object>> ListAsync(
         string? hunter = null,
         int? salesTeamMemberId = null,
+        string? view = null,
+        string? weekStart = null,
+        int? year = null,
+        int? month = null,
         CancellationToken ct = default)
     {
         await EnsureHuntersTaggedAsync(ct);
         var rows = await GetCachedRowsAsync(ct);
-        var (from, toInclusive) = ClientUpdateListWindow(DateTime.UtcNow.Date);
+
+        DateTime fromInclusive;
+        DateTime toExclusive;
+        var mode = (view ?? string.Empty).Trim().ToLowerInvariant();
+        if (mode is "week" or "month")
+        {
+            var period = ResolvePeriod(mode, weekStart, year, month);
+            fromInclusive = period.Start;
+            toExclusive = period.EndExclusive;
+        }
+        else
+        {
+            var (from, toInclusive) = ClientUpdateListWindow(DateTime.UtcNow.Date);
+            fromInclusive = from;
+            toExclusive = toInclusive.AddDays(1);
+        }
+
         rows = rows.Where(r =>
         {
             var activity = ActivityDate(r);
-            return activity.HasValue
-                && activity.Value.Date >= from
-                && activity.Value.Date <= toInclusive;
+            if (!activity.HasValue
+                || activity.Value.Date < fromInclusive
+                || activity.Value.Date >= toExclusive)
+                return false;
+
+            // Week/month selection: only rows with actual change activity in the period.
+            if (mode is "week" or "month")
+                return HasAnyChange(r);
+
+            return true;
         }).ToList();
 
         if (salesTeamMemberId is > 0)
@@ -551,39 +580,11 @@ public class SalesModuleClientUpdateService(
         if (mode is not ("week" or "month"))
             throw new InvalidOperationException("view must be \"week\" or \"month\".");
 
-        DateTime periodStart;
-        DateTime periodEndExclusive;
-        string periodKey;
-        string periodLabel;
-
-        if (mode == "week")
-        {
-            if (string.IsNullOrWhiteSpace(weekStart)
-                || !DateTime.TryParseExact(
-                    weekStart.Trim(),
-                    "yyyy-MM-dd",
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                    out var parsed))
-            {
-                throw new InvalidOperationException("weekStart is required (yyyy-MM-dd, Monday of the week).");
-            }
-
-            periodStart = StartOfWeekMonday(parsed.Date);
-            periodEndExclusive = periodStart.AddDays(7);
-            periodKey = periodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            periodLabel = FormatWeekLabel(periodStart, periodStart.AddDays(6));
-        }
-        else
-        {
-            if (year is null or < 2000 or > 2100 || month is null or < 1 or > 12)
-                throw new InvalidOperationException("year and month are required for month view.");
-
-            periodStart = new DateTime(year.Value, month.Value, 1, 0, 0, 0, DateTimeKind.Utc);
-            periodEndExclusive = periodStart.AddMonths(1);
-            periodKey = $"{year.Value:D4}-{month.Value:D2}";
-            periodLabel = periodStart.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
-        }
+        var period = ResolvePeriod(mode, weekStart, year, month);
+        var periodStart = period.Start;
+        var periodEndExclusive = period.EndExclusive;
+        var periodKey = period.Key;
+        var periodLabel = period.Label;
 
         string? hunterNameFilter = null;
         if (salesTeamMemberId is > 0)
@@ -731,6 +732,47 @@ public class SalesModuleClientUpdateService(
 
     static DateTime? ActivityDate(SalesModuleClientUpdate r) =>
         (r.LastContactDate ?? r.DateCreated)?.Date;
+
+    /// <summary>
+    /// Row has a change signal: status update, contact/interaction, new lead, or an explicit last-contact date.
+    /// </summary>
+    static bool HasAnyChange(SalesModuleClientUpdate r) =>
+        IsStatusChange(r) || IsInteraction(r) || IsNewLead(r) || r.LastContactDate.HasValue;
+
+    sealed record PeriodWindow(DateTime Start, DateTime EndExclusive, string Key, string Label);
+
+    static PeriodWindow ResolvePeriod(string mode, string? weekStart, int? year, int? month)
+    {
+        if (mode == "week")
+        {
+            if (string.IsNullOrWhiteSpace(weekStart)
+                || !DateTime.TryParseExact(
+                    weekStart.Trim(),
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out var parsed))
+            {
+                throw new InvalidOperationException("weekStart is required (yyyy-MM-dd, Monday of the week).");
+            }
+
+            var periodStart = StartOfWeekMonday(parsed.Date);
+            var periodEndExclusive = periodStart.AddDays(7);
+            var periodKey = periodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var periodLabel = FormatWeekLabel(periodStart, periodStart.AddDays(6));
+            return new PeriodWindow(periodStart, periodEndExclusive, periodKey, periodLabel);
+        }
+
+        if (year is null or < 2000 or > 2100 || month is null or < 1 or > 12)
+            throw new InvalidOperationException("year and month are required for month view.");
+
+        var monthStart = new DateTime(year.Value, month.Value, 1, 0, 0, 0, DateTimeKind.Utc);
+        return new PeriodWindow(
+            monthStart,
+            monthStart.AddMonths(1),
+            $"{year.Value:D4}-{month.Value:D2}",
+            monthStart.ToString("MMMM yyyy", CultureInfo.InvariantCulture));
+    }
 
     static DateTime StartOfWeekMonday(DateTime date)
     {

@@ -2839,12 +2839,27 @@ export const api = {
     }
     return fetchJson<SalesModuleOverview>(`/api/sales-module/overview?${params}`);
   },
-  salesModuleClientUpdates: (opts?: { hunter?: string; salesTeamMemberId?: number }) => {
+  salesModuleClientUpdates: (opts?: {
+    hunter?: string;
+    salesTeamMemberId?: number;
+    view?: 'week' | 'month';
+    weekStart?: string;
+    year?: number;
+    month?: number;
+  }) => {
     const params = new URLSearchParams();
     if (opts?.salesTeamMemberId && opts.salesTeamMemberId > 0) {
       params.set('salesTeamMemberId', String(opts.salesTeamMemberId));
     } else if (opts?.hunter?.trim()) {
       params.set('hunter', opts.hunter.trim());
+    }
+    if (opts?.view === 'week' || opts?.view === 'month') {
+      params.set('view', opts.view);
+      if (opts.view === 'week' && opts.weekStart) params.set('weekStart', opts.weekStart);
+      if (opts.view === 'month') {
+        if (opts.year != null) params.set('year', String(opts.year));
+        if (opts.month != null) params.set('month', String(opts.month));
+      }
     }
     const q = params.toString();
     return fetchJson<SalesModuleClientUpdate[]>(`/api/sales-module/client-updates${q ? `?${q}` : ''}`);

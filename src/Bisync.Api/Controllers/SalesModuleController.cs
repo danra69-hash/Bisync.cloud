@@ -567,18 +567,30 @@ public class SalesModuleController(
     }
 
     /// <summary>
-    /// List Client Update rows for last week plus week-to-date only
-    /// (Instant Sales Update → Weekly Update sheet).
+    /// List Client Update rows for a week/month period (rows with changes only),
+    /// or last week + week-to-date when view is omitted.
     /// Prefer salesTeamMemberId to scope by Sales Team Hunter.
     /// </summary>
     [HttpGet("client-updates")]
     public async Task<ActionResult<IEnumerable<object>>> GetClientUpdates(
         [FromQuery] string? hunter = null,
         [FromQuery] int? salesTeamMemberId = null,
+        [FromQuery] string? view = null,
+        [FromQuery] string? weekStart = null,
+        [FromQuery] int? year = null,
+        [FromQuery] int? month = null,
         CancellationToken ct = default)
     {
-        var rows = await clientUpdateService.ListAsync(hunter, salesTeamMemberId, ct);
-        return Ok(rows);
+        try
+        {
+            var rows = await clientUpdateService.ListAsync(
+                hunter, salesTeamMemberId, view, weekStart, year, month, ct);
+            return Ok(rows);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
