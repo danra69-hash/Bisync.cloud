@@ -115,6 +115,14 @@ export interface Company {
   businessTypesJson: string;
   vendorPolicyTagsJson: string;
   modulesJson: string;
+  /** Original filename for the company logo. */
+  logoFileName?: string;
+  /** MIME type, e.g. image/png. */
+  logoContentType?: string;
+  /** Raw base64 logo bytes (no data-URL prefix). */
+  logoBase64?: string;
+  /** True when a logo is stored. */
+  logoSet?: boolean;
   locationCount?: number;
   /** Outbound SMTP for purchase-order email (per company). */
   smtpHost?: string;

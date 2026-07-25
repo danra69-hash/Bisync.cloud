@@ -11,6 +11,65 @@ namespace Bisync.Api.Controllers;
 [Route("api/[controller]")]
 public class CompaniesController(BisyncDbContext db) : ControllerBase
 {
+    /// <summary>~1 MB binary → ~1.4M base64 chars. Logos should stay smaller than cash-purchase receipts.</summary>
+    const int MaxLogoBase64Length = 1_500_000;
+
+    static readonly HashSet<string> AllowedLogoContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp",
+        "image/gif",
+        "image/svg+xml",
+    };
+
+    static string? NormalizeAndValidateLogo(Company source, out string fileName, out string contentType, out string base64)
+    {
+        fileName = (source.LogoFileName ?? string.Empty).Trim();
+        contentType = (source.LogoContentType ?? string.Empty).Trim().ToLowerInvariant();
+        base64 = (source.LogoBase64 ?? string.Empty).Trim();
+
+        // Accept data-URL payloads from the client and strip the prefix.
+        if (base64.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            var comma = base64.IndexOf(',');
+            if (comma > 0)
+            {
+                var header = base64[..comma];
+                base64 = base64[(comma + 1)..];
+                var mimeStart = header.IndexOf(':');
+                var mimeEnd = header.IndexOf(';');
+                if (mimeStart >= 0 && mimeEnd > mimeStart && string.IsNullOrWhiteSpace(contentType))
+                    contentType = header[(mimeStart + 1)..mimeEnd].Trim().ToLowerInvariant();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(base64))
+        {
+            fileName = string.Empty;
+            contentType = string.Empty;
+            base64 = string.Empty;
+            return null;
+        }
+
+        if (base64.Length > MaxLogoBase64Length)
+            return "Company logo is too large (max ~1 MB).";
+
+        if (string.IsNullOrWhiteSpace(contentType))
+            contentType = "image/png";
+        if (contentType == "image/jpg")
+            contentType = "image/jpeg";
+
+        if (!AllowedLogoContentTypes.Contains(contentType))
+            return "Company logo must be PNG, JPEG, WebP, GIF, or SVG.";
+
+        if (fileName.Length > 260)
+            fileName = fileName[..260];
+
+        return null;
+    }
+
     static object MapCompany(Company c, int? locationCount = null)
     {
         var outboundEmail = !string.IsNullOrWhiteSpace(c.SmtpFromEmail)
@@ -20,6 +79,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         var provider = CompanyOutboundEmailService.IsLikelyEmail(outboundEmail)
             ? CompanyOutboundEmailService.ResolveProviderForMode(outboundEmail, mode)
             : null;
+        var hasLogo = !string.IsNullOrWhiteSpace(c.LogoBase64);
 
         return new
         {
@@ -41,6 +101,10 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             c.BusinessTypesJson,
             c.VendorPolicyTagsJson,
             c.ModulesJson,
+            logoFileName = c.LogoFileName ?? string.Empty,
+            logoContentType = c.LogoContentType ?? string.Empty,
+            logoBase64 = hasLogo ? (c.LogoBase64 ?? string.Empty) : string.Empty,
+            logoSet = hasLogo,
             smtpProviderMode = mode,
             smtpHost = c.SmtpHost ?? string.Empty,
             smtpPort = CompanyOutboundEmailService.NormalizeSmtpPort(
@@ -121,11 +185,16 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         if (validationError is not null) return BadRequest(new { message = validationError });
         var modulesError = CompanyModuleRules.ValidateCompanyModules(company.ModulesJson);
         if (modulesError is not null) return BadRequest(new { message = modulesError });
+        var logoError = NormalizeAndValidateLogo(company, out var logoFileName, out var logoContentType, out var logoBase64);
+        if (logoError is not null) return BadRequest(new { message = logoError });
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Companies");
 
         // Normalize SMTP on create (password may be empty until configured).
         ApplySmtpFields(company, company, isCreate: true);
+        company.LogoFileName = logoFileName;
+        company.LogoContentType = logoContentType;
+        company.LogoBase64 = logoBase64;
 
         await CompanyCodeService.EnsureCodeAsync(db, company);
         db.Companies.Add(company);
@@ -140,6 +209,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         if (validationError is not null) return BadRequest(new { message = validationError });
         var modulesError = CompanyModuleRules.ValidateCompanyModules(updated.ModulesJson);
         if (modulesError is not null) return BadRequest(new { message = modulesError });
+        var logoError = NormalizeAndValidateLogo(updated, out var logoFileName, out var logoContentType, out var logoBase64);
+        if (logoError is not null) return BadRequest(new { message = logoError });
 
         var company = await db.Companies.Include(c => c.Locations).FirstOrDefaultAsync(c => c.Id == id);
         if (company is null) return NotFound();
@@ -159,6 +230,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.BusinessTypesJson = updated.BusinessTypesJson;
         company.VendorPolicyTagsJson = updated.VendorPolicyTagsJson;
         company.ModulesJson = updated.ModulesJson;
+        company.LogoFileName = logoFileName;
+        company.LogoContentType = logoContentType;
+        company.LogoBase64 = logoBase64;
         ApplySmtpFields(company, updated, isCreate: false);
         await db.SaveChangesAsync();
         return Ok(MapCompany(company, company.Locations.Count));
