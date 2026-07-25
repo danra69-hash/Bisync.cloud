@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
-import { BookOpen, Check, Copy, ExternalLink, FileText, Layers, RefreshCw } from 'lucide-react';
-import { api, type NutritionLibraryStatus } from '../../api';
-import { CURRENT_DPA_VERSION, DPA_TITLE } from '../../data/dpa';
-import { CURRENT_EULA_VERSION, EULA_TITLE } from '../../data/eula';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
+  BookOpen,
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  RefreshCw,
+} from 'lucide-react';
+import { api, type NutritionLibraryStatus } from '../../api';
+import { CURRENT_DPA_VERSION, DPA_INTRO, DPA_TITLE } from '../../data/dpa';
+import { CURRENT_EULA_VERSION, EULA_INTRO, EULA_TITLE } from '../../data/eula';
+import {
+  FIFO_GUIDE_REVISED_DATE,
   FIFO_GUIDE_STEPS,
   FIFO_GUIDE_SUMMARY,
   FIFO_GUIDE_TITLE,
@@ -11,8 +19,21 @@ import {
   FIFO_RUNTIME_NOTE,
 } from '../../data/fifoStockGuide';
 import { LEGAL_EFFECTIVE_DATE, LEGAL_PROVIDER } from '../../data/legalShared';
-import { CURRENT_PRIVACY_POLICY_VERSION, PRIVACY_POLICY_TITLE } from '../../data/privacyPolicy';
+import {
+  CURRENT_PRIVACY_POLICY_VERSION,
+  PRIVACY_POLICY_INTRO,
+  PRIVACY_POLICY_TITLE,
+} from '../../data/privacyPolicy';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+
+type LibraryEntryId = 'eula' | 'privacy' | 'dpa' | 'fifo' | 'nutrition';
+
+type LibraryEntry = {
+  id: LibraryEntryId;
+  title: string;
+  /** Created or revised date shown in the compact list. */
+  revisedLabel: string;
+};
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—';
@@ -21,26 +42,198 @@ function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString();
 }
 
-const LEGAL_DOCUMENTS = [
-  {
-    id: 'eula',
-    title: EULA_TITLE,
-    path: '/legal/eula',
-    version: CURRENT_EULA_VERSION,
-  },
-  {
-    id: 'privacy',
-    title: PRIVACY_POLICY_TITLE,
-    path: '/legal/privacy',
-    version: CURRENT_PRIVACY_POLICY_VERSION,
-  },
-  {
-    id: 'dpa',
-    title: DPA_TITLE,
-    path: '/legal/dpa',
-    version: CURRENT_DPA_VERSION,
-  },
-] as const;
+function formatDisplayDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function LegalDetails({
+  intro,
+  version,
+  path,
+}: {
+  intro: string[];
+  version: string;
+  path: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] text-muted-foreground">
+        {LEGAL_PROVIDER} · Effective {LEGAL_EFFECTIVE_DATE} · v{version}
+      </p>
+      <div className="space-y-2">
+        {intro.map(paragraph => (
+          <p key={paragraph.slice(0, 48)} className="text-xs text-muted-foreground leading-relaxed">
+            {paragraph}
+          </p>
+        ))}
+      </div>
+      <a
+        href={path}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+      >
+        Open full document
+        <ExternalLink size={12} />
+      </a>
+    </div>
+  );
+}
+
+function FifoDetails({
+  sqlCopied,
+  onCopySql,
+}: {
+  sqlCopied: boolean;
+  onCopySql: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground leading-relaxed">{FIFO_GUIDE_SUMMARY}</p>
+      <p className="text-xs text-muted-foreground leading-relaxed">{FIFO_RUNTIME_NOTE}</p>
+
+      <ol className="space-y-3 border-t border-border/60 pt-3">
+        {FIFO_GUIDE_STEPS.map(step => (
+          <li key={step.id} className="grid gap-1 sm:grid-cols-[2.5rem_1fr]">
+            <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+              {step.number}.
+            </span>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-semibold">{step.title}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="space-y-2 border-t border-border/60 pt-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            Canonical SQL · issue_fifo_stock
+          </p>
+          <button
+            type="button"
+            onClick={onCopySql}
+            className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-2.5 py-1 hover:bg-muted"
+          >
+            {sqlCopied ? <Check size={12} /> : <Copy size={12} />}
+            {sqlCopied ? 'Copied' : 'Copy SQL'}
+          </button>
+        </div>
+        <pre className="max-h-80 overflow-auto rounded-md border border-border/60 bg-background/80 p-3 text-[10px] leading-relaxed font-mono whitespace-pre">
+          {FIFO_ISSUE_STOCK_SQL}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function NutritionDetails({
+  status,
+  loading,
+  portalUrl,
+}: {
+  status: NutritionLibraryStatus | null;
+  loading: boolean;
+  portalUrl: string;
+}) {
+  if (loading && !status) {
+    return <MillstoneLoader size="sm" layout="block" label="Loading library status…" />;
+  }
+
+  return (
+    <div className="space-y-3">
+      <a
+        href={portalUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline break-all"
+      >
+        {portalUrl}
+        <ExternalLink size={12} className="shrink-0" />
+      </a>
+
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div>
+          <dt className="text-muted-foreground">Entries</dt>
+          <dd className="font-medium tabular-nums mt-0.5">
+            {status?.entryCount?.toLocaleString() ?? '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Version</dt>
+          <dd className="font-medium font-sans mt-0.5 break-all">
+            {status?.version || '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Status</dt>
+          <dd className="font-medium mt-0.5 capitalize">
+            {status?.lastSyncStatus || '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Last checked</dt>
+          <dd className="font-medium tabular-nums mt-0.5">
+            {formatDateTime(status?.lastCheckedAt)}
+          </dd>
+        </div>
+      </dl>
+
+      {status?.citation ? (
+        <p className="text-[11px] text-muted-foreground leading-relaxed">{status.citation}</p>
+      ) : null}
+
+      {(status?.foundationZipUrl || status?.srLegacyZipUrl) ? (
+        <div className="space-y-1.5">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            Dataset downloads
+          </p>
+          {status.foundationZipUrl ? (
+            <a
+              href={status.foundationZipUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 text-[11px] text-primary hover:underline break-all"
+            >
+              Foundation Foods CSV
+              <ExternalLink size={11} className="shrink-0" />
+            </a>
+          ) : null}
+          {status.srLegacyZipUrl ? (
+            <a
+              href={status.srLegacyZipUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 text-[11px] text-primary hover:underline break-all"
+            >
+              SR Legacy CSV
+              <ExternalLink size={11} className="shrink-0" />
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+
+      {status?.lastSyncError ? (
+        <p className="text-[11px] text-destructive">Last sync error: {status.lastSyncError}</p>
+      ) : null}
+
+      {status?.checkIntervalHours ? (
+        <p className="text-[11px] text-muted-foreground">
+          Automatic update check every {status.checkIntervalHours} hours
+          {status.checkIntervalHours === 168 ? ' (weekly)' : ''}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 export function RefLibraryTab() {
   const [status, setStatus] = useState<NutritionLibraryStatus | null>(null);
@@ -48,6 +241,7 @@ export function RefLibraryTab() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [expandedId, setExpandedId] = useState<LibraryEntryId | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,7 +273,83 @@ export function RefLibraryTab() {
   }
 
   const portalUrl = status?.portalUrl || 'https://fdc.nal.usda.gov/';
-  const lastUpdated = status?.lastSyncedAt ?? status?.lastCheckedAt;
+  const nutritionRevised = status?.lastSyncedAt ?? status?.lastCheckedAt;
+
+  const entries: LibraryEntry[] = useMemo(
+    () => [
+      {
+        id: 'eula',
+        title: EULA_TITLE,
+        revisedLabel: LEGAL_EFFECTIVE_DATE,
+      },
+      {
+        id: 'privacy',
+        title: PRIVACY_POLICY_TITLE,
+        revisedLabel: LEGAL_EFFECTIVE_DATE,
+      },
+      {
+        id: 'dpa',
+        title: DPA_TITLE,
+        revisedLabel: LEGAL_EFFECTIVE_DATE,
+      },
+      {
+        id: 'fifo',
+        title: FIFO_GUIDE_TITLE,
+        revisedLabel: FIFO_GUIDE_REVISED_DATE,
+      },
+      {
+        id: 'nutrition',
+        title: status?.sourceLabel || 'USDA FoodData Central (Foundation Foods + SR Legacy)',
+        revisedLabel: formatDisplayDate(nutritionRevised),
+      },
+    ],
+    [nutritionRevised, status?.sourceLabel],
+  );
+
+  function toggleEntry(id: LibraryEntryId) {
+    setExpandedId(prev => (prev === id ? null : id));
+  }
+
+  function renderDetails(id: LibraryEntryId): ReactNode {
+    switch (id) {
+      case 'eula':
+        return (
+          <LegalDetails intro={EULA_INTRO} version={CURRENT_EULA_VERSION} path="/legal/eula" />
+        );
+      case 'privacy':
+        return (
+          <LegalDetails
+            intro={PRIVACY_POLICY_INTRO}
+            version={CURRENT_PRIVACY_POLICY_VERSION}
+            path="/legal/privacy"
+          />
+        );
+      case 'dpa':
+        return (
+          <LegalDetails intro={DPA_INTRO} version={CURRENT_DPA_VERSION} path="/legal/dpa" />
+        );
+      case 'fifo':
+        return (
+          <FifoDetails
+            sqlCopied={sqlCopied}
+            onCopySql={() => {
+              void navigator.clipboard.writeText(FIFO_ISSUE_STOCK_SQL)
+                .then(() => {
+                  setSqlCopied(true);
+                  window.setTimeout(() => setSqlCopied(false), 1600);
+                })
+                .catch(() => setSqlCopied(false));
+            }}
+          />
+        );
+      case 'nutrition':
+        return (
+          <NutritionDetails status={status} loading={loading} portalUrl={portalUrl} />
+        );
+      default:
+        return null;
+    }
+  }
 
   return (
     <section className="rounded-lg border border-border bg-card px-4 py-4 space-y-4">
@@ -90,7 +360,7 @@ export function RefLibraryTab() {
             Ref &amp; Library
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Reference data libraries, FIFO stock rules, and platform legal documents used by Bisync.
+            Click a title to expand details. List shows title and created or revised date.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -114,201 +384,57 @@ export function RefLibraryTab() {
         </div>
       </div>
 
-      <div className="rounded-md border border-border/70 bg-muted/10 p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0 space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-              <FileText size={12} />
-              Legal documents
-            </p>
-            <p className="text-sm font-medium">EULA, Privacy Policy, and Data Processing Addendum</p>
-            <p className="text-[11px] text-muted-foreground">
-              {LEGAL_PROVIDER} · Effective {LEGAL_EFFECTIVE_DATE}
-            </p>
-          </div>
-        </div>
-        <ul className="space-y-2 pt-1 border-t border-border/60">
-          {LEGAL_DOCUMENTS.map(doc => (
-            <li key={doc.id} className="flex items-center justify-between gap-3 flex-wrap">
-              <a
-                href={doc.path}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline min-w-0"
-              >
-                <span className="truncate">{doc.title}</span>
-                <ExternalLink size={12} className="shrink-0" />
-              </a>
-              <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
-                v{doc.version}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="rounded-md border border-border/70 bg-muted/10 p-4 space-y-4">
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-            <Layers size={12} />
-            FIFO stock library
-          </p>
-          <p className="text-sm font-medium">{FIFO_GUIDE_TITLE}</p>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">{FIFO_GUIDE_SUMMARY}</p>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">{FIFO_RUNTIME_NOTE}</p>
-        </div>
-
-        <ol className="space-y-3 border-t border-border/60 pt-3">
-          {FIFO_GUIDE_STEPS.map(step => (
-            <li key={step.id} className="grid gap-1 sm:grid-cols-[2.5rem_1fr]">
-              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-                {step.number}.
-              </span>
-              <div className="min-w-0 space-y-0.5">
-                <p className="text-xs font-semibold">{step.title}</p>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">{step.body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-
-        <div className="space-y-2 border-t border-border/60 pt-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-              Canonical SQL · issue_fifo_stock
-            </p>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(FIFO_ISSUE_STOCK_SQL);
-                  setSqlCopied(true);
-                  window.setTimeout(() => setSqlCopied(false), 1600);
-                } catch {
-                  setSqlCopied(false);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-2.5 py-1 hover:bg-muted"
-            >
-              {sqlCopied ? <Check size={12} /> : <Copy size={12} />}
-              {sqlCopied ? 'Copied' : 'Copy SQL'}
-            </button>
-          </div>
-          <pre className="max-h-80 overflow-auto rounded-md border border-border/60 bg-background/80 p-3 text-[10px] leading-relaxed font-mono whitespace-pre">
-            {FIFO_ISSUE_STOCK_SQL}
-          </pre>
-        </div>
-      </div>
-
       {error ? (
         <p className="text-xs text-destructive">{error}</p>
       ) : null}
 
-      {loading && !status ? (
-        <MillstoneLoader size="sm" layout="block" label="Loading library status…" />
-      ) : (
-        <div className="rounded-md border border-border/70 bg-muted/10 p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="min-w-0 space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Nutrition library
-              </p>
-              <p className="text-sm font-medium">
-                {status?.sourceLabel || 'USDA FoodData Central (Foundation Foods + SR Legacy)'}
-              </p>
-              <a
-                href={portalUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline break-all"
-              >
-                {portalUrl}
-                <ExternalLink size={12} className="shrink-0" />
-              </a>
-            </div>
-            <div className="text-right shrink-0">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-                Last updated
-              </p>
-              <p className="text-sm font-semibold tabular-nums mt-0.5">
-                {formatDateTime(lastUpdated)}
-              </p>
-            </div>
-          </div>
-
-          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2 border-t border-border/60">
-            <div>
-              <dt className="text-muted-foreground">Entries</dt>
-              <dd className="font-medium tabular-nums mt-0.5">
-                {status?.entryCount?.toLocaleString() ?? '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Version</dt>
-              <dd className="font-medium font-sans mt-0.5 break-all">
-                {status?.version || '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Status</dt>
-              <dd className="font-medium mt-0.5 capitalize">
-                {status?.lastSyncStatus || '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Last checked</dt>
-              <dd className="font-medium tabular-nums mt-0.5">
-                {formatDateTime(status?.lastCheckedAt)}
-              </dd>
-            </div>
-          </dl>
-
-          {status?.citation ? (
-            <p className="text-[11px] text-muted-foreground leading-relaxed">{status.citation}</p>
-          ) : null}
-
-          {(status?.foundationZipUrl || status?.srLegacyZipUrl) ? (
-            <div className="space-y-1.5 pt-1">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-                Dataset downloads
-              </p>
-              {status.foundationZipUrl ? (
-                <a
-                  href={status.foundationZipUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 text-[11px] text-primary hover:underline break-all"
-                >
-                  Foundation Foods CSV
-                  <ExternalLink size={11} className="shrink-0" />
-                </a>
-              ) : null}
-              {status.srLegacyZipUrl ? (
-                <a
-                  href={status.srLegacyZipUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 text-[11px] text-primary hover:underline break-all"
-                >
-                  SR Legacy CSV
-                  <ExternalLink size={11} className="shrink-0" />
-                </a>
-              ) : null}
-            </div>
-          ) : null}
-
-          {status?.lastSyncError ? (
-            <p className="text-[11px] text-destructive">Last sync error: {status.lastSyncError}</p>
-          ) : null}
-
-          {status?.checkIntervalHours ? (
-            <p className="text-[11px] text-muted-foreground">
-              Automatic update check every {status.checkIntervalHours} hours
-              {status.checkIntervalHours === 168 ? ' (weekly)' : ''}.
-            </p>
-          ) : null}
+      <div className="rounded-md border border-border/70 overflow-hidden">
+        <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-3 px-3 py-2 bg-muted/30 border-b border-border/60">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Title
+          </p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-right">
+            Created / Revised
+          </p>
         </div>
-      )}
+
+        <ul className="divide-y divide-border/60">
+          {entries.map(entry => {
+            const open = expandedId === entry.id;
+            return (
+              <li key={entry.id}>
+                <button
+                  type="button"
+                  onClick={() => toggleEntry(entry.id)}
+                  aria-expanded={open}
+                  className="w-full grid grid-cols-[minmax(0,1fr)_9rem] gap-3 items-center px-3 py-2.5 text-left hover:bg-muted/30 transition-colors"
+                >
+                  <span className="min-w-0 flex items-center gap-2">
+                    <ChevronDown
+                      size={14}
+                      className={`shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-0' : '-rotate-90'}`}
+                    />
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {entry.title}
+                    </span>
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums text-right shrink-0">
+                    {entry.revisedLabel}
+                  </span>
+                </button>
+
+                {open ? (
+                  <div className="px-3 pb-3 pl-9 border-t border-border/40 bg-muted/10">
+                    <div className="pt-3">
+                      {renderDetails(entry.id)}
+                    </div>
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </section>
   );
 }
