@@ -281,6 +281,18 @@ export function CreateOrderPage({
   function handleApplyCommittedPo(po: PurchaseOrder) {
     setShowTemplatePicker(false);
     setTemplateNotice(null);
+    const allowed = po.drawdownLocationExternalIds ?? po.locationExternalIds ?? [];
+    if (allowed.length > 0 && selectedLocationIds.length > 0) {
+      const overlap = selectedLocationIds.some(id =>
+        allowed.some(a => a.toLowerCase() === id.toLowerCase()),
+      );
+      if (!overlap) {
+        setTemplateNotice(
+          `Pre-committed PO ${po.poNumber} cannot be drawn down for the currently selected location(s).`,
+        );
+        return;
+      }
+    }
     if (po.vendorExternalId && po.vendorExternalId !== vendorFilter) {
       pendingCommittedPoRef.current = po;
       setVendorFilter(po.vendorExternalId);
