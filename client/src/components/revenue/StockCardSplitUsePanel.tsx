@@ -7,7 +7,7 @@ import {
 } from '../../data/componentSplitUse';
 import { fromApiUom } from '../../data/componentForm';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
-import { inputCls } from '../layout/formControls';
+import { inputCls, qtyPriceWidthCls } from '../layout/formControls';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 
 type Props = {
@@ -90,7 +90,7 @@ export function StockCardSplitUsePanel({
                 Units to split ({displayUom})
               </label>
               <input
-                className={`${inputCls} w-28`}
+                className={`${inputCls} ${qtyPriceWidthCls}`}
                 type="number"
                 min="0"
                 max={onHandQty}

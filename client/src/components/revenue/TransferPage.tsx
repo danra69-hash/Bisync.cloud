@@ -642,10 +642,10 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                   <th className="text-left px-2 py-1.5 w-28">From</th>
                   <th className="text-left px-2 py-1.5 w-28">To</th>
                   <th className="text-left px-2 py-1.5">Item</th>
-                  <th className="text-right px-2 py-1.5 w-20">Qty</th>
+                  <th className="text-right px-2 py-1.5 w-[8.5rem]">Qty</th>
                   <th className="text-left px-2 py-1.5 w-16">UOM</th>
-                  <th className="text-right px-2 py-1.5 w-24">Unit price</th>
-                  <th className="text-right px-2 py-1.5 w-24">Total value</th>
+                  <th className="text-right px-2 py-1.5 w-[8.5rem]">Unit price</th>
+                  <th className="text-right px-2 py-1.5 w-[8.5rem]">Total value</th>
                   <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
                 </tr>
               </thead>
@@ -845,10 +845,10 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
                 <th className="text-left px-2 py-1.5 w-28">To</th>
                 <th className="text-left px-2 py-1.5">Item</th>
                 <th className="text-left px-2 py-1.5 w-24">Type</th>
-                <th className="text-right px-2 py-1.5 w-16">Qty</th>
+                <th className="text-right px-2 py-1.5 w-[8.5rem]">Qty</th>
                 <th className="text-left px-2 py-1.5 w-14">UOM</th>
-                <th className="text-right px-2 py-1.5 w-24">Unit price</th>
-                <th className="text-right px-2 py-1.5 w-24">Total value</th>
+                <th className="text-right px-2 py-1.5 w-[8.5rem]">Unit price</th>
+                <th className="text-right px-2 py-1.5 w-[8.5rem]">Total value</th>
                 <th className="text-left px-2 py-1.5 w-28">Initiated by</th>
                 <th className="text-left px-2 py-1.5 w-28">Received / Rejected by</th>
                 <th className="text-left px-2 py-1.5 w-28">Status</th>

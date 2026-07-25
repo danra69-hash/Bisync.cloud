@@ -459,4 +459,14 @@ export const blankComponentRow: ComponentRow = {
   locations: ['all'],
 };
 
-export { fieldCls, filterInputCls, filterSelectCls, inlineNumberCls, inputCls, numberCls, selectCls } from '../components/layout/formControls';
+export {
+  fieldCls,
+  filterInputCls,
+  filterSelectCls,
+  inlineNumberCls,
+  inlinePriceCls,
+  inputCls,
+  numberCls,
+  qtyPriceWidthCls,
+  selectCls,
+} from '../components/layout/formControls';

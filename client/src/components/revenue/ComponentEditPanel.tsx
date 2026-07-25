@@ -112,8 +112,8 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 const COMPACT_INPUT_CLS =
   'bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary shrink-0';
 // Qty inputs are intentionally large enough for multi-digit conversions (2× prior widths).
-const COMPACT_FROM_QTY_CLS = `${COMPACT_INPUT_CLS} w-24 min-w-[6rem]`;
-const COMPACT_TO_QTY_CLS = `${COMPACT_INPUT_CLS} w-48 min-w-[11rem]`;
+const COMPACT_FROM_QTY_CLS = `${COMPACT_INPUT_CLS} min-w-[8.5rem] w-[8.5rem] tabular-nums text-right`;
+const COMPACT_TO_QTY_CLS = `${COMPACT_INPUT_CLS} min-w-[8.5rem] w-[8.5rem] tabular-nums text-right`;
 const COMPACT_SELECT_CLS =
   'bg-background border border-border rounded px-1 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer w-[3.25rem] shrink-0';
 

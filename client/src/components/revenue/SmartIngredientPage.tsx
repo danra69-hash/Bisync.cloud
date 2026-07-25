@@ -609,7 +609,7 @@ export function SmartIngredientPage({
                                 e.currentTarget.blur();
                               }
                             }}
-                            className="w-20 rounded border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
+                            className="min-w-[8.5rem] w-[8.5rem] max-w-[10rem] rounded border border-border bg-background px-1.5 py-1 text-right text-xs tabular-nums"
                             title="Adjust par stock qty (requires permission)"
                           />
                           <span className="text-[10px] text-muted-foreground">{displayUom}</span>

@@ -333,7 +333,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
                               <td className="px-2 py-1.5 font-medium">{item.name}</td>
                               <td className="px-2 py-1.5 text-right">
                                 <input
-                                  className="w-24 ml-auto px-2 py-1 rounded border border-border bg-background text-right"
+                                  className="min-w-[8.5rem] w-[8.5rem] max-w-[10rem] ml-auto px-2 py-1 rounded border border-border bg-background text-right tabular-nums"
                                   value={draft.quantity}
                                   onChange={e => {
                                     const value = e.target.value;
@@ -343,7 +343,7 @@ export function VendorOrderPortalPage({ token, pdfOnly = false }: Props) {
                               </td>
                               <td className="px-2 py-1.5 text-right">
                                 <input
-                                  className="w-28 ml-auto px-2 py-1 rounded border border-border bg-background text-right"
+                                  className="min-w-[8.5rem] w-[8.5rem] max-w-[10rem] ml-auto px-2 py-1 rounded border border-border bg-background text-right tabular-nums"
                                   value={draft.unitPrice}
                                   onChange={e => {
                                     const value = e.target.value;

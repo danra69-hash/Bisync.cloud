@@ -21,7 +21,7 @@ import {
   type TaggedB2bProductUnit,
 } from '../../data/b2bCustomerProductTags';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
-import { inputCls } from '../../data/componentForm';
+import { inputCls, qtyPriceWidthCls } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -215,7 +215,7 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
                                 min={0}
                                 step="0.01"
                                 disabled={!tagged}
-                                className={`${inputCls} w-[5.5rem] ml-auto text-right tabular-nums disabled:opacity-40`}
+                                className={`${inputCls} ${qtyPriceWidthCls} ml-auto disabled:opacity-40`}
                                 value={formatEditable(taggedUnit?.appliedRrp)}
                                 placeholder={row.rrp > 0 ? String(row.rrp) : '0'}
                                 onChange={e => setTaggedUnits(prev => updateTaggedUnitAppliedRrp(

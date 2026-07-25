@@ -11,9 +11,9 @@ import {
 const compactSelectCls =
   'rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary min-w-[5rem]';
 const compactQtyCls =
-  'w-20 rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary';
+  'min-w-[8.5rem] w-[8.5rem] max-w-[10rem] rounded-md border border-border bg-background px-2 py-1.5 text-xs tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-primary';
 const compactWideQtyCls =
-  'w-28 rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary';
+  'min-w-[8.5rem] w-[8.5rem] max-w-[10rem] rounded-md border border-border bg-background px-2 py-1.5 text-xs tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-primary';
 
 type Props = {
   yieldQuantity: string;

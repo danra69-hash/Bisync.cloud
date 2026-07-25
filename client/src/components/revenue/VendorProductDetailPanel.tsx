@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FilePlus2, X } from 'lucide-react';
 import { api } from '../../api';
-import { inputCls } from '../../data/componentForm';
+import { inputCls, qtyPriceWidthCls } from '../../data/componentForm';
 import {
   DELIVERY_ORDER_UNITS,
   DELIVERY_UNIT_LEVEL_LABELS,
@@ -49,7 +49,7 @@ function qtyInput(value: number, onChange: (n: number) => void) {
       step={1}
       value={value}
       onChange={e => onChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
-      className={`${inputCls} w-20 font-sans`}
+      className={`${inputCls} ${qtyPriceWidthCls} font-sans`}
     />
   );
 }
