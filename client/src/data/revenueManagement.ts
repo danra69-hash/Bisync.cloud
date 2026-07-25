@@ -175,7 +175,7 @@ export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
 export const COMING_SOON_POS_ITEMS = new Set<string>(posItems);
 
 export const NAV_ITEMS = [
-  'Overview',
+  'Home',
   'Revenue Management',
   'Point-of-Sales',
   'Human Resources',

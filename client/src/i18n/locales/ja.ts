@@ -69,7 +69,8 @@ export const ja = {
     choose: '言語を選択',
   },
   header: {
-    operationsOverview: '運用概要',
+    home: 'ホーム',
+    operationsOverview: 'ホーム',
     selectCompany: '会社を選択',
     loadingCompanies: '会社を読み込み中…',
     companiesFromHr: 'HR設定の会社',
@@ -85,13 +86,24 @@ export const ja = {
     new: '新着',
   },
   nav: {
-    overview: '概要',
+    home: 'ホーム',
+    overview: 'ホーム',
     revenueManagement: '収益管理',
     pointOfSales: 'POS',
     humanResources: '人事',
     accounting: '会計',
     report: 'レポート',
     systemConfiguration: 'システム設定',
+  },
+  home: {
+    subtitle: '続行するモジュールを選択してください。',
+    openModule: '開く',
+    modules: {
+      rms: '購買、在庫、商品、販売オペレーション。',
+      pos: '店舗販売、メニュー、端末管理。',
+      hrm: '人材、勤怠、休暇、組織設定。',
+      accounting: '給与連携、仕訳、決算。',
+    },
   },
   revMgmt: {
     sections: {

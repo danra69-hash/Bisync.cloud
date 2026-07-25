@@ -14,7 +14,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { StickyChromeSync } from './components/layout/StickyChromeSync';
 import { RevenueSection } from './components/revenue/RevenueSection';
-import { OverviewDashboard } from './components/overview/OverviewDashboard';
+import { HomePage } from './components/home/HomePage';
 import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
 import { HumanResourcesPage } from './components/hr/HumanResourcesPage';
 import { AccountingPage } from './components/accounting/AccountingPage';
@@ -65,7 +65,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [editLayout, setEditLayout] = useState(false);
-  const [activeNav, setActiveNav] = useState<NavItem>('Overview');
+  const [activeNav, setActiveNav] = useState<NavItem>('Home');
   const [ghostSession, setGhostSession] = useState<GhostSupportSession | null>(() => getGhostSupportSession());
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(() => getGhostSupportSession()?.companyId ?? null);
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>(() => {
@@ -222,16 +222,17 @@ export default function App() {
   function handleNavigate(item: NavItem) {
     if (!isNavItemPlatformLive(item, modulesGoLive)) return;
     if (!isNavItemEnabled(item, enabledModules)) return;
+    if (item !== 'Revenue Management') setEditLayout(false);
     setActiveNav(item);
   }
 
   useEffect(() => {
     if (!isNavItemPlatformLive(activeNav, modulesGoLive)) {
-      setActiveNav('Overview');
+      setActiveNav('Home');
       return;
     }
     if (moduleForNavItem(activeNav) && !isNavItemEnabled(activeNav, enabledModules)) {
-      setActiveNav('Overview');
+      setActiveNav('Home');
     }
   }, [activeNav, enabledModules, modulesGoLive]);
   const headerLocations = companyScopedConfigLocations.map(configLocationToDropdown);
@@ -371,6 +372,10 @@ export default function App() {
           }}
           onLocationChange={setSelectedLocationIds}
           onToggleSidebar={() => setSidebarOpen(v => !v)}
+          onGoHome={() => {
+            setEditLayout(false);
+            setActiveNav('Home');
+          }}
           onToggleDark={() => setDarkMode(v => !v)}
           onToggleEditLayout={() => setEditLayout(v => !v)}
         />
@@ -379,45 +384,13 @@ export default function App() {
         <StickyChromeSync />
         <main
           data-app-main
-          className={`flex-1 flex flex-col min-h-0 w-full min-w-0 overflow-x-hidden overflow-y-auto ${isFullBleed ? '' : 'p-2 sm:p-3 space-y-3'}`}
+          className={`flex-1 flex flex-col min-h-0 w-full min-w-0 overflow-x-hidden overflow-y-auto ${isFullBleed ? '' : 'p-2 sm:p-3 space-y-2'}`}
         >
-          {activeNav === 'Overview' ? (
-            <OverviewDashboard
-              editLayout={editLayout}
-              menuItems={overviewMenuItems}
-              alerts={overviewAlerts}
-              orders={overviewOrders}
-              clientOrders={overviewClientOrders}
-              revenue={overviewRevenue}
-              progress={overviewProgress}
-              sales={dashboardMetrics.sales}
-              activity={dashboardMetrics.activity}
-              aov={dashboardMetrics.aov}
-              activityMode={dashboardMetrics.activityMode}
-              onOrderNowFromAlerts={handleOrderNowFromAlerts}
-              onPurchaseOrderUpdated={updated => {
-                setOrders(prev => {
-                  if (String(updated.status).toLowerCase() === 'reconciled') {
-                    return prev.filter(order => order.id !== updated.id);
-                  }
-                  const exists = prev.some(order => order.id === updated.id);
-                  return exists
-                    ? prev.map(order => (order.id === updated.id ? updated : order))
-                    : [updated, ...prev];
-                });
-              }}
-              onClientOrderUpdated={updated => {
-                setClientOrders(prev => {
-                  const active = updated.status === 'draft'
-                    || updated.status === 'issued'
-                    || updated.status === 'confirmed';
-                  if (!active) return prev.filter(order => order.id !== updated.id);
-                  const exists = prev.some(order => order.id === updated.id);
-                  return exists
-                    ? prev.map(order => (order.id === updated.id ? updated : order))
-                    : [updated, ...prev];
-                });
-              }}
+          {activeNav === 'Home' ? (
+            <HomePage
+              enabledModules={enabledModules}
+              modulesGoLive={modulesGoLive}
+              onOpenModule={handleNavigate}
             />
           ) : isRevenueSection ? (
             <RevenueSection
@@ -427,6 +400,43 @@ export default function App() {
               initialRevItem={revenueIntent?.revItem ?? null}
               createOrderPrefill={revenueIntent?.createOrderPrefill}
               onRevenueIntentConsumed={clearRevenueIntent}
+              dashboard={activeNav === 'Revenue Management' ? {
+                editLayout,
+                menuItems: overviewMenuItems,
+                alerts: overviewAlerts,
+                orders: overviewOrders,
+                clientOrders: overviewClientOrders,
+                revenue: overviewRevenue,
+                progress: overviewProgress,
+                sales: dashboardMetrics.sales,
+                activity: dashboardMetrics.activity,
+                aov: dashboardMetrics.aov,
+                activityMode: dashboardMetrics.activityMode,
+                onOrderNowFromAlerts: handleOrderNowFromAlerts,
+                onPurchaseOrderUpdated: updated => {
+                  setOrders(prev => {
+                    if (String(updated.status).toLowerCase() === 'reconciled') {
+                      return prev.filter(order => order.id !== updated.id);
+                    }
+                    const exists = prev.some(order => order.id === updated.id);
+                    return exists
+                      ? prev.map(order => (order.id === updated.id ? updated : order))
+                      : [updated, ...prev];
+                  });
+                },
+                onClientOrderUpdated: updated => {
+                  setClientOrders(prev => {
+                    const active = updated.status === 'draft'
+                      || updated.status === 'issued'
+                      || updated.status === 'confirmed';
+                    if (!active) return prev.filter(order => order.id !== updated.id);
+                    const exists = prev.some(order => order.id === updated.id);
+                    return exists
+                      ? prev.map(order => (order.id === updated.id ? updated : order))
+                      : [updated, ...prev];
+                  });
+                },
+              } : undefined}
             />
           ) : activeNav === 'System Configuration' ? (
             <SystemConfigurationPage

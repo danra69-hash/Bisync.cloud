@@ -1,4 +1,4 @@
-import { Building2, GripHorizontal, Menu, Moon, RefreshCw, Search, Sun } from 'lucide-react';
+import { Building2, GripHorizontal, Home, Menu, Moon, RefreshCw, Search, Sun } from 'lucide-react';
 
 import type { NavItem } from '../../data/revenueManagement';
 
@@ -28,6 +28,7 @@ type Props = {
   onCompanyChange: (companyId: number | null) => void;
   onLocationChange: (ids: string[]) => void;
   onToggleSidebar: () => void;
+  onGoHome: () => void;
   onToggleDark: () => void;
   onToggleEditLayout: () => void;
 };
@@ -35,7 +36,7 @@ type Props = {
 export function Header({
   activeNav, darkMode, editLayout, companies, orgLoading, orgError, onRefreshOrg,
   selectedCompanyId, locations, selectedLocationIds, onCompanyChange, onLocationChange,
-  onToggleSidebar, onToggleDark, onToggleEditLayout,
+  onToggleSidebar, onGoHome, onToggleDark, onToggleEditLayout,
 }: Props) {
   const { t, navLabel } = useAppTranslation();
   const selectableCompanies = companies.filter(c => c.active !== false);
@@ -53,7 +54,7 @@ export function Header({
 
       <div className="flex-1 min-w-0">
         <h1 className="text-sm font-bold text-white leading-none">
-          {activeNav === 'Overview' ? t('header.operationsOverview') : navLabel(activeNav)}
+          {activeNav === 'Home' ? t('nav.home') : navLabel(activeNav)}
         </h1>
         <p className="text-xs mt-0.5 hidden sm:block text-white/45">Friday, 20 June 2025 · Dinner service in 3h 24m</p>
       </div>
@@ -108,11 +109,21 @@ export function Header({
           />
         </div>
 
+        <button
+          type="button"
+          onClick={onGoHome}
+          className="p-2 rounded-md hover:bg-white/10"
+          title={t('header.home')}
+          aria-label={t('header.home')}
+        >
+          <Home size={15} className={activeNav === 'Home' ? 'text-primary' : 'text-white/70'} />
+        </button>
+
         <button onClick={onToggleDark} className="p-2 rounded-md hover:bg-white/10" title={darkMode ? t('header.lightMode') : t('header.darkMode')}>
           {darkMode ? <Sun size={15} className="text-primary" /> : <Moon size={15} className="text-white/70" />}
         </button>
 
-        {activeNav === 'Overview' && (
+        {activeNav === 'Revenue Management' && (
           <button
             onClick={onToggleEditLayout}
             className="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-md transition-colors"

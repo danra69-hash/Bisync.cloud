@@ -69,7 +69,8 @@ export const th = {
     choose: 'เลือกภาษา',
   },
   header: {
-    operationsOverview: 'ภาพรวมการดำเนินงาน',
+    home: 'หน้าแรก',
+    operationsOverview: 'หน้าแรก',
     selectCompany: 'เลือกบริษัท',
     loadingCompanies: 'กำลังโหลดบริษัท…',
     companiesFromHr: 'บริษัทจากการตั้งค่า HR',
@@ -85,13 +86,24 @@ export const th = {
     new: 'ใหม่',
   },
   nav: {
-    overview: 'ภาพรวม',
+    home: 'หน้าแรก',
+    overview: 'หน้าแรก',
     revenueManagement: 'การจัดการรายได้',
     pointOfSales: 'จุดขาย',
     humanResources: 'ทรัพยากรบุคคล',
     accounting: 'บัญชี',
     report: 'รายงาน',
     systemConfiguration: 'การตั้งค่าระบบ',
+  },
+  home: {
+    subtitle: 'เลือกโมดูลเพื่อดำเนินการต่อ',
+    openModule: 'เปิด',
+    modules: {
+      rms: 'จัดซื้อ สต็อก สินค้า และการขาย',
+      pos: 'ขายหน้าร้าน เมนู และอุปกรณ์',
+      hrm: 'บุคคล ลงเวลา ลา และการตั้งค่าแรงงาน',
+      accounting: 'เงินเดือน บัญชีแยกประเภท และการปิดบัญชี',
+    },
   },
   revMgmt: {
     sections: {

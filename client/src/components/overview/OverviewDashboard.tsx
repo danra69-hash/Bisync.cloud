@@ -63,16 +63,16 @@ function PeriodMetricCard({
   mtdLabel: string;
 }) {
   return (
-    <div className={`rounded-lg p-3 border border-border flex flex-col gap-2 ${accent ? 'bg-primary/10' : 'bg-card'}`}>
+    <div className={`rounded-lg px-2.5 py-2 border border-border flex flex-col gap-1 ${accent ? 'bg-primary/10' : 'bg-card'}`}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-sans tracking-wide text-muted-foreground uppercase">{title}</span>
-        <div className={`p-1.5 rounded-md ${accent ? 'bg-primary/20' : 'bg-muted'}`}>
-          <Icon size={13} className={accent ? 'text-primary' : 'text-muted-foreground'} />
+        <span className="text-[11px] font-sans tracking-wide text-muted-foreground uppercase leading-none">{title}</span>
+        <div className={`p-1 rounded-md ${accent ? 'bg-primary/20' : 'bg-muted'}`}>
+          <Icon size={12} className={accent ? 'text-primary' : 'text-muted-foreground'} />
         </div>
       </div>
-      <p className="text-2xl font-semibold leading-none">{formatValue(totals.today)}</p>
+      <p className="text-xl font-semibold leading-none">{formatValue(totals.today)}</p>
       <DeltaBadge current={totals.today} prev={totals.todayPrev} label={vsLastYearLabel} />
-      <div className="mt-1 space-y-1.5 border-t border-border/70 pt-2">
+      <div className="mt-0.5 space-y-0.5 border-t border-border/70 pt-1.5">
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="text-muted-foreground font-sans uppercase tracking-wide">{wtdLabel}</span>
           <span className="font-medium tabular-nums">{formatValue(totals.wtd)}</span>
@@ -97,10 +97,10 @@ function RevenueChart({
 }) {
   const max = Math.max(...data.flatMap(d => [d.currentValue, d.priorValue]), 1);
   return (
-    <div className="flex items-end gap-2 h-40 mt-4">
+    <div className="flex items-end gap-1.5 h-28 mt-1.5">
       {data.map(d => (
-        <div key={d.label} className="flex-1 flex flex-col items-center gap-1">
-          <div className="w-full flex gap-0.5 items-end h-32">
+        <div key={d.label} className="flex-1 flex flex-col items-center gap-0.5">
+          <div className="w-full flex gap-0.5 items-end h-24">
             <div className="flex-1 rounded-t bg-[#F37021]/60" style={{ height: `${(d.priorValue / max) * 100}%` }} title={`Prior: ${formatValue(d.priorValue)}`} />
             <div className="flex-1 rounded-t bg-primary" style={{ height: `${(d.currentValue / max) * 100}%` }} title={`Current: ${formatValue(d.currentValue)}`} />
           </div>
@@ -132,7 +132,7 @@ type MenuSortColumn = 'item' | 'orders' | 'revenue' | 'margin';
 type OrderSortColumn = 'po' | 'vendor' | 'delivery' | 'value' | 'status';
 type ClientOrderSortColumn = 'so' | 'customer' | 'date' | 'value' | 'status';
 
-type Props = {
+export type OverviewDashboardProps = {
   editLayout: boolean;
   menuItems: MenuItem[];
   alerts: InventoryAlert[];
@@ -227,7 +227,7 @@ export function OverviewDashboard({
   onOrderNowFromAlerts,
   onPurchaseOrderUpdated,
   onClientOrderUpdated,
-}: Props) {
+}: OverviewDashboardProps) {
   const { t } = useAppTranslation();
   const { rm, compact } = useCountryFormatters();
   const [layout, setLayout] = useState<OverviewLayoutState>(() => loadOverviewLayout());
@@ -352,7 +352,7 @@ export function OverviewDashboard({
     switch (sectionId) {
       case 'metrics':
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5">
             <PeriodMetricCard
               title={t('overview.salesToday')}
               totals={sales}
@@ -385,10 +385,10 @@ export function OverviewDashboard({
         );
       case 'revenue-progress':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
-            <div className="lg:col-span-2 bg-card border border-border rounded-lg p-3">
-              <h2 className="text-sm font-semibold">{t('overview.revenueTrend')}</h2>
-              <p className="text-xs text-muted-foreground mb-1">{t('overview.revenueTrendSubtitle')}</p>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-1.5">
+            <div className="lg:col-span-2 bg-card border border-border rounded-lg px-2.5 py-2">
+              <h2 className="text-sm font-semibold leading-tight">{t('overview.revenueTrend')}</h2>
+              <p className="text-[11px] text-muted-foreground leading-snug">{t('overview.revenueTrendSubtitle')}</p>
               <RevenueChart data={revenue} formatValue={compact} />
             </div>
             <ProgressPanel progress={progress} />
@@ -396,12 +396,12 @@ export function OverviewDashboard({
         );
       case 'menu-alerts':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="p-2 border-b border-border">
-                <h2 className="text-sm font-semibold">{t('overview.productPerformance')}</h2>
+              <div className="px-2.5 py-1.5 border-b border-border">
+                <h2 className="text-sm font-semibold leading-tight">{t('overview.productPerformance')}</h2>
               </div>
-              <TableScrollContainer ref={menuScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <TableScrollContainer ref={menuScrollRef} className="max-h-44 overflow-y-auto">
                 <table className="w-full table-fixed text-xs">
                   <thead>
                     <SortableTableHeaderRow
@@ -415,10 +415,10 @@ export function OverviewDashboard({
                   <tbody>
                     {menuScroll.visibleItems.map(m => (
                       <tr key={m.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3 font-medium">{m.name}</td>
-                        <td className="px-4 py-3 font-sans text-muted-foreground">{m.orders}</td>
-                        <td className="px-4 py-3 font-sans">{rm(m.revenue)}</td>
-                        <td className="px-4 py-3 font-sans">{m.marginPercent}%</td>
+                        <td className="px-3 py-1.5 font-medium">{m.name}</td>
+                        <td className="px-3 py-1.5 font-sans text-muted-foreground">{m.orders}</td>
+                        <td className="px-3 py-1.5 font-sans">{rm(m.revenue)}</td>
+                        <td className="px-3 py-1.5 font-sans">{m.marginPercent}%</td>
                       </tr>
                     ))}
                     <InfiniteScrollTableSentinel colSpan={4} hasMore={menuScroll.hasMore} onLoadMore={menuScroll.loadMore} nextPageSize={menuScroll.nextPageSize} sentinelRef={menuScroll.sentinelRef} totalCount={menuScroll.totalCount} visibleCount={menuScroll.visibleCount} />
@@ -428,8 +428,8 @@ export function OverviewDashboard({
             </div>
 
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="p-2 border-b border-border flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold">{t('overview.inventoryAlerts')}</h2>
+              <div className="px-2.5 py-1.5 border-b border-border flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold leading-tight">{t('overview.inventoryAlerts')}</h2>
                 {alerts.length > 0 && onOrderNowFromAlerts ? (
                   <button
                     type="button"
@@ -442,7 +442,7 @@ export function OverviewDashboard({
               </div>
               <div className="divide-y divide-border">
                 {alerts.length === 0 ? (
-                  <p className="px-5 py-4 text-xs text-muted-foreground">{t('overview.noInventoryAlerts')}</p>
+                  <p className="px-3 py-2 text-xs text-muted-foreground">{t('overview.noInventoryAlerts')}</p>
                 ) : (
                   alerts.map(a => {
                     const isParstock = a.alertType === 'parstock';
@@ -461,11 +461,11 @@ export function OverviewDashboard({
                         ? 'bg-rose-500/15 text-rose-800 dark:text-rose-300'
                         : 'bg-sky-500/15 text-sky-800 dark:text-sky-300';
                     return (
-                      <div key={`${a.alertType ?? 'alert'}-${a.componentId ?? a.id}-${a.id}`} className="px-5 py-4 flex items-start gap-3">
+                      <div key={`${a.alertType ?? 'alert'}-${a.componentId ?? a.id}-${a.id}`} className="px-3 py-2 flex items-start gap-2">
                         <AlertTriangle size={13} className={`mt-0.5 shrink-0 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
-                        <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex-1 min-w-0 space-y-0.5">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <p className="text-xs font-medium">{a.itemName}</p>
+                            <p className="text-xs font-medium leading-tight">{a.itemName}</p>
                             <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${badgeCls}`}>
                               {typeLabel}
                             </span>
@@ -507,12 +507,12 @@ export function OverviewDashboard({
         );
       case 'purchase-orders':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="p-2 border-b border-border">
-                <h2 className="text-sm font-semibold">{t('overview.activePurchaseOrders')}</h2>
+              <div className="px-2.5 py-1.5 border-b border-border">
+                <h2 className="text-sm font-semibold leading-tight">{t('overview.activePurchaseOrders')}</h2>
               </div>
-              <TableScrollContainer ref={ordersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <TableScrollContainer ref={ordersScrollRef} className="max-h-44 overflow-y-auto">
                 <table className="w-full table-fixed text-xs">
                   <thead>
                     <SortableTableHeaderRow
@@ -542,11 +542,11 @@ export function OverviewDashboard({
                           }}
                           className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${opening ? 'bg-primary/5' : ''} ${selectedPurchaseOrder?.id === o.id ? 'bg-primary/10' : ''}`}
                         >
-                          <td className="px-4 py-3 font-sans text-primary underline-offset-2 group-hover:underline">{o.poNumber}</td>
-                          <td className="px-4 py-3">{o.vendorName}</td>
-                          <td className="px-4 py-3 font-sans text-muted-foreground">{o.deliveryDate}</td>
-                          <td className="px-4 py-3 font-sans">{rm(value)}</td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-1.5 font-sans text-primary underline-offset-2 group-hover:underline">{o.poNumber}</td>
+                          <td className="px-3 py-1.5">{o.vendorName}</td>
+                          <td className="px-3 py-1.5 font-sans text-muted-foreground">{o.deliveryDate}</td>
+                          <td className="px-3 py-1.5 font-sans">{rm(value)}</td>
+                          <td className="px-3 py-1.5">
                             <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
                           </td>
                         </tr>
@@ -558,11 +558,11 @@ export function OverviewDashboard({
               </TableScrollContainer>
             </div>
 
-            <div className="bg-card border border-border rounded-lg overflow-hidden min-h-[12rem]">
-              <div className="p-2 border-b border-border">
-                <h2 className="text-sm font-semibold">{t('overview.activeClientOrders')}</h2>
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="px-2.5 py-1.5 border-b border-border">
+                <h2 className="text-sm font-semibold leading-tight">{t('overview.activeClientOrders')}</h2>
               </div>
-              <TableScrollContainer ref={clientOrdersScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <TableScrollContainer ref={clientOrdersScrollRef} className="max-h-44 overflow-y-auto">
                 <table className="w-full table-fixed text-xs">
                   <thead>
                     <SortableTableHeaderRow
@@ -576,7 +576,7 @@ export function OverviewDashboard({
                   <tbody>
                     {sortedClientOrders.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-6 text-xs text-muted-foreground text-center">
+                        <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground text-center">
                           {t('overview.noOrdersOnHand')}
                         </td>
                       </tr>
@@ -599,11 +599,11 @@ export function OverviewDashboard({
                           }}
                           className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${opening ? 'bg-primary/5' : ''} ${selectedClientOrder?.id === o.id ? 'bg-primary/10' : ''}`}
                         >
-                          <td className="px-4 py-3 font-sans text-primary">{o.orderNumber}</td>
-                          <td className="px-4 py-3">{o.customerName}</td>
-                          <td className="px-4 py-3 font-sans text-muted-foreground">{clientOrderDate(o)}</td>
-                          <td className="px-4 py-3 font-sans">{rm(value)}</td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-1.5 font-sans text-primary">{o.orderNumber}</td>
+                          <td className="px-3 py-1.5">{o.customerName}</td>
+                          <td className="px-3 py-1.5 font-sans text-muted-foreground">{clientOrderDate(o)}</td>
+                          <td className="px-3 py-1.5 font-sans">{rm(value)}</td>
+                          <td className="px-3 py-1.5">
                             <span className="text-xs font-sans px-1.5 py-0.5 rounded bg-primary/15 text-primary">{o.status}</span>
                           </td>
                         </tr>
@@ -624,9 +624,9 @@ export function OverviewDashboard({
   const activeLayout = layout.order.length > 0 ? layout : DEFAULT_OVERVIEW_LAYOUT;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {editLayout ? (
-        <p className="text-xs text-muted-foreground rounded-md border border-dashed border-primary/30 bg-primary/5 px-3 py-2">
+        <p className="text-[11px] text-muted-foreground rounded-md border border-dashed border-primary/30 bg-primary/5 px-2.5 py-1.5 leading-snug">
           Drag sections to reorder. Hide sections you do not need. Click <span className="font-semibold text-primary">Editing</span> again to save.
         </p>
       ) : null}

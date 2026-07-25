@@ -67,7 +67,8 @@ export const en = {
     choose: 'Choose language',
   },
   header: {
-    operationsOverview: 'Operations Overview',
+    home: 'Home',
+    operationsOverview: 'Home',
     selectCompany: 'Select Company',
     loadingCompanies: 'Loading companies…',
     companiesFromHr: 'Companies from HR Config',
@@ -83,13 +84,24 @@ export const en = {
     new: 'New',
   },
   nav: {
-    overview: 'Overview',
+    home: 'Home',
+    overview: 'Home',
     revenueManagement: 'Revenue Management',
     pointOfSales: 'Point-of-Sales',
     humanResources: 'Human Resources',
     accounting: 'Accounting',
     report: 'Report',
     systemConfiguration: 'System Configuration',
+  },
+  home: {
+    subtitle: 'Choose a module to continue.',
+    openModule: 'Open',
+    modules: {
+      rms: 'Purchasing, inventory, products, and sales operations.',
+      pos: 'Front-of-house selling, menus, and device control.',
+      hrm: 'People, attendance, leave, and workforce setup.',
+      accounting: 'Payroll links, ledgers, and financial close.',
+    },
   },
   revMgmt: {
     sections: {

@@ -30,6 +30,7 @@ import { refreshVendorProductCatalog } from '../../data/vendorProductCatalog';
 import { isB2bProductNavLabel, isSupplySideNavLabel } from '../../data/revenueManagement';
 import { useOrgBusinessCapabilities } from '../../hooks/useOrgSupplyCapability';
 import type { CreateOrderPrefillItem } from '../../data/createOrderPrefill';
+import type { OverviewDashboardProps } from '../overview/OverviewDashboard';
 
 type Props = {
   section: 'Revenue Management' | 'Point-of-Sales';
@@ -38,6 +39,7 @@ type Props = {
   initialRevItem?: string | null;
   createOrderPrefill?: CreateOrderPrefillItem[];
   onRevenueIntentConsumed?: () => void;
+  dashboard?: OverviewDashboardProps;
 };
 
 function renderRevMgmtContent(
@@ -48,14 +50,25 @@ function renderRevMgmtContent(
   hasSupplyCapability = true,
   hasB2bProductCapability = true,
   createOrderPrefill?: CreateOrderPrefillItem[],
+  dashboard?: OverviewDashboardProps,
 ) {
   if (!selectedItem) {
+    if (!dashboard) {
+      return (
+        <div className="p-2 sm:p-3 w-full min-w-0">
+          <p className="text-sm text-muted-foreground">Revenue Management dashboard is unavailable.</p>
+        </div>
+      );
+    }
     return (
-      <RevMgmtLandingPage
-        selectedCompanyId={selectedCompanyId}
-        selectedLocationIds={selectedLocationIds}
-        onOpenTransfer={() => onSelectItem?.('Operation||Inventory||Transfer')}
-      />
+      <div className="p-2 sm:p-3 w-full min-w-0">
+        <RevMgmtLandingPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          onOpenTransfer={() => onSelectItem?.('Operation||Inventory||Transfer')}
+          {...dashboard}
+        />
+      </div>
     );
   }
 
@@ -228,6 +241,7 @@ export function RevenueSection({
   initialRevItem = null,
   createOrderPrefill,
   onRevenueIntentConsumed,
+  dashboard,
 }: Props) {
   const { t } = useAppTranslation();
   const [revItem, setRevItem] = useState<string | null>(null);
@@ -301,6 +315,7 @@ export function RevenueSection({
         hasSupplyCapability,
         hasB2bProductCapability,
         pendingPrefill,
+        dashboard,
       )}
     </RevMgmtTitleProvider>
   );

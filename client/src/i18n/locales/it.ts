@@ -69,7 +69,8 @@ export const it = {
     choose: 'Scegli lingua',
   },
   header: {
-    operationsOverview: 'Panoramica operativa',
+    home: 'Home',
+    operationsOverview: 'Home',
     selectCompany: 'Seleziona azienda',
     loadingCompanies: 'Caricamento aziende…',
     companiesFromHr: 'Aziende da configurazione HR',
@@ -85,13 +86,24 @@ export const it = {
     new: 'Nuovo',
   },
   nav: {
-    overview: 'Panoramica',
+    home: 'Home',
+    overview: 'Home',
     revenueManagement: 'Gestione ricavi',
     pointOfSales: 'Punto vendita',
     humanResources: 'Risorse umane',
     accounting: 'Contabilità',
     report: 'Report',
     systemConfiguration: 'Configurazione sistema',
+  },
+  home: {
+    subtitle: 'Scegli un modulo per continuare.',
+    openModule: 'Apri',
+    modules: {
+      rms: 'Acquisti, magazzino, prodotti e operazioni di vendita.',
+      pos: 'Punto vendita, menu e dispositivi.',
+      hrm: 'Personale, presenza, ferie e setup HR.',
+      accounting: 'Paghe, libri contabili e chiusura finanziaria.',
+    },
   },
   revMgmt: {
     sections: {
