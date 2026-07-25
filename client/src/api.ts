@@ -78,6 +78,8 @@ export interface LocationConfig {
   companyId: number | null;
   companyName: string | null;
   countryCode: string;
+  /** IANA timezone for this location (company country + state/province). */
+  timeZoneId?: string;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -103,6 +105,8 @@ export interface Company {
   brn: string;
   gstTin: string;
   countryCode: string;
+  /** IANA timezone from company country (+ company state when set). */
+  timeZoneId?: string;
   addressLine1: string;
   addressLine2: string;
   city: string;

@@ -74,7 +74,16 @@ public sealed class InventoryAlertComputationService(
 
         var datedLotsByComponent = await LoadDatedLotsByComponentAsync(companyId, locationIdList, ct);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var companyCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == companyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync(ct) ?? "MY";
+        var locationState = await db.Locations.AsNoTracking()
+            .Where(l => l.CompanyId == companyId && locationIdList.Contains(l.ExternalId))
+            .OrderBy(l => l.Id)
+            .Select(l => l.StateProvince)
+            .FirstOrDefaultAsync(ct);
+        var today = OrgClock.TodayLocal(companyCountry, locationState);
         var alerts = new List<ComputedInventoryAlert>();
         var seq = 1;
 

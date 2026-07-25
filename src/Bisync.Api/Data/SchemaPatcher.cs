@@ -49,6 +49,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "OpeningHoursJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "TimeZoneId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "SecondaryContactUserId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "ProductPolicyTag", "TEXT NOT NULL DEFAULT 'non-halal'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "AllowPartialDelivery", "BOOLEAN NOT NULL DEFAULT FALSE");

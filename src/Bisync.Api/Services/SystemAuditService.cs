@@ -170,9 +170,26 @@ public sealed class SystemAuditService(
             }
 
             country ??= "MY";
+            string? stateProvince = null;
+            if (locationId is int locId && locId > 0)
+            {
+                stateProvince = await opsDb.Locations.AsNoTracking()
+                    .Where(l => l.Id == locId)
+                    .Select(l => l.StateProvince)
+                    .FirstOrDefaultAsync(ct);
+            }
+            else if (!string.IsNullOrWhiteSpace(locationExternalId))
+            {
+                var extId = locationExternalId;
+                stateProvince = await opsDb.Locations.AsNoTracking()
+                    .Where(l => l.ExternalId == extId)
+                    .Select(l => l.StateProvince)
+                    .FirstOrDefaultAsync(ct);
+            }
+
             var utc = DateTime.UtcNow;
-            var local = CountryTimeZones.ToLocal(utc, country);
-            var tz = CountryTimeZones.ResolveId(country);
+            var local = CountryTimeZones.ToLocal(utc, country, stateProvince);
+            var tz = CountryTimeZones.ResolveId(country, stateProvince);
 
             auditDb.SystemAuditEvents.Add(new SystemAuditEvent
             {

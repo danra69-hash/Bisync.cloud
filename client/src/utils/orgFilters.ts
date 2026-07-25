@@ -4,11 +4,21 @@ export type DropdownLocation = {
   externalId: string;
   name: string;
   address: string;
+  stateProvince?: string;
+  countryCode?: string;
+  timeZoneId?: string;
 };
 
 export function configLocationToDropdown(loc: LocationConfig): DropdownLocation {
   const address = [loc.addressLine1, loc.city, loc.stateProvince, loc.postcode].filter(Boolean).join(', ');
-  return { externalId: loc.externalId, name: loc.name, address: address || loc.name };
+  return {
+    externalId: loc.externalId,
+    name: loc.name,
+    address: address || loc.name,
+    stateProvince: loc.stateProvince,
+    countryCode: loc.countryCode,
+    timeZoneId: loc.timeZoneId,
+  };
 }
 
 export function filterMetricsByOrg(

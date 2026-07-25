@@ -89,6 +89,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             c.Brn,
             c.GstTin,
             c.CountryCode,
+            timeZoneId = OrgClock.ResolveTimeZoneId(c.CountryCode, c.StateProvince),
             c.AddressLine1,
             c.AddressLine2,
             c.City,

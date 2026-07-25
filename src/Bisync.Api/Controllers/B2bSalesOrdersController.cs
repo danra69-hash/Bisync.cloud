@@ -155,7 +155,11 @@ public class B2bSalesOrdersController(
         var lockPeriodDays = request.LockPeriodDays > 0
             ? request.LockPeriodDays
             : ResolveDefaultLockPeriodDays(productById.Values);
-        var createdDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        var companyCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == request.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync() ?? "MY";
+        var createdDate = OrgClock.TodayLocal(companyCountry);
 
         var baseRrpByProduct = new Dictionary<int, decimal>();
         foreach (var line in request.Lines.Where(l => l.PromotionId is null or <= 0))

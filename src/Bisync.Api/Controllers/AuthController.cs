@@ -496,6 +496,7 @@ public class AuthController(
             Address = string.Join(", ", new[] { dto.AddressLine1, dto.City, dto.StateProvince, dto.Postcode }
                 .Where(s => !string.IsNullOrWhiteSpace(s))),
         };
+        OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
 
         db.Locations.Add(loc);
         await db.SaveChangesAsync();
