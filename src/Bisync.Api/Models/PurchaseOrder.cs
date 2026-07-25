@@ -37,6 +37,14 @@ public class PurchaseOrder
     public string HygieneComment { get; set; } = string.Empty;
     /// <summary>Set when Final delivery completed is clicked (partial-delivery vendors).</summary>
     public DateTime? FinalDeliveryCompletedAt { get; set; }
+    /// <summary>True for blanket/pre-committed POs that hold committed qty at a special price.</summary>
+    public bool IsPreCommitted { get; set; }
+    /// <summary>Commitment window start (inclusive). Only for pre-committed POs.</summary>
+    public DateOnly? CommitmentStartDate { get; set; }
+    /// <summary>Commitment window end (inclusive). Only for pre-committed POs.</summary>
+    public DateOnly? CommitmentEndDate { get; set; }
+    /// <summary>When a release PO draws from a pre-committed master, links back to that master.</summary>
+    public int? SourceCommittedPurchaseOrderId { get; set; }
     public ICollection<PurchaseOrderItem> Items { get; set; } = new List<PurchaseOrderItem>();
 }
 
@@ -62,6 +70,8 @@ public class PurchaseOrderItem
     public decimal? ReconciledUnitPrice { get; set; }
     /// <summary>Cumulative qty consolidated into inventory across partial shipments.</summary>
     public decimal DeliveredQuantity { get; set; }
+    /// <summary>Qty already drawn from a pre-committed (blanket) line via release orders.</summary>
+    public decimal DrawnQuantity { get; set; }
     public decimal TaxAmount { get; set; }
     public string HalalCertNo { get; set; } = string.Empty;
     /// <summary>Optional vendor product expiry date (yyyy-MM-dd) captured at receive.</summary>

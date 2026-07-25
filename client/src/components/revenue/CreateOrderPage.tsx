@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileStack, Search, ShoppingCart } from 'lucide-react';
+import { FileStack, Handshake, Search, ShoppingCart } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
-import { api, type OrderTemplate, type Vendor } from '../../api';
+import { api, type OrderTemplate, type PurchaseOrder, type Vendor } from '../../api';
 import {
   buildCartItems,
   buildCreateOrderLines,
@@ -24,6 +24,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
+import { PreCommittedPoModal } from './PreCommittedPoModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { buildOrderQtyFromPrefill, type CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
@@ -78,8 +79,11 @@ export function CreateOrderPage({
   const [orderQtyByKey, setOrderQtyByKey] = useState<Record<string, string>>({});
   const [showCart, setShowCart] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showPreCommitted, setShowPreCommitted] = useState(false);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const pendingTemplateRef = useRef<OrderTemplate | null>(null);
+  const pendingCommittedPoIdRef = useRef<number | null>(null);
+  const pendingCommittedPoRef = useRef<PurchaseOrder | null>(null);
   const prefillAppliedRef = useRef(false);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CreateOrderSortColumn>();
 
@@ -233,6 +237,7 @@ export function CreateOrderPage({
   function handleApplyTemplate(template: OrderTemplate) {
     setShowTemplatePicker(false);
     setTemplateNotice(null);
+    pendingCommittedPoIdRef.current = null;
 
     if (template.vendorExternalId && template.vendorExternalId !== vendorFilter) {
       pendingTemplateRef.current = template;
@@ -242,6 +247,53 @@ export function CreateOrderPage({
 
     applyTemplateNow(template, lines);
   }
+
+  function applyCommittedPoNow(po: PurchaseOrder, currentLines: CreateOrderLine[]) {
+    const updates: Record<string, string> = {};
+    let applied = 0;
+    for (const item of po.items) {
+      const remaining = item.remainingCommitmentQuantity
+        ?? item.remainingQuantity
+        ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+      if (remaining <= 0) continue;
+      const match = currentLines.find(line => {
+        if (item.vendorProductId && line.vendorProduct.id === item.vendorProductId) return true;
+        if (item.componentId && line.component.componentId === item.componentId) return true;
+        return false;
+      });
+      if (!match) continue;
+      updates[match.key] = String(remaining);
+      // Prefer committed special price already on the line's vendor product; drawdown reapplies on create.
+      applied += 1;
+    }
+    if (applied === 0) {
+      setTemplateNotice(`Could not apply committed PO ${po.poNumber} — no matching order lines.`);
+      return;
+    }
+    pendingCommittedPoIdRef.current = po.id;
+    setOrderQtyByKey(prev => ({ ...prev, ...updates }));
+    setTemplateNotice(
+      `Applied Pre-committed PO ${po.poNumber} (${applied} line${applied === 1 ? '' : 's'} remaining). Confirm My Carte to draw down.`,
+    );
+  }
+
+  function handleApplyCommittedPo(po: PurchaseOrder) {
+    setShowTemplatePicker(false);
+    setTemplateNotice(null);
+    if (po.vendorExternalId && po.vendorExternalId !== vendorFilter) {
+      pendingCommittedPoRef.current = po;
+      setVendorFilter(po.vendorExternalId);
+      return;
+    }
+    applyCommittedPoNow(po, lines);
+  }
+
+  useEffect(() => {
+    const po = pendingCommittedPoRef.current;
+    if (!po) return;
+    pendingCommittedPoRef.current = null;
+    applyCommittedPoNow(po, lines);
+  }, [lines]);
 
   const cartItems = useMemo(
     () => buildCartItems(lines, orderQtyByKey),
@@ -327,6 +379,17 @@ export function CreateOrderPage({
               >
                 <FileStack size={16} />
                 PO Template
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPreCommitted(true)}
+                disabled={cartCount === 0}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Commit large qty to a vendor at a special price over a date range"
+              >
+                <Handshake size={16} />
+                Pre-committed PO
               </button>
 
               <button
@@ -451,6 +514,28 @@ export function CreateOrderPage({
           lines={lines}
           onClose={() => setShowTemplatePicker(false)}
           onApply={handleApplyTemplate}
+          onApplyCommittedPo={handleApplyCommittedPo}
+        />
+      )}
+
+      {showPreCommitted && selectedCompanyId && (
+        <PreCommittedPoModal
+          items={cartItems}
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          onClose={() => setShowPreCommitted(false)}
+          onCreated={(clearedLineKeys, poNumbers) => {
+            setShowPreCommitted(false);
+            setOrderQtyByKey(prev => {
+              const next = { ...prev };
+              for (const key of clearedLineKeys) delete next[key];
+              return next;
+            });
+            pendingCommittedPoIdRef.current = null;
+            setTemplateNotice(
+              `Created Pre-committed PO${poNumbers.length === 1 ? '' : 's'} ${poNumbers.join(', ')}. They remain under Committed until drawn down.`,
+            );
+          }}
         />
       )}
 
@@ -459,6 +544,7 @@ export function CreateOrderPage({
           items={cartItems}
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
+          sourceCommittedPurchaseOrderId={pendingCommittedPoIdRef.current}
           onClose={() => setShowCart(false)}
           onConfirmed={clearedLineKeys => {
             setOrderQtyByKey(prev => {
@@ -466,6 +552,7 @@ export function CreateOrderPage({
               for (const key of clearedLineKeys) delete next[key];
               return next;
             });
+            pendingCommittedPoIdRef.current = null;
           }}
         />
       )}

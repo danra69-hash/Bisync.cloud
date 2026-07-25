@@ -690,6 +690,12 @@ public class CreatePurchaseOrderRequest
     public DateOnly? DeliveryDate { get; set; }
     [MaxLength(50)]
     public string Status { get; set; } = "Open";
+    /// <summary>When true, creates a pre-committed (blanket) PO with commitment date range.</summary>
+    public bool IsPreCommitted { get; set; }
+    public DateOnly? CommitmentStartDate { get; set; }
+    public DateOnly? CommitmentEndDate { get; set; }
+    /// <summary>Optional: draw this release from a specific pre-committed master PO.</summary>
+    public int? SourceCommittedPurchaseOrderId { get; set; }
     public List<CreatePurchaseOrderItemRequest> Items { get; set; } = [];
 }
 
@@ -784,6 +790,9 @@ public class UpsertOrderTemplateRequest
 {
     [MaxLength(200)]
     public string Name { get; set; } = string.Empty;
+    /// <summary>schedule (default) | pre_committed</summary>
+    [MaxLength(30)]
+    public string? TemplateKind { get; set; }
     [MaxLength(50)]
     public string? VendorExternalId { get; set; }
     [MaxLength(200)]

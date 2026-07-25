@@ -29,6 +29,8 @@ type Props = {
   items: OrderCartItem[];
   selectedCompanyId: number;
   selectedLocationIds: string[];
+  /** When set, release POs draw down from this Pre-committed master. */
+  sourceCommittedPurchaseOrderId?: number | null;
   onClose: () => void;
   onConfirmed: (clearedLineKeys: string[]) => void;
 };
@@ -73,6 +75,7 @@ export function OrderCartModal({
   items,
   selectedCompanyId,
   selectedLocationIds,
+  sourceCommittedPurchaseOrderId = null,
   onClose,
   onConfirmed,
 }: Props) {
@@ -232,6 +235,7 @@ export function OrderCartModal({
           orderDate: orderDateStr,
           deliveryDate: deliveryDateStr,
           status: orderStatus,
+          sourceCommittedPurchaseOrderId: sourceCommittedPurchaseOrderId ?? undefined,
           items: group.items.map(item => ({
             componentId: item.componentId,
             componentName: item.componentName,

@@ -246,30 +246,34 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     return { subtotal, taxTotal, total: subtotal + taxTotal };
   }, [lines]);
 
-  const showTaxColumn = !isPurchaseRequest && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  // Halal cert is optional — show when org is under a halal policy (or value already stored).
-  const showHalalCertColumn = (requiresHalalCert || lines.some(line => line.halalCertNo.trim()))
+  const showCommitmentColumns = Boolean(order.isPreCommitted);
+  const showTaxColumn = !showCommitmentColumns && !isPurchaseRequest
     && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
-  const showExpiryColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
-  const showTempColumn = mode === 'receive' || mode === 'reconcile' || mode === 'view';
-  const showReceiveDocs = mode === 'receive' || mode === 'reconcile' || mode === 'view';
-  const showVendorRatingInputs = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  // Halal cert is optional — show when org is under a halal policy (or value already stored).
+  const showHalalCertColumn = !showCommitmentColumns
+    && (requiresHalalCert || lines.some(line => line.halalCertNo.trim()))
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+  const showExpiryColumn = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+  const showTempColumn = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+  const showReceiveDocs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
+  const showVendorRatingInputs = !showCommitmentColumns && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   /** Receive / reconcile / view: ordered vs received qty & price + variances. */
-  const showOrderedReceivedColumns = mode === 'receive' || mode === 'reconcile' || mode === 'view';
+  const showOrderedReceivedColumns = !showCommitmentColumns
+    && (mode === 'receive' || mode === 'reconcile' || mode === 'view');
   const canEditReceived = (mode === 'receive' || mode === 'reconcile') && !readOnly;
   const canEditVendorRating = (mode === 'receive' || mode === 'reconcile') && !readOnly;
   const lineHeaders = [
     'Component',
     'Product',
-    showOrderedReceivedColumns ? 'QTY Ordered' : 'Qty',
-    showPartialDeliveryColumns ? 'Delivered' : null,
-    showPartialDeliveryColumns ? 'Remaining' : null,
+    showCommitmentColumns ? 'Committed' : (showOrderedReceivedColumns ? 'QTY Ordered' : 'Qty'),
+    showCommitmentColumns ? 'Drawn' : (showPartialDeliveryColumns ? 'Delivered' : null),
+    showCommitmentColumns ? 'Remaining' : (showPartialDeliveryColumns ? 'Remaining' : null),
     showOrderedReceivedColumns
       ? (showPartialDeliveryColumns ? 'QTY This shipment' : 'QTY Received')
       : null,
     'UOM',
     !hidePrices && mode === 'reconcile' ? 'Issued price' : null,
-    !hidePrices ? (showOrderedReceivedColumns ? 'Unit Price Ordered' : 'Unit price') : null,
+    !hidePrices ? (showOrderedReceivedColumns || showCommitmentColumns ? 'Unit Price' : 'Unit price') : null,
     !hidePrices && showOrderedReceivedColumns ? 'Unit Price Received' : null,
     showOrderedReceivedColumns ? 'QTY Variance' : null,
     !hidePrices && showOrderedReceivedColumns ? 'Unit Price Variance' : null,
@@ -440,27 +444,31 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     }
   }
 
-  const title = mode === 'approve'
-    ? 'Approve purchase request'
-    : mode === 'receive'
-      ? (order.status === 'Partially Delivered' ? 'Receive next shipment' : 'Receive purchase order')
-      : mode === 'reconcile'
-        ? (order.allowPartialDelivery ? 'Consolidate shipment' : 'Reconcile purchase order')
-        : 'Purchase details';
+  const title = order.isPreCommitted
+    ? 'Pre-committed PO'
+    : mode === 'approve'
+      ? 'Approve purchase request'
+      : mode === 'receive'
+        ? (order.status === 'Partially Delivered' ? 'Receive next shipment' : 'Receive purchase order')
+        : mode === 'reconcile'
+          ? (order.allowPartialDelivery ? 'Consolidate shipment' : 'Reconcile purchase order')
+          : 'Purchase details';
 
-  const subtitle = mode === 'approve'
-    ? 'Approve to convert this PR into an open purchase order.'
-    : mode === 'receive'
-      ? (order.allowPartialDelivery
-        ? 'Enter qty for this shipment (defaults to remaining). Consolidate to stock; PO stays Partially Delivered until Final delivery completed.'
-        : 'Confirm quantities and prices received from the vendor before posting to stock.')
-      : mode === 'reconcile'
+  const subtitle = order.isPreCommitted
+    ? 'View commitment dates, special price, and remaining quantity available for drawdown.'
+    : mode === 'approve'
+      ? 'Approve to convert this PR into an open purchase order.'
+      : mode === 'receive'
         ? (order.allowPartialDelivery
-          ? 'Post this shipment to inventory. PO remains active as Partially Delivered until you click Final delivery completed.'
-          : 'Final review — stock will be created in inventory after reconciliation.')
-        : order.canFinalizeDelivery
-          ? 'Partial deliveries are consolidated. Click Final delivery completed to close this PO (delivery rating uses final qty/price vs issued).'
-          : 'This purchase has no pending workflow action.';
+          ? 'Enter qty for this shipment (defaults to remaining). Consolidate to stock; PO stays Partially Delivered until Final delivery completed.'
+          : 'Confirm quantities and prices received from the vendor before posting to stock.')
+        : mode === 'reconcile'
+          ? (order.allowPartialDelivery
+            ? 'Post this shipment to inventory. PO remains active as Partially Delivered until you click Final delivery completed.'
+            : 'Final review — stock will be created in inventory after reconciliation.')
+          : order.canFinalizeDelivery
+            ? 'Partial deliveries are consolidated. Click Final delivery completed to close this PO (delivery rating uses final qty/price vs issued).'
+            : 'This purchase has no pending workflow action.';
 
   return createPortal(
     <>
@@ -486,6 +494,15 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         </div>
 
         <div ref={panelScrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {order.isPreCommitted ? (
+            <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-800 dark:text-teal-300">
+              <p className="font-semibold">Pre-committed PO</p>
+              <p className="mt-0.5 leading-relaxed">
+                Master commitment at a special price. Not warehouse-received — later My Order releases
+                draw down remaining quantity until the commitment is closed.
+              </p>
+            </div>
+          ) : null}
           {order.allowPartialDelivery || order.status === 'Partially Delivered' ? (
             <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-800 dark:text-orange-300">
               <p className="font-semibold">Partial delivery enabled for this vendor</p>
@@ -510,8 +527,12 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <p className="font-sans mt-0.5">{order.orderDate}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Delivery</p>
-              <p className="font-sans mt-0.5">{order.deliveryDate}</p>
+              <p className="text-muted-foreground">{order.isPreCommitted ? 'Commitment' : 'Delivery'}</p>
+              <p className="font-sans mt-0.5">
+                {order.isPreCommitted
+                  ? `${order.commitmentStartDate ?? '—'} → ${order.commitmentEndDate ?? '—'}`
+                  : order.deliveryDate}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground">Initiated by</p>
@@ -675,7 +696,19 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           <p className="text-[10px] font-sans text-muted-foreground">{line.componentId || '—'}</p>
                         </td>
                         <td className="px-3 py-2">{line.productName}</td>
-                        {showOrderedReceivedColumns ? (
+                        {showCommitmentColumns ? (
+                          <>
+                            <td className="px-3 py-2 font-sans tabular-nums">{line.orderedQuantity}</td>
+                            <td className="px-3 py-2 font-sans tabular-nums text-muted-foreground">
+                              {order.items.find(i => i.id === line.itemId)?.drawnQuantity ?? 0}
+                            </td>
+                            <td className="px-3 py-2 font-sans tabular-nums">
+                              {order.items.find(i => i.id === line.itemId)?.remainingCommitmentQuantity
+                                ?? order.items.find(i => i.id === line.itemId)?.remainingQuantity
+                                ?? line.remainingQuantity}
+                            </td>
+                          </>
+                        ) : showOrderedReceivedColumns ? (
                           <>
                             <td className="px-3 py-2">
                               <span className="font-sans text-muted-foreground">{line.orderedQuantity}</span>
