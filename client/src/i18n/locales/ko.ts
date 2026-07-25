@@ -69,7 +69,8 @@ export const ko = {
     choose: '언어 선택',
   },
   header: {
-    operationsOverview: '운영 개요',
+    home: '홈',
+    operationsOverview: '홈',
     selectCompany: '회사 선택',
     loadingCompanies: '회사 불러오는 중…',
     companiesFromHr: 'HR 설정의 회사',
@@ -85,13 +86,24 @@ export const ko = {
     new: '새 알림',
   },
   nav: {
-    overview: '개요',
+    home: '홈',
+    overview: '홈',
     revenueManagement: '매출 관리',
     pointOfSales: 'POS',
     humanResources: '인사',
     accounting: '회계',
     report: '보고서',
     systemConfiguration: '시스템 설정',
+  },
+  home: {
+    subtitle: '계속할 모듈을 선택하세요.',
+    openModule: '열기',
+    modules: {
+      rms: '구매, 재고, 제품 및 판매 운영.',
+      pos: '매장 판매, 메뉴 및 기기 관리.',
+      hrm: '인사, 근태, 휴가 및 인력 설정.',
+      accounting: '급여 연동, 원장 및 결산.',
+    },
   },
   revMgmt: {
     sections: {

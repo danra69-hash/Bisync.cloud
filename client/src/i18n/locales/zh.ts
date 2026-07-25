@@ -69,7 +69,8 @@ export const zh = {
     choose: '选择语言',
   },
   header: {
-    operationsOverview: '运营概览',
+    home: '首页',
+    operationsOverview: '首页',
     selectCompany: '选择公司',
     loadingCompanies: '正在加载公司…',
     companiesFromHr: '来自 HR 配置的公司',
@@ -85,13 +86,24 @@ export const zh = {
     new: '新',
   },
   nav: {
-    overview: '概览',
+    home: '首页',
+    overview: '首页',
     revenueManagement: '营收管理',
     pointOfSales: '收银系统',
     humanResources: '人力资源',
     accounting: '财务',
     report: '报表',
     systemConfiguration: '系统配置',
+  },
+  home: {
+    subtitle: '选择一个模块以继续。',
+    openModule: '打开',
+    modules: {
+      rms: '采购、库存、产品和销售运营。',
+      pos: '前台销售、菜单与设备管理。',
+      hrm: '人事、考勤、休假与人力设置。',
+      accounting: '薪资关联、账簿与财务结账。',
+    },
   },
   revMgmt: {
     sections: {

@@ -69,7 +69,8 @@ export const fr = {
     choose: 'Choisir la langue',
   },
   header: {
-    operationsOverview: 'Vue d\'ensemble des opérations',
+    home: 'Accueil',
+    operationsOverview: 'Accueil',
     selectCompany: 'Sélectionner une société',
     loadingCompanies: 'Chargement des sociétés…',
     companiesFromHr: 'Sociétés depuis la configuration RH',
@@ -85,13 +86,24 @@ export const fr = {
     new: 'Nouveau',
   },
   nav: {
-    overview: 'Vue d\'ensemble',
+    home: 'Accueil',
+    overview: 'Accueil',
     revenueManagement: 'Gestion des revenus',
     pointOfSales: 'Point de vente',
     humanResources: 'Ressources humaines',
     accounting: 'Comptabilité',
     report: 'Rapports',
     systemConfiguration: 'Configuration système',
+  },
+  home: {
+    subtitle: 'Choisissez un module pour continuer.',
+    openModule: 'Ouvrir',
+    modules: {
+      rms: 'Achats, stocks, produits et opérations commerciales.',
+      pos: 'Vente en caisse, menus et appareils.',
+      hrm: 'RH, présence, congés et organisation.',
+      accounting: 'Paie, grands livres et clôture financière.',
+    },
   },
   revMgmt: {
     sections: {

@@ -69,7 +69,8 @@ export const id = {
     choose: 'Pilih bahasa',
   },
   header: {
-    operationsOverview: 'Ikhtisar Operasi',
+    home: 'Beranda',
+    operationsOverview: 'Beranda',
     selectCompany: 'Pilih Perusahaan',
     loadingCompanies: 'Memuat perusahaan…',
     companiesFromHr: 'Perusahaan dari Konfigurasi HR',
@@ -85,13 +86,24 @@ export const id = {
     new: 'Baru',
   },
   nav: {
-    overview: 'Ikhtisar',
+    home: 'Beranda',
+    overview: 'Beranda',
     revenueManagement: 'Manajemen Pendapatan',
     pointOfSales: 'Point-of-Sales',
     humanResources: 'Sumber Daya Manusia',
     accounting: 'Akuntansi',
     report: 'Laporan',
     systemConfiguration: 'Konfigurasi Sistem',
+  },
+  home: {
+    subtitle: 'Pilih modul untuk melanjutkan.',
+    openModule: 'Buka',
+    modules: {
+      rms: 'Pembelian, inventaris, produk, dan operasi penjualan.',
+      pos: 'Penjualan front-of-house, menu, dan perangkat.',
+      hrm: 'SDM, absensi, cuti, dan pengaturan tenaga kerja.',
+      accounting: 'Penggajian, buku besar, dan penutupan keuangan.',
+    },
   },
   revMgmt: {
     sections: {

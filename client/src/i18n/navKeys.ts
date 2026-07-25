@@ -2,7 +2,7 @@ import type { NavItem } from '../data/revenueManagement';
 
 /** Internal nav keys stay in English for routing; map to i18n keys for display. */
 export const NAV_ITEM_I18N: Record<NavItem, string> = {
-  Overview: 'nav.overview',
+  Home: 'nav.home',
   'Revenue Management': 'nav.revenueManagement',
   'Point-of-Sales': 'nav.pointOfSales',
   'Human Resources': 'nav.humanResources',

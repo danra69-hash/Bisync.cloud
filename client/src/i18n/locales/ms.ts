@@ -69,7 +69,8 @@ export const ms = {
     choose: 'Pilih bahasa',
   },
   header: {
-    operationsOverview: 'Gambaran Operasi',
+    home: 'Laman Utama',
+    operationsOverview: 'Laman Utama',
     selectCompany: 'Pilih Syarikat',
     loadingCompanies: 'Memuatkan syarikat…',
     companiesFromHr: 'Syarikat daripada Konfigurasi HR',
@@ -85,13 +86,24 @@ export const ms = {
     new: 'Baharu',
   },
   nav: {
-    overview: 'Gambaran Keseluruhan',
+    home: 'Laman Utama',
+    overview: 'Laman Utama',
     revenueManagement: 'Pengurusan Hasil',
     pointOfSales: 'Tempat Jualan',
     humanResources: 'Sumber Manusia',
     accounting: 'Perakaunan',
     report: 'Laporan',
     systemConfiguration: 'Konfigurasi Sistem',
+  },
+  home: {
+    subtitle: 'Pilih modul untuk meneruskan.',
+    openModule: 'Buka',
+    modules: {
+      rms: 'Pembelian, inventori, produk dan operasi jualan.',
+      pos: 'Jualan kaunter, menu dan peranti.',
+      hrm: 'HR, kehadiran, cuti dan tetapan tenaga kerja.',
+      accounting: 'Penggajian, lejar dan penutupan kewangan.',
+    },
   },
   revMgmt: {
     sections: {
