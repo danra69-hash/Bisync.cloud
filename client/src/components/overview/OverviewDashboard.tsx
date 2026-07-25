@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Eye, EyeOff, GripVertical, ShoppingBag, TrendingUp, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  GripVertical,
+  ShoppingBag,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 import { api, type B2bSalesOrder, type InventoryAlert, type MenuItem, type ProgressData, type PurchaseOrder, type RevenuePoint } from '../../api';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
@@ -22,6 +34,11 @@ import {
   type OverviewLayoutState,
   type OverviewSectionId,
 } from '../../data/overviewLayout';
+
+/** Consolidated POs are already received into stock and await reconcile — exclude from Active Order. */
+function isConsolidatedPurchaseOrder(order: PurchaseOrder): boolean {
+  return String(order.status ?? '').trim().toLowerCase() === 'received';
+}
 
 function fmtCount(n: number) {
   return n.toLocaleString();
@@ -286,15 +303,20 @@ export function OverviewDashboard({
     [menuItems, menuSortColumn, menuSortDirection],
   );
 
+  const activeOrders = useMemo(
+    () => orders.filter(order => !isConsolidatedPurchaseOrder(order)),
+    [orders],
+  );
+
   const sortedOrders = useMemo(
-    () => sortTableRows(orders, ordersSortColumn, ordersSortDirection, {
+    () => sortTableRows(activeOrders, ordersSortColumn, ordersSortDirection, {
       po: row => row.poNumber,
       vendor: row => row.vendorName,
       delivery: row => row.deliveryDate,
       value: row => row.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
       status: row => row.status,
     }),
-    [orders, ordersSortColumn, ordersSortDirection],
+    [activeOrders, ordersSortColumn, ordersSortDirection],
   );
 
   const sortedClientOrders = useMemo(
@@ -311,9 +333,16 @@ export function OverviewDashboard({
   const menuScrollRef = useRef<HTMLDivElement>(null);
   const ordersScrollRef = useRef<HTMLDivElement>(null);
   const clientOrdersScrollRef = useRef<HTMLDivElement>(null);
+  const alertsScrollRef = useRef<HTMLDivElement>(null);
   const menuScroll = useInfiniteScrollSlice(sortedMenuItems, { scrollRootRef: menuScrollRef });
   const ordersScroll = useInfiniteScrollSlice(sortedOrders, { scrollRootRef: ordersScrollRef });
   const clientOrdersScroll = useInfiniteScrollSlice(sortedClientOrders, { scrollRootRef: clientOrdersScrollRef });
+
+  function scrollAlerts(direction: 'up' | 'down') {
+    const el = alertsScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ top: direction === 'down' ? 72 : -72, behavior: 'smooth' });
+  }
 
   const activityTitle = activityMode === 'purchaseOrders'
     ? t('overview.purchaseOrdersToday')
@@ -396,8 +425,8 @@ export function OverviewDashboard({
         );
       case 'menu-alerts':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-1.5">
+            <div className="lg:col-span-7 bg-card border border-border rounded-lg overflow-hidden">
               <div className="px-2.5 py-1.5 border-b border-border">
                 <h2 className="text-sm font-semibold leading-tight">{t('overview.productPerformance')}</h2>
               </div>
@@ -427,80 +456,99 @@ export function OverviewDashboard({
               </TableScrollContainer>
             </div>
 
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-2.5 py-1.5 border-b border-border flex items-center justify-between gap-2">
+            <div className="lg:col-span-5 bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-0 max-h-44">
+              <div className="px-2.5 py-1.5 border-b border-border flex items-center justify-between gap-2 shrink-0">
                 <h2 className="text-sm font-semibold leading-tight">{t('overview.inventoryAlerts')}</h2>
                 {alerts.length > 0 && onOrderNowFromAlerts ? (
                   <button
                     type="button"
                     onClick={onOrderNowFromAlerts}
-                    className="rounded-md border border-border bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90"
+                    className="rounded-md border border-border bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:opacity-90"
                   >
                     {t('overview.orderNow')}
                   </button>
                 ) : null}
               </div>
-              <div className="divide-y divide-border">
-                {alerts.length === 0 ? (
-                  <p className="px-3 py-2 text-xs text-muted-foreground">{t('overview.noInventoryAlerts')}</p>
-                ) : (
-                  alerts.map(a => {
-                    const isParstock = a.alertType === 'parstock';
-                    const isSystem = a.alertType === 'system';
-                    const isExpiry = a.alertType === 'expiry';
-                    const typeLabel = isParstock
-                      ? t('overview.alertTypeParstock')
-                      : isSystem
-                        ? t('overview.alertTypeSystem')
+              <div className="relative flex-1 min-h-0">
+                <div ref={alertsScrollRef} className="absolute inset-0 overflow-y-auto divide-y divide-border [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  {alerts.length === 0 ? (
+                    <p className="px-2.5 py-1.5 text-[11px] text-muted-foreground">{t('overview.noInventoryAlerts')}</p>
+                  ) : (
+                    alerts.map(a => {
+                      const isParstock = a.alertType === 'parstock';
+                      const isSystem = a.alertType === 'system';
+                      const isExpiry = a.alertType === 'expiry';
+                      const typeLabel = isParstock
+                        ? t('overview.alertTypeParstock')
+                        : isSystem
+                          ? t('overview.alertTypeSystem')
+                          : isExpiry
+                            ? t('overview.alertTypeExpiry')
+                            : (a.basisLabel || a.alertType || 'Alert');
+                      const badgeCls = isParstock
+                        ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
                         : isExpiry
-                          ? t('overview.alertTypeExpiry')
-                          : (a.basisLabel || a.alertType || 'Alert');
-                    const badgeCls = isParstock
-                      ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-                      : isExpiry
-                        ? 'bg-rose-500/15 text-rose-800 dark:text-rose-300'
-                        : 'bg-sky-500/15 text-sky-800 dark:text-sky-300';
-                    return (
-                      <div key={`${a.alertType ?? 'alert'}-${a.componentId ?? a.id}-${a.id}`} className="px-3 py-2 flex items-start gap-2">
-                        <AlertTriangle size={13} className={`mt-0.5 shrink-0 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
-                        <div className="flex-1 min-w-0 space-y-0.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <p className="text-xs font-medium leading-tight">{a.itemName}</p>
-                            <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${badgeCls}`}>
-                              {typeLabel}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {isParstock
-                              ? t('overview.stockPar', { stock: a.stock, par: a.threshold })
-                              : isSystem
-                                ? t('overview.stockCover', {
-                                  stock: a.stock,
-                                  cover: a.daysOfCover != null ? String(a.daysOfCover) : '—',
-                                  cycle: a.deliveryCycleDays != null ? String(a.deliveryCycleDays) : a.threshold,
-                                })
-                                : isExpiry
-                                  ? t('overview.stockExpiry', {
+                          ? 'bg-rose-500/15 text-rose-800 dark:text-rose-300'
+                          : 'bg-sky-500/15 text-sky-800 dark:text-sky-300';
+                      return (
+                        <div key={`${a.alertType ?? 'alert'}-${a.componentId ?? a.id}-${a.id}`} className="px-2.5 py-1.5 flex items-start gap-1.5">
+                          <AlertTriangle size={12} className={`mt-0.5 shrink-0 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
+                          <div className="flex-1 min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1">
+                              <p className="text-[11px] font-medium leading-tight">{a.itemName}</p>
+                              <span className={`text-[9px] font-sans px-1 py-0.5 rounded ${badgeCls}`}>
+                                {typeLabel}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground leading-snug">
+                              {isParstock
+                                ? t('overview.stockPar', { stock: a.stock, par: a.threshold })
+                                : isSystem
+                                  ? t('overview.stockCover', {
                                     stock: a.stock,
-                                    expiry: a.expiryDate || a.threshold,
-                                    days: a.daysUntilExpiry != null ? String(a.daysUntilExpiry) : '—',
-                                    atRisk: a.atRiskQty != null
-                                      ? `${a.atRiskQty}${a.uom ? ` ${a.uom}` : ''}`
-                                      : '—',
+                                    cover: a.daysOfCover != null ? String(a.daysOfCover) : '—',
+                                    cycle: a.deliveryCycleDays != null ? String(a.deliveryCycleDays) : a.threshold,
                                   })
-                                  : t('overview.stockMin', { stock: a.stock, min: a.threshold })}
-                          </p>
-                          {a.detail ? (
-                            <p className="text-[11px] text-muted-foreground">{a.detail}</p>
-                          ) : a.basisLabel ? (
-                            <p className="text-[11px] text-muted-foreground">{a.basisLabel}</p>
-                          ) : null}
+                                  : isExpiry
+                                    ? t('overview.stockExpiry', {
+                                      stock: a.stock,
+                                      expiry: a.expiryDate || a.threshold,
+                                      days: a.daysUntilExpiry != null ? String(a.daysUntilExpiry) : '—',
+                                      atRisk: a.atRiskQty != null
+                                        ? `${a.atRiskQty}${a.uom ? ` ${a.uom}` : ''}`
+                                        : '—',
+                                    })
+                                    : t('overview.stockMin', { stock: a.stock, min: a.threshold })}
+                            </p>
+                          </div>
+                          <span className={`text-[10px] font-sans px-1 py-0.5 rounded shrink-0 ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
                         </div>
-                        <span className={`text-xs font-sans px-1.5 py-0.5 rounded shrink-0 ${a.status === 'critical' ? 'bg-red-500/15 text-red-500' : 'bg-primary/15 text-primary'}`}>{a.status}</span>
-                      </div>
-                    );
-                  })
-                )}
+                      );
+                    })
+                  )}
+                </div>
+                {alerts.length > 1 ? (
+                  <div className="absolute right-1.5 bottom-1.5 z-10 inline-flex flex-col rounded-md border border-border bg-card/95 shadow-sm overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => scrollAlerts('up')}
+                      className="p-1 hover:bg-muted transition-colors"
+                      title={t('overview.scrollUp')}
+                      aria-label={t('overview.scrollUp')}
+                    >
+                      <ChevronUp size={12} className="text-muted-foreground" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollAlerts('down')}
+                      className="p-1 border-t border-border hover:bg-muted transition-colors"
+                      title={t('overview.scrollDown')}
+                      aria-label={t('overview.scrollDown')}
+                    >
+                      <ChevronDown size={12} className="text-muted-foreground" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -509,8 +557,11 @@ export function OverviewDashboard({
         return (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-2.5 py-1.5 border-b border-border">
-                <h2 className="text-sm font-semibold leading-tight">{t('overview.activePurchaseOrders')}</h2>
+              <div className="px-2.5 py-1.5 border-b border-border flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold leading-tight">{t('overview.activeOrders')}</h2>
+                <span className="text-[10px] font-sans text-muted-foreground tabular-nums">
+                  {activeOrders.length}
+                </span>
               </div>
               <TableScrollContainer ref={ordersScrollRef} className="max-h-44 overflow-y-auto">
                 <table className="w-full table-fixed text-xs">
@@ -524,6 +575,13 @@ export function OverviewDashboard({
                     />
                   </thead>
                   <tbody>
+                    {sortedOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground text-center">
+                          {t('overview.noActiveOrders')}
+                        </td>
+                      </tr>
+                    ) : null}
                     {ordersScroll.visibleItems.map(o => {
                       const value = o.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
                       const opening = openingPurchaseOrderId === o.id;
