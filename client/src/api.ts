@@ -2253,9 +2253,21 @@ export interface PatchProductManagementPayload {
 export interface InventoryAlert {
   id: number;
   itemName: string;
+  componentId?: string;
   stock: string;
   status: string;
   threshold: string;
+  /** parstock | system */
+  alertType?: 'parstock' | 'system' | string;
+  basisLabel?: string;
+  detail?: string;
+  onHandQty?: number;
+  parStock?: number;
+  dailyUsage?: number;
+  orderFreqDays?: number;
+  deliveryCycleDays?: number;
+  daysOfCover?: number;
+  uom?: string;
 }
 
 export interface RevenuePoint {
@@ -3459,7 +3471,13 @@ export const api = {
     if (locationIds.length > 0) params.set('locationIds', locationIds.join(','));
     return fetchJson<InventoryCountSession>(`/api/inventory-counts/${sessionId}?${params.toString()}`);
   },
-  inventoryAlerts: () => fetchJson<InventoryAlert[]>('/api/inventory/alerts'),
+  inventoryAlerts: (companyId?: number, locationIds?: string[]) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds && locationIds.length > 0) params.set('locationIds', locationIds.join(','));
+    const query = params.toString();
+    return fetchJson<InventoryAlert[]>(`/api/inventory/alerts${query ? `?${query}` : ''}`);
+  },
   accessControl: () => fetchJson<AccessControlSettings>('/api/access-control'),
   updateAccessControl: (data: AccessControlSettings) =>
     fetchJsonWithMethod<AccessControlSettings>('/api/access-control', 'PUT', data),

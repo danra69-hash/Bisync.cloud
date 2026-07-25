@@ -222,6 +222,10 @@ export const zh = {
     wtd: 'WTD',
     mtd: 'MTD',
     vsLastYear: '同比去年',
+    alertTypeParstock: '标准库存',
+    alertTypeSystem: '系统',
+    stockPar: '库存：{{stock}} · 标准：{{par}}',
+    stockCover: '库存：{{stock}} · 约{{cover}}天覆盖 vs {{cycle}}天周期',
     stockMin: '库存：{{stock}} · 最低：{{min}}',
   },
   auth: {

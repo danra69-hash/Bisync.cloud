@@ -222,6 +222,10 @@ export const ja = {
     wtd: 'WTD',
     mtd: 'MTD',
     vsLastYear: '対前年',
+    alertTypeParstock: 'パーストック',
+    alertTypeSystem: 'システム',
+    stockPar: '在庫: {{stock}} · パー: {{par}}',
+    stockCover: '在庫: {{stock}} · 約{{cover}}日分 vs {{cycle}}日サイクル',
     stockMin: '在庫: {{stock}} · 最小: {{min}}',
   },
   auth: {

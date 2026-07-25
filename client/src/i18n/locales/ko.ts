@@ -222,6 +222,10 @@ export const ko = {
     wtd: 'WTD',
     mtd: 'MTD',
     vsLastYear: '전년 대비',
+    alertTypeParstock: '파 스톡',
+    alertTypeSystem: '시스템',
+    stockPar: '재고: {{stock}} · 파: {{par}}',
+    stockCover: '재고: {{stock}} · 약 {{cover}}일 재고 vs {{cycle}}일 주기',
     stockMin: '재고: {{stock}} · 최소: {{min}}',
   },
   auth: {

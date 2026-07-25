@@ -222,6 +222,10 @@ export const th = {
     wtd: 'WTD',
     mtd: 'MTD',
     vsLastYear: 'เทียบปีก่อน',
+    alertTypeParstock: 'พาร์สต็อก',
+    alertTypeSystem: 'ระบบ',
+    stockPar: 'สต็อก: {{stock}} · พาร์: {{par}}',
+    stockCover: 'สต็อก: {{stock}} · ครอบคลุม ~{{cover}} วัน vs รอบ {{cycle}} วัน',
     stockMin: 'สต็อก: {{stock}} · ขั้นต่ำ: {{min}}',
   },
   auth: {

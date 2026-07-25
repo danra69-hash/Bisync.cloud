@@ -222,6 +222,10 @@ export const ms = {
     wtd: 'WTD',
     mtd: 'MTD',
     vsLastYear: 'vs tahun lepas',
+    alertTypeParstock: 'Stok par',
+    alertTypeSystem: 'Sistem',
+    stockPar: 'Stok: {{stock}} · Par: {{par}}',
+    stockCover: 'Stok: {{stock}} · ~{{cover}}h liputan vs {{cycle}}h kitaran',
     stockMin: 'Stok: {{stock}} · Min: {{min}}',
   },
   auth: {

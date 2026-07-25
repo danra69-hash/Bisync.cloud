@@ -222,6 +222,10 @@ export const id = {
     wtd: 'WTD',
     mtd: 'MTD',
     vsLastYear: 'vs tahun lalu',
+    alertTypeParstock: 'Stok par',
+    alertTypeSystem: 'Sistem',
+    stockPar: 'Stok: {{stock}} · Par: {{par}}',
+    stockCover: 'Stok: {{stock}} · ~{{cover}}h cover vs {{cycle}}h siklus',
     stockMin: 'Stok: {{stock}} · Min: {{min}}',
   },
   auth: {

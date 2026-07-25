@@ -1748,11 +1748,51 @@ public class VendorProductsController(BisyncDbContext db) : ControllerBase
 
 [ApiController]
 [Route("api/[controller]")]
-public class InventoryController(BisyncDbContext db) : ControllerBase
+public class InventoryController(
+    BisyncDbContext db,
+    ITenantContext tenant,
+    InventoryAlertComputationService inventoryAlerts) : ControllerBase
 {
+    /// <summary>
+    /// Live inventory alerts for Operations Overview: par-stock near/below and
+    /// system cover vs sales-based delivery cycle. Scoped by company/locations.
+    /// </summary>
     [HttpGet("alerts")]
-    public async Task<ActionResult<IEnumerable<InventoryAlert>>> GetAlerts() =>
-        Ok(await db.InventoryAlerts.OrderBy(a => a.Status).ToListAsync());
+    public async Task<ActionResult<IEnumerable<object>>> GetAlerts(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        if (cid is not int company)
+            return Ok(Array.Empty<object>());
+
+        var locationIdList = (locationIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var alerts = await inventoryAlerts.ComputeAsync(company, locationIdList, cancellationToken);
+        return Ok(alerts.Select(a => new
+        {
+            a.Id,
+            a.ItemName,
+            a.ComponentId,
+            a.Stock,
+            a.Status,
+            a.Threshold,
+            alertType = a.AlertType,
+            basisLabel = a.BasisLabel,
+            detail = a.Detail,
+            onHandQty = a.OnHandQty,
+            parStock = a.ParStock,
+            dailyUsage = a.DailyUsage,
+            orderFreqDays = a.OrderFreqDays,
+            deliveryCycleDays = a.DeliveryCycleDays,
+            daysOfCover = a.DaysOfCover,
+            uom = a.Uom,
+        }));
+    }
 
     [HttpGet("purchases")]
     public async Task<ActionResult<IEnumerable<object>>> GetPurchases([FromQuery] int? companyId)
