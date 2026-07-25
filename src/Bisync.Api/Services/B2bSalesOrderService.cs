@@ -23,7 +23,11 @@ public class B2bSalesOrderService(BisyncDbContext db)
         if (order.Lines.Count == 0)
             throw new InvalidOperationException("Add at least one line before issuing the sales order.");
 
-        var issuedDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        var companyCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync(cancellationToken) ?? "MY";
+        var issuedDate = OrgClock.TodayLocal(companyCountry);
         order.IssuedDate = issuedDate.ToString("yyyy-MM-dd");
         order.LockExpiryDate = issuedDate.AddDays(order.LockPeriodDays).ToString("yyyy-MM-dd");
         order.Status = "issued";
@@ -85,7 +89,11 @@ public class B2bSalesOrderService(BisyncDbContext db)
 
         order.DeliveryOrderIssued = true;
         order.InvoiceIssued = true;
-        order.FulfilledDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+        var fulfillCountry = await db.Companies.AsNoTracking()
+            .Where(c => c.Id == order.CompanyId)
+            .Select(c => c.CountryCode)
+            .FirstOrDefaultAsync(cancellationToken) ?? "MY";
+        order.FulfilledDate = OrgClock.TodayLocal(fulfillCountry).ToString("yyyy-MM-dd");
         order.Status = "fulfilled";
         order.UpdatedAt = DateTime.UtcNow;
 
@@ -133,14 +141,24 @@ public class B2bSalesOrderService(BisyncDbContext db)
 
     public async Task<int> ReleaseExpiredLocksAsync(CancellationToken cancellationToken = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
-        var expiredOrders = await db.B2bSalesOrders
+        var candidates = await db.B2bSalesOrders
             .Include(o => o.Lines)
             .Where(o => o.Status == "issued"
                 && o.LockExpiryDate != ""
-                && string.Compare(o.LockExpiryDate, today) < 0
                 && (!o.DeliveryOrderIssued || !o.InvoiceIssued))
             .ToListAsync(cancellationToken);
+
+        var companyIds = candidates.Select(o => o.CompanyId).Distinct().ToList();
+        var countryByCompany = await db.Companies.AsNoTracking()
+            .Where(c => companyIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.CountryCode, cancellationToken);
+
+        var expiredOrders = candidates.Where(order =>
+        {
+            countryByCompany.TryGetValue(order.CompanyId, out var country);
+            var today = OrgClock.TodayLocal(country ?? "MY").ToString("yyyy-MM-dd");
+            return string.Compare(order.LockExpiryDate, today, StringComparison.Ordinal) < 0;
+        }).ToList();
 
         var released = 0;
         foreach (var order in expiredOrders)

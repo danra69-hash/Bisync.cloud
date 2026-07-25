@@ -14,30 +14,38 @@ namespace Bisync.Api.Controllers;
 [Route("api/[controller]")]
 public class LocationsController(BisyncDbContext db, LocationSubscriptionService locationSubscriptions) : ControllerBase
 {
-    static object MapLocationConfig(Location l) => new
+    static object MapLocationConfig(Location l)
     {
-        l.Id,
-        l.ExternalId,
-        l.Name,
-        l.CompanyId,
-        companyName = l.Company?.Name,
-        countryCode = l.Company?.CountryCode ?? "MY",
-        l.AddressLine1,
-        l.AddressLine2,
-        l.City,
-        l.StateProvince,
-        l.Postcode,
-        l.PrincipalContactUserId,
-        principalContactName = l.PrincipalContact?.FullName,
-        l.SecondaryContactUserId,
-        secondaryContactName = l.SecondaryContact?.FullName,
-        businessTypesJson = CompanyProfileRules.ResolveProfileJson(l.BusinessTypesJson, l.Company?.BusinessTypesJson),
-        vendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(l.VendorPolicyTagsJson, l.Company?.VendorPolicyTagsJson),
-        modulesJson = CompanyModuleRules.ResolveModulesJson(l.ModulesJson, l.Company?.ModulesJson),
-        modulesOverridden = CompanyModuleRules.LocationModulesOverridden(l.ModulesJson),
-        profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
-        openingHoursJson = string.IsNullOrWhiteSpace(l.OpeningHoursJson) ? "{}" : l.OpeningHoursJson,
-    };
+        var countryCode = l.Company?.CountryCode ?? "MY";
+        var timeZoneId = string.IsNullOrWhiteSpace(l.TimeZoneId)
+            ? OrgClock.ResolveTimeZoneId(countryCode, l.StateProvince)
+            : l.TimeZoneId;
+        return new
+        {
+            l.Id,
+            l.ExternalId,
+            l.Name,
+            l.CompanyId,
+            companyName = l.Company?.Name,
+            countryCode,
+            timeZoneId,
+            l.AddressLine1,
+            l.AddressLine2,
+            l.City,
+            l.StateProvince,
+            l.Postcode,
+            l.PrincipalContactUserId,
+            principalContactName = l.PrincipalContact?.FullName,
+            l.SecondaryContactUserId,
+            secondaryContactName = l.SecondaryContact?.FullName,
+            businessTypesJson = CompanyProfileRules.ResolveProfileJson(l.BusinessTypesJson, l.Company?.BusinessTypesJson),
+            vendorPolicyTagsJson = CompanyProfileRules.ResolveProfileJson(l.VendorPolicyTagsJson, l.Company?.VendorPolicyTagsJson),
+            modulesJson = CompanyModuleRules.ResolveModulesJson(l.ModulesJson, l.Company?.ModulesJson),
+            modulesOverridden = CompanyModuleRules.LocationModulesOverridden(l.ModulesJson),
+            profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
+            openingHoursJson = string.IsNullOrWhiteSpace(l.OpeningHoursJson) ? "{}" : l.OpeningHoursJson,
+        };
+    }
 
     async Task<Location?> LoadLocationConfigAsync(int id) =>
         await db.Locations
@@ -145,6 +153,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim(),
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
         };
+        OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
 
         db.Locations.Add(loc);
         await db.SaveChangesAsync();
@@ -206,6 +215,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (body.OpeningHoursJson is not null)
             loc.OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim();
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
         await db.SaveChangesAsync();
         var saved = await LoadLocationConfigAsync(loc.Id);
         return saved is null ? Ok(new { loc.Id, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
@@ -985,7 +995,15 @@ public class PurchaseOrdersController(
         [FromQuery] int? companyId,
         [FromQuery] string? locationExternalIds = null)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var countryCode = "MY";
+        if (companyId is int cid)
+        {
+            countryCode = await db.Companies.AsNoTracking()
+                .Where(c => c.Id == cid)
+                .Select(c => c.CountryCode)
+                .FirstOrDefaultAsync() ?? "MY";
+        }
+        var today = OrgClock.TodayLocal(countryCode);
         var query = BaseQuery()
             .Where(p => p.IsPreCommitted && p.Status == PurchaseOrderWorkflow.StatusCommitted)
             .Where(p =>
@@ -1145,11 +1163,15 @@ public class PurchaseOrdersController(
         var reservedPoNumbers = new HashSet<string>(existingPoNumbers, StringComparer.OrdinalIgnoreCase);
 
         var companyAbbr = "CO";
+        var companyCountryCode = "MY";
         if (request.CompanyId is int companyId)
         {
             var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId);
             if (company is not null)
+            {
                 companyAbbr = PurchaseOrderNumberService.AbbreviateCompanyName(company.Name);
+                companyCountryCode = company.CountryCode;
+            }
         }
 
         var locationExternalIds = (request.LocationExternalIds ?? [])
@@ -1169,6 +1191,11 @@ public class PurchaseOrdersController(
         var locationIdsJson = PurchaseOrderWorkflow.SerializeLocationIds(locationExternalIds);
         var initiatedBy = request.InitiatedBy?.Trim() ?? string.Empty;
         var approvedBy = request.ApprovedBy?.Trim() ?? string.Empty;
+        var primaryLocationState = matchedLocations
+            .OrderBy(l => locationExternalIds.FindIndex(id => string.Equals(id, l.ExternalId, StringComparison.OrdinalIgnoreCase)))
+            .Select(l => l.StateProvince)
+            .FirstOrDefault();
+        var localToday = OrgClock.TodayLocal(companyCountryCode, primaryLocationState);
 
         var created = new List<PurchaseOrder>();
         foreach (var orderRequest in request.Orders)
@@ -1197,7 +1224,7 @@ public class PurchaseOrdersController(
             if (items.Count == 0)
                 return BadRequest(new { message = $"Purchase order for {vendorName} has no valid items." });
 
-            var orderDate = orderRequest.OrderDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+            var orderDate = orderRequest.OrderDate ?? localToday;
             var poNumber = string.IsNullOrWhiteSpace(orderRequest.PoNumber)
                 ? PurchaseOrderNumberService.ReserveNextPoNumber(reservedPoNumbers, companyAbbr, locationAbbr, orderDate)
                 : orderRequest.PoNumber.Trim();
@@ -1232,8 +1259,8 @@ public class PurchaseOrdersController(
                 VendorExternalId = orderRequest.VendorExternalId?.Trim() ?? string.Empty,
                 OrderDate = orderDate,
                 DeliveryDate = isPreCommitted
-                    ? (orderRequest.CommitmentEndDate ?? orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3)))
-                    : (orderRequest.DeliveryDate ?? DateOnly.FromDateTime(DateTime.UtcNow.AddDays(3))),
+                    ? (orderRequest.CommitmentEndDate ?? orderRequest.DeliveryDate ?? localToday.AddDays(3))
+                    : (orderRequest.DeliveryDate ?? localToday.AddDays(3)),
                 DocumentType = documentType,
                 Status = status,
                 CompanyId = request.CompanyId,

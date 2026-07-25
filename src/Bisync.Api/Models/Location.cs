@@ -55,4 +55,9 @@ public class Location
     /// Times are HH:mm (24h).
     /// </summary>
     public string OpeningHoursJson { get; set; } = "{}";
+    /// <summary>
+    /// IANA/Windows timezone for this location (from company country + state/province).
+    /// Business calendar dates follow this zone; instant timestamps stay UTC.
+    /// </summary>
+    public string TimeZoneId { get; set; } = string.Empty;
 }

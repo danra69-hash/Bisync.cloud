@@ -10,6 +10,7 @@ import { LocationDropdown } from '../overview/LocationDropdown';
 import { LanguageSelector } from './LanguageSelector';
 import { BrandEngineLockup } from './BrandEngineLockup';
 import { NotificationBell } from './NotificationBell';
+import { HeaderOrgClock } from './HeaderOrgClock';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 const optionStyle = { color: '#1a1a1a', background: '#ffffff' };
@@ -56,7 +57,12 @@ export function Header({
         <h1 className="text-sm font-bold text-white leading-none">
           {activeNav === 'Home' ? t('nav.home') : navLabel(activeNav)}
         </h1>
-        <p className="text-xs mt-0.5 hidden sm:block text-white/45">Friday, 20 June 2025 · Dinner service in 3h 24m</p>
+        <HeaderOrgClock
+          companies={companies}
+          selectedCompanyId={selectedCompanyId}
+          locations={locations}
+          selectedLocationIds={selectedLocationIds}
+        />
       </div>
 
       <div className="flex items-center gap-2 shrink-0">

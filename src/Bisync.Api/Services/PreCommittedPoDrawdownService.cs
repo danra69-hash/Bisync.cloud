@@ -18,12 +18,19 @@ public class PreCommittedPoDrawdownService(BisyncDbContext db)
         if (releaseOrders.Count == 0)
             return;
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var companyIds = releaseOrders
             .Where(o => o.CompanyId is not null)
             .Select(o => o.CompanyId!.Value)
             .Distinct()
             .ToList();
+        var countryByCompany = await db.Companies.AsNoTracking()
+            .Where(c => companyIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.CountryCode, cancellationToken);
+        // Commitment windows are evaluated in each company's local calendar day.
+        var todayByCompany = companyIds.ToDictionary(
+            id => id,
+            id => OrgClock.TodayLocal(countryByCompany.GetValueOrDefault(id, "MY")));
+        var today = todayByCompany.Values.DefaultIfEmpty(OrgClock.TodayLocal("MY")).Min();
         var vendorKeys = releaseOrders
             .Select(o => (o.VendorExternalId ?? string.Empty).Trim())
             .Where(v => !string.IsNullOrWhiteSpace(v))
