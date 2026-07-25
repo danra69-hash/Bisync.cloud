@@ -224,8 +224,10 @@ export const it = {
     vsLastYear: 'vs anno scorso',
     alertTypeParstock: 'Scorta par',
     alertTypeSystem: 'Sistema',
+    alertTypeExpiry: 'Scadenza',
     stockPar: 'Giacenza: {{stock}} · Par: {{par}}',
     stockCover: 'Giacenza: {{stock}} · ~{{cover}}g copertura vs {{cycle}}g ciclo',
+    stockExpiry: 'Giacenza: {{stock}} · Scade {{expiry}} ({{days}}g) · A rischio: {{atRisk}}',
     stockMin: 'Giacenza: {{stock}} · Min: {{min}}',
   },
   auth: {

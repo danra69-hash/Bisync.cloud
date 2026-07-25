@@ -224,8 +224,10 @@ export const id = {
     vsLastYear: 'vs tahun lalu',
     alertTypeParstock: 'Stok par',
     alertTypeSystem: 'Sistem',
+    alertTypeExpiry: 'Kedaluwarsa',
     stockPar: 'Stok: {{stock}} · Par: {{par}}',
     stockCover: 'Stok: {{stock}} · ~{{cover}}h cover vs {{cycle}}h siklus',
+    stockExpiry: 'Stok: {{stock}} · Kedaluwarsa {{expiry}} ({{days}}h) · Berisiko: {{atRisk}}',
     stockMin: 'Stok: {{stock}} · Min: {{min}}',
   },
   auth: {

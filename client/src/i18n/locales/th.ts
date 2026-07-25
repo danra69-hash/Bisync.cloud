@@ -224,8 +224,10 @@ export const th = {
     vsLastYear: 'เทียบปีก่อน',
     alertTypeParstock: 'พาร์สต็อก',
     alertTypeSystem: 'ระบบ',
+    alertTypeExpiry: 'หมดอายุ',
     stockPar: 'สต็อก: {{stock}} · พาร์: {{par}}',
     stockCover: 'สต็อก: {{stock}} · ครอบคลุม ~{{cover}} วัน vs รอบ {{cycle}} วัน',
+    stockExpiry: 'สต็อก: {{stock}} · หมดอายุ {{expiry}} ({{days}} วัน) · เสี่ยง: {{atRisk}}',
     stockMin: 'สต็อก: {{stock}} · ขั้นต่ำ: {{min}}',
   },
   auth: {

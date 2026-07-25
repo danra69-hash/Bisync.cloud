@@ -224,8 +224,10 @@ export const fr = {
     vsLastYear: 'vs année dernière',
     alertTypeParstock: 'Stock de base',
     alertTypeSystem: 'Système',
+    alertTypeExpiry: 'Péremption',
     stockPar: 'Stock : {{stock}} · Par : {{par}}',
     stockCover: 'Stock : {{stock}} · ~{{cover}}j couverture vs {{cycle}}j cycle',
+    stockExpiry: 'Stock : {{stock}} · Expire {{expiry}} ({{days}}j) · À risque : {{atRisk}}',
     stockMin: 'Stock : {{stock}} · Min : {{min}}',
   },
   auth: {

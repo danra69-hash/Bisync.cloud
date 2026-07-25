@@ -1470,6 +1470,7 @@ public class PurchaseOrdersController(
                     DateCreatedInStock = receiptCreatedAt,
                     PurchaseOrderId = order.Id,
                     PurchaseOrderItemId = item.Id,
+                    ProductExpiryDate = (item.ProductExpiryDate ?? string.Empty).Trim(),
                     CompanyId = order.CompanyId,
                     LocationIdsJson = string.IsNullOrWhiteSpace(locationIdsJson)
                         ? PurchaseOrderWorkflow.SerializeLocationIds(
@@ -1791,6 +1792,9 @@ public class InventoryController(
             deliveryCycleDays = a.DeliveryCycleDays,
             daysOfCover = a.DaysOfCover,
             uom = a.Uom,
+            expiryDate = a.ExpiryDate,
+            daysUntilExpiry = a.DaysUntilExpiry,
+            atRiskQty = a.AtRiskQty,
         }));
     }
 

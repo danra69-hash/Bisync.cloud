@@ -447,22 +447,26 @@ export function OverviewDashboard({
                   alerts.map(a => {
                     const isParstock = a.alertType === 'parstock';
                     const isSystem = a.alertType === 'system';
+                    const isExpiry = a.alertType === 'expiry';
                     const typeLabel = isParstock
                       ? t('overview.alertTypeParstock')
                       : isSystem
                         ? t('overview.alertTypeSystem')
-                        : (a.basisLabel || a.alertType || 'Alert');
+                        : isExpiry
+                          ? t('overview.alertTypeExpiry')
+                          : (a.basisLabel || a.alertType || 'Alert');
+                    const badgeCls = isParstock
+                      ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                      : isExpiry
+                        ? 'bg-rose-500/15 text-rose-800 dark:text-rose-300'
+                        : 'bg-sky-500/15 text-sky-800 dark:text-sky-300';
                     return (
                       <div key={`${a.alertType ?? 'alert'}-${a.componentId ?? a.id}-${a.id}`} className="px-5 py-4 flex items-start gap-3">
                         <AlertTriangle size={13} className={`mt-0.5 shrink-0 ${a.status === 'critical' ? 'text-red-500' : 'text-primary'}`} />
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <p className="text-xs font-medium">{a.itemName}</p>
-                            <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${
-                              isParstock
-                                ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
-                                : 'bg-sky-500/15 text-sky-800 dark:text-sky-300'
-                            }`}>
+                            <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${badgeCls}`}>
                               {typeLabel}
                             </span>
                           </div>
@@ -475,7 +479,16 @@ export function OverviewDashboard({
                                   cover: a.daysOfCover != null ? String(a.daysOfCover) : '—',
                                   cycle: a.deliveryCycleDays != null ? String(a.deliveryCycleDays) : a.threshold,
                                 })
-                                : t('overview.stockMin', { stock: a.stock, min: a.threshold })}
+                                : isExpiry
+                                  ? t('overview.stockExpiry', {
+                                    stock: a.stock,
+                                    expiry: a.expiryDate || a.threshold,
+                                    days: a.daysUntilExpiry != null ? String(a.daysUntilExpiry) : '—',
+                                    atRisk: a.atRiskQty != null
+                                      ? `${a.atRiskQty}${a.uom ? ` ${a.uom}` : ''}`
+                                      : '—',
+                                  })
+                                  : t('overview.stockMin', { stock: a.stock, min: a.threshold })}
                           </p>
                           {a.detail ? (
                             <p className="text-[11px] text-muted-foreground">{a.detail}</p>

@@ -2257,8 +2257,8 @@ export interface InventoryAlert {
   stock: string;
   status: string;
   threshold: string;
-  /** parstock | system */
-  alertType?: 'parstock' | 'system' | string;
+  /** parstock | system | expiry */
+  alertType?: 'parstock' | 'system' | 'expiry' | string;
   basisLabel?: string;
   detail?: string;
   onHandQty?: number;
@@ -2268,6 +2268,9 @@ export interface InventoryAlert {
   deliveryCycleDays?: number;
   daysOfCover?: number;
   uom?: string;
+  expiryDate?: string | null;
+  daysUntilExpiry?: number | null;
+  atRiskQty?: number | null;
 }
 
 export interface RevenuePoint {
