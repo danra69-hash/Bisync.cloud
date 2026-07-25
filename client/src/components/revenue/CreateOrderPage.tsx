@@ -24,7 +24,6 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
 import { OrderTemplatePickerModal } from './OrderTemplatePickerModal';
-import { PreCommittedPoModal } from './PreCommittedPoModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { buildOrderQtyFromPrefill, type CreateOrderPrefillItem } from '../../data/createOrderPrefill';
 
@@ -383,9 +382,15 @@ export function CreateOrderPage({
 
               <button
                 type="button"
-                onClick={() => setShowPreCommitted(true)}
-                disabled={cartCount === 0}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => {
+                  if (cartCount === 0) {
+                    setTemplateNotice('Enter Order Qty on at least one line, then click Pre-committed PO.');
+                    return;
+                  }
+                  setTemplateNotice(null);
+                  setShowPreCommitted(true);
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border border-border bg-card hover:bg-muted transition-colors"
                 title="Commit large qty to a vendor at a special price over a date range"
               >
                 <Handshake size={16} />
@@ -519,13 +524,14 @@ export function CreateOrderPage({
       )}
 
       {showPreCommitted && selectedCompanyId && (
-        <PreCommittedPoModal
+        <OrderCartModal
+          mode="pre_committed"
           items={cartItems}
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
           onClose={() => setShowPreCommitted(false)}
-          onCreated={(clearedLineKeys, poNumbers) => {
-            setShowPreCommitted(false);
+          onConfirmed={clearedLineKeys => {
+            // Keep modal mounted for PDF success step; clear qty only.
             setOrderQtyByKey(prev => {
               const next = { ...prev };
               for (const key of clearedLineKeys) delete next[key];
@@ -533,13 +539,13 @@ export function CreateOrderPage({
             });
             pendingCommittedPoIdRef.current = null;
             setTemplateNotice(
-              `Created Pre-committed PO${poNumbers.length === 1 ? '' : 's'} ${poNumbers.join(', ')}. They remain under Committed until drawn down.`,
+              'Pre-committed PO created. It remains under Committed until later orders draw down the quantity.',
             );
           }}
         />
       )}
 
-      {showCart && selectedCompanyId && cartCount > 0 && (
+      {showCart && selectedCompanyId && (
         <OrderCartModal
           items={cartItems}
           selectedCompanyId={selectedCompanyId}

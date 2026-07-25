@@ -18,6 +18,7 @@ export function buildPurchaseOrderPdfData(params: {
   vendor: Vendor | null;
   orderDateLabel: string;
   deliveryDateLabel: string;
+  deliveryDateHeading?: string;
   initiatedBy: string;
   approvedBy: string;
   documentKind?: PurchaseDocumentKind;
@@ -46,6 +47,7 @@ export function buildPurchaseOrderPdfData(params: {
     documentKind,
     orderDate: params.orderDateLabel,
     deliveryDate: params.deliveryDateLabel,
+    deliveryDateHeading: params.deliveryDateHeading,
     countryCode: params.company.countryCode,
     company: {
       name: params.company.name,

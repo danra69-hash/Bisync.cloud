@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Copy, Download, ExternalLink, ShoppingBag, X } from 'lucide-react';
+import { Calendar, CalendarRange, Copy, Download, ExternalLink, Handshake, ShoppingBag, X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type Vendor } from '../../api';
 import {
   groupCartByVendor,
@@ -29,6 +29,8 @@ type Props = {
   items: OrderCartItem[];
   selectedCompanyId: number;
   selectedLocationIds: string[];
+  /** Create a Pre-committed (blanket) PO with commitment date range instead of a release PO. */
+  mode?: 'standard' | 'pre_committed';
   /** When set, release POs draw down from this Pre-committed master. */
   sourceCommittedPurchaseOrderId?: number | null;
   onClose: () => void;
@@ -75,10 +77,12 @@ export function OrderCartModal({
   items,
   selectedCompanyId,
   selectedLocationIds,
+  mode = 'standard',
   sourceCommittedPurchaseOrderId = null,
   onClose,
   onConfirmed,
 }: Props) {
+  const isPreCommitted = mode === 'pre_committed';
   const { rm } = useCountryFormatters();
   const { currentUser, loading: userLoading } = useCurrentUser();
   const [company, setCompany] = useState<Company | null>(null);
@@ -88,12 +92,19 @@ export function OrderCartModal({
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deliveryDateValue, setDeliveryDateValue] = useState(defaultDeliveryDateValue);
+  const todayValue = useMemo(() => toDateInputValue(new Date()), []);
+  const [commitmentStartValue, setCommitmentStartValue] = useState(todayValue);
+  const [commitmentEndValue, setCommitmentEndValue] = useState(() => {
+    const end = new Date();
+    end.setMonth(end.getMonth() + 3);
+    return toDateInputValue(end);
+  });
   const [step, setStep] = useState<Step>('review');
   const [createdOrders, setCreatedOrders] = useState<CreatedVendorOrder[]>([]);
   const [activeVendorIndex, setActiveVendorIndex] = useState(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const minDeliveryDate = useMemo(() => toDateInputValue(new Date()), []);
+  const minDeliveryDate = todayValue;
 
   const groups = useMemo(() => groupCartByVendor(items), [items]);
   const grandTotal = useMemo(
@@ -189,17 +200,30 @@ export function OrderCartModal({
   async function handleConfirm() {
     if (groups.length === 0) return;
 
-    const deliveryDate = parseDateInputValue(deliveryDateValue);
-    if (!deliveryDate) {
-      setError('Select a valid preferred delivery date.');
-      return;
-    }
+    const commitmentStart = isPreCommitted ? parseDateInputValue(commitmentStartValue) : null;
+    const commitmentEnd = isPreCommitted ? parseDateInputValue(commitmentEndValue) : null;
+    const deliveryDate = isPreCommitted ? commitmentEnd : parseDateInputValue(deliveryDateValue);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (deliveryDate < today) {
-      setError('Preferred delivery date cannot be in the past.');
-      return;
+    if (isPreCommitted) {
+      if (!commitmentStart || !commitmentEnd) {
+        setError('Choose Commitment Date from and to.');
+        return;
+      }
+      if (commitmentEnd < commitmentStart) {
+        setError('Commitment end date must be on or after the start date.');
+        return;
+      }
+    } else {
+      if (!deliveryDate) {
+        setError('Select a valid preferred delivery date.');
+        return;
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (deliveryDate < today) {
+        setError('Preferred delivery date cannot be in the past.');
+        return;
+      }
     }
 
     if (!signatories) {
@@ -212,15 +236,19 @@ export function OrderCartModal({
       return;
     }
 
-    const orderStatus = signatories.canSelfApprove ? 'Open' : 'Pending Approval';
-    const documentType = signatories.documentKind === 'purchase_order' ? 'PO' : 'PR';
+    const orderStatus = isPreCommitted
+      ? 'Committed'
+      : (signatories.canSelfApprove ? 'Open' : 'Pending Approval');
+    const documentType = isPreCommitted
+      ? 'PO'
+      : (signatories.documentKind === 'purchase_order' ? 'PO' : 'PR');
 
     setSaving(true);
     setError(null);
 
     const orderDate = new Date();
     const orderDateStr = toDateInputValue(orderDate);
-    const deliveryDateStr = deliveryDateValue;
+    const deliveryDateStr = isPreCommitted ? commitmentEndValue : deliveryDateValue;
 
     try {
       const created = await api.createPurchaseOrders({
@@ -235,7 +263,12 @@ export function OrderCartModal({
           orderDate: orderDateStr,
           deliveryDate: deliveryDateStr,
           status: orderStatus,
-          sourceCommittedPurchaseOrderId: sourceCommittedPurchaseOrderId ?? undefined,
+          isPreCommitted: isPreCommitted || undefined,
+          commitmentStartDate: isPreCommitted ? commitmentStartValue : undefined,
+          commitmentEndDate: isPreCommitted ? commitmentEndValue : undefined,
+          sourceCommittedPurchaseOrderId: isPreCommitted
+            ? undefined
+            : (sourceCommittedPurchaseOrderId ?? undefined),
           items: group.items.map(item => ({
             componentId: item.componentId,
             componentName: item.componentName,
@@ -251,11 +284,17 @@ export function OrderCartModal({
       });
 
       if (!Array.isArray(created) || created.length === 0) {
-        throw new Error(documentLabels?.errorCreate ?? 'Failed to save documents.');
+        throw new Error(
+          isPreCommitted
+            ? 'Failed to create Pre-committed PO.'
+            : (documentLabels?.errorCreate ?? 'Failed to save documents.'),
+        );
       }
 
       const orderDateLabel = formatDisplayDate(orderDate);
-      const deliveryDateLabel = formatDisplayDate(deliveryDate);
+      const deliveryDateLabel = isPreCommitted && commitmentStart && commitmentEnd
+        ? `${formatDisplayDate(commitmentStart)} → ${formatDisplayDate(commitmentEnd)}`
+        : formatDisplayDate(deliveryDate!);
 
       const pdfPayloads: PurchaseOrderPdfData[] = created.map(po => {
         const group = groups.find(g => g.vendorName === po.vendorName);
@@ -270,9 +309,10 @@ export function OrderCartModal({
           vendor: findVendorForGroup(vendors, group),
           orderDateLabel,
           deliveryDateLabel,
+          deliveryDateHeading: isPreCommitted ? 'Commitment Date' : undefined,
           initiatedBy: signatories.initiatedBy,
           approvedBy: signatories.approvedBy,
-          documentKind: signatories.documentKind,
+          documentKind: 'purchase_order',
         });
       });
 
@@ -376,24 +416,34 @@ export function OrderCartModal({
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Order cart"
+        aria-label={isPreCommitted ? 'Pre-committed PO' : 'Order cart'}
       >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0 flex items-start gap-3">
             <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <ShoppingBag size={18} />
+              {isPreCommitted ? <Handshake size={18} /> : <ShoppingBag size={18} />}
             </div>
             <div>
-              <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">My Carte</p>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">
+                {isPreCommitted ? 'Pre-committed PO' : 'My Carte'}
+              </p>
               <h3 className="text-sm font-semibold text-foreground mt-0.5">
                 {step === 'success'
-                  ? (documentLabels?.successTitle ?? 'Documents Created')
-                  : (documentLabels?.confirmTitle ?? 'Confirm Purchase Orders')}
+                  ? (isPreCommitted
+                    ? 'Pre-committed PO Created'
+                    : (documentLabels?.successTitle ?? 'Documents Created'))
+                  : (isPreCommitted
+                    ? 'Confirm Pre-committed PO'
+                    : (documentLabels?.confirmTitle ?? 'Confirm Purchase Orders'))}
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {step === 'success'
-                  ? (documentLabels?.successSubtitle(createdOrders.length) ?? `${createdOrders.length} saved`)
-                  : `${groups.length} vendor${groups.length !== 1 ? 's' : ''} · ${items.length} item${items.length !== 1 ? 's' : ''}`}
+                  ? (isPreCommitted
+                    ? `${createdOrders.length} commitment${createdOrders.length === 1 ? '' : 's'} saved under Committed`
+                    : (documentLabels?.successSubtitle(createdOrders.length) ?? `${createdOrders.length} saved`))
+                  : isPreCommitted
+                    ? `${groups.length} vendor${groups.length !== 1 ? 's' : ''} · ${items.length} item${items.length !== 1 ? 's' : ''} · special price over commitment period`
+                    : `${groups.length} vendor${groups.length !== 1 ? 's' : ''} · ${items.length} item${items.length !== 1 ? 's' : ''}`}
               </p>
             </div>
           </div>
@@ -406,31 +456,77 @@ export function OrderCartModal({
           {step === 'review' ? (
             <>
               <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-3">
-                <div>
-                  <label htmlFor="preferred-delivery-date" className="flex items-center gap-2 text-xs font-sans uppercase tracking-wider text-muted-foreground">
-                    <Calendar size={13} />
-                    Preferred Delivery Date
-                  </label>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <input
-                      id="preferred-delivery-date"
-                      type="date"
-                      value={deliveryDateValue}
-                      min={minDeliveryDate}
-                      onChange={e => {
-                        setDeliveryDateValue(e.target.value);
-                        setError(null);
-                      }}
-                      disabled={saving}
-                      className={`bisync-filter-select font-sans disabled:opacity-50`}
-                    />
-                    {parseDateInputValue(deliveryDateValue) && (
-                      <p className="text-xs text-muted-foreground">
-                        Deliver on {formatDisplayDate(parseDateInputValue(deliveryDateValue)!)}
-                      </p>
-                    )}
+                {isPreCommitted ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Same PO format as a regular PO. Choose Commitment Date from / to — later orders for these
+                      products draw down from this commitment at the special price.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label htmlFor="commitment-date-from" className="flex items-center gap-2 text-xs font-sans uppercase tracking-wider text-muted-foreground">
+                          <CalendarRange size={13} />
+                          Commitment Date from
+                        </label>
+                        <input
+                          id="commitment-date-from"
+                          type="date"
+                          value={commitmentStartValue}
+                          onChange={e => {
+                            setCommitmentStartValue(e.target.value);
+                            setError(null);
+                          }}
+                          disabled={saving}
+                          className="bisync-filter-select font-sans disabled:opacity-50 mt-2"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="commitment-date-to" className="flex items-center gap-2 text-xs font-sans uppercase tracking-wider text-muted-foreground">
+                          <CalendarRange size={13} />
+                          Commitment Date to
+                        </label>
+                        <input
+                          id="commitment-date-to"
+                          type="date"
+                          value={commitmentEndValue}
+                          min={commitmentStartValue || undefined}
+                          onChange={e => {
+                            setCommitmentEndValue(e.target.value);
+                            setError(null);
+                          }}
+                          disabled={saving}
+                          className="bisync-filter-select font-sans disabled:opacity-50 mt-2"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <label htmlFor="preferred-delivery-date" className="flex items-center gap-2 text-xs font-sans uppercase tracking-wider text-muted-foreground">
+                      <Calendar size={13} />
+                      Preferred Delivery Date
+                    </label>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <input
+                        id="preferred-delivery-date"
+                        type="date"
+                        value={deliveryDateValue}
+                        min={minDeliveryDate}
+                        onChange={e => {
+                          setDeliveryDateValue(e.target.value);
+                          setError(null);
+                        }}
+                        disabled={saving}
+                        className={`bisync-filter-select font-sans disabled:opacity-50`}
+                      />
+                      {parseDateInputValue(deliveryDateValue) && (
+                        <p className="text-xs text-muted-foreground">
+                          Deliver on {formatDisplayDate(parseDateInputValue(deliveryDateValue)!)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-border/60">
                   <div>
@@ -450,9 +546,11 @@ export function OrderCartModal({
                       {userLoading ? <MillstoneLoader size="xs" layout="inline" label="" /> : signatories?.approvedBy ?? '—'}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {signatories?.canSelfApprove
-                        ? 'You have Approve Order permission'
-                        : 'Pending — requires Approve Order permission'}
+                      {isPreCommitted
+                        ? 'Pre-committed POs stay under Committed until drawn down'
+                        : signatories?.canSelfApprove
+                          ? 'You have Approve Order permission'
+                          : 'Pending — requires Approve Order permission'}
                     </p>
                   </div>
                 </div>
@@ -465,9 +563,15 @@ export function OrderCartModal({
           ) : (
             <div className="space-y-4">
               <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
-                <p className="text-xs font-semibold text-foreground">{documentLabels?.savedMessage ?? 'Documents saved'}</p>
+                <p className="text-xs font-semibold text-foreground">
+                  {isPreCommitted
+                    ? 'Pre-committed PO saved'
+                    : (documentLabels?.savedMessage ?? 'Documents saved')}
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Review each vendor PDF below, download a copy, or copy/share the PDF link with the vendor.
+                  {isPreCommitted
+                    ? 'Review the commitment PDF, then draw down from PO Template or My Carte when ordering these products.'
+                    : 'Review each vendor PDF below, download a copy, or copy/share the PDF link with the vendor.'}
                 </p>
               </div>
 
@@ -602,12 +706,22 @@ export function OrderCartModal({
               <button
                 type="button"
                 onClick={() => void handleConfirm()}
-                disabled={saving || groups.length === 0 || !deliveryDateValue || userLoading || !signatories}
+                disabled={
+                  saving
+                  || groups.length === 0
+                  || userLoading
+                  || !signatories
+                  || (isPreCommitted
+                    ? (!commitmentStartValue || !commitmentEndValue)
+                    : !deliveryDateValue)
+                }
                 className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
               >
                 {saving
-                  ? (documentLabels?.submittingButton ?? 'Saving…')
-                  : (documentLabels?.submitButton ?? 'Confirm & Create POs')}
+                  ? (isPreCommitted ? 'Creating…' : (documentLabels?.submittingButton ?? 'Saving…'))
+                  : (isPreCommitted
+                    ? 'Confirm & Create Pre-committed PO'
+                    : (documentLabels?.submitButton ?? 'Confirm & Create POs'))}
               </button>
             )}
           </div>
