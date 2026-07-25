@@ -943,8 +943,7 @@ public class PurchaseOrdersController(
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
     {
         var orders = await BaseQuery().ToListAsync();
-        var flags = await ResolveAllowPartialFlagsAsync(orders);
-        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
+        return Ok(await MapPurchaseOrdersAsync(orders));
     }
 
     [HttpGet("active")]
@@ -963,8 +962,7 @@ public class PurchaseOrdersController(
         var orders = await BaseQuery()
             .Where(p => orderIds.Contains(p.Id))
             .ToListAsync();
-        var flags = await ResolveAllowPartialFlagsAsync(orders);
-        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
+        return Ok(await MapPurchaseOrdersAsync(orders));
     }
 
     /// <summary>Active pre-committed (blanket) POs available for drawdown / PO Template apply.</summary>
@@ -1005,8 +1003,7 @@ public class PurchaseOrdersController(
                 .ToList();
         }
 
-        var flags = await ResolveAllowPartialFlagsAsync(orders);
-        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
+        return Ok(await MapPurchaseOrdersAsync(orders));
     }
 
     /// <summary>
@@ -1019,8 +1016,7 @@ public class PurchaseOrdersController(
             return BadRequest(new { message = "companyId is required." });
 
         var orders = await OnlineVendorOrderBridge.ListInboundForVendorCompanyAsync(db, companyId);
-        var flags = await ResolveAllowPartialFlagsAsync(orders);
-        return Ok(orders.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
+        return Ok(await MapPurchaseOrdersAsync(orders));
     }
 
     /// <summary>
@@ -1266,14 +1262,12 @@ public class PurchaseOrdersController(
 
         foreach (var order in saved)
         {
-            // Notify online vendors only for issued POs (not pending PR approval).
-            // Pre-committed masters are also shared so the vendor can see the commitment.
-            if (!PurchaseOrderWorkflow.IsPendingApprovalStatus(order.Status))
+            // Notify online vendors only for issued release POs (not pending PR / not pre-committed masters).
+            if (!order.IsPreCommitted && !PurchaseOrderWorkflow.IsPendingApprovalStatus(order.Status))
                 await OnlineVendorOrderBridge.NotifyOnlineVendorOfPurchaseOrderAsync(db, order);
         }
 
-        var flags = await ResolveAllowPartialFlagsAsync(saved);
-        return Ok(saved.Select(o => PurchaseOrderWorkflow.MapOrder(o, flags.GetValueOrDefault(o.Id))));
+        return Ok(await MapPurchaseOrdersAsync(saved));
     }
 
     [HttpPost("{id:int}/approve")]
@@ -1564,8 +1558,90 @@ public class PurchaseOrdersController(
 
     async Task<object> MapPurchaseOrderAsync(PurchaseOrder order, bool? allowPartialDelivery = null)
     {
-        var allow = allowPartialDelivery ?? await ResolveAllowPartialAsync(order);
-        return PurchaseOrderWorkflow.MapOrder(order, allow);
+        var mapped = await MapPurchaseOrdersAsync([order], allowPartialDelivery);
+        return mapped[0];
+    }
+
+    async Task<List<object>> MapPurchaseOrdersAsync(
+        IReadOnlyList<PurchaseOrder> orders,
+        bool? allowPartialDelivery = null)
+    {
+        var flags = allowPartialDelivery is bool fixedAllow
+            ? orders.ToDictionary(o => o.Id, _ => fixedAllow)
+            : await ResolveAllowPartialFlagsAsync(orders);
+        var consolidatedByMaster = await ResolveConsolidatedByMasterItemAsync(
+            orders.Where(o => o.IsPreCommitted).Select(o => o.Id).ToList());
+
+        return orders
+            .Select(o => PurchaseOrderWorkflow.MapOrder(
+                o,
+                flags.GetValueOrDefault(o.Id),
+                consolidatedByMaster.GetValueOrDefault(o.Id)))
+            .Cast<object>()
+            .ToList();
+    }
+
+    /// <summary>
+    /// Sums DeliveredQuantity on release PO lines that drew from each pre-committed master line
+    /// (stock impact after receive + consolidate).
+    /// </summary>
+    async Task<Dictionary<int, Dictionary<int, decimal>>> ResolveConsolidatedByMasterItemAsync(
+        IReadOnlyList<int> masterIds)
+    {
+        var result = new Dictionary<int, Dictionary<int, decimal>>();
+        if (masterIds.Count == 0)
+            return result;
+
+        var masters = await db.PurchaseOrders.AsNoTracking()
+            .Include(p => p.Items)
+            .Where(p => masterIds.Contains(p.Id) && p.IsPreCommitted)
+            .ToListAsync();
+
+        var releases = await db.PurchaseOrders.AsNoTracking()
+            .Include(p => p.Items)
+            .Where(p => p.SourceCommittedPurchaseOrderId != null
+                && masterIds.Contains(p.SourceCommittedPurchaseOrderId.Value)
+                && !p.IsPreCommitted)
+            .ToListAsync();
+
+        var releasesByMaster = releases
+            .GroupBy(r => r.SourceCommittedPurchaseOrderId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var master in masters)
+        {
+            var byItem = master.Items.ToDictionary(i => i.Id, _ => 0m);
+            if (!releasesByMaster.TryGetValue(master.Id, out var linked))
+            {
+                result[master.Id] = byItem;
+                continue;
+            }
+
+            foreach (var release in linked)
+            {
+                foreach (var releaseItem in release.Items)
+                {
+                    var masterItem = master.Items.FirstOrDefault(mi =>
+                        !string.IsNullOrWhiteSpace(mi.VendorProductId)
+                        && string.Equals(mi.VendorProductId, releaseItem.VendorProductId, StringComparison.OrdinalIgnoreCase))
+                        ?? master.Items.FirstOrDefault(mi =>
+                            !string.IsNullOrWhiteSpace(mi.ComponentId)
+                            && string.Equals(mi.ComponentId, releaseItem.ComponentId, StringComparison.OrdinalIgnoreCase))
+                        ?? master.Items.FirstOrDefault(mi =>
+                            string.Equals(mi.Name, releaseItem.Name, StringComparison.OrdinalIgnoreCase));
+
+                    if (masterItem is null)
+                        continue;
+
+                    byItem[masterItem.Id] = DecimalRounding.ToDb(
+                        byItem[masterItem.Id] + releaseItem.DeliveredQuantity);
+                }
+            }
+
+            result[master.Id] = byItem;
+        }
+
+        return result;
     }
 
     async Task<bool> ResolveAllowPartialAsync(PurchaseOrder order)

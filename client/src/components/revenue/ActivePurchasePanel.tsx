@@ -266,8 +266,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     'Component',
     'Product',
     showCommitmentColumns ? 'Committed' : (showOrderedReceivedColumns ? 'QTY Ordered' : 'Qty'),
-    showCommitmentColumns ? 'Drawn' : (showPartialDeliveryColumns ? 'Delivered' : null),
-    showCommitmentColumns ? 'Remaining' : (showPartialDeliveryColumns ? 'Remaining' : null),
+    showCommitmentColumns ? 'Issued (drawn)' : (showPartialDeliveryColumns ? 'Delivered' : null),
+    showCommitmentColumns ? 'Received & consolidated' : null,
+    showCommitmentColumns ? 'Remaining to order' : (showPartialDeliveryColumns ? 'Remaining' : null),
     showOrderedReceivedColumns
       ? (showPartialDeliveryColumns ? 'QTY This shipment' : 'QTY Received')
       : null,
@@ -498,8 +499,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-800 dark:text-teal-300">
               <p className="font-semibold">Pre-committed PO</p>
               <p className="mt-0.5 leading-relaxed">
-                Master commitment at a special price. Not warehouse-received — later My Order releases
-                draw down remaining quantity until the commitment is closed.
+                Company-level blanket. Issue regular POs to draw down; delivery unit and price follow this
+                commitment. Stock / inbound is affected only when each drawdown PO is received and consolidated.
               </p>
             </div>
           ) : null}
@@ -714,6 +715,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                             <td className="px-3 py-2 font-sans tabular-nums">{line.orderedQuantity}</td>
                             <td className="px-3 py-2 font-sans tabular-nums text-muted-foreground">
                               {order.items.find(i => i.id === line.itemId)?.drawnQuantity ?? 0}
+                            </td>
+                            <td className="px-3 py-2 font-sans tabular-nums">
+                              {order.items.find(i => i.id === line.itemId)?.consolidatedQuantity ?? 0}
                             </td>
                             <td className="px-3 py-2 font-sans tabular-nums">
                               {order.items.find(i => i.id === line.itemId)?.remainingCommitmentQuantity

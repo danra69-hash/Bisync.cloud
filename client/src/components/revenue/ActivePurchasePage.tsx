@@ -42,9 +42,30 @@ const ACTIVE_PURCHASE_TABLE_COLUMNS: SortableColumnDef<ActivePurchaseSortColumn>
   { key: 'number', label: 'Number' },
   { key: 'vendor', label: 'Vendor' },
   { key: 'ordered', label: 'Ordered' },
-  { key: 'delivery', label: 'Delivery / Commitment' },
+  { key: 'delivery', label: 'Delivery' },
   { key: 'items', label: 'Items', align: 'right' },
   { key: 'total', label: 'Total', align: 'right' },
+  { key: 'status', label: 'Status' },
+  { key: 'action', label: 'Action', sortable: false },
+];
+
+type PreCommittedSortColumn =
+  | 'number'
+  | 'vendor'
+  | 'commitment'
+  | 'committed'
+  | 'consolidated'
+  | 'remaining'
+  | 'status'
+  | 'action';
+
+const PRE_COMMITTED_TABLE_COLUMNS: SortableColumnDef<PreCommittedSortColumn>[] = [
+  { key: 'number', label: 'Number' },
+  { key: 'vendor', label: 'Vendor' },
+  { key: 'commitment', label: 'Commitment' },
+  { key: 'committed', label: 'Committed qty', align: 'right' },
+  { key: 'consolidated', label: 'Received & consolidated', align: 'right' },
+  { key: 'remaining', label: 'Remaining to order', align: 'right' },
   { key: 'status', label: 'Status' },
   { key: 'action', label: 'Action', sortable: false },
 ];
@@ -68,13 +89,27 @@ function documentTypeLabel(order: PurchaseOrder): string {
   return 'PO';
 }
 
-function deliveryOrCommitmentLabel(order: PurchaseOrder): string {
-  if (order.isPreCommitted) {
-    const from = order.commitmentStartDate ?? '—';
-    const to = order.commitmentEndDate ?? '—';
-    return `${from} → ${to}`;
-  }
-  return order.deliveryDate;
+function commitmentLabel(order: PurchaseOrder): string {
+  return `${order.commitmentStartDate ?? '—'} → ${order.commitmentEndDate ?? '—'}`;
+}
+
+function committedQty(order: PurchaseOrder): number {
+  return order.committedQuantity
+    ?? order.items.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+function consolidatedQty(order: PurchaseOrder): number {
+  return order.consolidatedQuantity
+    ?? order.items.reduce((sum, item) => sum + (item.consolidatedQuantity ?? 0), 0);
+}
+
+function remainingToOrderQty(order: PurchaseOrder): number {
+  return order.items.reduce((sum, item) => {
+    const remaining = item.remainingCommitmentQuantity
+      ?? item.remainingQuantity
+      ?? Math.max(0, item.quantity - (item.drawnQuantity ?? 0));
+    return sum + remaining;
+  }, 0);
 }
 
 function nextActionLabel(order: PurchaseOrder): string {
@@ -87,12 +122,18 @@ function nextActionLabel(order: PurchaseOrder): string {
 }
 
 export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Props) {
-  const { rm } = useCountryFormatters();
+  const { rm, number } = useCountryFormatters();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<ActivePurchaseSortColumn>();
+  const {
+    sortColumn: preSortColumn,
+    sortDirection: preSortDirection,
+    toggleSort: togglePreSort,
+    resetSort: resetPreSort,
+  } = useTableSort<PreCommittedSortColumn>();
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -130,7 +171,8 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
 
   useEffect(() => {
     resetSort();
-  }, [selectedCompanyId, resetSort]);
+    resetPreSort();
+  }, [selectedCompanyId, resetSort, resetPreSort]);
 
   const selectedOrder = useMemo(
     () => orders.find(o => o.id === selectedOrderId) ?? null,
@@ -149,11 +191,35 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
     () => orders.filter(o => o.isPreCommitted),
     [orders],
   );
+  const releaseOrders = useMemo(
+    () => orders.filter(o => !o.isPreCommitted),
+    [orders],
+  );
+
+  const sortedCommitted = useMemo(
+    () =>
+      sortTableRows(
+        committedOrders,
+        preSortColumn,
+        preSortDirection,
+        {
+          number: o => o.poNumber,
+          vendor: o => o.vendorName,
+          commitment: o => commitmentLabel(o),
+          committed: o => committedQty(o),
+          consolidated: o => consolidatedQty(o),
+          remaining: o => remainingToOrderQty(o),
+          status: o => resolvePurchaseOrderStatusLabel(o),
+        },
+        { tieBreaker: (a, b) => compareSortValues(a.poNumber, b.poNumber) },
+      ),
+    [committedOrders, preSortColumn, preSortDirection],
+  );
 
   const sortedOrders = useMemo(
     () =>
       sortTableRows(
-        orders,
+        releaseOrders,
         sortColumn,
         sortDirection,
         {
@@ -161,34 +227,48 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
           number: o => o.poNumber,
           vendor: o => o.vendorName,
           ordered: o => o.orderDate,
-          delivery: o => deliveryOrCommitmentLabel(o),
+          delivery: o => o.deliveryDate,
           items: o => o.items.length,
           total: o => orderTotal(o),
           status: o => resolvePurchaseOrderStatusLabel(o),
         },
         { tieBreaker: (a, b) => compareSortValues(a.poNumber, b.poNumber) },
       ),
-    [orders, sortColumn, sortDirection],
+    [releaseOrders, sortColumn, sortDirection],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
+  const preScrollRootRef = useRef<HTMLDivElement>(null);
   const {
     visibleItems: pagedOrders,
     hasMore,
     sentinelRef,
     totalCount,
     visibleCount, nextPageSize, loadMore } = useInfiniteScrollSlice(sortedOrders, { scrollRootRef });
+  const {
+    visibleItems: pagedCommitted,
+    hasMore: preHasMore,
+    sentinelRef: preSentinelRef,
+    totalCount: preTotalCount,
+    visibleCount: preVisibleCount,
+    nextPageSize: preNextPageSize,
+    loadMore: preLoadMore,
+  } = useInfiniteScrollSlice(sortedCommitted, { scrollRootRef: preScrollRootRef });
 
   function handleOrderUpdated(updated: PurchaseOrder) {
     setOrders(prev => {
-      if (updated.status === 'Reconciled') {
+      if (updated.status === 'Reconciled' || updated.status === 'Commitment Closed') {
         return prev.filter(o => o.id !== updated.id);
       }
       const exists = prev.some(o => o.id === updated.id);
       if (!exists) return [updated, ...prev];
       return prev.map(o => (o.id === updated.id ? updated : o));
     });
-    setSelectedOrderId(updated.status === 'Reconciled' ? null : updated.id);
+    setSelectedOrderId(
+      updated.status === 'Reconciled' || updated.status === 'Commitment Closed'
+        ? null
+        : updated.id,
+    );
   }
 
   return (
@@ -232,15 +312,81 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Purchase orders</p>
           <p className="text-2xl font-semibold mt-1">{purchaseOrders.length}</p>
         </div>
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div className="rounded-lg border border-teal-500/30 bg-teal-500/5 p-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wide">Pre-committed</p>
           <p className="text-2xl font-semibold mt-1">{committedOrders.length}</p>
         </div>
       </div>
 
+      <div className="bg-card border border-teal-500/30 rounded-lg overflow-hidden">
+        <div data-table-title data-sticky-table-title className="px-4 py-3 border-b border-teal-500/20 bg-teal-500/5">
+          <h2 className="text-sm font-semibold">Pre-committed POs</h2>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Company-level commitments sit above regular purchases. Received &amp; consolidated updates only after
+            each drawdown PO is received and consolidated — masters do not affect inbound stock directly.
+          </p>
+        </div>
+        <TableScrollContainer ref={preScrollRootRef} className="max-h-[min(40vh,22rem)] overflow-y-auto">
+          <table className="w-full table-fixed">
+            <thead className="bg-muted/30">
+              <SortableTableHeaderRow
+                columns={PRE_COMMITTED_TABLE_COLUMNS}
+                sortColumn={preSortColumn}
+                sortDirection={preSortDirection}
+                onSort={togglePreSort}
+                className="border-b border-border"
+              />
+            </thead>
+            <tbody>
+              {loading && committedOrders.length === 0 ? (
+                <TableLoadingRow colSpan={8} label="Loading…" />
+              ) : committedOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    No active Pre-committed POs. Create one from My Order → Pre-committed PO.
+                  </td>
+                </tr>
+              ) : (
+                pagedCommitted.map(order => (
+                  <tr
+                    key={order.id}
+                    className="hover:bg-muted/20 cursor-pointer"
+                    onClick={() => setSelectedOrderId(order.id)}
+                  >
+                    <td className={`${tdCls} font-sans text-primary`}>{order.poNumber}</td>
+                    <td className={tdCls}>{order.vendorName}</td>
+                    <td className={`${tdCls} font-sans text-muted-foreground`}>{commitmentLabel(order)}</td>
+                    <td className={`${tdCls} font-sans tabular-nums text-right`}>{number(committedQty(order))}</td>
+                    <td className={`${tdCls} font-sans tabular-nums text-right`}>{number(consolidatedQty(order))}</td>
+                    <td className={`${tdCls} font-sans tabular-nums text-right`}>{number(remainingToOrderQty(order))}</td>
+                    <td className={tdCls}>{statusBadge(order)}</td>
+                    <td className={tdCls}>
+                      <span className="text-xs font-medium text-primary">View</span>
+                    </td>
+                  </tr>
+                ))
+              )}
+              <InfiniteScrollTableSentinel
+                colSpan={8}
+                hasMore={preHasMore}
+                onLoadMore={preLoadMore}
+                nextPageSize={preNextPageSize}
+                sentinelRef={preSentinelRef}
+                totalCount={preTotalCount}
+                visibleCount={preVisibleCount}
+              />
+            </tbody>
+          </table>
+        </TableScrollContainer>
+      </div>
+
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         <div data-table-title data-sticky-table-title className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold">Unreconciled purchases</h2>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Issue regular POs as usual. Matching Pre-committed products use commitment delivery unit and price;
+            qty draws against the commitment above.
+          </p>
         </div>
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full table-fixed">
@@ -254,9 +400,9 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
               />
             </thead>
             <tbody>
-              {loading && orders.length === 0 ? (
+              {loading && releaseOrders.length === 0 ? (
                 <TableLoadingRow colSpan={9} label="Loading…" />
-              ) : orders.length === 0 ? (
+              ) : releaseOrders.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     No active purchase requests or orders. Create one from My Order.
@@ -273,7 +419,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
                     <td className={`${tdCls} font-sans text-primary`}>{order.poNumber}</td>
                     <td className={tdCls}>{order.vendorName}</td>
                     <td className={`${tdCls} font-sans text-muted-foreground`}>{order.orderDate}</td>
-                    <td className={`${tdCls} font-sans text-muted-foreground`}>{deliveryOrCommitmentLabel(order)}</td>
+                    <td className={`${tdCls} font-sans text-muted-foreground`}>{order.deliveryDate}</td>
                     <td className={tdCls}>{order.items.length}</td>
                     <td className={`${tdCls} font-sans`}>{rm(orderTotal(order))}</td>
                     <td className={tdCls}>{statusBadge(order)}</td>

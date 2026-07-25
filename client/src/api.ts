@@ -1164,6 +1164,8 @@ export interface PurchaseOrderItem {
   remainingQuantity?: number;
   drawnQuantity?: number;
   remainingCommitmentQuantity?: number;
+  /** On Pre-committed lines: qty received & consolidated via linked release POs. */
+  consolidatedQuantity?: number;
   taxAmount?: number;
   halalCertNo?: string;
   productExpiryDate?: string | null;
@@ -1193,6 +1195,11 @@ export interface PurchaseOrder {
   sourceCommittedPurchaseOrderId?: number | null;
   /** On Pre-committed masters: outlets allowed to draw down (same as locationExternalIds). */
   drawdownLocationExternalIds?: string[] | null;
+  /** Pre-committed totals (company blanket). */
+  committedQuantity?: number | null;
+  drawnQuantityTotal?: number | null;
+  /** Qty received & consolidated on linked release POs (stock impact). */
+  consolidatedQuantity?: number | null;
   vendorShareToken?: string | null;
   vendorAcceptedAt?: string | null;
   vendorAcceptedBy?: string | null;

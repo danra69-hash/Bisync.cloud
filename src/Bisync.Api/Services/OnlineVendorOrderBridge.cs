@@ -12,6 +12,11 @@ public static class OnlineVendorOrderBridge
 {
     public static async Task NotifyOnlineVendorOfPurchaseOrderAsync(BisyncDbContext db, PurchaseOrder order)
     {
+        // Pre-committed masters are company blanket commitments — they do not create inbound
+        // Active Sales work until a release PO is issued (and later received/consolidated).
+        if (order.IsPreCommitted)
+            return;
+
         var vendor = await FindOperatorVendorAsync(db, order);
         if (vendor is null || !VendorEngagementService.IsOnlineVendor(vendor))
             return;
@@ -81,10 +86,13 @@ public static class OnlineVendorOrderBridge
         var candidates = await db.PurchaseOrders
             .AsNoTracking()
             .Include(p => p.Items)
-            .Where(p => p.VendorAcceptedAt == null
+            .Where(p => !p.IsPreCommitted
+                && p.VendorAcceptedAt == null
                 && p.Status != PurchaseOrderWorkflow.StatusReconciled
                 && p.Status != PurchaseOrderWorkflow.StatusReceived
-                && p.Status != PurchaseOrderWorkflow.StatusPendingApproval)
+                && p.Status != PurchaseOrderWorkflow.StatusPendingApproval
+                && p.Status != PurchaseOrderWorkflow.StatusCommitted
+                && p.Status != PurchaseOrderWorkflow.StatusCommitmentClosed)
             .OrderByDescending(p => p.Id)
             .ToListAsync();
 
