@@ -104,6 +104,16 @@ export const ko = {
       hrm: '인사, 근태, 휴가 및 인력 설정.',
       accounting: '급여 연동, 원장 및 결산.',
     },
+    messages: {
+      title: '메시지',
+      subtitle: '회사 및 팀 업데이트',
+      empty: '아직 메시지가 없습니다.',
+    },
+    todoToday: {
+      title: '오늘의 할 일',
+      subtitle: '오늘 처리할 작업',
+      empty: '오늘 예정된 항목이 없습니다.',
+    },
   },
   revMgmt: {
     sections: {

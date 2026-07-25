@@ -104,6 +104,16 @@ export const ja = {
       hrm: '人材、勤怠、休暇、組織設定。',
       accounting: '給与連携、仕訳、決算。',
     },
+    messages: {
+      title: 'メッセージ',
+      subtitle: '会社・チームの更新',
+      empty: 'メッセージはまだありません。',
+    },
+    todoToday: {
+      title: '今日のTo Do',
+      subtitle: '本日のアクション',
+      empty: '本日の予定はありません。',
+    },
   },
   revMgmt: {
     sections: {

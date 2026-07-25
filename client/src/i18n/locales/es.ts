@@ -104,6 +104,16 @@ export const es = {
       hrm: 'Personas, asistencia, permisos y configuración laboral.',
       accounting: 'Nómina, libros y cierre financiero.',
     },
+    messages: {
+      title: 'Mensajes',
+      subtitle: 'Actualizaciones de empresa y equipo',
+      empty: 'Aún no hay mensajes.',
+    },
+    todoToday: {
+      title: 'Pendientes de hoy',
+      subtitle: 'Acciones para hoy',
+      empty: 'Nada programado para hoy.',
+    },
   },
   revMgmt: {
     sections: {

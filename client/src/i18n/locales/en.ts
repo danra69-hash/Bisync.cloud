@@ -102,6 +102,16 @@ export const en = {
       hrm: 'People, attendance, leave, and workforce setup.',
       accounting: 'Payroll links, ledgers, and financial close.',
     },
+    messages: {
+      title: 'Messages',
+      subtitle: 'Company and team updates',
+      empty: 'No messages yet.',
+    },
+    todoToday: {
+      title: 'To do Today',
+      subtitle: 'Actions for today',
+      empty: 'Nothing scheduled for today.',
+    },
   },
   revMgmt: {
     sections: {
