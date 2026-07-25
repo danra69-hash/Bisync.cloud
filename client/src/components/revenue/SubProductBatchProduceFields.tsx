@@ -3,7 +3,7 @@ import { getConversionFactor, type AltUnitEntry } from '../../data/componentForm
 import { formatBatchAdditionalQty } from '../../data/productBatchUom';
 
 const qtyCls =
-  'w-20 min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary';
+  'min-w-[8.5rem] w-[8.5rem] max-w-[10rem] rounded-md border border-border bg-background px-2 py-1.5 text-xs tabular-nums text-right focus:outline-none focus:ring-1 focus:ring-primary';
 const unitCls =
   'w-28 min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary';
 

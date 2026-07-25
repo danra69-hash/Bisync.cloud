@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 import type { Product } from '../../api';
-import { inputCls, selectCls } from '../../data/componentForm';
+import { inputCls, qtyPriceWidthCls, selectCls } from '../../data/componentForm';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import {
   b2bSalesUnitTitle,
@@ -44,7 +44,7 @@ function qtyInput(value: number, onChange: (value: number) => void, disabled?: b
         const parsed = parseInt(raw, 10);
         onChange(Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
       }}
-      className={`${inputCls} w-20 font-sans text-xs`}
+      className={`${inputCls} ${qtyPriceWidthCls} font-sans text-xs`}
     />
   );
 }

@@ -354,7 +354,7 @@ function ComponentLinesSection({
                         step="any"
                         value={line.componentUomPrice}
                         onChange={e => onUpdateLine(line.key, { componentUomPrice: e.target.value })}
-                        className={`${fieldCls} max-w-[8rem]`}
+                        className={`${fieldCls} min-w-[8.5rem] max-w-[10rem]`}
                       />
                     </div>
                   </td>
@@ -365,7 +365,7 @@ function ComponentLinesSection({
                       step="any"
                       value={line.quantity}
                       onChange={e => onUpdateLine(line.key, { quantity: e.target.value })}
-                      className={`${fieldCls} max-w-[6rem]`}
+                      className={`${fieldCls} min-w-[8.5rem] max-w-[10rem]`}
                     />
                   </td>
                   <td className={`${tdCls} font-medium`}>{rm(subtotal)}</td>

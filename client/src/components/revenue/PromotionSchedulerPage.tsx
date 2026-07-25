@@ -805,7 +805,7 @@ export function PromotionSchedulerPage({
                                     type="number"
                                     min={0}
                                     step={0.01}
-                                    className={`${inputCls} min-w-[5rem]`}
+                                    className={`${inputCls} min-w-[8.5rem] w-[8.5rem] max-w-[10rem] tabular-nums text-right`}
                                     disabled={saving || !draft.selected}
                                     value={draft.qtyPerCombo}
                                     onChange={e => updateComboProductDraft(combo.id, product.id, {
@@ -889,7 +889,7 @@ export function PromotionSchedulerPage({
                                   type="number"
                                   min={0}
                                   step={0.01}
-                                  className={`${inputCls} min-w-[5rem]`}
+                                  className={`${inputCls} min-w-[8.5rem] w-[8.5rem] max-w-[10rem] tabular-nums text-right`}
                                   disabled={!draft.selected}
                                   value={draft.promoQty}
                                   onChange={e => updateDraft(product.id, { promoQty: e.target.value })}
@@ -902,7 +902,7 @@ export function PromotionSchedulerPage({
                                   type="number"
                                   min={0}
                                   step={0.01}
-                                  className={`${inputCls} min-w-[5rem]`}
+                                  className={`${inputCls} min-w-[8.5rem] w-[8.5rem] max-w-[10rem] tabular-nums text-right`}
                                   disabled={!draft.selected}
                                   value={draft.knockedDownPrice}
                                   onChange={e => updateDraft(product.id, { knockedDownPrice: e.target.value })}

@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { pageShellClass } from '../layout/pageLayout';
-import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
+import { filterSelectCls, inlineNumberCls, inlinePriceCls } from '../layout/formControls';
 import {
   api,
   type Company,
@@ -822,9 +822,9 @@ export function PreCommittedPoPage({
                     <thead className="bg-muted/20 sticky top-0">
                       <tr>
                         <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal">Product</th>
-                        <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal w-20">Qty</th>
-                        <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal w-24">Bulk price</th>
-                        <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal w-24">Line</th>
+                        <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal w-[8.5rem]">Qty</th>
+                        <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal w-[8.5rem]">Bulk price</th>
+                        <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal w-[8.5rem]">Line</th>
                         <th className="w-8" />
                       </tr>
                     </thead>
@@ -847,7 +847,7 @@ export function PreCommittedPoPage({
                                 step="any"
                                 value={line.quantity}
                                 onChange={e => updateLine(line.key, { quantity: e.target.value })}
-                                className={`${inlineNumberCls} w-full text-right`}
+                                className={inlineNumberCls}
                               />
                             </td>
                             <td className={tdCls}>
@@ -857,7 +857,7 @@ export function PreCommittedPoPage({
                                 step="0.01"
                                 value={line.unitPrice}
                                 onChange={e => updateLine(line.key, { unitPrice: e.target.value })}
-                                className={`${inlineNumberCls} w-full text-right`}
+                                className={inlinePriceCls}
                               />
                             </td>
                             <td className={`${tdCls} text-right font-sans tabular-nums`}>

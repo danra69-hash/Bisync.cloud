@@ -279,7 +279,7 @@ export function StockAdjustmentModal({
                 step="any"
                 value={quantity}
                 onChange={e => setQuantity(e.target.value)}
-                className={`${inlineNumberCls} w-28`}
+                className={inlineNumberCls}
                 aria-label="Adjustment quantity"
               />
               <span className="text-sm text-muted-foreground">

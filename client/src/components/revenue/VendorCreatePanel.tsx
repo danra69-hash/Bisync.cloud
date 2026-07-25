@@ -458,7 +458,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                                 <input className={`${inputCls} text-xs`} value={row.deliveryUnitText} onChange={e => updateParsedRow(i, { deliveryUnitText: e.target.value })} />
                               </td>
                               <td className="p-1.5 ">
-                                <input className={`${inputCls} text-xs`} type="number" step={0.01} value={row.deliveryPrice} onChange={e => updateParsedRow(i, { deliveryPrice: parseFloat(e.target.value) || 0 })} />
+                                <input className={`${inputCls} text-xs min-w-[8.5rem] tabular-nums text-right`} type="number" step={0.01} value={row.deliveryPrice} onChange={e => updateParsedRow(i, { deliveryPrice: parseFloat(e.target.value) || 0 })} />
                               </td>
                               <td className="p-1.5 ">
                                 <button

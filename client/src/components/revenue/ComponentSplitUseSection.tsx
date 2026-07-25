@@ -1,6 +1,6 @@
 import { Plus, Trash2, X } from 'lucide-react';
 import type { ComponentForm } from '../../data/componentForm';
-import { inputCls, selectCls } from '../../data/componentForm';
+import { inputCls, qtyPriceWidthCls, selectCls } from '../../data/componentForm';
 import {
   calcSplitUseLineAssignedValue,
   createSplitUseLine,
@@ -77,7 +77,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">QTY</p>
           <div className="flex items-center gap-2">
             <input
-              className={`${inputCls} w-24`}
+              className={`${inputCls} ${qtyPriceWidthCls}`}
               type="number"
               min="0"
               step="any"
@@ -133,7 +133,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
                   </td>
                   <td className="p-2">
                     <input
-                      className={`${inputCls} w-20`}
+                      className={`${inputCls} ${qtyPriceWidthCls}`}
                       type="number"
                       min="0"
                       step="any"

@@ -234,8 +234,10 @@
     @apply focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
   }
 
-  .bisync-inline-number {
-    @apply bg-card border-2 border-border rounded px-1.5 py-0.5 min-h-7 w-full max-w-[4.5rem] text-sm font-semibold tabular-nums text-foreground shadow-sm;
+  /* Inline qty/price: wide enough for 5 integer digits + 2 decimals (99999.99). */
+  .bisync-inline-number,
+  .bisync-inline-price {
+    @apply bg-card border-2 border-border rounded px-1.5 py-0.5 min-h-7 min-w-[8.5rem] w-[8.5rem] max-w-[10rem] text-right text-sm font-semibold tabular-nums text-foreground shadow-sm;
     @apply focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
   }
 

@@ -7,7 +7,7 @@ import {
 } from '../../api';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
-import { inputCls } from '../../data/componentForm';
+import { inputCls, qtyPriceWidthCls } from '../../data/componentForm';
 
 type LineDraft = {
   id: number;
@@ -188,14 +188,14 @@ export function ActiveSalesInboundPanel({ selectedCompanyId, onApproved }: Props
                                 <td className="px-2 py-1.5 font-medium">{item.name}</td>
                                 <td className="px-2 py-1.5 text-right">
                                   <input
-                                    className={`${inputCls} w-24 text-right ml-auto`}
+                                    className={`${inputCls} ${qtyPriceWidthCls} ml-auto`}
                                     value={draft.quantity}
                                     onChange={e => updateDraft(order.id, item.id, { quantity: e.target.value })}
                                   />
                                 </td>
                                 <td className="px-2 py-1.5 text-right">
                                   <input
-                                    className={`${inputCls} w-28 text-right ml-auto`}
+                                    className={`${inputCls} ${qtyPriceWidthCls} ml-auto`}
                                     value={draft.unitPrice}
                                     onChange={e => updateDraft(order.id, item.id, { unitPrice: e.target.value })}
                                   />

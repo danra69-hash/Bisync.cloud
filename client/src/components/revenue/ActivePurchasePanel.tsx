@@ -27,6 +27,7 @@ import {
   copyVendorOrderShareLink,
 } from '../../data/vendorOrderShare';
 import { isPurchaseOrderVendorAccepted, resolvePurchaseOrderStatusLabel } from '../../data/purchaseOrderStatus';
+import { qtyPriceWidthCls } from '../layout/formControls';
 
 type Props = {
   order: PurchaseOrder;
@@ -748,7 +749,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                   step="any"
                                   value={line.quantity}
                                   onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
-                                  className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                  className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                                 />
                               ) : (
                                 <span className="font-sans">{line.quantity}</span>
@@ -766,7 +767,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 step="any"
                                 value={line.quantity}
                                 onChange={e => updateLine(line.itemId, { quantity: e.target.value })}
-                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                               />
                             )}
                           </td>
@@ -802,7 +803,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                     step="0.01"
                                     value={line.unitPrice}
                                     onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
-                                    className="w-24 rounded border border-border bg-background px-2 py-1 font-sans"
+                                    className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                                   />
                                 ) : (
                                   <span className="font-sans">{rm(price)}</span>
@@ -834,7 +835,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                   step="0.01"
                                   value={line.unitPrice}
                                   onChange={e => updateLine(line.itemId, { unitPrice: e.target.value })}
-                                  className="w-24 rounded border border-border bg-background px-2 py-1 font-sans"
+                                  className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                                 />
                               )}
                             </td>
@@ -850,7 +851,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                                 value={line.taxAmount}
                                 onChange={e => updateLine(line.itemId, { taxAmount: e.target.value })}
                                 placeholder="0.00"
-                                className="w-20 rounded border border-border bg-background px-2 py-1 font-sans"
+                                className={`${qtyPriceWidthCls} rounded border border-border bg-background px-2 py-1 font-sans`}
                               />
                             ) : (
                               <span className="font-sans">{tax > 0 ? rm(tax) : '—'}</span>

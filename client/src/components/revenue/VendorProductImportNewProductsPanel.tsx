@@ -147,7 +147,7 @@ export function VendorProductImportNewProductsPanel({
                       </td>
                       <td className="px-2 py-2">
                         <input
-                          className={`${inputCls} !text-xs !min-h-7`}
+                          className={`${inputCls} !text-xs !min-h-7 min-w-[8.5rem] tabular-nums text-right`}
                           type="number"
                           step={0.01}
                           value={row.deliveryPrice}
