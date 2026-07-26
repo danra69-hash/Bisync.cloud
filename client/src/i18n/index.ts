@@ -55,8 +55,8 @@ void i18n
     returnNull: false,
   });
 
-export async function setAppLocale(code: AppLocale) {
-  storeLocale(code);
+export async function setAppLocale(code: AppLocale, options?: { manual?: boolean }) {
+  storeLocale(code, options);
   applyDocumentLocale(code);
   await i18n.changeLanguage(code);
 }

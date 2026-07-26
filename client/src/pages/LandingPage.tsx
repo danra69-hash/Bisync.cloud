@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   Handshake,
@@ -11,6 +11,8 @@ import { RegisterModal } from '../components/auth/RegisterModal';
 import { LanguageSelector } from '../components/layout/LanguageSelector';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { BisyncMarkTile } from '../components/layout/BisyncMark';
+import { setAppLocale } from '../i18n';
+import { readStoredLocale } from '../i18n/languages';
 import { useAppTranslation } from '../i18n/useAppTranslation';
 
 /** Owned CubeValue photography — same company as Bisync. */
@@ -65,6 +67,11 @@ export function LandingPage() {
   const { t } = useAppTranslation();
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
+
+  // Public landing is English unless the visitor picked a language themselves.
+  useEffect(() => {
+    void setAppLocale(readStoredLocale());
+  }, []);
 
   return (
     <div className="cv-landing min-h-[100dvh] bg-white text-[#1f2430] antialiased">
