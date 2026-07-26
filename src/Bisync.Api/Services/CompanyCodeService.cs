@@ -21,6 +21,16 @@ public static class CompanyCodeService
             .Select(c => c.Code!)
             .ToListAsync();
 
+        // Include codes already assigned on tracked entities not yet saved
+        // (batch seeding would otherwise allocate the same code twice).
+        foreach (var entry in db.ChangeTracker.Entries<Company>())
+        {
+            if (ReferenceEquals(entry.Entity, company)) continue;
+            var pending = entry.Entity.Code;
+            if (!string.IsNullOrEmpty(pending) && !existing.Contains(pending))
+                existing.Add(pending);
+        }
+
         company.Code = ComponentIdentityRules.AllocateUniqueCompanyCode(company.Name, existing, company.Id);
     }
 

@@ -2,6 +2,7 @@ using Bisync.Api.Data;
 using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -180,6 +181,28 @@ else
 {
     app.UseDefaultFiles();
     app.UseStaticFiles();
+
+    var attendanceAppRoot = Path.Combine(
+        app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"),
+        "Attendance",
+        "app");
+    if (Directory.Exists(attendanceAppRoot))
+    {
+        var attendanceFiles = new PhysicalFileProvider(attendanceAppRoot);
+        var attendanceDefaults = new DefaultFilesOptions
+        {
+            FileProvider = attendanceFiles,
+            RequestPath = "/Attendance/app",
+        };
+        attendanceDefaults.DefaultFileNames.Clear();
+        attendanceDefaults.DefaultFileNames.Add("index.html");
+        app.UseDefaultFiles(attendanceDefaults);
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = attendanceFiles,
+            RequestPath = "/Attendance/app",
+        });
+    }
 }
 
 app.UseHttpsRedirection();
@@ -235,6 +258,8 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
+    app.MapGet("/Attendance/app", () => Results.Redirect("/Attendance/app/"));
+    app.MapFallbackToFile("/Attendance/app/{*path:nonfile}", "Attendance/app/index.html");
     app.MapFallbackToFile("index.html");
 }
 

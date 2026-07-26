@@ -1,4 +1,5 @@
 using Bisync.Api.Data;
+using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Services;
@@ -24,15 +25,29 @@ public static class ComponentIdGenerator
 
         var prefix = code + "-";
         var query = db.Ingredients.AsQueryable();
-        if (companyId is int cid)
-            query = query.Where(i => i.CompanyId == cid);
-        if (excludeId is int eid)
-            query = query.Where(i => i.Id != eid);
+        if (companyId is int filterCompanyId)
+            query = query.Where(i => i.CompanyId == filterCompanyId);
+        if (excludeId is int filterExcludeId)
+            query = query.Where(i => i.Id != filterExcludeId);
 
         var existing = await query
             .Where(i => i.ComponentId.StartsWith(prefix))
             .Select(i => i.ComponentId)
             .ToListAsync();
+
+        // Include unsaved tracked ingredients so batch seeders don't collide.
+        foreach (var entry in db.ChangeTracker.Entries<Ingredient>())
+        {
+            if (excludeId is int skipId && entry.Entity.Id == skipId) continue;
+            if (companyId is int onlyCompany && entry.Entity.CompanyId != onlyCompany) continue;
+            var pending = entry.Entity.ComponentId;
+            if (!string.IsNullOrEmpty(pending)
+                && pending.StartsWith(prefix, StringComparison.Ordinal)
+                && !existing.Contains(pending))
+            {
+                existing.Add(pending);
+            }
+        }
 
         var suffix = ComponentIdentityRules.GenerateSuffix(existing, code);
         return ComponentIdentityRules.BuildComponentId(code, suffix);

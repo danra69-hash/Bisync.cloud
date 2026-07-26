@@ -1,0 +1,8 @@
+# Cloudflare Pages — see web/DEPLOY.md
+name = "bisync-rms-mobile"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "SHARE_KV"
+id = "bead5ad0488d45cf9bd3a1fa9d034b60"
