@@ -179,6 +179,17 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value ?? "";
+        if (path.Equals("/Attendance/app", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/Attendance/app/", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Request.Path = "/Attendance/app/index.html";
+        }
+        await next();
+    });
+
     app.UseDefaultFiles();
     app.UseStaticFiles();
 
@@ -188,7 +199,6 @@ else
         "app");
     if (Directory.Exists(attendanceAppRoot))
     {
-        // Static assets only — do not UseDefaultFiles here (it fights trailing-slash redirects).
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(attendanceAppRoot),
@@ -250,18 +260,34 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    var attendanceIndex = Path.Combine(
-        app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"),
-        "Attendance",
-        "app",
-        "index.html");
+    var webRoot = app.Environment.WebRootPath
+        ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+    var attendanceIndex = Path.Combine(webRoot, "Attendance", "app", "index.html");
+    var mainIndex = Path.Combine(webRoot, "index.html");
+
+    // SPA deep links under /Attendance/app (avoid MapFallbackToFile ambiguity with root).
     if (File.Exists(attendanceIndex))
     {
-        app.MapGet("/Attendance/app", () => Results.File(attendanceIndex, "text/html"));
-        app.MapGet("/Attendance/app/", () => Results.File(attendanceIndex, "text/html"));
+        app.MapFallback("/Attendance/app/{*path}", async context =>
+        {
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.SendFileAsync(attendanceIndex);
+        });
     }
-    app.MapFallbackToFile("/Attendance/app/{*path:nonfile}", "Attendance/app/index.html");
-    app.MapFallbackToFile("index.html");
+
+    if (File.Exists(mainIndex))
+    {
+        app.MapFallback(async context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/Attendance/app"))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.SendFileAsync(mainIndex);
+        });
+    }
 }
 
 app.Run();
