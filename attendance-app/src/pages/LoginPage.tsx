@@ -82,7 +82,7 @@ export function LoginPage() {
 
     const user = username.trim()
     if (!user) {
-      setError(clockProduct ? 'Mobile number is required' : 'Username is required')
+      setError(clockProduct ? 'Email or mobile is required' : 'Username is required')
       return
     }
     if (!password) {
@@ -166,7 +166,7 @@ export function LoginPage() {
             <h1>Sign in</h1>
             <p className="muted">
               {clockProduct
-                ? 'Sign in with your mobile number from the HR employee directory'
+                ? 'Sign in with your work email or mobile number from HR'
                 : DEV_BYPASS_AUTH
                   ? 'Dev bypass is on — set VITE_DEV_BYPASS_AUTH=false to require login'
                   : 'Use your Bisync account'}
@@ -174,13 +174,13 @@ export function LoginPage() {
           </div>
 
           <label className="field">
-            <span>{clockProduct ? 'Mobile number' : 'Username'}</span>
+            <span>{clockProduct ? 'Email or mobile' : 'Username'}</span>
             <input
               name="username"
-              type={clockProduct ? 'tel' : 'text'}
-              inputMode={clockProduct ? 'tel' : undefined}
+              type={clockProduct ? 'text' : 'text'}
+              inputMode={clockProduct ? 'email' : undefined}
               autoComplete="username"
-              placeholder={clockProduct ? 'e.g. 0123456789' : undefined}
+              placeholder={clockProduct ? 'email or 0123456789' : undefined}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required

@@ -1,4 +1,5 @@
 import { hrRequest } from './hrClient'
+import { HrApiError } from './hrClient'
 
 export type AttendanceStatusCode = 'Present' | 'Absent' | 'Late' | 'HalfDay'
 export type LeaveType = 'RDO' | 'RPH' | 'AL' | 'UPL'
@@ -101,10 +102,26 @@ export function normalizeMobile(value: string): string {
 export async function findHrEmployeeByLogin(
   username: string,
 ): Promise<HrEmployee | null> {
-  const mobileKey = normalizeMobile(username)
-  if (!mobileKey) return null
+  const raw = username.trim()
+  if (!raw) return null
 
   const list = await listHrEmployees()
+
+  // Email login (dashboard / employee directory).
+  if (raw.includes('@')) {
+    const email = raw.toLowerCase()
+    return (
+      list.find(
+        (e) =>
+          e.active !== false &&
+          (e.email || '').trim().toLowerCase() === email,
+      ) || null
+    )
+  }
+
+  const mobileKey = normalizeMobile(raw)
+  if (!mobileKey) return null
+
   return (
     list.find((e) => {
       if (e.active === false) return false
@@ -117,6 +134,26 @@ export async function findHrEmployeeByLogin(
       )
     }) || null
   )
+}
+
+/** Validate email/password against Bisync.cloud `/api/auth/login`. */
+export async function verifyHrPortalPassword(
+  email: string,
+  password: string,
+): Promise<boolean> {
+  try {
+    await hrRequest<{ id: number }>('auth/login', {
+      method: 'POST',
+      body: { email: email.trim(), password },
+    })
+    return true
+  } catch (err) {
+    if (err instanceof HrApiError && (err.status === 401 || err.status === 400)) {
+      return false
+    }
+    // Auth endpoint unavailable — allow standard employee portal password.
+    return password === HR_STANDARD_PASSWORD
+  }
 }
 
 export async function listHrAttendance(params: {

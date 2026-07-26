@@ -39,6 +39,7 @@ import { isAttendanceMock } from '../api/attendance'
 import {
   findHrEmployeeByLogin,
   HR_STANDARD_PASSWORD,
+  verifyHrPortalPassword,
 } from '../api/hr'
 
 export type UsageRole = 'operator' | 'vendor'
@@ -237,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (username: string, password: string) => {
       const user = username.trim()
-      if (!user) throw new Error('Mobile number is required')
+      if (!user) throw new Error('Mobile number or email is required')
       if (!password) throw new Error('Password is required')
 
       // Offline demo gate.
@@ -250,18 +251,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      // Bisync.cloud HR — employee directory login by mobile number.
+      // Bisync.cloud HR — employee directory login by mobile or email.
       const employee = await findHrEmployeeByLogin(user)
       if (!employee) {
         throw new Error(
-          'Employee not found. Use the mobile number from the HR employee directory.',
+          'Employee not found. Use your HR mobile number or work email.',
         )
       }
       if (employee.active === false) {
         throw new Error('This employee account is inactive.')
       }
-      // Same gate as Bisync.cloud Employee Portal until dedicated HR auth ships.
-      if (password !== HR_STANDARD_PASSWORD && password.length < 8) {
+      // Prefer real Bisync.cloud auth when the identifier looks like an email.
+      if (user.includes('@')) {
+        const ok = await verifyHrPortalPassword(user, password)
+        if (!ok) {
+          throw new Error('Incorrect email or password.')
+        }
+      } else if (password !== HR_STANDARD_PASSWORD && password.length < 8) {
         throw new Error(
           `Incorrect password. Hint: standard password is ${HR_STANDARD_PASSWORD}`,
         )
@@ -272,7 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token_type: 'Bearer',
         expires_in: 86400,
         fullName: employee.name,
-        username: employee.mobile || user,
+        username: employee.email || employee.mobile || user,
         userType: 'Operator',
         roleName: employee.position || 'Employee',
         active: true,
