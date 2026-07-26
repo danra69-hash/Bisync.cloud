@@ -5,7 +5,6 @@ import { api } from '../../api';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 import { setAppLocale } from '../../i18n';
 import {
-  DEFAULT_LOCALE,
   isAppLocale,
   LANGUAGES,
   readStoredLocale,
@@ -14,7 +13,6 @@ import {
 import {
   DEFAULT_PHONE_COUNTRY,
   getPhoneCountry,
-  preferredLanguageForCountry,
 } from '../../data/phoneCountries';
 import { CURRENT_EULA_VERSION } from '../../data/eula';
 import { CURRENT_PRIVACY_POLICY_VERSION } from '../../data/privacyPolicy';
@@ -53,9 +51,10 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
   const countryManualRef = useRef(false);
   const languageManualRef = useRef(false);
 
-  // Keep registration UI in the selected preferred language for the whole flow.
+  // Apply UI language only for an explicit preferred-language choice (never geo).
   useEffect(() => {
-    void setAppLocale(preferredLanguage);
+    if (!languageManualRef.current) return;
+    void setAppLocale(preferredLanguage, { manual: true });
   }, [preferredLanguage]);
 
   useEffect(() => {
@@ -95,18 +94,13 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
         const hint = await api.geoHint();
         if (cancelled) return;
         const country = getPhoneCountry(hint.countryCode).code;
+        // Geo only sets dial code — landing/register language stays English unless chosen.
         if (!countryManualRef.current) {
           setPhoneCountryCode(country);
           setMobile(prev => {
             if (prev.trim()) return prev;
             return getPhoneCountry(country).dialCode;
           });
-        }
-        // Only infer language from IP when the user has not chosen one yet in this session.
-        if (!languageManualRef.current && preferredLanguage === readStoredLocale() && !sessionStorage.getItem('bisync.registerLanguageChosen')) {
-          const inferred = preferredLanguageForCountry(country);
-          const nextLocale = isAppLocale(inferred) ? inferred : DEFAULT_LOCALE;
-          setPreferredLanguage(nextLocale);
         }
       } catch {
         // keep defaults
@@ -117,7 +111,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- geo once on open
+  }, []);
 
   async function handleLanguageChange(code: AppLocale) {
     languageManualRef.current = true;
@@ -128,7 +122,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
     }
     setPreferredLanguage(code);
     setError(null);
-    await setAppLocale(code);
+    await setAppLocale(code, { manual: true });
   }
 
   function handlePhoneCountryChange(code: string) {
@@ -188,7 +182,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
       setSuccessEmail(result.email);
       setActivationUrl(result.activationUrl);
       if (isAppLocale(result.preferredLanguage)) {
-        await setAppLocale(result.preferredLanguage);
+        await setAppLocale(result.preferredLanguage, { manual: languageManualRef.current });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.registerFailed'));

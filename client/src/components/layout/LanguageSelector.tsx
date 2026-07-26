@@ -21,7 +21,7 @@ export function LanguageSelector() {
   }, []);
 
   async function choose(code: AppLocale) {
-    await setAppLocale(code);
+    await setAppLocale(code, { manual: true });
     setOpen(false);
   }
 

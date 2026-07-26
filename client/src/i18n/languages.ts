@@ -1,4 +1,8 @@
 export const LOCALE_STORAGE_KEY = 'bisync.locale';
+/** Flag: visitor explicitly picked a language (landing selector or register dropdown). */
+export const LOCALE_MANUAL_KEY = 'bisync.localeManual';
+/** Locale last chosen manually — kept separate from account/session sync. */
+export const LOCALE_MANUAL_VALUE_KEY = 'bisync.localeManualValue';
 
 export type AppLocale = 'en' | 'ms' | 'id' | 'zh' | 'th' | 'ko' | 'ja' | 'fr' | 'es' | 'it';
 
@@ -33,18 +37,38 @@ export function getLanguage(code: AppLocale): LanguageOption {
   return LANGUAGES.find(language => language.code === code) ?? LANGUAGES[0];
 }
 
+/** True when the visitor explicitly chose a language (not geo / account sync). */
+export function hasManualLocalePreference(): boolean {
+  try {
+    return localStorage.getItem(LOCALE_MANUAL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Locale for public surfaces (landing). Always English unless the user
+ * changed language manually via the language selector.
+ */
 export function readStoredLocale(): AppLocale {
   try {
-    const stored = localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (!hasManualLocalePreference()) return DEFAULT_LOCALE;
+    const stored =
+      localStorage.getItem(LOCALE_MANUAL_VALUE_KEY)
+      ?? localStorage.getItem(LOCALE_STORAGE_KEY);
     return isAppLocale(stored) ? stored : DEFAULT_LOCALE;
   } catch {
     return DEFAULT_LOCALE;
   }
 }
 
-export function storeLocale(code: AppLocale) {
+export function storeLocale(code: AppLocale, options?: { manual?: boolean }) {
   try {
     localStorage.setItem(LOCALE_STORAGE_KEY, code);
+    if (options?.manual) {
+      localStorage.setItem(LOCALE_MANUAL_KEY, '1');
+      localStorage.setItem(LOCALE_MANUAL_VALUE_KEY, code);
+    }
   } catch {
     // ignore storage failures
   }
