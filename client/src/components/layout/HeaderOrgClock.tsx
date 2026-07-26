@@ -53,14 +53,14 @@ export function HeaderOrgClock({
   }, [timeZoneId]);
 
   if (!hasOrg) {
-    return <p className="text-xs mt-0.5 hidden sm:block text-white/45">Select a company</p>;
+    return <p className="text-xs mt-0.5 hidden sm:block text-white">Select a company</p>;
   }
 
   const locale = i18n.language?.startsWith('en') ? 'en-GB' : i18n.language || 'en-GB';
   const line = formatOrgClockLine(now, timeZoneId, locale);
 
   return (
-    <p className="text-xs mt-0.5 hidden sm:block text-white/45 truncate" title={`${line} · ${timeZoneId}`}>
+    <p className="text-xs mt-0.5 hidden sm:block text-white truncate" title={`${line} · ${timeZoneId}`}>
       {line}
     </p>
   );
