@@ -188,18 +188,10 @@ else
         "app");
     if (Directory.Exists(attendanceAppRoot))
     {
-        var attendanceFiles = new PhysicalFileProvider(attendanceAppRoot);
-        var attendanceDefaults = new DefaultFilesOptions
-        {
-            FileProvider = attendanceFiles,
-            RequestPath = "/Attendance/app",
-        };
-        attendanceDefaults.DefaultFileNames.Clear();
-        attendanceDefaults.DefaultFileNames.Add("index.html");
-        app.UseDefaultFiles(attendanceDefaults);
+        // Static assets only — do not UseDefaultFiles here (it fights trailing-slash redirects).
         app.UseStaticFiles(new StaticFileOptions
         {
-            FileProvider = attendanceFiles,
+            FileProvider = new PhysicalFileProvider(attendanceAppRoot),
             RequestPath = "/Attendance/app",
         });
     }
@@ -258,7 +250,16 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.MapGet("/Attendance/app", () => Results.Redirect("/Attendance/app/"));
+    var attendanceIndex = Path.Combine(
+        app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"),
+        "Attendance",
+        "app",
+        "index.html");
+    if (File.Exists(attendanceIndex))
+    {
+        app.MapGet("/Attendance/app", () => Results.File(attendanceIndex, "text/html"));
+        app.MapGet("/Attendance/app/", () => Results.File(attendanceIndex, "text/html"));
+    }
     app.MapFallbackToFile("/Attendance/app/{*path:nonfile}", "Attendance/app/index.html");
     app.MapFallbackToFile("index.html");
 }
