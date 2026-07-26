@@ -29,3 +29,6 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+
+.tools/
+_live_url.txt
