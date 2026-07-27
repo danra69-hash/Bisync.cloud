@@ -16,6 +16,8 @@ import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { StockCardSplitUsePanel } from './StockCardSplitUsePanel';
 import { parseDetailConfigJson } from '../../data/componentForm';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { canAdjustInventory, parseUserAccess } from '../../data/userAccess';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 
 import {
 
@@ -307,6 +309,11 @@ export function StockCardDetailPanel({
 
   const countryCode = useOrgCountryCode();
   const { rm } = useCountryFormatters();
+  const { currentUser } = useCurrentUser();
+  const canAdjust = useMemo(
+    () => (currentUser ? canAdjustInventory(parseUserAccess(currentUser.accessJson)) : false),
+    [currentUser],
+  );
   const [detail, setDetail] = useState<StockCardDetail | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -535,7 +542,7 @@ export function StockCardDetailPanel({
                 layers={detail.onHandLayers ?? []}
                 onHandAverageCogs={detail.onHandAverageCogs}
                 outboundAverageCogs={detail.averageCogs}
-                onAdjust={() => setAdjustmentOpen(true)}
+                onAdjust={canAdjust ? () => setAdjustmentOpen(true) : undefined}
               />
 
             </div>

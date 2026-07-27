@@ -23,14 +23,14 @@ public class B2bSalesOrderService(BisyncDbContext db)
         if (order.Lines.Count == 0)
             throw new InvalidOperationException("Add at least one line before issuing the sales order.");
 
-        var companyCountry = await db.Companies.AsNoTracking()
-            .Where(c => c.Id == order.CompanyId)
-            .Select(c => c.CountryCode)
-            .FirstOrDefaultAsync(cancellationToken) ?? "MY";
-        var issuedDate = OrgClock.TodayLocal(companyCountry);
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+        var issuedDate = OrgClock.TodayLocal(company);
         order.IssuedDate = issuedDate.ToString("yyyy-MM-dd");
         order.LockExpiryDate = issuedDate.AddDays(order.LockPeriodDays).ToString("yyyy-MM-dd");
         order.Status = "issued";
+        // Reserve only — permanent depletion waits for DO + customer confirm.
+        order.ReservedOnly = true;
         order.UpdatedAt = DateTime.UtcNow;
 
         foreach (var line in order.Lines)
@@ -49,11 +49,11 @@ public class B2bSalesOrderService(BisyncDbContext db)
                 throw new InvalidOperationException($"Product {product.Name} is not enabled for B2B sales.");
 
             var stock = await EnsureStockRowAsync(line.ProductId, line.LocationExternalId, cancellationToken);
-            var toLock = Math.Min(line.QuantityOrdered, stock.InStock);
+            var available = Math.Max(0, stock.InStock - stock.OnOrderQty);
+            var toLock = Math.Min(line.QuantityOrdered, available);
             if (toLock <= 0)
                 throw new InvalidOperationException($"Insufficient on-hand stock for {line.ProductName} at {line.LocationExternalId}.");
 
-            stock.InStock -= toLock;
             stock.OnOrderQty += toLock;
             stock.UpdatedAt = DateTime.UtcNow;
             line.QuantityLocked = toLock;
@@ -73,30 +73,136 @@ public class B2bSalesOrderService(BisyncDbContext db)
         return order;
     }
 
+    /// <summary>
+    /// Permanent stock depletion requires delivery order + customer confirmation.
+    /// Invoice may be recorded at the same time but is not required to deplete.
+    /// </summary>
     public async Task<B2bSalesOrder> FulfillAsync(
         int orderId,
         bool deliveryOrderIssued,
         bool invoiceIssued,
         CancellationToken cancellationToken = default)
     {
-        if (!deliveryOrderIssued || !invoiceIssued)
-            throw new InvalidOperationException("Both delivery order (DO) and invoice must be issued to fulfill the sales order.");
+        if (!deliveryOrderIssued)
+            throw new InvalidOperationException("Delivery order (DO) must be issued to fulfill the sales order.");
 
         var order = await LoadOrderAsync(orderId, cancellationToken);
         if (!string.Equals(order.Status, "issued", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(order.Status, "confirmed", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Only issued or confirmed sales orders can be fulfilled.");
 
+        if (order.CustomerAcceptedAt is null)
+            throw new InvalidOperationException("Customer confirmation is required before stock can be depleted.");
+
         order.DeliveryOrderIssued = true;
-        order.InvoiceIssued = true;
-        var fulfillCountry = await db.Companies.AsNoTracking()
-            .Where(c => c.Id == order.CompanyId)
-            .Select(c => c.CountryCode)
-            .FirstOrDefaultAsync(cancellationToken) ?? "MY";
-        order.FulfilledDate = OrgClock.TodayLocal(fulfillCountry).ToString("yyyy-MM-dd");
+        if (invoiceIssued)
+            order.InvoiceIssued = true;
+
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+        order.FulfilledDate = OrgClock.TodayLocal(company).ToString("yyyy-MM-dd");
         order.Status = "fulfilled";
         order.UpdatedAt = DateTime.UtcNow;
 
+        await DepleteLockedLinesAsync(order, cancellationToken);
+
+        await db.SaveChangesAsync(cancellationToken);
+        return order;
+    }
+
+    /// <summary>
+    /// When DO is already marked and the customer has just confirmed (or vice versa),
+    /// deplete reserved stock without requiring a separate invoice step.
+    /// </summary>
+    public async Task<B2bSalesOrder?> TryDepleteAfterDoAndConfirmAsync(
+        int orderId,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await LoadOrderAsync(orderId, cancellationToken);
+        if (!order.DeliveryOrderIssued || order.CustomerAcceptedAt is null)
+            return null;
+
+        if (string.Equals(order.Status, "fulfilled", StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrWhiteSpace(order.FulfilledDate))
+            return order;
+
+        if (!string.Equals(order.Status, "issued", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(order.Status, "confirmed", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
+        order.FulfilledDate = OrgClock.TodayLocal(company).ToString("yyyy-MM-dd");
+        order.Status = "fulfilled";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await DepleteLockedLinesAsync(order, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return order;
+    }
+
+    public async Task<int> ReleaseExpiredLocksAsync(CancellationToken cancellationToken = default)
+    {
+        var candidates = await db.B2bSalesOrders
+            .Include(o => o.Lines)
+            .Where(o => (o.Status == "issued" || o.Status == "confirmed")
+                && o.LockExpiryDate != ""
+                && (o.FulfilledDate == null || o.FulfilledDate == ""))
+            .ToListAsync(cancellationToken);
+
+        var companyIds = candidates.Select(o => o.CompanyId).Distinct().ToList();
+        var companies = await db.Companies.AsNoTracking()
+            .Where(c => companyIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, cancellationToken);
+
+        var expiredOrders = candidates.Where(order =>
+        {
+            companies.TryGetValue(order.CompanyId, out var company);
+            var today = OrgClock.TodayLocal(company).ToString("yyyy-MM-dd");
+            return string.Compare(order.LockExpiryDate, today, StringComparison.Ordinal) < 0;
+        }).ToList();
+
+        var released = 0;
+        foreach (var order in expiredOrders)
+        {
+            foreach (var line in order.Lines.Where(l => l.QuantityLocked > 0 && l.Status == "locked"))
+            {
+                if (line.IsCombo && line.PromotionId is int promoId)
+                {
+                    await ReleaseComboComponentsAsync(order, line, promoId, cancellationToken);
+                    released++;
+                    continue;
+                }
+
+                var stock = await db.ProductB2bLocationStocks
+                    .FirstOrDefaultAsync(
+                        s => s.ProductId == line.ProductId && s.LocationExternalId == line.LocationExternalId,
+                        cancellationToken);
+                if (stock is null)
+                    continue;
+
+                var qty = Math.Min(line.QuantityLocked, stock.OnOrderQty);
+                stock.OnOrderQty = Math.Max(0, stock.OnOrderQty - qty);
+                if (!order.ReservedOnly)
+                    stock.InStock += qty;
+                stock.UpdatedAt = DateTime.UtcNow;
+                line.QuantityLocked = 0;
+                line.Status = "released";
+                released++;
+            }
+
+            order.Status = "expired";
+            order.UpdatedAt = DateTime.UtcNow;
+        }
+
+        if (released > 0 || expiredOrders.Count > 0)
+            await db.SaveChangesAsync(cancellationToken);
+
+        return released;
+    }
+
+    async Task DepleteLockedLinesAsync(B2bSalesOrder order, CancellationToken cancellationToken)
+    {
         foreach (var line in order.Lines.Where(l => l.QuantityLocked > 0))
         {
             if (line.IsCombo && line.PromotionId is int promoId)
@@ -109,6 +215,9 @@ public class B2bSalesOrderService(BisyncDbContext db)
             var qty = Math.Min(line.QuantityLocked, stock.OnOrderQty);
             if (qty <= 0)
                 continue;
+
+            if (order.ReservedOnly)
+                stock.InStock = Math.Max(0, stock.InStock - qty);
 
             stock.OnOrderQty = Math.Max(0, stock.OnOrderQty - qty);
             stock.UpdatedAt = DateTime.UtcNow;
@@ -134,68 +243,6 @@ public class B2bSalesOrderService(BisyncDbContext db)
                 CreatedAt = DateTime.UtcNow,
             });
         }
-
-        await db.SaveChangesAsync(cancellationToken);
-        return order;
-    }
-
-    public async Task<int> ReleaseExpiredLocksAsync(CancellationToken cancellationToken = default)
-    {
-        var candidates = await db.B2bSalesOrders
-            .Include(o => o.Lines)
-            .Where(o => o.Status == "issued"
-                && o.LockExpiryDate != ""
-                && (!o.DeliveryOrderIssued || !o.InvoiceIssued))
-            .ToListAsync(cancellationToken);
-
-        var companyIds = candidates.Select(o => o.CompanyId).Distinct().ToList();
-        var countryByCompany = await db.Companies.AsNoTracking()
-            .Where(c => companyIds.Contains(c.Id))
-            .ToDictionaryAsync(c => c.Id, c => c.CountryCode, cancellationToken);
-
-        var expiredOrders = candidates.Where(order =>
-        {
-            countryByCompany.TryGetValue(order.CompanyId, out var country);
-            var today = OrgClock.TodayLocal(country ?? "MY").ToString("yyyy-MM-dd");
-            return string.Compare(order.LockExpiryDate, today, StringComparison.Ordinal) < 0;
-        }).ToList();
-
-        var released = 0;
-        foreach (var order in expiredOrders)
-        {
-            foreach (var line in order.Lines.Where(l => l.QuantityLocked > 0 && l.Status == "locked"))
-            {
-                if (line.IsCombo && line.PromotionId is int promoId)
-                {
-                    await ReleaseComboComponentsAsync(line, promoId, cancellationToken);
-                    released++;
-                    continue;
-                }
-
-                var stock = await db.ProductB2bLocationStocks
-                    .FirstOrDefaultAsync(
-                        s => s.ProductId == line.ProductId && s.LocationExternalId == line.LocationExternalId,
-                        cancellationToken);
-                if (stock is null)
-                    continue;
-
-                var qty = Math.Min(line.QuantityLocked, stock.OnOrderQty);
-                stock.OnOrderQty = Math.Max(0, stock.OnOrderQty - qty);
-                stock.InStock += qty;
-                stock.UpdatedAt = DateTime.UtcNow;
-                line.QuantityLocked = 0;
-                line.Status = "released";
-                released++;
-            }
-
-            order.Status = "expired";
-            order.UpdatedAt = DateTime.UtcNow;
-        }
-
-        if (released > 0 || expiredOrders.Count > 0)
-            await db.SaveChangesAsync(cancellationToken);
-
-        return released;
     }
 
     async Task LockComboComponentsAsync(B2bSalesOrderLine line, int promotionId, CancellationToken cancellationToken)
@@ -216,13 +263,13 @@ public class B2bSalesOrderService(BisyncDbContext db)
         {
             var need = component.QtyPerCombo!.Value * line.QuantityOrdered;
             var stock = await EnsureStockRowAsync(component.ProductId, line.LocationExternalId, cancellationToken);
-            if (stock.InStock < need)
+            var available = Math.Max(0, stock.InStock - stock.OnOrderQty);
+            if (available < need)
             {
                 throw new InvalidOperationException(
-                    $"Insufficient on-hand stock for combo component {component.ProductName} at {line.LocationExternalId} (need {need:0.##}, have {stock.InStock:0.##}).");
+                    $"Insufficient on-hand stock for combo component {component.ProductName} at {line.LocationExternalId} (need {need:0.##}, have {available:0.##}).");
             }
 
-            stock.InStock -= need;
             stock.OnOrderQty += need;
             stock.UpdatedAt = DateTime.UtcNow;
         }
@@ -258,6 +305,8 @@ public class B2bSalesOrderService(BisyncDbContext db)
             var qty = component.QtyPerCombo!.Value * packs;
             var stock = await EnsureStockRowAsync(component.ProductId, line.LocationExternalId, cancellationToken);
             var clear = Math.Min(qty, stock.OnOrderQty);
+            if (order.ReservedOnly)
+                stock.InStock = Math.Max(0, stock.InStock - clear);
             stock.OnOrderQty = Math.Max(0, stock.OnOrderQty - clear);
             stock.UpdatedAt = DateTime.UtcNow;
 
@@ -277,7 +326,11 @@ public class B2bSalesOrderService(BisyncDbContext db)
         line.Status = "fulfilled";
     }
 
-    async Task ReleaseComboComponentsAsync(B2bSalesOrderLine line, int promotionId, CancellationToken cancellationToken)
+    async Task ReleaseComboComponentsAsync(
+        B2bSalesOrder order,
+        B2bSalesOrderLine line,
+        int promotionId,
+        CancellationToken cancellationToken)
     {
         var promotion = await db.Promotions
             .Include(p => p.Products)
@@ -301,7 +354,8 @@ public class B2bSalesOrderService(BisyncDbContext db)
 
             var restore = Math.Min(qty, stock.OnOrderQty);
             stock.OnOrderQty = Math.Max(0, stock.OnOrderQty - restore);
-            stock.InStock += restore;
+            if (!order.ReservedOnly)
+                stock.InStock += restore;
             stock.UpdatedAt = DateTime.UtcNow;
         }
 

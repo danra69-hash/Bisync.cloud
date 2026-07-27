@@ -30,7 +30,9 @@ public class WastageService(
             return (0, 0, (uom ?? string.Empty).Trim());
 
         var type = NormalizeItemType(itemType);
-        var asOfEnd = EndOfUtcDay(wastedDate);
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == companyId, cancellationToken);
+        var asOfEnd = OrgClock.EndOfLocalDayUtc(wastedDate, company);
         var loc = locationExternalId.Trim();
 
         if (type == "component")
@@ -70,7 +72,7 @@ public class WastageService(
             loc,
             [loc],
             "inventory",
-            wastedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            wastedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified),
             cancellationToken);
 
         if (snapshot is null || snapshot.Layers.Count == 0)
@@ -133,8 +135,10 @@ public class WastageService(
         db.WastageEntries.Add(entry);
         await db.SaveChangesAsync(cancellationToken);
 
-        // End-of-day stamp so same-day purchases/receipts sit before wastage in FIFO.
-        var occurredAt = EndOfUtcDay(wastedDate);
+        // End-of-local-day stamp so same-day purchases/receipts sit before wastage in FIFO.
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == companyId, cancellationToken);
+        var occurredAt = OrgClock.EndOfLocalDayUtc(wastedDate, company);
         var reasonLabel = $"Wastage — {entry.Reason}";
 
         if (type == "component")
@@ -227,7 +231,9 @@ public class WastageService(
         db.WastageEntries.Add(entry);
         await db.SaveChangesAsync(cancellationToken);
 
-        var occurredAt = EndOfUtcDay(wastedDate);
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == companyId, cancellationToken);
+        var occurredAt = OrgClock.EndOfLocalDayUtc(wastedDate, company);
         var reasonLabel = $"POS wastage — check {entry.PosCheckNo} — {entry.Reason}";
 
         await DepleteProductOrSubProductAsync(
@@ -560,9 +566,6 @@ public class WastageService(
         var grossQty = ComponentYieldLossRules.ToGrossQuantity(ingredient, quantity);
         return IngredientUomBridge.ToInventoryPreferred(ingredient, grossQty, uom);
     }
-
-    static DateTime EndOfUtcDay(DateOnly date) =>
-        date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddDays(1).AddTicks(-1);
 
     static string NormalizeItemType(string itemType)
     {

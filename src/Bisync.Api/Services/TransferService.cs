@@ -142,7 +142,9 @@ public class TransferService(
             cancellationToken);
 
         var transferDate = receivedDate ?? entry.TransferDate;
-        var occurredAt = transferDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var company = await db.Companies.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == companyId, cancellationToken);
+        var occurredAt = OrgClock.EndOfLocalDayUtc(transferDate, company);
         var reasonOut = $"Transfer out to {entry.ToLocationExternalId} (XFR-{entry.Id})";
         var reasonIn = $"Transfer in from {entry.FromLocationExternalId} (XFR-{entry.Id})";
 

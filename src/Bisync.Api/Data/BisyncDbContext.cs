@@ -244,6 +244,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.GraphTenantId).HasMaxLength(64);
             e.Property(x => x.GraphClientId).HasMaxLength(64);
             e.Property(x => x.GraphClientSecret).HasMaxLength(512);
+            e.Property(x => x.TimeZoneId).HasMaxLength(64);
         });
         modelBuilder.Entity<Ingredient>(e =>
         {

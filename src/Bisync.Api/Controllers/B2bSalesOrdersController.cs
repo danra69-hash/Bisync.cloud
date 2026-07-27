@@ -102,6 +102,21 @@ public class B2bSalesOrdersController(
         order.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
 
+        if (order.DeliveryOrderIssued)
+        {
+            try
+            {
+                await salesOrderService.TryDepleteAfterDoAndConfirmAsync(order.Id, cancellationToken);
+                order = await db.B2bSalesOrders
+                    .Include(o => o.Lines)
+                    .FirstAsync(o => o.Id == order.Id, cancellationToken);
+            }
+            catch (InvalidOperationException)
+            {
+                // Keep acceptance even if deplete is not yet possible.
+            }
+        }
+
         var company = await db.Companies.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == order.CompanyId, cancellationToken);
         var customer = await db.B2bCustomers.AsNoTracking()
@@ -404,6 +419,7 @@ public class B2bSalesOrdersController(
         lockExpiryDate = order.LockExpiryDate,
         deliveryOrderIssued = order.DeliveryOrderIssued,
         invoiceIssued = order.InvoiceIssued,
+        reservedOnly = order.ReservedOnly,
         fulfilledDate = order.FulfilledDate,
         shareToken = order.ShareToken,
         customerAcceptedAt = order.CustomerAcceptedAt,

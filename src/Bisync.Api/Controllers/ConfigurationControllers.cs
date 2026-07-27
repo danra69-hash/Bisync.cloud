@@ -89,7 +89,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             c.Brn,
             c.GstTin,
             c.CountryCode,
-            timeZoneId = OrgClock.ResolveTimeZoneId(c.CountryCode, c.StateProvince),
+            timeZoneId = string.IsNullOrWhiteSpace(c.TimeZoneId)
+                ? OrgClock.ResolveTimeZoneId(c)
+                : c.TimeZoneId,
             c.AddressLine1,
             c.AddressLine2,
             c.City,
@@ -198,6 +200,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.LogoBase64 = logoBase64;
 
         await CompanyCodeService.EnsureCodeAsync(db, company);
+        OrgClock.AssignCompanyTimeZone(company);
         db.Companies.Add(company);
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(GetById), new { id = company.Id }, MapCompany(company, 0));

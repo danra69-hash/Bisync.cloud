@@ -153,7 +153,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim(),
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
         };
-        OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
+        OrgClock.AssignLocationTimeZone(loc, company);
 
         db.Locations.Add(loc);
         await db.SaveChangesAsync();
@@ -215,7 +215,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (body.OpeningHoursJson is not null)
             loc.OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim();
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
-        OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
+        OrgClock.AssignLocationTimeZone(loc, company);
         await db.SaveChangesAsync();
         var saved = await LoadLocationConfigAsync(loc.Id);
         return saved is null ? Ok(new { loc.Id, loc.Name, loc.CompanyId }) : Ok(MapLocationConfig(saved));
