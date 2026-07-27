@@ -1269,7 +1269,7 @@ public static class SchemaPatcher
                 "FullName" TEXT NOT NULL DEFAULT '',
                 "Position" TEXT NOT NULL DEFAULT '',
                 "TeamType" TEXT NOT NULL DEFAULT 'Management',
-                "AccessJson" TEXT NOT NULL DEFAULT '{"tabs":["overview"]}',
+                "AccessJson" TEXT NOT NULL DEFAULT '{{"tabs":["overview"]}}',
                 "PasswordHash" TEXT NOT NULL DEFAULT '',
                 "Active" boolean NOT NULL DEFAULT TRUE,
                 "IsRoot" boolean NOT NULL DEFAULT FALSE,
