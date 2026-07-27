@@ -912,6 +912,20 @@ public class ProductManagementActionRequest
     public bool OverrideStock { get; set; }
 }
 
+public class ProduceComponentUsageRequest
+{
+    public string ComponentId { get; set; } = string.Empty;
+    [Range(0, 999999999)]
+    public decimal UsedQty { get; set; }
+}
+
+public class ProduceSubProductOutputRequest
+{
+    public int ProductId { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+}
+
 public class ProduceBatchRequest
 {
     public List<string> LocationExternalIds { get; set; } = [];
@@ -920,6 +934,18 @@ public class ProduceBatchRequest
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
+    /// <summary>Optional actual component usage; when set, overrides recipe×batch for deductions.</summary>
+    public List<ProduceComponentUsageRequest> ComponentUsages { get; set; } = [];
+    /// <summary>Optional additional sub-product output quantities recorded with this production.</summary>
+    public List<ProduceSubProductOutputRequest> SubProductOutputs { get; set; } = [];
+}
+
+public class ProductionPreviewRequest
+{
+    public List<string> LocationExternalIds { get; set; } = [];
+    [Range(0.0001, 999999999)]
+    public decimal BatchQty { get; set; }
+    public List<ProduceComponentUsageRequest> ComponentUsages { get; set; } = [];
 }
 
 public class RecordProductSaleRequest

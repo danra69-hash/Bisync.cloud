@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import {
   api,
+  ApiError,
   type ApproveVendorEngagementPayload,
   type B2bSalesOrder,
   type B2bSalesOrderLine,
+  type ProduceBatchShortage,
   type ProductManagementSummary,
   type VendorEngagement,
 } from '../../api';
@@ -16,7 +18,7 @@ import { sortTableRows } from '../../utils/tableSort';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
-import { ProduceBatchModal } from './ProduceBatchModal';
+import { ProduceBatchModal, type ProduceConfirmPayload } from './ProduceBatchModal';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { ActiveSalesInboundPanel } from './ActiveSalesInboundPanel';
 import { VendorEngageApproveModal } from './VendorEngageApproveModal';
@@ -70,7 +72,13 @@ const COLUMNS: SortableColumnDef<SortColumn>[] = [
 ];
 
 const actionBtnCls =
-  'inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-60';
+  'inline-flex items-center justify-center px-2.5 py-1.5 rounded-md text-[11px] font-bold transition-colors disabled:opacity-60 shadow-sm border';
+const toProduceBtnCls =
+  `${actionBtnCls} border-amber-600 bg-amber-500 text-white hover:bg-amber-600`;
+const readyToShipBtnCls =
+  `${actionBtnCls} border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700`;
+const readyDoneBtnCls =
+  `${actionBtnCls} border-emerald-300 bg-emerald-100 text-emerald-800`;
 
 function isSummaryStockRow(row: ProductManagementSummary): boolean {
   return row.isSummaryRow === true || (row.batchLogId == null && row.isSummaryRow !== false);
@@ -153,6 +161,8 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
   const [produceTarget, setProduceTarget] = useState<ProduceTarget | null>(null);
   const [produceSaving, setProduceSaving] = useState(false);
   const [produceError, setProduceError] = useState<string | null>(null);
+  const [produceComponents, setProduceComponents] = useState<ProduceBatchShortage[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [engageTarget, setEngageTarget] = useState<VendorEngagement | null>(null);
   const [engageSaving, setEngageSaving] = useState(false);
   const [engageError, setEngageError] = useState<string | null>(null);
@@ -310,10 +320,31 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
       expiryPeriodDays: 0,
     };
     setProduceError(null);
+    setProduceComponents([]);
     setProduceTarget({ row, meta });
+    const locationId = row.line.locationExternalId?.trim();
+    const qty = defaultToProduceQty(row);
+    if (locationId && qty > 0) {
+      void runPreview(row.line.productId, [locationId], qty);
+    }
   }
 
-  async function confirmToProduce(batchQty: number, productionDate: string) {
+  async function runPreview(productId: number, locationIds: string[], batchQty: number) {
+    setPreviewLoading(true);
+    try {
+      const preview = await api.previewProduction(productId, {
+        locationExternalIds: locationIds,
+        batchQty,
+      });
+      setProduceComponents(preview.components ?? []);
+    } catch (err) {
+      if (err instanceof Error) setProduceError(err.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function confirmToProduce(payload: ProduceConfirmPayload) {
     if (!produceTarget) return;
     const { row } = produceTarget;
     const locationId = row.line.locationExternalId?.trim();
@@ -328,13 +359,21 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
     try {
       await api.markProductToProduce(row.line.productId, {
         locationExternalIds: [locationId],
-        batchQty,
-        productionDate,
+        batchQty: payload.batchQty,
+        productionDate: payload.productionDate,
+        overrideStock: payload.overrideStock === true,
       });
       setProduceTarget(null);
+      setProduceComponents([]);
       await loadOrders();
     } catch (err) {
-      setProduceError(err instanceof Error ? err.message : 'Failed to queue production.');
+      if (err instanceof ApiError) {
+        const lines = err.components?.length ? err.components : (err.shortages ?? []);
+        if (lines.length > 0) setProduceComponents(lines);
+        setProduceError(err.message);
+      } else {
+        setProduceError(err instanceof Error ? err.message : 'Failed to queue production.');
+      }
     } finally {
       setProduceSaving(false);
       setBusyLineId(null);
@@ -514,7 +553,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
                         type="button"
                         disabled={lineBusy}
                         onClick={() => openToProduce(row)}
-                        className={`${actionBtnCls} border border-amber-300 text-amber-800 hover:bg-amber-50`}
+                        className={toProduceBtnCls}
                       >
                         To Produce
                       </button>
@@ -522,11 +561,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
                         type="button"
                         disabled={ready || lineBusy || !canMarkReady}
                         onClick={() => void handleReadyToShip(row)}
-                        className={`${actionBtnCls} ${
-                          ready
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                        }`}
+                        className={ready ? readyDoneBtnCls : readyToShipBtnCls}
                         title={canMarkReady ? undefined : 'Available after customer confirms the order'}
                       >
                         {lineBusy && !produceTarget
@@ -558,17 +593,26 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
           batchUnit={produceTarget.meta.batchUnit}
           defaultBatchQty={defaultToProduceQty(produceTarget.row)}
           isSubProduct={produceTarget.meta.isSubProduct}
+          isB2bProduct={!produceTarget.meta.isSubProduct}
           expiryPeriodDays={produceTarget.meta.expiryPeriodDays}
           purpose="queue"
           saving={produceSaving}
           error={produceError}
+          components={produceComponents}
+          previewLoading={previewLoading}
           onClose={() => {
             if (produceSaving) return;
             setProduceTarget(null);
             setProduceError(null);
+            setProduceComponents([]);
           }}
-          onConfirm={(batchQty, productionDate) => {
-            void confirmToProduce(batchQty, productionDate);
+          onQtyChange={qty => {
+            const locationId = produceTarget.row.line.locationExternalId?.trim();
+            if (!locationId) return;
+            void runPreview(produceTarget.row.line.productId, [locationId], qty);
+          }}
+          onConfirm={payload => {
+            void confirmToProduce(payload);
           }}
         />
       ) : null}

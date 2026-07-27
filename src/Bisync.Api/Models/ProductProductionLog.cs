@@ -12,6 +12,10 @@ public class ProductProductionLog
     public string BatchNumber { get; set; } = string.Empty;
     public decimal UnitPrice { get; set; }
     public string LocationIdsJson { get; set; } = "[]";
+    /// <summary>JSON array of { componentId, componentName, uom, requiredQty, usedQty } for produced batches.</summary>
+    public string ComponentUsagesJson { get; set; } = "[]";
+    /// <summary>JSON of { b2bQty, subProducts: [{ productId, quantity }] } for produced batches.</summary>
+    public string OutputsJson { get; set; } = "{}";
     public int? CompanyId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -19,7 +19,7 @@ import {
   compareProductBatchesOldestFirst,
 } from '../../data/productManagementFifo';
 import { ProductDetailPanel } from './ProductDetailPanel';
-import { ProduceBatchModal } from './ProduceBatchModal';
+import { ProduceBatchModal, type ProduceConfirmPayload } from './ProduceBatchModal';
 import { resyncStaleTaggedComponentPrices } from '../../utils/resyncTaggedComponentPrices';
 import { getSiCategoryFilterOptions } from '../../data/revenueManagement';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -76,7 +76,13 @@ const tableColGroup = (
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
 const filterCls = filterSelectCls;
 const actionBtnCls =
-  'inline-flex items-center justify-center px-2 py-1 rounded border text-[10px] font-semibold whitespace-nowrap disabled:opacity-50';
+  'inline-flex items-center justify-center px-2 py-1.5 rounded-md text-[10px] font-bold whitespace-nowrap disabled:opacity-50 shadow-sm border';
+const toProduceBtnCls =
+  `${actionBtnCls} border-amber-600 bg-amber-500 text-white hover:bg-amber-600`;
+const producedBtnCls =
+  `${actionBtnCls} border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700`;
+const editBtnCls =
+  `${actionBtnCls} border-slate-500 bg-slate-600 text-white hover:bg-slate-700`;
 
 type BatchSortColumn =
   | 'name'
@@ -306,6 +312,7 @@ export function ProductManagementPage({
   const [produceTarget, setProduceTarget] = useState<ProduceModalTarget | null>(null);
   const [produceError, setProduceError] = useState<string | null>(null);
   const [produceComponents, setProduceComponents] = useState<ProduceBatchShortage[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [expandedProductIds, setExpandedProductIds] = useState<Set<number>>(() => new Set());
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<BatchSortColumn>();
 
@@ -371,6 +378,14 @@ export function ProductManagementPage({
     setProduceError(null);
     setProduceComponents([]);
     setProduceTarget({ product, purpose });
+    if (selectedLocationIds.length === 0) {
+      setProduceError('Select at least one location in the header before production actions.');
+      return;
+    }
+    const defaultQty = purpose === 'produce' && product.toProduceQty > 0
+      ? product.toProduceQty
+      : suggestedProduceQty(product);
+    void runProductionPreview(product.id, defaultQty > 0 ? defaultQty : 1);
   }
 
   function openEditBatchModal(row: ManagementBatchRow) {
@@ -380,30 +395,51 @@ export function ProductManagementPage({
     setProduceTarget({ product: row, purpose: 'edit', batchLogId: row.batchLogId });
   }
 
-  async function confirmProduceAction(
-    batchQty: number,
-    productionDate: string,
-    expiryDate?: string,
-    overrideStock = false,
-  ) {
+  async function runProductionPreview(productId: number, batchQty: number) {
+    if (!selectedLocationIds.length || !(batchQty > 0)) return;
+    setPreviewLoading(true);
+    try {
+      const preview = await api.previewProduction(productId, {
+        locationExternalIds: selectedLocationIds,
+        batchQty,
+      });
+      setProduceComponents(preview.components ?? []);
+    } catch (e) {
+      // Preview failures should not block the modal; keep prior rows.
+      if (e instanceof Error && !produceError) {
+        setProduceError(e.message);
+      }
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function confirmProduceAction(payload: ProduceConfirmPayload) {
     if (!produceTarget) return;
     const { product, purpose } = produceTarget;
+    if (selectedLocationIds.length === 0) {
+      setProduceError('Select at least one location in the header before production actions.');
+      return;
+    }
     setActionId(product.id);
     setProduceError(null);
     try {
       if (purpose === 'queue') {
         await api.markProductToProduce(product.id, {
           locationExternalIds: selectedLocationIds,
-          batchQty,
-          productionDate,
+          batchQty: payload.batchQty,
+          productionDate: payload.productionDate,
+          overrideStock: payload.overrideStock === true,
         });
       } else {
         await api.produceProductBatches(product.id, {
           locationExternalIds: selectedLocationIds,
-          batchQty,
-          productionDate,
-          expiryDate,
-          overrideStock: overrideStock === true,
+          batchQty: payload.batchQty,
+          productionDate: payload.productionDate,
+          expiryDate: payload.expiryDate,
+          overrideStock: payload.overrideStock === true,
+          componentUsages: payload.componentUsages,
+          subProductOutputs: payload.subProductOutputs,
         });
       }
       await loadData();
@@ -427,21 +463,16 @@ export function ProductManagementPage({
     }
   }
 
-  async function confirmEditBatchAction(
-    batchQty: number,
-    productionDate: string,
-    expiryDate?: string,
-    overrideStock = false,
-  ) {
+  async function confirmEditBatchAction(payload: ProduceConfirmPayload) {
     if (!produceTarget?.batchLogId) return;
     setEditingBatchId(produceTarget.batchLogId);
     setProduceError(null);
     try {
       await api.patchProductionBatch(produceTarget.batchLogId, {
-        batchQty,
-        productionDate,
-        expiryDate,
-        overrideStock: overrideStock === true,
+        batchQty: payload.batchQty,
+        productionDate: payload.productionDate,
+        expiryDate: payload.expiryDate,
+        overrideStock: payload.overrideStock === true,
       });
       await loadData();
       setProduceComponents([]);
@@ -884,7 +915,7 @@ export function ProductManagementPage({
                                 type="button"
                                 disabled={rowBusy || editBusy}
                                 onClick={() => openProduceModal(row, 'queue')}
-                                className={`${actionBtnCls} border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-950/40`}
+                                className={toProduceBtnCls}
                               >
                                 To Produce
                               </button>
@@ -892,7 +923,7 @@ export function ProductManagementPage({
                                 type="button"
                                 disabled={rowBusy || editBusy}
                                 onClick={() => openProduceModal(row, 'produce')}
-                                className={`${actionBtnCls} border-primary text-primary hover:bg-primary/10`}
+                                className={producedBtnCls}
                               >
                                 Produced
                               </button>
@@ -903,7 +934,7 @@ export function ProductManagementPage({
                               type="button"
                               disabled={rowBusy || editBusy}
                               onClick={() => openEditBatchModal(row)}
-                              className={`${actionBtnCls} border-border text-foreground hover:bg-muted/60`}
+                              className={editBtnCls}
                             >
                               {editBusy ? 'Saving…' : 'Edit'}
                             </button>
@@ -938,6 +969,7 @@ export function ProductManagementPage({
                 : suggestedProduceQty(produceTarget.product)
           }
           isSubProduct={produceTarget.product.isSubProduct}
+          isB2bProduct={!produceTarget.product.isSubProduct}
           expiryPeriodDays={produceTarget.product.expiryPeriodDays}
           purpose={produceTarget.purpose}
           batchNumber={produceTarget.product.batchNumber}
@@ -950,18 +982,36 @@ export function ProductManagementPage({
           }
           error={produceError}
           components={produceComponents}
+          previewLoading={previewLoading}
+          subProductOptions={products
+            .filter(p => p.active && p.isSubProduct && p.id !== produceTarget.product.id)
+            .map(p => ({
+              id: p.id,
+              name: p.name,
+              productId: p.productId,
+              batchUnit: resolveManagementBatchUnit(p),
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name))}
           onClose={() => {
             const saving = produceTarget.purpose === 'edit'
               ? editingBatchId === produceTarget.batchLogId
               : actionId === produceTarget.product.id;
-            if (!saving) setProduceTarget(null);
+            if (!saving) {
+              setProduceTarget(null);
+              setProduceError(null);
+              setProduceComponents([]);
+            }
           }}
-          onConfirm={(qty, productionDate, expiryDate, overrideStock) => {
+          onQtyChange={qty => {
+            if (produceTarget.purpose === 'edit') return;
+            void runProductionPreview(produceTarget.product.id, qty);
+          }}
+          onConfirm={payload => {
             if (produceTarget.purpose === 'edit') {
-              void confirmEditBatchAction(qty, productionDate, expiryDate, overrideStock);
+              void confirmEditBatchAction(payload);
               return;
             }
-            void confirmProduceAction(qty, productionDate, expiryDate, overrideStock);
+            void confirmProduceAction(payload);
           }}
         />
       ) : null}
