@@ -8,7 +8,12 @@
 
 /ownership/ @danra69-hash
 /scripts/verify-structure-ownership.mjs @danra69-hash
+/scripts/verify-brand-assets.mjs @danra69-hash
+/client/public/favicon.svg @danra69-hash
+/client/index.html @danra69-hash
 /.github/workflows/ci.yml @danra69-hash
+/.github/workflows/deploy.yml @danra69-hash
+/Dockerfile @danra69-hash
 
 /client/src/AppRoot.tsx @danra69-hash
 /client/src/App.tsx @danra69-hash

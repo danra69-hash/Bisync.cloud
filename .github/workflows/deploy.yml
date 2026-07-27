@@ -40,6 +40,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify brand assets before image build
+        run: node scripts/verify-brand-assets.mjs
+
       - name: Authenticate to Google Cloud (Workload Identity)
         uses: google-github-actions/auth@v2
         with:
@@ -182,4 +185,17 @@ jobs:
           ASSET="$(printf '%s\n' "${INDEX_HTML}" | grep -oE '/assets/index-[^"]+\.js' | head -1)"
           echo "SPA asset: ${ASSET}"
           curl -fsS "${URL}${ASSET}" | grep -q 'Ref & Library'
+
+          # Favicon must be the Bisync chain mark, never the old purple Vite icon.
+          echo "${INDEX_HTML}" | grep -qE 'favicon\.svg\?v='
+          FAV_HREF="$(printf '%s\n' "${INDEX_HTML}" | grep -oE '/favicon\.svg\?v=[^"'\'' ]+' | head -1)"
+          echo "Favicon: ${FAV_HREF}"
+          curl -fsS -D /tmp/favicon.hdrs -o /tmp/favicon.svg "${URL}${FAV_HREF}"
+          grep -q '#F37021' /tmp/favicon.svg
+          grep -q 'M48 7H24a15 15 0 0 0 0 30h24' /tmp/favicon.svg
+          if grep -qiE '863bff|vite-logo' /tmp/favicon.svg; then
+            echo "Live favicon still contains legacy Vite mark" >&2
+            exit 1
+          fi
+          grep -qiE 'no-store|no-cache' /tmp/favicon.hdrs
           echo "Deploy verification OK"
