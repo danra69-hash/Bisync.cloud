@@ -31,6 +31,7 @@ public class ProductionInventoryService(
             return new ProduceBatchResult { Success = true, BatchQty = batchQty };
         }
 
+        var subProductsByCode = await LoadActiveSubProductsByCodeAsync(product.CompanyId, cancellationToken);
         var ingredientsByCode = await LoadIngredientsByCodeAsync(
             recipeLines.Select(l => l.ComponentId).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             product.CompanyId,
@@ -47,11 +48,23 @@ public class ProductionInventoryService(
                     line, batchQty, ingredientsByCode, componentUsages);
                 if (requiredQty < 0) requiredQty = 0;
 
-                var onHand = await componentStock.GetOnHandAsync(
-                    line.ComponentId,
-                    locationId,
-                    line.ComponentUom,
-                    cancellationToken);
+                decimal onHand;
+                if (subProductsByCode.TryGetValue(line.ComponentId, out var subProduct))
+                {
+                    var stockRow = await db.ProductB2bLocationStocks.AsNoTracking()
+                        .FirstOrDefaultAsync(
+                            s => s.ProductId == subProduct.Id && s.LocationExternalId == locationId,
+                            cancellationToken);
+                    onHand = stockRow?.InStock ?? 0m;
+                }
+                else
+                {
+                    onHand = await componentStock.GetOnHandAsync(
+                        line.ComponentId,
+                        locationId,
+                        line.ComponentUom,
+                        cancellationToken);
+                }
 
                 var isSufficient = onHand + 0.0001m >= requiredQty;
                 components.Add(new ProduceComponentRequirement(
@@ -187,6 +200,7 @@ public class ProductionInventoryService(
         if (!overrideStock && !preview.Success)
             return preview;
 
+        var subProductsByCode = await LoadActiveSubProductsByCodeAsync(product.CompanyId, cancellationToken);
         var ingredientsByCode = await LoadIngredientsByCodeAsync(
             recipeLines.Select(l => l.ComponentId).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             product.CompanyId,
@@ -198,6 +212,20 @@ public class ProductionInventoryService(
             {
                 var requiredQty = ResolveUsageQty(line, batchQty, ingredientsByCode, componentUsages);
                 if (requiredQty <= 0) continue;
+
+                if (subProductsByCode.TryGetValue(line.ComponentId, out var subProduct))
+                {
+                    await DeductSubProductForProductionAsync(
+                        product,
+                        subProduct,
+                        locationId,
+                        requiredQty,
+                        deductionReason,
+                        overrideStock,
+                        ingredientsByCode,
+                        cancellationToken);
+                    continue;
+                }
 
                 await componentStock.RecordDeductionAsync(
                     line.ComponentId,
@@ -215,6 +243,85 @@ public class ProductionInventoryService(
 
         await db.SaveChangesAsync(cancellationToken);
         return new ProduceBatchResult { Success = true, BatchQty = batchQty, Components = preview.Components };
+    }
+
+    async Task DeductSubProductForProductionAsync(
+        Product parentProduct,
+        Product subProduct,
+        string locationId,
+        decimal requiredQty,
+        string deductionReason,
+        bool overrideStock,
+        IReadOnlyDictionary<string, Ingredient> ingredientsByCode,
+        CancellationToken cancellationToken)
+    {
+        var stockRow = await db.ProductB2bLocationStocks
+            .FirstOrDefaultAsync(
+                s => s.ProductId == subProduct.Id && s.LocationExternalId == locationId,
+                cancellationToken);
+
+        var availableStock = stockRow?.InStock ?? 0m;
+        var fromProducedStock = Math.Min(availableStock, requiredQty);
+        var shortfall = requiredQty - fromProducedStock;
+
+        if (fromProducedStock > 0 && stockRow is not null)
+        {
+            stockRow.InStock = Math.Max(0, stockRow.InStock - fromProducedStock);
+            stockRow.UpdatedAt = DateTime.UtcNow;
+        }
+
+        if (shortfall <= 0)
+            return;
+
+        if (!overrideStock)
+            throw new InvalidOperationException(
+                $"Insufficient stock. Short by {shortfall:0.####} units.");
+
+        // Override: explode remaining sub-product demand into its recipe components.
+        foreach (var recipeLine in subProduct.Items.Where(l => !string.IsNullOrWhiteSpace(l.ComponentId)))
+        {
+            if (!ingredientsByCode.ContainsKey(recipeLine.ComponentId)
+                && !await IngredientExistsAsync(recipeLine.ComponentId, parentProduct.CompanyId, cancellationToken))
+                continue;
+
+            var componentQty = recipeLine.Quantity * shortfall;
+            if (componentQty <= 0) continue;
+
+            await componentStock.RecordDeductionAsync(
+                recipeLine.ComponentId,
+                recipeLine.ComponentName,
+                locationId,
+                componentQty,
+                recipeLine.ComponentUom,
+                reason: $"{deductionReason} (sub-product recipe shortfall)",
+                referenceType: "production",
+                referenceId: parentProduct.Id,
+                companyId: parentProduct.CompanyId,
+                cancellationToken);
+        }
+    }
+
+    async Task<bool> IngredientExistsAsync(string componentId, int? companyId, CancellationToken cancellationToken)
+    {
+        var map = await LoadIngredientsByCodeAsync([componentId], companyId, cancellationToken);
+        return map.ContainsKey(componentId);
+    }
+
+    async Task<Dictionary<string, Product>> LoadActiveSubProductsByCodeAsync(
+        int? companyId,
+        CancellationToken cancellationToken)
+    {
+        var query = db.Products.AsNoTracking()
+            .Include(p => p.Items)
+            .Include(p => p.PackagingItems)
+            .Where(p => p.IsSubProduct && p.Active);
+        if (companyId is int cid)
+            query = query.Where(p => p.CompanyId == null || p.CompanyId == cid);
+
+        return await query.ToDictionaryAsync(
+            p => p.ProductId,
+            StringComparer.OrdinalIgnoreCase,
+            cancellationToken);
     }
 
     static List<RecipeLine> GetRecipeLines(Product product) =>

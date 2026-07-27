@@ -698,10 +698,26 @@ const BASE_TASKS: TaskDef[] = [
     group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId, 'Company missing');
-      const result = await api.provisionCompanyDb({
-        companyId: ctx.companyId,
-        userId: ctx.ownerUserId,
-      });
+      let result: Awaited<ReturnType<typeof api.provisionCompanyDb>> | null = null;
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          result = await api.provisionCompanyDb({
+            companyId: ctx.companyId,
+            userId: ctx.ownerUserId,
+          });
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          const msg = err instanceof Error ? err.message : String(err);
+          const transient = /transient|broken pipe|timeout|terminat|too many connections/i.test(msg);
+          if (!transient || attempt === 3) throw err;
+          update({ detail: `Provision attempt ${attempt} failed (transient) — retrying…` });
+          await new Promise(r => setTimeout(r, 1500 * attempt));
+        }
+      }
+      if (!result) throw lastErr instanceof Error ? lastErr : new Error('Company DB provision failed');
       setApiTenantCompanyId(result.companyId || ctx.companyId);
       ctx.provisionedDatabaseName = result.databaseName;
       const irregularities: QaIrregularity[] = [];
@@ -1330,11 +1346,27 @@ const BASE_TASKS: TaskDef[] = [
     label: 'Produce product (2 batches) + offline sales for FIFO',
     group: 'operation-production',
     run: async (ctx, update) => {
-      await assert(!!ctx.finishedProduct && !!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Product/location missing');
+      await assert(!!ctx.finishedProduct && !!ctx.subProduct && !!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Product/location missing');
       const productId = ctx.finishedProduct!.id;
+      const subId = ctx.subProduct!.id;
       const loc = ctx.kitchenExternalId!;
 
-      // Produce two batches on different dates to create product FIFO layers
+      // Finished BOM consumes the sub-product — produce enough sub stock first.
+      // Sub InStock is incremented by batchQty (not yieldQuantity).
+      await api.markProductToProduce(subId, {
+        locationExternalIds: [loc],
+        batchQty: 20,
+        productionDate: daysAgoIso(6),
+        overrideStock: true,
+      });
+      await api.produceProductBatches(subId, {
+        locationExternalIds: [loc],
+        batchQty: 20,
+        productionDate: daysAgoIso(6),
+        overrideStock: true,
+      });
+
+      // Produce two finished batches on different dates to create product FIFO layers
       await api.markProductToProduce(productId, {
         locationExternalIds: [loc],
         batchQty: 8,
