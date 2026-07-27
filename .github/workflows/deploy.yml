@@ -16,7 +16,8 @@ on:
 
 concurrency:
   group: deploy-cloud-run
-  cancel-in-progress: false
+  # Cancel older in-flight deploys so a slow old build cannot overwrite a newer one.
+  cancel-in-progress: true
 
 env:
   PROJECT_ID: project-8d670aa9-f439-44d9-8e1
@@ -136,7 +137,8 @@ jobs:
             --set-env-vars="ConnectionStrings__DefaultConnection=${DEFAULT_CONN}" \
             --set-env-vars="ConnectionStrings__ArchiveConnection=${ARCHIVE_CONN}" \
             --set-env-vars="ConnectionStrings__AuditConnection=${AUDIT_CONN}" \
-            --set-env-vars="DEV_CONSOLE_ENABLED=true"
+            --set-env-vars="DEV_CONSOLE_ENABLED=true" \
+            --set-env-vars="BISYNC_GIT_SHA=${GITHUB_SHA}"
 
       - name: Verify health
         run: |
@@ -151,10 +153,33 @@ jobs:
             if curl -fsS "${URL}/api/health" | tee /tmp/health.json; then
               echo ""
               echo "Health OK"
-              exit 0
+              break
             fi
             echo "Health not ready yet (attempt ${i}/6), waiting 10s..."
             sleep 10
+            if [[ "${i}" -eq 6 ]]; then
+              echo "Health check failed" >&2
+              exit 1
+            fi
           done
-          echo "Health check failed" >&2
-          exit 1
+
+          # Confirm this revision is the commit we just built (not a stale image).
+          STATUS_JSON="$(curl -fsS "${URL}/api/dev-console/status")"
+          echo "Dev Console status: ${STATUS_JSON}"
+          echo "${STATUS_JSON}" | grep -q "${GITHUB_SHA}"
+
+          # Dev Console APIs must return JSON, never the SPA HTML fallback.
+          LS_CODE="$(curl -sS -o /tmp/launch-settings.json -w '%{http_code}' \
+            -H 'Accept: application/json' \
+            "${URL}/api/dev-console/launch-settings")"
+          LS_TYPE="$(file -b --mime-type /tmp/launch-settings.json || true)"
+          echo "launch-settings → HTTP ${LS_CODE} (${LS_TYPE})"
+          test "${LS_CODE}" = "401"
+          grep -q 'Dev Console session required' /tmp/launch-settings.json
+
+          # SPA bundle must include current Dev Console tabs (catches stale wwwroot).
+          INDEX_HTML="$(curl -fsS -H 'Cache-Control: no-cache' "${URL}/")"
+          ASSET="$(printf '%s\n' "${INDEX_HTML}" | grep -oE '/assets/index-[^"]+\.js' | head -1)"
+          echo "SPA asset: ${ASSET}"
+          curl -fsS "${URL}${ASSET}" | grep -q 'Ref & Library'
+          echo "Deploy verification OK"
