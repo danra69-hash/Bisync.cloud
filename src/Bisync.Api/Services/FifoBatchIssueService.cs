@@ -97,8 +97,8 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
                 : receiptDate.ToUniversalTime(),
             DecimalRounding.ToDb(quantity),
             StockCardFifoEngine.RoundUnitPrice(unitCost),
-            (object?)sourcePurchaseId ?? DBNull.Value,
-            (object?)companyId ?? DBNull.Value);
+            sourcePurchaseId,
+            companyId);
     }
 
     public async Task EnsureBatchesSyncedAsync(
@@ -157,8 +157,8 @@ public class FifoBatchIssueService(BisyncDbContext db, ComponentFifoCostingServi
                     : layer.ReceivedAt.ToUniversalTime(),
                 DecimalRounding.ToDb(layer.Quantity),
                 StockCardFifoEngine.RoundUnitPrice(layer.UnitPrice),
-                layer.SourceId > 0 ? (object)layer.SourceId : DBNull.Value,
-                (object?)companyId ?? DBNull.Value);
+                layer.SourceId > 0 ? layer.SourceId : null,
+                companyId);
         }
     }
 
