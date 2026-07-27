@@ -107,7 +107,7 @@ public class AuthController(
 
         var passwordValid = AppPasswordHasher.Verify(request.Password, user.PasswordHash);
         if (!passwordValid && string.IsNullOrWhiteSpace(user.PasswordHash))
-            passwordValid = request.Password == "Pass@123";
+            passwordValid = request.Password == SuperAdminAccess.DefaultBootstrapPassword;
 
         if (!passwordValid)
             return StatusCode(401, new { message = "Invalid email or password." });
