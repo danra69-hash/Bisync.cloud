@@ -61,17 +61,16 @@ RUN test -f src/Bisync.Api/wwwroot/favicon.svg \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 
-# Non-root runtime user (CKV_DOCKER_3) + curl for HEALTHCHECK (CKV_DOCKER_2).
+# curl for HEALTHCHECK (CKV_DOCKER_2). Prefer the image's built-in non-root
+# `app` user / $APP_UID (CKV_DOCKER_3) — do not recreate it (.NET 8+ already defines it).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends curl \
-  && rm -rf /var/lib/apt/lists/* \
-  && groupadd --system --gid 10001 app \
-  && useradd --system --uid 10001 --gid app --create-home --home-dir /home/app app
+  && rm -rf /var/lib/apt/lists/*
 
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=api-build --chown=app:app /app/publish .
-USER app
+USER $APP_UID
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
