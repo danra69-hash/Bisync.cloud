@@ -575,9 +575,16 @@ public class AuthController(
         }
         catch (Exception ex)
         {
+            var parts = new List<string>();
+            for (var cur = ex; cur is not null; cur = cur.InnerException)
+            {
+                var msg = cur.Message?.Trim();
+                if (!string.IsNullOrWhiteSpace(msg) && !parts.Contains(msg, StringComparer.Ordinal))
+                    parts.Add(msg);
+            }
             return StatusCode(StatusCodes.Status500InternalServerError, new
             {
-                message = $"Could not provision company database: {ex.Message}",
+                message = $"Could not provision company database: {string.Join(" → ", parts)}",
             });
         }
     }

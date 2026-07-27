@@ -159,34 +159,70 @@ public class CompanyOperationalDbProvisioner(
 
         // Prefer EF entity inserts over hand-maintained column lists so newly added NOT NULL
         // columns (Code, PreferredLanguage, TimeZoneId, …) cannot break tenant bootstrap.
-        if (!await tenantDb.Companies.AnyAsync(c => c.Id == company.Id, ct))
+        try
         {
-            tenantDb.Companies.Add(CloneCompanyForSeed(company));
-            await tenantDb.SaveChangesAsync(ct);
-        }
+            if (!await tenantDb.Companies.AnyAsync(c => c.Id == company.Id, ct))
+            {
+                tenantDb.Companies.Add(CloneCompanyForSeed(company));
+                await tenantDb.SaveChangesAsync(ct);
+            }
 
-        if (owner is not null && !await tenantDb.AppUsers.AnyAsync(u => u.Id == owner.Id, ct))
+            if (owner is not null && !await tenantDb.AppUsers.AnyAsync(u => u.Id == owner.Id, ct))
+            {
+                tenantDb.AppUsers.Add(CloneAppUserForSeed(owner));
+                await tenantDb.SaveChangesAsync(ct);
+            }
+
+            var seededLocations = false;
+            foreach (var loc in locations)
+            {
+                if (await tenantDb.Locations.AnyAsync(l => l.Id == loc.Id, ct))
+                    continue;
+                tenantDb.Locations.Add(CloneLocationForSeed(loc, company.CountryCode, owner?.Id));
+                seededLocations = true;
+            }
+
+            if (seededLocations)
+                await tenantDb.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
         {
-            tenantDb.AppUsers.Add(CloneAppUserForSeed(owner));
-            await tenantDb.SaveChangesAsync(ct);
+            throw new InvalidOperationException(
+                $"Tenant seed failed: {FormatExceptionChain(ex)}", ex);
         }
-
-        var seededLocations = false;
-        foreach (var loc in locations)
-        {
-            if (await tenantDb.Locations.AnyAsync(l => l.Id == loc.Id, ct))
-                continue;
-            tenantDb.Locations.Add(CloneLocationForSeed(loc, company.CountryCode));
-            seededLocations = true;
-        }
-
-        if (seededLocations)
-            await tenantDb.SaveChangesAsync(ct);
 
         await SchemaPatcher.EnsureTenantRegistryAsync(tenantDb);
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(tenantDb, "Companies");
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(tenantDb, "Locations");
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(tenantDb, "AppUsers");
+    }
+
+    static string FormatExceptionChain(Exception ex)
+    {
+        var parts = new List<string>();
+        for (var cur = ex; cur is not null; cur = cur.InnerException)
+        {
+            var msg = cur.Message?.Trim();
+            if (!string.IsNullOrWhiteSpace(msg) && !parts.Contains(msg, StringComparer.Ordinal))
+                parts.Add(msg);
+        }
+        return parts.Count == 0 ? ex.GetType().Name : string.Join(" → ", parts);
+    }
+
+    /// <summary>
+    /// Npgsql rejects DateTime Kind=Unspecified for timestamptz columns.
+    /// Control-plane reads often come back Unspecified — normalize before tenant seed.
+    /// </summary>
+    static DateTime? AsUtc(DateTime? value)
+    {
+        if (value is null) return null;
+        var dt = value.Value;
+        return dt.Kind switch
+        {
+            DateTimeKind.Utc => dt,
+            DateTimeKind.Local => dt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc),
+        };
     }
 
     static async Task ClearOperationalCatalogsAsync(BisyncDbContext tenantDb, CancellationToken ct)
@@ -234,7 +270,7 @@ public class CompanyOperationalDbProvisioner(
         Fax = company.Fax ?? string.Empty,
         Email = company.Email ?? string.Empty,
         Active = company.Active,
-        RegisteredAt = company.RegisteredAt,
+        RegisteredAt = AsUtc(company.RegisteredAt),
         LogoFileName = company.LogoFileName ?? string.Empty,
         LogoContentType = company.LogoContentType ?? string.Empty,
         LogoBase64 = company.LogoBase64 ?? string.Empty,
@@ -269,18 +305,18 @@ public class CompanyOperationalDbProvisioner(
         LocationIdsJson = string.IsNullOrWhiteSpace(user.LocationIdsJson) ? "[]" : user.LocationIdsJson,
         PasswordHash = user.PasswordHash,
         ActivationToken = user.ActivationToken,
-        ActivationTokenExpiresAt = user.ActivationTokenExpiresAt,
+        ActivationTokenExpiresAt = AsUtc(user.ActivationTokenExpiresAt),
         PreferredLanguage = string.IsNullOrWhiteSpace(user.PreferredLanguage) ? "en" : user.PreferredLanguage,
         PhoneCountryCode = user.PhoneCountryCode,
         EulaVersion = user.EulaVersion,
-        AcceptedEulaAt = user.AcceptedEulaAt,
+        AcceptedEulaAt = AsUtc(user.AcceptedEulaAt),
         PrivacyPolicyVersion = user.PrivacyPolicyVersion,
-        AcceptedPrivacyPolicyAt = user.AcceptedPrivacyPolicyAt,
+        AcceptedPrivacyPolicyAt = AsUtc(user.AcceptedPrivacyPolicyAt),
         DpaVersion = user.DpaVersion,
-        AcceptedDpaAt = user.AcceptedDpaAt,
+        AcceptedDpaAt = AsUtc(user.AcceptedDpaAt),
     };
 
-    static Location CloneLocationForSeed(Location loc, string? companyCountryCode) => new()
+    static Location CloneLocationForSeed(Location loc, string? companyCountryCode, int? seededOwnerUserId) => new()
     {
         Id = loc.Id,
         ExternalId = loc.ExternalId ?? string.Empty,
@@ -292,8 +328,9 @@ public class CompanyOperationalDbProvisioner(
         City = loc.City ?? string.Empty,
         StateProvince = loc.StateProvince ?? string.Empty,
         Postcode = loc.Postcode ?? string.Empty,
-        PrincipalContactUserId = loc.PrincipalContactUserId,
-        SecondaryContactUserId = loc.SecondaryContactUserId,
+        // Only keep contact FKs that point at the seeded owner — other users are not copied.
+        PrincipalContactUserId = loc.PrincipalContactUserId is int p && p == seededOwnerUserId ? p : null,
+        SecondaryContactUserId = loc.SecondaryContactUserId is int s && s == seededOwnerUserId ? s : null,
         BusinessTypesJson = loc.BusinessTypesJson ?? "[]",
         VendorPolicyTagsJson = loc.VendorPolicyTagsJson ?? "[]",
         ModulesJson = loc.ModulesJson ?? "[]",
