@@ -233,7 +233,7 @@ export function AuditTrailPanel() {
             QA History
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            History and results of Power-user Automated QA runs as they happen — task outcomes, seals,
+            History and results of Automated QA runs as they happen — task outcomes, seals,
             and whether temporary QA operational data is still active or has disappeared.
             This is separate from platform Audit Trail (login / DB / computation).
           </p>
@@ -323,7 +323,7 @@ export function AuditTrailPanel() {
             {!loading && history.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                  No QA History yet. Complete a Power-user Automated QA run to add results here.
+                  No QA History yet. Complete an Automated QA run to add results here.
                 </td>
               </tr>
             )}

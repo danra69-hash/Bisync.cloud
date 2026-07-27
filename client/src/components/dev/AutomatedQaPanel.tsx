@@ -382,11 +382,11 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       const started = await devConsoleApi.startQaRun({
         triggeredBy,
         status: 'running',
-        summary: 'Power-user QA in progress…',
+        summary: 'Automated QA in progress…',
         resultsJson: '[]',
       });
       runId = started.id;
-      setRunSummary('Power-user QA in progress…');
+      setRunSummary('Automated QA in progress…');
       const result = await runAutomatedQa(triggeredBy, setTasks);
       await persistAndFinish(runId, result);
     } catch (err) {
@@ -421,7 +421,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
 
       if (lastRunId != null && lastAudit != null) {
         const disposed = markQaDataDisappeared(lastAudit);
-        const baseSummary = runSummary ?? lastAudit.context.companyName ?? 'Power-user QA';
+        const baseSummary = runSummary ?? lastAudit.context.companyName ?? 'Automated QA';
         const summary = confirmedNoIssues
           ? `${baseSummary} · Confirmed no issues — QA data disappeared (audit only)`
           : `${baseSummary} · QA data disappeared (audit only)`;
@@ -508,7 +508,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
     <section className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-sm font-semibold">Power-user Automated QA</h2>
+          <h2 className="text-sm font-semibold">Automated QA</h2>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
             Creates temporary (“disappearing”) operational data for the full journey: register → company/location
             onboarding → payment → DB provision → System Admin + HR staff → inventory/PO/POS → COGS Audit History.
@@ -657,7 +657,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
             <button type="button" onClick={() => void loadHistory()} className="text-[11px] text-primary hover:underline">Refresh</button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Results of completed Power-user Automated QA runs. Operational data is temporary; after confirm, only these rows remain.
+            Results of completed Automated QA runs. Operational data is temporary; after confirm, only these rows remain.
           </p>
           {historyError && (
             <div className="px-3 py-2 rounded-md bg-destructive/10 text-destructive text-xs">{historyError}</div>

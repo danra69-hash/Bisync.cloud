@@ -36,7 +36,7 @@ const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'tenant-rollups', label: 'Tenant Rollups' },
   { id: 'sales-module', label: 'Sales Module' },
-  { id: 'automated-qa', label: 'Power-user Automated QA' },
+  { id: 'automated-qa', label: 'Automated QA' },
   { id: 'qa-history', label: 'QA History' },
   { id: 'audit-trail', label: 'Audit Trail' },
   { id: 'ghost-support', label: 'Ghost Support' },
