@@ -713,9 +713,22 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
       label: 'Create & issue B2B sales order',
       group: 'sales',
       run: async (ctx, update) => {
-        await assert(!!ctx.companyId && !!ctx.b2bCustomerExternalId, 'B2B customer missing');
+        await assert(!!ctx.companyId && !!ctx.b2bCustomerExternalId && !!ctx.kitchenExternalId, 'B2B customer/location missing');
         const product = ctx.b2bProduct ?? ctx.finishedProduct;
         await assert(!!product, 'B2B/finished product missing');
+        // Ensure stock exists at the issue location before creating the order.
+        await api.markProductToProduce(product!.id, {
+          locationExternalIds: [ctx.kitchenExternalId!],
+          batchQty: 5,
+          productionDate: todayIso(),
+          overrideStock: true,
+        });
+        await api.produceProductBatches(product!.id, {
+          locationExternalIds: [ctx.kitchenExternalId!],
+          batchQty: 5,
+          productionDate: todayIso(),
+          overrideStock: true,
+        });
         const order = await api.createB2bSalesOrder({
           companyId: ctx.companyId!,
           customerExternalId: ctx.b2bCustomerExternalId!,
@@ -733,7 +746,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         ctx.b2bSalesOrderId = issued.id;
         update({
           detail: `Sales order #${issued.id} · ${issued.status ?? 'issued'}`,
-          facts: { salesOrderId: issued.id, status: issued.status ?? 'issued' },
+          facts: { salesOrderId: issued.id, status: issued.status ?? 'issued', producedForOrder: 5 },
           fixActions: defaultFixActions('sales-b2b-order'),
         });
       },
@@ -743,7 +756,9 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
       label: 'Create promotion schedule',
       group: 'sales',
       run: async (ctx, update) => {
-        await assert(!!ctx.companyId && !!ctx.finishedProduct, 'Finished product missing');
+        await assert(!!ctx.companyId, 'Company missing');
+        const product = ctx.b2bProduct ?? ctx.finishedProduct;
+        await assert(!!product, 'B2B/finished product missing');
         const promo = await api.createPromotion({
           companyId: ctx.companyId!,
           name: `QA Promo ${ctx.runKey}`,
@@ -753,12 +768,12 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
           promotionType: 'discountPercent',
           discountPercent: 10,
           createdBy: ctx.adminName || 'QA',
-          products: [{ productId: ctx.finishedProduct!.id }],
+          products: [{ productId: product!.id }],
         });
         ctx.promotionId = promo.id;
         update({
           detail: `Promotion #${promo.id} · ${promo.name}`,
-          facts: { promotionId: promo.id },
+          facts: { promotionId: promo.id, productId: product!.id },
           fixActions: defaultFixActions('sales-promotion'),
         });
       },

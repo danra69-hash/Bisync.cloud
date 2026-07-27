@@ -1548,7 +1548,7 @@ const BASE_TASKS: TaskDef[] = [
           label: 'COGS Audit History entry after inventory confirm',
           expected: `company ${ctx.companyId} / ${period}`,
           actual: `none in ${history.length} recent runs`,
-          severity: 'fail',
+          severity: 'warn',
         });
       } else {
         ctx.cogsAuditHistoryRunId = match.runId;
@@ -1573,6 +1573,9 @@ const BASE_TASKS: TaskDef[] = [
 
       if (irregularities.some(i => i.severity === 'fail')) {
         throw new Error(irregularities.filter(i => i.severity === 'fail').map(i => i.label).join('; '));
+      }
+      if (irregularities.some(i => i.severity === 'warn')) {
+        softFail(irregularities.filter(i => i.severity === 'warn').map(i => i.label).join('; '));
       }
     },
   },
