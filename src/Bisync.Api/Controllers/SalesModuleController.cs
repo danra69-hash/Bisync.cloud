@@ -327,6 +327,8 @@ public class SalesModuleController(
         CancellationToken ct = default)
     {
         await EnsureSalesCompanySchemaAsync(ct);
+        // Keep Company dropdowns populated from Client Update Company/Brand tags.
+        await SyncCompaniesFromClientUpdatesAsync(ct);
 
         IQueryable<SalesModuleCompany> q = db.SalesModuleCompanies.AsNoTracking();
         if (!includeInactive)
@@ -808,6 +810,79 @@ public class SalesModuleController(
             whatsappMobile,
             graphConfigured = outlookSynced || !string.IsNullOrWhiteSpace(outlookSyncError),
         });
+    }
+
+    /// <summary>
+    /// Create/tag Sales Module companies from Client Update Company (or Brand) + hunter tags
+    /// so Company dropdowns stay attached to Sales Team members after imports.
+    /// </summary>
+    async Task SyncCompaniesFromClientUpdatesAsync(CancellationToken ct)
+    {
+        await EnsureSalesCompanySchemaAsync(ct);
+        var pairs = await db.SalesModuleClientUpdates.AsNoTracking()
+            .Where(r => r.SalesTeamMemberId != null && r.SalesTeamMemberId > 0)
+            .Select(r => new
+            {
+                MemberId = r.SalesTeamMemberId!.Value,
+                Company = r.Company,
+                Brand = r.Brand,
+            })
+            .ToListAsync(ct);
+
+        // Key: memberId + lowercased name — keep display casing from first seen row.
+        var neededPairs = new Dictionary<string, (int MemberId, string Name)>(StringComparer.Ordinal);
+        foreach (var row in pairs)
+        {
+            var name = !string.IsNullOrWhiteSpace(row.Company)
+                ? row.Company.Trim()
+                : (row.Brand ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            neededPairs.TryAdd($"{row.MemberId}\0{name.ToLowerInvariant()}", (row.MemberId, name));
+        }
+
+        if (neededPairs.Count == 0) return;
+
+        var companies = await db.SalesModuleCompanies.Where(c => c.Active).ToListAsync(ct);
+        var byName = companies
+            .GroupBy(c => c.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var tags = await db.SalesModuleCompanyMembers.ToListAsync(ct);
+        var tagSet = tags
+            .Select(t => (t.SalesModuleCompanyId, t.SalesTeamMemberId))
+            .ToHashSet();
+
+        var createdCompanies = false;
+        var createdTags = false;
+        foreach (var (memberId, name) in neededPairs.Values)
+        {
+            if (!byName.TryGetValue(name, out var company))
+            {
+                company = new SalesModuleCompany
+                {
+                    Name = name,
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                db.SalesModuleCompanies.Add(company);
+                await db.SaveChangesAsync(ct);
+                byName[name] = company;
+                createdCompanies = true;
+            }
+
+            var key = (company.Id, memberId);
+            if (tagSet.Contains(key)) continue;
+            db.SalesModuleCompanyMembers.Add(new SalesModuleCompanyMember
+            {
+                SalesModuleCompanyId = company.Id,
+                SalesTeamMemberId = memberId,
+            });
+            tagSet.Add(key);
+            createdTags = true;
+        }
+
+        if (createdTags || createdCompanies)
+            await db.SaveChangesAsync(ct);
     }
 
     async Task<SalesModuleCompany> ResolveOrCreateCompanyForFollowupAsync(

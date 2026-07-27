@@ -111,6 +111,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [overviewPeriods, setOverviewPeriods] = useState<SalesModuleOverviewPeriods | null>(null);
   const [overview, setOverview] = useState<SalesModuleOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewSalesTeamId, setOverviewSalesTeamId] = useState<number | ''>('');
+  const [overviewCompanyId, setOverviewCompanyId] = useState<number | ''>('');
+  const [overviewCompanies, setOverviewCompanies] = useState<SalesModuleCompany[]>([]);
   const [overviewHasSearched, setOverviewHasSearched] = useState(false);
   const [clientUpdateView, setClientUpdateView] = useState<OverviewView>('week');
   const [clientUpdateWeekStart, setClientUpdateWeekStart] = useState('');
@@ -162,21 +165,14 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   }, []);
 
   const loadSalesCompanies = useCallback(async (memberId: number | null) => {
-    if (!memberId) {
-      // Client Update "All" hunters — show every tagged company.
-      const rows = await api.salesModuleCompanies({});
-      setCompanies(rows);
-      setSelectedCompanyId(prev => {
-        if (prev && rows.some(c => c.id === prev)) return prev;
-        return null;
-      });
-      return;
-    }
-    const rows = await api.salesModuleCompanies({ salesTeamMemberId: memberId });
+    const rows = memberId
+      ? await api.salesModuleCompanies({ salesTeamMemberId: memberId })
+      : await api.salesModuleCompanies({});
     setCompanies(rows);
+    // Keep "All companies" unless the current selection is still valid for this hunter.
     setSelectedCompanyId(prev => {
       if (prev && rows.some(c => c.id === prev)) return prev;
-      return rows[0]?.id ?? null;
+      return null;
     });
   }, []);
 
@@ -279,6 +275,27 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     });
   }, []);
 
+  const loadOverviewCompanies = useCallback(async (memberId: number | '') => {
+    const rows = memberId
+      ? await api.salesModuleCompanies({ salesTeamMemberId: memberId })
+      : await api.salesModuleCompanies({});
+    setOverviewCompanies(rows);
+    setOverviewCompanyId(prev => {
+      if (prev && rows.some(c => c.id === prev)) return prev;
+      return '';
+    });
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    let cancelled = false;
+    loadOverviewCompanies(overviewSalesTeamId)
+      .catch(err => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load companies');
+      });
+    return () => { cancelled = true; };
+  }, [tab, overviewSalesTeamId, loadOverviewCompanies]);
+
   const runOverviewSearch = useCallback(async () => {
     if (overviewView === 'week' && !overviewWeekStart) {
       setError('Select a week to search.');
@@ -293,10 +310,15 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     setError(null);
     setOverviewHasSearched(true);
     try {
+      const scope = {
+        salesTeamMemberId: overviewSalesTeamId || undefined,
+        companyId: overviewCompanyId || undefined,
+      };
       if (overviewView === 'week') {
         const data = await api.salesModuleOverview({
           view: 'week',
           weekStart: overviewWeekStart,
+          ...scope,
         });
         setOverview(data);
         return;
@@ -310,6 +332,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         view: 'month',
         year: month.year,
         month: month.month,
+        ...scope,
       });
       setOverview(data);
     } catch (err) {
@@ -323,6 +346,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     overviewWeekStart,
     overviewMonthValue,
     overviewPeriods,
+    overviewSalesTeamId,
+    overviewCompanyId,
   ]);
 
   const loadAppointments = useCallback(async () => {
@@ -671,6 +696,40 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       <PageStickyFilters opaque className="space-y-2 pb-2">
         {tab === 'overview' ? (
           <div className="flex flex-wrap items-end gap-2">
+            <label className="inline-flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Sales Team</span>
+              <select
+                value={overviewSalesTeamId}
+                onChange={e => {
+                  setOverviewSalesTeamId(e.target.value ? Number(e.target.value) : '');
+                  setOverviewHasSearched(false);
+                  setOverview(null);
+                }}
+                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+              >
+                <option value="">All hunters</option>
+                {activeHunters.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="inline-flex flex-col gap-1 text-xs">
+              <span className="text-muted-foreground uppercase tracking-wide">Company</span>
+              <select
+                value={overviewCompanyId}
+                onChange={e => {
+                  setOverviewCompanyId(e.target.value ? Number(e.target.value) : '');
+                  setOverviewHasSearched(false);
+                  setOverview(null);
+                }}
+                className="rounded-md border border-border bg-background px-2 py-1.5 min-w-[12rem]"
+              >
+                <option value="">All companies</option>
+                {overviewCompanies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
             <div className="inline-flex rounded-md border border-border overflow-hidden text-xs self-end">
               <button
                 type="button"
@@ -745,7 +804,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50"
             >
               <Search size={12} />
-              {overviewLoading ? 'Loading…' : 'Refresh'}
+              {overviewLoading ? 'Searching…' : 'Search'}
             </button>
             <button
               type="button"
@@ -760,7 +819,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
             </button>
             {overviewHasSearched && overview?.periodLabel ? (
               <p className="text-xs text-muted-foreground self-center">
-                All Sales Team · {overview.periodLabel}
+                Summary by Hunter · {overview.periodLabel}
+                {overview.companyName ? ` · ${overview.companyName}` : ''}
               </p>
             ) : null}
           </div>
