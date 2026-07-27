@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Circle,
   Monitor,
+  Play,
   X,
   XCircle,
 } from 'lucide-react';
@@ -17,12 +18,15 @@ import { MillstoneLoader } from '../shared/MillstoneLoader';
 type Props = {
   open: boolean;
   running: boolean;
+  fixing?: boolean;
   tasks: QaTaskResult[];
   runSummary: string | null;
   runStatus: 'passed' | 'failed' | 'warning' | null;
   context: PowerQaContext | null;
   onClose: () => void;
   onOpenFullIssue: (task: QaTaskResult) => void;
+  /** Continue Automated QA from the failed/warned step after a fix is deployed. */
+  onRerunFromFailure: (task: QaTaskResult) => void;
 };
 
 const DOT: Record<QaStatus, string> = {
@@ -48,12 +52,14 @@ function formatFactValue(value: unknown): string {
 export function QaLiveMonitorOverlay({
   open,
   running,
+  fixing = false,
   tasks,
   runSummary,
   runStatus,
   context,
   onClose,
   onOpenFullIssue,
+  onRerunFromFailure,
 }: Props) {
   const [showDiagnosis, setShowDiagnosis] = useState(false);
 
@@ -129,6 +135,18 @@ export function QaLiveMonitorOverlay({
               <span className="rounded-full bg-red-400/15 px-2 py-0.5 text-[10px] uppercase tracking-wider text-red-200">
                 Failed
               </span>
+            )}
+            {!running && problem && (runStatus === 'failed' || runStatus === 'warning' || problem.status === 'fail' || problem.status === 'warn') && (
+              <button
+                type="button"
+                disabled={fixing || running}
+                onClick={() => onRerunFromFailure(problem)}
+                title="Continue Automated QA from the failed step"
+                className="inline-flex items-center gap-1 rounded-md bg-sky-500/25 border border-sky-400/40 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-sky-100 hover:bg-sky-500/35 disabled:opacity-50"
+              >
+                <Play size={11} />
+                QA Rerun
+              </button>
             )}
             <button
               type="button"
@@ -262,7 +280,7 @@ export function QaLiveMonitorOverlay({
           {/* In-depth diagnosis drawer */}
           {showDiagnosis && issue && (
             <aside className="w-full lg:w-[22rem] shrink-0 border-t lg:border-t-0 lg:border-l border-white/10 bg-[#12151c] overflow-y-auto">
-              <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-2">
+                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-2">
                 <div>
                   <p className="text-[10px] uppercase tracking-widest text-red-300/80">
                     {issue.task.status === 'fail' ? 'In-depth error check' : 'Warning review'}
@@ -270,14 +288,26 @@ export function QaLiveMonitorOverlay({
                   <h4 className="text-sm font-semibold mt-0.5">{issue.task.label}</h4>
                   <p className="text-[11px] text-white/50 mt-0.5">{issue.guide.area}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowDiagnosis(false)}
-                  className="p-1 rounded text-white/40 hover:text-white"
-                  aria-label="Hide diagnosis"
-                >
-                  <X size={12} />
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    disabled={fixing || running}
+                    onClick={() => onRerunFromFailure(issue.task)}
+                    title="Continue Automated QA from this step"
+                    className="inline-flex items-center gap-1 rounded-md bg-sky-500/25 border border-sky-400/40 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-sky-100 hover:bg-sky-500/35 disabled:opacity-50"
+                  >
+                    <Play size={11} />
+                    QA Rerun
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDiagnosis(false)}
+                    className="p-1 rounded text-white/40 hover:text-white"
+                    aria-label="Hide diagnosis"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
               </div>
 
               <div className="px-4 py-3 space-y-4 text-xs">
@@ -330,14 +360,25 @@ export function QaLiveMonitorOverlay({
                   </ul>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => onOpenFullIssue(issue.task)}
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-sky-500/20 border border-sky-400/30 px-3 py-2 text-sky-100 hover:bg-sky-500/30"
-                >
-                  Open full fix panel
-                  <ChevronRight size={12} />
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={fixing || running}
+                    onClick={() => onRerunFromFailure(issue.task)}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-sky-500 text-[#0b0d12] px-3 py-2 text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Play size={12} />
+                    QA Rerun from this step
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenFullIssue(issue.task)}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-white/10 border border-white/15 px-3 py-2 text-white/90 hover:bg-white/15"
+                  >
+                    Open full fix panel
+                    <ChevronRight size={12} />
+                  </button>
+                </div>
               </div>
             </aside>
           )}

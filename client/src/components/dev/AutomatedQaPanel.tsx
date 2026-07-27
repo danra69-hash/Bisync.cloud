@@ -95,8 +95,8 @@ function StepDetailPanel({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[120] bg-black/40" onClick={onClose} />
-      <div className="fixed top-0 right-0 z-[121] h-full w-full max-w-lg bg-card border-l border-border shadow-2xl flex flex-col">
+      <div className="fixed inset-0 z-[140] bg-black/40" onClick={onClose} />
+      <div className="fixed top-0 right-0 z-[141] h-full w-full max-w-lg bg-card border-l border-border shadow-2xl flex flex-col">
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-sans">
@@ -105,9 +105,23 @@ function StepDetailPanel({
             <h3 className="text-sm font-semibold mt-0.5">{task.label}</h3>
             <p className="text-[11px] text-muted-foreground mt-1">{guide.area}</p>
           </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted" aria-label="Close">
-            <X size={14} className="text-muted-foreground" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {isProblem && (
+              <button
+                type="button"
+                disabled={fixing}
+                onClick={() => onFix(`retry:${task.id}`)}
+                title="Continue Automated QA from this failed step using the current run context"
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-2.5 py-1.5 text-[11px] font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                <Play size={12} />
+                QA Rerun
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted" aria-label="Close">
+              <X size={14} className="text-muted-foreground" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
@@ -497,6 +511,11 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         setFixMessage('QA operational data deleted. QA History kept.');
         return;
       }
+      if (actionId.startsWith('retry:')) {
+        setIssue(null);
+        setMonitorOpen(true);
+        setRunning(true);
+      }
       const started = await devConsoleApi.startQaRun({
         triggeredBy: `${triggeredBy} (fix)`,
         status: 'running',
@@ -520,6 +539,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
       setFixMessage(err instanceof Error ? err.message : 'Fix failed');
     } finally {
       setFixing(false);
+      if (actionId.startsWith('retry:')) setRunning(false);
     }
   }
 
@@ -748,8 +768,16 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         runSummary={runSummary}
         runStatus={runStatus}
         context={runContext}
+        fixing={fixing}
         onClose={() => setMonitorOpen(false)}
-        onOpenFullIssue={task => openStep(task)}
+        onOpenFullIssue={task => {
+          // Close monitor so the fix panel (previously buried under z-130) is usable.
+          setMonitorOpen(false);
+          openStep(task);
+        }}
+        onRerunFromFailure={task => {
+          void handleFix(`retry:${task.id}`);
+        }}
       />
     </section>
   );
