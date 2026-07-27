@@ -235,6 +235,7 @@ export const RMS_APPROVE_ORDER_TASK = 'approveOrder';
 export const RMS_RECEIVE_ORDER_TASK = 'receiveOrder';
 export const RMS_INVENTORY_POST_TASK = 'inventoryPost';
 export const RMS_INVENTORY_CONFIRM_TASK = 'inventoryConfirmation';
+export const RMS_INVENTORY_ADJUSTMENT_TASK = 'inventoryAdjustment';
 
 export function canReceivePurchaseOrder(access: UserAccess): boolean {
   return hasRmsTask(access, RMS_RECEIVE_ORDER_TASK);
@@ -246,6 +247,11 @@ export function canSaveInventoryCount(access: UserAccess): boolean {
 
 export function canConfirmInventoryCount(access: UserAccess): boolean {
   return hasRmsTask(access, RMS_INVENTORY_CONFIRM_TASK);
+}
+
+/** Manual stock-card adjustments (strict RMS task). Inventory count confirm still posts via its own path. */
+export function canAdjustInventory(access: UserAccess): boolean {
+  return hasRmsTask(access, RMS_INVENTORY_ADJUSTMENT_TASK);
 }
 
 export function hasRmsTask(access: UserAccess, taskId: string): boolean {

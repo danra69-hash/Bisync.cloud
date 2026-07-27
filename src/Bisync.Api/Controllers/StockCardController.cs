@@ -1,11 +1,17 @@
+using Bisync.Api.Data;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/stock-cards")]
-public class StockCardController(StockCardService stockCardService) : ControllerBase
+public class StockCardController(
+    StockCardService stockCardService,
+    BisyncDbContext db,
+    ITenantContext tenant) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List(
@@ -169,6 +175,18 @@ public class StockCardController(StockCardService stockCardService) : Controller
     {
         if (body is null)
             return BadRequest(new { message = "Request body is required." });
+
+        if (tenant.UserId is not int userId || userId <= 0)
+            return Unauthorized(new { message = "Sign in required to post inventory adjustments." });
+
+        var user = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (!UserAccessEvaluator.CanAdjustInventory(user))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                message = "Inventory Adjustment permission is required for manual stock-card adjustments.",
+            });
+        }
 
         var locationIdList = ParseLocationIds(body.LocationIds);
         if (locationIdList.Count == 0)

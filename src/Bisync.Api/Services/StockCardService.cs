@@ -285,8 +285,18 @@ public class StockCardService(
         if (locationIds.Count == 0 || string.IsNullOrWhiteSpace(locationExternalId))
             return null;
 
-        var asOfEnd = EndOfUtcDay(asOfDate);
-        var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
+        Company? company = null;
+        if (companyId is int cid && cid > 0)
+        {
+            company = await db.Companies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+        }
+
+        var localDate = DateOnly.FromDateTime(asOfDate);
+        var asOfEnd = OrgClock.EndOfLocalDayUtc(localDate, company);
+        var archiveCutoff = OrgClock.StartOfLocalDayUtc(
+            OrgClock.TodayLocal(company).AddYears(-HistoryRetentionYears),
+            company);
         if (asOfEnd < archiveCutoff)
             return null;
 
@@ -301,7 +311,7 @@ public class StockCardService(
                 return null;
 
             var displayUom = ResolveComponentUom(ingredient, mode);
-            var period = BuildOpenEndedPeriod(asOfEnd);
+            var period = BuildOpenEndedPeriod(asOfEnd, company);
             var events = await BuildComponentFifoEventsAsync(
                 ingredient,
                 displayUom,
@@ -334,14 +344,14 @@ public class StockCardService(
         if (product is null)
             return null;
 
-        if (companyId is int cid && product.CompanyId is not null && product.CompanyId != cid)
+        if (companyId is int productCompanyFilter && product.CompanyId is not null && product.CompanyId != productCompanyFilter)
             return null;
 
         if (!MatchesProductLocations(product, locationIds))
             return null;
 
         var productUom = ResolveProductUom(product);
-        var productPeriod = BuildOpenEndedPeriod(asOfEnd);
+        var productPeriod = BuildOpenEndedPeriod(asOfEnd, company);
         var productEvents = await BuildProductFifoEventsAsync(
             product,
             [locationExternalId],
@@ -401,11 +411,21 @@ public class StockCardService(
             return StockCardAdjustmentResult.Fail("Direction must be in or out.");
 
         var signedQty = isInbound ? quantity : -quantity;
-        var asOfEnd = EndOfUtcDay(adjustmentDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
-        var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
+        Company? company = null;
+        if (companyId is int cid && cid > 0)
+        {
+            company = await db.Companies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+        }
+
+        var asOfEnd = OrgClock.EndOfLocalDayUtc(adjustmentDate, company);
+        var localNow = OrgClock.NowLocal(company);
+        var archiveCutoff = OrgClock.StartOfLocalDayUtc(
+            DateOnly.FromDateTime(localNow).AddYears(-HistoryRetentionYears),
+            company);
         if (asOfEnd < archiveCutoff)
             return StockCardAdjustmentResult.Fail("Adjustment date is outside the retained history window.");
-        if (asOfEnd > DateTime.UtcNow)
+        if (adjustmentDate > DateOnly.FromDateTime(localNow))
             return StockCardAdjustmentResult.Fail("Adjustment date cannot be in the future.");
 
         var normalizedType = itemType.Trim().ToLowerInvariant();
@@ -588,16 +608,21 @@ public class StockCardService(
         stockRow.UpdatedAt = DateTime.UtcNow;
     }
 
-    static StockCardPeriod BuildOpenEndedPeriod(DateTime asOfEnd)
+    static StockCardPeriod BuildOpenEndedPeriod(DateTime asOfEnd, Company? company = null)
     {
-        var monthStart = new DateTime(asOfEnd.Year, asOfEnd.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
+        var localAsOf = OrgClock.ToLocal(asOfEnd, company);
+        var monthStartLocal = new DateOnly(localAsOf.Year, localAsOf.Month, 1);
+        var monthStart = OrgClock.StartOfLocalDayUtc(monthStartLocal, company);
+        var archiveCutoff = OrgClock.StartOfLocalDayUtc(
+            OrgClock.TodayLocal(company).AddYears(-HistoryRetentionYears),
+            company);
+        var localNow = OrgClock.NowLocal(company);
         return new StockCardPeriod(
-            $"{monthStart:yyyy-MM}",
+            $"{monthStartLocal:yyyy-MM}",
             monthStart,
             asOfEnd,
             archiveCutoff,
-            monthStart.Year == DateTime.UtcNow.Year && monthStart.Month == DateTime.UtcNow.Month);
+            monthStartLocal.Year == localNow.Year && monthStartLocal.Month == localNow.Month);
     }
 
     static DateTime EndOfUtcDay(DateTime date)
@@ -1559,37 +1584,42 @@ public class StockCardService(
 
     const int HistoryRetentionYears = 2;
 
-    static StockCardPeriod ResolvePeriod(string? period)
+    static StockCardPeriod ResolvePeriod(string? period, Company? company = null)
     {
-        var now = DateTime.UtcNow;
-        var archiveCutoff = now.Date.AddYears(-HistoryRetentionYears);
-        var earliestMonth = new DateTime(archiveCutoff.Year, archiveCutoff.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var nowLocal = OrgClock.NowLocal(company);
+        var archiveCutoffLocal = DateOnly.FromDateTime(nowLocal).AddYears(-HistoryRetentionYears);
+        var archiveCutoff = OrgClock.StartOfLocalDayUtc(archiveCutoffLocal, company);
+        var earliestMonth = new DateTime(archiveCutoffLocal.Year, archiveCutoffLocal.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
         int year;
         int month;
         if (string.IsNullOrWhiteSpace(period)
             || string.Equals(period, "month", StringComparison.OrdinalIgnoreCase))
         {
-            year = now.Year;
-            month = now.Month;
+            year = nowLocal.Year;
+            month = nowLocal.Month;
         }
         else if (!TryParseMonthKey(period.Trim(), out year, out month))
         {
-            year = now.Year;
-            month = now.Month;
+            year = nowLocal.Year;
+            month = nowLocal.Month;
         }
 
-        var monthStart = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var monthStartLocal = new DateOnly(year, month, 1);
+        var monthStart = OrgClock.StartOfLocalDayUtc(monthStartLocal, company);
         if (monthStart < earliestMonth)
-            monthStart = earliestMonth;
+        {
+            monthStartLocal = new DateOnly(archiveCutoffLocal.Year, archiveCutoffLocal.Month, 1);
+            monthStart = OrgClock.StartOfLocalDayUtc(monthStartLocal, company);
+        }
 
-        var isCurrentMonth = monthStart.Year == now.Year && monthStart.Month == now.Month;
+        var isCurrentMonth = monthStartLocal.Year == nowLocal.Year && monthStartLocal.Month == nowLocal.Month;
         var periodEnd = isCurrentMonth
-            ? now
-            : monthStart.AddMonths(1).AddSeconds(-1);
+            ? DateTime.UtcNow
+            : OrgClock.EndOfLocalDayUtc(monthStartLocal.AddMonths(1).AddDays(-1), company);
 
         return new StockCardPeriod(
-            $"{monthStart:yyyy-MM}",
+            $"{monthStartLocal:yyyy-MM}",
             monthStart,
             periodEnd,
             archiveCutoff,
@@ -1606,7 +1636,14 @@ public class StockCardService(
         int? companyId,
         CancellationToken cancellationToken)
     {
-        var basePeriod = ResolvePeriod(period);
+        Company? company = null;
+        if (companyId is int cid && cid > 0)
+        {
+            company = await db.Companies.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+        }
+
+        var basePeriod = ResolvePeriod(period, company);
         var carryForward = await FindCarryForwardEffectiveDateAsync(
             basePeriod.MonthKey,
             companyId,
@@ -1616,32 +1653,35 @@ public class StockCardService(
             return basePeriod;
 
         var cf = carryForward.Value;
-        var calendarStart = basePeriod.MonthStart;
-        var nextCalendarStart = calendarStart.AddMonths(1);
+        if (!TryParseMonthKey(basePeriod.MonthKey, out var viewYear, out var viewMonth))
+            return basePeriod with { CarryForwardDate = cf.EffectiveDate };
+
+        var monthStartLocal = new DateOnly(viewYear, viewMonth, 1);
+        var nextMonthStartLocal = monthStartLocal.AddMonths(1);
 
         // Viewing the inventory's own PeriodMonth: extend PeriodEnd through EffectiveDate.
         if (string.Equals(cf.PeriodMonth, basePeriod.MonthKey, StringComparison.OrdinalIgnoreCase))
         {
-            var extendedEnd = EndOfUtcDay(cf.EffectiveDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            var extendedEnd = OrgClock.EndOfLocalDayUtc(cf.EffectiveDate, company);
             if (extendedEnd <= basePeriod.PeriodEnd)
                 return basePeriod with { CarryForwardDate = cf.EffectiveDate };
 
             var now = DateTime.UtcNow;
             var cappedEnd = extendedEnd > now ? now : extendedEnd;
+            var localNow = OrgClock.NowLocal(company);
             return basePeriod with
             {
                 PeriodEnd = cappedEnd,
                 CarryForwardDate = cf.EffectiveDate,
-                IsCurrentMonth = cappedEnd >= now.Date,
+                IsCurrentMonth = DateOnly.FromDateTime(localNow) <= cf.EffectiveDate
+                    || (localNow.Year == viewYear && localNow.Month == viewMonth),
             };
         }
 
         // Viewing the month after a late C/F: start day after EffectiveDate.
-        if (cf.EffectiveDate >= DateOnly.FromDateTime(calendarStart)
-            && cf.EffectiveDate < DateOnly.FromDateTime(nextCalendarStart))
+        if (cf.EffectiveDate >= monthStartLocal && cf.EffectiveDate < nextMonthStartLocal)
         {
-            var shiftedStart = cf.EffectiveDate.AddDays(1)
-                .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            var shiftedStart = OrgClock.StartOfLocalDayUtc(cf.EffectiveDate.AddDays(1), company);
             if (shiftedStart <= basePeriod.PeriodEnd)
             {
                 return basePeriod with

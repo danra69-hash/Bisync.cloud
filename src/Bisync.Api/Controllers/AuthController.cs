@@ -419,6 +419,7 @@ public class AuthController(
 
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Companies");
         await CompanyCodeService.EnsureCodeAsync(db, company);
+        OrgClock.AssignCompanyTimeZone(company);
         db.Companies.Add(company);
         await db.SaveChangesAsync();
 
@@ -496,7 +497,7 @@ public class AuthController(
             Address = string.Join(", ", new[] { dto.AddressLine1, dto.City, dto.StateProvince, dto.Postcode }
                 .Where(s => !string.IsNullOrWhiteSpace(s))),
         };
-        OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
+        OrgClock.AssignLocationTimeZone(loc, company);
 
         db.Locations.Add(loc);
         await db.SaveChangesAsync();

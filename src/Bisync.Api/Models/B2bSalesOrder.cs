@@ -18,6 +18,12 @@ public class B2bSalesOrder
     public string LockExpiryDate { get; set; } = string.Empty;
     public bool DeliveryOrderIssued { get; set; }
     public bool InvoiceIssued { get; set; }
+    /// <summary>
+    /// When true, Issue reserved stock via OnOrderQty only (InStock unchanged).
+    /// Permanent depletion happens on DO + customer confirm (fulfill).
+    /// Legacy orders (false) already reduced InStock at Issue.
+    /// </summary>
+    public bool ReservedOnly { get; set; }
     public string FulfilledDate { get; set; } = string.Empty;
     /// <summary>Public share token for customer link / WhatsApp.</summary>
     public string ShareToken { get; set; } = string.Empty;

@@ -944,6 +944,7 @@ export interface B2bSalesOrder {
   fulfilledDate?: string | null;
   deliveryOrderIssued?: boolean;
   invoiceIssued?: boolean;
+  reservedOnly?: boolean;
   shareToken?: string | null;
   customerAcceptedAt?: string | null;
   customerAcceptedBy?: string | null;

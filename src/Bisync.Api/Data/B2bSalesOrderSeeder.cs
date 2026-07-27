@@ -317,6 +317,12 @@ public static class B2bSalesOrderSeeder
             cancellationToken);
 
         await salesOrderService.IssueAsync(order.Id, cancellationToken);
+        order = await db.B2bSalesOrders.Include(o => o.Lines).FirstAsync(o => o.Id == order.Id, cancellationToken);
+        order.CustomerAcceptedAt = DateTime.UtcNow;
+        order.CustomerAcceptedBy = "Seed Customer";
+        order.Status = "confirmed";
+        order.DeliveryOrderIssued = true;
+        await db.SaveChangesAsync(cancellationToken);
         await salesOrderService.FulfillAsync(order.Id, deliveryOrderIssued: true, invoiceIssued: true, cancellationToken);
     }
 

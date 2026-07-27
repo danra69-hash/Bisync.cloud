@@ -151,12 +151,19 @@ public class ProductSaleInventoryService(
             stockRow.InStock = Math.Max(0, stockRow.InStock - fromProducedStock);
             stockRow.UpdatedAt = DateTime.UtcNow;
 
+            Company? company = null;
+            if (subProduct.CompanyId is int cid)
+            {
+                company = await db.Companies.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.Id == cid, cancellationToken);
+            }
+
             db.ProductProductionLogs.Add(new ProductProductionLog
             {
                 ProductId = subProduct.Id,
                 EntryType = referenceType,
                 Quantity = fromProducedStock,
-                ProductionDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
+                ProductionDate = OrgClock.TodayLocal(company).ToString("yyyy-MM-dd"),
                 LocationIdsJson = JsonSerializer.Serialize(new[] { locationId }),
                 CompanyId = subProduct.CompanyId,
                 CreatedAt = DateTime.UtcNow,
