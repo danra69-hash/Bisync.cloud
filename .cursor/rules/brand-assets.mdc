@@ -1,0 +1,27 @@
+---
+description: Permanent brand favicon and scaffolding asset guards
+alwaysApply: true
+---
+
+# Brand assets (permanent)
+
+Old Vite/React scaffolding icons and stale SPA publishes must never ship.
+
+## Rules
+
+1. Browser tab icon is only `client/public/favicon.svg` — Bisync interlocking chain mark in Hermès orange `#F37021`.
+2. After changing `favicon.svg`, update `client/index.html` cache-bust to `?v=<sha1-10 of file>` (verifier enforces this).
+3. Never add or restore: `client/src/assets/vite.svg`, `react.svg`, `hero.png`, or `client/public/vite.svg`.
+4. Never commit `src/Bisync.Api/wwwroot/` — Docker wipes and rebuilds it from `client/dist`.
+5. Banned signatures in client SVG/HTML/TS: `#863bff`, Vite logo titles, React atom template fills.
+
+## Gates
+
+- `node scripts/verify-brand-assets.mjs` (CI + pre-deploy)
+- After client build: `node scripts/verify-brand-assets.mjs --dist client/dist`
+- Dockerfile fails the image build if favicon/index checks fail
+- Cloud Run deploy verify curls live favicon and rejects legacy marks
+
+## In-app mark
+
+Keep UI mark in sync via `client/src/components/layout/BisyncMark.tsx` (same paths / `#F37021`).

@@ -7,7 +7,15 @@ ENV VITE_DEV_CONSOLE_PATH=$VITE_DEV_CONSOLE_PATH
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
 COPY client/ ./
-RUN npm run build
+RUN npm run build \
+  && test -f dist/favicon.svg \
+  && grep -q '#F37021' dist/favicon.svg \
+  && ! grep -qiE '863bff|vite-logo' dist/favicon.svg \
+  && grep -q 'favicon.svg?v=' dist/index.html \
+  && test ! -e src/assets/vite.svg \
+  && test ! -e src/assets/react.svg \
+  && test ! -e dist/vite.svg \
+  && test ! -e dist/react.svg
 
 # ── Stage 2: Build .NET API ───────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api-build
@@ -15,8 +23,16 @@ WORKDIR /src
 COPY src/Bisync.Api/Bisync.Api.csproj src/Bisync.Api/
 RUN dotnet restore src/Bisync.Api/Bisync.Api.csproj
 COPY src/Bisync.Api/ src/Bisync.Api/
+# Wipe any accidental local/committed wwwroot so only this build's SPA ships.
+RUN rm -rf src/Bisync.Api/wwwroot
 COPY --from=client-build /src/client/dist/ src/Bisync.Api/wwwroot/
-RUN dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
+RUN test -f src/Bisync.Api/wwwroot/favicon.svg \
+  && grep -q '#F37021' src/Bisync.Api/wwwroot/favicon.svg \
+  && ! grep -qiE '863bff|vite-logo' src/Bisync.Api/wwwroot/favicon.svg \
+  && grep -q 'favicon.svg?v=' src/Bisync.Api/wwwroot/index.html \
+  && test ! -e src/Bisync.Api/wwwroot/vite.svg \
+  && test ! -e src/Bisync.Api/wwwroot/react.svg \
+  && dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
 
 # ── Stage 3: Runtime (Cloud Run) ───────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
