@@ -1339,6 +1339,7 @@ const BASE_TASKS: TaskDef[] = [
         locationExternalIds: [loc],
         batchQty: 8,
         productionDate: daysAgoIso(5),
+        overrideStock: true,
       });
       await api.produceProductBatches(productId, {
         locationExternalIds: [loc],
@@ -1350,6 +1351,7 @@ const BASE_TASKS: TaskDef[] = [
         locationExternalIds: [loc],
         batchQty: 6,
         productionDate: daysAgoIso(2),
+        overrideStock: true,
       });
       await api.produceProductBatches(productId, {
         locationExternalIds: [loc],

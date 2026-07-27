@@ -1,8 +1,10 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Bisync.Api.Controllers;
 
@@ -22,7 +24,8 @@ public class DevConsoleController(
     LocationSubscriptionService locationSubscriptions,
     PlatformLaunchService platformLaunch,
     SalesModuleCalendarSyncService salesModuleCalendarSync,
-    DevConsoleAuthService devConsoleAuth) : ControllerBase
+    DevConsoleAuthService devConsoleAuth,
+    ITenantConnectionResolver tenantConnections) : ControllerBase
 {
     bool IsEnabled()
     {
@@ -681,6 +684,30 @@ public class DevConsoleController(
         counts["companies"] = companies.Count;
         db.Companies.RemoveRange(companies);
 
+        // Drop provisioned tenant DBs + registry so the next QA company id reuse
+        // cannot resurrect polluted operational data ("already provisioned").
+        var tenantRegs = await db.TenantConnections
+            .Where(t => companyIds.Contains(t.CompanyId))
+            .ToListAsync(ct);
+        var droppedDbs = new List<string>();
+        foreach (var reg in tenantRegs)
+        {
+            var opName = string.IsNullOrWhiteSpace(reg.DatabaseName)
+                ? $"bisync_c_{reg.CompanyId}"
+                : reg.DatabaseName.Trim();
+            var archName = string.IsNullOrWhiteSpace(reg.ArchiveDatabaseName)
+                ? $"{opName}_archive"
+                : reg.ArchiveDatabaseName.Trim();
+            if (await TryDropDatabaseAsync(tenantConnections.DefaultOperationalConnection, opName, ct))
+                droppedDbs.Add(opName);
+            if (await TryDropDatabaseAsync(tenantConnections.DefaultOperationalConnection, archName, ct))
+                droppedDbs.Add(archName);
+            tenantConnections.Invalidate(reg.CompanyId);
+        }
+        counts["tenantConnections"] = tenantRegs.Count;
+        counts["tenantDatabasesDropped"] = droppedDbs.Count;
+        db.TenantConnections.RemoveRange(tenantRegs);
+
         await db.SaveChangesAsync(ct);
 
         // Deleting rows does not advance identity sequences; keep them ahead of MAX(Id).
@@ -697,7 +724,45 @@ public class DevConsoleController(
             companyNames,
             deletedCounts = counts,
             historyRowsKept,
+            tenantDatabasesDropped = droppedDbs,
             note = "Operational QA records deleted. DevQaRuns history retained.",
         });
+    }
+
+    static async Task<bool> TryDropDatabaseAsync(string templateConnection, string databaseName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(databaseName)
+            || !System.Text.RegularExpressions.Regex.IsMatch(databaseName, @"^[A-Za-z_][A-Za-z0-9_]*$"))
+            return false;
+        if (databaseName is "postgres" or "template0" or "template1")
+            return false;
+
+        try
+        {
+            var adminCs = TenantConnectionResolver.ReplaceDatabase(templateConnection, "postgres");
+            await using var conn = new NpgsqlConnection(adminCs);
+            await conn.OpenAsync(ct);
+
+            await using (var terminate = conn.CreateCommand())
+            {
+                terminate.CommandText =
+                    """
+                    SELECT pg_terminate_backend(pid)
+                    FROM pg_stat_activity
+                    WHERE datname = @name AND pid <> pg_backend_pid()
+                    """;
+                terminate.Parameters.AddWithValue("name", databaseName);
+                await terminate.ExecuteNonQueryAsync(ct);
+            }
+
+            await using var drop = conn.CreateCommand();
+            drop.CommandText = $"DROP DATABASE IF EXISTS \"{databaseName}\"";
+            await drop.ExecuteNonQueryAsync(ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
