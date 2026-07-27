@@ -13,6 +13,9 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      # Force a full rebuild so SPA/API layers cannot stick on a stale cache.
+      - '--no-cache'
+      - '--pull'
       - '--build-arg'
       - 'VITE_DEV_CONSOLE_PATH=${_VITE_DEV_CONSOLE_PATH}'
       - '-t'
