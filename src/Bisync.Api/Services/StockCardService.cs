@@ -405,7 +405,9 @@ public class StockCardService(
         var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
         if (asOfEnd < archiveCutoff)
             return StockCardAdjustmentResult.Fail("Adjustment date is outside the retained history window.");
-        if (asOfEnd > DateTime.UtcNow)
+        // Compare calendar dates — end-of-day is always > UtcNow until midnight, which wrongly
+        // blocked same-day adjustments for the entire day.
+        if (adjustmentDate > DateOnly.FromDateTime(DateTime.UtcNow))
             return StockCardAdjustmentResult.Fail("Adjustment date cannot be in the future.");
 
         var normalizedType = itemType.Trim().ToLowerInvariant();
