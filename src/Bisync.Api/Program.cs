@@ -205,8 +205,11 @@ else
         OnPrepareResponse = ctx =>
         {
             var path = ctx.File.Name;
-            if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+            if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("favicon.svg", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("favicon.ico", StringComparison.OrdinalIgnoreCase))
             {
+                // Shell + favicon must not stick after a mark change or stale image rollback.
                 ctx.Context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
                 ctx.Context.Response.Headers.Pragma = "no-cache";
                 ctx.Context.Response.Headers.Expires = "0";
