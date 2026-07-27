@@ -5,8 +5,25 @@ namespace Bisync.Api.Services;
 public static class SuperAdminAccess
 {
     public const string SuperAdminEmail = "dra@cubevalue.com";
-    /// <summary>Default super-admin password for new installs. Matches platform demo password.</summary>
-    public const string SuperAdminPassword = "Pass@123";
+
+    /// <summary>
+    /// Bootstrap password for the seeded DRA Super Admin / Dev Console root.
+    /// Prefer <c>BISYNC_SUPER_ADMIN_PASSWORD</c> in production; falls back to the
+    /// local/demo default used by Automated QA and fresh installs.
+    /// </summary>
+    public static string SuperAdminPassword
+    {
+        get
+        {
+            var fromEnv = Environment.GetEnvironmentVariable("BISYNC_SUPER_ADMIN_PASSWORD");
+            if (!string.IsNullOrWhiteSpace(fromEnv))
+                return fromEnv.Trim();
+            return DefaultBootstrapPassword;
+        }
+    }
+
+    /// <summary>Local/dev bootstrap only — override via BISYNC_SUPER_ADMIN_PASSWORD in production.</summary>
+    internal const string DefaultBootstrapPassword = "Pass@123";
 
     static readonly string[] Modules = ["RMS", "POS", "HRM", "Accounting"];
 

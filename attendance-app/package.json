@@ -35,5 +35,9 @@
     "workbox-precaching": "^7.4.1",
     "workbox-routing": "^7.4.1",
     "workbox-strategies": "^7.4.1"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.8",
+    "fast-uri": "^3.1.4"
   }
 }

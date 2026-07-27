@@ -4,9 +4,10 @@ services:
     container_name: bisync-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: bisync
-      POSTGRES_PASSWORD: bisync
-      POSTGRES_DB: bisync
+      POSTGRES_USER: ${POSTGRES_USER:-bisync}
+      # Override locally via POSTGRES_PASSWORD env / .env — do not reuse in production.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bisync}
+      POSTGRES_DB: ${POSTGRES_DB:-bisync}
     ports:
       - "5432:5432"
     volumes:
