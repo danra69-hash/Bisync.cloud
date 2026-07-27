@@ -272,8 +272,19 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
+    // Never serve the SPA shell for API routes — that returns 200 HTML and breaks
+    // Dev Console / fetchJson clients when an endpoint is missing or not yet deployed.
     app.MapFallback(async context =>
     {
+        var path = context.Request.Path.Value ?? string.Empty;
+        if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsJsonAsync(new { message = "API endpoint not found." });
+            return;
+        }
+
         context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
         context.Response.Headers.Pragma = "no-cache";
         context.Response.Headers.Expires = "0";

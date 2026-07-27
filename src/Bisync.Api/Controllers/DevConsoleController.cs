@@ -157,6 +157,7 @@ public class DevConsoleController(
             enabled = true,
             usageSource = "tenant-fanout-rollup",
             environment = env.EnvironmentName,
+            gitSha = config["BISYNC_GIT_SHA"] ?? config["GIT_SHA"] ?? "",
         });
     }
 
