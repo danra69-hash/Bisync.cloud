@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Upload, Users, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -122,6 +122,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
+  const [importingClientUpdates, setImportingClientUpdates] = useState(false);
+  const clientUpdateFileRef = useRef<HTMLInputElement>(null);
   const [followupRow, setFollowupRow] = useState<SalesModuleClientUpdate | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -457,6 +459,29 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     clientUpdateMonthValue,
     clientUpdatePeriods,
   ]);
+
+  async function handleImportClientUpdates(file: File) {
+    setImportingClientUpdates(true);
+    setClientUpdateMessage(null);
+    setError(null);
+    try {
+      const result = await api.importSalesModuleClientUpdates(file);
+      setClientUpdateMessage(
+        (result.messages?.length ? result.messages.join('\n') : null)
+          || `Imported ${result.imported} Weekly Update row(s) from ${result.sheet}.`,
+      );
+      await Promise.all([
+        loadClientUpdatePeriods(),
+        loadClientUpdates(),
+        loadSalesCompanies(selectedTeamMemberId),
+      ]);
+    } catch (err) {
+      setClientUpdateMessage(err instanceof Error ? err.message : 'Client file import failed.');
+    } finally {
+      setImportingClientUpdates(false);
+      if (clientUpdateFileRef.current) clientUpdateFileRef.current.value = '';
+    }
+  }
 
   async function handleCreateCompany() {
     if (!selectedTeamMemberId || !companyDraft.trim()) return;
@@ -967,24 +992,48 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           }}
         />
         {tab === 'overview' ? null : tab === 'client-update' ? (
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">
-              Client Update ·{' '}
-              {clientUpdateView === 'week'
-                ? (clientUpdatePeriods?.weeks.find(w => w.value === clientUpdateWeekStart)?.label
-                  ?? 'select week')
-                : (clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue)?.label
-                  ?? 'select month')}
-              {' · changes only · '}
-              {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
-              {selectedTeamMember
-                ? ` · hunter ${selectedTeamMember.name}`
-                : ' · all hunters'}
-              {' · '}use Followup on each row to send appointments or change status
-            </p>
-            {clientUpdateMessage ? (
-              <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{clientUpdateMessage}</p>
-            ) : null}
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="space-y-1 min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground">
+                Client Update ·{' '}
+                {clientUpdateView === 'week'
+                  ? (clientUpdatePeriods?.weeks.find(w => w.value === clientUpdateWeekStart)?.label
+                    ?? 'select week')
+                  : (clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue)?.label
+                    ?? 'select month')}
+                {' · changes only · '}
+                {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
+                {selectedTeamMember
+                  ? ` · hunter ${selectedTeamMember.name}`
+                  : ' · all hunters'}
+                {' · '}use Followup on each row to send appointments or change status
+              </p>
+              {clientUpdateMessage ? (
+                <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{clientUpdateMessage}</p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <input
+                ref={clientUpdateFileRef}
+                type="file"
+                accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportClientUpdates(file);
+                }}
+              />
+              <button
+                type="button"
+                disabled={importingClientUpdates}
+                onClick={() => clientUpdateFileRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+                title="Import Instant Sales Update.xlsx — Client DB (SALES tags) + Weekly Update"
+              >
+                <Upload size={12} />
+                {importingClientUpdates ? 'Importing…' : 'Import client file'}
+              </button>
+            </div>
           </div>
         ) : tab === 'sales-diary' ? (
           <p className="text-xs text-muted-foreground">

@@ -768,6 +768,18 @@ export interface SalesModuleClientUpdateImportResult {
   fileName: string;
   importedAt?: string;
   messages: string[];
+  clientDb?: {
+    rows?: number;
+    companiesCreated?: number;
+    tagsCreated?: number;
+    unmatchedSales?: number;
+    unmatchedSalesTokens?: string[];
+    hunters?: { id: number; name: string; rows: number }[];
+  };
+  weeklyUpdate?: {
+    imported?: number;
+    sheet?: string;
+  };
 }
 
 export interface SalesModuleDiaryContact {
