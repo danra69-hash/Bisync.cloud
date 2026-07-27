@@ -1,4 +1,5 @@
 using Bisync.Api.Data;
+using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Services;
@@ -24,23 +25,27 @@ public static class ComponentIdGenerator
 
         var prefix = code + "-";
         var query = db.Ingredients.AsQueryable();
-        if (companyId is int cid)
-            query = query.Where(i => i.CompanyId == cid);
-        if (excludeId is int eid)
-            query = query.Where(i => i.Id != eid);
+        if (companyId is int filterCompanyId)
+            query = query.Where(i => i.CompanyId == filterCompanyId);
+        if (excludeId is int filterExcludeId)
+            query = query.Where(i => i.Id != filterExcludeId);
 
         var existing = await query
             .Where(i => i.ComponentId.StartsWith(prefix))
             .Select(i => i.ComponentId)
             .ToListAsync();
 
-        foreach (var tracked in db.ChangeTracker.Entries<Models.Ingredient>())
+        // Include unsaved tracked ingredients so batch seeders don't collide.
+        foreach (var tracked in db.ChangeTracker.Entries<Ingredient>())
         {
             if (excludeId is int excludeIngredientId && tracked.Entity.Id == excludeIngredientId) continue;
             if (companyId is int scopedCompanyId && tracked.Entity.CompanyId != scopedCompanyId) continue;
             var componentId = tracked.Entity.ComponentId;
-            if (string.IsNullOrWhiteSpace(componentId) || !componentId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(componentId)
+                || !componentId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
             if (!existing.Contains(componentId, StringComparer.OrdinalIgnoreCase))
                 existing.Add(componentId);
         }

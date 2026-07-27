@@ -2,6 +2,7 @@ using Bisync.Api.Data;
 using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -198,6 +199,17 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path.Value ?? "";
+        if (path.Equals("/Attendance/app", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/Attendance/app/", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Request.Path = "/Attendance/app/index.html";
+        }
+        await next();
+    });
+
     // Never cache the SPA shell — stale index.html keeps old JS without Dev Console routing.
     app.UseDefaultFiles();
     app.UseStaticFiles(new StaticFileOptions
@@ -222,6 +234,34 @@ else
             }
         },
     });
+
+    var attendanceAppRoot = Path.Combine(
+        app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"),
+        "Attendance",
+        "app");
+    if (Directory.Exists(attendanceAppRoot))
+    {
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(attendanceAppRoot),
+            RequestPath = "/Attendance/app",
+            OnPrepareResponse = ctx =>
+            {
+                var path = ctx.File.Name;
+                if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.Context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+                    ctx.Context.Response.Headers.Pragma = "no-cache";
+                    ctx.Context.Response.Headers.Expires = "0";
+                }
+                else if (path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+                }
+            },
+        });
+    }
 }
 
 app.UseHttpsRedirection();
@@ -277,11 +317,33 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
+    var webRoot = app.Environment.WebRootPath
+        ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+    var attendanceIndex = Path.Combine(webRoot, "Attendance", "app", "index.html");
+    var mainIndex = Path.Combine(webRoot, "index.html");
+
+    // SPA deep links under /Attendance/app (avoid MapFallbackToFile ambiguity with root).
+    if (File.Exists(attendanceIndex))
+    {
+        app.MapFallback("/Attendance/app/{*path}", async context =>
+        {
+            context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+            context.Response.ContentType = "text/html; charset=utf-8";
+            await context.Response.SendFileAsync(attendanceIndex);
+        });
+    }
+
     // Never serve the SPA shell for API routes — that returns 200 HTML and breaks
     // Dev Console / fetchJson clients when an endpoint is missing or not yet deployed.
     app.MapFallback(async context =>
     {
         var path = context.Request.Path.Value ?? string.Empty;
+        if (path.StartsWith("/Attendance/app", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
         if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase))
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
@@ -299,11 +361,17 @@ else
             return;
         }
 
+        if (!File.Exists(mainIndex))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
         context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
         context.Response.Headers.Pragma = "no-cache";
         context.Response.Headers.Expires = "0";
         context.Response.ContentType = "text/html; charset=utf-8";
-        await context.Response.SendFileAsync(Path.Combine(app.Environment.WebRootPath, "index.html"));
+        await context.Response.SendFileAsync(mainIndex);
     });
 }
 

@@ -1,4 +1,4 @@
-# ── Stage 1: Build React client ──────────────────────────────────────────────
+# ── Stage 1: Build main React client ─────────────────────────────────────────
 FROM node:22-alpine AS client-build
 WORKDIR /src/client
 # Bake Dev Console SPA path into the production bundle (must match Cloud Run URL).
@@ -20,6 +20,23 @@ RUN npm run build \
   && test ! -e dist/icons.svg \
   && test ! -e public/icons.svg
 
+# ── Stage 1b: Build Clock / Attendance SPA (/Attendance/app) ─────────────────
+FROM node:22-alpine AS attendance-build
+WORKDIR /src/attendance-app
+COPY attendance-app/package.json attendance-app/package-lock.json ./
+RUN npm ci
+COPY attendance-app/ ./
+# Write mode env for Vite (no secrets — path + clock flags only).
+RUN printf '%s\n' \
+  'VITE_BASE_PATH=/Attendance/app/' \
+  'VITE_CLOCK_MODE=true' \
+  'VITE_ATTENDANCE_MOCK=false' \
+  'VITE_USE_PROXY=false' \
+  'VITE_HR_SAME_ORIGIN=true' \
+  'VITE_DEV_BYPASS_AUTH=false' \
+  > .env.attendance
+RUN npm run build:attendance
+
 # ── Stage 2: Build .NET API ───────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api-build
 WORKDIR /src
@@ -29,6 +46,7 @@ COPY src/Bisync.Api/ src/Bisync.Api/
 # Wipe any accidental local/committed wwwroot so only this build's SPA ships.
 RUN rm -rf src/Bisync.Api/wwwroot
 COPY --from=client-build /src/client/dist/ src/Bisync.Api/wwwroot/
+COPY --from=attendance-build /src/attendance-app/dist/ src/Bisync.Api/wwwroot/Attendance/app/
 RUN test -f src/Bisync.Api/wwwroot/favicon.svg \
   && grep -q '#F37021' src/Bisync.Api/wwwroot/favicon.svg \
   && ! grep -qiE '863bff|aa3bff|vite-logo' src/Bisync.Api/wwwroot/favicon.svg \
@@ -36,6 +54,7 @@ RUN test -f src/Bisync.Api/wwwroot/favicon.svg \
   && test ! -e src/Bisync.Api/wwwroot/vite.svg \
   && test ! -e src/Bisync.Api/wwwroot/react.svg \
   && test ! -e src/Bisync.Api/wwwroot/icons.svg \
+  && test -f src/Bisync.Api/wwwroot/Attendance/app/index.html \
   && dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
 
 # ── Stage 3: Runtime (Cloud Run) ───────────────────────────────────────────────
