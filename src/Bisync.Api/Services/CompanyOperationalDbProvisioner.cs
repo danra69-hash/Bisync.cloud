@@ -157,30 +157,31 @@ public class CompanyOperationalDbProvisioner(
         // EnsureCreated may leave empty tables; SchemaPatcher may seed global catalogs — strip non-tenant rows.
         await ClearOperationalCatalogsAsync(tenantDb, ct);
 
-        await ClearOperationalCatalogsAsync(tenantDb, ct);
-
+        // Prefer EF entity inserts over hand-maintained column lists so newly added NOT NULL
+        // columns (Code, PreferredLanguage, TimeZoneId, …) cannot break tenant bootstrap.
         if (!await tenantDb.Companies.AnyAsync(c => c.Id == company.Id, ct))
         {
-            await using var conn = new NpgsqlConnection(connectionString);
-            await conn.OpenAsync(ct);
-            await InsertCompanyRawAsync(conn, company, ct);
+            tenantDb.Companies.Add(CloneCompanyForSeed(company));
+            await tenantDb.SaveChangesAsync(ct);
         }
 
         if (owner is not null && !await tenantDb.AppUsers.AnyAsync(u => u.Id == owner.Id, ct))
         {
-            await using var conn = new NpgsqlConnection(connectionString);
-            await conn.OpenAsync(ct);
-            await InsertAppUserRawAsync(conn, owner, ct);
+            tenantDb.AppUsers.Add(CloneAppUserForSeed(owner));
+            await tenantDb.SaveChangesAsync(ct);
         }
 
+        var seededLocations = false;
         foreach (var loc in locations)
         {
             if (await tenantDb.Locations.AnyAsync(l => l.Id == loc.Id, ct))
                 continue;
-            await using var conn = new NpgsqlConnection(connectionString);
-            await conn.OpenAsync(ct);
-            await InsertLocationRawAsync(conn, loc, company.CountryCode, ct);
+            tenantDb.Locations.Add(CloneLocationForSeed(loc, company.CountryCode));
+            seededLocations = true;
         }
+
+        if (seededLocations)
+            await tenantDb.SaveChangesAsync(ct);
 
         await SchemaPatcher.EnsureTenantRegistryAsync(tenantDb);
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(tenantDb, "Companies");
@@ -204,31 +205,8 @@ public class CompanyOperationalDbProvisioner(
         }
     }
 
-    static async Task InsertCompanyRawAsync(NpgsqlConnection conn, Company company, CancellationToken ct)
+    static string NormalizeCompanyCode(Company company)
     {
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO "Companies" (
-              "Id", "Name", "Code", "Brn", "GstTin", "CountryCode",
-              "AddressLine1", "AddressLine2", "City", "StateProvince", "Postcode",
-              "Phone", "Fax", "Email", "Active", "RegisteredAt",
-              "BusinessTypesJson", "VendorPolicyTagsJson", "ModulesJson",
-              "LogoFileName", "LogoContentType", "LogoBase64",
-              "SmtpProviderMode", "SmtpHost", "SmtpPort", "SmtpUseSsl",
-              "SmtpUsername", "SmtpPassword", "SmtpFromEmail", "SmtpFromName",
-              "GraphTenantId", "GraphClientId", "GraphClientSecret")
-            VALUES (
-              @id, @name, @code, @brn, @gst, @cc,
-              @a1, @a2, @city, @state, @post,
-              @phone, @fax, @email, @active, @registeredAt,
-              @bt, @vp, @mod,
-              @logoFile, @logoType, @logoB64,
-              @smtpMode, @smtpHost, @smtpPort, @smtpSsl,
-              @smtpUser, @smtpPass, @smtpFrom, @smtpFromName,
-              @graphTenant, @graphClient, @graphSecret)
-            ON CONFLICT ("Id") DO NOTHING
-            """;
-        // EnsureCreated makes Code NOT NULL with no SQL default; always supply a 4-letter code.
         var code = string.IsNullOrWhiteSpace(company.Code)
             ? ComponentIdentityRules.DeriveCompanyCodeCandidate(company.Name)
             : company.Code.Trim().ToUpperInvariant();
@@ -236,124 +214,94 @@ public class CompanyOperationalDbProvisioner(
             code = code[..ComponentIdentityRules.CompanyCodeLength];
         if (code.Length < ComponentIdentityRules.CompanyCodeLength)
             code = code.PadRight(ComponentIdentityRules.CompanyCodeLength, 'X');
-
-        cmd.Parameters.AddWithValue("id", company.Id);
-        cmd.Parameters.AddWithValue("name", company.Name);
-        cmd.Parameters.AddWithValue("code", code);
-        cmd.Parameters.AddWithValue("brn", company.Brn ?? string.Empty);
-        cmd.Parameters.AddWithValue("gst", company.GstTin ?? string.Empty);
-        cmd.Parameters.AddWithValue("cc", string.IsNullOrWhiteSpace(company.CountryCode) ? "MY" : company.CountryCode);
-        cmd.Parameters.AddWithValue("a1", company.AddressLine1 ?? string.Empty);
-        cmd.Parameters.AddWithValue("a2", company.AddressLine2 ?? string.Empty);
-        cmd.Parameters.AddWithValue("city", company.City ?? string.Empty);
-        cmd.Parameters.AddWithValue("state", company.StateProvince ?? string.Empty);
-        cmd.Parameters.AddWithValue("post", company.Postcode ?? string.Empty);
-        cmd.Parameters.AddWithValue("phone", company.Phone ?? string.Empty);
-        cmd.Parameters.AddWithValue("fax", company.Fax ?? string.Empty);
-        cmd.Parameters.AddWithValue("email", company.Email ?? string.Empty);
-        cmd.Parameters.AddWithValue("active", company.Active);
-        cmd.Parameters.AddWithValue("registeredAt", (object?)company.RegisteredAt ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("bt", company.BusinessTypesJson ?? "[]");
-        cmd.Parameters.AddWithValue("vp", company.VendorPolicyTagsJson ?? "[]");
-        cmd.Parameters.AddWithValue("mod", company.ModulesJson ?? "[]");
-        cmd.Parameters.AddWithValue("logoFile", company.LogoFileName ?? string.Empty);
-        cmd.Parameters.AddWithValue("logoType", company.LogoContentType ?? string.Empty);
-        cmd.Parameters.AddWithValue("logoB64", company.LogoBase64 ?? string.Empty);
-        cmd.Parameters.AddWithValue("smtpMode", string.IsNullOrWhiteSpace(company.SmtpProviderMode) ? "auto" : company.SmtpProviderMode);
-        cmd.Parameters.AddWithValue("smtpHost", company.SmtpHost ?? string.Empty);
-        cmd.Parameters.AddWithValue("smtpPort", company.SmtpPort <= 0 ? 587 : company.SmtpPort);
-        cmd.Parameters.AddWithValue("smtpSsl", company.SmtpUseSsl);
-        cmd.Parameters.AddWithValue("smtpUser", company.SmtpUsername ?? string.Empty);
-        cmd.Parameters.AddWithValue("smtpPass", company.SmtpPassword ?? string.Empty);
-        cmd.Parameters.AddWithValue("smtpFrom", company.SmtpFromEmail ?? string.Empty);
-        cmd.Parameters.AddWithValue("smtpFromName", company.SmtpFromName ?? string.Empty);
-        cmd.Parameters.AddWithValue("graphTenant", company.GraphTenantId ?? string.Empty);
-        cmd.Parameters.AddWithValue("graphClient", company.GraphClientId ?? string.Empty);
-        cmd.Parameters.AddWithValue("graphSecret", company.GraphClientSecret ?? string.Empty);
-        await cmd.ExecuteNonQueryAsync(ct);
+        return code;
     }
 
-    static async Task InsertLocationRawAsync(NpgsqlConnection conn, Location loc, string? companyCountryCode, CancellationToken ct)
+    static Company CloneCompanyForSeed(Company company) => new()
     {
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO "Locations" (
-              "Id", "ExternalId", "Name", "Address", "CompanyId",
-              "AddressLine1", "AddressLine2", "City", "StateProvince", "Postcode",
-              "PrincipalContactUserId", "SecondaryContactUserId",
-              "BusinessTypesJson", "VendorPolicyTagsJson", "ModulesJson",
-              "OpeningHoursJson", "TimeZoneId",
-              "SalesToday", "SalesWtd", "SalesMtd", "SalesYtd",
-              "SalesPrevToday", "SalesPrevWtd", "SalesPrevMtd", "SalesPrevYtd",
-              "CoversToday", "CoversWtd", "CoversMtd", "CoversYtd",
-              "CoversPrevToday", "CoversPrevWtd", "CoversPrevMtd", "CoversPrevYtd",
-              "ChecksToday", "ChecksWtd", "ChecksMtd", "ChecksYtd",
-              "ChecksPrevToday", "ChecksPrevWtd", "ChecksPrevMtd", "ChecksPrevYtd")
-            VALUES (
-              @id, @ext, @name, @address, @companyId,
-              @a1, @a2, @city, @state, @post,
-              @principal, @secondary,
-              @bt, @vp, @mod,
-              @hours, @tz,
-              0, 0, 0, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0)
-            ON CONFLICT ("Id") DO NOTHING
-            """;
-        cmd.Parameters.AddWithValue("id", loc.Id);
-        cmd.Parameters.AddWithValue("ext", loc.ExternalId);
-        cmd.Parameters.AddWithValue("name", loc.Name);
-        cmd.Parameters.AddWithValue("address", loc.Address ?? string.Empty);
-        cmd.Parameters.AddWithValue("companyId", (object?)loc.CompanyId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("a1", loc.AddressLine1 ?? string.Empty);
-        cmd.Parameters.AddWithValue("a2", loc.AddressLine2 ?? string.Empty);
-        cmd.Parameters.AddWithValue("city", loc.City ?? string.Empty);
-        cmd.Parameters.AddWithValue("state", loc.StateProvince ?? string.Empty);
-        cmd.Parameters.AddWithValue("post", loc.Postcode ?? string.Empty);
-        cmd.Parameters.AddWithValue("principal", (object?)loc.PrincipalContactUserId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("secondary", (object?)loc.SecondaryContactUserId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("bt", loc.BusinessTypesJson ?? "[]");
-        cmd.Parameters.AddWithValue("vp", loc.VendorPolicyTagsJson ?? "[]");
-        cmd.Parameters.AddWithValue("mod", loc.ModulesJson ?? "[]");
-        cmd.Parameters.AddWithValue("hours", string.IsNullOrWhiteSpace(loc.OpeningHoursJson) ? "{}" : loc.OpeningHoursJson);
-        cmd.Parameters.AddWithValue("tz", string.IsNullOrWhiteSpace(loc.TimeZoneId)
+        Id = company.Id,
+        Name = company.Name,
+        Code = NormalizeCompanyCode(company),
+        Brn = company.Brn ?? string.Empty,
+        GstTin = company.GstTin ?? string.Empty,
+        CountryCode = string.IsNullOrWhiteSpace(company.CountryCode) ? "MY" : company.CountryCode,
+        AddressLine1 = company.AddressLine1 ?? string.Empty,
+        AddressLine2 = company.AddressLine2 ?? string.Empty,
+        City = company.City ?? string.Empty,
+        StateProvince = company.StateProvince ?? string.Empty,
+        Postcode = company.Postcode ?? string.Empty,
+        Phone = company.Phone ?? string.Empty,
+        Fax = company.Fax ?? string.Empty,
+        Email = company.Email ?? string.Empty,
+        Active = company.Active,
+        RegisteredAt = company.RegisteredAt,
+        LogoFileName = company.LogoFileName ?? string.Empty,
+        LogoContentType = company.LogoContentType ?? string.Empty,
+        LogoBase64 = company.LogoBase64 ?? string.Empty,
+        SmtpProviderMode = string.IsNullOrWhiteSpace(company.SmtpProviderMode) ? "auto" : company.SmtpProviderMode,
+        SmtpHost = company.SmtpHost ?? string.Empty,
+        SmtpPort = company.SmtpPort <= 0 ? 587 : company.SmtpPort,
+        SmtpUseSsl = company.SmtpUseSsl,
+        SmtpUsername = company.SmtpUsername ?? string.Empty,
+        SmtpPassword = company.SmtpPassword ?? string.Empty,
+        SmtpFromEmail = company.SmtpFromEmail ?? string.Empty,
+        SmtpFromName = company.SmtpFromName ?? string.Empty,
+        GraphTenantId = company.GraphTenantId ?? string.Empty,
+        GraphClientId = company.GraphClientId ?? string.Empty,
+        GraphClientSecret = company.GraphClientSecret ?? string.Empty,
+        BusinessTypesJson = company.BusinessTypesJson ?? "[]",
+        VendorPolicyTagsJson = company.VendorPolicyTagsJson ?? "[]",
+        ModulesJson = company.ModulesJson ?? "[]",
+    };
+
+    static AppUser CloneAppUserForSeed(AppUser user) => new()
+    {
+        Id = user.Id,
+        // Employees are not copied into the fresh tenant DB; drop the FK to avoid 23503.
+        EmployeeId = null,
+        FullName = user.FullName ?? string.Empty,
+        Email = user.Email ?? string.Empty,
+        Role = user.Role ?? string.Empty,
+        Phone = user.Phone ?? string.Empty,
+        Active = user.Active,
+        AccessJson = string.IsNullOrWhiteSpace(user.AccessJson) ? """{"modules":[]}""" : user.AccessJson,
+        CompanyId = user.CompanyId,
+        LocationIdsJson = string.IsNullOrWhiteSpace(user.LocationIdsJson) ? "[]" : user.LocationIdsJson,
+        PasswordHash = user.PasswordHash,
+        ActivationToken = user.ActivationToken,
+        ActivationTokenExpiresAt = user.ActivationTokenExpiresAt,
+        PreferredLanguage = string.IsNullOrWhiteSpace(user.PreferredLanguage) ? "en" : user.PreferredLanguage,
+        PhoneCountryCode = user.PhoneCountryCode,
+        EulaVersion = user.EulaVersion,
+        AcceptedEulaAt = user.AcceptedEulaAt,
+        PrivacyPolicyVersion = user.PrivacyPolicyVersion,
+        AcceptedPrivacyPolicyAt = user.AcceptedPrivacyPolicyAt,
+        DpaVersion = user.DpaVersion,
+        AcceptedDpaAt = user.AcceptedDpaAt,
+    };
+
+    static Location CloneLocationForSeed(Location loc, string? companyCountryCode) => new()
+    {
+        Id = loc.Id,
+        ExternalId = loc.ExternalId ?? string.Empty,
+        Name = loc.Name ?? string.Empty,
+        Address = loc.Address ?? string.Empty,
+        CompanyId = loc.CompanyId,
+        AddressLine1 = loc.AddressLine1 ?? string.Empty,
+        AddressLine2 = loc.AddressLine2 ?? string.Empty,
+        City = loc.City ?? string.Empty,
+        StateProvince = loc.StateProvince ?? string.Empty,
+        Postcode = loc.Postcode ?? string.Empty,
+        PrincipalContactUserId = loc.PrincipalContactUserId,
+        SecondaryContactUserId = loc.SecondaryContactUserId,
+        BusinessTypesJson = loc.BusinessTypesJson ?? "[]",
+        VendorPolicyTagsJson = loc.VendorPolicyTagsJson ?? "[]",
+        ModulesJson = loc.ModulesJson ?? "[]",
+        OpeningHoursJson = string.IsNullOrWhiteSpace(loc.OpeningHoursJson) ? "{}" : loc.OpeningHoursJson,
+        TimeZoneId = string.IsNullOrWhiteSpace(loc.TimeZoneId)
             ? OrgClock.ResolveTimeZoneId(companyCountryCode, loc.StateProvince)
-            : loc.TimeZoneId);
-        await cmd.ExecuteNonQueryAsync(ct);
-    }
-
-    static async Task InsertAppUserRawAsync(NpgsqlConnection conn, AppUser user, CancellationToken ct)
-    {
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO "AppUsers" (
-              "Id", "FullName", "Email", "Role", "Phone", "Active",
-              "AccessJson", "CompanyId", "LocationIdsJson", "EmployeeId",
-              "PasswordHash", "ActivationToken", "ActivationTokenExpiresAt")
-            VALUES (
-              @id, @name, @email, @role, @phone, @active,
-              @access, @companyId, @locs, @emp,
-              @pwd, @token, @tokenExp)
-            ON CONFLICT ("Id") DO NOTHING
-            """;
-        cmd.Parameters.AddWithValue("id", user.Id);
-        cmd.Parameters.AddWithValue("name", user.FullName);
-        cmd.Parameters.AddWithValue("email", user.Email);
-        cmd.Parameters.AddWithValue("role", user.Role);
-        cmd.Parameters.AddWithValue("phone", user.Phone);
-        cmd.Parameters.AddWithValue("active", user.Active);
-        cmd.Parameters.AddWithValue("access", user.AccessJson);
-        cmd.Parameters.AddWithValue("companyId", (object?)user.CompanyId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("locs", user.LocationIdsJson);
-        cmd.Parameters.AddWithValue("emp", (object?)user.EmployeeId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("pwd", (object?)user.PasswordHash ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("token", (object?)user.ActivationToken ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("tokenExp", (object?)user.ActivationTokenExpiresAt ?? DBNull.Value);
-        await cmd.ExecuteNonQueryAsync(ct);
-    }
+            : loc.TimeZoneId,
+    };
 
     async Task BootstrapArchiveDatabaseAsync(string archiveConnectionString, CancellationToken ct)
     {
