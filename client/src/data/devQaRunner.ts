@@ -367,6 +367,11 @@ const BASE_TASKS: TaskDef[] = [
     label: 'Sign in as QA operator (ms@cubevalue.com)',
     group: 'setup',
     run: async (ctx, update) => {
+      // Stay on the control plane through company/location onboarding. A stale
+      // X-Bisync-Company-Id from a prior provisioned QA company would route
+      // /api/companies and /api/users into a tenant DB while /api/auth stays
+      // on the control plane — breaking location onboarding.
+      setApiTenantCompanyId(null);
       const { user, password, registered } = await ensureQaOperatorAccount();
       await assert(user.active !== false, `${QA_OPERATOR_EMAIL} is not active`);
       ctx.ownerUserId = user.id;
@@ -379,7 +384,6 @@ const BASE_TASKS: TaskDef[] = [
       ctx.adminPassword = password;
       ctx.adminName = ctx.ownerName;
       setApiTenantUserId(user.id);
-      if (user.companyId) setApiTenantCompanyId(user.companyId);
       update({
         detail: registered
           ? `Registered and activated ${QA_OPERATOR_EMAIL} · user #${user.id}`
@@ -400,8 +404,9 @@ const BASE_TASKS: TaskDef[] = [
     group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.ownerUserId, 'QA operator missing — complete sign-in first');
+      setApiTenantCompanyId(null);
       const name = `QA Power Co ${ctx.runKey}`;
-      const company = await api.createCompany({
+      const companyPayload = {
         name,
         brn: `BRN${ctx.runKey}`,
         gstTin: `GST${ctx.runKey}`,
@@ -418,7 +423,7 @@ const BASE_TASKS: TaskDef[] = [
         businessTypesJson: JSON.stringify([RESTAURANT, CENTRAL_KITCHEN]),
         vendorPolicyTagsJson: JSON.stringify(['halal', 'muslim-friendly']),
         modulesJson: JSON.stringify(['RMS']),
-      });
+      };
       const accessJson = JSON.stringify({
         modules: ['RMS'],
         superAdmin: true,
@@ -427,31 +432,74 @@ const BASE_TASKS: TaskDef[] = [
           tasks: Object.fromEntries(allRmsTaskIds().map(id => [id, true])),
         },
       });
-      const user = await api.updateUser(ctx.ownerUserId!, {
-        employeeId: null,
-        fullName: ctx.ownerName || 'MS Cubevalue',
-        email: QA_OPERATOR_EMAIL,
-        role: 'Company Admin',
-        phone: QA_OPERATOR_MOBILE,
-        active: true,
-        companyId: company.id,
-        locationIdsJson: '[]',
-        accessJson,
-      });
-      await assert(user.companyId === company.id, 'Operator was not assigned to the new QA company');
-      ctx.companyId = company.id;
-      ctx.companyName = company.name || name;
-      setApiTenantCompanyId(company.id);
+
+      // Prefer the auth onboarding path (always control plane) when the operator
+      // has no company yet. Otherwise create a fresh QA company on the control
+      // plane and reassign — never under a stale tenant header.
+      const controlUsers = await api.users();
+      const controlMe = controlUsers.find(u => u.id === ctx.ownerUserId);
+      let companyId: number;
+      let companyName = name;
+      let user: AppUser;
+
+      if (!controlMe?.companyId) {
+        user = await api.completeCompanyOnboarding(ctx.ownerUserId!, companyPayload);
+        await assert(!!user.companyId, 'Auth company onboarding did not assign a company');
+        companyId = user.companyId!;
+        const companies = await api.companies();
+        companyName = companies.find(c => c.id === companyId)?.name || name;
+        // Ensure RMS access matches the power-QA operator profile.
+        user = await api.updateUser(ctx.ownerUserId!, {
+          employeeId: null,
+          fullName: ctx.ownerName || 'MS Cubevalue',
+          email: QA_OPERATOR_EMAIL,
+          role: 'Company Admin',
+          phone: QA_OPERATOR_MOBILE,
+          active: true,
+          companyId,
+          locationIdsJson: '[]',
+          accessJson,
+        });
+      } else {
+        const company = await api.createCompany(companyPayload);
+        user = await api.updateUser(ctx.ownerUserId!, {
+          employeeId: null,
+          fullName: ctx.ownerName || 'MS Cubevalue',
+          email: QA_OPERATOR_EMAIL,
+          role: 'Company Admin',
+          phone: QA_OPERATOR_MOBILE,
+          active: true,
+          companyId: company.id,
+          locationIdsJson: '[]',
+          accessJson,
+        });
+        companyId = company.id;
+        companyName = company.name || name;
+      }
+
+      await assert(user.companyId === companyId, 'Operator was not assigned to the new QA company');
+      // Confirm assignment on the control plane (no tenant header).
+      const verifyUsers = await api.users();
+      const verified = verifyUsers.find(u => u.id === ctx.ownerUserId);
+      await assert(
+        verified?.companyId === companyId,
+        `Control-plane operator missing company #${companyId} (has ${verified?.companyId ?? 'null'})`,
+      );
+
+      ctx.companyId = companyId;
+      ctx.companyName = companyName;
+      setApiTenantCompanyId(companyId);
       setApiTenantUserId(user.id);
       update({
-        detail: `Onboarded ${ctx.companyName} (#${company.id}) under ${QA_OPERATOR_EMAIL}`,
+        detail: `Onboarded ${ctx.companyName} (#${companyId}) under ${QA_OPERATOR_EMAIL}`,
         facts: {
-          companyId: company.id,
+          companyId,
           name: ctx.companyName,
           ownerUserId: user.id,
           operatorEmail: QA_OPERATOR_EMAIL,
           businessTypes: 'Restaurant + Central Kitchen',
           modules: 'RMS',
+          viaAuthOnboarding: !controlMe?.companyId,
         },
         fixActions: defaultFixActions('company-onboarding'),
       });
@@ -463,6 +511,38 @@ const BASE_TASKS: TaskDef[] = [
     group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.ownerUserId && !!ctx.companyId, 'Owner/company missing');
+      // Location onboarding is an /api/auth call (control plane). Clear any
+      // tenant header and repair the control-plane CompanyId if a prior step
+      // wrote the assignment into a tenant DB by mistake.
+      setApiTenantCompanyId(null);
+      const controlUsers = await api.users();
+      let controlMe = controlUsers.find(u => u.id === ctx.ownerUserId);
+      if (controlMe?.companyId !== ctx.companyId) {
+        const accessJson = JSON.stringify({
+          modules: ['RMS'],
+          superAdmin: true,
+          rms: {
+            enabled: true,
+            tasks: Object.fromEntries(allRmsTaskIds().map(id => [id, true])),
+          },
+        });
+        controlMe = await api.updateUser(ctx.ownerUserId!, {
+          employeeId: null,
+          fullName: ctx.ownerName || 'MS Cubevalue',
+          email: QA_OPERATOR_EMAIL,
+          role: 'Company Admin',
+          phone: QA_OPERATOR_MOBILE,
+          active: true,
+          companyId: ctx.companyId!,
+          locationIdsJson: controlMe?.locationIdsJson || '[]',
+          accessJson,
+        });
+      }
+      await assert(
+        controlMe?.companyId === ctx.companyId,
+        `Register a company before adding a location (control-plane companyId=${controlMe?.companyId ?? 'null'}, expected=${ctx.companyId})`,
+      );
+
       await api.completeLocationOnboarding(ctx.ownerUserId!, {
         name: `QA Restaurant ${ctx.runKey}`,
         addressLine1: '12 Food Street',
@@ -471,6 +551,7 @@ const BASE_TASKS: TaskDef[] = [
         stateProvince: 'Wilayah Persekutuan',
         postcode: '50000',
       });
+      setApiTenantCompanyId(ctx.companyId);
       const locs = await api.locationsConfig();
       const restaurant = locs.find(l => l.companyId === ctx.companyId);
       await assert(!!restaurant, 'Onboarded restaurant location not found');
@@ -496,6 +577,7 @@ const BASE_TASKS: TaskDef[] = [
           restaurantId: updated.id,
           restaurant: updated.externalId,
           restaurantPolicy: 'halal',
+          controlPlaneCompanyId: controlMe?.companyId ?? null,
         },
         fixActions: defaultFixActions('location-onboarding'),
       });
