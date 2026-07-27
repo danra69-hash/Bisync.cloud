@@ -35,6 +35,7 @@ public class ProductSaleInventoryService(
 
         var product = await db.Products
             .Include(p => p.Items)
+            .Include(p => p.PackagingItems)
             .FirstOrDefaultAsync(p => p.Id == productId, cancellationToken);
 
         if (product is null || product.IsSubProduct || !product.Active)
@@ -51,43 +52,62 @@ public class ProductSaleInventoryService(
 
         foreach (var locationId in locationExternalIds)
         {
-            foreach (var line in product.Items.Where(l => !string.IsNullOrWhiteSpace(l.ComponentId)))
+            async Task DepleteBomLineAsync(string componentId, string componentName, string componentUom, decimal lineQty)
             {
-                if (subProductsByCode.TryGetValue(line.ComponentId, out var subProduct))
+                if (string.IsNullOrWhiteSpace(componentId) || lineQty <= 0)
+                    return;
+
+                if (subProductsByCode.TryGetValue(componentId, out var subProduct))
                 {
                     await DepleteSubProductLineAsync(
                         product,
                         subProduct,
-                        line,
+                        new ProductComponentItem
+                        {
+                            ComponentId = componentId,
+                            ComponentName = componentName,
+                            ComponentUom = componentUom,
+                            Quantity = lineQty,
+                        },
                         locationId,
                         quantitySold,
                         referenceType,
                         reasonLabel,
                         ingredientsByCode,
                         cancellationToken);
-                    continue;
+                    return;
                 }
 
-                if (!ingredientsByCode.TryGetValue(line.ComponentId, out var ingredient))
-                    continue;
+                if (!ingredientsByCode.TryGetValue(componentId, out var ingredient))
+                    return;
 
-                var nettQty = line.Quantity * quantitySold;
+                var nettQty = lineQty * quantitySold;
                 if (nettQty <= 0)
-                    continue;
+                    return;
 
                 var requiredQty = ComponentYieldLossRules.ToGrossQuantity(ingredient, nettQty);
 
                 await componentStock.RecordDeductionAsync(
-                    line.ComponentId,
-                    line.ComponentName,
+                    componentId,
+                    componentName,
                     locationId,
                     requiredQty,
-                    line.ComponentUom,
+                    componentUom,
                     reason: $"{reasonLabel} — {product.Name}",
                     referenceType: referenceType,
                     referenceId: product.Id,
                     companyId: product.CompanyId,
                     cancellationToken);
+            }
+
+            foreach (var line in product.Items)
+            {
+                await DepleteBomLineAsync(line.ComponentId, line.ComponentName, line.ComponentUom, line.Quantity);
+            }
+
+            foreach (var line in product.PackagingItems)
+            {
+                await DepleteBomLineAsync(line.ComponentId, line.ComponentName, line.ComponentUom, line.Quantity);
             }
         }
 
