@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, KeyRound, LogOut, Users } from 'lucide-react';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { contentFrameClass } from '../components/layout/pageLayout';
 import { UsageDashboard } from '../components/dev/UsageDashboard';
@@ -11,24 +11,26 @@ import { SystemAuditTrailTab } from '../components/admin/SystemAuditTrailTab';
 import { GhostSupportTab } from '../components/admin/GhostSupportTab';
 import { RefLibraryTab } from '../components/dev/RefLibraryTab';
 import { SalesModulePage } from '../components/revenue/SalesModulePage';
+import { DevTeamPanel } from '../components/dev/DevTeamPanel';
+import { DevConsoleChangePasswordModal } from '../components/dev/DevConsoleChangePasswordModal';
 import { DEV_CONSOLE_PATH } from '../config/devConsole';
 import { clearDevConsoleSession, getDevConsoleToken } from '../data/devConsoleSession';
-import { devConsoleAuthApi } from '../data/devConsoleAuthApi';
-import { DevConsoleForbidden, DevConsoleLoginGate } from './DevConsoleLoginGate';
+import {
+  DEV_CONSOLE_TAB_IDS,
+  type DevConsoleTabId,
+  devConsoleAuthApi,
+} from '../data/devConsoleAuthApi';
+import {
+  DevConsoleForbidden,
+  DevConsoleLoginGate,
+  parseDevConsoleTokenPath,
+} from './DevConsoleLoginGate';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 
 /** Dev Console always requires its own login (separate from customer Access Control). */
 const REQUIRE_DEV_CONSOLE_LOGIN = true;
 
-type DevConsoleTab =
-  | 'overview'
-  | 'tenant-rollups'
-  | 'sales-module'
-  | 'automated-qa'
-  | 'qa-history'
-  | 'audit-trail'
-  | 'ghost-support'
-  | 'ref-library';
+type DevConsoleTab = DevConsoleTabId;
 
 const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -44,15 +46,22 @@ const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
 type DevSessionUser = {
   email: string;
   fullName: string;
+  position: string;
+  teamType: string;
   isRoot: boolean;
+  accessTabs: string[];
   expiresAt: string;
 };
 
 export function DevConsolePage() {
+  const tokenPath = parseDevConsoleTokenPath(window.location.pathname);
   const [tab, setTab] = useState<DevConsoleTab>('overview');
   const [loading, setLoading] = useState(true);
   const [sessionUser, setSessionUser] = useState<DevSessionUser | null>(null);
   const [authTick, setAuthTick] = useState(0);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const refreshSession = useCallback(async () => {
     setLoading(true);
@@ -66,7 +75,12 @@ export function DevConsolePage() {
       setSessionUser({
         email: me.email,
         fullName: me.fullName,
+        position: me.position ?? '',
+        teamType: me.teamType ?? '',
         isRoot: me.isRoot,
+        accessTabs: me.isRoot
+          ? [...DEV_CONSOLE_TAB_IDS]
+          : (me.accessTabs?.length ? me.accessTabs : ['overview']),
         expiresAt: me.expiresAt,
       });
     } catch {
@@ -81,6 +95,20 @@ export function DevConsolePage() {
     void refreshSession();
   }, [refreshSession, authTick]);
 
+  const visibleTabs = useMemo(() => {
+    if (!sessionUser) return [];
+    if (sessionUser.isRoot) return DEV_CONSOLE_TABS;
+    const allowed = new Set(sessionUser.accessTabs.map(t => t.toLowerCase()));
+    return DEV_CONSOLE_TABS.filter(t => allowed.has(t.id));
+  }, [sessionUser]);
+
+  useEffect(() => {
+    if (!sessionUser || visibleTabs.length === 0) return;
+    if (!visibleTabs.some(t => t.id === tab)) {
+      setTab(visibleTabs[0]!.id);
+    }
+  }, [sessionUser, visibleTabs, tab]);
+
   async function handleLogout() {
     try {
       await devConsoleAuthApi.logout();
@@ -89,6 +117,19 @@ export function DevConsolePage() {
     }
     setSessionUser(null);
     setAuthTick(t => t + 1);
+  }
+
+  if (tokenPath) {
+    return (
+      <DevConsoleLoginGate
+        mode={tokenPath.kind}
+        token={tokenPath.token}
+        onSuccess={() => {
+          window.history.replaceState({}, '', DEV_CONSOLE_PATH);
+          setAuthTick(t => t + 1);
+        }}
+      />
+    );
   }
 
   if (REQUIRE_DEV_CONSOLE_LOGIN) {
@@ -119,25 +160,80 @@ export function DevConsolePage() {
               <h1 className="text-sm font-semibold truncate">Dev Console</h1>
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="text-right">
-              <p className="text-xs font-medium">{sessionUser.fullName}</p>
-              <p className="text-[11px] text-muted-foreground font-sans">{sessionUser.email}</p>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileOpen(v => !v)}
+                className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-left hover:bg-muted/50"
+                aria-expanded={profileOpen}
+                aria-haspopup="menu"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
+                  {(sessionUser.fullName || sessionUser.email).slice(0, 2).toUpperCase()}
+                </div>
+                <div className="text-right hidden sm:block min-w-0">
+                  <p className="text-xs font-medium truncate max-w-[10rem]">{sessionUser.fullName}</p>
+                  <p className="text-[11px] text-muted-foreground font-sans truncate max-w-[10rem]">
+                    {sessionUser.email}
+                  </p>
+                </div>
+                <ChevronDown size={12} className="text-muted-foreground" />
+              </button>
+              {profileOpen && (
+                <>
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-10 cursor-default"
+                    aria-label="Close profile menu"
+                    onClick={() => setProfileOpen(false)}
+                  />
+                  <div
+                    role="menu"
+                    className="absolute right-0 z-20 mt-1 w-56 rounded-md border border-border bg-card py-1 shadow-lg"
+                  >
+                    <div className="px-3 py-2 border-b border-border">
+                      <p className="text-xs font-medium truncate">{sessionUser.fullName}</p>
+                      <p className="text-[11px] text-muted-foreground font-sans truncate">{sessionUser.email}</p>
+                      {(sessionUser.position || sessionUser.teamType) && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {[sessionUser.position, sessionUser.teamType].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-muted/60"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        setChangePasswordOpen(true);
+                      }}
+                    >
+                      <KeyRound size={12} />
+                      Change password
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        void handleLogout();
+                      }}
+                    >
+                      <LogOut size={12} />
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-              title="Sign out of Dev Console"
-            >
-              <LogOut size={12} />
-              Sign out
-            </button>
           </div>
         </div>
         <div className={contentFrameClass()}>
           <nav className="flex gap-1 -mb-px overflow-x-auto" aria-label="Dev Console sections">
-            {DEV_CONSOLE_TABS.map(item => {
+            {visibleTabs.map(item => {
               const active = tab === item.id;
               return (
                 <button
@@ -162,6 +258,24 @@ export function DevConsolePage() {
         <p className="text-[11px] text-muted-foreground font-sans -mt-4">{DEV_CONSOLE_PATH}</p>
         {tab === 'overview' && (
           <>
+            {sessionUser.isRoot && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold">Team</p>
+                  <p className="text-xs text-muted-foreground">
+                    Create Dev Console operators with tab access. Invitations are emailed separately from the main platform.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTeamOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium px-3 py-2 shrink-0"
+                >
+                  <Users size={13} />
+                  Team
+                </button>
+              </div>
+            )}
             <DemoLaunchPanel isRoot={sessionUser.isRoot} />
             <UsageDashboard />
           </>
@@ -195,6 +309,12 @@ export function DevConsolePage() {
           <RefLibraryTab />
         )}
       </main>
+
+      <DevTeamPanel open={teamOpen} onClose={() => setTeamOpen(false)} />
+      <DevConsoleChangePasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
     </div>
   );
 }

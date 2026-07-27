@@ -6,6 +6,9 @@ export type DevConsoleProfile = {
   fullName: string;
   isRoot: boolean;
   expiresAt: string;
+  position?: string;
+  teamType?: string;
+  accessTabs?: string[];
 };
 
 export function getDevConsoleToken(): string | null {

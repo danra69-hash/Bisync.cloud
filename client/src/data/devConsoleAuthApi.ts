@@ -7,6 +7,33 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
+export const DEV_CONSOLE_TAB_IDS = [
+  'overview',
+  'tenant-rollups',
+  'sales-module',
+  'automated-qa',
+  'qa-history',
+  'audit-trail',
+  'ghost-support',
+  'ref-library',
+] as const;
+
+export type DevConsoleTabId = (typeof DEV_CONSOLE_TAB_IDS)[number];
+
+export const DEV_CONSOLE_TAB_LABELS: Record<DevConsoleTabId, string> = {
+  overview: 'Overview',
+  'tenant-rollups': 'Tenant Rollups',
+  'sales-module': 'Sales Module',
+  'automated-qa': 'QA',
+  'qa-history': 'QA History',
+  'audit-trail': 'Audit Trail',
+  'ghost-support': 'Ghost Support',
+  'ref-library': 'Ref & Library',
+};
+
+export const DEV_CONSOLE_TEAM_TYPES = ['Management', 'Hunter', 'Farmer', 'Accounts'] as const;
+export type DevConsoleTeamType = (typeof DEV_CONSOLE_TEAM_TYPES)[number];
+
 async function parseError(res: Response): Promise<string> {
   if (res.status === 404) {
     return 'Dev Console API is not enabled on this server. Redeploy with Dev Console enabled, or restart the local API with DEV_CONSOLE_ENABLED=true.';
@@ -40,6 +67,8 @@ export type DevAuthConfig = {
   allowPasswordOnly: boolean;
   allowedDomains: string[];
   rootEmail: string;
+  teamTypes?: string[];
+  tabs?: string[];
 };
 
 export type PasswordLoginResult = {
@@ -57,19 +86,37 @@ export type DevSessionResult = {
   expiresAt: string;
   email: string;
   fullName: string;
+  position?: string;
+  teamType?: string;
   isRoot: boolean;
+  accessTabs?: string[];
 };
 
 export type DevTeamUserRow = {
   id: number;
   email: string;
   fullName: string;
+  position: string;
+  teamType: string;
+  accessTabs: string[];
   active: boolean;
   isRoot: boolean;
+  hasPassword: boolean;
+  invitePending: boolean;
   hasGoogle: boolean;
   createdAt: string;
   createdByEmail: string;
   updatedAt: string | null;
+};
+
+export type DevTeamUpsertPayload = {
+  email: string;
+  fullName: string;
+  position?: string;
+  teamType?: string;
+  accessTabs?: string[];
+  password?: string;
+  active?: boolean;
 };
 
 function toProfile(session: DevSessionResult): DevConsoleProfile {
@@ -78,6 +125,9 @@ function toProfile(session: DevSessionResult): DevConsoleProfile {
     fullName: session.fullName,
     isRoot: session.isRoot,
     expiresAt: session.expiresAt,
+    position: session.position,
+    teamType: session.teamType,
+    accessTabs: session.accessTabs ?? (session.isRoot ? [...DEV_CONSOLE_TAB_IDS] : ['overview']),
   };
 }
 
@@ -111,7 +161,10 @@ export const devConsoleAuthApi = {
   me: () => fetchJson<{
     email: string;
     fullName: string;
+    position: string;
+    teamType: string;
     isRoot: boolean;
+    accessTabs: string[];
     expiresAt: string;
     googleVerified: boolean;
   }>('/api/dev-console/auth/me'),
@@ -124,23 +177,63 @@ export const devConsoleAuthApi = {
     }
   },
 
-  listTeam: () => fetchJson<{ users: DevTeamUserRow[]; actorEmail: string }>('/api/dev-console/auth/team'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    fetchJson<{ message: string }>('/api/dev-console/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
 
-  createTeamUser: (payload: { email: string; fullName: string; password: string }) =>
-    fetchJson<{ id: number; email: string; fullName: string; active: boolean; isRoot: boolean }>(
+  forgotPassword: (email: string) =>
+    fetchJson<{ message: string; resetUrl?: string }>('/api/dev-console/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  peekInvite: (token: string) =>
+    fetchJson<{ email: string; fullName: string; position: string; teamType: string }>(
+      `/api/dev-console/auth/invite/${encodeURIComponent(token)}`,
+    ),
+
+  acceptInvite: (token: string, password: string) =>
+    fetchJson<{ message: string; email: string; fullName: string }>('/api/dev-console/auth/accept-invite', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+
+  peekReset: (token: string) =>
+    fetchJson<{ email: string; fullName: string }>(
+      `/api/dev-console/auth/reset/${encodeURIComponent(token)}`,
+    ),
+
+  resetPassword: (token: string, password: string) =>
+    fetchJson<{ message: string; email: string }>('/api/dev-console/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+
+  listTeam: () => fetchJson<{
+    users: DevTeamUserRow[];
+    actorEmail: string;
+    teamTypes: string[];
+    tabs: string[];
+  }>('/api/dev-console/auth/team'),
+
+  createTeamUser: (payload: DevTeamUpsertPayload) =>
+    fetchJson<DevTeamUserRow & { inviteUrl?: string }>(
       '/api/dev-console/auth/team',
       { method: 'POST', body: JSON.stringify(payload) },
     ),
 
-  updateTeamUser: (id: number, payload: {
-    email?: string;
-    fullName?: string;
-    password?: string;
-    active?: boolean;
-  }) =>
-    fetchJson<{ id: number; email: string; fullName: string; active: boolean; isRoot: boolean }>(
+  updateTeamUser: (id: number, payload: Partial<DevTeamUpsertPayload>) =>
+    fetchJson<DevTeamUserRow>(
       `/api/dev-console/auth/team/${id}`,
       { method: 'PUT', body: JSON.stringify(payload) },
+    ),
+
+  resendInvite: (id: number) =>
+    fetchJson<{ message: string; inviteUrl?: string; email: string }>(
+      `/api/dev-console/auth/team/${id}/resend-invite`,
+      { method: 'POST' },
     ),
 
   deleteTeamUser: (id: number) =>

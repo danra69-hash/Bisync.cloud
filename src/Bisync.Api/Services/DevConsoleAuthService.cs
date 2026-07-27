@@ -45,6 +45,9 @@ public class DevConsoleAuthService(
             {
                 Email = rootEmail,
                 FullName = "DRA Super Admin",
+                Position = "Super User",
+                TeamType = "Management",
+                AccessJson = DevConsoleTabAccess.AllTabsJson(),
                 PasswordHash = AppPasswordHasher.Hash(SuperAdminAccess.SuperAdminPassword),
                 Active = true,
                 IsRoot = true,
@@ -57,8 +60,14 @@ public class DevConsoleAuthService(
 
         existing.IsRoot = true;
         existing.Active = true;
+        existing.Position = string.IsNullOrWhiteSpace(existing.Position) ? "Super User" : existing.Position;
+        existing.TeamType = DevConsoleTabAccess.NormalizeTeamType(
+            string.IsNullOrWhiteSpace(existing.TeamType) ? "Management" : existing.TeamType);
+        existing.AccessJson = DevConsoleTabAccess.AllTabsJson();
         if (string.IsNullOrWhiteSpace(existing.PasswordHash))
             existing.PasswordHash = AppPasswordHasher.Hash(SuperAdminAccess.SuperAdminPassword);
+        existing.InviteToken = null;
+        existing.InviteTokenExpiresAt = null;
         existing.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
@@ -75,6 +84,10 @@ public class DevConsoleAuthService(
         var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.Email == email, ct);
         if (user is null || !user.Active)
             return (null, "Invalid email or password.");
+        if (!user.HasPassword)
+            return (null, "Account is not activated. Open the invitation email to set your password.");
+        if (user.InvitePending)
+            return (null, "Account is not activated. Open the invitation email to set your password.");
         if (!AppPasswordHasher.Verify(password, user.PasswordHash))
             return (null, "Invalid email or password.");
 
@@ -196,6 +209,96 @@ public class DevConsoleAuthService(
         if (session is null) return;
         db.DevConsoleSessions.Remove(session);
         await db.SaveChangesAsync(ct);
+    }
+
+    public string IssueInviteToken(DevTeamUser user, int hoursValid = 72)
+    {
+        user.InviteToken = NewOpaqueToken();
+        user.InviteTokenExpiresAt = DateTime.UtcNow.AddHours(Math.Clamp(hoursValid, 1, 168));
+        user.UpdatedAt = DateTime.UtcNow;
+        return user.InviteToken;
+    }
+
+    public string IssuePasswordResetToken(DevTeamUser user, int hoursValid = 24)
+    {
+        user.PasswordResetToken = NewOpaqueToken();
+        user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddHours(Math.Clamp(hoursValid, 1, 72));
+        user.UpdatedAt = DateTime.UtcNow;
+        return user.PasswordResetToken;
+    }
+
+    public async Task<(DevTeamUser? User, string? Error)> AcceptInviteAsync(
+        string token,
+        string newPassword,
+        CancellationToken ct)
+    {
+        token = (token ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(token))
+            return (null, "Invitation token is required.");
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+            return (null, "Password must be at least 8 characters.");
+
+        var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.InviteToken == token, ct);
+        if (user is null)
+            return (null, "Invalid or expired invitation link.");
+        if (user.InviteTokenExpiresAt is DateTime expires && expires < DateTime.UtcNow)
+            return (null, "This invitation link has expired. Ask the Super User to resend it.");
+
+        user.PasswordHash = AppPasswordHasher.Hash(newPassword);
+        user.Active = true;
+        user.InviteToken = null;
+        user.InviteTokenExpiresAt = null;
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiresAt = null;
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return (user, null);
+    }
+
+    public async Task<(DevTeamUser? User, string? Error)> ResetPasswordAsync(
+        string token,
+        string newPassword,
+        CancellationToken ct)
+    {
+        token = (token ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(token))
+            return (null, "Reset token is required.");
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+            return (null, "Password must be at least 8 characters.");
+
+        var user = await db.DevTeamUsers.FirstOrDefaultAsync(u => u.PasswordResetToken == token, ct);
+        if (user is null)
+            return (null, "Invalid or expired reset link.");
+        if (user.PasswordResetTokenExpiresAt is DateTime expires && expires < DateTime.UtcNow)
+            return (null, "This reset link has expired. Request a new one.");
+        if (!user.Active)
+            return (null, "Account is inactive.");
+
+        user.PasswordHash = AppPasswordHasher.Hash(newPassword);
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiresAt = null;
+        user.InviteToken = null;
+        user.InviteTokenExpiresAt = null;
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return (user, null);
+    }
+
+    public async Task<(bool Ok, string? Error)> ChangePasswordAsync(
+        DevTeamUser user,
+        string currentPassword,
+        string newPassword,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 8)
+            return (false, "New password must be at least 8 characters.");
+        if (!user.HasPassword || !AppPasswordHasher.Verify(currentPassword, user.PasswordHash))
+            return (false, "Current password is incorrect.");
+
+        user.PasswordHash = AppPasswordHasher.Hash(newPassword);
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return (true, null);
     }
 
     async Task<GoogleTokenInfo?> VerifyGoogleIdTokenAsync(string idToken, CancellationToken ct)
