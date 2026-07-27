@@ -20,15 +20,15 @@ public class SystemCogsAuditHistoryStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    readonly string _rootDir;
-    readonly string _indexPath;
+    string _rootDir;
+    string _indexPath;
     readonly object _gate = new();
 
     public SystemCogsAuditHistoryStore(IHostEnvironment environment, IConfiguration configuration)
     {
         _rootDir = ResolveRoot(environment, configuration);
         _indexPath = Path.Combine(_rootDir, "system-history-index.json");
-        Directory.CreateDirectory(_rootDir);
+        EnsureWritableRoot();
     }
 
     public string HistoryDirectory => _rootDir;
@@ -176,18 +176,41 @@ public class SystemCogsAuditHistoryStore
     void WriteIndexUnlocked(List<SystemCogsAuditHistoryEntry> index) =>
         File.WriteAllText(_indexPath, JsonSerializer.Serialize(index, JsonOptions));
 
+    void EnsureWritableRoot()
+    {
+        try
+        {
+            Directory.CreateDirectory(_rootDir);
+            return;
+        }
+        catch (Exception)
+        {
+            // Non-root containers may not create under ContentRoot if /app is root-owned.
+            // Fall back to temp so COGS Audit endpoints still resolve.
+            _rootDir = Path.Combine(Path.GetTempPath(), "bisync-cogs-audit-history", "system");
+            Directory.CreateDirectory(_rootDir);
+            _indexPath = Path.Combine(_rootDir, "system-history-index.json");
+        }
+    }
+
     static string ResolveRoot(IHostEnvironment environment, IConfiguration configuration)
     {
         var configured = configuration["CogsAuditHistory:SystemDirectory"];
         if (!string.IsNullOrWhiteSpace(configured))
             return Path.GetFullPath(configured.Trim());
 
+        // Prefer ContentRoot in production (Cloud Run) — writable when /app is chowned to app.
+        var underContent = Path.Combine(
+            environment.ContentRootPath, "data-archives", "cogs-audit-history", "system");
+        if (!environment.IsDevelopment())
+            return underContent;
+
         var repoPath = Path.GetFullPath(Path.Combine(
             environment.ContentRootPath, "..", "..", "data-archives", "cogs-audit-history", "system"));
-        if (Directory.Exists(Path.GetDirectoryName(repoPath)!) || environment.IsDevelopment())
+        if (Directory.Exists(Path.GetDirectoryName(repoPath)!))
             return repoPath;
 
-        return Path.Combine(environment.ContentRootPath, "data-archives", "cogs-audit-history", "system");
+        return underContent;
     }
 }
 

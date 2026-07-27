@@ -70,6 +70,11 @@ RUN apt-get update \
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=api-build --chown=app:app /app/publish .
+# /app itself is created as root; give the runtime user ownership so ephemeral
+# archives (COGS audit history, stock-card archive) can be created under ContentRoot.
+RUN mkdir -p /app/data-archives/cogs-audit-history/system \
+             /app/data-archives/stock-card \
+  && chown -R app:app /app
 USER $APP_UID
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
