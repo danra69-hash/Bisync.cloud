@@ -203,13 +203,6 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     activity: "Automated QA \u00b7 Products \u00b7 Account Mapping",
     panels: ["Products", 'Status', 'Facts'],
   },
-  'products-external-pos-mapping': {
-    screenTitle: "Products \u00b7 External POS Mapping",
-    routeHint: "/rms/products",
-    actor: 'admin',
-    activity: "Automated QA \u00b7 Products \u00b7 External POS Mapping",
-    panels: ["Products", 'Status', 'Facts'],
-  },
   'create-purchase-orders': {
     screenTitle: "Open POs to all test vendors (5 POs each)",
     routeHint: "/rms/order",
@@ -295,17 +288,17 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     panels: ["Operation \u00b7 Inventory", 'Status', 'Facts'],
   },
   'produce-and-pos-sales': {
-    screenTitle: "Produce product (2 batches) + POS sales for FIFO",
+    screenTitle: "Produce product (2 batches) + offline sales for FIFO",
     routeHint: "/rms/production",
     actor: 'admin',
-    activity: "Automated QA \u00b7 Produce product (2 batches) + POS sales for FIFO",
+    activity: "Automated QA \u00b7 Produce product (2 batches) + offline sales for FIFO",
     panels: ["Operation \u00b7 Production", 'Status', 'Facts'],
   },
   'final-stock-card-audit': {
-    screenTitle: "Final STOCK CARD audit (PO + cash + produce + POS / FIFO)",
+    screenTitle: "Final STOCK CARD audit (PO + cash + produce + sales / FIFO)",
     routeHint: "/rms/inventory",
     actor: 'admin',
-    activity: "Automated QA \u00b7 Final STOCK CARD audit (PO + cash + produce + POS / FIFO)",
+    activity: "Automated QA \u00b7 Final STOCK CARD audit (PO + cash + produce + sales / FIFO)",
     panels: ["Operation \u00b7 Inventory", 'Status', 'Facts'],
   },
   'sales-b2b-customer': {

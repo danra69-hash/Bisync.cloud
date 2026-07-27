@@ -417,10 +417,10 @@ const BASE_TASKS: TaskDef[] = [
         active: true,
         businessTypesJson: JSON.stringify([RESTAURANT, CENTRAL_KITCHEN]),
         vendorPolicyTagsJson: JSON.stringify(['halal', 'muslim-friendly']),
-        modulesJson: JSON.stringify(['RMS', 'POS', 'HRM', 'Accounting']),
+        modulesJson: JSON.stringify(['RMS']),
       });
       const accessJson = JSON.stringify({
-        modules: ['RMS', 'POS', 'HRM', 'Accounting'],
+        modules: ['RMS'],
         superAdmin: true,
         rms: {
           enabled: true,
@@ -451,7 +451,7 @@ const BASE_TASKS: TaskDef[] = [
           ownerUserId: user.id,
           operatorEmail: QA_OPERATOR_EMAIL,
           businessTypes: 'Restaurant + Central Kitchen',
-          modules: 'RMS, POS, HRM, Accounting',
+          modules: 'RMS',
         },
         fixActions: defaultFixActions('company-onboarding'),
       });
@@ -486,7 +486,7 @@ const BASE_TASKS: TaskDef[] = [
         secondaryContactUserId: restaurant!.secondaryContactUserId ?? null,
         businessTypesJson: JSON.stringify([RESTAURANT]),
         vendorPolicyTagsJson: JSON.stringify(['halal']),
-        modulesJson: JSON.stringify(['RMS', 'POS', 'HRM']),
+        modulesJson: JSON.stringify(['RMS']),
       });
       ctx.restaurantLocationId = updated.id;
       ctx.restaurantExternalId = updated.externalId;
@@ -518,7 +518,7 @@ const BASE_TASKS: TaskDef[] = [
         principalContactUserId: ctx.ownerUserId ?? null,
         businessTypesJson: JSON.stringify([CENTRAL_KITCHEN]),
         vendorPolicyTagsJson: JSON.stringify(['muslim-friendly']),
-        modulesJson: JSON.stringify(['RMS', 'POS', 'HRM']),
+        modulesJson: JSON.stringify(['RMS']),
       });
       ctx.kitchenLocationId = kitchen.id;
       ctx.kitchenExternalId = kitchen.externalId;
@@ -548,7 +548,7 @@ const BASE_TASKS: TaskDef[] = [
       const updatedCompany = await api.updateCompany(company!.id, {
         ...company!,
         businessTypesJson: JSON.stringify([RESTAURANT, CENTRAL_KITCHEN]),
-        modulesJson: JSON.stringify(['RMS', 'POS', 'HRM', 'Accounting']),
+        modulesJson: JSON.stringify(['RMS']),
       });
       const locs = await api.locationsConfig();
       const restaurant = locs.find(l => l.id === ctx.restaurantLocationId);
@@ -624,7 +624,7 @@ const BASE_TASKS: TaskDef[] = [
       update({
         detail: `Profiles saved · bill MYR ${totals.myr} (rest ${priced[0].amount} + kitchen ${priced[1].amount})`,
         facts: {
-          companyModules: 'RMS, POS, HRM, Accounting',
+          companyModules: 'RMS',
           restaurantTier: priced[0].tier,
           kitchenTier: priced[1].tier,
           totalMyr: totals.myr,
@@ -710,7 +710,7 @@ const BASE_TASKS: TaskDef[] = [
       const email = QA_OPERATOR_EMAIL;
       const name = ctx.ownerName || 'MS Cubevalue';
       const accessJson = JSON.stringify({
-        modules: ['RMS', 'POS', 'HRM', 'Accounting'],
+        modules: ['RMS'],
         superAdmin: true,
         rms: {
           enabled: true,
@@ -1267,7 +1267,7 @@ const BASE_TASKS: TaskDef[] = [
   },
   {
     id: 'produce-and-pos-sales',
-    label: 'Produce product (2 batches) + POS sales for FIFO',
+    label: 'Produce product (2 batches) + offline sales for FIFO',
     group: 'operation-production',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct && !!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Product/location missing');
@@ -1304,16 +1304,16 @@ const BASE_TASKS: TaskDef[] = [
       await api.recordProductSale(productId, {
         locationExternalIds: [loc],
         quantitySold: 5,
-        salesChannel: 'pos',
+        salesChannel: 'offline',
       });
       await api.recordProductSale(productId, {
         locationExternalIds: [loc],
         quantitySold: 3,
-        salesChannel: 'pos',
+        salesChannel: 'offline',
       });
 
       update({
-        detail: `Produced 8+6 · sold 5+3 POS · pre-sale onHand=${beforeSale.onHandQty}`,
+        detail: `Produced 8+6 · sold 5+3 offline · pre-sale onHand=${beforeSale.onHandQty}`,
         facts: {
           batch1: '8 @ daysAgo 5',
           batch2: '6 @ daysAgo 2',
@@ -1327,7 +1327,7 @@ const BASE_TASKS: TaskDef[] = [
   },
   {
     id: 'final-stock-card-audit',
-    label: 'Final STOCK CARD audit (PO + cash + produce + POS / FIFO)',
+    label: 'Final STOCK CARD audit (PO + cash + produce + sales / FIFO)',
     group: 'operation-inventory',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');

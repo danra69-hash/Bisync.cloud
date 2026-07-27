@@ -278,16 +278,6 @@ const GUIDES: Record<string, QaIssueGuide> = {
     ],
     checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
   },
-  'products-external-pos-mapping': {
-    area: "Products",
-    expected: "Products \u00b7 External POS Mapping completes without error and records verification facts.",
-    whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
-    ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
-  },
   'create-purchase-orders': {
     area: "Operation \u00b7 Order",
     expected: "Open POs to all test vendors (5 POs each) completes without error and records verification facts.",
@@ -410,7 +400,7 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'produce-and-pos-sales': {
     area: "Operation \u00b7 Production",
-    expected: "Produce product (2 batches) + POS sales for FIFO completes without error and records verification facts.",
+    expected: "Produce product (2 batches) + offline sales for FIFO completes without error and records verification facts.",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',
@@ -420,7 +410,7 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'final-stock-card-audit': {
     area: "Operation \u00b7 Inventory",
-    expected: "Final STOCK CARD audit (PO + cash + produce + POS / FIFO) completes without error and records verification facts.",
+    expected: "Final STOCK CARD audit (PO + cash + produce + sales / FIFO) completes without error and records verification facts.",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',

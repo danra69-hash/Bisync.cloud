@@ -481,14 +481,6 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         notLiveYet('Products Account Mapping');
       },
     },
-    {
-      id: 'products-external-pos-mapping',
-      label: 'Products · External POS Mapping',
-      group: 'products',
-      run: async () => {
-        notLiveYet('External POS Mapping');
-      },
-    },
   ],
 
   'receive-all-pos': [
