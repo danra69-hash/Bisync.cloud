@@ -63,13 +63,6 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     activity: "Automated QA \u00b7 Grant System Admin rights to QA operator",
     panels: ["System Configuration", 'Status', 'Facts'],
   },
-  'create-hr-staff': {
-    screenTitle: "Create additional HR employee (non-admin)",
-    routeHint: "/hr",
-    actor: 'admin',
-    activity: "Automated QA \u00b7 Create additional HR employee (non-admin)",
-    panels: ["Human Resources", 'Status', 'Facts'],
-  },
   'login-system-admin': {
     screenTitle: "Log in as QA operator (ms@cubevalue.com)",
     routeHint: "/onboarding",
@@ -398,27 +391,6 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     actor: 'admin',
     activity: "Automated QA \u00b7 Vendors \u00b7 Account Mapping",
     panels: ["Vendors", 'Status', 'Facts'],
-  },
-  'hr-attendance-leave': {
-    screenTitle: "HR attendance + leave smoke",
-    routeHint: "/hr",
-    actor: 'admin',
-    activity: "Automated QA \u00b7 HR attendance + leave smoke",
-    panels: ["Human Resources", 'Status', 'Facts'],
-  },
-  'accounting-payroll': {
-    screenTitle: "Accounting \u00b7 Process Payroll / Income Tax",
-    routeHint: "/accounting",
-    actor: 'admin',
-    activity: "Automated QA \u00b7 Accounting \u00b7 Process Payroll / Income Tax",
-    panels: ["Accounting", 'Status', 'Facts'],
-  },
-  'pos-module-surfaces': {
-    screenTitle: "Point-of-Sales module surfaces",
-    routeHint: "/pos",
-    actor: 'admin',
-    activity: "Automated QA \u00b7 Point-of-Sales module surfaces",
-    panels: ["Point-of-Sales", 'Status', 'Facts'],
   },
 };
 

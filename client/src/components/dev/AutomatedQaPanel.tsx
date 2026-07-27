@@ -529,10 +529,11 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         <div>
           <h2 className="text-sm font-semibold">Automated QA</h2>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            Full customer-path coverage under ms@cubevalue.com, grouped by product area: Setup & Tenancy,
+            Full RMS customer-path coverage under ms@cubevalue.com, grouped by product area: Setup & Tenancy,
             System Configuration, Component, Vendors, Products, Operation (Order / Inventory / Production),
-            Sales, Reports, HR, Accounting, and POS. Coming-soon surfaces are catalogued as warnings so
-            nothing is left out. On a successful pass, temporary QA operational data is deleted; QA History is kept.
+            Sales, and Reports. HR / Accounting / POS are on hold. Coming-soon RMS surfaces are catalogued as
+            warnings so nothing live is left out. On a successful pass, temporary QA operational data is deleted;
+            QA History is kept.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

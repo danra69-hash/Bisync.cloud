@@ -78,16 +78,6 @@ const GUIDES: Record<string, QaIssueGuide> = {
     ],
     checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
   },
-  'create-hr-staff': {
-    area: "Human Resources",
-    expected: "Create additional HR employee (non-admin) completes without error and records verification facts.",
-    whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
-    ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
-  },
   'login-system-admin': {
     area: "Setup & Tenancy",
     expected: "Log in as QA operator (ms@cubevalue.com) completes without error and records verification facts.",
@@ -551,36 +541,6 @@ const GUIDES: Record<string, QaIssueGuide> = {
   'vendor-account-mapping': {
     area: "Vendors",
     expected: "Vendors \u00b7 Account Mapping completes without error and records verification facts.",
-    whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
-    ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
-  },
-  'hr-attendance-leave': {
-    area: "Human Resources",
-    expected: "HR attendance + leave smoke completes without error and records verification facts.",
-    whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
-    ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
-  },
-  'accounting-payroll': {
-    area: "Accounting",
-    expected: "Accounting \u00b7 Process Payroll / Income Tax completes without error and records verification facts.",
-    whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
-    ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
-  },
-  'pos-module-surfaces': {
-    area: "Point-of-Sales",
-    expected: "Point-of-Sales module surfaces completes without error and records verification facts.",
     whereToFix: [
       'Open Dev Console → Automated QA → this step detail.',
       'Retry the step or re-run full QA after fixing the underlying API/data issue.',

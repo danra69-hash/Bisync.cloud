@@ -11,9 +11,6 @@ export const QA_GROUPS = [
   { id: 'operation-production', label: '8 · Operation · Production' },
   { id: 'sales', label: '9 · Sales' },
   { id: 'reports', label: '10 · Reports' },
-  { id: 'hr', label: '11 · Human Resources' },
-  { id: 'accounting', label: '12 · Accounting' },
-  { id: 'pos', label: '13 · Point-of-Sales' },
 ] as const;
 
 export type QaGroupId = (typeof QA_GROUPS)[number]['id'];

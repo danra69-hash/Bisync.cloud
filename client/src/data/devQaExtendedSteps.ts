@@ -1,5 +1,4 @@
 import { api } from '../api';
-import { hrApi } from '../modules/hr/api';
 import { EMPTY_COMPONENT_DETAIL_CONFIG, serializeDetailConfig } from './componentForm';
 import {
   buildSmartComponentImportPlan,
@@ -838,47 +837,6 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     group: 'vendors',
     run: async () => {
       notLiveYet('Vendor Account Mapping');
-    },
-  },
-  {
-    id: 'hr-attendance-leave',
-    label: 'HR attendance + leave smoke',
-    group: 'hr',
-    run: async (ctx, update) => {
-      await assert(!!ctx.companyId, 'Company missing');
-      try {
-        const employees = await hrApi.employees.list();
-        const from = todayIso();
-        const attendance = await hrApi.attendance.list(from, from);
-        const leave = await hrApi.leaveRequests.list();
-        update({
-          detail: `HR smoke · employees ${employees.length} · attendance ${attendance.length} · leave ${leave.length}`,
-          facts: {
-            employeeCount: employees.length,
-            attendanceCount: attendance.length,
-            leaveCount: leave.length,
-          },
-          fixActions: defaultFixActions('hr-attendance-leave'),
-        });
-      } catch (err) {
-        softFail(`HR module smoke incomplete: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-  },
-  {
-    id: 'accounting-payroll',
-    label: 'Accounting · Process Payroll / Income Tax',
-    group: 'accounting',
-    run: async () => {
-      softFail('Accounting payroll/tax flows exist in UI — full Automated QA wiring pending (employee pay structure + run).');
-    },
-  },
-  {
-    id: 'pos-module-surfaces',
-    label: 'Point-of-Sales module surfaces',
-    group: 'pos',
-    run: async () => {
-      notLiveYet('POS Menu / Modifier / Device / E-Invoice (all coming soon)');
     },
   },
 ];

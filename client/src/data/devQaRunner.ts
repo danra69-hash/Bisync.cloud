@@ -7,7 +7,6 @@ import { CURRENT_DPA_VERSION } from './dpa';
 import { calcCogsPercentValue, calcProductCogs } from './productForm';
 import { priceLocationLine, sumPricedLines } from './subscriptionPricing';
 import { allRmsTaskIds } from './userAccess';
-import { hrApi } from '../modules/hr/api';
 import { purgeQaOperationalData } from './devConsoleApi';
 import { QA_GROUP_LABEL, type QaGroupId } from './devQaGroups';
 import { QA_EXTENDED_INSERTS, QA_EXTENDED_TAIL } from './devQaExtendedSteps';
@@ -744,83 +743,6 @@ const BASE_TASKS: TaskDef[] = [
           companyId: ctx.companyId!,
         },
         fixActions: defaultFixActions('create-system-admin'),
-      });
-    },
-  },
-  {
-    id: 'create-hr-staff',
-    label: 'Create additional HR employee (non-admin)',
-    group: 'setup',
-    run: async (ctx, update) => {
-      await assert(!!ctx.companyId, 'Company missing');
-      const departments = await hrApi.org.departments.list();
-      const department = departments.find(d => d.name === 'Operations')
-        ?? departments.find(d => d.name === 'People')
-        ?? departments[0];
-      await assert(!!department, 'No HR department available');
-      const email = `qa.staff.${ctx.runKey.toLowerCase()}@bisync.dev`;
-      const name = `QA Staff ${ctx.runKey}`;
-      const mobile = `+6018${ctx.runKey.slice(-7)}`;
-      const employee = await hrApi.employees.create({
-        name,
-        email,
-        mobile,
-        department: department.name,
-        departmentId: department.id,
-        divisionId: department.divisionId,
-        position: 'Operations Staff',
-        joinDate: todayIso(),
-        fingerprintEnrolled: false,
-        faceRecognitionEnrolled: false,
-        isShiftEmployee: true,
-        posEnabled: true,
-        bisyncEnabled: true,
-        active: true,
-        companyId: ctx.companyId!,
-        workingHoursPerDay: 8,
-      });
-      const accessJson = JSON.stringify({
-        modules: ['RMS', 'POS', 'HRM'],
-        superAdmin: false,
-        rms: {
-          enabled: true,
-          tasks: {
-            viewDashboard: true,
-            viewStockCards: true,
-          },
-        },
-      });
-      const userPayload = {
-        employeeId: employee.id,
-        fullName: name,
-        email,
-        role: 'Staff',
-        phone: mobile,
-        active: true,
-        companyId: ctx.companyId!,
-        locationIdsJson: JSON.stringify(
-          [ctx.restaurantLocationId, ctx.kitchenLocationId].filter((id): id is number => id != null),
-        ),
-        accessJson,
-      };
-      const existing = (await api.users()).find(u => u.employeeId === employee.id || u.email === email);
-      const user = existing
-        ? await api.updateUser(existing.id, userPayload)
-        : await api.createUser(userPayload);
-      ctx.hrStaffEmployeeId = employee.id;
-      ctx.hrStaffEmail = email;
-      ctx.hrStaffName = name;
-      update({
-        detail: `${name} · ${email} · role Staff (not superAdmin)`,
-        facts: {
-          employeeId: employee.id,
-          userId: user.id,
-          email,
-          position: 'Operations Staff',
-          superAdmin: false,
-          department: department.name,
-        },
-        fixActions: defaultFixActions('create-hr-staff'),
       });
     },
   },
