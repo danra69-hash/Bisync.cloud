@@ -179,7 +179,7 @@ public class CompanyOperationalDbProvisioner(
                 continue;
             await using var conn = new NpgsqlConnection(connectionString);
             await conn.OpenAsync(ct);
-            await InsertLocationRawAsync(conn, loc, ct);
+            await InsertLocationRawAsync(conn, loc, company.CountryCode, ct);
         }
 
         await SchemaPatcher.EnsureTenantRegistryAsync(tenantDb);
@@ -209,45 +209,80 @@ public class CompanyOperationalDbProvisioner(
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO "Companies" (
-              "Id", "Name", "Brn", "GstTin", "CountryCode",
+              "Id", "Name", "Code", "Brn", "GstTin", "CountryCode",
               "AddressLine1", "AddressLine2", "City", "StateProvince", "Postcode",
-              "Phone", "Fax", "Email", "Active",
-              "BusinessTypesJson", "VendorPolicyTagsJson", "ModulesJson")
+              "Phone", "Fax", "Email", "Active", "RegisteredAt",
+              "BusinessTypesJson", "VendorPolicyTagsJson", "ModulesJson",
+              "LogoFileName", "LogoContentType", "LogoBase64",
+              "SmtpProviderMode", "SmtpHost", "SmtpPort", "SmtpUseSsl",
+              "SmtpUsername", "SmtpPassword", "SmtpFromEmail", "SmtpFromName",
+              "GraphTenantId", "GraphClientId", "GraphClientSecret")
             VALUES (
-              @id, @name, @brn, @gst, @cc,
+              @id, @name, @code, @brn, @gst, @cc,
               @a1, @a2, @city, @state, @post,
-              @phone, @fax, @email, @active,
-              @bt, @vp, @mod)
+              @phone, @fax, @email, @active, @registeredAt,
+              @bt, @vp, @mod,
+              @logoFile, @logoType, @logoB64,
+              @smtpMode, @smtpHost, @smtpPort, @smtpSsl,
+              @smtpUser, @smtpPass, @smtpFrom, @smtpFromName,
+              @graphTenant, @graphClient, @graphSecret)
             ON CONFLICT ("Id") DO NOTHING
             """;
+        // EnsureCreated makes Code NOT NULL with no SQL default; always supply a 4-letter code.
+        var code = string.IsNullOrWhiteSpace(company.Code)
+            ? ComponentIdentityRules.DeriveCompanyCodeCandidate(company.Name)
+            : company.Code.Trim().ToUpperInvariant();
+        if (code.Length > ComponentIdentityRules.CompanyCodeLength)
+            code = code[..ComponentIdentityRules.CompanyCodeLength];
+        if (code.Length < ComponentIdentityRules.CompanyCodeLength)
+            code = code.PadRight(ComponentIdentityRules.CompanyCodeLength, 'X');
+
         cmd.Parameters.AddWithValue("id", company.Id);
         cmd.Parameters.AddWithValue("name", company.Name);
-        cmd.Parameters.AddWithValue("brn", company.Brn);
-        cmd.Parameters.AddWithValue("gst", company.GstTin);
-        cmd.Parameters.AddWithValue("cc", company.CountryCode);
-        cmd.Parameters.AddWithValue("a1", company.AddressLine1);
-        cmd.Parameters.AddWithValue("a2", company.AddressLine2);
-        cmd.Parameters.AddWithValue("city", company.City);
-        cmd.Parameters.AddWithValue("state", company.StateProvince);
-        cmd.Parameters.AddWithValue("post", company.Postcode);
-        cmd.Parameters.AddWithValue("phone", company.Phone);
-        cmd.Parameters.AddWithValue("fax", company.Fax);
-        cmd.Parameters.AddWithValue("email", company.Email);
+        cmd.Parameters.AddWithValue("code", code);
+        cmd.Parameters.AddWithValue("brn", company.Brn ?? string.Empty);
+        cmd.Parameters.AddWithValue("gst", company.GstTin ?? string.Empty);
+        cmd.Parameters.AddWithValue("cc", string.IsNullOrWhiteSpace(company.CountryCode) ? "MY" : company.CountryCode);
+        cmd.Parameters.AddWithValue("a1", company.AddressLine1 ?? string.Empty);
+        cmd.Parameters.AddWithValue("a2", company.AddressLine2 ?? string.Empty);
+        cmd.Parameters.AddWithValue("city", company.City ?? string.Empty);
+        cmd.Parameters.AddWithValue("state", company.StateProvince ?? string.Empty);
+        cmd.Parameters.AddWithValue("post", company.Postcode ?? string.Empty);
+        cmd.Parameters.AddWithValue("phone", company.Phone ?? string.Empty);
+        cmd.Parameters.AddWithValue("fax", company.Fax ?? string.Empty);
+        cmd.Parameters.AddWithValue("email", company.Email ?? string.Empty);
         cmd.Parameters.AddWithValue("active", company.Active);
-        cmd.Parameters.AddWithValue("bt", company.BusinessTypesJson);
-        cmd.Parameters.AddWithValue("vp", company.VendorPolicyTagsJson);
-        cmd.Parameters.AddWithValue("mod", company.ModulesJson);
+        cmd.Parameters.AddWithValue("registeredAt", (object?)company.RegisteredAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("bt", company.BusinessTypesJson ?? "[]");
+        cmd.Parameters.AddWithValue("vp", company.VendorPolicyTagsJson ?? "[]");
+        cmd.Parameters.AddWithValue("mod", company.ModulesJson ?? "[]");
+        cmd.Parameters.AddWithValue("logoFile", company.LogoFileName ?? string.Empty);
+        cmd.Parameters.AddWithValue("logoType", company.LogoContentType ?? string.Empty);
+        cmd.Parameters.AddWithValue("logoB64", company.LogoBase64 ?? string.Empty);
+        cmd.Parameters.AddWithValue("smtpMode", string.IsNullOrWhiteSpace(company.SmtpProviderMode) ? "auto" : company.SmtpProviderMode);
+        cmd.Parameters.AddWithValue("smtpHost", company.SmtpHost ?? string.Empty);
+        cmd.Parameters.AddWithValue("smtpPort", company.SmtpPort <= 0 ? 587 : company.SmtpPort);
+        cmd.Parameters.AddWithValue("smtpSsl", company.SmtpUseSsl);
+        cmd.Parameters.AddWithValue("smtpUser", company.SmtpUsername ?? string.Empty);
+        cmd.Parameters.AddWithValue("smtpPass", company.SmtpPassword ?? string.Empty);
+        cmd.Parameters.AddWithValue("smtpFrom", company.SmtpFromEmail ?? string.Empty);
+        cmd.Parameters.AddWithValue("smtpFromName", company.SmtpFromName ?? string.Empty);
+        cmd.Parameters.AddWithValue("graphTenant", company.GraphTenantId ?? string.Empty);
+        cmd.Parameters.AddWithValue("graphClient", company.GraphClientId ?? string.Empty);
+        cmd.Parameters.AddWithValue("graphSecret", company.GraphClientSecret ?? string.Empty);
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    static async Task InsertLocationRawAsync(NpgsqlConnection conn, Location loc, CancellationToken ct)
+    static async Task InsertLocationRawAsync(NpgsqlConnection conn, Location loc, string? companyCountryCode, CancellationToken ct)
     {
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO "Locations" (
               "Id", "ExternalId", "Name", "Address", "CompanyId",
               "AddressLine1", "AddressLine2", "City", "StateProvince", "Postcode",
-              "PrincipalContactUserId", "BusinessTypesJson", "VendorPolicyTagsJson", "ModulesJson",
+              "PrincipalContactUserId", "SecondaryContactUserId",
+              "BusinessTypesJson", "VendorPolicyTagsJson", "ModulesJson",
+              "OpeningHoursJson", "TimeZoneId",
               "SalesToday", "SalesWtd", "SalesMtd", "SalesYtd",
               "SalesPrevToday", "SalesPrevWtd", "SalesPrevMtd", "SalesPrevYtd",
               "CoversToday", "CoversWtd", "CoversMtd", "CoversYtd",
@@ -257,7 +292,9 @@ public class CompanyOperationalDbProvisioner(
             VALUES (
               @id, @ext, @name, @address, @companyId,
               @a1, @a2, @city, @state, @post,
-              @principal, @bt, @vp, @mod,
+              @principal, @secondary,
+              @bt, @vp, @mod,
+              @hours, @tz,
               0, 0, 0, 0,
               0, 0, 0, 0,
               0, 0, 0, 0,
@@ -277,9 +314,14 @@ public class CompanyOperationalDbProvisioner(
         cmd.Parameters.AddWithValue("state", loc.StateProvince ?? string.Empty);
         cmd.Parameters.AddWithValue("post", loc.Postcode ?? string.Empty);
         cmd.Parameters.AddWithValue("principal", (object?)loc.PrincipalContactUserId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("secondary", (object?)loc.SecondaryContactUserId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("bt", loc.BusinessTypesJson ?? "[]");
         cmd.Parameters.AddWithValue("vp", loc.VendorPolicyTagsJson ?? "[]");
         cmd.Parameters.AddWithValue("mod", loc.ModulesJson ?? "[]");
+        cmd.Parameters.AddWithValue("hours", string.IsNullOrWhiteSpace(loc.OpeningHoursJson) ? "{}" : loc.OpeningHoursJson);
+        cmd.Parameters.AddWithValue("tz", string.IsNullOrWhiteSpace(loc.TimeZoneId)
+            ? OrgClock.ResolveTimeZoneId(companyCountryCode, loc.StateProvince)
+            : loc.TimeZoneId);
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
