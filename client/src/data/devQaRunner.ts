@@ -9,6 +9,8 @@ import { priceLocationLine, sumPricedLines } from './subscriptionPricing';
 import { allRmsTaskIds } from './userAccess';
 import { hrApi } from '../modules/hr/api';
 import { purgeQaOperationalData } from './devConsoleApi';
+import { QA_GROUP_LABEL, type QaGroupId } from './devQaGroups';
+import { QA_EXTENDED_INSERTS, QA_EXTENDED_TAIL } from './devQaExtendedSteps';
 
 /** Fixed platform operator used for every Automated QA run (never disposable). */
 export const QA_OPERATOR_EMAIL = 'ms@cubevalue.com';
@@ -34,6 +36,8 @@ export type QaFixAction = {
 export type QaTaskResult = {
   id: string;
   label: string;
+  /** Product area group (Setup, Component, Operation · Order, …). */
+  group?: string;
   status: QaStatus;
   detail?: string;
   startedAt?: string;
@@ -94,6 +98,19 @@ export type PowerQaContext = {
   finishedProduct?: { id: number; productId: string; name: string; totalCost: number; rrp: number; cogs: number; cogsPercent: number | null };
   purchaseOrders: { id: number; vendorName: string; deliveryDate: string; unitPrice: number; priceChangedAtReceive: boolean }[];
   cashPurchaseComponentId?: string;
+  componentTemplateCsv?: string;
+  importedComponentId?: string;
+  importedIngredientId?: number;
+  quoteRequestId?: number;
+  sampleRequestId?: number;
+  b2bProduct?: { id: number; productId: string; name: string; totalCost: number; rrp: number };
+  orderTemplateId?: number;
+  precommittedTemplateId?: number;
+  wastageEntryId?: number;
+  transferId?: number;
+  b2bCustomerExternalId?: string;
+  b2bSalesOrderId?: number;
+  promotionId?: number;
 };
 
 type TaskUpdate = (patch: Partial<QaTaskResult>) => void;
@@ -102,6 +119,7 @@ type TaskFn = (ctx: PowerQaContext, update: TaskUpdate) => Promise<void>;
 type TaskDef = {
   id: string;
   label: string;
+  group: string;
   run: TaskFn;
 };
 
@@ -344,10 +362,11 @@ async function createOneComponentBundle(
   };
 }
 
-const TASKS: TaskDef[] = [
+const BASE_TASKS: TaskDef[] = [
   {
     id: 'register-activate',
-    label: '1. Sign in as QA operator (ms@cubevalue.com)',
+    label: 'Sign in as QA operator (ms@cubevalue.com)',
+    group: 'setup',
     run: async (ctx, update) => {
       const { user, password, registered } = await ensureQaOperatorAccount();
       await assert(user.active !== false, `${QA_OPERATOR_EMAIL} is not active`);
@@ -378,7 +397,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'company-onboarding',
-    label: '2. Company onboarding',
+    label: 'Company onboarding',
+    group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.ownerUserId, 'QA operator missing — complete sign-in first');
       const name = `QA Power Co ${ctx.runKey}`;
@@ -440,7 +460,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'location-onboarding',
-    label: '3. Location onboarding (Restaurant Halal)',
+    label: 'Location onboarding (Restaurant Halal)',
+    group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.ownerUserId && !!ctx.companyId, 'Owner/company missing');
       await api.completeLocationOnboarding(ctx.ownerUserId!, {
@@ -483,7 +504,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-kitchen-location',
-    label: '4. Add Central Kitchen location (Muslim Friendly)',
+    label: 'Add Central Kitchen location (Muslim Friendly)',
+    group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId && !!ctx.restaurantLocationId, 'Company/restaurant missing');
       const kitchen = await api.createLocationConfig({
@@ -514,7 +536,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'payment-continue',
-    label: '5. Payment Continue (types, modules, pricing)',
+    label: 'Payment Continue (types, modules, pricing)',
+    group: 'setup',
     run: async (ctx, update) => {
       await assert(
         !!ctx.companyId && !!ctx.restaurantLocationId && !!ctx.kitchenLocationId,
@@ -618,7 +641,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'provision-company-db',
-    label: '6. Provision company operational DB',
+    label: 'Provision company operational DB',
+    group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId, 'Company missing');
       const result = await api.provisionCompanyDb({
@@ -679,7 +703,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-system-admin',
-    label: '7. Grant System Admin rights to QA operator',
+    label: 'Grant System Admin rights to QA operator',
+    group: 'system-config',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId && !!ctx.restaurantLocationId && !!ctx.kitchenLocationId, 'Org context missing');
       await assert(!!ctx.ownerUserId, 'QA operator user missing');
@@ -724,7 +749,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-hr-staff',
-    label: '8. Create additional HR employee (non-admin)',
+    label: 'Create additional HR employee (non-admin)',
+    group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId, 'Company missing');
       const departments = await hrApi.org.departments.list();
@@ -800,7 +826,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'login-system-admin',
-    label: '9. Log in as QA operator (ms@cubevalue.com)',
+    label: 'Log in as QA operator (ms@cubevalue.com)',
+    group: 'setup',
     run: async (ctx, update) => {
       await assert(!!ctx.adminEmail && !!ctx.adminPassword, 'QA operator credentials missing');
       const user = await api.login(ctx.adminEmail!, ctx.adminPassword!);
@@ -820,7 +847,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-first-component-vendor',
-    label: '10. Add Component, Vendor, Vendor Product, Engage & Tag (seed #1)',
+    label: 'Add Component + Vendor + Vendor Product (seed #1)',
+    group: 'component',
     run: async (ctx, update) => {
       await assert(!!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Locations missing');
       const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!];
@@ -841,7 +869,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-five-component-vendors',
-    label: '11. Create 5 Components + Vendors + Vendor Products (engaged & tagged)',
+    label: 'Create 5 Components + Vendors + Vendor Products',
+    group: 'component',
     run: async (ctx, update) => {
       await assert(!!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Locations missing');
       const locs = [ctx.restaurantExternalId!, ctx.kitchenExternalId!];
@@ -868,7 +897,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-sub-product',
-    label: '12. Create Sub-Product using 3 components',
+    label: 'Create Sub-Product using 3 components',
+    group: 'products',
     run: async (ctx, update) => {
       await assert(ctx.components.length >= 3 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Need ≥3 components');
       const used = ctx.components.slice(0, 3);
@@ -929,7 +959,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-finished-product',
-    label: '13. Create Product utilizing all 5 components (incl. sub-product)',
+    label: 'Create Product utilizing all 5 components (incl. sub-product)',
+    group: 'products',
     run: async (ctx, update) => {
       await assert(ctx.components.length === 5 && !!ctx.subProduct && !!ctx.companyId, 'Need 5 components + sub-product');
       // Use components 3,4 (index 3,4) as direct BOM + sub-product (which embeds 0,1,2) + also include all 5:
@@ -1020,7 +1051,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'set-rrp-check-cogs',
-    label: '14. Add RRP and verify COGS / COGS%',
+    label: 'Add RRP and verify COGS / COGS%',
+    group: 'products',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct, 'Finished product missing');
       const current = await api.product(ctx.finishedProduct!.id);
@@ -1090,7 +1122,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-purchase-orders',
-    label: '15. Open POs to all test vendors (5 POs each, staggered dates/prices)',
+    label: 'Open POs to all test vendors (5 POs each)',
+    group: 'operation-order',
     run: async (ctx, update) => {
       await assert(ctx.components.length === 5 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const createdMeta: PowerQaContext['purchaseOrders'] = [];
@@ -1147,7 +1180,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'vendor-accept-pos',
-    label: '16. Vendors accept POs (1 simulated price change before goods-in)',
+    label: 'Vendors accept POs (1 simulated price change)',
+    group: 'operation-order',
     run: async (ctx, update) => {
       await assert(ctx.purchaseOrders.length > 0, 'No POs');
       let accepted = 0;
@@ -1178,7 +1212,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'receive-all-pos',
-    label: '17. Receive all vendor products',
+    label: 'Receive all vendor products',
+    group: 'operation-order',
     run: async (ctx, update) => {
       await assert(ctx.purchaseOrders.length > 0, 'No POs');
       let received = 0;
@@ -1208,7 +1243,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'verify-stock-after-po',
-    label: '18. Verify STOCK CARD after PO receipts',
+    label: 'Verify STOCK CARD after PO receipts',
+    group: 'operation-inventory',
     run: async (ctx, update) => {
       await assert(ctx.components.length === 5 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const irregularities: QaIrregularity[] = [];
@@ -1252,7 +1288,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'cash-purchase',
-    label: '19. Cash-purchase one component',
+    label: 'Cash-purchase one component',
+    group: 'operation-order',
     run: async (ctx, update) => {
       await assert(ctx.components.length > 0 && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const bundle = ctx.components[0];
@@ -1280,7 +1317,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'verify-stock-after-cash',
-    label: '20. Verify cash purchase on STOCK CARD',
+    label: 'Verify cash purchase on STOCK CARD',
+    group: 'operation-inventory',
     run: async (ctx, update) => {
       await assert(!!ctx.cashPurchaseComponentId && !!ctx.companyId && !!ctx.kitchenExternalId, 'Cash purchase context missing');
       const detail = await api.stockCardDetail('component', ctx.cashPurchaseComponentId!, ctx.companyId, [ctx.kitchenExternalId!]);
@@ -1307,7 +1345,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'produce-and-pos-sales',
-    label: '21. Produce product (2 dated batches) + POS sales for FIFO',
+    label: 'Produce product (2 batches) + POS sales for FIFO',
+    group: 'operation-production',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct && !!ctx.restaurantExternalId && !!ctx.kitchenExternalId, 'Product/location missing');
       const productId = ctx.finishedProduct!.id;
@@ -1366,7 +1405,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'final-stock-card-audit',
-    label: '22. Final STOCK CARD audit (PO + cash + produce + POS / FIFO)',
+    label: 'Final STOCK CARD audit (PO + cash + produce + POS / FIFO)',
+    group: 'operation-inventory',
     run: async (ctx, update) => {
       await assert(!!ctx.finishedProduct && !!ctx.companyId && !!ctx.kitchenExternalId, 'Context incomplete');
       const loc = [ctx.kitchenExternalId!];
@@ -1425,7 +1465,8 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'cogs-audit-history',
-    label: '23. Confirm inventory + COGS Audit History',
+    label: 'Confirm inventory + COGS Audit History',
+    group: 'reports',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId && !!ctx.kitchenExternalId && ctx.components.length > 0, 'Stock context missing for COGS audit');
       const period = periodMonthIso();
@@ -1519,19 +1560,48 @@ const TASKS: TaskDef[] = [
       }
     },
   },
-];
+] as TaskDef[];
+
+function assembleQaTasks(base: TaskDef[]): TaskDef[] {
+  const out: TaskDef[] = [];
+  for (const step of base) {
+    out.push(step);
+    const extras = QA_EXTENDED_INSERTS[step.id];
+    if (extras?.length) {
+      for (const extra of extras) {
+        out.push(extra as TaskDef);
+      }
+    }
+  }
+  for (const extra of QA_EXTENDED_TAIL) {
+    out.push(extra as TaskDef);
+  }
+  return out;
+}
+
+const TASKS: TaskDef[] = assembleQaTasks(BASE_TASKS);
 
 export function createPendingTasks(): QaTaskResult[] {
   return TASKS.map(t => ({
     id: t.id,
     label: t.label,
+    group: QA_GROUP_LABEL[(t.group as QaGroupId)] ?? t.group,
     status: 'pending' as const,
     fixActions: defaultFixActions(t.id),
   }));
 }
 
-export function getPowerQaTaskDefs(): { id: string; label: string }[] {
-  return TASKS.map(t => ({ id: t.id, label: t.label }));
+export function getPowerQaTaskDefs(): { id: string; label: string; group: string }[] {
+  return TASKS.map(t => ({
+    id: t.id,
+    label: t.label,
+    group: QA_GROUP_LABEL[(t.group as QaGroupId)] ?? t.group,
+  }));
+}
+
+export function getQaGroupOrder(): string[] {
+  return TASKS.map(t => QA_GROUP_LABEL[(t.group as QaGroupId)] ?? t.group)
+    .filter((g, i, arr) => arr.indexOf(g) === i);
 }
 
 export async function runAutomatedQa(

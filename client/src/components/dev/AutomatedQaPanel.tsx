@@ -529,9 +529,10 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         <div>
           <h2 className="text-sm font-semibold">Automated QA</h2>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            Runs the full journey under ms@cubevalue.com: company/location setup → payment → DB provision →
-            inventory/PO/POS → COGS Audit History. On a successful pass, all temporary QA operational data is
-            permanently deleted so the next run starts fresh. Only QA History is kept.
+            Full customer-path coverage under ms@cubevalue.com, grouped by product area: Setup & Tenancy,
+            System Configuration, Component, Vendors, Products, Operation (Order / Inventory / Production),
+            Sales, Reports, HR, Accounting, and POS. Coming-soon surfaces are catalogued as warnings so
+            nothing is left out. On a successful pass, temporary QA operational data is deleted; QA History is kept.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -603,8 +604,17 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
             {tasks.map((task, index) => {
               const isProblem = task.status === 'fail' || task.status === 'warn';
               const irregularCount = task.irregularities?.length ?? 0;
+              const prevGroup = index > 0 ? tasks[index - 1]?.group : null;
+              const showGroup = Boolean(task.group && task.group !== prevGroup);
               return (
                 <li key={task.id}>
+                  {showGroup && (
+                    <div className="px-4 py-2 bg-muted/40 border-b border-border">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                        {task.group}
+                      </p>
+                    </div>
+                  )}
                   <button
                     type="button"
                     className={`px-4 py-3 flex items-start gap-3 w-full text-left cursor-pointer hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${STATUS_STYLES[task.status]}`}
@@ -617,7 +627,10 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <StatusIcon status={task.status} />
-                        <p className="text-xs font-medium">{task.label}</p>
+                        <p className="text-xs font-medium">
+                          <span className="text-muted-foreground font-normal mr-1">{index + 1}.</span>
+                          {task.label}
+                        </p>
                         {task.durationMs != null && (
                           <span className="text-[10px] font-sans text-muted-foreground">{task.durationMs}ms</span>
                         )}
