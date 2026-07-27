@@ -620,15 +620,42 @@ public class DevConsoleController(
                 || u.Email.StartsWith("qa.admin.")
                 || u.FullName.StartsWith("QA System Admin"))
             .ToListAsync(ct);
-        var employeeIds = appUsers
+
+        // Never delete permanent Cubevalue operator accounts used by Automated QA.
+        var protectedUsers = appUsers
+            .Where(u => u.Email.EndsWith("@cubevalue.com", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var deletableUsers = appUsers
+            .Where(u => !u.Email.EndsWith("@cubevalue.com", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var user in protectedUsers)
+        {
+            user.CompanyId = null;
+            user.LocationIdsJson = "[]";
+            if (string.IsNullOrWhiteSpace(user.Role) || user.Role.Contains("QA", StringComparison.OrdinalIgnoreCase))
+                user.Role = "Company Admin";
+        }
+
+        var employeeIds = deletableUsers
             .Where(u => u.EmployeeId != null)
             .Select(u => u.EmployeeId!.Value)
             .Distinct()
             .ToList();
 
         var qaEmployees = await db.Employees
-            .Where(e => e.Email.StartsWith("qa.admin.") || e.Name.StartsWith("QA System Admin") || employeeIds.Contains(e.Id))
+            .Where(e => e.Email.StartsWith("qa.admin.")
+                || e.Email.StartsWith("qa.staff.")
+                || e.Name.StartsWith("QA System Admin")
+                || e.Name.StartsWith("QA Staff")
+                || employeeIds.Contains(e.Id))
             .ToListAsync(ct);
+        // Keep any employee row tied to a protected @cubevalue.com AppUser.
+        var protectedEmployeeIds = protectedUsers
+            .Where(u => u.EmployeeId != null)
+            .Select(u => u.EmployeeId!.Value)
+            .ToHashSet();
+        qaEmployees = qaEmployees.Where(e => !protectedEmployeeIds.Contains(e.Id)).ToList();
         employeeIds = qaEmployees.Select(e => e.Id).Distinct().ToList();
 
         if (employeeIds.Count > 0)
@@ -643,8 +670,9 @@ public class DevConsoleController(
             await TrackAsync("performanceAppraisals", () => db.PerformanceAppraisals.Where(x => employeeIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
         }
 
-        counts["appUsers"] = appUsers.Count;
-        db.AppUsers.RemoveRange(appUsers);
+        counts["appUsers"] = deletableUsers.Count;
+        counts["appUsersDetached"] = protectedUsers.Count;
+        db.AppUsers.RemoveRange(deletableUsers);
         counts["employees"] = qaEmployees.Count;
         db.Employees.RemoveRange(qaEmployees);
 

@@ -9,21 +9,21 @@ export type QaIssueGuide = {
 
 const GUIDES: Record<string, QaIssueGuide> = {
   'register-activate': {
-    area: 'Public registration → email activation',
-    expected: 'New person registers, activationUrl is returned (SMTP stub), confirm-activation, then login succeeds.',
+    area: 'QA operator sign-in',
+    expected: 'Automated QA always signs in as ms@cubevalue.com (registers/activates once if missing).',
     whereToFix: [
-      'POST /api/auth/register with unique email/mobile and matching passwords (≥8).',
-      'Use activationUrl from the register response (LoggingEmailSender stub).',
-      'POST /api/auth/confirm-activation with the token, then login.',
+      'Confirm AppUser ms@cubevalue.com exists and is Active.',
+      'Password should be Pass@123 (platform default) or 12345678.',
+      'If login fails, reset that account password or register it once via /register.',
     ],
-    checks: ['Register returns activationUrl', 'User Active after confirm', 'Login as owner works'],
+    checks: ['Login as ms@cubevalue.com works', 'User Active', 'Operator email fixed for all runs'],
   },
   'company-onboarding': {
     area: 'Company onboarding',
-    expected: 'Registered owner completes company onboarding; user.companyId set.',
+    expected: 'A fresh QA Power Co company is created and assigned to ms@cubevalue.com.',
     whereToFix: [
-      'Call complete-company-onboarding with company profile (types + modules).',
-      'Confirm owner is Company Admin for the new company.',
+      'POST /api/companies for QA Power Co {runKey}.',
+      'PUT /api/users/{id} to attach ms@cubevalue.com to the new company.',
     ],
     checks: ['companyId assigned', 'Company name is QA Power Co*', 'Modules include RMS/POS/HRM'],
   },
@@ -66,14 +66,13 @@ const GUIDES: Record<string, QaIssueGuide> = {
     checks: ['provisioned or alreadyProvisioned', 'databaseName matches', 'Feature flag not blocking'],
   },
   'create-system-admin': {
-    area: 'HR Employees + Access Control',
-    expected: 'HR employee + AppUser System Admin with superAdmin and all RMS tasks.',
+    area: 'Access Control',
+    expected: 'ms@cubevalue.com is granted System Admin + superAdmin on the QA company.',
     whereToFix: [
-      'Create employee under Human Resources for the QA company.',
-      'System Configuration → Access Control → create user linked to that employee.',
-      'Grant all modules; set superAdmin in accessJson if UI lacks the toggle.',
+      'Update the ms@cubevalue.com AppUser role/accessJson for the QA company.',
+      'Ensure locationIds include restaurant + kitchen.',
     ],
-    checks: ['Employee created', 'User linked to employee', 'superAdmin true', 'All RMS tasks on'],
+    checks: ['Email is ms@cubevalue.com', 'superAdmin true', 'All RMS tasks on'],
   },
   'create-hr-staff': {
     area: 'HR Employees + Access Control',
@@ -86,13 +85,13 @@ const GUIDES: Record<string, QaIssueGuide> = {
   },
   'login-system-admin': {
     area: 'Authentication',
-    expected: 'api.login succeeds with QA System Admin email / default password.',
+    expected: 'api.login succeeds with ms@cubevalue.com.',
     whereToFix: [
       'Confirm user is Active.',
-      'Try password Pass@123 (seed default when hash empty).',
-      'Re-create user if login still fails.',
+      'Try password Pass@123, then 12345678.',
+      'Re-run step 1 if the operator account is missing.',
     ],
-    checks: ['Login returns user', 'Email matches QA admin'],
+    checks: ['Login returns user', 'Email is ms@cubevalue.com'],
   },
   'create-first-component-vendor': {
     area: 'Smart Components + Vendors',

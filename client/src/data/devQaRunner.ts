@@ -1,4 +1,4 @@
-import { api, setApiTenantCompanyId } from '../api';
+import { api, setApiTenantCompanyId, type AppUser } from '../api';
 import { DEMO_PASSWORD } from '../context/currentUserContext';
 import { EMPTY_COMPONENT_DETAIL_CONFIG, serializeDetailConfig } from './componentForm';
 import { CURRENT_EULA_VERSION } from './eula';
@@ -9,6 +9,11 @@ import { priceLocationLine, sumPricedLines } from './subscriptionPricing';
 import { allRmsTaskIds } from './userAccess';
 import { hrApi } from '../modules/hr/api';
 import { purgeQaOperationalData } from './devConsoleApi';
+
+/** Fixed platform operator used for every Automated QA run (never disposable). */
+export const QA_OPERATOR_EMAIL = 'ms@cubevalue.com';
+const QA_OPERATOR_PASSWORDS = [DEMO_PASSWORD, '12345678'] as const;
+const QA_OPERATOR_MOBILE = '+60170000001';
 
 export type QaStatus = 'pending' | 'running' | 'pass' | 'fail' | 'warn';
 
@@ -143,6 +148,57 @@ async function assert(condition: boolean, message: string): Promise<void> {
 
 function softFail(message: string): never {
   throw Object.assign(new Error(message), { soft: true });
+}
+
+async function tryLoginQaOperator(): Promise<{ user: AppUser; password: string } | null> {
+  for (const password of QA_OPERATOR_PASSWORDS) {
+    try {
+      const user = await api.login(QA_OPERATOR_EMAIL, password);
+      if (user?.id) return { user, password };
+    } catch {
+      // try next password
+    }
+  }
+  return null;
+}
+
+async function ensureQaOperatorAccount(): Promise<{ user: AppUser; password: string; registered: boolean }> {
+  const existing = await tryLoginQaOperator();
+  if (existing) return { ...existing, registered: false };
+
+  const password = DEMO_PASSWORD;
+  try {
+    const registered = await api.register({
+      surname: 'Cubevalue',
+      givenName: 'MS',
+      email: QA_OPERATOR_EMAIL,
+      mobile: QA_OPERATOR_MOBILE,
+      password,
+      confirmPassword: password,
+      acceptedEula: true,
+      eulaVersion: CURRENT_EULA_VERSION,
+      acceptedPrivacyPolicy: true,
+      privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+      acceptedDpa: true,
+      dpaVersion: CURRENT_DPA_VERSION,
+    });
+    if (registered.activationUrl) {
+      const token = extractActivationToken(registered.activationUrl);
+      await api.confirmActivation(token);
+    }
+  } catch (err) {
+    // Account may already exist with an unknown password — surface a clear error after retry.
+    const retry = await tryLoginQaOperator();
+    if (retry) return { ...retry, registered: false };
+    throw new Error(
+      err instanceof Error
+        ? `Could not sign in as ${QA_OPERATOR_EMAIL}: ${err.message}`
+        : `Could not sign in as ${QA_OPERATOR_EMAIL}`,
+    );
+  }
+
+  const user = await api.login(QA_OPERATOR_EMAIL, password);
+  return { user, password, registered: true };
 }
 
 function deliveryJson(orderUnit = 'Kg', orderQty = 1): string {
@@ -291,43 +347,29 @@ async function createOneComponentBundle(
 const TASKS: TaskDef[] = [
   {
     id: 'register-activate',
-    label: '1. Register person + email activation',
+    label: '1. Sign in as QA operator (ms@cubevalue.com)',
     run: async (ctx, update) => {
-      const email = `qa.owner.${ctx.runKey.toLowerCase()}@bisync.dev`;
-      const password = DEMO_PASSWORD;
-      const surname = 'QA';
-      const givenName = `Owner${ctx.runKey.slice(-6)}`;
-      const mobile = `+6017${ctx.runKey.slice(-8)}`;
-      const registered = await api.register({
-        surname,
-        givenName,
-        email,
-        mobile,
-        password,
-        confirmPassword: password,
-        acceptedEula: true,
-        eulaVersion: CURRENT_EULA_VERSION,
-        acceptedPrivacyPolicy: true,
-        privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
-        acceptedDpa: true,
-        dpaVersion: CURRENT_DPA_VERSION,
-      });
-      await assert(!!registered.activationUrl, 'Register did not return activationUrl (SMTP stub link)');
-      const token = extractActivationToken(registered.activationUrl);
-      await api.confirmActivation(token);
-      const user = await api.login(email, password);
-      await assert(user.active !== false, 'Owner user is not active after activation');
+      const { user, password, registered } = await ensureQaOperatorAccount();
+      await assert(user.active !== false, `${QA_OPERATOR_EMAIL} is not active`);
       ctx.ownerUserId = user.id;
-      ctx.ownerEmail = email;
+      ctx.ownerEmail = QA_OPERATOR_EMAIL;
       ctx.ownerPassword = password;
-      ctx.ownerName = user.fullName || `${givenName} ${surname}`;
+      ctx.ownerName = user.fullName || 'MS Cubevalue';
+      // Admin credentials are the same fixed operator for the rest of the run.
+      ctx.adminUserId = user.id;
+      ctx.adminEmail = QA_OPERATOR_EMAIL;
+      ctx.adminPassword = password;
+      ctx.adminName = ctx.ownerName;
       setApiTenantUserId(user.id);
+      if (user.companyId) setApiTenantCompanyId(user.companyId);
       update({
-        detail: `Activated ${email} · user #${user.id}`,
+        detail: registered
+          ? `Registered and activated ${QA_OPERATOR_EMAIL} · user #${user.id}`
+          : `Signed in as ${QA_OPERATOR_EMAIL} · user #${user.id}`,
         facts: {
           userId: user.id,
-          email,
-          activationUrlPresent: true,
+          email: QA_OPERATOR_EMAIL,
+          registeredNewAccount: registered,
           companyId: user.companyId,
         },
         fixActions: defaultFixActions('register-activate'),
@@ -338,9 +380,9 @@ const TASKS: TaskDef[] = [
     id: 'company-onboarding',
     label: '2. Company onboarding',
     run: async (ctx, update) => {
-      await assert(!!ctx.ownerUserId, 'Owner user missing — complete register/activation first');
+      await assert(!!ctx.ownerUserId, 'QA operator missing — complete sign-in first');
       const name = `QA Power Co ${ctx.runKey}`;
-      const user = await api.completeCompanyOnboarding(ctx.ownerUserId!, {
+      const company = await api.createCompany({
         name,
         brn: `BRN${ctx.runKey}`,
         gstTin: `GST${ctx.runKey}`,
@@ -352,22 +394,43 @@ const TASKS: TaskDef[] = [
         postcode: '50000',
         phone: '+60 3-2000 1000',
         fax: '',
-        email: `qa.power.${ctx.runKey.toLowerCase()}@bisync.dev`,
+        email: QA_OPERATOR_EMAIL,
         active: true,
         businessTypesJson: JSON.stringify([RESTAURANT, CENTRAL_KITCHEN]),
         vendorPolicyTagsJson: JSON.stringify(['halal', 'muslim-friendly']),
         modulesJson: JSON.stringify(['RMS', 'POS', 'HRM', 'Accounting']),
       });
-      await assert(!!user.companyId, 'Company onboarding did not assign companyId');
-      ctx.companyId = user.companyId!;
-      ctx.companyName = user.companyName ?? name;
-      setApiTenantCompanyId(user.companyId!);
+      const accessJson = JSON.stringify({
+        modules: ['RMS', 'POS', 'HRM', 'Accounting'],
+        superAdmin: true,
+        rms: {
+          enabled: true,
+          tasks: Object.fromEntries(allRmsTaskIds().map(id => [id, true])),
+        },
+      });
+      const user = await api.updateUser(ctx.ownerUserId!, {
+        employeeId: null,
+        fullName: ctx.ownerName || 'MS Cubevalue',
+        email: QA_OPERATOR_EMAIL,
+        role: 'Company Admin',
+        phone: QA_OPERATOR_MOBILE,
+        active: true,
+        companyId: company.id,
+        locationIdsJson: '[]',
+        accessJson,
+      });
+      await assert(user.companyId === company.id, 'Operator was not assigned to the new QA company');
+      ctx.companyId = company.id;
+      ctx.companyName = company.name || name;
+      setApiTenantCompanyId(company.id);
+      setApiTenantUserId(user.id);
       update({
-        detail: `Onboarded ${ctx.companyName} (#${user.companyId})`,
+        detail: `Onboarded ${ctx.companyName} (#${company.id}) under ${QA_OPERATOR_EMAIL}`,
         facts: {
-          companyId: user.companyId!,
+          companyId: company.id,
           name: ctx.companyName,
           ownerUserId: user.id,
+          operatorEmail: QA_OPERATOR_EMAIL,
           businessTypes: 'Restaurant + Central Kitchen',
           modules: 'RMS, POS, HRM, Accounting',
         },
@@ -616,36 +679,12 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'create-system-admin',
-    label: '7. Create System Admin user with all rights',
+    label: '7. Grant System Admin rights to QA operator',
     run: async (ctx, update) => {
       await assert(!!ctx.companyId && !!ctx.restaurantLocationId && !!ctx.kitchenLocationId, 'Org context missing');
-      const departments = await hrApi.org.departments.list();
-      const department = departments.find(d => d.name === 'People')
-        ?? departments.find(d => d.name === 'Operations')
-        ?? departments[0];
-      await assert(!!department, 'No HR department available — seed org tree first');
-      const email = `qa.admin.${ctx.runKey.toLowerCase()}@bisync.dev`;
-      const name = `QA System Admin ${ctx.runKey}`;
-      const mobile = `+6012${ctx.runKey.slice(-7)}`;
-      // Employee create syncs a linked AppUser — grant System Admin rights via update (or create if missing).
-      const employee = await hrApi.employees.create({
-        name,
-        email,
-        mobile,
-        department: department.name,
-        departmentId: department.id,
-        divisionId: department.divisionId,
-        position: 'System Admin',
-        joinDate: todayIso(),
-        fingerprintEnrolled: false,
-        faceRecognitionEnrolled: false,
-        isShiftEmployee: false,
-        posEnabled: true,
-        bisyncEnabled: true,
-        active: true,
-        companyId: ctx.companyId!,
-        workingHoursPerDay: 8,
-      });
+      await assert(!!ctx.ownerUserId, 'QA operator user missing');
+      const email = QA_OPERATOR_EMAIL;
+      const name = ctx.ownerName || 'MS Cubevalue';
       const accessJson = JSON.stringify({
         modules: ['RMS', 'POS', 'HRM', 'Accounting'],
         superAdmin: true,
@@ -654,34 +693,30 @@ const TASKS: TaskDef[] = [
           tasks: Object.fromEntries(allRmsTaskIds().map(id => [id, true])),
         },
       });
-      const userPayload = {
-        employeeId: employee.id,
+      const user = await api.updateUser(ctx.ownerUserId!, {
+        employeeId: null,
         fullName: name,
         email,
         role: 'System Admin',
-        phone: mobile,
+        phone: QA_OPERATOR_MOBILE,
         active: true,
         companyId: ctx.companyId!,
         locationIdsJson: JSON.stringify([ctx.restaurantLocationId, ctx.kitchenLocationId]),
         accessJson,
-      };
-      const existing = (await api.users()).find(u => u.employeeId === employee.id || u.email === email);
-      const user = existing
-        ? await api.updateUser(existing.id, userPayload)
-        : await api.createUser(userPayload);
-      ctx.employeeId = employee.id;
+      });
+      ctx.employeeId = user.employeeId ?? undefined;
       ctx.adminUserId = user.id;
       ctx.adminEmail = email;
-      ctx.adminPassword = DEMO_PASSWORD;
+      ctx.adminPassword = ctx.ownerPassword || DEMO_PASSWORD;
       ctx.adminName = name;
       update({
-        detail: `${name} · ${email} (default password ${DEMO_PASSWORD})`,
+        detail: `${name} · ${email} granted System Admin on QA company`,
         facts: {
           userId: user.id,
-          employeeId: employee.id,
           email,
           superAdmin: true,
           rmsTasks: allRmsTaskIds().length,
+          companyId: ctx.companyId!,
         },
         fixActions: defaultFixActions('create-system-admin'),
       });
@@ -765,16 +800,20 @@ const TASKS: TaskDef[] = [
   },
   {
     id: 'login-system-admin',
-    label: '9. Log in with System Admin credentials',
+    label: '9. Log in as QA operator (ms@cubevalue.com)',
     run: async (ctx, update) => {
-      await assert(!!ctx.adminEmail && !!ctx.adminPassword, 'Admin credentials missing');
+      await assert(!!ctx.adminEmail && !!ctx.adminPassword, 'QA operator credentials missing');
       const user = await api.login(ctx.adminEmail!, ctx.adminPassword!);
-      await assert(user.id === ctx.adminUserId || user.email === ctx.adminEmail, 'Logged-in user does not match QA admin');
+      await assert(
+        user.email.toLowerCase() === QA_OPERATOR_EMAIL,
+        `Expected ${QA_OPERATOR_EMAIL}, got ${user.email}`,
+      );
       setApiTenantUserId(user.id);
       setApiTenantCompanyId(ctx.companyId);
+      ctx.adminUserId = user.id;
       update({
         detail: `Authenticated as ${user.fullName} (${user.email})`,
-        facts: { userId: user.id, email: user.email, role: user.role },
+        facts: { userId: user.id, email: user.email, role: user.role, operator: QA_OPERATOR_EMAIL },
         fixActions: defaultFixActions('login-system-admin'),
       });
     },

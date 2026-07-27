@@ -15,17 +15,17 @@ export type QaSceneMeta = {
 
 const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
   'register-activate': {
-    screenTitle: 'Create account',
-    routeHint: '/register → /activate',
-    actor: 'visitor',
-    activity: 'Filling registration, confirming activation email, first login',
-    panels: ['Given name / surname', 'Email + mobile', 'Password', 'Activation link'],
+    screenTitle: 'QA operator sign-in',
+    routeHint: '/login',
+    actor: 'admin',
+    activity: 'Signing in as ms@cubevalue.com for Automated QA',
+    panels: ['Email', 'Password', 'Session'],
   },
   'company-onboarding': {
     screenTitle: 'Company setup',
-    routeHint: '/onboarding/company',
-    actor: 'owner',
-    activity: 'Creating QA company profile, modules, and business types',
+    routeHint: '/config/companies',
+    actor: 'admin',
+    activity: 'Creating QA Power Co and assigning ms@cubevalue.com',
     panels: ['Company name', 'Modules RMS/POS/HRM', 'Business types'],
   },
   'location-onboarding': {
@@ -58,10 +58,10 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
   },
   'create-system-admin': {
     screenTitle: 'Access Control',
-    routeHint: '/hr + /config/access',
-    actor: 'owner',
-    activity: 'Creating HR employee and System Admin with full rights',
-    panels: ['Employee form', 'User link', 'superAdmin + RMS tasks'],
+    routeHint: '/config/access',
+    actor: 'admin',
+    activity: 'Granting System Admin rights to ms@cubevalue.com on the QA company',
+    panels: ['Operator profile', 'superAdmin', 'RMS tasks'],
   },
   'create-hr-staff': {
     screenTitle: 'HR Employees',
@@ -74,7 +74,7 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     screenTitle: 'Sign in',
     routeHint: '/login',
     actor: 'admin',
-    activity: 'Signing in as QA System Admin',
+    activity: 'Re-authenticating as ms@cubevalue.com before operational steps',
     panels: ['Email', 'Password', 'Session'],
   },
   'create-first-component-vendor': {
