@@ -847,7 +847,6 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     run: async (ctx, update) => {
       await assert(!!ctx.companyId, 'Company missing');
       try {
-        const { hrApi } = await import('../modules/hr/api');
         const employees = await hrApi.employees.list();
         const from = todayIso();
         const attendance = await hrApi.attendance.list(from, from);
