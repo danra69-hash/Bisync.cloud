@@ -27,6 +27,9 @@ node_modules/
 client/dist/
 dist/
 
+# SPA publish output (Docker/CI copies client/dist here; never commit local builds)
+src/Bisync.Api/wwwroot/
+
 # Environment
 .env
 .env.local
