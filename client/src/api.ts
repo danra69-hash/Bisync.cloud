@@ -2190,6 +2190,22 @@ export interface ProduceBatchPayload {
   productionDate?: string;
   expiryDate?: string;
   overrideStock?: boolean;
+  componentUsages?: { componentId: string; usedQty: number }[];
+  subProductOutputs?: { productId: number; quantity: number }[];
+}
+
+export interface ProductionPreviewPayload {
+  locationExternalIds: string[];
+  batchQty: number;
+  componentUsages?: { componentId: string; usedQty: number }[];
+}
+
+export interface ProductionPreviewResult {
+  productId: number;
+  batchQty: number;
+  hasShortages: boolean;
+  components: ProduceBatchShortage[];
+  shortages: ProduceBatchShortage[];
 }
 
 export interface PatchProductionBatchPayload {
@@ -2205,6 +2221,7 @@ export interface ProduceBatchShortage {
   componentName: string;
   requiredQty: number;
   onHandQty: number;
+  shortageQty?: number;
   uom: string;
   isSufficient?: boolean;
 }
@@ -3317,9 +3334,20 @@ export const api = {
   },
   patchProductManagement: (productId: number, payload: PatchProductManagementPayload) =>
     fetchJsonWithMethod<ProductManagementSummary>(`/api/product-management/${productId}`, 'PATCH', payload),
-  markProductToProduce: (productId: number, payload: { locationExternalIds: string[]; batchQty: number; productionDate?: string }) =>
+  markProductToProduce: (productId: number, payload: {
+    locationExternalIds: string[];
+    batchQty: number;
+    productionDate?: string;
+    overrideStock?: boolean;
+  }) =>
     fetchJsonWithMethod<ProductManagementSummary>(
       `/api/product-management/${productId}/to-produce`,
+      'POST',
+      payload,
+    ),
+  previewProduction: (productId: number, payload: ProductionPreviewPayload) =>
+    fetchJsonWithMethod<ProductionPreviewResult>(
+      `/api/product-management/${productId}/production-preview`,
       'POST',
       payload,
     ),

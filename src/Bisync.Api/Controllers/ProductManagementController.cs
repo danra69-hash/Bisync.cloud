@@ -182,6 +182,44 @@ public class ProductManagementController(
         return Ok(await MapSummaryAsync(product, updatedRows));
     }
 
+    [HttpPost("{productId:int}/production-preview")]
+    public async Task<ActionResult<object>> ProductionPreview(int productId, [FromBody] ProductionPreviewRequest request)
+    {
+        var product = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId);
+        if (product is null)
+            return NotFound();
+
+        var locationIds = NormalizeLocationIds(request.LocationExternalIds);
+        if (locationIds.Count == 0)
+            return BadRequest(new { message = "Select at least one location." });
+
+        if (request.BatchQty <= 0)
+            return BadRequest(new { message = "Enter a quantity greater than zero." });
+
+        try
+        {
+            var usages = ToUsageMap(request.ComponentUsages);
+            var result = await productionInventory.PreviewRequirementsAsync(
+                productId,
+                locationIds,
+                request.BatchQty,
+                usages);
+
+            return Ok(new
+            {
+                productId,
+                batchQty = request.BatchQty,
+                hasShortages = !result.Success,
+                components = result.Components.Select(MapComponentLine),
+                shortages = result.Shortages.Select(MapShortageLine),
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("{productId:int}/to-produce")]
     public async Task<ActionResult<object>> ToProduce(int productId, [FromBody] ProductManagementActionRequest request)
     {
@@ -197,6 +235,29 @@ public class ProductManagementController(
             return BadRequest(new { message = "Enter a quantity greater than zero." });
 
         var productionDate = ResolveProductionDate(request.ProductionDate);
+
+        try
+        {
+            var preview = await productionInventory.PreviewRequirementsAsync(
+                productId,
+                locationIds,
+                request.BatchQty);
+
+            if (!request.OverrideStock && !preview.Success && preview.Components.Count > 0)
+            {
+                return Conflict(new
+                {
+                    message = "Insufficient component stock for the quantity to produce. Override to queue anyway.",
+                    shortages = preview.Shortages.Select(MapShortageLine),
+                    components = preview.Components.Select(MapComponentLine),
+                });
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
         var stockRows = await EnsureStockRowsAsync(productId, locationIds);
         foreach (var row in stockRows)
         {
@@ -245,41 +306,27 @@ public class ProductManagementController(
             expiryDate = parsedProductionDate.AddDays(product.ExpiryPeriodDays).ToString("yyyy-MM-dd");
         }
 
+        var usages = ToUsageMap(request.ComponentUsages);
+        ProduceBatchResult? componentResult = null;
+
         if (product.IsSubProduct)
         {
             try
             {
-                var result = await productionInventory.ProduceSubProductBatchesAsync(
+                componentResult = await productionInventory.ProduceSubProductBatchesAsync(
                     productId,
                     locationIds,
                     request.BatchQty,
-                    request.OverrideStock);
+                    request.OverrideStock,
+                    usages);
 
-                if (!result.Success)
+                if (!componentResult.Success)
                 {
                     return Conflict(new
                     {
                         message = "Insufficient component stock for production.",
-                        shortages = result.Shortages.Select(s => new
-                        {
-                            s.LocationExternalId,
-                            s.ComponentId,
-                            s.ComponentName,
-                            requiredQty = s.RequiredQty,
-                            onHandQty = s.OnHandQty,
-                            s.Uom,
-                            isSufficient = false,
-                        }),
-                        components = result.Components.Select(c => new
-                        {
-                            c.LocationExternalId,
-                            c.ComponentId,
-                            c.ComponentName,
-                            requiredQty = c.RequiredQty,
-                            onHandQty = c.OnHandQty,
-                            c.Uom,
-                            isSufficient = c.IsSufficient,
-                        }),
+                        shortages = componentResult.Shortages.Select(MapShortageLine),
+                        components = componentResult.Components.Select(MapComponentLine),
                     });
                 }
             }
@@ -290,6 +337,30 @@ public class ProductManagementController(
         }
         else
         {
+            try
+            {
+                componentResult = await productionInventory.DeductComponentsForProductionAsync(
+                    productId,
+                    locationIds,
+                    request.BatchQty,
+                    request.OverrideStock,
+                    usages);
+
+                if (!componentResult.Success)
+                {
+                    return Conflict(new
+                    {
+                        message = "Insufficient component stock for production.",
+                        shortages = componentResult.Shortages.Select(MapShortageLine),
+                        components = componentResult.Components.Select(MapComponentLine),
+                    });
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+
             var stockRows = await EnsureStockRowsAsync(productId, locationIds);
             foreach (var row in stockRows)
             {
@@ -317,6 +388,50 @@ public class ProductManagementController(
             await db.SaveChangesAsync();
         }
 
+        // Additional sub-product outputs (user-selected filter + qty).
+        var subOutputs = new List<object>();
+        foreach (var output in request.SubProductOutputs
+            .Where(o => o.ProductId > 0 && o.Quantity > 0)
+            .GroupBy(o => o.ProductId)
+            .Select(g => new { ProductId = g.Key, Quantity = g.Sum(x => x.Quantity) }))
+        {
+            if (output.ProductId == productId)
+                continue;
+
+            var sub = await db.Products.FirstOrDefaultAsync(p => p.Id == output.ProductId && p.IsSubProduct);
+            if (sub is null)
+                return BadRequest(new { message = $"Sub-product #{output.ProductId} was not found." });
+
+            var subRows = await EnsureStockRowsAsync(sub.Id, locationIds);
+            foreach (var row in subRows)
+            {
+                row.InStock += output.Quantity;
+                row.ProducedQty += output.Quantity;
+                if (!string.IsNullOrEmpty(expiryDate))
+                    row.ExpiryDate = MergeEarliestExpiry(row.ExpiryDate, expiryDate);
+                row.UpdatedAt = DateTime.UtcNow;
+            }
+
+            sub.UpdatedAt = DateTime.UtcNow;
+            await AddProductionLogAsync(
+                sub.Id,
+                "produced",
+                output.Quantity,
+                productionDate,
+                locationIds,
+                sub.CompanyId,
+                expiryDate);
+            subOutputs.Add(new { productId = sub.Id, productName = sub.Name, quantity = output.Quantity });
+        }
+
+        var usagesJson = SerializeComponentUsages(componentResult?.Components, request.ComponentUsages);
+        var outputsJson = JsonSerializer.Serialize(new
+        {
+            b2bQty = product.IsSubProduct ? 0m : request.BatchQty,
+            subProductQty = product.IsSubProduct ? request.BatchQty : 0m,
+            subProducts = subOutputs,
+        });
+
         await AddProductionLogAsync(
             productId,
             "produced",
@@ -324,7 +439,9 @@ public class ProductManagementController(
             productionDate,
             locationIds,
             product.CompanyId,
-            expiryDate);
+            expiryDate,
+            usagesJson,
+            outputsJson);
         await db.SaveChangesAsync();
 
         var updatedRows = await db.ProductB2bLocationStocks
@@ -335,6 +452,81 @@ public class ProductManagementController(
         product = await db.Products.AsNoTracking().FirstAsync(p => p.Id == productId);
         return Ok(await MapSummaryAsync(product, updatedRows));
     }
+
+    [HttpPost("{productId:int}/produced")]
+    public Task<ActionResult<object>> Produced(int productId, [FromBody] ProduceBatchRequest request) =>
+        Produce(productId, request);
+
+    static object MapComponentLine(ProduceComponentRequirement c) => new
+    {
+        c.LocationExternalId,
+        c.ComponentId,
+        c.ComponentName,
+        requiredQty = c.RequiredQty,
+        onHandQty = c.OnHandQty,
+        shortageQty = Math.Max(0, c.RequiredQty - c.OnHandQty),
+        c.Uom,
+        isSufficient = c.IsSufficient,
+    };
+
+    static object MapShortageLine(ProduceStockShortage s) => new
+    {
+        s.LocationExternalId,
+        s.ComponentId,
+        s.ComponentName,
+        requiredQty = s.RequiredQty,
+        onHandQty = s.OnHandQty,
+        shortageQty = Math.Max(0, s.RequiredQty - s.OnHandQty),
+        s.Uom,
+        isSufficient = false,
+    };
+
+    static Dictionary<string, decimal>? ToUsageMap(IEnumerable<ProduceComponentUsageRequest>? usages)
+    {
+        if (usages is null) return null;
+        var map = usages
+            .Where(u => !string.IsNullOrWhiteSpace(u.ComponentId) && u.UsedQty >= 0)
+            .GroupBy(u => u.ComponentId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.UsedQty), StringComparer.OrdinalIgnoreCase);
+        return map.Count == 0 ? null : map;
+    }
+
+    static string SerializeComponentUsages(
+        IReadOnlyList<ProduceComponentRequirement>? previewComponents,
+        IEnumerable<ProduceComponentUsageRequest>? requestUsages)
+    {
+        var usageMap = ToUsageMap(requestUsages);
+        if (previewComponents is { Count: > 0 })
+        {
+            var rows = previewComponents
+                .GroupBy(c => c.ComponentId, StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var first = g.First();
+                    var used = usageMap is not null && usageMap.TryGetValue(first.ComponentId, out var u)
+                        ? u
+                        : first.RequiredQty;
+                    return new
+                    {
+                        componentId = first.ComponentId,
+                        componentName = first.ComponentName,
+                        uom = first.Uom,
+                        requiredQty = first.RequiredQty,
+                        usedQty = used,
+                    };
+                });
+            return JsonSerializer.Serialize(rows);
+        }
+
+        if (usageMap is null) return "[]";
+        return JsonSerializer.Serialize(usageMap.Select(kv => new
+        {
+            componentId = kv.Key,
+            usedQty = kv.Value,
+        }));
+    }
+
+    // --- helpers continue below (ResolveProductionDate etc.) ---
 
     [HttpPatch("batches/{batchLogId:int}")]
     public async Task<ActionResult<object>> PatchBatch(int batchLogId, [FromBody] PatchProductionBatchRequest request)
@@ -441,17 +633,6 @@ public class ProductManagementController(
         return NoContent();
     }
 
-    [HttpPost("{productId:int}/produced")]
-    public Task<ActionResult<object>> Produced(int productId, [FromBody] ProductManagementActionRequest request) =>
-        Produce(productId, new ProduceBatchRequest
-        {
-            LocationExternalIds = request.LocationExternalIds,
-            BatchQty = request.BatchQty,
-            ProductionDate = request.ProductionDate,
-            ExpiryDate = request.ExpiryDate,
-            OverrideStock = request.OverrideStock,
-        });
-
     static string ResolveProductionDate(string? productionDate)
     {
         if (!string.IsNullOrWhiteSpace(productionDate)
@@ -480,7 +661,9 @@ public class ProductManagementController(
         string productionDate,
         IReadOnlyList<string> locationIds,
         int? companyId,
-        string? expiryDate = null)
+        string? expiryDate = null,
+        string? componentUsagesJson = null,
+        string? outputsJson = null)
     {
         var batchNumber = string.Empty;
         if (string.Equals(entryType, "produced", StringComparison.OrdinalIgnoreCase))
@@ -498,6 +681,8 @@ public class ProductManagementController(
             ExpiryDate = expiryDate ?? string.Empty,
             BatchNumber = batchNumber,
             LocationIdsJson = JsonSerializer.Serialize(locationIds),
+            ComponentUsagesJson = string.IsNullOrWhiteSpace(componentUsagesJson) ? "[]" : componentUsagesJson,
+            OutputsJson = string.IsNullOrWhiteSpace(outputsJson) ? "{}" : outputsJson,
             CompanyId = companyId,
             CreatedAt = DateTime.UtcNow,
         });

@@ -568,6 +568,8 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "BatchNumber", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "UnitPrice", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "LocationExternalId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "ComponentUsagesJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "ProductProductionLogs", "OutputsJson", "TEXT NOT NULL DEFAULT '{}'");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_ProductB2bLocationStocks_ProductId_LocationExternalId"
             ON "ProductB2bLocationStocks" ("ProductId", "LocationExternalId");
