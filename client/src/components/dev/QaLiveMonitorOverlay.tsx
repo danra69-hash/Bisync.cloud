@@ -35,6 +35,7 @@ const DOT: Record<QaStatus, string> = {
   pass: 'bg-emerald-400',
   fail: 'bg-red-400',
   warn: 'bg-amber-300',
+  skip: 'bg-white/40',
 };
 
 function formatFactValue(value: unknown): string {
@@ -67,7 +68,7 @@ export function QaLiveMonitorOverlay({
     () => tasks.find(t => t.status === 'running')
       ?? tasks.find(t => t.status === 'fail')
       ?? tasks.find(t => t.status === 'warn')
-      ?? tasks.filter(t => t.status === 'pass').at(-1)
+      ?? tasks.filter(t => t.status === 'pass' || t.status === 'skip').at(-1)
       ?? tasks[0],
     [tasks],
   );
@@ -77,7 +78,7 @@ export function QaLiveMonitorOverlay({
     [tasks],
   );
 
-  const completed = tasks.filter(t => t.status === 'pass' || t.status === 'fail' || t.status === 'warn').length;
+  const completed = tasks.filter(t => t.status === 'pass' || t.status === 'fail' || t.status === 'warn' || t.status === 'skip').length;
   const total = tasks.length || 1;
   const currentIndex = current ? Math.max(0, tasks.findIndex(t => t.id === current.id)) : 0;
   const scene = getQaScene(current?.id ?? '', current?.label);
@@ -99,7 +100,9 @@ export function QaLiveMonitorOverlay({
     ? 'border-red-500/40 bg-red-950/80'
     : current.status === 'warn'
       ? 'border-amber-500/40 bg-amber-950/70'
-      : 'border-white/10 bg-[#141820]/95';
+      : current.status === 'skip'
+        ? 'border-white/15 bg-[#141820]/95'
+        : 'border-white/10 bg-[#141820]/95';
 
   return createPortal(
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-6">
@@ -217,6 +220,7 @@ export function QaLiveMonitorOverlay({
                     {current.status === 'pass' && <CheckCircle2 size={18} className="text-emerald-600" />}
                     {current.status === 'fail' && <XCircle size={18} className="text-red-600" />}
                     {current.status === 'warn' && <AlertTriangle size={18} className="text-amber-600" />}
+                    {current.status === 'skip' && <Circle size={18} className="text-white/50" />}
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-2">

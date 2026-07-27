@@ -118,8 +118,9 @@ async function main() {
   let lastPrinted = '';
   const result = await runAutomatedQa('headless-agent', tasks => {
     const running = tasks.find(t => t.status === 'running');
+    const done = tasks.filter(t => t.status === 'pass' || t.status === 'warn' || t.status === 'skip').length;
     const line = running
-      ? `[${tasks.filter(t => t.status === 'pass' || t.status === 'warn').length + 1}/${tasks.length}] ${running.id} — ${running.label}`
+      ? `[${done + 1}/${tasks.length}] ${running.id} — ${running.label}`
       : null;
     if (line && line !== lastPrinted) {
       lastPrinted = line;

@@ -15,12 +15,14 @@ const STATUS_DOT: Record<QaStatus, string> = {
   pass: 'bg-emerald-500',
   fail: 'bg-red-500',
   warn: 'bg-amber-500',
+  skip: 'bg-muted-foreground/50',
 };
 
 function StatusIcon({ status }: { status: QaStatus }) {
   if (status === 'pass') return <CheckCircle2 size={14} className="text-emerald-600" />;
   if (status === 'fail') return <XCircle size={14} className="text-red-600" />;
   if (status === 'warn') return <AlertTriangle size={14} className="text-amber-600" />;
+  if (status === 'skip') return <Circle size={14} className="text-muted-foreground" />;
   if (status === 'running') return <MillstoneLoader size="xs" layout="inline" label="" />;
   return <Circle size={14} className="text-muted-foreground" />;
 }
@@ -71,6 +73,7 @@ function TrailDetailPanel({
   const passCount = tasks.filter(t => t.status === 'pass').length;
   const failCount = tasks.filter(t => t.status === 'fail').length;
   const warnCount = tasks.filter(t => t.status === 'warn').length;
+  const skipCount = tasks.filter(t => t.status === 'skip').length;
 
   const metaRows: { label: string; value: string }[] = [
     { label: 'Run ID', value: String(row.id) },
@@ -124,7 +127,7 @@ function TrailDetailPanel({
               {auditLifecycleLabel(row).label}
             </span>
             <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-              {passCount} pass · {failCount} fail · {warnCount} warn
+              {passCount} pass · {failCount} fail · {warnCount} warn · {skipCount} skip
             </span>
           </div>
 

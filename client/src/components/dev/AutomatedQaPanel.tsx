@@ -30,6 +30,7 @@ const STATUS_STYLES: Record<QaStatus, string> = {
   pass: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
   fail: 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300',
   warn: 'border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-200',
+  skip: 'border-border bg-muted/40 text-muted-foreground',
 };
 
 const STATUS_DOT: Record<QaStatus, string> = {
@@ -38,12 +39,14 @@ const STATUS_DOT: Record<QaStatus, string> = {
   pass: 'bg-emerald-500',
   fail: 'bg-red-500',
   warn: 'bg-amber-500',
+  skip: 'bg-muted-foreground/50',
 };
 
 function StatusIcon({ status }: { status: QaStatus }) {
   if (status === 'pass') return <CheckCircle2 size={14} className="text-emerald-600" />;
   if (status === 'fail') return <XCircle size={14} className="text-red-600" />;
   if (status === 'warn') return <AlertTriangle size={14} className="text-amber-600" />;
+  if (status === 'skip') return <Circle size={14} className="text-muted-foreground" />;
   if (status === 'running') return <MillstoneLoader size="xs" layout="inline" label="" />;
   return <Circle size={14} className="text-muted-foreground" />;
 }
@@ -100,7 +103,7 @@ function StepDetailPanel({
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-sans">
-              {task.status === 'fail' ? 'Failed step · investigate & fix' : task.status === 'warn' ? 'Warning · review' : 'Step detail · verify'}
+              {task.status === 'fail' ? 'Failed step · investigate & fix' : task.status === 'warn' ? 'Warning · review' : task.status === 'skip' ? 'Skipped · not activated' : 'Step detail · verify'}
             </p>
             <h3 className="text-sm font-semibold mt-0.5">{task.label}</h3>
             <p className="text-[11px] text-muted-foreground mt-1">{guide.area}</p>
@@ -310,7 +313,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
 
   useEffect(() => { void loadHistory(); }, [loadHistory]);
 
-  const runFinished = !running && tasks.some(t => t.status === 'pass' || t.status === 'fail' || t.status === 'warn');
+  const runFinished = !running && tasks.some(t => t.status === 'pass' || t.status === 'fail' || t.status === 'warn' || t.status === 'skip');
   const hasOpenIssues = tasks.some(t => t.status === 'fail' || t.status === 'warn');
   const dataStillActive = lastAudit?.dataLifecycle === 'active' && !!runContext?.companyId;
   const canShowPurge = (runFinished && dataStillActive) || history.some(r => parseQaAuditPayload(r.resultsJson).audit?.dataLifecycle === 'active');

@@ -16,7 +16,7 @@ export const QA_OPERATOR_EMAIL = 'ms@cubevalue.com';
 const QA_OPERATOR_PASSWORDS = [DEMO_PASSWORD, '12345678'] as const;
 const QA_OPERATOR_MOBILE = '+60170000001';
 
-export type QaStatus = 'pending' | 'running' | 'pass' | 'fail' | 'warn';
+export type QaStatus = 'pending' | 'running' | 'pass' | 'fail' | 'warn' | 'skip';
 
 export type QaIrregularity = {
   id: string;
@@ -1667,17 +1667,18 @@ export async function runAutomatedQa(
       };
     } catch (err) {
       const soft = err && typeof err === 'object' && 'soft' in err && (err as { soft?: boolean }).soft;
+      const skip = err && typeof err === 'object' && 'skip' in err && (err as { skip?: boolean }).skip;
       const message = err instanceof Error ? err.message : String(err);
       tasks[i] = {
         ...tasks[i],
-        status: soft ? 'warn' : 'fail',
+        status: skip ? 'skip' : soft ? 'warn' : 'fail',
         detail: message,
         finishedAt: new Date().toISOString(),
         durationMs: Date.now() - started,
-        fixActions: defaultFixActions(def.id),
+        fixActions: skip ? [] : defaultFixActions(def.id),
       };
       onUpdate([...tasks]);
-      if (!soft) break;
+      if (!soft && !skip) break;
       continue;
     }
     onUpdate([...tasks]);
@@ -1690,7 +1691,8 @@ export async function runAutomatedQa(
   const passed = tasks.filter(t => t.status === 'pass').length;
   const failed = tasks.filter(t => t.status === 'fail').length;
   const warned = tasks.filter(t => t.status === 'warn').length;
-  const summary = `${status.toUpperCase()}: ${passed} pass · ${failed} fail · ${warned} warn · ${ctx.companyName ?? 'n/a'}`;
+  const skipped = tasks.filter(t => t.status === 'skip').length;
+  const summary = `${status.toUpperCase()}: ${passed} pass · ${failed} fail · ${warned} warn · ${skipped} skip · ${ctx.companyName ?? 'n/a'}`;
 
   return { tasks, status, summary, context: ctx };
 }

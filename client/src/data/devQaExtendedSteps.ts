@@ -36,12 +36,9 @@ async function assert(condition: boolean, message: string): Promise<void> {
   if (!condition) throw new Error(message);
 }
 
-function softFail(message: string): never {
-  throw Object.assign(new Error(message), { soft: true });
-}
-
-function notLiveYet(feature: string): never {
-  softFail(`Deferred — ${feature} is not customer-live yet (coming soon). Catalogued so coverage is complete when shipped.`);
+/** Inactive / not-shipped product surfaces — do not warn; skip cleanly. */
+function skipInactive(feature: string): never {
+  throw Object.assign(new Error(`Skipped — ${feature} is not activated yet.`), { skip: true });
 }
 
 function todayIso(): string {
@@ -478,7 +475,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
       label: 'Products · Account Mapping',
       group: 'products',
       run: async () => {
-        notLiveYet('Products Account Mapping');
+        skipInactive('Products Account Mapping');
       },
     },
   ],
@@ -661,7 +658,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
       label: 'Inventory Config',
       group: 'operation-inventory',
       run: async () => {
-        notLiveYet('Inventory Config');
+        skipInactive('Inventory Config');
       },
     },
   ],
@@ -783,7 +780,7 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
       label: 'Sales · Account Mapping',
       group: 'sales',
       run: async () => {
-        notLiveYet('Sales Account Mapping');
+        skipInactive('Sales Account Mapping');
       },
     },
   ],
@@ -795,7 +792,7 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     label: 'Itemized Sales Summary',
     group: 'reports',
     run: async () => {
-      notLiveYet('Itemized Sales Summary report');
+      skipInactive('Itemized Sales Summary report');
     },
   },
   {
@@ -803,7 +800,7 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     label: 'Inventory Summary',
     group: 'reports',
     run: async () => {
-      notLiveYet('Inventory Summary report');
+      skipInactive('Inventory Summary report');
     },
   },
   {
@@ -811,7 +808,7 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     label: 'Detailed Purchase Summary',
     group: 'reports',
     run: async () => {
-      notLiveYet('Detailed Purchase Summary report');
+      skipInactive('Detailed Purchase Summary report');
     },
   },
   {
@@ -819,7 +816,7 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     label: 'Production Report',
     group: 'reports',
     run: async () => {
-      notLiveYet('Production Report');
+      skipInactive('Production Report');
     },
   },
   {
@@ -827,7 +824,7 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     label: 'Wastage Report',
     group: 'reports',
     run: async () => {
-      notLiveYet('Wastage Report');
+      skipInactive('Wastage Report');
     },
   },
   {
@@ -835,7 +832,7 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     label: 'Component · Account Mapping',
     group: 'component',
     run: async () => {
-      notLiveYet('Component Account Mapping');
+      skipInactive('Component Account Mapping');
     },
   },
   {
@@ -843,7 +840,7 @@ export const QA_EXTENDED_TAIL: ExtendedTaskDef[] = [
     label: 'Vendors · Account Mapping',
     group: 'vendors',
     run: async () => {
-      notLiveYet('Vendor Account Mapping');
+      skipInactive('Vendor Account Mapping');
     },
   },
 ];
