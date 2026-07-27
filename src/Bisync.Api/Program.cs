@@ -15,10 +15,12 @@ static string ResolveOperationalConnection(IServiceProvider sp)
         return resolver.DefaultOperationalConnection;
 
     var path = http.Request.Path.Value ?? string.Empty;
-    // Auth + health always use the control-plane (shared) database.
+    // Platform / Dev Console surfaces always use the control-plane (shared) database.
+    // Sales Module CRM (team, companies, client updates) is not tenant-scoped.
     if (path.StartsWith("/api/auth", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/health", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/api/dev-console", StringComparison.OrdinalIgnoreCase))
+        || path.StartsWith("/api/dev-console", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/sales-module", StringComparison.OrdinalIgnoreCase))
         return resolver.DefaultOperationalConnection;
 
     int? companyId = null;
