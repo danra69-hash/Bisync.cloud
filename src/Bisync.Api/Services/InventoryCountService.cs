@@ -434,7 +434,10 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
         if (locationIds.Count == 0)
             return "No locations on this inventory count.";
 
-        var reason = $"Full inventory count #{session.Id} ({session.PeriodMonth})";
+        var monthLabel = session.PeriodMonth;
+        if (DateOnly.TryParse($"{session.PeriodMonth}-01", out var periodStart))
+            monthLabel = periodStart.ToString("MMM/yyyy");
+        var reason = $"Inventory Adjustment {monthLabel}";
         var asOfDate = effectiveDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
         foreach (var line in session.Lines)
@@ -472,9 +475,14 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
                         session.UomMode,
                         asOfDate,
                         cancellationToken);
-                    inboundUnitPrice = snapshot?.SuggestedAdjustmentInUnitPrice;
-                    if (inboundUnitPrice is null or <= 0)
-                        inboundUnitPrice = null;
+                    if (snapshot is not null)
+                    {
+                        inboundUnitPrice = StockCardFifoEngine.ResolveLifoAverageUnitPrice(
+                            snapshot.Layers.Select(l => (l.Quantity, l.UnitPrice, l.SortOrder)).ToList(),
+                            quantity);
+                        if (inboundUnitPrice <= 0)
+                            inboundUnitPrice = null;
+                    }
                 }
 
                 var result = await stockCardService.CreateAdjustmentAsync(

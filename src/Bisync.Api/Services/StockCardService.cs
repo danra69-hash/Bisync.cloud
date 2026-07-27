@@ -435,7 +435,9 @@ public class StockCardService(
             if (!isInbound && !allowNegativeStock && quantity > snapshot.OnHandQty)
                 return StockCardAdjustmentResult.Fail($"Cannot deplete {quantity} {displayUom}. Only {snapshot.OnHandQty} on hand on that date.");
 
-            var reasonText = $"Inventory adjustment — {trimmedReason}";
+            var reasonText = trimmedReason.StartsWith("Inventory Adjustment", StringComparison.OrdinalIgnoreCase)
+                ? trimmedReason
+                : $"Inventory adjustment — {trimmedReason}";
             if (isInbound)
             {
                 var inboundUomResolved = ResolveInboundAdjustmentUom(
@@ -448,7 +450,9 @@ public class StockCardService(
 
                 var resolvedInboundPrice = inboundUnitPrice is decimal asserted && asserted > 0
                     ? StockCardFifoEngine.RoundUnitPrice(asserted)
-                    : snapshot.SuggestedAdjustmentInUnitPrice;
+                    : StockCardFifoEngine.ResolveLifoAverageUnitPrice(
+                        snapshot.Layers.Select(l => (l.Quantity, l.UnitPrice, l.SortOrder)).ToList(),
+                        quantity);
 
                 componentStock.RecordAddition(
                     ingredient.ComponentId,
@@ -531,7 +535,9 @@ public class StockCardService(
         var productInboundPrice = isInbound
             ? (inboundUnitPrice is decimal pAsserted && pAsserted > 0
                 ? StockCardFifoEngine.RoundUnitPrice(pAsserted)
-                : productSnapshot.SuggestedAdjustmentInUnitPrice)
+                : StockCardFifoEngine.ResolveLifoAverageUnitPrice(
+                    productSnapshot.Layers.Select(l => (l.Quantity, l.UnitPrice, l.SortOrder)).ToList(),
+                    quantity))
             : 0m;
 
         db.ProductProductionLogs.Add(new ProductProductionLog

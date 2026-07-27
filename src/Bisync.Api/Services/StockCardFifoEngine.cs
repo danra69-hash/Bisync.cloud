@@ -144,7 +144,7 @@ public static class StockCardFifoEngine
             if (IsInboundLayer(entryType))
             {
                 var layerPrice = entryType is "adjustment_in"
-                    ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, evt.UnitPrice)
+                    ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, evt.UnitPrice, evt.Quantity)
                     : unitPrice;
                 unitPrice = layerPrice;
                 if (entryType == "adjustment_in")
@@ -153,7 +153,7 @@ public static class StockCardFifoEngine
                         ? $"Adjustment in at asserted RM {layerPrice:F4}"
                         : lastAdjustmentOutUnitPrice is decimal matchedPrice && matchedPrice > 0
                             ? $"Adjustment in at RM {layerPrice:F4} (matches count short)"
-                            : $"Adjustment in at FIFO layer RM {layerPrice:F4}";
+                            : $"Adjustment in at LIFO avg RM {layerPrice:F4}";
                     lastAdjustmentOutUnitPrice = null;
                 }
 
@@ -213,12 +213,14 @@ public static class StockCardFifoEngine
     }
 
     /// <summary>
-    /// Resolves the unit price for a new adjustment-in at <paramref name="asOfEnd"/>,
-    /// using FIFO layers and any unmatched adjustment-out price before that moment.
+    /// Resolves the unit price for a new adjustment-in at <paramref name="asOfEnd"/>.
+    /// Physical inventory overages (debit) price by LIFO: newest layers first, qty-weighted
+    /// average when the debit spans more than one cost layer.
     /// </summary>
     public static decimal ResolveAdjustmentInUnitPriceAsOf(
         IReadOnlyList<FifoEvent> events,
         DateTime asOfEnd,
+        decimal? quantityNeeded = null,
         bool collapseAtMonthBoundaries = false)
     {
         var layers = new List<FifoLayer>();
@@ -245,7 +247,7 @@ public static class StockCardFifoEngine
             if (IsInboundLayer(entryType))
             {
                 var layerPrice = entryType is "adjustment_in"
-                    ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, evt.UnitPrice)
+                    ? ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, evt.UnitPrice, evt.Quantity)
                     : evt.UnitPrice;
                 AcceptInboundPayingShortfalls(
                     sink,
@@ -291,24 +293,108 @@ public static class StockCardFifoEngine
             }
         }
 
-        return ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, assertedUnitPrice: null);
+        return ResolveAdjustmentInUnitPrice(layers, lastAdjustmentOutUnitPrice, assertedUnitPrice: null, quantityNeeded);
+    }
+
+    /// <summary>
+    /// Physical inventory debit (counted &gt; book): walk cost layers newest-first (LIFO)
+    /// for <paramref name="quantityNeeded"/> and return the qty-weighted average unit price.
+    /// Example: need 100 from remaining newest 50@2.00 then 50@3.00 → (50×2 + 50×3)/100 = 2.50.
+    /// </summary>
+    public static decimal ResolveLifoAverageUnitPrice(
+        IReadOnlyList<FifoLayer> layers,
+        decimal quantityNeeded)
+    {
+        if (quantityNeeded <= QtyEpsilon)
+            return GetNewestLayerUnitPrice(layers);
+
+        var remaining = quantityNeeded;
+        var totalCost = 0m;
+        var taken = 0m;
+
+        foreach (var layer in layers
+                     .Where(l => l.Quantity > QtyEpsilon)
+                     .OrderByDescending(l => l.ReceivedAt)
+                     .ThenByDescending(l => l.SourceId))
+        {
+            if (remaining <= QtyEpsilon)
+                break;
+
+            var take = Math.Min(layer.Quantity, remaining);
+            totalCost += take * layer.UnitPrice;
+            taken += take;
+            remaining -= take;
+        }
+
+        if (taken <= QtyEpsilon)
+            return GetNewestLayerUnitPrice(layers);
+
+        // If on-hand layers cannot cover the full debit qty, fall back to newest layer
+        // for the uncovered remainder (same newest cost), so average still reflects LIFO.
+        if (remaining > QtyEpsilon)
+        {
+            var newest = GetNewestLayerUnitPrice(layers);
+            totalCost += remaining * newest;
+            taken += remaining;
+        }
+
+        return RoundUnitPrice(totalCost / taken);
+    }
+
+    public static decimal ResolveLifoAverageUnitPrice(
+        IReadOnlyList<(decimal Quantity, decimal UnitPrice, DateTime SortOrder)> layers,
+        decimal quantityNeeded)
+    {
+        var fifoLayers = layers
+            .Where(l => l.Quantity > QtyEpsilon)
+            .Select(l => new FifoLayer
+            {
+                ReceivedAt = l.SortOrder,
+                SourceId = 0,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+            })
+            .ToList();
+        return ResolveLifoAverageUnitPrice(fifoLayers, quantityNeeded);
     }
 
     static decimal ResolveAdjustmentInUnitPrice(
         List<FifoLayer> layers,
         decimal? lastAdjustmentOutUnitPrice,
-        decimal? assertedUnitPrice)
+        decimal? assertedUnitPrice,
+        decimal? quantityNeeded = null)
     {
         if (assertedUnitPrice is decimal asserted && asserted > 0)
             return RoundUnitPrice(asserted);
 
+        // Prefer matching a prior adjustment-out price when reclaiming the same variance.
         if (lastAdjustmentOutUnitPrice is decimal matched && matched > 0)
             return matched;
 
-        return GetOldestLayerUnitPrice(layers);
+        var qty = quantityNeeded is decimal q && q > QtyEpsilon
+            ? q
+            : layers.Where(l => l.Quantity > QtyEpsilon).Sum(l => l.Quantity);
+        if (qty <= QtyEpsilon)
+            return GetNewestLayerUnitPrice(layers);
+
+        return ResolveLifoAverageUnitPrice(layers, qty);
     }
 
-    static decimal GetOldestLayerUnitPrice(List<FifoLayer> layers)
+    static decimal GetNewestLayerUnitPrice(IReadOnlyList<FifoLayer> layers)
+    {
+        var newest = layers
+            .Where(l => l.Quantity > QtyEpsilon)
+            .OrderByDescending(l => l.ReceivedAt)
+            .ThenByDescending(l => l.SourceId)
+            .FirstOrDefault();
+
+        if (newest is null)
+            return 0;
+
+        return newest.UnitPrice;
+    }
+
+    static decimal GetOldestLayerUnitPrice(IReadOnlyList<FifoLayer> layers)
     {
         var oldest = layers
             .Where(l => l.Quantity > QtyEpsilon)

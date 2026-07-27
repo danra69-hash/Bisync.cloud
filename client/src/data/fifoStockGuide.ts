@@ -56,7 +56,7 @@ export const FIFO_GUIDE_STEPS: FifoGuideStep[] = [
     number: 6,
     title: 'Treating Overages (Physical greater than System)',
     body:
-      'If surplus stock is found, it must be added back to the stock card. To maintain FIFO integrity without distorting historical costs, overages are treated as a reversal of a recent incorrect issuance or an unrecorded recent receipt. Add the surplus quantity to the most recent batch (or log it as a new adjustment batch) using the latest known invoice cost.',
+      'If surplus stock is found, it must be added back to the stock card. Debit the difference using LIFO (newest layers first). When the debit quantity spans more than one cost layer, apply the quantity-weighted average unit price across those layers (e.g. 50@2.00 + 50@3.00 → 2.50). Remark the entry as Inventory Adjustment Month/Year.',
   },
   {
     id: 'financial-closure',
