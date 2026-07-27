@@ -45,3 +45,6 @@ Thumbs.db
 
 # Local agent/build scratch
 tmp-build*/
+
+artifacts/
+
