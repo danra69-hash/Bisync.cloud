@@ -20,6 +20,7 @@ import {
   type QaAuditEnvelope,
 } from '../../data/qaAuditTrail';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { QaLiveMonitorOverlay } from './QaLiveMonitorOverlay';
 
 type QaPanelTab = 'run' | 'history';
 
@@ -283,6 +284,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
   const [lastRunId, setLastRunId] = useState<number | null>(null);
   const [lastAudit, setLastAudit] = useState<QaAuditEnvelope | null>(null);
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+  const [monitorOpen, setMonitorOpen] = useState(false);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -366,7 +368,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
     if (running) return;
     setTab('run');
     setRunning(true);
-    setRunSummary('Starting power-user QA…');
+    setRunSummary('Starting Automated QA…');
     setRunStatus(null);
     setPurgeMessage(null);
     setRunContext(null);
@@ -376,6 +378,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
     setIssue(null);
     setFixMessage(null);
     setTasks(createPendingTasks());
+    setMonitorOpen(true);
 
     let runId: number | null = null;
     try {
@@ -725,6 +728,17 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           onFix={actionId => void handleFix(actionId)}
         />
       )}
+
+      <QaLiveMonitorOverlay
+        open={monitorOpen}
+        running={running}
+        tasks={tasks}
+        runSummary={runSummary}
+        runStatus={runStatus}
+        context={runContext}
+        onClose={() => setMonitorOpen(false)}
+        onOpenFullIssue={task => openStep(task)}
+      />
     </section>
   );
 }
