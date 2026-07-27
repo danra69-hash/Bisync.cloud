@@ -193,9 +193,28 @@ jobs:
           curl -fsS -D /tmp/favicon.hdrs -o /tmp/favicon.svg "${URL}${FAV_HREF}"
           grep -q '#F37021' /tmp/favicon.svg
           grep -q 'M48 7H24a15 15 0 0 0 0 30h24' /tmp/favicon.svg
-          if grep -qiE '863bff|vite-logo' /tmp/favicon.svg; then
+          if grep -qiE '863bff|aa3bff|vite-logo' /tmp/favicon.svg; then
             echo "Live favicon still contains legacy Vite mark" >&2
             exit 1
           fi
           grep -qiE 'no-store|no-cache' /tmp/favicon.hdrs
+
+          # Deleted Vite scaffolding must not still be served from the image.
+          for dead in /icons.svg /vite.svg /react.svg /hero.png; do
+            CODE="$(curl -sS -o /tmp/dead.asset -w '%{http_code}' "${URL}${dead}")"
+            TYPE="$(file -b --mime-type /tmp/dead.asset || true)"
+            echo "dead asset ${dead} → HTTP ${CODE} (${TYPE})"
+            if [[ "${CODE}" == "200" && "${TYPE}" == "image/svg+xml" ]]; then
+              echo "Scaffolding asset still shipped: ${dead}" >&2
+              exit 1
+            fi
+            if [[ "${CODE}" != "404" ]]; then
+              # Must not MapFallback deleted icons to the SPA HTML as a fake 200.
+              if [[ "${CODE}" == "200" ]] && grep -qi '<!doctype html' /tmp/dead.asset; then
+                echo "Deleted asset ${dead} fell back to SPA HTML (must be real 404)" >&2
+                exit 1
+              fi
+            fi
+            test "${CODE}" = "404"
+          done
           echo "Deploy verification OK"

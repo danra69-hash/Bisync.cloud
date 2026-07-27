@@ -10,12 +10,15 @@ COPY client/ ./
 RUN npm run build \
   && test -f dist/favicon.svg \
   && grep -q '#F37021' dist/favicon.svg \
-  && ! grep -qiE '863bff|vite-logo' dist/favicon.svg \
+  && ! grep -qiE '863bff|aa3bff|vite-logo' dist/favicon.svg \
   && grep -q 'favicon.svg?v=' dist/index.html \
   && test ! -e src/assets/vite.svg \
   && test ! -e src/assets/react.svg \
+  && test ! -e src/App.css \
   && test ! -e dist/vite.svg \
-  && test ! -e dist/react.svg
+  && test ! -e dist/react.svg \
+  && test ! -e dist/icons.svg \
+  && test ! -e public/icons.svg
 
 # ── Stage 2: Build .NET API ───────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api-build
@@ -28,10 +31,11 @@ RUN rm -rf src/Bisync.Api/wwwroot
 COPY --from=client-build /src/client/dist/ src/Bisync.Api/wwwroot/
 RUN test -f src/Bisync.Api/wwwroot/favicon.svg \
   && grep -q '#F37021' src/Bisync.Api/wwwroot/favicon.svg \
-  && ! grep -qiE '863bff|vite-logo' src/Bisync.Api/wwwroot/favicon.svg \
+  && ! grep -qiE '863bff|aa3bff|vite-logo' src/Bisync.Api/wwwroot/favicon.svg \
   && grep -q 'favicon.svg?v=' src/Bisync.Api/wwwroot/index.html \
   && test ! -e src/Bisync.Api/wwwroot/vite.svg \
   && test ! -e src/Bisync.Api/wwwroot/react.svg \
+  && test ! -e src/Bisync.Api/wwwroot/icons.svg \
   && dotnet publish src/Bisync.Api/Bisync.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
 
 # ── Stage 3: Runtime (Cloud Run) ───────────────────────────────────────────────

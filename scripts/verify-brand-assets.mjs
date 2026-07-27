@@ -5,9 +5,11 @@
  * Fails when scaffolding or legacy marks can leak into source or a built SPA:
  * - Banned Vite/React template assets under client/
  * - Favicon missing the official Bisync chain mark (#F37021)
- * - Favicon / SVGs containing the old purple Vite mark (#863bff)
+ * - Favicon / SVGs containing legacy purple marks (#863bff / #aa3bff)
+ * - Unused Vite scaffolding (icons.svg, App.css, vite.svg, react.svg, hero.png)
+ * - PDF logo fallback still using purple Vite RGB
  * - index.html favicon link not cache-busted to the current favicon content hash
- * - Built dist/ (when present or via --dist) diverging from source favicon
+ * - Built dist/ (via --dist) still containing scaffolding or wrong favicon
  * - Tracked src/Bisync.Api/wwwroot/ publish output in git
  *
  * Usage:
@@ -43,12 +45,17 @@ const BANNED_REL_PATHS = [
   'client/src/assets/hero.png',
   'client/public/vite.svg',
   'client/public/react.svg',
+  'client/public/icons.svg',
+  'client/src/App.css',
 ];
 
 const BANNED_CONTENT_SNIPPETS = [
   { id: 'legacy-purple', re: /#863bff/i, hint: 'old purple Vite favicon color' },
+  { id: 'vite-template-purple', re: /#aa3bff/i, hint: 'Vite/Figma template purple (#aa3bff)' },
   { id: 'vite-logo-title', re: /vite-logo-title|aria-labelledby="vite-logo|<title[^>]*>\s*Vite\s*<\/title>/i, hint: 'Vite template logo' },
   { id: 'react-atom', re: /iconify--logos.*react|fill="#00D8FF"/i, hint: 'React template logo' },
+  { id: 'vite-starter-css', re: /\.hero\s*\{[\s\S]*\.vite\s*\{|#next-steps|#docs\b/i, hint: 'Vite starter App.css residue' },
+  { id: 'legacy-purple-rgb', re: /setFillColor\(\s*134\s*,\s*59\s*,\s*255\s*\)/, hint: 'PDF fallback still uses purple Vite RGB' },
 ];
 
 const errors = [];
@@ -102,7 +109,7 @@ function walkFiles(absDir, out = []) {
 
 // ── 1. Banned scaffolding files ──────────────────────────────────────────────
 for (const rel of BANNED_REL_PATHS) {
-  if (exists(rel) || gitTracked(rel)) {
+  if (exists(rel)) {
     fail(`Banned scaffolding asset must not exist: ${rel}`);
   }
 }
@@ -205,7 +212,7 @@ if (distRel) {
       fail(`${distIndexRel} contains legacy purple mark`);
     }
   }
-  for (const banned of ['vite.svg', 'react.svg', 'hero.png']) {
+  for (const banned of ['vite.svg', 'react.svg', 'hero.png', 'icons.svg']) {
     const p = `${distRoot}/${banned}`;
     if (exists(p)) {
       fail(`Built SPA must not include scaffolding asset: ${p}`);

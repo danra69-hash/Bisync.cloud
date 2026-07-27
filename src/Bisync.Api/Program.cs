@@ -290,6 +290,15 @@ else
             return;
         }
 
+        // Missing static brand/media assets must 404 — never fall back to index.html
+        // (that made deleted Vite icons look like they still "exist" as 200 HTML).
+        if (LooksLikeStaticAssetPath(path))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+            return;
+        }
+
         context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
         context.Response.Headers.Pragma = "no-cache";
         context.Response.Headers.Expires = "0";
@@ -299,3 +308,20 @@ else
 }
 
 app.Run();
+
+static bool LooksLikeStaticAssetPath(string path)
+{
+    var ext = Path.GetExtension(path.AsSpan());
+    if (ext.IsEmpty) return false;
+    return ext.Equals(".svg", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".ico", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".woff", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".woff2", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".ttf", StringComparison.OrdinalIgnoreCase)
+        || ext.Equals(".map", StringComparison.OrdinalIgnoreCase);
+}

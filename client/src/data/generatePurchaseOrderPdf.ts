@@ -125,7 +125,7 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   if (logo) {
     doc.addImage(logo, 'PNG', margin, y - 2, 18, 18);
   } else {
-    doc.setFillColor(134, 59, 255);
+    doc.setFillColor(243, 112, 33);
     doc.roundedRect(margin, y - 2, 18, 18, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');

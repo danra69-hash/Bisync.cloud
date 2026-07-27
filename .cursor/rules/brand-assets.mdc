@@ -11,16 +11,17 @@ Old Vite/React scaffolding icons and stale SPA publishes must never ship.
 
 1. Browser tab icon is only `client/public/favicon.svg` — Bisync interlocking chain mark in Hermès orange `#F37021`.
 2. After changing `favicon.svg`, update `client/index.html` cache-bust to `?v=<sha1-10 of file>` (verifier enforces this).
-3. Never add or restore: `client/src/assets/vite.svg`, `react.svg`, `hero.png`, or `client/public/vite.svg`.
+3. Never add or restore scaffolding: `vite.svg`, `react.svg`, `hero.png`, `icons.svg`, or Vite starter `App.css`.
 4. Never commit `src/Bisync.Api/wwwroot/` — Docker wipes and rebuilds it from `client/dist`.
-5. Banned signatures in client SVG/HTML/TS: `#863bff`, Vite logo titles, React atom template fills.
+5. Banned signatures in client SVG/HTML/TS/CSS: `#863bff`, `#aa3bff`, Vite logo titles, React atom fills, Vite starter `#next-steps` / `.hero .vite` CSS, PDF fallback `rgb(134,59,255)`.
+6. Missing static asset URLs (`.svg`, `.ico`, `.png`, …) must return real HTTP 404 — never SPA `index.html` fallback.
 
 ## Gates
 
 - `node scripts/verify-brand-assets.mjs` (CI + pre-deploy)
 - After client build: `node scripts/verify-brand-assets.mjs --dist client/dist`
 - Dockerfile fails the image build if favicon/index checks fail
-- Cloud Run deploy verify curls live favicon and rejects legacy marks
+- Cloud Run deploy verify curls live favicon, rejects legacy marks, and asserts deleted scaffolding URLs are HTTP 404
 
 ## In-app mark
 
