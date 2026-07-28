@@ -21,6 +21,7 @@ import {
   type ProductListRrpPoint,
 } from '../../data/productListDisplay';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 import { ProductDetailPanel } from './ProductDetailPanel';
@@ -40,8 +41,11 @@ const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:bor
 const filterCls = filterSelectCls;
 
 type ProductListSortColumn =
-  | 'name'
+  | 'category'
+  | 'group'
+  | 'productId'
   | 'type'
+  | 'name'
   | 'deliveryUnit'
   | 'rrp'
   | 'cogs'
@@ -51,8 +55,11 @@ type ProductListSortColumn =
   | 'activate';
 
 const PRODUCT_LIST_TABLE_COLUMNS: SortableColumnDef<ProductListSortColumn>[] = [
-  { key: 'name', label: 'Product Name' },
-  { key: 'type', label: 'Type' },
+  { key: 'category', label: 'Category' },
+  { key: 'group', label: 'Group' },
+  { key: 'productId', label: 'Product ID' },
+  { key: 'type', label: 'Product Type' },
+  { key: 'name', label: 'Product' },
   { key: 'deliveryUnit', label: 'Delivery Unit' },
   { key: 'rrp', label: 'RRP' },
   { key: 'cogs', label: 'COGS' },
@@ -61,6 +68,8 @@ const PRODUCT_LIST_TABLE_COLUMNS: SortableColumnDef<ProductListSortColumn>[] = [
   { key: 'pos', label: 'POS', align: 'center', sortable: false },
   { key: 'activate', label: 'Activate', align: 'center', sortable: false },
 ];
+
+const PRODUCT_LIST_COL_SPAN = PRODUCT_LIST_TABLE_COLUMNS.length;
 
 function productMatchesLocations(product: Product, locationIds: string[]): boolean {
   const productLocs = product.locationExternalIds ?? [];
@@ -110,6 +119,69 @@ function channelLabel(product: Product): string {
   if (product.b2cEnabled) channels.push('B2C');
   if (product.b2bEnabled) channels.push('B2B');
   return channels.length > 0 ? channels.join(', ') : '—';
+}
+
+function InlineRrpInput({
+  product,
+  disabled,
+  onCommit,
+}: {
+  product: Product;
+  disabled?: boolean;
+  onCommit: (rrp: number) => void | Promise<void>;
+}) {
+  const { symbol } = useCountryFormatters();
+  const [draft, setDraft] = useState(() => String(product.rrp ?? 0));
+
+  useEffect(() => {
+    setDraft(String(product.rrp ?? 0));
+  }, [product.id, product.rrp]);
+
+  async function commit() {
+    const parsed = Number(draft);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setDraft(String(product.rrp ?? 0));
+      return;
+    }
+    const next = Math.round(parsed * 100) / 100;
+    if (next === Number(product.rrp ?? 0)) {
+      setDraft(String(next));
+      return;
+    }
+    await onCommit(next);
+  }
+
+  if (product.isSubProduct) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1 min-w-0 w-full">
+      <span className="text-[10px] text-muted-foreground shrink-0">{symbol}</span>
+      <input
+        type="number"
+        min={0}
+        step="0.01"
+        value={draft}
+        disabled={disabled}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => void commit()}
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') {
+            setDraft(String(product.rrp ?? 0));
+            e.currentTarget.blur();
+          }
+        }}
+        className="w-full min-w-0 max-w-[6rem] rounded-md border border-border bg-background px-1.5 py-1 text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+        aria-label={`RRP for ${product.name}`}
+      />
+    </div>
+  );
 }
 
 export function ProductListPage({
@@ -230,6 +302,9 @@ export function ProductListPage({
         sortColumn,
         sortDirection,
         {
+          category: p => p.category || '',
+          group: p => p.group || '',
+          productId: p => p.productId || '',
           name: p => p.name,
           type: p => (p.isSubProduct ? 'Sub-Product' : 'Product'),
           deliveryUnit: p => resolveProductListDeliveryUnitSortValue(p, products),
@@ -432,10 +507,10 @@ export function ProductListPage({
               </thead>
               <tbody>
                 {loading ? (
-                  <TableLoadingRow colSpan={9} label="Loading products…" />
+                  <TableLoadingRow colSpan={PRODUCT_LIST_COL_SPAN} label="Loading products…" />
                 ) : visibleProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-8 text-center text-xs text-muted-foreground">
+                    <td colSpan={PRODUCT_LIST_COL_SPAN} className="px-3 py-8 text-center text-xs text-muted-foreground">
                       {hasActiveFilters
                         ? 'No products match your filters.'
                         : 'No products saved yet. Create one from the Products tab.'}
@@ -447,17 +522,25 @@ export function ProductListPage({
                     const variationPoints = collectProductListRrpPoints(product, products);
                     return (
                       <tr key={product.id} className={`hover:bg-muted/20 ${!product.active ? 'opacity-60' : ''}`}>
+                        <td className={`${tdCls} text-muted-foreground min-w-0`}>
+                          <span className="line-clamp-2">{product.category?.trim() || '—'}</span>
+                        </td>
+                        <td className={`${tdCls} text-muted-foreground min-w-0`}>
+                          <span className="line-clamp-2">{product.group?.trim() || '—'}</span>
+                        </td>
+                        <td className={`${tdCls} font-mono text-[11px] text-muted-foreground tabular-nums whitespace-nowrap`}>
+                          {product.productId || '—'}
+                        </td>
+                        <td className={tdCls}>{product.isSubProduct ? 'Sub-Product' : 'Product'}</td>
                         <td className={tdCls}>
                           <button
                             type="button"
                             onClick={() => setDetailProduct(product)}
-                            className="font-medium text-left hover:text-primary hover:underline"
+                            className="font-medium text-left hover:text-primary hover:underline line-clamp-2"
                           >
                             {product.name}
                           </button>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{product.productId}</p>
                         </td>
-                        <td className={tdCls}>{product.isSubProduct ? 'Sub-Product' : 'Product'}</td>
                         <td className={tdCls}>
                           <VariationStack
                             points={variationPoints}
@@ -465,11 +548,10 @@ export function ProductListPage({
                           />
                         </td>
                         <td className={tdCls}>
-                          <VariationStack
-                            points={variationPoints}
-                            render={point => (
-                              point.rrp > 0 ? formatRm(point.rrp, countryCode) : '—'
-                            )}
+                          <InlineRrpInput
+                            product={product}
+                            disabled={rowBusy}
+                            onCommit={rrp => void patchProduct(product, { rrp })}
                           />
                         </td>
                         <td className={tdCls}>
@@ -544,7 +626,7 @@ export function ProductListPage({
                     );
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={PRODUCT_LIST_COL_SPAN} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
