@@ -211,7 +211,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
           ) : tapTiles.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-card px-4 py-12 text-center">
               <p className="text-sm text-muted-foreground">
-                No B2C POS menu products for this company/location.
+                No B2C POS menu products for this company.
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Set type to B2C, enter RRP, then tick POS under Revenue Management → Products.
