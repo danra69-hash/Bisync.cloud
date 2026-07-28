@@ -75,6 +75,7 @@ import { VariableProductSection } from './VariableProductSection';
 import {
   blankVariableConfig,
   calcVariableMinMaxCost,
+  parseVariableMode,
   parseVariableOptionsJson,
   serializeVariableOptionsJson,
   type VariableProductConfig,
@@ -867,14 +868,15 @@ export function ProductsPage({
     setIsSubProduct(product.isSubProduct);
     setIsVariableProduct(Boolean(product.isVariableProduct) && !product.isSubProduct);
     if (product.isVariableProduct && !product.isSubProduct) {
-      const mode = product.variableMode === 'replacement' ? 'replacement' : 'combination';
+      const mode = parseVariableMode(product.variableMode);
       const parsed = parseVariableOptionsJson(product.variableOptionsJson, mode);
       setVariableConfig({
         ...parsed,
         mode,
-        choiceQty: mode === 'combination'
+        choiceQty: mode === 'combination' || mode === 'weight'
           ? (product.variableChoiceQty && product.variableChoiceQty > 0 ? product.variableChoiceQty : parsed.choiceQty)
           : parsed.choiceQty,
+        weightUom: mode === 'weight' ? (parsed.weightUom || 'kg') : '',
       });
     } else {
       setVariableConfig(blankVariableConfig());
@@ -1299,6 +1301,19 @@ export function ProductsPage({
           showSaveError('Add at least two products to the combination choice list.');
           return;
         }
+      } else if (variableConfig.mode === 'weight') {
+        if (!variableConfig.weightUom.trim()) {
+          showSaveError('Select a Weight UOM for this weight-based product.');
+          return;
+        }
+        if (variableConfig.choiceQty <= 0) {
+          showSaveError('Enter the weight QTY that the RRP applies to.');
+          return;
+        }
+        if (rrpValue <= 0) {
+          showSaveError('Enter an RRP for the weight QTY (POS multiplies by entered weight).');
+          return;
+        }
       } else if (!variableConfig.replacementSlots.some(s => s.alternatives.length > 0)) {
         showSaveError('Add at least one replacement alternative for a component slot.');
         return;
@@ -1315,8 +1330,9 @@ export function ProductsPage({
         quantity: parseFloat(line.quantity) || 0,
       }));
 
-    const isCombinationVariable = isVariableProduct && variableConfig.mode === 'combination';
-    if (payloadItems.length === 0 && !isCombinationVariable) {
+    const allowsEmptyRecipe = isVariableProduct
+      && (variableConfig.mode === 'combination' || variableConfig.mode === 'weight');
+    if (payloadItems.length === 0 && !allowsEmptyRecipe) {
       showSaveError(b2bEnabled && !isSubProduct
         ? 'Add at least one component or sub-product line.'
         : 'Add at least one smart component or sub-product line.');
@@ -1375,7 +1391,8 @@ export function ProductsPage({
       isSubProduct,
       isVariableProduct: !isSubProduct && isVariableProduct,
       variableMode: !isSubProduct && isVariableProduct ? variableConfig.mode : undefined,
-      variableChoiceQty: !isSubProduct && isVariableProduct && variableConfig.mode === 'combination'
+      variableChoiceQty: !isSubProduct && isVariableProduct
+        && (variableConfig.mode === 'combination' || variableConfig.mode === 'weight')
         ? variableConfig.choiceQty
         : undefined,
       variableOptionsJson: !isSubProduct && isVariableProduct
@@ -1618,7 +1635,7 @@ export function ProductsPage({
                   </p>
                 ) : isVariableProduct ? (
                   <p className="text-[10px] text-muted-foreground">
-                    Variable products sell on B2C or B2B with combination choices or component replacements.
+                    Variable products sell on B2C or B2B with combination, replacement, or weight-based pricing.
                   </p>
                 ) : !hasB2bProductCapability ? (
                   <p className="text-[10px] text-muted-foreground">
@@ -2075,6 +2092,7 @@ export function ProductsPage({
               ingredients={availableComponents}
               disabled={!isEditing || saving}
               baseRecipeCost={totalCost}
+              rrp={rrpValue}
             />
           ) : null}
 

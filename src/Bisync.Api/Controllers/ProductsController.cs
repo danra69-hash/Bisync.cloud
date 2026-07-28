@@ -552,8 +552,9 @@ public class ProductsController(
         {
             var mode = (request.VariableMode ?? string.Empty).Trim();
             if (!string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(mode, "replacement", StringComparison.OrdinalIgnoreCase))
-                return "Variable Product mode must be Combination or Replacement.";
+                && !string.Equals(mode, "replacement", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(mode, "weight", StringComparison.OrdinalIgnoreCase))
+                return "Variable Product mode must be Combination, Replacement, or Weight based.";
             if (string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase))
             {
                 if (request.VariableChoiceQty is null or <= 0)
@@ -561,6 +562,17 @@ public class ProductsController(
                 if (string.IsNullOrWhiteSpace(request.VariableOptionsJson)
                     || request.VariableOptionsJson.Trim() is "{}" or "[]")
                     return "Add at least two products to the combination choice list.";
+            }
+            else if (string.Equals(mode, "weight", StringComparison.OrdinalIgnoreCase))
+            {
+                if (request.VariableChoiceQty is null or <= 0)
+                    return "Enter the weight QTY for this weight-based product.";
+                if (string.IsNullOrWhiteSpace(request.VariableOptionsJson)
+                    || request.VariableOptionsJson.Trim() is "{}" or "[]")
+                    return "Select a Weight UOM for this weight-based product.";
+                if (request.Rrp is null or <= 0)
+                    return "Enter an RRP for the weight QTY (POS uses weight × unit RRP).";
+                // Recipe components optional — COGS can be filled later.
             }
             else if (request.Items is null || request.Items.Count == 0)
             {
@@ -608,12 +620,17 @@ public class ProductsController(
             return;
         }
 
-        var mode = string.Equals(request.VariableMode, "replacement", StringComparison.OrdinalIgnoreCase)
+        var modeRaw = (request.VariableMode ?? string.Empty).Trim();
+        var mode = string.Equals(modeRaw, "replacement", StringComparison.OrdinalIgnoreCase)
             ? "replacement"
-            : "combination";
+            : string.Equals(modeRaw, "weight", StringComparison.OrdinalIgnoreCase)
+                ? "weight"
+                : "combination";
         product.IsVariableProduct = true;
         product.VariableMode = mode;
-        product.VariableChoiceQty = mode == "combination" ? Math.Max(0, request.VariableChoiceQty ?? 0) : 0;
+        product.VariableChoiceQty = mode is "combination" or "weight"
+            ? Math.Max(0, request.VariableChoiceQty ?? 0)
+            : 0;
         product.VariableOptionsJson = string.IsNullOrWhiteSpace(request.VariableOptionsJson)
             ? "{}"
             : request.VariableOptionsJson.Trim();

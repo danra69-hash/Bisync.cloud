@@ -239,9 +239,28 @@ export function ProductReadOnlyView({
               </p>
             ) : product.isVariableProduct ? (
               <p className="text-[10px] text-muted-foreground">
-                Variable {product.variableMode === 'replacement' ? 'replacement' : 'combination'}
-                {' · '}Min {currency(product.variableMinCost ?? 0)}
-                {' · '}Max {currency(product.variableMaxCost ?? 0)}
+                {product.variableMode === 'weight' ? (
+                  <>
+                    Weight based
+                    {product.variableChoiceQty && product.variableChoiceQty > 0
+                      ? ` · RRP ${currency(product.rrp)} / ${product.variableChoiceQty}`
+                      : ''}
+                    {(() => {
+                      try {
+                        const parsed = JSON.parse(product.variableOptionsJson || '{}') as { weightUom?: string };
+                        return parsed.weightUom ? ` ${parsed.weightUom}` : '';
+                      } catch {
+                        return '';
+                      }
+                    })()}
+                  </>
+                ) : (
+                  <>
+                    Variable {product.variableMode === 'replacement' ? 'replacement' : 'combination'}
+                    {' · '}Min {currency(product.variableMinCost ?? 0)}
+                    {' · '}Max {currency(product.variableMaxCost ?? 0)}
+                  </>
+                )}
               </p>
             ) : null}
           </div>

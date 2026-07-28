@@ -1,5 +1,10 @@
 import type { Product as ApiProduct } from '../../../api'
 import { resolvePosMenuRrp } from '../../../data/posCatalog'
+import {
+  calcWeightUnitRrp,
+  parseVariableMode,
+  parseVariableOptionsJson,
+} from '../../../data/productVariable'
 import type {
   Product as PosProduct,
   ProductDepartment,
@@ -44,25 +49,51 @@ export function mapApiProductsToPosCatalog(
   apiProducts: ApiProduct[],
   catalogProducts: ApiProduct[] = apiProducts,
 ): PosProduct[] {
-  return apiProducts
-    .map(product => {
-      const rrp = resolvePosMenuRrp(product, catalogProducts)
-      if (rrp <= 0) return null
-      const group = (product.group || product.category || 'General').trim() || 'General'
-      const department = mapDepartment(product.category || '', group)
-      return {
-        id: String(product.id),
-        sku: product.productId || String(product.id),
-        name: product.name,
-        priceCents: Math.round(rrp * 100),
-        department,
-        group,
-        emoji: pickEmoji(product.name),
-        accent: pickAccent(product.name),
-      } satisfies PosProduct
+  const rows: PosProduct[] = []
+  for (const product of apiProducts) {
+    const rrp = resolvePosMenuRrp(product, catalogProducts)
+    if (rrp <= 0) continue
+    const group = (product.group || product.category || 'General').trim() || 'General'
+    const department = mapDepartment(product.category || '', group)
+
+    const isWeight =
+      Boolean(product.isVariableProduct)
+      && parseVariableMode(product.variableMode) === 'weight'
+    let priceCents = Math.round(rrp * 100)
+    let pricedByWeight = false
+    let weightUom: string | undefined
+    let weightQty: number | undefined
+
+    if (isWeight) {
+      const cfg = parseVariableOptionsJson(product.variableOptionsJson, 'weight')
+      const qty = (product.variableChoiceQty && product.variableChoiceQty > 0)
+        ? product.variableChoiceQty
+        : cfg.choiceQty
+      if (!(qty > 0) || !cfg.weightUom) continue
+      const unitRrp = calcWeightUnitRrp(rrp, qty)
+      if (!(unitRrp > 0)) continue
+      pricedByWeight = true
+      weightUom = cfg.weightUom
+      weightQty = qty
+      // Cart uses quantity = entered weight; price is per 1 weight UOM.
+      priceCents = Math.round(unitRrp * 100)
+    }
+
+    rows.push({
+      id: String(product.id),
+      sku: product.productId || String(product.id),
+      name: product.name,
+      priceCents,
+      department,
+      group,
+      emoji: pickEmoji(product.name),
+      accent: pickAccent(product.name),
+      pricedByWeight,
+      weightUom,
+      weightQty,
     })
-    .filter((row): row is PosProduct => row != null)
-    .sort((a, b) => a.name.localeCompare(b.name))
+  }
+  return rows.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export function buildDepartmentGroups(catalog: PosProduct[]): {

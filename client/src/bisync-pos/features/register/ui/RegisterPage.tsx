@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MOCK_PRODUCTS } from '../domain/catalog'
-import { addToCart } from '../domain/cart'
-import type { CartLine, OrderCharges, ProductDepartment } from '../domain/types'
+import { addToCart, addWeightToCart } from '../domain/cart'
+import type { CartLine, OrderCharges, Product, ProductDepartment } from '../domain/types'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { buildDepartmentGroups } from '../../../core/session/mapPosCatalog'
 import { api } from '../../../../api'
@@ -92,6 +92,26 @@ export function RegisterPage() {
   function flash(message: string) {
     setToast(message)
     window.setTimeout(() => setToast(null), 2800)
+  }
+
+  function promptWeightAndAdd(product: Product) {
+    const uom = product.weightUom || 'kg'
+    const existing = lines.find(l => l.productId === product.id)
+    const raw = window.prompt(
+      `Enter weight (${uom}) for ${product.name}`,
+      existing ? String(existing.quantity) : '',
+    )
+    if (raw == null) return
+    const weight = Number(raw)
+    if (!Number.isFinite(weight) || weight <= 0) {
+      flash(`Enter a weight greater than zero (${uom}).`)
+      return
+    }
+    setLines(prev => addWeightToCart(prev, product.id, weight))
+    const totalCents = Math.round(product.priceCents * weight)
+    flash(
+      `${product.name}: ${weight} ${uom} → ${(totalCents / 100).toFixed(2)}`,
+    )
   }
 
   async function chargePayment() {
@@ -186,7 +206,13 @@ export function RegisterPage() {
 
         <ProductGrid
           products={filtered}
-          onAdd={product => setLines(prev => addToCart(prev, product.id))}
+          onAdd={product => {
+            if (product.pricedByWeight) {
+              promptWeightAndAdd(product)
+              return
+            }
+            setLines(prev => addToCart(prev, product.id))
+          }}
         />
       </div>
 

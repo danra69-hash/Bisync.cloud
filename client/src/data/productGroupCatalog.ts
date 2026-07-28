@@ -21,7 +21,9 @@ export function productToUpsertPayload(
     group: product.group,
     isSubProduct: product.isSubProduct,
     isVariableProduct: product.isVariableProduct,
-    variableMode: product.variableMode === 'replacement' ? 'replacement' : product.variableMode === 'combination' ? 'combination' : undefined,
+    variableMode: product.variableMode === 'replacement' || product.variableMode === 'combination' || product.variableMode === 'weight'
+      ? product.variableMode
+      : undefined,
     variableChoiceQty: product.variableChoiceQty,
     variableOptionsJson: product.variableOptionsJson,
     variableMinCost: product.variableMinCost,

@@ -11,6 +11,22 @@ export function addToCart(lines: CartLine[], productId: ProductId): CartLine[] {
   return [...lines, { productId, quantity: 1 }]
 }
 
+/** Add or replace a weight-based line. Quantity is the entered weight in the product UOM. */
+export function addWeightToCart(
+  lines: CartLine[],
+  productId: ProductId,
+  weight: number,
+): CartLine[] {
+  if (!(weight > 0)) return lines
+  const existing = lines.find((l) => l.productId === productId)
+  if (existing) {
+    return lines.map((l) =>
+      l.productId === productId ? { ...l, quantity: weight } : l,
+    )
+  }
+  return [...lines, { productId, quantity: weight }]
+}
+
 export function setLineQty(
   lines: CartLine[],
   productId: ProductId,

@@ -122,12 +122,18 @@ export function OrderPanel({
                 const product = byId.get(line.productId)
                 if (!product) return null
                 const lineTotal = product.priceCents * line.quantity
+                const qtyLabel = product.pricedByWeight && product.weightUom
+                  ? `${line.quantity} ${product.weightUom}`
+                  : String(line.quantity)
+                const unitLabel = product.pricedByWeight && product.weightUom
+                  ? `${formatMoney(product.priceCents)}/${product.weightUom}`
+                  : formatMoney(product.priceCents)
                 return (
                   <tr key={line.productId}>
                     <td className="order-lines-table__product">{product.name}</td>
-                    <td className="order-lines-table__qty">{line.quantity}</td>
+                    <td className="order-lines-table__qty">{qtyLabel}</td>
                     <td className="order-lines-table__price">
-                      {formatMoney(product.priceCents)}
+                      {unitLabel}
                     </td>
                     <td className="order-lines-table__total">
                       {formatMoney(lineTotal)}

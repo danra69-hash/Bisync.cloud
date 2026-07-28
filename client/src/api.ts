@@ -2119,7 +2119,7 @@ export interface Product {
   group: string;
   isSubProduct: boolean;
   isVariableProduct?: boolean;
-  variableMode?: 'combination' | 'replacement' | string;
+  variableMode?: 'combination' | 'replacement' | 'weight' | string;
   variableChoiceQty?: number;
   variableOptionsJson?: string;
   variableMinCost?: number;
@@ -2168,7 +2168,7 @@ export interface UpsertProductPayload {
   group: string;
   isSubProduct: boolean;
   isVariableProduct?: boolean;
-  variableMode?: 'combination' | 'replacement';
+  variableMode?: 'combination' | 'replacement' | 'weight';
   variableChoiceQty?: number;
   variableOptionsJson?: string;
   variableMinCost?: number;
