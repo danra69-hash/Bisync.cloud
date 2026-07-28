@@ -20,6 +20,7 @@ import { TransferPage } from './TransferPage';
 import { CogsAuditPage } from './CogsAuditPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { ProductAuditPage } from './ProductAuditPage';
+import { PosTestTapPage } from './PosTestTapPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
 import { RevMgmtTitleProvider, useRevMgmtTitleContext } from './RevMgmtTitleContext';
@@ -282,7 +283,12 @@ export function RevenueSection({
     return (
       <>
         <POSBar selectedItem={posItem} onSelectItem={setPosItem} />
-        {posItem ? (
+        {posItem === 'POS Test Tap' ? (
+          <PosTestTapPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem ? (
           <ModuleContent section="Point-of-Sales" label={posItem} />
         ) : (
           <div className="p-2 sm:p-3 w-full min-w-0">

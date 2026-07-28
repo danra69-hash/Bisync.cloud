@@ -149,6 +149,7 @@ export function isB2bProductNavLabel(label: string | null | undefined): boolean 
 }
 
 export const posItems = [
+  'POS Test Tap',
   'POS Menu',
   'POS Modifier Group',
   'Promotion Scheduler',
@@ -171,8 +172,14 @@ export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
   'Wastage Report',
 ]);
 
-/** All current POS bar items are placeholders. */
-export const COMING_SOON_POS_ITEMS = new Set<string>(posItems);
+/** POS bar placeholders — POS Test Tap is live for development wiring. */
+export const COMING_SOON_POS_ITEMS = new Set<string>([
+  'POS Menu',
+  'POS Modifier Group',
+  'Promotion Scheduler',
+  'Device Management',
+  'E-Invoice',
+]);
 
 export const NAV_ITEMS = [
   'Home',

@@ -37,6 +37,11 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<VendorRating> VendorRatings => Set<VendorRating>();
     public DbSet<B2bCustomer> B2bCustomers => Set<B2bCustomer>();
     public DbSet<PosCustomer> PosCustomers => Set<PosCustomer>();
+    public DbSet<PosOpenCheck> PosOpenChecks => Set<PosOpenCheck>();
+    public DbSet<PosClosedCheck> PosClosedChecks => Set<PosClosedCheck>();
+    public DbSet<PosPayment> PosPayments => Set<PosPayment>();
+    public DbSet<PosVoid> PosVoids => Set<PosVoid>();
+    public DbSet<PosEodSession> PosEodSessions => Set<PosEodSession>();
     public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
     public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
     public DbSet<SalesModuleCalendarSettings> SalesModuleCalendarSettings => Set<SalesModuleCalendarSettings>();
@@ -151,6 +156,63 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.ExternalId).IsUnique();
             e.HasIndex(x => x.CompanyId);
             e.Property(x => x.Active).HasConversion<int>();
+        });
+        modelBuilder.Entity<PosOpenCheck>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId });
+            e.HasIndex(x => new { x.CompanyId, x.CheckNumber });
+            e.Property(x => x.Active).HasConversion<int>();
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.Dining).HasMaxLength(32);
+            e.Property(x => x.TableLabel).HasMaxLength(64);
+            e.Property(x => x.TakeoutCallLabel).HasMaxLength(128);
+        });
+        modelBuilder.Entity<PosClosedCheck>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.PaidAt });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.CheckLabel).HasMaxLength(32);
+        });
+        modelBuilder.Entity<PosPayment>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.PaidAt });
+            e.HasIndex(x => new { x.CompanyId, x.Method });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.Method).HasMaxLength(40);
+            e.Property(x => x.Purpose).HasMaxLength(80);
+            e.Property(x => x.CardIin).HasMaxLength(8);
+            e.Property(x => x.CardIssuer).HasMaxLength(64);
+            e.Property(x => x.CardLast4).HasMaxLength(4);
+            e.Property(x => x.CardMii).HasMaxLength(2);
+            e.Property(x => x.CardMiiLabel).HasMaxLength(80);
+        });
+        modelBuilder.Entity<PosVoid>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.VoidedAt });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.Reason).HasMaxLength(500);
+        });
+        modelBuilder.Entity<PosEodSession>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.BusinessDate }).IsUnique();
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.CashConfirmed).HasConversion<int>();
+            e.Property(x => x.CreditQrConfirmed).HasConversion<int>();
+            e.Property(x => x.NonRevenueConfirmed).HasConversion<int>();
+            e.Property(x => x.VoidsConfirmed).HasConversion<int>();
+            e.Property(x => x.DiscountConfirmed).HasConversion<int>();
+            e.Property(x => x.DayClosed).HasConversion<int>();
         });
         modelBuilder.Entity<SalesModuleCustomer>(e =>
         {

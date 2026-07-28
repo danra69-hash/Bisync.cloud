@@ -172,11 +172,27 @@ export const id = {
   pos: {
     selectModule: 'Pilih modul POS dari bilah navigasi di atas.',
     items: {
+      testTap: 'POS Test Tap',
       menu: 'Menu POS',
       modifierGroup: 'Grup Modifier POS',
       promotionScheduler: 'Penjadwal Promosi',
       deviceManagement: 'Manajemen Perangkat',
       eInvoice: 'E-Faktur',
+    },
+    testTap: {
+      title: 'POS Test Tap',
+      subtitle:
+        'Surface pengembangan Point-of-Sales. Tabel operasional memakai CompanyId + LocationExternalId (SchemaPatcher Bisync.cloud). Hubungkan register, pembayaran, dan konfirmasi EOD di sini selanjutnya.',
+      selectCompany: 'Pilih perusahaan untuk memuat status POS Test Tap.',
+      loading: 'Memuat status skema POS…',
+      openBillsBanner: 'Masih ada open check — tutup hari EOD harus diblokir sampai dibersihkan.',
+      noOpenBills: 'Tidak ada open check aktif untuk filter perusahaan / lokasi ini.',
+      tablesHeading: 'Tabel operasional POS',
+      colTable: 'Tabel',
+      colPurpose: 'Tujuan',
+      colRows: 'Baris',
+      wireHint:
+        'API: GET /api/pos/test-tap/status, /api/pos/open-checks, /api/pos/eod-sessions. Perluas saat menghubungkan alur BisyncPOS.',
     },
   },
   systemConfig: {

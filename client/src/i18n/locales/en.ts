@@ -169,11 +169,27 @@ export const en = {
   pos: {
     selectModule: 'Select a POS module from the navigation bar above.',
     items: {
+      testTap: 'POS Test Tap',
       menu: 'POS Menu',
       modifierGroup: 'POS Modifier Group',
       promotionScheduler: 'Promotion Scheduler',
       deviceManagement: 'Device Management',
       eInvoice: 'E-Invoice',
+    },
+    testTap: {
+      title: 'POS Test Tap',
+      subtitle:
+        'Development surface for Point-of-Sales. Operational tables use CompanyId + LocationExternalId (Bisync.cloud SchemaPatcher). Wire register, payments, and EOD confirmations here next.',
+      selectCompany: 'Select a company to load POS Test Tap status.',
+      loading: 'Loading POS schema status…',
+      openBillsBanner: 'Open checks exist — EOD close must stay blocked until they are cleared.',
+      noOpenBills: 'No active open checks for this company / location filter.',
+      tablesHeading: 'POS operational tables',
+      colTable: 'Table',
+      colPurpose: 'Purpose',
+      colRows: 'Rows',
+      wireHint:
+        'APIs: GET /api/pos/test-tap/status, /api/pos/open-checks, /api/pos/eod-sessions. Extend these when connecting BisyncPOS flows.',
     },
   },
   systemConfig: {

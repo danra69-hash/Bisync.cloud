@@ -62,6 +62,7 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
 };
 
 export const POS_ITEM_I18N: Record<string, string> = {
+  'POS Test Tap': 'pos.items.testTap',
   'POS Menu': 'pos.items.menu',
   'POS Modifier Group': 'pos.items.modifierGroup',
   'Promotion Scheduler': 'pos.items.promotionScheduler',
