@@ -1078,6 +1078,62 @@ export interface ActiveComboPromotion {
   }[];
 }
 
+export interface PosPromotionProductLine {
+  id: number;
+  productId: number;
+  productCode: string;
+  productName: string;
+  rrp: number;
+  cogs: number;
+  rpp: number;
+  discountPercent: number;
+}
+
+export interface PosPromotion {
+  id: number;
+  companyId: number;
+  name: string;
+  startDate: string;
+  endDate?: string | null;
+  endDateOpen: boolean;
+  startTime: string;
+  endTime: string;
+  repeatMode: 'daily' | 'daysOfWeek' | string;
+  daysOfWeek: string[];
+  filterCategory?: string | null;
+  filterGroup?: string | null;
+  promoType: 'discountPercent' | 'discountPrice' | string;
+  active: boolean;
+  status: 'Active' | 'Scheduled' | 'Inactive' | string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  products: PosPromotionProductLine[];
+}
+
+export interface CreatePosPromotionPayload {
+  companyId: number;
+  name: string;
+  startDate: string;
+  endDate?: string;
+  endDateOpen: boolean;
+  startTime: string;
+  endTime: string;
+  repeatMode: 'daily' | 'daysOfWeek';
+  daysOfWeek: string[];
+  filterCategory?: string;
+  filterGroup?: string;
+  promoType: 'discountPercent' | 'discountPrice';
+  createdBy?: string;
+  products: {
+    productId: number;
+    rrp: number;
+    cogs: number;
+    rpp: number;
+    discountPercent: number;
+  }[];
+}
+
 export interface TaggedB2bProductUnit {
   productId: number;
   aliasId: number | null;
@@ -3082,6 +3138,15 @@ export const api = {
   },
   promotionActiveCombos: (companyId: number) =>
     fetchJson<ActiveComboPromotion[]>(`/api/promotions/active-combos?companyId=${companyId}`),
+  posPromotions: (companyId: number, status?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (status) params.set('status', status);
+    return fetchJson<PosPromotion[]>(`/api/pos-promotions?${params}`);
+  },
+  createPosPromotion: (data: CreatePosPromotionPayload) =>
+    fetchJsonWithMethod<PosPromotion>('/api/pos-promotions', 'POST', data),
+  setPosPromotionActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosPromotion>(`/api/pos-promotions/${id}/active`, 'PATCH', { active }),
   issueB2bSalesOrder: (id: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/issue`, 'POST'),
   markB2bSalesOrderLineReadyToShip: (orderId: number, lineId: number) =>

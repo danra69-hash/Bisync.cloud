@@ -557,6 +557,28 @@
       "notes": "Point-of-Sales bar — POS Menu of company/location B2C products with POS enabled and RRP"
     },
     {
+      "id": "dr.page.pos-promotion-scheduler",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosPromotionSchedulerPage.tsx",
+      "symbol": "PosPromotionSchedulerPage",
+      "route": "/pos/promotion-scheduler",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-28",
+      "notes": "Point-of-Sales bar — Promotion Scheduler with date/time/day repeat, category/group filters, RRP/RPP discount table"
+    },
+    {
+      "id": "dr.api.pos-promotions",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosPromotionsController.cs",
+      "symbol": "PosPromotionsController",
+      "route": "api/pos-promotions",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-28",
+      "notes": "POS Promotion Scheduler CRUD — schedule windows, weekday repeat, per-product RRP/RPP lines"
+    },
+    {
       "id": "dr.module.hr",
       "kind": "client-module",
       "path": "client/src/modules/hr/HrModule.tsx",
