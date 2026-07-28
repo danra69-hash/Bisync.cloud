@@ -195,7 +195,10 @@ export default function App() {
     const allowed = new Set(forCompany.map(l => l.externalId));
     setSelectedLocationIds(prev => {
       const next = prev.filter(id => allowed.has(id));
-      // Keep ghost location if still valid; avoid clearing to empty while org loads.
+      // Sole location for this company → select it automatically.
+      if (next.length === 0 && forCompany.length === 1) {
+        return [forCompany[0].externalId];
+      }
       return next;
     });
   }, [configLocations, selectedCompanyId]);
@@ -368,8 +371,15 @@ export default function App() {
           selectedLocationIds={selectedLocationIds}
           onCompanyChange={(companyId) => {
             setSelectedCompanyId(companyId);
-            setSelectedLocationIds([]);
             setApiTenantCompanyId(companyId);
+            if (!companyId) {
+              setSelectedLocationIds([]);
+              return;
+            }
+            const forCompany = configLocations.filter(l => l.companyId === companyId);
+            setSelectedLocationIds(
+              forCompany.length === 1 ? [forCompany[0].externalId] : [],
+            );
           }}
           onLocationChange={setSelectedLocationIds}
           onToggleSidebar={() => setSidebarOpen(v => !v)}

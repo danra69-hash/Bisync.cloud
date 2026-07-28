@@ -65,8 +65,15 @@ export function GhostSupportTab({
   }, [canView]);
 
   useEffect(() => {
-    setLocationId('');
-  }, [companyId]);
+    if (companyId === '') {
+      setLocationId('');
+      return;
+    }
+    const forCompany = locations
+      .filter(l => l.companyId === companyId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    setLocationId(forCompany.length === 1 ? forCompany[0].id : '');
+  }, [companyId, locations]);
 
   async function handleEnterGhost(e: React.FormEvent) {
     e.preventDefault();
