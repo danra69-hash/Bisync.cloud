@@ -202,6 +202,7 @@ export function ProductListPage({
   const [groupFilter, setGroupFilter] = useState('All');
   const [filterProduct, setFilterProduct] = useState(false);
   const [filterSubProduct, setFilterSubProduct] = useState(false);
+  const [filterVariableProduct, setFilterVariableProduct] = useState(false);
   const [filterB2c, setFilterB2c] = useState(false);
   const [filterB2b, setFilterB2b] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
@@ -240,6 +241,7 @@ export function ProductListPage({
     groupFilter,
     filterProduct,
     filterSubProduct,
+    filterVariableProduct,
     filterB2c,
     filterB2b,
     selectedLocationIds,
@@ -272,10 +274,13 @@ export function ProductListPage({
       scoped = scoped.filter(p => p.group === groupFilter);
     }
 
-    if (filterProduct && !filterSubProduct) {
-      scoped = scoped.filter(p => !p.isSubProduct);
-    } else if (filterSubProduct && !filterProduct) {
-      scoped = scoped.filter(p => p.isSubProduct);
+    const typeFiltersOn = [filterProduct, filterSubProduct, filterVariableProduct].filter(Boolean).length;
+    if (typeFiltersOn > 0 && typeFiltersOn < 3) {
+      scoped = scoped.filter(p => {
+        if (p.isSubProduct) return filterSubProduct;
+        if (p.isVariableProduct) return filterVariableProduct;
+        return filterProduct;
+      });
     }
 
     if (filterB2c || filterB2b) {
@@ -293,7 +298,7 @@ export function ProductListPage({
       p.category,
       p.group,
     ].join(' ').toLowerCase().includes(query));
-  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterB2c, filterB2b]);
+  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterVariableProduct, filterB2c, filterB2b]);
 
   const sortedVisibleProducts = useMemo(
     () =>
@@ -306,7 +311,7 @@ export function ProductListPage({
           group: p => p.group || '',
           productId: p => p.productId || '',
           name: p => p.name,
-          type: p => (p.isSubProduct ? 'Sub-Product' : 'Product'),
+          type: p => (p.isSubProduct ? 'Sub-Product' : p.isVariableProduct ? 'Variable Product' : 'Product'),
           deliveryUnit: p => resolveProductListDeliveryUnitSortValue(p, products),
           rrp: p => resolveProductListRrpSortValue(p, products),
           cogs: p => resolveProductListVariationCogsSortValue(p, products),
@@ -360,6 +365,7 @@ export function ProductListPage({
     || groupFilter !== 'All'
     || filterProduct
     || filterSubProduct
+    || filterVariableProduct
     || filterB2c
     || filterB2b,
   );
@@ -427,6 +433,15 @@ export function ProductListPage({
                   className="rounded border-border"
                 />
                 Sub-Product
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filterVariableProduct}
+                  onChange={e => setFilterVariableProduct(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Variable Product
               </label>
               <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
                 <input
@@ -531,7 +546,13 @@ export function ProductListPage({
                         <td className={`${tdCls} font-mono text-[11px] text-muted-foreground tabular-nums whitespace-nowrap`}>
                           {product.productId || '—'}
                         </td>
-                        <td className={tdCls}>{product.isSubProduct ? 'Sub-Product' : 'Product'}</td>
+                        <td className={tdCls}>
+                          {product.isSubProduct
+                            ? 'Sub-Product'
+                            : product.isVariableProduct
+                              ? 'Variable Product'
+                              : 'Product'}
+                        </td>
                         <td className={tdCls}>
                           <button
                             type="button"

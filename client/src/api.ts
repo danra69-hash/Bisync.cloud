@@ -2118,6 +2118,12 @@ export interface Product {
   category: string;
   group: string;
   isSubProduct: boolean;
+  isVariableProduct?: boolean;
+  variableMode?: 'combination' | 'replacement' | string;
+  variableChoiceQty?: number;
+  variableOptionsJson?: string;
+  variableMinCost?: number;
+  variableMaxCost?: number;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
   b2bPackageUnit?: string;
@@ -2161,6 +2167,12 @@ export interface UpsertProductPayload {
   category: string;
   group: string;
   isSubProduct: boolean;
+  isVariableProduct?: boolean;
+  variableMode?: 'combination' | 'replacement';
+  variableChoiceQty?: number;
+  variableOptionsJson?: string;
+  variableMinCost?: number;
+  variableMaxCost?: number;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
   b2bPackageUnit?: string;

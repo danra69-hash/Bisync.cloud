@@ -476,6 +476,12 @@ public static class SchemaPatcher
 
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Rrp", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsVariableProduct", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMode", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableChoiceQty", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableOptionsJson", "TEXT NOT NULL DEFAULT '{}'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMinCost", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMaxCost", "NUMERIC NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosDeliveryUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
 

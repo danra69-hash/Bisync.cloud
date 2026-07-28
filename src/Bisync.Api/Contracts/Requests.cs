@@ -864,6 +864,17 @@ public class UpsertProductRequest
     [MaxLength(100)]
     public string? Group { get; set; }
     public bool IsSubProduct { get; set; }
+    public bool IsVariableProduct { get; set; }
+    /// <summary>combination | replacement</summary>
+    [MaxLength(20)]
+    public string? VariableMode { get; set; }
+    [Range(0, 999999999)]
+    public decimal? VariableChoiceQty { get; set; }
+    public string? VariableOptionsJson { get; set; }
+    [Range(0, 999999999)]
+    public decimal? VariableMinCost { get; set; }
+    [Range(0, 999999999)]
+    public decimal? VariableMaxCost { get; set; }
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
     [MaxLength(20)]
