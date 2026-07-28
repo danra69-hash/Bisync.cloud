@@ -35,6 +35,8 @@ public sealed class DeferredDbStartupHostedService(
             await using var db = new BisyncDbContext(controlOptions);
 
             logger.LogInformation("Deferred DB startup: seeders begin");
+            await RevMgmtStartup.InitializeAsync(db);
+            await SchemaPatcher.EnsureTenantRegistryAsync(db);
             await DataSeeder.SeedAsync(db);
             await ConfigurationSeeder.SeedAsync(db);
             await ConfigurationSeeder.PatchUserAssignmentsAsync(db);

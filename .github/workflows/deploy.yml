@@ -124,6 +124,8 @@ jobs:
           ARCHIVE_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_archive;Username=${DB_USER}"
           AUDIT_CONN="Host=/cloudsql/${SQL_CONNECTION};Database=bisync_audit;Username=${DB_USER}"
 
+          # Startup probe: give the revision ~4 minutes to bind PORT=8080 while
+          # EnsureCreated/SchemaPatcher run, then deferred seeders continue after listen.
           gcloud run deploy "${SERVICE_NAME}" \
             --project="${PROJECT_ID}" \
             --image="${IMAGE}" \
@@ -138,6 +140,7 @@ jobs:
             --timeout=600 \
             --cpu-boost \
             --no-cpu-throttling \
+            --startup-probe=tcpSocket.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=48 \
             --add-cloudsql-instances="${SQL_CONNECTION}" \
             --set-secrets="DB_PASSWORD=bisync-db-password:latest" \
             --set-env-vars="ASPNETCORE_ENVIRONMENT=Production" \

@@ -181,8 +181,7 @@ using (var scope = app.Services.CreateScope())
     await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultArchiveConnection);
     await db.Database.EnsureCreatedAsync();
     await SchemaPatcher.ApplyAsync(db);
-    await RevMgmtStartup.InitializeAsync(db);
-    await SchemaPatcher.EnsureTenantRegistryAsync(db);
+    // RevMgmt seed + tenant registry warm-up run in DeferredDbStartupHostedService.
 }
 
 if (app.Environment.IsDevelopment())
