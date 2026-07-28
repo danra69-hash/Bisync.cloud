@@ -16,6 +16,10 @@ public static class HrStartup
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "ShiftType", "TEXT NULL");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "Active", "BOOLEAN NOT NULL DEFAULT true");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DayOffPerWeek", "INTEGER NOT NULL DEFAULT 2");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyEnabled", "BOOLEAN NOT NULL DEFAULT false");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "DOUBLE PRECISION NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT false");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountPerWorkingDay", "DOUBLE PRECISION NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "CompanySettings", "OperatingCountryCode", "TEXT NOT NULL DEFAULT 'MY'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "CompanySettings", "ReplacementPublicHolidayEnabled", "BOOLEAN NOT NULL DEFAULT false");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "CompanySettings", "GazettedPhReplacementDayEnabled", "BOOLEAN NOT NULL DEFAULT false");

@@ -13,7 +13,7 @@ import { inputCls } from '../../data/countries';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 import { ToggleSwitch } from './ToggleSwitch';
 
-type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'dayOff' | 'break' | 'shift' | 'ot' | 'ph' | 'active';
+type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'dayOff' | 'break' | 'mealQty' | 'mealAmt' | 'shift' | 'ot' | 'ph' | 'active';
 
 const LEVEL_TABLE_COLUMNS: SortableColumnDef<LevelSortColumn>[] = [
   { key: 'level', label: 'Level' },
@@ -22,6 +22,8 @@ const LEVEL_TABLE_COLUMNS: SortableColumnDef<LevelSortColumn>[] = [
   { key: 'hrsPerDay', label: 'Hrs/Day' },
   { key: 'dayOff', label: 'DayOff/week' },
   { key: 'break', label: 'Break' },
+  { key: 'mealQty', label: 'Meal Qty' },
+  { key: 'mealAmt', label: 'Meal Amt' },
   { key: 'shift', label: 'Shift' },
   { key: 'ot', label: 'OT' },
   { key: 'ph', label: 'PH' },
@@ -38,6 +40,10 @@ const emptyForm = {
   breakHoursPerShift: 1,
   publicHolidayEligible: false,
   isShift: false,
+  dutyMealQtyEnabled: false,
+  dutyMealQtyPerWorkingDay: 0,
+  dutyMealAmountEnabled: false,
+  dutyMealAmountPerWorkingDay: 0,
   active: true,
 };
 
@@ -64,6 +70,10 @@ function LevelPanel({
     breakHoursPerShift: level.breakHoursPerShift,
     publicHolidayEligible: level.publicHolidayEligible,
     isShift: level.isShift,
+    dutyMealQtyEnabled: !!level.dutyMealQtyEnabled,
+    dutyMealQtyPerWorkingDay: level.dutyMealQtyPerWorkingDay ?? 0,
+    dutyMealAmountEnabled: !!level.dutyMealAmountEnabled,
+    dutyMealAmountPerWorkingDay: level.dutyMealAmountPerWorkingDay ?? 0,
     active: level.active !== false,
   } : { ...emptyForm });
   const [error, setError] = useState<string | null>(null);
@@ -76,12 +86,22 @@ function LevelPanel({
       setError('Level name is required.');
       return;
     }
+    if (form.dutyMealQtyEnabled && form.dutyMealQtyPerWorkingDay <= 0) {
+      setError('Enter Duty Meal QTY per working day, or untick the box.');
+      return;
+    }
+    if (form.dutyMealAmountEnabled && form.dutyMealAmountPerWorkingDay <= 0) {
+      setError('Enter Duty Meal Amount per working day, or untick the box.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const payload = {
         ...form,
         dayOffPerWeek: Math.max(0, Math.min(7, Number(form.dayOffPerWeek) || 0)),
+        dutyMealQtyPerWorkingDay: form.dutyMealQtyEnabled ? Math.max(0, form.dutyMealQtyPerWorkingDay) : 0,
+        dutyMealAmountPerWorkingDay: form.dutyMealAmountEnabled ? Math.max(0, form.dutyMealAmountPerWorkingDay) : 0,
         shiftType: null,
       };
       if (isNew) await hrApi.levels.create(payload);
@@ -188,6 +208,67 @@ function LevelPanel({
               <input type="checkbox" checked={form.isShift} onChange={e => setForm({ ...form, isShift: e.target.checked })} className="rounded border-border" />
               Shift employee
             </label>
+
+            <div className="pt-2 border-t border-border space-y-3">
+              <p className="text-[11px] font-sans text-muted-foreground uppercase tracking-wider">Duty meal (per working day)</p>
+              <div className="flex items-start gap-3">
+                <label className="flex items-center gap-2 text-xs cursor-pointer shrink-0 pt-2 min-w-[11rem]">
+                  <input
+                    type="checkbox"
+                    checked={form.dutyMealQtyEnabled}
+                    onChange={e => setForm({
+                      ...form,
+                      dutyMealQtyEnabled: e.target.checked,
+                      dutyMealQtyPerWorkingDay: e.target.checked
+                        ? (form.dutyMealQtyPerWorkingDay > 0 ? form.dutyMealQtyPerWorkingDay : 1)
+                        : form.dutyMealQtyPerWorkingDay,
+                    })}
+                    className="rounded border-border"
+                  />
+                  Duty Meal QTY
+                </label>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    disabled={!form.dutyMealQtyEnabled}
+                    className={`${inputCls} ${!form.dutyMealQtyEnabled ? 'opacity-50' : ''}`}
+                    value={form.dutyMealQtyPerWorkingDay}
+                    onChange={e => setForm({ ...form, dutyMealQtyPerWorkingDay: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    placeholder="Qty / working day"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">Qty / working day</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <label className="flex items-center gap-2 text-xs cursor-pointer shrink-0 pt-2 min-w-[11rem]">
+                  <input
+                    type="checkbox"
+                    checked={form.dutyMealAmountEnabled}
+                    onChange={e => setForm({
+                      ...form,
+                      dutyMealAmountEnabled: e.target.checked,
+                    })}
+                    className="rounded border-border"
+                  />
+                  Duty Meal Amount
+                </label>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={!form.dutyMealAmountEnabled}
+                    className={`${inputCls} ${!form.dutyMealAmountEnabled ? 'opacity-50' : ''}`}
+                    value={form.dutyMealAmountPerWorkingDay}
+                    onChange={e => setForm({ ...form, dutyMealAmountPerWorkingDay: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    placeholder="Amount / working day"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">Amount box / working day</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -272,6 +353,8 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
           hrsPerDay: l => l.workingHoursPerDay,
           dayOff: l => l.dayOffPerWeek ?? 2,
           break: l => l.breakHoursPerShift,
+          mealQty: l => (l.dutyMealQtyEnabled ? l.dutyMealQtyPerWorkingDay : -1),
+          mealAmt: l => (l.dutyMealAmountEnabled ? l.dutyMealAmountPerWorkingDay : -1),
           shift: l => l.isShift,
           ot: l => l.overtimeEligible,
           ph: l => l.publicHolidayEligible,
@@ -336,6 +419,12 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
                   ) : null}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{level.breakHoursPerShift}h</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {level.dutyMealQtyEnabled ? level.dutyMealQtyPerWorkingDay : '—'}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {level.dutyMealAmountEnabled ? level.dutyMealAmountPerWorkingDay : '—'}
+                </td>
                 <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                   <ToggleSwitch checked={level.isShift} onChange={v => void toggleFlag(level, { isShift: v })} label="Shift" />
                 </td>
@@ -356,12 +445,12 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
             ))}
             {levels.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
                   No employee levels yet. Add a level to get started.
                 </td>
               </tr>
             )}
-            <InfiniteScrollTableSentinel colSpan={10} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={12} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>
