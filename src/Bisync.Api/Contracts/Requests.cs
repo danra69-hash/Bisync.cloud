@@ -43,7 +43,8 @@ public class EmployeeRequest
     [MaxLength(50)]
     public string? IdPassportNumber { get; set; }
     public DateOnly? DateOfBirth { get; set; }
-    [EmailAddress, MaxLength(256)]
+    /// <summary>Optional; empty string is treated as null (avoid [EmailAddress] rejecting "").</summary>
+    [MaxLength(256)]
     public string? PersonalEmail { get; set; }
     [MaxLength(500)]
     public string? PermanentAddress { get; set; }

@@ -11,7 +11,7 @@ import { PlatformAccessSummary } from './PlatformAccessSummary';
 import { AccessControlLevelField } from './AccessControlLevelField';
 import { parseUserAccess } from '../../data/userAccess';
 import { CHECKIN_METHODS, DEFAULT_PAYROLL_PIN, DEFAULT_POS_PIN, checkinMethodLabel, initials, selectableEmployeeLevels } from './employeeTabShared';
-import { SIDE_PANEL_DETAIL_SHELL_CLS, SIDE_PANEL_ROOT_CLS } from '../layout/sidePanelShared';
+import { SIDE_PANEL_DETAIL_SHELL_CLS, SIDE_PANEL_OVERLAY_CLS } from '../layout/sidePanelShared';
 
 type Props = {
   employee: Employee;
@@ -22,6 +22,8 @@ type Props = {
   departmentName: (employee: Employee) => string;
   countryCode: string;
   employeeIsShift: (employee: Employee) => boolean;
+  saving?: boolean;
+  error?: string | null;
   onClose: () => void;
   onSave: () => void;
   onDelete: () => void;
@@ -31,6 +33,7 @@ type Props = {
   accessControlSaving?: boolean;
   onResetPosPin: () => void;
   onResetPayrollPin: () => void;
+  onClearError?: () => void;
 };
 
 export function EmployeeDetailPanel({
@@ -42,6 +45,8 @@ export function EmployeeDetailPanel({
   departmentName,
   countryCode,
   employeeIsShift,
+  saving = false,
+  error = null,
   onClose,
   onSave,
   onDelete,
@@ -51,6 +56,7 @@ export function EmployeeDetailPanel({
   accessControlSaving = false,
   onResetPosPin,
   onResetPayrollPin,
+  onClearError,
 }: Props) {
   const [addressParts, setAddressParts] = useState<AddressParts>(() => parseAddress(employee.permanentAddress));
 
@@ -64,8 +70,8 @@ export function EmployeeDetailPanel({
   }
 
   return (
-    <div className={SIDE_PANEL_ROOT_CLS}>
-      <div className="absolute inset-0 bg-foreground/10" onClick={onClose} />
+    <>
+      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={onClose} />
       <div className={SIDE_PANEL_DETAIL_SHELL_CLS}>
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -84,6 +90,15 @@ export function EmployeeDetailPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+          {error ? (
+            <div className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs flex justify-between gap-3">
+              <span>{error}</span>
+              {onClearError ? (
+                <button type="button" onClick={onClearError} className="hover:opacity-70 shrink-0">×</button>
+              ) : null}
+            </div>
+          ) : null}
+
           <div>
             <h4 className="text-sm font-semibold mb-3 pb-2 border-b border-border">Personal & Employment Details</h4>
 
@@ -473,12 +488,17 @@ export function EmployeeDetailPanel({
             <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
               Cancel
             </button>
-            <button type="button" onClick={onSave} className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2">
-              Save Changes
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -2,6 +2,7 @@ using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Services;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -61,6 +62,10 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
             return BadRequest("Employee level not found.");
 
         var employee = new Employee { EmployeeCode = await EmployeeCodeGenerator.NextCodeAsync(db) };
+        if (!string.IsNullOrWhiteSpace(request.PersonalEmail)
+            && !new EmailAddressAttribute().IsValid(request.PersonalEmail.Trim()))
+            return BadRequest("Personal email is not a valid e-mail address.");
+
         if (!await ApplyAsync(employee, request))
             return BadRequest("A valid department is required.");
         await ApplyShiftFromLevel(employee);
@@ -96,6 +101,10 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         if (request.EmployeeLevelId is int levelId &&
             !await db.EmployeeLevels.AnyAsync(l => l.Id == levelId))
             return BadRequest("Employee level not found.");
+
+        if (!string.IsNullOrWhiteSpace(request.PersonalEmail)
+            && !new EmailAddressAttribute().IsValid(request.PersonalEmail.Trim()))
+            return BadRequest("Personal email is not a valid e-mail address.");
 
         if (!await ApplyAsync(employee, request))
             return BadRequest("A valid department is required.");
@@ -306,7 +315,9 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         employee.Nationality = request.Nationality;
         employee.IdPassportNumber = request.IdPassportNumber;
         employee.DateOfBirth = request.DateOfBirth;
-        employee.PersonalEmail = request.PersonalEmail;
+        employee.PersonalEmail = string.IsNullOrWhiteSpace(request.PersonalEmail)
+            ? null
+            : request.PersonalEmail.Trim();
         employee.PermanentAddress = request.PermanentAddress;
         employee.MaritalStatus = string.IsNullOrWhiteSpace(request.MaritalStatus) ? null : request.MaritalStatus.Trim();
         employee.BankName = request.BankName?.Trim();
