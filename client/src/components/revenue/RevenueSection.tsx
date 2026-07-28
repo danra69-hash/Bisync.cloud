@@ -19,6 +19,7 @@ import { WastagePage } from './WastagePage';
 import { TransferPage } from './TransferPage';
 import { CogsAuditPage } from './CogsAuditPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
+import { PosTestTapPage } from './PosTestTapPage';
 import { ProductAuditPage } from './ProductAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
@@ -282,7 +283,12 @@ export function RevenueSection({
     return (
       <>
         <POSBar selectedItem={posItem} onSelectItem={setPosItem} />
-        {posItem ? (
+        {posItem === 'POS Test Tap' ? (
+          <PosTestTapPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem ? (
           <ModuleContent section="Point-of-Sales" label={posItem} />
         ) : (
           <div className="p-2 sm:p-3 w-full min-w-0">

@@ -152,6 +152,7 @@ export const posItems = [
   'POS Menu',
   'POS Modifier Group',
   'Promotion Scheduler',
+  'POS Test Tap',
   'Device Management',
   'E-Invoice',
 ] as const;
@@ -171,8 +172,14 @@ export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
   'Wastage Report',
 ]);
 
-/** All current POS bar items are placeholders. */
-export const COMING_SOON_POS_ITEMS = new Set<string>(posItems);
+/** POS bar items that still route to ModuleContent placeholders. */
+export const COMING_SOON_POS_ITEMS = new Set<string>([
+  'POS Menu',
+  'POS Modifier Group',
+  'Promotion Scheduler',
+  'Device Management',
+  'E-Invoice',
+]);
 
 export const NAV_ITEMS = [
   'Home',
