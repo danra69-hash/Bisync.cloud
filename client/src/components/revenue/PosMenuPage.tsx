@@ -72,7 +72,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Menu</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            B2C products with POS enabled for this company/location, with RRP.
+            B2C products with POS enabled for this company, with RRP.
           </p>
         </div>
         <button
@@ -98,7 +98,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
       ) : menuRows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-card px-4 py-12 text-center">
           <p className="text-sm text-muted-foreground">
-            No POS menu items for this company/location.
+            No POS menu items for this company.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Set product type to B2C, enter RRP, then tick POS under Revenue Management → Products.
