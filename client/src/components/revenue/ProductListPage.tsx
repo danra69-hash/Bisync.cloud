@@ -493,15 +493,22 @@ export function ProductListPage({
                         <td
                           className={`${tdCls} text-center`}
                           onDoubleClick={() => {
-                            if (!product.isSubProduct && product.posEnabled) setPosModalProduct(product);
+                            if (!product.isSubProduct && product.b2cEnabled && product.posEnabled) {
+                              setPosModalProduct(product);
+                            }
                           }}
                         >
                           <input
                             type="checkbox"
                             checked={product.posEnabled}
-                            disabled={rowBusy || product.isSubProduct}
+                            disabled={
+                              rowBusy
+                              || product.isSubProduct
+                              || !product.b2cEnabled
+                              || (product.rrp ?? 0) <= 0
+                            }
                             onChange={e => {
-                              if (product.isSubProduct) return;
+                              if (product.isSubProduct || !product.b2cEnabled || (product.rrp ?? 0) <= 0) return;
                               if (e.target.checked) {
                                 setPosModalProduct(product);
                                 return;
@@ -513,9 +520,13 @@ export function ProductListPage({
                             title={
                               product.isSubProduct
                                 ? 'POS is not available for sub-products'
-                                : product.posEnabled
-                                  ? 'POS enabled — double-click to change packaging, uncheck to disable'
-                                  : 'Enable POS and choose packaging'
+                                : !product.b2cEnabled
+                                  ? 'POS requires a B2C product'
+                                  : (product.rrp ?? 0) <= 0
+                                    ? 'Set an RRP before enabling POS'
+                                    : product.posEnabled
+                                      ? 'POS enabled — double-click to change packaging, uncheck to disable'
+                                      : 'Enable POS and choose packaging'
                             }
                           />
                         </td>

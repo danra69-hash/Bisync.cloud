@@ -20,6 +20,7 @@ import { TransferPage } from './TransferPage';
 import { CogsAuditPage } from './CogsAuditPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
+import { PosMenuPage } from './PosMenuPage';
 import { ProductAuditPage } from './ProductAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
@@ -283,7 +284,12 @@ export function RevenueSection({
     return (
       <>
         <POSBar selectedItem={posItem} onSelectItem={setPosItem} />
-        {posItem === 'POS Test Tap' ? (
+        {posItem === 'POS Menu' ? (
+          <PosMenuPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'POS Test Tap' ? (
           <PosTestTapPage
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}

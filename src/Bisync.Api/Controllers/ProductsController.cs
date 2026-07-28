@@ -153,7 +153,10 @@ public class ProductsController(
             OrderLockPeriodDays = ResolveOrderLockPeriodDays(request),
             ParStock = request.ParStock ?? 0,
             ParStockUom = request.ParStockUom?.Trim() ?? string.Empty,
-            PosEnabled = request.PosEnabled ?? false,
+            PosEnabled = !request.IsSubProduct
+                && request.B2cEnabled
+                && (request.Rrp ?? 0) > 0
+                && (request.PosEnabled ?? false),
             Active = request.Active ?? true,
             TotalCost = items.Sum(i => i.Subtotal),
             PackagingCost = packagingItems.Sum(i => i.Subtotal),
@@ -286,7 +289,8 @@ public class ProductsController(
         product.OrderLockPeriodDays = ResolveOrderLockPeriodDays(request);
         if (request.ParStock.HasValue) product.ParStock = request.ParStock.Value;
         if (request.ParStockUom is not null) product.ParStockUom = request.ParStockUom.Trim();
-        if (request.PosEnabled.HasValue) product.PosEnabled = request.PosEnabled.Value;
+        if (request.PosEnabled.HasValue)
+            product.PosEnabled = request.PosEnabled.Value;
         if (request.Active.HasValue && product.Active && !request.Active.Value)
         {
             var deactivateError = await DeactivationGuardService.ValidateB2bProductDeactivationAsync(db, product);
@@ -311,6 +315,12 @@ public class ProductsController(
         product.TotalCost = newTotalCost;
         product.PackagingCost = newPackagingCost;
         product.Rrp = newRrp;
+
+        if (!product.B2cEnabled || product.IsSubProduct || product.Rrp <= 0)
+        {
+            product.PosEnabled = false;
+            product.PosDeliveryUnitsJson = "[]";
+        }
 
         db.ProductAliases.RemoveRange(product.Aliases);
         product.Aliases = request.IsSubProduct ? [] : MapAliases(request.Aliases, product.Id);
@@ -389,7 +399,19 @@ public class ProductsController(
         var beforeFields = ProductFieldChangeRecorder.Snapshot(product);
 
         if (request.PosEnabled.HasValue)
+        {
+            if (request.PosEnabled.Value)
+            {
+                if (product.IsSubProduct)
+                    return BadRequest(new { message = "POS is not available for sub-products." });
+                if (!product.B2cEnabled)
+                    return BadRequest(new { message = "POS requires a B2C product." });
+                var effectiveRrp = request.Rrp ?? product.Rrp;
+                if (effectiveRrp <= 0)
+                    return BadRequest(new { message = "Set an RRP before enabling POS." });
+            }
             product.PosEnabled = request.PosEnabled.Value;
+        }
         if (request.PosDeliveryUnits is not null)
         {
             product.PosDeliveryUnitsJson = JsonSerializer.Serialize(
@@ -424,6 +446,12 @@ public class ProductsController(
             product.ParStockUom = request.ParStockUom.Trim();
         if (request.YieldAltUnitsJson is not null)
             product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
+
+        if (!product.B2cEnabled || product.IsSubProduct || product.Rrp <= 0)
+        {
+            product.PosEnabled = false;
+            product.PosDeliveryUnitsJson = "[]";
+        }
 
         product.UpdatedAt = DateTime.UtcNow;
 
