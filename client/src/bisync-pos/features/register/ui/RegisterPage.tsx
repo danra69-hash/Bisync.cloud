@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react'
-import {
-  DEPARTMENTS,
-  GROUPS_BY_DEPARTMENT,
-  MOCK_PRODUCTS,
-} from '../domain/catalog'
+import { useEffect, useMemo, useState } from 'react'
+import { MOCK_PRODUCTS } from '../domain/catalog'
 import { addToCart } from '../domain/cart'
 import type { CartLine, OrderCharges, ProductDepartment } from '../domain/types'
+import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
+import { buildDepartmentGroups } from '../../../core/session/mapPosCatalog'
+import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
@@ -19,50 +18,128 @@ const EMPTY_CHARGES: OrderCharges = {
 }
 
 export function RegisterPage() {
-  const [lines, setLines] = useState<CartLine[]>([
-    { productId: 'p3', quantity: 2 },
-    { productId: 'p1', quantity: 1 },
-  ])
+  const session = usePosSessionOptional()
+  const liveCatalog = session?.catalog ?? []
+
+  const { departments, groupsByDepartment } = useMemo(() => {
+    if (session) {
+      const built = buildDepartmentGroups(liveCatalog)
+      if (built.departments.length > 0) return built
+    }
+    return {
+      departments: ['Food', 'Beverage', 'Retail'] as ProductDepartment[],
+      groupsByDepartment: {
+        Food: ['Rice', 'Salads', 'Soup', 'Pizza'],
+        Beverage: ['Coffee', 'Soft Drinks', 'Juice'],
+        Retail: ['Merchandise', 'To-Go'],
+      } satisfies Record<ProductDepartment, string[]>,
+    }
+  }, [liveCatalog, session])
+
+  const [lines, setLines] = useState<CartLine[]>([])
   const [charges, setCharges] = useState<OrderCharges>(EMPTY_CHARGES)
   const [productQuery, setProductQuery] = useState('')
-  const [department, setDepartment] = useState<ProductDepartment>('Food')
-  const [group, setGroup] = useState(GROUPS_BY_DEPARTMENT.Food[0])
+  const initialDept = (departments[0] ?? 'Food') as ProductDepartment
+  const [department, setDepartment] = useState<ProductDepartment>(initialDept)
+  const [group, setGroup] = useState(() => {
+    const groups = groupsByDepartment[initialDept]
+    return groups?.[0] ?? ''
+  })
   const [dining, setDining] = useState('dine-in')
   const [table, setTable] = useState('t5')
   const [toast, setToast] = useState<string | null>(null)
-  const [checkNumber] = useState(20)
+  const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [charging, setCharging] = useState(false)
 
-  const groups = GROUPS_BY_DEPARTMENT[department]
+  useEffect(() => {
+    if (!departments.includes(department)) {
+      const nextDept = departments[0] ?? 'Food'
+      setDepartment(nextDept)
+      setGroup(groupsByDepartment[nextDept]?.[0] ?? '')
+      return
+    }
+    const groups = groupsByDepartment[department] ?? []
+    if (groups.length > 0 && !groups.includes(group)) {
+      setGroup(groups[0])
+    }
+  }, [departments, groupsByDepartment, department, group])
+
+  const groups = groupsByDepartment[department] ?? []
+
+  const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
 
   const filtered = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
-    return MOCK_PRODUCTS.filter((p) => {
+    return catalogForFilter.filter(p => {
       if (p.department !== department) return false
-      if (p.group !== group) return false
+      if (group && p.group !== group) return false
       if (!q) return true
       return (
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        p.group.toLowerCase().includes(q)
+        p.name.toLowerCase().includes(q)
+        || p.sku.toLowerCase().includes(q)
+        || p.group.toLowerCase().includes(q)
       )
     })
-  }, [productQuery, department, group])
+  }, [catalogForFilter, productQuery, department, group])
 
   function selectDepartment(next: ProductDepartment) {
     setDepartment(next)
-    setGroup(GROUPS_BY_DEPARTMENT[next][0])
+    setGroup(groupsByDepartment[next]?.[0] ?? '')
   }
 
   function flash(message: string) {
     setToast(message)
-    window.setTimeout(() => setToast(null), 2400)
+    window.setTimeout(() => setToast(null), 2800)
+  }
+
+  async function chargePayment() {
+    if (!session) {
+      flash('Opening payment…')
+      setLines([])
+      setCharges(EMPTY_CHARGES)
+      return
+    }
+    if (lines.length === 0 || charging) return
+    setCharging(true)
+    try {
+      for (const line of lines) {
+        const productId = Number(line.productId)
+        if (!Number.isFinite(productId) || productId <= 0) continue
+        await api.recordProductSale(productId, {
+          locationExternalIds: [session.locationId],
+          quantitySold: line.quantity,
+          salesChannel: 'pos',
+        })
+      }
+      const count = lines.reduce((n, l) => n + l.quantity, 0)
+      setLines([])
+      setCharges(EMPTY_CHARGES)
+      flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)
+      session.refreshCatalog()
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Payment failed')
+    } finally {
+      setCharging(false)
+    }
   }
 
   return (
     <div className="register">
       <div className="register__catalog">
+        {session?.catalogLoading ? (
+          <p className="product-grid__empty">Loading live POS menu…</p>
+        ) : null}
+        {session?.catalogError ? (
+          <p className="product-grid__empty">{session.catalogError}</p>
+        ) : null}
+        {!session?.catalogLoading && session && liveCatalog.length === 0 ? (
+          <p className="product-grid__empty">
+            No POS products with RRP for this company. Enable B2C products with RRP under Products.
+          </p>
+        ) : null}
+
         <div className="register__filters">
           <label className="register__product-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
@@ -73,11 +150,11 @@ export function RegisterPage() {
               type="search"
               placeholder="Search in products"
               value={productQuery}
-              onChange={(e) => setProductQuery(e.target.value)}
+              onChange={e => setProductQuery(e.target.value)}
             />
           </label>
           <div className="register__departments" role="tablist" aria-label="Departments">
-            {DEPARTMENTS.map((d) => (
+            {departments.map(d => (
               <button
                 key={d}
                 type="button"
@@ -93,7 +170,7 @@ export function RegisterPage() {
         </div>
 
         <div className="register__tabs" role="tablist" aria-label="Groups">
-          {groups.map((g) => (
+          {groups.map(g => (
             <button
               key={g}
               type="button"
@@ -109,7 +186,7 @@ export function RegisterPage() {
 
         <ProductGrid
           products={filtered}
-          onAdd={(product) => setLines((prev) => addToCart(prev, product.id))}
+          onAdd={product => setLines(prev => addToCart(prev, product.id))}
         />
       </div>
 
@@ -117,7 +194,7 @@ export function RegisterPage() {
         checkNumber={checkNumber}
         cover={cover}
         lines={lines}
-        products={MOCK_PRODUCTS}
+        products={catalogForFilter}
         charges={charges}
         dining={dining}
         table={table}
@@ -127,17 +204,17 @@ export function RegisterPage() {
         onChange={setLines}
         onChargesChange={setCharges}
         onOpenHistory={() => setHistoryOpen(true)}
-        onAction={(action) => {
+        onAction={action => {
+          if (action === 'payment') {
+            void chargePayment()
+            return
+          }
           const labels = {
             save: 'Order saved',
             print: 'Printing…',
             payment: 'Opening payment…',
           } as const
           flash(labels[action])
-          if (action === 'payment') {
-            setLines([])
-            setCharges(EMPTY_CHARGES)
-          }
         }}
       />
 
@@ -145,7 +222,7 @@ export function RegisterPage() {
 
       {toast && (
         <div className="register__toast" role="status">
-          {toast}
+          {charging ? 'Recording sale…' : toast}
         </div>
       )}
     </div>

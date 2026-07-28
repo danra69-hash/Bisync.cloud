@@ -1,5 +1,9 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BisyncPosApp } from './app/App'
+import { PosSessionProvider, type PosSessionValue } from './core/session/PosSessionContext'
+import { mapApiProductsToPosCatalog } from './core/session/mapPosCatalog'
+import { api, type Product as ApiProduct } from '../api'
+import { productMatchesPosMenu } from '../data/posCatalog'
 import './core/styles/tokens.css'
 import './index.css'
 
@@ -27,15 +31,74 @@ function ensurePosFonts() {
   document.head.appendChild(link)
 }
 
-/** Mountable Bisync POS UI for POS Test Tap (demo catalog until API wiring). */
-export function BisyncPosEmbed() {
+type Props = {
+  companyId: number
+  locationId: string
+}
+
+/** Mountable Bisync POS UI for POS Test Tap — live company catalog + demo POS shell. */
+export function BisyncPosEmbed({ companyId, locationId }: Props) {
+  const [apiProducts, setApiProducts] = useState<ApiProduct[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
   useEffect(() => {
     ensurePosFonts()
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setCatalogLoading(true)
+      setCatalogError(null)
+      try {
+        const rows = await api.products(companyId)
+        if (cancelled) return
+        setApiProducts(
+          rows.filter(p => productMatchesPosMenu(p, companyId, [locationId])),
+        )
+      } catch (e) {
+        if (!cancelled) {
+          setApiProducts([])
+          setCatalogError(e instanceof Error ? e.message : String(e))
+        }
+      } finally {
+        if (!cancelled) setCatalogLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, locationId, refreshKey])
+
+  const catalog = useMemo(
+    () => mapApiProductsToPosCatalog(apiProducts, apiProducts),
+    [apiProducts],
+  )
+
+  const refreshCatalog = useCallback(() => {
+    setRefreshKey(k => k + 1)
+  }, [])
+
+  const session = useMemo<PosSessionValue>(
+    () => ({
+      companyId,
+      locationId,
+      catalog,
+      catalogLoading,
+      catalogError,
+      refreshCatalog,
+    }),
+    [companyId, locationId, catalog, catalogLoading, catalogError, refreshCatalog],
+  )
+
   return (
     <div className="bisync-pos-root" data-bisync-pos-embed>
-      <BisyncPosApp />
+      <PosSessionProvider value={session}>
+        <BisyncPosApp />
+      </PosSessionProvider>
     </div>
   )
 }

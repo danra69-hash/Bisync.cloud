@@ -53,27 +53,23 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
   }
 
   return (
-    <div className={pageShellClass({ spacing: 'tight' })}>
-      <div className="flex flex-wrap items-end justify-between gap-2">
+    <div className={`${pageShellClass({ spacing: 'tight' })} !p-0 sm:!p-0`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-2 sm:px-3 pt-2">
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Test Tap</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Bisync POS UI (demo catalog). Live product/API wiring comes next.
+            Live Bisync POS — menu from this company. Payment records a POS sale and depletes inventory.
           </p>
         </div>
         {schemaStatus?.ready ? (
           <p className="text-[11px] text-muted-foreground tabular-nums">
             Ops tables ready
             {schemaStatus.openBlocksEod ? ' · open checks block EOD' : ''}
-            {' · '}
-            {(schemaStatus.tables ?? [])
-              .map(t => `${t.name.replace(/^Pos/, '')} ${t.count}`)
-              .join(' · ')}
           </p>
         ) : null}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border min-h-[24rem]">
+      <div className="mt-2 overflow-hidden border-y border-border sm:border sm:rounded-lg sm:mx-2 sm:mb-2">
         <Suspense
           fallback={
             <div className="flex items-center justify-center py-16">
@@ -81,7 +77,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
             </div>
           }
         >
-          <BisyncPosEmbed />
+          <BisyncPosEmbed companyId={selectedCompanyId} locationId={locationId} />
         </Suspense>
       </div>
     </div>

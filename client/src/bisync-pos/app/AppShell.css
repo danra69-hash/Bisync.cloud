@@ -1,6 +1,7 @@
 .app-shell {
   min-height: calc(100dvh - var(--app-chrome-offset, 11.5rem));
-  height: calc(100dvh - var(--app-chrome-offset, 11.5rem));
+  height: calc(100dvh - var(--app-chrome-offset, 8.5rem));
+  max-height: calc(100dvh - var(--app-chrome-offset, 8.5rem));
   display: flex;
   flex-direction: column;
   background: var(--color-bg);
