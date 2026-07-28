@@ -315,17 +315,9 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         employee.Nationality = request.Nationality;
         employee.IdPassportNumber = request.IdPassportNumber;
         employee.DateOfBirth = request.DateOfBirth;
-        if (!string.IsNullOrWhiteSpace(request.PersonalEmail))
-        {
-            var personal = request.PersonalEmail.Trim();
-            if (!new EmailAddressAttribute().IsValid(personal))
-                return false;
-            employee.PersonalEmail = personal;
-        }
-        else
-        {
-            employee.PersonalEmail = null;
-        }
+        employee.PersonalEmail = string.IsNullOrWhiteSpace(request.PersonalEmail)
+            ? null
+            : request.PersonalEmail.Trim();
         employee.PermanentAddress = request.PermanentAddress;
         employee.MaritalStatus = string.IsNullOrWhiteSpace(request.MaritalStatus) ? null : request.MaritalStatus.Trim();
         employee.BankName = request.BankName?.Trim();
