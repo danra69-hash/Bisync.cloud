@@ -1351,6 +1351,7 @@ export function ProductsPage({
           })))
         : undefined,
       active: true,
+      posEnabled: !isSubProduct && b2cEnabled && effectiveRrp > 0,
       companyId: selectedCompanyId,
       locationExternalIds: productLocationIds,
       aliases: isSubProduct ? [] : payloadAliases,

@@ -174,7 +174,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Test Tap</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Tap B2C POS menu products (with RRP) to build a test sale, then charge to deplete inventory.
+            Tap B2C products with RRP (POS retail channel) to build a test sale, then charge to deplete inventory.
           </p>
         </div>
         {status ? (
@@ -211,10 +211,10 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
           ) : tapTiles.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-card px-4 py-12 text-center">
               <p className="text-sm text-muted-foreground">
-                No B2C POS menu products for this company.
+                No B2C POS products with RRP for this company.
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Set type to B2C, enter RRP, then tick POS under Revenue Management → Products.
+                Build a B2C product with an RRP under Revenue Management → Products — it is enabled for POS automatically.
               </p>
             </div>
           ) : (
