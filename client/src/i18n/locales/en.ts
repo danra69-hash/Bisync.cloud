@@ -172,6 +172,7 @@ export const en = {
       menu: 'POS Menu',
       modifierGroup: 'POS Modifier Group',
       promotionScheduler: 'Promotion Scheduler',
+      testTap: 'POS Test Tap',
       deviceManagement: 'Device Management',
       eInvoice: 'E-Invoice',
     },

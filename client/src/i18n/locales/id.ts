@@ -175,6 +175,7 @@ export const id = {
       menu: 'Menu POS',
       modifierGroup: 'Grup Modifier POS',
       promotionScheduler: 'Penjadwal Promosi',
+      testTap: 'POS Test Tap',
       deviceManagement: 'Manajemen Perangkat',
       eInvoice: 'E-Faktur',
     },

@@ -535,6 +535,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.pos-test-tap",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosTestTapPage.tsx",
+      "symbol": "PosTestTapPage",
+      "route": "/pos/test-tap",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-28",
+      "notes": "Point-of-Sales bar — POS Test Tap after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
+    },
+    {
       "id": "dr.module.hr",
       "kind": "client-module",
       "path": "client/src/modules/hr/HrModule.tsx",

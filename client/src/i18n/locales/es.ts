@@ -175,6 +175,7 @@ export const es = {
       menu: 'Menú TPV',
       modifierGroup: 'Grupo de modificadores TPV',
       promotionScheduler: 'Programador de promociones',
+      testTap: 'POS Test Tap',
       deviceManagement: 'Gestión de dispositivos',
       eInvoice: 'Factura electrónica',
     },

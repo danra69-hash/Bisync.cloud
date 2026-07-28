@@ -175,6 +175,7 @@ export const th = {
       menu: 'เมนู POS',
       modifierGroup: 'กลุ่มตัวเลือกเสริม POS',
       promotionScheduler: 'ตารางโปรโมชัน',
+      testTap: 'POS ทดสอบแตะ',
       deviceManagement: 'การจัดการอุปกรณ์',
       eInvoice: 'ใบกำกับภาษีอิเล็กทรอนิกส์',
     },
