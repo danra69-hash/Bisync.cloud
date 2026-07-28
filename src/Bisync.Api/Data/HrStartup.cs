@@ -17,9 +17,37 @@ public static class HrStartup
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "Active", "BOOLEAN NOT NULL DEFAULT true");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DayOffPerWeek", "INTEGER NOT NULL DEFAULT 2");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealQtyEnabled", "BOOLEAN NOT NULL DEFAULT false");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "DOUBLE PRECISION NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "NUMERIC(8,2) NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT false");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealAmountPerWorkingDay", "DOUBLE PRECISION NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealAmountPerWorkingDay", "NUMERIC(12,2) NOT NULL DEFAULT 0");
+        // Earlier failed deploys may have created these as double precision — Npgsql cannot read that as decimal.
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                DO $$
+                BEGIN
+                  IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'EmployeeLevels'
+                      AND column_name = 'DutyMealQtyPerWorkingDay' AND data_type = 'double precision'
+                  ) THEN
+                    ALTER TABLE "EmployeeLevels"
+                      ALTER COLUMN "DutyMealQtyPerWorkingDay" TYPE numeric(8,2)
+                      USING "DutyMealQtyPerWorkingDay"::numeric;
+                  END IF;
+                  IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'EmployeeLevels'
+                      AND column_name = 'DutyMealAmountPerWorkingDay' AND data_type = 'double precision'
+                  ) THEN
+                    ALTER TABLE "EmployeeLevels"
+                      ALTER COLUMN "DutyMealAmountPerWorkingDay" TYPE numeric(12,2)
+                      USING "DutyMealAmountPerWorkingDay"::numeric;
+                  END IF;
+                END $$;
+                """);
+        }
+        catch { /* best-effort cast for already-provisioned DBs */ }
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "CompanySettings", "OperatingCountryCode", "TEXT NOT NULL DEFAULT 'MY'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "CompanySettings", "ReplacementPublicHolidayEnabled", "BOOLEAN NOT NULL DEFAULT false");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "CompanySettings", "GazettedPhReplacementDayEnabled", "BOOLEAN NOT NULL DEFAULT false");

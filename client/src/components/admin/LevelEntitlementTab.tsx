@@ -225,7 +225,7 @@ function LevelPanel({
                     })}
                     className="rounded border-border"
                   />
-                  Duty Meal QTY
+                  Duty Meal QTY/Working Day
                 </label>
                 <div className="flex-1">
                   <input
@@ -236,9 +236,9 @@ function LevelPanel({
                     className={`${inputCls} ${!form.dutyMealQtyEnabled ? 'opacity-50' : ''}`}
                     value={form.dutyMealQtyPerWorkingDay}
                     onChange={e => setForm({ ...form, dutyMealQtyPerWorkingDay: Math.max(0, parseFloat(e.target.value) || 0) })}
-                    placeholder="Qty / working day"
+                    placeholder="QTY / working day"
+                    aria-label="Duty Meal QTY per working day"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground">Qty / working day</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -252,7 +252,7 @@ function LevelPanel({
                     })}
                     className="rounded border-border"
                   />
-                  Duty Meal Amount
+                  Duty Meal Amount Box/Working Day
                 </label>
                 <div className="flex-1">
                   <input
@@ -264,8 +264,8 @@ function LevelPanel({
                     value={form.dutyMealAmountPerWorkingDay}
                     onChange={e => setForm({ ...form, dutyMealAmountPerWorkingDay: Math.max(0, parseFloat(e.target.value) || 0) })}
                     placeholder="Amount / working day"
+                    aria-label="Duty Meal Amount Box per working day"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground">Amount box / working day</p>
                 </div>
               </div>
             </div>
