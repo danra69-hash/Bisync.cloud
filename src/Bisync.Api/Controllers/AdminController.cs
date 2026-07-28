@@ -161,6 +161,7 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
         level.SickLeaveDays = request.SickLeaveDays;
         level.OvertimeEligible = request.OvertimeEligible;
         level.WorkingHoursPerDay = request.WorkingHoursPerDay;
+        level.DayOffPerWeek = Math.Clamp(request.DayOffPerWeek, 0, 7);
         level.BreakHoursPerShift = request.BreakHoursPerShift;
         level.PublicHolidayEligible = request.PublicHolidayEligible;
         level.IsShift = request.IsShift;

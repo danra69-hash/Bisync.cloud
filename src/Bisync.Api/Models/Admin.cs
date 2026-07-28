@@ -28,6 +28,8 @@ public class EmployeeLevel
     public int SickLeaveDays { get; set; }
     public bool OvertimeEligible { get; set; }
     public decimal WorkingHoursPerDay { get; set; } = 8;
+    /// <summary>Number of rest days per week (0–7). Default 2.</summary>
+    public int DayOffPerWeek { get; set; } = 2;
     public decimal BreakHoursPerShift { get; set; } = 1;
     public bool PublicHolidayEligible { get; set; }
     public bool IsShift { get; set; }

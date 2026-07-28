@@ -186,6 +186,8 @@ export interface EmployeeLevel {
   sickLeaveDays: number;
   overtimeEligible: boolean;
   workingHoursPerDay: number;
+  /** Rest days per week (0–7). Non-shift + 2 ⇒ Saturday & Sunday. */
+  dayOffPerWeek: number;
   breakHoursPerShift: number;
   publicHolidayEligible: boolean;
   isShift: boolean;

@@ -8,17 +8,19 @@ import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
 import { hrApi } from '../../modules/hr/api';
 import type { EmployeeLevel } from '../../modules/hr/types';
+import { formatDeemedDayOffLabel } from '../../modules/hr/employeeLevelDayOff';
 import { inputCls } from '../../data/countries';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CLS } from '../layout/sidePanelShared';
 import { ToggleSwitch } from './ToggleSwitch';
 
-type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'break' | 'shift' | 'ot' | 'ph' | 'active';
+type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'dayOff' | 'break' | 'shift' | 'ot' | 'ph' | 'active';
 
 const LEVEL_TABLE_COLUMNS: SortableColumnDef<LevelSortColumn>[] = [
   { key: 'level', label: 'Level' },
   { key: 'annual', label: 'Annual' },
   { key: 'sick', label: 'Sick' },
   { key: 'hrsPerDay', label: 'Hrs/Day' },
+  { key: 'dayOff', label: 'DayOff/week' },
   { key: 'break', label: 'Break' },
   { key: 'shift', label: 'Shift' },
   { key: 'ot', label: 'OT' },
@@ -32,6 +34,7 @@ const emptyForm = {
   sickLeaveDays: 0,
   overtimeEligible: false,
   workingHoursPerDay: 8,
+  dayOffPerWeek: 2,
   breakHoursPerShift: 1,
   publicHolidayEligible: false,
   isShift: false,
@@ -57,6 +60,7 @@ function LevelPanel({
     sickLeaveDays: level.sickLeaveDays,
     overtimeEligible: level.overtimeEligible,
     workingHoursPerDay: level.workingHoursPerDay,
+    dayOffPerWeek: level.dayOffPerWeek ?? 2,
     breakHoursPerShift: level.breakHoursPerShift,
     publicHolidayEligible: level.publicHolidayEligible,
     isShift: level.isShift,
@@ -64,6 +68,8 @@ function LevelPanel({
   } : { ...emptyForm });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const deemedLabel = formatDeemedDayOffLabel(form);
 
   async function save() {
     if (!form.levelName.trim()) {
@@ -73,7 +79,11 @@ function LevelPanel({
     setSaving(true);
     setError(null);
     try {
-      const payload = { ...form, shiftType: null };
+      const payload = {
+        ...form,
+        dayOffPerWeek: Math.max(0, Math.min(7, Number(form.dayOffPerWeek) || 0)),
+        shiftType: null,
+      };
       if (isNew) await hrApi.levels.create(payload);
       else if (level) await hrApi.levels.update(level.id, payload);
       onSave();
@@ -127,6 +137,33 @@ function LevelPanel({
             <div>
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Hours/Day</label>
               <input type="number" min="0" step="0.5" className={`${inputCls} mt-1`} value={form.workingHoursPerDay} onChange={e => setForm({ ...form, workingHoursPerDay: parseFloat(e.target.value) || 0 })} />
+            </div>
+            <div>
+              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">DayOff/week</label>
+              <input
+                type="number"
+                min="0"
+                max="7"
+                step="1"
+                className={`${inputCls} mt-1`}
+                value={form.dayOffPerWeek}
+                onChange={e => setForm({ ...form, dayOffPerWeek: Math.max(0, Math.min(7, parseInt(e.target.value, 10) || 0)) })}
+              />
+              {deemedLabel && (
+                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  Non-shift · {form.dayOffPerWeek} day(s) off → {deemedLabel}
+                </p>
+              )}
+              {form.isShift && (
+                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  Shift work — weekly rest days follow the roster (not fixed weekend).
+                </p>
+              )}
+              {!form.isShift && form.dayOffPerWeek !== 2 && form.dayOffPerWeek > 0 && (
+                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  Set to 2 for the standard Saturday &amp; Sunday rest days.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Break/Shift</label>
@@ -233,6 +270,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
           annual: l => l.annualLeaveDays,
           sick: l => l.sickLeaveDays,
           hrsPerDay: l => l.workingHoursPerDay,
+          dayOff: l => l.dayOffPerWeek ?? 2,
           break: l => l.breakHoursPerShift,
           shift: l => l.isShift,
           ot: l => l.overtimeEligible,
@@ -291,6 +329,12 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
                 <td className="px-4 py-3 text-muted-foreground">{level.annualLeaveDays}d</td>
                 <td className="px-4 py-3 text-muted-foreground">{level.sickLeaveDays}d</td>
                 <td className="px-4 py-3 text-muted-foreground">{level.workingHoursPerDay}h</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {level.dayOffPerWeek ?? 2}
+                  {!level.isShift && (level.dayOffPerWeek ?? 2) === 2 ? (
+                    <span className="block text-[10px] text-muted-foreground/80">Sat–Sun</span>
+                  ) : null}
+                </td>
                 <td className="px-4 py-3 text-muted-foreground">{level.breakHoursPerShift}h</td>
                 <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                   <ToggleSwitch checked={level.isShift} onChange={v => void toggleFlag(level, { isShift: v })} label="Shift" />
@@ -312,12 +356,12 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
             ))}
             {levels.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                   No employee levels yet. Add a level to get started.
                 </td>
               </tr>
             )}
-            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+            <InfiniteScrollTableSentinel colSpan={10} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
           </tbody>
         </table>
       </TableScrollContainer>
