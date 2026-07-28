@@ -1,0 +1,12 @@
+.bisync-pos-root,
+.bisync-pos-root *,
+.bisync-pos-root *::before,
+.bisync-pos-root *::after {
+  box-sizing: border-box;
+}
+
+.bisync-pos-root button,
+.bisync-pos-root input,
+.bisync-pos-root select {
+  font: inherit;
+}
