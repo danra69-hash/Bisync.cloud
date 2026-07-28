@@ -1,4 +1,5 @@
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Data;
@@ -55,6 +56,8 @@ public static class EmployeeLevelNormalizer
             LevelName = "Junior",
             AnnualLeaveDays = 12,
             SickLeaveDays = 14,
+            AnnualLeaveRulesJson = LeaveTenureRules.DefaultJson,
+            SickLeaveRulesJson = LeaveTenureRules.DefaultJson,
             OvertimeEligible = true,
             WorkingHoursPerDay = 8,
             DayOffPerWeek = 2,
@@ -71,6 +74,8 @@ public static class EmployeeLevelNormalizer
             LevelName = "Management",
             AnnualLeaveDays = 20,
             SickLeaveDays = 18,
+            AnnualLeaveRulesJson = LeaveTenureRules.DefaultJson,
+            SickLeaveRulesJson = LeaveTenureRules.DefaultJson,
             OvertimeEligible = true,
             WorkingHoursPerDay = 8,
             DayOffPerWeek = 2,
@@ -87,6 +92,8 @@ public static class EmployeeLevelNormalizer
             LevelName = "Director",
             AnnualLeaveDays = 28,
             SickLeaveDays = 30,
+            AnnualLeaveRulesJson = LeaveTenureRules.DefaultJson,
+            SickLeaveRulesJson = LeaveTenureRules.DefaultJson,
             OvertimeEligible = false,
             WorkingHoursPerDay = 8,
             DayOffPerWeek = 2,
@@ -103,13 +110,28 @@ public static class EmployeeLevelNormalizer
         var level = await db.EmployeeLevels.FindAsync(id);
         if (level is null)
         {
+            template.AnnualLeaveRulesJson = LeaveTenureRules.DefaultJson;
+            template.SickLeaveRulesJson = LeaveTenureRules.DefaultJson;
             db.EmployeeLevels.Add(template);
             return;
         }
 
         level.LevelName = template.LevelName;
-        level.AnnualLeaveDays = template.AnnualLeaveDays;
-        level.SickLeaveDays = template.SickLeaveDays;
+        // Preserve user-configured leave days/rules; only seed empty rule JSON.
+        if (string.IsNullOrWhiteSpace(level.AnnualLeaveRulesJson) || level.AnnualLeaveRulesJson is "[]")
+        {
+            level.AnnualLeaveRulesJson = LeaveTenureRules.Serialize(
+            [
+                new LeaveTenureRule { FromYears = 0, ToYears = null, Days = Math.Max(level.AnnualLeaveDays, template.AnnualLeaveDays) },
+            ]);
+        }
+        if (string.IsNullOrWhiteSpace(level.SickLeaveRulesJson) || level.SickLeaveRulesJson is "[]")
+        {
+            level.SickLeaveRulesJson = LeaveTenureRules.Serialize(
+            [
+                new LeaveTenureRule { FromYears = 0, ToYears = null, Days = Math.Max(level.SickLeaveDays, template.SickLeaveDays) },
+            ]);
+        }
         level.OvertimeEligible = template.OvertimeEligible;
         level.WorkingHoursPerDay = template.WorkingHoursPerDay;
         level.DayOffPerWeek = template.DayOffPerWeek;

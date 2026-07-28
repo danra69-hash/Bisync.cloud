@@ -226,6 +226,10 @@ public class EmployeeLevelRequest
     public int AnnualLeaveDays { get; set; }
     [Range(0, 365)]
     public int SickLeaveDays { get; set; }
+    /// <summary>JSON tenure bands for annual leave. When set, drives AnnualLeaveDays summary.</summary>
+    public string? AnnualLeaveRulesJson { get; set; }
+    /// <summary>JSON tenure bands for sick leave. When set, drives SickLeaveDays summary.</summary>
+    public string? SickLeaveRulesJson { get; set; }
     public bool OvertimeEligible { get; set; }
     [Range(0, 24)]
     public decimal WorkingHoursPerDay { get; set; } = 8;

@@ -184,6 +184,10 @@ export interface EmployeeLevel {
   levelName: string;
   annualLeaveDays: number;
   sickLeaveDays: number;
+  /** JSON tenure bands for annual leave. */
+  annualLeaveRulesJson?: string | null;
+  /** JSON tenure bands for sick leave. */
+  sickLeaveRulesJson?: string | null;
   overtimeEligible: boolean;
   workingHoursPerDay: number;
   /** Rest days per week (0–7). Non-shift + 2 ⇒ Saturday & Sunday. */
