@@ -19,11 +19,12 @@ public static class HrStartup
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
         // Existing levels keep leave included; new rows default to included until unticked in UI.
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT true");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT true");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealQtyEnabled", "BOOLEAN NOT NULL DEFAULT false");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "NUMERIC(8,2) NOT NULL DEFAULT 0");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT false");
+        // Use Ensure (not TryAdd) so a failed ALTER surfaces in logs instead of silent 500s on read.
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "NUMERIC(8,2) NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
         // Duty meal amount is weekly/monthly (not daily). Rename legacy per-working-day column if present.
         try
         {
@@ -46,8 +47,8 @@ public static class HrStartup
                 """);
         }
         catch { /* best-effort rename */ }
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealAmount", "NUMERIC(12,2) NOT NULL DEFAULT 0");
-        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealAmountPeriod", "TEXT NOT NULL DEFAULT 'Monthly'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmount", "NUMERIC(12,2) NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountPeriod", "TEXT NOT NULL DEFAULT 'Monthly'");
         // Earlier failed deploys may have created numeric fields as double precision — Npgsql cannot read that as decimal.
         try
         {

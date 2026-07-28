@@ -178,6 +178,17 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CompanyId", "INTEGER");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStock", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStockUom", "TEXT NOT NULL DEFAULT ''");
+        // Employee level leave Include flags — must exist before any request can read EmployeeLevels.
+        // Keep in critical bootstrap (not only deferred HrStartup) so /api/employee-levels cannot 500.
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "NUMERIC(8,2) NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmount", "NUMERIC(12,2) NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountPeriod", "TEXT NOT NULL DEFAULT 'Monthly'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");

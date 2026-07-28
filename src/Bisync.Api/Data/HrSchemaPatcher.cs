@@ -13,15 +13,29 @@ public static class HrSchemaPatcher
                 "LevelName" TEXT NOT NULL,
                 "AnnualLeaveDays" INTEGER NOT NULL,
                 "SickLeaveDays" INTEGER NOT NULL,
+                "AnnualLeaveEnabled" BOOLEAN NOT NULL DEFAULT TRUE,
+                "SickLeaveEnabled" BOOLEAN NOT NULL DEFAULT TRUE,
+                "AnnualLeaveRulesJson" TEXT NOT NULL DEFAULT '[]',
+                "SickLeaveRulesJson" TEXT NOT NULL DEFAULT '[]',
                 "OvertimeEligible" INTEGER NOT NULL,
                 "WorkingHoursPerDay" REAL NOT NULL,
                 "DayOffPerWeek" INTEGER NOT NULL DEFAULT 2,
                 "BreakHoursPerShift" REAL NOT NULL,
                 "PublicHolidayEligible" INTEGER NOT NULL,
                 "IsShift" INTEGER NOT NULL DEFAULT 0,
-                "ShiftType" TEXT NULL
+                "ShiftType" TEXT NULL,
+                "DutyMealQtyEnabled" BOOLEAN NOT NULL DEFAULT FALSE,
+                "DutyMealQtyPerWorkingDay" NUMERIC(8,2) NOT NULL DEFAULT 0,
+                "DutyMealAmountEnabled" BOOLEAN NOT NULL DEFAULT FALSE,
+                "DutyMealAmount" NUMERIC(12,2) NOT NULL DEFAULT 0,
+                "DutyMealAmountPeriod" TEXT NOT NULL DEFAULT 'Monthly',
+                "Active" BOOLEAN NOT NULL DEFAULT TRUE
             );
             """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "Employees" (

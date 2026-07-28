@@ -292,6 +292,9 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
+        var logger = context.RequestServices.GetService<ILoggerFactory>()
+            ?.CreateLogger("UnhandledApiException");
+        logger?.LogError(ex, "Unhandled error on {Method} {Path}", context.Request.Method, context.Request.Path);
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json";
         var message = app.Environment.IsDevelopment()

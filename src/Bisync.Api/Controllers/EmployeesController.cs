@@ -18,6 +18,10 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IEnumerable<Employee>> GetAll([FromQuery] string? department, [FromQuery] bool? shift)
     {
+        // EmployeeLevel Include requires leave Include columns present on EmployeeLevels.
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
+
         var query = db.Employees.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(department))
             query = query.Where(e => e.Department == department);
