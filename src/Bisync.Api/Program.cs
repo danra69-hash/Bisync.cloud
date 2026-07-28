@@ -126,6 +126,7 @@ builder.Services.Configure<NutritionLibraryOptions>(
 builder.Services.AddHttpClient("nutrition-library");
 builder.Services.AddScoped<NutritionLibrarySyncService>();
 builder.Services.AddScoped<ProductNutrientEstimateService>();
+builder.Services.AddHostedService<DeferredDbStartupHostedService>();
 builder.Services.AddHostedService<NutritionLibrarySyncHostedService>();
 builder.Services.AddDbContext<StockCardArchiveDbContext>((sp, options) =>
     options.UseNpgsql(ResolveArchiveConnection(sp)));
@@ -168,35 +169,19 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    // Startup always patches the shared control-plane database.
+    // Critical control-plane bootstrap only — keep this short so Cloud Run
+    // can bind PORT before the startup probe times out. Seeders / partitions
+    // run in DeferredDbStartupHostedService after Kestrel is listening.
     var resolver = scope.ServiceProvider.GetRequiredService<ITenantConnectionResolver>();
     var controlOptions = new DbContextOptionsBuilder<BisyncDbContext>()
         .UseNpgsql(resolver.DefaultOperationalConnection)
         .Options;
     await using var db = new BisyncDbContext(controlOptions);
-    // Create missing DBs with a clear error before EF EnsureCreated tries CREATE DATABASE.
     await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultOperationalConnection);
     await PostgresDatabaseBootstrap.EnsureExistsAsync(resolver.DefaultArchiveConnection);
     await db.Database.EnsureCreatedAsync();
     await SchemaPatcher.ApplyAsync(db);
-    await RevMgmtStartup.InitializeAsync(db);
-    await DataSeeder.SeedAsync(db);
-    await ConfigurationSeeder.SeedAsync(db);
-    await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
-    await ConfigurationSeeder.PatchSuperAdminPasswordAsync(db);
-    await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
-    await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
-    await SchemaPatcher.EnsureTenantRegistryAsync(db);
-    await scope.ServiceProvider.GetRequiredService<LocationSubscriptionService>().EnsureSchemaAsync();
-    await HrStartup.InitializeAsync(db);
-    await StockCardArchiveStartup.InitializeAsync(scope.ServiceProvider);
-    await SystemAuditStartup.InitializeAsync(scope.ServiceProvider);
-    await scope.ServiceProvider.GetRequiredService<DevConsoleAuthService>().EnsureRootUserAsync();
-    await scope.ServiceProvider.GetRequiredService<SalesModuleClientUpdateService>().SeedBundledIfEmptyAsync();
-
-    var partitions = scope.ServiceProvider.GetRequiredService<LocationPartitionService>();
-    await partitions.EnsureLocationListPartitionsAsync();
-    await partitions.EnsurePartitionsForAllLocationsAsync();
+    // RevMgmt seed + tenant registry warm-up run in DeferredDbStartupHostedService.
 }
 
 if (app.Environment.IsDevelopment())

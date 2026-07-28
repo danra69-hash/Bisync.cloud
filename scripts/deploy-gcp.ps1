@@ -162,6 +162,7 @@ $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
     --timeout 600 `
     --cpu-boost `
     --no-cpu-throttling `
+    --startup-probe "tcpSocket.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=5,failureThreshold=48" `
     --add-cloudsql-instances $InstanceConnectionName `
     --set-secrets "DB_PASSWORD=bisync-db-password:latest" `
     --set-env-vars "ASPNETCORE_ENVIRONMENT=Production" `
