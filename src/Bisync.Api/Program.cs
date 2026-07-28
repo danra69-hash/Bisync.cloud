@@ -18,10 +18,17 @@ static string ResolveOperationalConnection(IServiceProvider sp)
     var path = http.Request.Path.Value ?? string.Empty;
     // Platform / Dev Console surfaces always use the control-plane (shared) database.
     // Sales Module CRM (team, companies, client updates) is not tenant-scoped.
+    // Company + Location registry must stay on the control plane too — a stale
+    // X-Bisync-Company-Id pointing at a provisioned tenant DB (e.g. QA) would
+    // otherwise make /api/companies return only that one company.
     if (path.StartsWith("/api/auth", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/health", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/dev-console", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/api/sales-module", StringComparison.OrdinalIgnoreCase))
+        || path.StartsWith("/api/sales-module", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/companies", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/locations", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/users", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/api/access-control", StringComparison.OrdinalIgnoreCase))
         return resolver.DefaultOperationalConnection;
 
     int? companyId = null;
