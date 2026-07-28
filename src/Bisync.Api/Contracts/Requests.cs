@@ -227,6 +227,10 @@ public class EmployeeLevelRequest
     public int AnnualLeaveDays { get; set; }
     [Range(0, 365)]
     public int SickLeaveDays { get; set; }
+    /// <summary>When false, annual leave bands are cleared and not applied.</summary>
+    public bool AnnualLeaveEnabled { get; set; } = true;
+    /// <summary>When false, sick leave bands are cleared and not applied.</summary>
+    public bool SickLeaveEnabled { get; set; } = true;
     /// <summary>JSON tenure bands for annual leave. When set, drives AnnualLeaveDays summary.</summary>
     public string? AnnualLeaveRulesJson { get; set; }
     /// <summary>JSON tenure bands for sick leave. When set, drives SickLeaveDays summary.</summary>

@@ -157,12 +157,32 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
     private static void Apply(EmployeeLevel level, EmployeeLevelRequest request)
     {
         level.LevelName = request.LevelName;
-        var annualRules = LeaveTenureRules.Parse(request.AnnualLeaveRulesJson);
-        var sickRules = LeaveTenureRules.Parse(request.SickLeaveRulesJson);
-        level.AnnualLeaveRulesJson = LeaveTenureRules.Serialize(annualRules);
-        level.SickLeaveRulesJson = LeaveTenureRules.Serialize(sickRules);
-        level.AnnualLeaveDays = annualRules[0].Days;
-        level.SickLeaveDays = sickRules[0].Days;
+        level.AnnualLeaveEnabled = request.AnnualLeaveEnabled;
+        level.SickLeaveEnabled = request.SickLeaveEnabled;
+        if (request.AnnualLeaveEnabled)
+        {
+            var annualRules = LeaveTenureRules.Parse(request.AnnualLeaveRulesJson);
+            level.AnnualLeaveRulesJson = LeaveTenureRules.Serialize(annualRules);
+            level.AnnualLeaveDays = annualRules[0].Days;
+        }
+        else
+        {
+            level.AnnualLeaveRulesJson = "[]";
+            level.AnnualLeaveDays = 0;
+        }
+
+        if (request.SickLeaveEnabled)
+        {
+            var sickRules = LeaveTenureRules.Parse(request.SickLeaveRulesJson);
+            level.SickLeaveRulesJson = LeaveTenureRules.Serialize(sickRules);
+            level.SickLeaveDays = sickRules[0].Days;
+        }
+        else
+        {
+            level.SickLeaveRulesJson = "[]";
+            level.SickLeaveDays = 0;
+        }
+
         level.OvertimeEligible = request.OvertimeEligible;
         level.WorkingHoursPerDay = request.WorkingHoursPerDay;
         level.DayOffPerWeek = Math.Clamp(request.DayOffPerWeek, 0, 7);

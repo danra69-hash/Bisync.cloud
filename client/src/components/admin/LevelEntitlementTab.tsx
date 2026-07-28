@@ -42,6 +42,8 @@ const emptyForm = {
   levelName: '',
   annualLeaveDays: DEFAULT_LEAVE_TENURE_RULES[0].days,
   sickLeaveDays: DEFAULT_LEAVE_TENURE_RULES[0].days,
+  annualLeaveEnabled: true,
+  sickLeaveEnabled: true,
   annualLeaveRules: cloneLeaveTenureRules(DEFAULT_LEAVE_TENURE_RULES),
   sickLeaveRules: cloneLeaveTenureRules(DEFAULT_LEAVE_TENURE_RULES),
   overtimeEligible: false,
@@ -168,6 +170,8 @@ function LevelPanel({
     levelName: level.levelName,
     annualLeaveDays: level.annualLeaveDays,
     sickLeaveDays: level.sickLeaveDays,
+    annualLeaveEnabled: level.annualLeaveEnabled !== false,
+    sickLeaveEnabled: level.sickLeaveEnabled !== false,
     annualLeaveRules: parseLeaveTenureRules(level.annualLeaveRulesJson, level.annualLeaveDays),
     sickLeaveRules: parseLeaveTenureRules(level.sickLeaveRulesJson, level.sickLeaveDays),
     overtimeEligible: level.overtimeEligible,
@@ -204,10 +208,14 @@ function LevelPanel({
       setError('Level name is required.');
       return;
     }
-    const annualError = validateRules('Annual leave', form.annualLeaveRules);
-    if (annualError) { setError(annualError); return; }
-    const sickError = validateRules('Sick leave', form.sickLeaveRules);
-    if (sickError) { setError(sickError); return; }
+    if (form.annualLeaveEnabled) {
+      const annualError = validateRules('Annual leave', form.annualLeaveRules);
+      if (annualError) { setError(annualError); return; }
+    }
+    if (form.sickLeaveEnabled) {
+      const sickError = validateRules('Sick leave', form.sickLeaveRules);
+      if (sickError) { setError(sickError); return; }
+    }
     if (form.dutyMealQtyEnabled && form.dutyMealQtyPerWorkingDay <= 0) {
       setError('Enter Duty Meal QTY per working day, or untick the box.');
       return;
@@ -219,12 +227,18 @@ function LevelPanel({
     setSaving(true);
     setError(null);
     try {
-      const annualLeaveRules = cloneLeaveTenureRules(form.annualLeaveRules);
-      const sickLeaveRules = cloneLeaveTenureRules(form.sickLeaveRules);
+      const annualLeaveRules = form.annualLeaveEnabled
+        ? cloneLeaveTenureRules(form.annualLeaveRules)
+        : [];
+      const sickLeaveRules = form.sickLeaveEnabled
+        ? cloneLeaveTenureRules(form.sickLeaveRules)
+        : [];
       const payload = {
         ...form,
-        annualLeaveDays: annualLeaveRules[0]?.days ?? 0,
-        sickLeaveDays: sickLeaveRules[0]?.days ?? 0,
+        annualLeaveEnabled: form.annualLeaveEnabled,
+        sickLeaveEnabled: form.sickLeaveEnabled,
+        annualLeaveDays: form.annualLeaveEnabled ? (annualLeaveRules[0]?.days ?? 0) : 0,
+        sickLeaveDays: form.sickLeaveEnabled ? (sickLeaveRules[0]?.days ?? 0) : 0,
         annualLeaveRulesJson: JSON.stringify(annualLeaveRules),
         sickLeaveRulesJson: JSON.stringify(sickLeaveRules),
         dayOffPerWeek: Math.max(0, Math.min(7, Number(form.dayOffPerWeek) || 0)),
@@ -276,16 +290,52 @@ function LevelPanel({
                 placeholder="e.g. Management"
               />
             </div>
-            <LeaveTenureRulesEditor
-              label="Annual Leave"
-              rules={form.annualLeaveRules}
-              onChange={annualLeaveRules => setForm({ ...form, annualLeaveRules })}
-            />
-            <LeaveTenureRulesEditor
-              label="Sick Leave"
-              rules={form.sickLeaveRules}
-              onChange={sickLeaveRules => setForm({ ...form, sickLeaveRules })}
-            />
+            <div className="col-span-2 grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.annualLeaveEnabled}
+                  onChange={e => setForm({
+                    ...form,
+                    annualLeaveEnabled: e.target.checked,
+                    annualLeaveRules: e.target.checked && form.annualLeaveRules.length === 0
+                      ? cloneLeaveTenureRules()
+                      : form.annualLeaveRules,
+                  })}
+                  className="rounded border-border"
+                />
+                Include Annual Leave
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.sickLeaveEnabled}
+                  onChange={e => setForm({
+                    ...form,
+                    sickLeaveEnabled: e.target.checked,
+                    sickLeaveRules: e.target.checked && form.sickLeaveRules.length === 0
+                      ? cloneLeaveTenureRules()
+                      : form.sickLeaveRules,
+                  })}
+                  className="rounded border-border"
+                />
+                Include Sick Leave
+              </label>
+            </div>
+            {form.annualLeaveEnabled ? (
+              <LeaveTenureRulesEditor
+                label="Annual Leave"
+                rules={form.annualLeaveRules}
+                onChange={annualLeaveRules => setForm({ ...form, annualLeaveRules })}
+              />
+            ) : null}
+            {form.sickLeaveEnabled ? (
+              <LeaveTenureRulesEditor
+                label="Sick Leave"
+                rules={form.sickLeaveRules}
+                onChange={sickLeaveRules => setForm({ ...form, sickLeaveRules })}
+              />
+            ) : null}
             <div>
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Hours/Day</label>
               <input type="number" min="0" step="0.5" className={`${inputCls} mt-1`} value={form.workingHoursPerDay} onChange={e => setForm({ ...form, workingHoursPerDay: parseFloat(e.target.value) || 0 })} />
@@ -505,10 +555,12 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
         {
           level: l => l.levelName,
           annual: l => {
+            if (l.annualLeaveEnabled === false) return 0;
             const rules = parseLeaveTenureRules(l.annualLeaveRulesJson, l.annualLeaveDays);
             return Math.max(...rules.map(r => r.days), l.annualLeaveDays);
           },
           sick: l => {
+            if (l.sickLeaveEnabled === false) return 0;
             const rules = parseLeaveTenureRules(l.sickLeaveRulesJson, l.sickLeaveDays);
             return Math.max(...rules.map(r => r.days), l.sickLeaveDays);
           },
@@ -572,10 +624,14 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
               >
                 <td className="px-4 py-3 font-medium text-primary hover:underline">{level.levelName}</td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {summarizeLeaveTenureRules(parseLeaveTenureRules(level.annualLeaveRulesJson, level.annualLeaveDays))}
+                  {level.annualLeaveEnabled === false
+                    ? '—'
+                    : summarizeLeaveTenureRules(parseLeaveTenureRules(level.annualLeaveRulesJson, level.annualLeaveDays))}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {summarizeLeaveTenureRules(parseLeaveTenureRules(level.sickLeaveRulesJson, level.sickLeaveDays))}
+                  {level.sickLeaveEnabled === false
+                    ? '—'
+                    : summarizeLeaveTenureRules(parseLeaveTenureRules(level.sickLeaveRulesJson, level.sickLeaveDays))}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{level.workingHoursPerDay}h</td>
                 <td className="px-4 py-3 text-muted-foreground">

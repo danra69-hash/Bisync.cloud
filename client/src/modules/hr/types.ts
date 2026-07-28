@@ -184,6 +184,10 @@ export interface EmployeeLevel {
   levelName: string;
   annualLeaveDays: number;
   sickLeaveDays: number;
+  /** When false, annual leave entitlement is not included for this level. */
+  annualLeaveEnabled?: boolean;
+  /** When false, sick leave entitlement is not included for this level. */
+  sickLeaveEnabled?: boolean;
   /** JSON tenure bands for annual leave. */
   annualLeaveRulesJson?: string | null;
   /** JSON tenure bands for sick leave. */
