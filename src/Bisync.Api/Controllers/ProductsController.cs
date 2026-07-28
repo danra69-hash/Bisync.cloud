@@ -156,7 +156,13 @@ public class ProductsController(
             PosEnabled = !request.IsSubProduct
                 && request.B2cEnabled
                 && (request.Rrp ?? 0) > 0
-                && (request.PosEnabled ?? false),
+                && (request.PosEnabled ?? true),
+            PosDeliveryUnitsJson = !request.IsSubProduct
+                && request.B2cEnabled
+                && (request.Rrp ?? 0) > 0
+                && (request.PosEnabled ?? true)
+                ? """[{"unitKey":"b2c-retail"}]"""
+                : "[]",
             Active = request.Active ?? true,
             TotalCost = items.Sum(i => i.Subtotal),
             PackagingCost = packagingItems.Sum(i => i.Subtotal),
@@ -289,8 +295,6 @@ public class ProductsController(
         product.OrderLockPeriodDays = ResolveOrderLockPeriodDays(request);
         if (request.ParStock.HasValue) product.ParStock = request.ParStock.Value;
         if (request.ParStockUom is not null) product.ParStockUom = request.ParStockUom.Trim();
-        if (request.PosEnabled.HasValue)
-            product.PosEnabled = request.PosEnabled.Value;
         if (request.Active.HasValue && product.Active && !request.Active.Value)
         {
             var deactivateError = await DeactivationGuardService.ValidateB2bProductDeactivationAsync(db, product);
@@ -320,6 +324,21 @@ public class ProductsController(
         {
             product.PosEnabled = false;
             product.PosDeliveryUnitsJson = "[]";
+        }
+        else
+        {
+            // B2C + RRP is the POS retail channel: honor explicit PosEnabled, otherwise keep/enable.
+            if (request.PosEnabled.HasValue)
+                product.PosEnabled = request.PosEnabled.Value;
+            else if (!product.PosEnabled)
+                product.PosEnabled = true;
+
+            if (product.PosEnabled
+                && (string.IsNullOrWhiteSpace(product.PosDeliveryUnitsJson)
+                    || product.PosDeliveryUnitsJson.Trim() == "[]"))
+            {
+                product.PosDeliveryUnitsJson = """[{"unitKey":"b2c-retail"}]""";
+            }
         }
 
         db.ProductAliases.RemoveRange(product.Aliases);
@@ -451,6 +470,17 @@ public class ProductsController(
         {
             product.PosEnabled = false;
             product.PosDeliveryUnitsJson = "[]";
+        }
+        else if (request.PosEnabled == false)
+        {
+            product.PosEnabled = false;
+            product.PosDeliveryUnitsJson = "[]";
+        }
+        else if (product.PosEnabled
+            && (string.IsNullOrWhiteSpace(product.PosDeliveryUnitsJson)
+                || product.PosDeliveryUnitsJson.Trim() == "[]"))
+        {
+            product.PosDeliveryUnitsJson = """[{"unitKey":"b2c-retail"}]""";
         }
 
         product.UpdatedAt = DateTime.UtcNow;

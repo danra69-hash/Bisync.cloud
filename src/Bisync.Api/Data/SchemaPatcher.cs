@@ -466,6 +466,37 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosEnabled", "INTEGER NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosDeliveryUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
+
+        // B2C products with RRP are the POS retail channel — enable POS + default retail unit
+        // so built/imported B2C recipes appear on POS Menu / Test Tap without a second tick.
+        var posBackfill = await db.Products
+            .Where(p => !p.IsSubProduct && p.B2cEnabled && p.Active && p.Rrp > 0 && !p.PosEnabled)
+            .ToListAsync();
+        foreach (var product in posBackfill)
+        {
+            product.PosEnabled = true;
+            if (string.IsNullOrWhiteSpace(product.PosDeliveryUnitsJson)
+                || product.PosDeliveryUnitsJson.Trim() == "[]")
+            {
+                product.PosDeliveryUnitsJson = """[{"unitKey":"b2c-retail"}]""";
+            }
+        }
+        if (posBackfill.Count > 0)
+            await db.SaveChangesAsync();
+
+        var posUnitsBackfill = await db.Products
+            .Where(p => p.PosEnabled
+                && !p.IsSubProduct
+                && p.B2cEnabled
+                && (p.PosDeliveryUnitsJson == null
+                    || p.PosDeliveryUnitsJson == ""
+                    || p.PosDeliveryUnitsJson == "[]"))
+            .ToListAsync();
+        foreach (var product in posUnitsBackfill)
+            product.PosDeliveryUnitsJson = """[{"unitKey":"b2c-retail"}]""";
+        if (posUnitsBackfill.Count > 0)
+            await db.SaveChangesAsync();
+
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldQuantity", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldUom", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldAltUnitsJson", "TEXT NOT NULL DEFAULT '[]'");

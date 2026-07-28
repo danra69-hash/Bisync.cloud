@@ -72,7 +72,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Menu</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            B2C products with POS enabled for this company, with RRP.
+            B2C products with RRP for this company (POS retail channel).
           </p>
         </div>
         <button
@@ -101,7 +101,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
             No POS menu items for this company.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Set product type to B2C, enter RRP, then tick POS under Revenue Management → Products.
+            Build a B2C product with an RRP under Revenue Management → Products — it is enabled for POS automatically.
           </p>
         </div>
       ) : (
