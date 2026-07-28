@@ -83,7 +83,7 @@ function LeaveTenureRulesEditor({
   }
 
   return (
-    <div className="col-span-2 space-y-2">
+    <div className="space-y-2 min-w-0">
       <div className="flex items-center justify-between gap-2">
         <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">{label}</label>
         <button
