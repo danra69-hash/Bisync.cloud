@@ -115,8 +115,22 @@ public static class ConfigurationSeeder
         new("au-southbank", "Southbank", "Bisync Eats Australia Pty Ltd", "3 Southgate Ave", "Southbank", "Victoria", "3006", "olivia.brooks@bisync.cloud"),
     ];
 
+    static bool IsDemoSandboxCompanyName(string name) =>
+        name.StartsWith("Bisync", StringComparison.OrdinalIgnoreCase)
+        || name.StartsWith("QA ", StringComparison.OrdinalIgnoreCase);
+
     public static async Task SeedAsync(BisyncDbContext db)
     {
+        // Once a real customer tenant exists (e.g. Weissbrau), never recreate the
+        // Bisync demo companies/users/locations that were intentionally wiped.
+        var hasCustomerCompany = await db.Companies.AsNoTracking()
+            .AnyAsync(c => !IsDemoSandboxCompanyName(c.Name));
+        if (hasCustomerCompany)
+        {
+            await EnsureSuperAdminAsync(db);
+            return;
+        }
+
         foreach (var seed in Companies)
         {
             var company = await db.Companies.FirstOrDefaultAsync(c => c.Name == seed.Name);

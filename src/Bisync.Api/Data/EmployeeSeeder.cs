@@ -70,10 +70,17 @@ public static class EmployeeSeeder
 
     public static async Task SeedAsync(BisyncDbContext db)
     {
+        var existingCompanyIds = await db.Companies.AsNoTracking()
+            .Select(c => c.Id)
+            .ToHashSetAsync();
         var locationIdsByExternalId = await LoadLocationIdsAsync(db);
 
         foreach (var seed in Seeds)
         {
+            // Hardcoded demo CompanyIds (1/2/3) — skip when those shells were wiped.
+            if (!existingCompanyIds.Contains(seed.CompanyId))
+                continue;
+
             var employee = await db.Employees
                 .Include(e => e.LeaveBalance)
                 .FirstOrDefaultAsync(e => e.Email == seed.Email);
