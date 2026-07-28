@@ -26,6 +26,10 @@ public class EmployeeLevel
     public string LevelName { get; set; } = null!;
     public int AnnualLeaveDays { get; set; }
     public int SickLeaveDays { get; set; }
+    /// <summary>JSON array of tenure bands for annual leave (fromYears/toYears/days).</summary>
+    public string AnnualLeaveRulesJson { get; set; } = "[]";
+    /// <summary>JSON array of tenure bands for sick leave (fromYears/toYears/days).</summary>
+    public string SickLeaveRulesJson { get; set; } = "[]";
     public bool OvertimeEligible { get; set; }
     public decimal WorkingHoursPerDay { get; set; } = 8;
     /// <summary>Number of rest days per week (0–7). Default 2.</summary>

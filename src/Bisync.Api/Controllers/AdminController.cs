@@ -157,8 +157,12 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
     private static void Apply(EmployeeLevel level, EmployeeLevelRequest request)
     {
         level.LevelName = request.LevelName;
-        level.AnnualLeaveDays = request.AnnualLeaveDays;
-        level.SickLeaveDays = request.SickLeaveDays;
+        var annualRules = LeaveTenureRules.Parse(request.AnnualLeaveRulesJson);
+        var sickRules = LeaveTenureRules.Parse(request.SickLeaveRulesJson);
+        level.AnnualLeaveRulesJson = LeaveTenureRules.Serialize(annualRules);
+        level.SickLeaveRulesJson = LeaveTenureRules.Serialize(sickRules);
+        level.AnnualLeaveDays = annualRules[0].Days;
+        level.SickLeaveDays = sickRules[0].Days;
         level.OvertimeEligible = request.OvertimeEligible;
         level.WorkingHoursPerDay = request.WorkingHoursPerDay;
         level.DayOffPerWeek = Math.Clamp(request.DayOffPerWeek, 0, 7);
