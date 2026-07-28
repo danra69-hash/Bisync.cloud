@@ -27,7 +27,9 @@ export function ProductGrid({ products, onAdd }: Props) {
             <h3 className="product-card__name">{product.name}</h3>
             <div className="product-card__row">
               <span className="product-card__price">
-                {formatMoney(product.priceCents)}
+                {product.pricedByWeight && product.weightUom
+                  ? `${formatMoney(product.priceCents)}/${product.weightUom}`
+                  : formatMoney(product.priceCents)}
               </span>
               <button
                 type="button"

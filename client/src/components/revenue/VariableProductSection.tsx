@@ -4,7 +4,9 @@ import type { ComponentRow } from '../../data/componentForm';
 import { inputCls } from '../../data/countries';
 import { calcProductCogs } from '../../data/productForm';
 import {
+  WEIGHT_UOM_OPTIONS,
   calcVariableMinMaxCost,
+  calcWeightUnitRrp,
   newOptionKey,
   type VariableCombinationOption,
   type VariableMode,
@@ -31,6 +33,8 @@ type Props = {
   ingredients: ComponentRow[];
   disabled?: boolean;
   baseRecipeCost: number;
+  /** Quoted RRP for the weight reference qty (from product pricing). */
+  rrp?: number;
 };
 
 const labelCls = 'text-xs font-sans text-muted-foreground uppercase tracking-wider';
@@ -43,14 +47,18 @@ export function VariableProductSection({
   ingredients,
   disabled,
   baseRecipeCost,
+  rrp = 0,
 }: Props) {
   const { currency } = useCountryFormatters();
   const { minCost, maxCost } = calcVariableMinMaxCost(config, baseRecipeCost);
+  const unitRrp = config.mode === 'weight' ? calcWeightUnitRrp(rrp, config.choiceQty) : 0;
 
   const setMode = (mode: VariableMode) => {
     onChange({
       ...config,
       mode,
+      weightUom: mode === 'weight' ? (config.weightUom || 'kg') : '',
+      choiceQty: mode === 'weight' ? (config.choiceQty > 0 ? config.choiceQty : 1) : config.choiceQty,
       combinationOptions: mode === 'combination' ? config.combinationOptions : [],
       replacementSlots: mode === 'replacement' ? config.replacementSlots : [],
     });
@@ -148,17 +156,24 @@ export function VariableProductSection({
         <div>
           <h3 className="text-sm font-semibold text-foreground">Variable Product</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Combination packages (choose any up to a total qty) or component replacements (same qty).
+            Combination packages, component replacements, or weight-based pricing for POS.
           </p>
         </div>
-        <div className="flex flex-wrap gap-4 text-xs">
-          <span className="text-muted-foreground">
-            Min Cost: <span className="font-semibold text-foreground">{currency(minCost)}</span>
-          </span>
-          <span className="text-muted-foreground">
-            Max Cost: <span className="font-semibold text-foreground">{currency(maxCost)}</span>
-          </span>
-        </div>
+        {config.mode !== 'weight' ? (
+          <div className="flex flex-wrap gap-4 text-xs">
+            <span className="text-muted-foreground">
+              Min Cost: <span className="font-semibold text-foreground">{currency(minCost)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Max Cost: <span className="font-semibold text-foreground">{currency(maxCost)}</span>
+            </span>
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground">
+            Recipe cost for quoted weight:{' '}
+            <span className="font-semibold text-foreground">{currency(minCost)}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-4">
@@ -182,9 +197,66 @@ export function VariableProductSection({
           />
           Replacement of components
         </label>
+        <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={config.mode === 'weight'}
+            disabled={disabled}
+            onChange={() => setMode('weight')}
+            className="rounded border-border"
+          />
+          Weight based Product
+        </label>
       </div>
 
-      {config.mode === 'combination' ? (
+      {config.mode === 'weight' ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl">
+            <div className="space-y-1.5">
+              <label className={labelCls}>Weight UOM *</label>
+              <select
+                className={inputCls}
+                disabled={disabled}
+                value={config.weightUom || 'kg'}
+                onChange={e => onChange({ ...config, weightUom: e.target.value })}
+              >
+                {WEIGHT_UOM_OPTIONS.map(uom => (
+                  <option key={uom} value={uom}>{uom}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className={labelCls}>QTY *</label>
+              <input
+                type="number"
+                min={0.001}
+                step="any"
+                disabled={disabled}
+                className={inputCls}
+                value={config.choiceQty || ''}
+                onChange={e => onChange({
+                  ...config,
+                  choiceQty: Math.max(0, parseFloat(e.target.value) || 0),
+                })}
+                placeholder="e.g. 1"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className={labelCls}>RRP (for QTY above)</label>
+              <p className={`${inputCls} bg-muted/30`}>
+                {rrp > 0 ? currency(rrp) : 'Set RRP in Pricing below'}
+              </p>
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            RRP is for the QTY × Weight UOM above
+            {rrp > 0 && config.choiceQty > 0 && config.weightUom
+              ? ` (${currency(unitRrp)} per ${config.weightUom}).`
+              : '.'}
+            {' '}At POS the cashier enters the sold weight to calculate total RRP.
+          </p>
+        </div>
+      ) : config.mode === 'combination' ? (
         <div className="space-y-3">
           <div className="max-w-xs space-y-1.5">
             <label className={labelCls}>Total quantity (package size)</label>

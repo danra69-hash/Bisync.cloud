@@ -1,6 +1,6 @@
-/** Variable Product config — combination packages or component replacements. */
+/** Variable Product config — combination, component replacement, or weight-based. */
 
-export type VariableMode = 'combination' | 'replacement';
+export type VariableMode = 'combination' | 'replacement' | 'weight';
 
 export type VariableCombinationOption = {
   key: string;
@@ -32,15 +32,22 @@ export type VariableReplacementSlot = {
 
 export type VariableProductConfig = {
   mode: VariableMode;
+  /** Combination package size, or weight reference qty for RRP. */
   choiceQty: number;
+  /** Weight UOM when mode is weight (e.g. kg, g). */
+  weightUom: string;
   combinationOptions: VariableCombinationOption[];
   replacementSlots: VariableReplacementSlot[];
 };
 
+/** Common sell-by-weight units shown in the Weight UOM picker. */
+export const WEIGHT_UOM_OPTIONS = ['g', 'kg', 'mg', 'oz', 'lb', 'Gr', 'Kg', 'Mg'] as const;
+
 export function blankVariableConfig(mode: VariableMode = 'combination'): VariableProductConfig {
   return {
     mode,
-    choiceQty: 1,
+    choiceQty: mode === 'weight' ? 1 : 1,
+    weightUom: mode === 'weight' ? 'kg' : '',
     combinationOptions: [],
     replacementSlots: [],
   };
@@ -98,7 +105,24 @@ export function calcVariableMinMaxCost(
   if (config.mode === 'combination') {
     return calcCombinationMinMaxCost(config.choiceQty, config.combinationOptions);
   }
+  if (config.mode === 'weight') {
+    // Recipe cost is for the defined product; POS scales by entered weight.
+    const cost = roundMoney(Math.max(0, baseRecipeCost));
+    return { minCost: cost, maxCost: cost };
+  }
   return calcReplacementMinMaxCost(baseRecipeCost, config.replacementSlots);
+}
+
+/** RRP per 1 weight UOM unit from quoted RRP for weightQty. */
+export function calcWeightUnitRrp(rrp: number, weightQty: number): number {
+  if (!(rrp > 0) || !(weightQty > 0)) return 0;
+  return roundMoney(rrp / weightQty);
+}
+
+/** Total RRP for an entered weight. */
+export function calcWeightTotalRrp(rrp: number, weightQty: number, enteredWeight: number): number {
+  if (!(rrp > 0) || !(weightQty > 0) || !(enteredWeight > 0)) return 0;
+  return roundMoney(rrp * (enteredWeight / weightQty));
 }
 
 export function serializeVariableOptionsJson(config: VariableProductConfig): string {
@@ -112,6 +136,13 @@ export function serializeVariableOptionsJson(config: VariableProductConfig): str
         productName: o.productName,
         unitCost: o.unitCost,
       })),
+    });
+  }
+  if (config.mode === 'weight') {
+    return JSON.stringify({
+      mode: 'weight',
+      weightUom: config.weightUom,
+      weightQty: config.choiceQty,
     });
   }
   return JSON.stringify({
@@ -134,6 +165,11 @@ export function serializeVariableOptionsJson(config: VariableProductConfig): str
   });
 }
 
+export function parseVariableMode(raw?: string | null): VariableMode {
+  if (raw === 'replacement' || raw === 'weight' || raw === 'combination') return raw;
+  return 'combination';
+}
+
 export function parseVariableOptionsJson(
   raw?: string | null,
   modeHint?: VariableMode,
@@ -142,12 +178,15 @@ export function parseVariableOptionsJson(
   if (!raw || !raw.trim() || raw.trim() === '[]' || raw.trim() === '{}') return fallback;
   try {
     const data = JSON.parse(raw) as Record<string, unknown>;
-    const mode = data.mode === 'replacement' ? 'replacement' : 'combination';
+    const mode = parseVariableMode(
+      typeof data.mode === 'string' ? data.mode : modeHint,
+    );
     if (mode === 'combination') {
       const options = Array.isArray(data.options) ? data.options : [];
       return {
         mode,
         choiceQty: Number(data.choiceQty) > 0 ? Number(data.choiceQty) : 1,
+        weightUom: '',
         combinationOptions: options.map((o, i) => {
           const row = o as Record<string, unknown>;
           return {
@@ -161,10 +200,21 @@ export function parseVariableOptionsJson(
         replacementSlots: [],
       };
     }
+    if (mode === 'weight') {
+      const qty = Number(data.weightQty ?? data.choiceQty);
+      return {
+        mode: 'weight',
+        choiceQty: qty > 0 ? qty : 1,
+        weightUom: String(data.weightUom ?? 'kg').trim() || 'kg',
+        combinationOptions: [],
+        replacementSlots: [],
+      };
+    }
     const slots = Array.isArray(data.slots) ? data.slots : [];
     return {
-      mode,
+      mode: 'replacement',
       choiceQty: 1,
+      weightUom: '',
       combinationOptions: [],
       replacementSlots: slots.map((s, i) => {
         const row = s as Record<string, unknown>;
