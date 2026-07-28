@@ -52,6 +52,16 @@ public class ProductSaleInventoryService(
 
         foreach (var locationId in locationExternalIds)
         {
+            // Finished-product on-hand is tracked via ProductB2bLocationStocks + ProductProductionLogs
+            // (stock card FIFO). Sales must decrement InStock and write an outbound log — BOM
+            // depletion alone leaves finished-product stock card stuck at produced qty.
+            await DepleteFinishedProductStockAsync(
+                product,
+                locationId,
+                quantitySold,
+                referenceType,
+                cancellationToken);
+
             async Task DepleteBomLineAsync(string componentId, string componentName, string componentUom, decimal lineQty)
             {
                 if (string.IsNullOrWhiteSpace(componentId) || lineQty <= 0)
@@ -113,6 +123,36 @@ public class ProductSaleInventoryService(
 
         product.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    async Task DepleteFinishedProductStockAsync(
+        Product product,
+        string locationId,
+        decimal quantitySold,
+        string referenceType,
+        CancellationToken cancellationToken)
+    {
+        var stockRow = await db.ProductB2bLocationStocks
+            .FirstOrDefaultAsync(
+                s => s.ProductId == product.Id && s.LocationExternalId == locationId,
+                cancellationToken);
+
+        if (stockRow is not null)
+        {
+            stockRow.InStock = Math.Max(0, stockRow.InStock - quantitySold);
+            stockRow.UpdatedAt = DateTime.UtcNow;
+        }
+
+        db.ProductProductionLogs.Add(new ProductProductionLog
+        {
+            ProductId = product.Id,
+            EntryType = referenceType,
+            Quantity = quantitySold,
+            ProductionDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
+            LocationIdsJson = JsonSerializer.Serialize(new[] { locationId }),
+            CompanyId = product.CompanyId,
+            CreatedAt = DateTime.UtcNow,
+        });
     }
 
     async Task DepleteSubProductLineAsync(

@@ -5,7 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Services;
 
-public class InventoryCountService(BisyncDbContext db, StockCardService stockCardService)
+public class InventoryCountService(
+    BisyncDbContext db,
+    StockCardService stockCardService,
+    SystemCogsAuditSnapshotService cogsAuditSnapshot)
 {
     public async Task<int> ProcessAutoConfirmationsAsync(CancellationToken cancellationToken = default)
     {
@@ -421,6 +424,16 @@ public class InventoryCountService(BisyncDbContext db, StockCardService stockCar
         session.EffectiveDate = resolvedEffectiveDate.Value.ToString("yyyy-MM-dd");
         session.AdjustmentsAppliedAt = utcNow;
         await db.SaveChangesAsync(cancellationToken);
+
+        // Persist System COGS Audit History after a confirmed full count (was registered but never called).
+        var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(session.LocationIdsJson);
+        await cogsAuditSnapshot.SnapshotAfterInventoryReconcileAsync(
+            session.CompanyId,
+            locationIds,
+            session.PeriodMonth,
+            session.UomMode,
+            isAutoConfirm ? "inventory-auto-confirm" : "inventory-confirm",
+            cancellationToken);
 
         return InventoryCountResult.Ok(MapSession(session, utcNow));
     }
