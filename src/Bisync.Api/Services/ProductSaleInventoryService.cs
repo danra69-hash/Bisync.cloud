@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,8 @@ namespace Bisync.Api.Services;
 /// Depletes stock when a parent product is sold (POS, online, offline).
 /// Smart components: BOM qty × units sold (FIFO), inflated by Yield Loss % to gross stock.
 /// Sub-products: deplete produced stock first; shortfall uses sub-product recipe components.
+/// Variable products: persist quantified sale detail and deplete from combination picks,
+/// replacement substitutions, or exact weight served.
 /// </summary>
 public class ProductSaleInventoryService(
     BisyncDbContext db,
@@ -19,11 +22,31 @@ public class ProductSaleInventoryService(
         "pos", "online", "offline",
     };
 
+    static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    public Task RecordProductSaleAsync(
+        int productId,
+        IReadOnlyList<string> locationExternalIds,
+        decimal quantitySold,
+        string salesChannel,
+        CancellationToken cancellationToken = default) =>
+        RecordProductSaleAsync(
+            productId,
+            locationExternalIds,
+            quantitySold,
+            salesChannel,
+            variableDetail: null,
+            cancellationToken);
+
     public async Task RecordProductSaleAsync(
         int productId,
         IReadOnlyList<string> locationExternalIds,
         decimal quantitySold,
         string salesChannel,
+        PosSaleVariableDetailRequest? variableDetail,
         CancellationToken cancellationToken = default)
     {
         if (quantitySold <= 0)
@@ -41,6 +64,33 @@ public class ProductSaleInventoryService(
         if (product is null || product.IsSubProduct || !product.Active)
             return;
 
+        var mode = ResolveVariableMode(product, variableDetail);
+        var comboSelections = NormalizeCombinationSelections(variableDetail);
+        var replacementSelections = NormalizeReplacementSelections(variableDetail);
+        var replacementByBase = replacementSelections
+            .GroupBy(s => s.BaseComponentId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var enteredWeight = variableDetail?.EnteredWeight is > 0
+            ? variableDetail.EnteredWeight.Value
+            : mode == "weight" ? quantitySold : (decimal?)null;
+        var referenceWeightQty = variableDetail?.ReferenceWeightQty is > 0
+            ? variableDetail.ReferenceWeightQty.Value
+            : product.VariableChoiceQty > 0 && mode == "weight"
+                ? product.VariableChoiceQty
+                : (decimal?)null;
+        var weightUom = (variableDetail?.WeightUom ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(weightUom) && mode == "weight")
+            weightUom = ParseWeightUomFromOptions(product.VariableOptionsJson);
+
+        // Weight: scale BOM by exact weight / reference package weight.
+        // Other modes: multiply by units sold.
+        var bomMultiplier = mode == "weight" && enteredWeight is > 0 && referenceWeightQty is > 0
+            ? enteredWeight.Value / referenceWeightQty.Value
+            : quantitySold;
+
+        var finishedQty = mode == "weight" ? bomMultiplier : quantitySold;
+
         var subProductsByCode = await db.Products
             .AsNoTracking()
             .Include(p => p.Items)
@@ -52,17 +102,29 @@ public class ProductSaleInventoryService(
 
         foreach (var locationId in locationExternalIds)
         {
-            // Finished-product on-hand is tracked via ProductB2bLocationStocks + ProductProductionLogs
-            // (stock card FIFO). Sales must decrement InStock and write an outbound log — BOM
-            // depletion alone leaves finished-product stock card stuck at produced qty.
+            var usageAudit = new List<object>();
+
             await DepleteFinishedProductStockAsync(
                 product,
                 locationId,
-                quantitySold,
+                finishedQty,
                 referenceType,
                 cancellationToken);
+            usageAudit.Add(new
+            {
+                kind = "product",
+                productId = product.Id,
+                productCode = product.ProductId,
+                productName = product.Name,
+                quantity = finishedQty,
+                role = "finished",
+            });
 
-            async Task DepleteBomLineAsync(string componentId, string componentName, string componentUom, decimal lineQty)
+            async Task DepleteBomLineAsync(
+                string componentId,
+                string componentName,
+                string componentUom,
+                decimal lineQty)
             {
                 if (string.IsNullOrWhiteSpace(componentId) || lineQty <= 0)
                     return;
@@ -80,18 +142,26 @@ public class ProductSaleInventoryService(
                             Quantity = lineQty,
                         },
                         locationId,
-                        quantitySold,
+                        bomMultiplier,
                         referenceType,
                         reasonLabel,
                         ingredientsByCode,
                         cancellationToken);
+                    usageAudit.Add(new
+                    {
+                        kind = "subProduct",
+                        componentId,
+                        componentName,
+                        componentUom,
+                        quantity = lineQty * bomMultiplier,
+                    });
                     return;
                 }
 
                 if (!ingredientsByCode.TryGetValue(componentId, out var ingredient))
                     return;
 
-                var nettQty = lineQty * quantitySold;
+                var nettQty = lineQty * bomMultiplier;
                 if (nettQty <= 0)
                     return;
 
@@ -108,21 +178,302 @@ public class ProductSaleInventoryService(
                     referenceId: product.Id,
                     companyId: product.CompanyId,
                     cancellationToken);
+
+                usageAudit.Add(new
+                {
+                    kind = "component",
+                    componentId,
+                    componentName,
+                    componentUom,
+                    quantity = requiredQty,
+                });
             }
 
-            foreach (var line in product.Items)
+            if (mode == "combination")
             {
-                await DepleteBomLineAsync(line.ComponentId, line.ComponentName, line.ComponentUom, line.Quantity);
+                // Packaging on the combo shell; recipe stock comes from selected products.
+                foreach (var line in product.PackagingItems)
+                {
+                    await DepleteBomLineAsync(
+                        line.ComponentId,
+                        line.ComponentName,
+                        line.ComponentUom,
+                        line.Quantity);
+                }
+
+                foreach (var sel in comboSelections)
+                {
+                    var childQty = sel.Quantity * quantitySold;
+                    if (childQty <= 0 || sel.ProductId <= 0)
+                        continue;
+
+                    usageAudit.Add(new
+                    {
+                        kind = "product",
+                        productId = sel.ProductId,
+                        productCode = sel.ProductCode ?? string.Empty,
+                        productName = sel.ProductName ?? string.Empty,
+                        quantity = childQty,
+                        role = "combinationSelection",
+                    });
+
+                    await RecordProductSaleAsync(
+                        sel.ProductId,
+                        new[] { locationId },
+                        childQty,
+                        channel,
+                        variableDetail: null,
+                        cancellationToken);
+                }
+            }
+            else if (mode == "replacement")
+            {
+                var replacedBases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var line in product.Items)
+                {
+                    if (replacementByBase.TryGetValue(line.ComponentId, out var swap))
+                    {
+                        replacedBases.Add(line.ComponentId);
+                        var chosenId = swap.ChosenComponentId;
+                        var chosenName = string.IsNullOrWhiteSpace(swap.ChosenComponentName)
+                            ? line.ComponentName
+                            : swap.ChosenComponentName!;
+                        var chosenUom = string.IsNullOrWhiteSpace(swap.ComponentUom)
+                            ? line.ComponentUom
+                            : swap.ComponentUom!;
+                        var qty = swap.Quantity > 0 ? swap.Quantity : line.Quantity;
+                        await DepleteBomLineAsync(chosenId, chosenName, chosenUom, qty);
+                        continue;
+                    }
+
+                    await DepleteBomLineAsync(
+                        line.ComponentId,
+                        line.ComponentName,
+                        line.ComponentUom,
+                        line.Quantity);
+                }
+
+                // Slots whose base is not on the current BOM still deplete the chosen component.
+                foreach (var swap in replacementSelections)
+                {
+                    if (replacedBases.Contains(swap.BaseComponentId))
+                        continue;
+                    if (swap.Quantity <= 0 || string.IsNullOrWhiteSpace(swap.ChosenComponentId))
+                        continue;
+                    await DepleteBomLineAsync(
+                        swap.ChosenComponentId,
+                        swap.ChosenComponentName ?? swap.ChosenComponentId,
+                        swap.ComponentUom ?? string.Empty,
+                        swap.Quantity);
+                }
+
+                foreach (var line in product.PackagingItems)
+                {
+                    await DepleteBomLineAsync(
+                        line.ComponentId,
+                        line.ComponentName,
+                        line.ComponentUom,
+                        line.Quantity);
+                }
+            }
+            else
+            {
+                foreach (var line in product.Items)
+                {
+                    await DepleteBomLineAsync(
+                        line.ComponentId,
+                        line.ComponentName,
+                        line.ComponentUom,
+                        line.Quantity);
+                }
+
+                foreach (var line in product.PackagingItems)
+                {
+                    await DepleteBomLineAsync(
+                        line.ComponentId,
+                        line.ComponentName,
+                        line.ComponentUom,
+                        line.Quantity);
+                }
             }
 
-            foreach (var line in product.PackagingItems)
+            if (ShouldPersistSaleDetail(product, mode, variableDetail, comboSelections, replacementSelections, enteredWeight))
             {
-                await DepleteBomLineAsync(line.ComponentId, line.ComponentName, line.ComponentUom, line.Quantity);
+                db.PosSaleDetails.Add(new PosSaleDetail
+                {
+                    ProductId = product.Id,
+                    ProductCode = product.ProductId,
+                    ProductName = product.Name,
+                    CompanyId = product.CompanyId,
+                    LocationExternalId = locationId,
+                    SalesChannel = channel,
+                    VariableMode = mode,
+                    QuantitySold = quantitySold,
+                    EnteredWeight = enteredWeight,
+                    WeightUom = weightUom,
+                    ReferenceWeightQty = referenceWeightQty,
+                    SelectionsJson = BuildSelectionsJson(
+                        mode,
+                        comboSelections,
+                        replacementSelections,
+                        enteredWeight,
+                        weightUom,
+                        referenceWeightQty),
+                    ComponentUsagesJson = JsonSerializer.Serialize(usageAudit, JsonOpts),
+                    CreatedAt = DateTime.UtcNow,
+                });
             }
         }
 
         product.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    static bool ShouldPersistSaleDetail(
+        Product product,
+        string mode,
+        PosSaleVariableDetailRequest? detail,
+        IReadOnlyList<PosSaleCombinationSelectionRequest> combo,
+        IReadOnlyList<PosSaleReplacementSelectionRequest> replacements,
+        decimal? enteredWeight)
+    {
+        if (detail is not null)
+            return true;
+        if (!product.IsVariableProduct)
+            return false;
+        if (mode == "combination" && combo.Count > 0)
+            return true;
+        if (mode == "replacement" && replacements.Count > 0)
+            return true;
+        if (mode == "weight" && enteredWeight is > 0)
+            return true;
+        return product.IsVariableProduct;
+    }
+
+    static string ResolveVariableMode(Product product, PosSaleVariableDetailRequest? detail)
+    {
+        var fromDetail = (detail?.VariableMode ?? string.Empty).Trim().ToLowerInvariant();
+        if (fromDetail is "combination" or "replacement" or "weight")
+            return fromDetail;
+
+        if (!product.IsVariableProduct)
+            return string.Empty;
+
+        var fromProduct = (product.VariableMode ?? string.Empty).Trim().ToLowerInvariant();
+        return fromProduct is "combination" or "replacement" or "weight"
+            ? fromProduct
+            : "combination";
+    }
+
+    static List<PosSaleCombinationSelectionRequest> NormalizeCombinationSelections(
+        PosSaleVariableDetailRequest? detail)
+    {
+        if (detail?.CombinationSelections is null || detail.CombinationSelections.Count == 0)
+            return [];
+
+        return detail.CombinationSelections
+            .Where(s => s.ProductId > 0 && s.Quantity > 0)
+            .Select(s => new PosSaleCombinationSelectionRequest
+            {
+                ProductId = s.ProductId,
+                ProductCode = (s.ProductCode ?? string.Empty).Trim(),
+                ProductName = (s.ProductName ?? string.Empty).Trim(),
+                Quantity = s.Quantity,
+            })
+            .ToList();
+    }
+
+    static List<PosSaleReplacementSelectionRequest> NormalizeReplacementSelections(
+        PosSaleVariableDetailRequest? detail)
+    {
+        if (detail?.ReplacementSelections is null || detail.ReplacementSelections.Count == 0)
+            return [];
+
+        return detail.ReplacementSelections
+            .Where(s =>
+                !string.IsNullOrWhiteSpace(s.BaseComponentId)
+                && !string.IsNullOrWhiteSpace(s.ChosenComponentId)
+                && s.Quantity > 0)
+            .Select(s => new PosSaleReplacementSelectionRequest
+            {
+                BaseComponentId = s.BaseComponentId.Trim(),
+                BaseComponentName = (s.BaseComponentName ?? string.Empty).Trim(),
+                ChosenComponentId = s.ChosenComponentId.Trim(),
+                ChosenComponentName = (s.ChosenComponentName ?? string.Empty).Trim(),
+                ComponentUom = (s.ComponentUom ?? string.Empty).Trim(),
+                Quantity = s.Quantity,
+            })
+            .ToList();
+    }
+
+    static string BuildSelectionsJson(
+        string mode,
+        IReadOnlyList<PosSaleCombinationSelectionRequest> combo,
+        IReadOnlyList<PosSaleReplacementSelectionRequest> replacements,
+        decimal? enteredWeight,
+        string weightUom,
+        decimal? referenceWeightQty)
+    {
+        if (mode == "combination")
+        {
+            return JsonSerializer.Serialize(combo.Select(s => new
+            {
+                kind = "product",
+                productId = s.ProductId,
+                productCode = s.ProductCode,
+                productName = s.ProductName,
+                quantity = s.Quantity,
+            }), JsonOpts);
+        }
+
+        if (mode == "replacement")
+        {
+            return JsonSerializer.Serialize(replacements.Select(s => new
+            {
+                kind = "componentSubstitution",
+                baseComponentId = s.BaseComponentId,
+                baseComponentName = s.BaseComponentName,
+                chosenComponentId = s.ChosenComponentId,
+                chosenComponentName = s.ChosenComponentName,
+                componentUom = s.ComponentUom,
+                quantity = s.Quantity,
+            }), JsonOpts);
+        }
+
+        if (mode == "weight")
+        {
+            return JsonSerializer.Serialize(new[]
+            {
+                new
+                {
+                    kind = "weight",
+                    enteredWeight,
+                    weightUom,
+                    referenceWeightQty,
+                },
+            }, JsonOpts);
+        }
+
+        return "[]";
+    }
+
+    static string ParseWeightUomFromOptions(string? optionsJson)
+    {
+        if (string.IsNullOrWhiteSpace(optionsJson))
+            return string.Empty;
+        try
+        {
+            using var doc = JsonDocument.Parse(optionsJson);
+            if (doc.RootElement.TryGetProperty("weightUom", out var uom))
+                return uom.GetString()?.Trim() ?? string.Empty;
+        }
+        catch
+        {
+            // ignore malformed JSON
+        }
+
+        return string.Empty;
     }
 
     async Task DepleteFinishedProductStockAsync(

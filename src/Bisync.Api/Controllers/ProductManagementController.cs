@@ -628,7 +628,8 @@ public class ProductManagementController(
             productId,
             locationIds,
             request.QuantitySold,
-            request.SalesChannel ?? "pos");
+            request.SalesChannel ?? "pos",
+            request.VariableDetail);
 
         return NoContent();
     }

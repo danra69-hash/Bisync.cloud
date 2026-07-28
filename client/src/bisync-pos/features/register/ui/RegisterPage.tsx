@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MOCK_PRODUCTS } from '../domain/catalog'
-import { addToCart, addWeightToCart } from '../domain/cart'
+import { addToCart, addVariableToCart, addWeightToCart } from '../domain/cart'
 import type { CartLine, OrderCharges, Product, ProductDepartment } from '../domain/types'
+import type {
+  PosSaleCombinationSelection,
+  PosSaleReplacementSelection,
+  PosSaleVariableDetail,
+} from '../domain/saleDetail'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { buildDepartmentGroups } from '../../../core/session/mapPosCatalog'
 import { api } from '../../../../api'
@@ -96,7 +101,9 @@ export function RegisterPage() {
 
   function promptWeightAndAdd(product: Product) {
     const uom = product.weightUom || 'kg'
-    const existing = lines.find(l => l.productId === product.id)
+    const existing = lines.find(
+      l => l.productId === product.id && l.saleDetail?.variableMode === 'weight',
+    )
     const raw = window.prompt(
       `Enter weight (${uom}) for ${product.name}`,
       existing ? String(existing.quantity) : '',
@@ -107,11 +114,143 @@ export function RegisterPage() {
       flash(`Enter a weight greater than zero (${uom}).`)
       return
     }
-    setLines(prev => addWeightToCart(prev, product.id, weight))
+    const detail: PosSaleVariableDetail = {
+      variableMode: 'weight',
+      enteredWeight: weight,
+      weightUom: uom,
+      referenceWeightQty: product.weightQty && product.weightQty > 0 ? product.weightQty : 1,
+    }
+    setLines(prev => addWeightToCart(prev, product.id, weight, detail))
     const totalCents = Math.round(product.priceCents * weight)
     flash(
       `${product.name}: ${weight} ${uom} → ${(totalCents / 100).toFixed(2)}`,
     )
+  }
+
+  function promptCombinationAndAdd(product: Product) {
+    const options = product.combinationOptions ?? []
+    const need = product.choiceQty && product.choiceQty > 0 ? Math.round(product.choiceQty) : 1
+    if (options.length === 0 || need <= 0) {
+      flash(`${product.name}: no combination options configured.`)
+      return
+    }
+
+    const picks: PosSaleCombinationSelection[] = []
+    for (let i = 0; i < need; i += 1) {
+      const list = options
+        .map((o, idx) => `${idx + 1}. ${o.productName || o.productCode || `#${o.productId}`}`)
+        .join('\n')
+      const raw = window.prompt(
+        `${product.name} — pick ${i + 1} of ${need}:\n${list}\nEnter number:`,
+        '1',
+      )
+      if (raw == null) return
+      const idx = Number(raw) - 1
+      const opt = options[idx]
+      if (!opt || !Number.isFinite(idx) || idx < 0) {
+        flash('Invalid combination pick.')
+        return
+      }
+      const existing = picks.find(p => p.productId === opt.productId)
+      if (existing) {
+        existing.quantity += 1
+      } else {
+        picks.push({
+          productId: opt.productId,
+          productCode: opt.productCode,
+          productName: opt.productName,
+          quantity: 1,
+        })
+      }
+    }
+
+    const detail: PosSaleVariableDetail = {
+      variableMode: 'combination',
+      combinationSelections: picks,
+    }
+    setLines(prev => addVariableToCart(prev, product.id, detail, 1))
+    flash(`${product.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
+  }
+
+  function promptReplacementAndAdd(product: Product) {
+    const slots = product.replacementSlots ?? []
+    if (slots.length === 0) {
+      flash(`${product.name}: no replacement slots configured.`)
+      return
+    }
+
+    const selections: PosSaleReplacementSelection[] = []
+    for (const slot of slots) {
+      const alts = slot.alternatives ?? []
+      const linesText = [
+        `0. Keep ${slot.baseComponentName || slot.baseComponentId} (base)`,
+        ...alts.map(
+          (a, idx) =>
+            `${idx + 1}. ${a.componentName || a.componentId}`,
+        ),
+      ].join('\n')
+      const raw = window.prompt(
+        `${product.name} — ${slot.slotLabel || slot.baseComponentName}:\n${linesText}\nEnter number:`,
+        '0',
+      )
+      if (raw == null) return
+      const idx = Number(raw)
+      if (!Number.isFinite(idx) || idx < 0 || idx > alts.length) {
+        flash('Invalid replacement pick.')
+        return
+      }
+      if (idx === 0) {
+        selections.push({
+          baseComponentId: slot.baseComponentId,
+          baseComponentName: slot.baseComponentName,
+          chosenComponentId: slot.baseComponentId,
+          chosenComponentName: slot.baseComponentName,
+          componentUom: slot.baseComponentUom,
+          quantity: slot.quantity > 0 ? slot.quantity : 1,
+        })
+      } else {
+        const alt = alts[idx - 1]!
+        selections.push({
+          baseComponentId: slot.baseComponentId,
+          baseComponentName: slot.baseComponentName,
+          chosenComponentId: alt.componentId,
+          chosenComponentName: alt.componentName,
+          componentUom: alt.componentUom || slot.baseComponentUom,
+          quantity: alt.quantity > 0 ? alt.quantity : (slot.quantity > 0 ? slot.quantity : 1),
+        })
+      }
+    }
+
+    const detail: PosSaleVariableDetail = {
+      variableMode: 'replacement',
+      replacementSelections: selections,
+    }
+    setLines(prev => addVariableToCart(prev, product.id, detail, 1))
+    flash(
+      `${product.name}: ${selections
+        .map(s =>
+          s.chosenComponentId === s.baseComponentId
+            ? s.baseComponentName
+            : `${s.baseComponentName} → ${s.chosenComponentName}`,
+        )
+        .join(', ')}`,
+    )
+  }
+
+  function addProduct(product: Product) {
+    if (product.pricedByWeight || product.variableMode === 'weight') {
+      promptWeightAndAdd(product)
+      return
+    }
+    if (product.variableMode === 'combination') {
+      promptCombinationAndAdd(product)
+      return
+    }
+    if (product.variableMode === 'replacement') {
+      promptReplacementAndAdd(product)
+      return
+    }
+    setLines(prev => addToCart(prev, product.id))
   }
 
   async function chargePayment() {
@@ -127,10 +266,21 @@ export function RegisterPage() {
       for (const line of lines) {
         const productId = Number(line.productId)
         if (!Number.isFinite(productId) || productId <= 0) continue
+        const detail = line.saleDetail
         await api.recordProductSale(productId, {
           locationExternalIds: [session.locationId],
           quantitySold: line.quantity,
           salesChannel: 'pos',
+          variableDetail: detail
+            ? {
+                variableMode: detail.variableMode,
+                enteredWeight: detail.enteredWeight,
+                weightUom: detail.weightUom,
+                referenceWeightQty: detail.referenceWeightQty,
+                combinationSelections: detail.combinationSelections,
+                replacementSelections: detail.replacementSelections,
+              }
+            : undefined,
         })
       }
       const count = lines.reduce((n, l) => n + l.quantity, 0)
@@ -206,13 +356,7 @@ export function RegisterPage() {
 
         <ProductGrid
           products={filtered}
-          onAdd={product => {
-            if (product.pricedByWeight) {
-              promptWeightAndAdd(product)
-              return
-            }
-            setLines(prev => addToCart(prev, product.id))
-          }}
+          onAdd={addProduct}
         />
       </div>
 

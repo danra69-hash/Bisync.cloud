@@ -56,16 +56,18 @@ export function mapApiProductsToPosCatalog(
     const group = (product.group || product.category || 'General').trim() || 'General'
     const department = mapDepartment(product.category || '', group)
 
-    const isWeight =
-      Boolean(product.isVariableProduct)
-      && parseVariableMode(product.variableMode) === 'weight'
+    const isVariable = Boolean(product.isVariableProduct)
+    const mode = isVariable ? parseVariableMode(product.variableMode) : undefined
+    const cfg = isVariable
+      ? parseVariableOptionsJson(product.variableOptionsJson, mode)
+      : null
+
     let priceCents = Math.round(rrp * 100)
     let pricedByWeight = false
     let weightUom: string | undefined
     let weightQty: number | undefined
 
-    if (isWeight) {
-      const cfg = parseVariableOptionsJson(product.variableOptionsJson, 'weight')
+    if (mode === 'weight' && cfg) {
       const qty = (product.variableChoiceQty && product.variableChoiceQty > 0)
         ? product.variableChoiceQty
         : cfg.choiceQty
@@ -91,6 +93,10 @@ export function mapApiProductsToPosCatalog(
       pricedByWeight,
       weightUom,
       weightQty,
+      variableMode: mode,
+      choiceQty: cfg?.choiceQty,
+      combinationOptions: mode === 'combination' ? cfg?.combinationOptions : undefined,
+      replacementSlots: mode === 'replacement' ? cfg?.replacementSlots : undefined,
     })
   }
   return rows.sort((a, b) => a.name.localeCompare(b.name))

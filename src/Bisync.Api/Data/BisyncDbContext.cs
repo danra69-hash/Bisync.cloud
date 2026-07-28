@@ -42,6 +42,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosPayment> PosPayments => Set<PosPayment>();
     public DbSet<PosVoid> PosVoids => Set<PosVoid>();
     public DbSet<PosEodSession> PosEodSessions => Set<PosEodSession>();
+    public DbSet<PosSaleDetail> PosSaleDetails => Set<PosSaleDetail>();
     public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
     public DbSet<SalesModuleAppointment> SalesModuleAppointments => Set<SalesModuleAppointment>();
     public DbSet<SalesModuleCalendarSettings> SalesModuleCalendarSettings => Set<SalesModuleCalendarSettings>();
@@ -203,6 +204,17 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
             e.Property(x => x.ProductName).HasMaxLength(200);
             e.Property(x => x.Reason).HasMaxLength(500);
+        });
+        modelBuilder.Entity<PosSaleDetail>(e =>
+        {
+            e.HasIndex(x => new { x.ProductId, x.CreatedAt });
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.CreatedAt });
+            e.Property(x => x.ProductCode).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.SalesChannel).HasMaxLength(20);
+            e.Property(x => x.VariableMode).HasMaxLength(40);
+            e.Property(x => x.WeightUom).HasMaxLength(40);
         });
         modelBuilder.Entity<PosEodSession>(e =>
         {
