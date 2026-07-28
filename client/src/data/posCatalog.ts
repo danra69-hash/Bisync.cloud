@@ -53,7 +53,7 @@ export function productAssignedToSelectedLocations(
   return scoped.some(id => locationIds.includes(id));
 }
 
-/** Selected POS packaging rows (with RRP) for a product; falls back to B2C retail RRP. */
+/** Selected POS sell-unit rows (with RRP) for a product; falls back to the standard product RRP. */
 export function listSelectedPosMenuUnits(
   product: Product,
   catalogProducts: Product[] = [],

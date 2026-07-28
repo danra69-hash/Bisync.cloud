@@ -525,8 +525,8 @@ export function ProductListPage({
                                   : (product.rrp ?? 0) <= 0
                                     ? 'Set an RRP before enabling POS'
                                     : product.posEnabled
-                                      ? 'POS enabled — double-click to change packaging, uncheck to disable'
-                                      : 'Enable POS and choose packaging'
+                                      ? 'POS enabled — double-click to change sell units, uncheck to disable'
+                                      : 'Enable POS and choose sell units'
                             }
                           />
                         </td>

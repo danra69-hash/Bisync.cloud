@@ -106,8 +106,8 @@ export function collectProductPosUnitRows(
       rows.push({
         key: 'b2c-retail',
         unitKey: 'b2c-retail',
-        unitTitle: 'B2C Retail',
-        deliveryPath: 'Standard retail unit',
+        unitTitle: 'Standard',
+        deliveryPath: 'Default sell unit (product RRP)',
         deliverySortQty: 0,
         rrp: product.rrp,
         unitCogs: productCogs,
