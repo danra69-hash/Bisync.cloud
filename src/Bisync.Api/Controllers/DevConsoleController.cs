@@ -562,13 +562,23 @@ public class DevConsoleController(
         }
 
         // QA-tagged catalog / components / vendors (group or name / external id markers)
+        // plus any rows still tagged to the companies being purged (orphans after company delete).
         await TrackAsync("ingredients", () => db.Ingredients
-            .Where(i => i.Group == "QA Power" || i.Name.StartsWith("QA Flour") || i.Name.StartsWith("QA Butter")
-                || i.Name.StartsWith("QA Yeast") || i.Name.StartsWith("QA Salt") || i.Name.StartsWith("QA Sugar"))
+            .Where(i =>
+                (i.CompanyId != null && companyIds.Contains(i.CompanyId.Value))
+                || i.Group == "QA Power"
+                || i.Name.StartsWith("QA Flour")
+                || i.Name.StartsWith("QA Butter")
+                || i.Name.StartsWith("QA Yeast")
+                || i.Name.StartsWith("QA Salt")
+                || i.Name.StartsWith("QA Sugar"))
             .ExecuteDeleteAsync(ct));
 
         var vendorExternalIds = await db.Vendors.AsNoTracking()
-            .Where(v => v.ExternalId.StartsWith("QA-V-") || v.Name.StartsWith("QA Vendor"))
+            .Where(v =>
+                (v.CompanyId != null && companyIds.Contains(v.CompanyId.Value))
+                || v.ExternalId.StartsWith("QA-V-")
+                || v.Name.StartsWith("QA Vendor"))
             .Select(v => v.ExternalId)
             .ToListAsync(ct);
         if (vendorExternalIds.Count > 0)
@@ -764,5 +774,219 @@ public class DevConsoleController(
         {
             return false;
         }
+    }
+
+    public record PurgeExceptRequest(string[]? KeepCompanyNames, int[]? KeepCompanyIds);
+
+    /// <summary>
+    /// Destructive: wipe all companies and their operational data / tenant DB buckets,
+    /// except the keep list (default: Weissbrau Sdn. Bhd.). Also removes orphan rows
+    /// whose CompanyId points at a deleted company.
+    /// </summary>
+    [HttpPost("purge-except")]
+    public async Task<ActionResult<object>> PurgeExcept(
+        [FromBody] PurgeExceptRequest? request,
+        CancellationToken ct)
+    {
+        var blocked = Guard();
+        if (blocked is not null) return blocked;
+
+        request ??= new PurgeExceptRequest(null, null);
+        var keepNames = (request.KeepCompanyNames ?? [])
+            .Select(n => n.Trim())
+            .Where(n => n.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (keepNames.Count == 0)
+            keepNames.Add("Weissbrau Sdn. Bhd.");
+
+        var keepIds = (request.KeepCompanyIds ?? [])
+            .Where(id => id > 0)
+            .Distinct()
+            .ToHashSet();
+
+        var allCompanies = await db.Companies.AsNoTracking().ToListAsync(ct);
+        var keepCompanies = allCompanies
+            .Where(c => keepIds.Contains(c.Id)
+                || keepNames.Any(n => string.Equals(c.Name, n, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        foreach (var c in keepCompanies)
+            keepIds.Add(c.Id);
+
+        if (keepIds.Count == 0)
+        {
+            return BadRequest(new
+            {
+                message = "Keep list matched no companies. Refusing to wipe everything.",
+                keepCompanyNames = keepNames,
+            });
+        }
+
+        var allCompanyIds = allCompanies.Select(c => c.Id).ToList();
+        var orphanCompanyIds = new HashSet<int>();
+        async Task CollectOrphansAsync(IQueryable<int?> query)
+        {
+            foreach (var id in await query.Where(id => id != null).Select(id => id!.Value).Distinct().ToListAsync(ct))
+                orphanCompanyIds.Add(id);
+        }
+        async Task CollectOrphansRequiredAsync(IQueryable<int> query)
+        {
+            foreach (var id in await query.Distinct().ToListAsync(ct))
+                orphanCompanyIds.Add(id);
+        }
+
+        await CollectOrphansAsync(db.Ingredients.Select(i => i.CompanyId));
+        await CollectOrphansAsync(db.Vendors.Select(v => v.CompanyId));
+        await CollectOrphansAsync(db.Products.Select(p => p.CompanyId));
+        await CollectOrphansAsync(db.Locations.Select(l => l.CompanyId));
+        await CollectOrphansAsync(db.AppUsers.Select(u => u.CompanyId));
+        await CollectOrphansAsync(db.PurchaseOrders.Select(p => p.CompanyId));
+        await CollectOrphansAsync(db.InventoryMovements.Select(m => m.CompanyId));
+        await CollectOrphansRequiredAsync(db.TenantConnections.Select(t => t.CompanyId));
+
+        var purgeIds = allCompanyIds
+            .Concat(orphanCompanyIds)
+            .Where(id => !keepIds.Contains(id))
+            .Distinct()
+            .ToList();
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        // Full operational wipe for non-kept company shells (users, inventory, POs, tenant DBs).
+        var remainingCompanyPurgeIds = allCompanies
+            .Where(c => !keepIds.Contains(c.Id))
+            .Select(c => c.Id)
+            .ToList();
+        if (remainingCompanyPurgeIds.Count > 0)
+        {
+            var cleanup = await CleanupQaData(new CleanupQaRequest(remainingCompanyPurgeIds.ToArray(), false), ct);
+            if (cleanup.Result is not OkObjectResult)
+                return cleanup.Result!;
+            counts["companiesViaQaCleanup"] = remainingCompanyPurgeIds.Count;
+        }
+
+        async Task TrackAsync(string key, Func<Task<int>> action)
+        {
+            counts[key] = await action();
+        }
+
+        // Orphan catalog rows whose company row is already gone (e.g. CompanyId=1 after earlier wipe).
+        await TrackAsync("orphanIngredients", () => db.Ingredients
+            .Where(i => i.CompanyId != null && !keepIds.Contains(i.CompanyId.Value))
+            .ExecuteDeleteAsync(ct));
+
+        var orphanVendorExternalIds = await db.Vendors.AsNoTracking()
+            .Where(v => v.CompanyId != null && !keepIds.Contains(v.CompanyId.Value))
+            .Select(v => v.ExternalId)
+            .ToListAsync(ct);
+        if (orphanVendorExternalIds.Count > 0)
+        {
+            var catalogIds = await db.VendorProducts.AsNoTracking()
+                .Where(vp => orphanVendorExternalIds.Contains(vp.VendorExternalId))
+                .Select(vp => vp.ExternalId)
+                .ToListAsync(ct);
+            if (catalogIds.Count > 0)
+            {
+                await TrackAsync("orphanVendorProductPrices", () => db.VendorProductPrices
+                    .Where(vp => catalogIds.Contains(vp.ExternalId))
+                    .ExecuteDeleteAsync(ct));
+            }
+            else
+            {
+                counts["orphanVendorProductPrices"] = 0;
+            }
+
+            await TrackAsync("orphanVendorProducts", () => db.VendorProducts
+                .Where(vp => orphanVendorExternalIds.Contains(vp.VendorExternalId))
+                .ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanVendors", () => db.Vendors
+                .Where(v => v.CompanyId != null && !keepIds.Contains(v.CompanyId.Value))
+                .ExecuteDeleteAsync(ct));
+        }
+        else
+        {
+            counts["orphanVendorProductPrices"] = 0;
+            counts["orphanVendorProducts"] = 0;
+            counts["orphanVendors"] = 0;
+        }
+
+        // Drop any leftover tenant registry / DBs for non-kept ids (including already-deleted companies).
+        var leftoverRegs = await db.TenantConnections
+            .Where(t => !keepIds.Contains(t.CompanyId))
+            .ToListAsync(ct);
+        var droppedDbs = new List<string>();
+        foreach (var reg in leftoverRegs)
+        {
+            var opName = string.IsNullOrWhiteSpace(reg.DatabaseName)
+                ? $"bisync_c_{reg.CompanyId}"
+                : reg.DatabaseName.Trim();
+            var archName = string.IsNullOrWhiteSpace(reg.ArchiveDatabaseName)
+                ? $"{opName}_archive"
+                : reg.ArchiveDatabaseName.Trim();
+            if (await TryDropDatabaseAsync(tenantConnections.DefaultOperationalConnection, opName, ct))
+                droppedDbs.Add(opName);
+            if (await TryDropDatabaseAsync(tenantConnections.DefaultOperationalConnection, archName, ct))
+                droppedDbs.Add(archName);
+            tenantConnections.Invalidate(reg.CompanyId);
+        }
+        counts["leftoverTenantConnections"] = leftoverRegs.Count;
+        if (leftoverRegs.Count > 0)
+        {
+            db.TenantConnections.RemoveRange(leftoverRegs);
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Demo AppUsers (@bisync.cloud) left behind when company rows were deleted earlier.
+        var orphanDemoUsers = await db.AppUsers
+            .Where(u => (u.CompanyId == null || !keepIds.Contains(u.CompanyId.Value))
+                && u.Email.EndsWith("@bisync.cloud")
+                && u.Email != SuperAdminAccess.SuperAdminEmail)
+            .ToListAsync(ct);
+        counts["orphanDemoAppUsers"] = orphanDemoUsers.Count;
+        if (orphanDemoUsers.Count > 0)
+        {
+            db.AppUsers.RemoveRange(orphanDemoUsers);
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Demo employees left with hard-coded CompanyId 1/2/3 after sandbox wipe.
+        var orphanDemoEmployees = await db.Employees
+            .Where(e => e.Email.EndsWith("@bisync.cloud"))
+            .ToListAsync(ct);
+        if (orphanDemoEmployees.Count > 0)
+        {
+            var empIds = orphanDemoEmployees.Select(e => e.Id).ToList();
+            await TrackAsync("orphanDemoLeaveRequests", () => db.LeaveRequests.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoLeaveBalances", () => db.LeaveBalances.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoShiftSchedules", () => db.ShiftSchedules.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoAttendanceRecords", () => db.AttendanceRecords.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoEducationRecords", () => db.EducationRecords.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoPreviousEmployments", () => db.PreviousEmployments.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoEmployeeMovements", () => db.EmployeeMovements.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            await TrackAsync("orphanDemoPerformanceAppraisals", () => db.PerformanceAppraisals.Where(x => empIds.Contains(x.EmployeeId)).ExecuteDeleteAsync(ct));
+            counts["orphanDemoEmployees"] = orphanDemoEmployees.Count;
+            db.Employees.RemoveRange(orphanDemoEmployees);
+            await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            counts["orphanDemoEmployees"] = 0;
+        }
+
+        var remaining = await db.Companies.AsNoTracking()
+            .OrderBy(c => c.Id)
+            .Select(c => new { c.Id, c.Name })
+            .ToListAsync(ct);
+
+        return Ok(new
+        {
+            keptCompanyIds = keepIds.OrderBy(id => id).ToArray(),
+            keptCompanies = keepCompanies.Select(c => new { c.Id, c.Name }),
+            purgedCompanyIds = purgeIds,
+            deletedCounts = counts,
+            leftoverTenantDatabasesDropped = droppedDbs,
+            remainingCompanies = remaining,
+            note = "All companies except keep list removed, including orphan catalog rows and tenant DB buckets.",
+        });
     }
 }
