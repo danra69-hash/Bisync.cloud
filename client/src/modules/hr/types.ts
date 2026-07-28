@@ -192,6 +192,14 @@ export interface EmployeeLevel {
   publicHolidayEligible: boolean;
   isShift: boolean;
   shiftType?: string | null;
+  /** Duty meal quantity entitlement enabled. */
+  dutyMealQtyEnabled: boolean;
+  /** Meals per working day when duty meal qty is enabled. */
+  dutyMealQtyPerWorkingDay: number;
+  /** Duty meal cash amount entitlement enabled. */
+  dutyMealAmountEnabled: boolean;
+  /** Cash amount per working day when duty meal amount is enabled. */
+  dutyMealAmountPerWorkingDay: number;
   active: boolean;
 }
 

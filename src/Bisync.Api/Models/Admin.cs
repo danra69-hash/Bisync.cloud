@@ -34,6 +34,14 @@ public class EmployeeLevel
     public bool PublicHolidayEligible { get; set; }
     public bool IsShift { get; set; }
     public string? ShiftType { get; set; }
+    /// <summary>When true, duty meal quantity entitlement applies per working day.</summary>
+    public bool DutyMealQtyEnabled { get; set; }
+    /// <summary>Duty meal quantity per working day (used when <see cref="DutyMealQtyEnabled"/>).</summary>
+    public decimal DutyMealQtyPerWorkingDay { get; set; }
+    /// <summary>When true, duty meal cash amount entitlement applies per working day.</summary>
+    public bool DutyMealAmountEnabled { get; set; }
+    /// <summary>Duty meal amount per working day (used when <see cref="DutyMealAmountEnabled"/>).</summary>
+    public decimal DutyMealAmountPerWorkingDay { get; set; }
     public bool Active { get; set; } = true;
 }
 

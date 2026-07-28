@@ -166,6 +166,14 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
         level.PublicHolidayEligible = request.PublicHolidayEligible;
         level.IsShift = request.IsShift;
         level.ShiftType = null;
+        level.DutyMealQtyEnabled = request.DutyMealQtyEnabled;
+        level.DutyMealQtyPerWorkingDay = request.DutyMealQtyEnabled
+            ? Math.Max(0, request.DutyMealQtyPerWorkingDay)
+            : 0;
+        level.DutyMealAmountEnabled = request.DutyMealAmountEnabled;
+        level.DutyMealAmountPerWorkingDay = request.DutyMealAmountEnabled
+            ? Math.Max(0, request.DutyMealAmountPerWorkingDay)
+            : 0;
         level.Active = request.Active;
     }
 

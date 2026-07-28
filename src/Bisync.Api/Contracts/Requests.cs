@@ -237,6 +237,12 @@ public class EmployeeLevelRequest
     public bool IsShift { get; set; }
     [MaxLength(100)]
     public string? ShiftType { get; set; }
+    public bool DutyMealQtyEnabled { get; set; }
+    [Range(0, 100)]
+    public decimal DutyMealQtyPerWorkingDay { get; set; }
+    public bool DutyMealAmountEnabled { get; set; }
+    [Range(0, 100000)]
+    public decimal DutyMealAmountPerWorkingDay { get; set; }
     public bool Active { get; set; } = true;
 }
 

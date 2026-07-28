@@ -179,6 +179,8 @@ public static class HrModelConfiguration
             e.HasIndex(x => x.LevelName).IsUnique();
             e.Property(x => x.WorkingHoursPerDay).HasPrecision(4, 2);
             e.Property(x => x.BreakHoursPerShift).HasPrecision(4, 2);
+            e.Property(x => x.DutyMealQtyPerWorkingDay).HasPrecision(8, 2);
+            e.Property(x => x.DutyMealAmountPerWorkingDay).HasPrecision(12, 2);
             e.Property(x => x.ShiftType).HasMaxLength(100);
         });
 
