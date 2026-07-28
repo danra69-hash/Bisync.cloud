@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { api, type PosTestTapStatus, type Product } from '../../api';
+import { productMatchesPosMenu, resolvePosMenuRrp } from '../../data/posCatalog';
 import { pageShellClass } from '../layout/pageLayout';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -16,19 +17,6 @@ type CartLine = {
   unitPrice: number;
   qty: number;
 };
-
-function productMatchesScope(
-  product: Product,
-  companyId: number | null,
-  locationIds: string[],
-): boolean {
-  if (product.active === false || !product.posEnabled) return false;
-  if (companyId != null && product.companyId != null && product.companyId !== companyId) return false;
-  if (locationIds.length === 0) return true;
-  const scoped = product.locationExternalIds ?? [];
-  if (scoped.length === 0) return true;
-  return scoped.some(id => locationIds.includes(id));
-}
 
 export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const { currency } = useCountryFormatters();
@@ -53,7 +41,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
       const rows = await api.products(selectedCompanyId);
       setProducts(
         rows
-          .filter(p => productMatchesScope(p, selectedCompanyId, selectedLocationIds))
+          .filter(p => productMatchesPosMenu(p, selectedCompanyId, selectedLocationIds))
           .sort((a, b) => a.name.localeCompare(b.name)),
       );
     } catch (e) {
@@ -117,7 +105,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
         {
           productId: product.id,
           name: product.name,
-          unitPrice: product.rrp ?? 0,
+          unitPrice: resolvePosMenuRrp(product, products),
           qty: 1,
         },
       ];
@@ -186,7 +174,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Test Tap</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Tap POS-enabled products to build a test sale, then charge to deplete inventory.
+            Tap B2C POS menu products (with RRP) to build a test sale, then charge to deplete inventory.
           </p>
         </div>
         {status ? (
@@ -223,10 +211,10 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
           ) : tapTiles.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-card px-4 py-12 text-center">
               <p className="text-sm text-muted-foreground">
-                No POS-enabled products for this company/location.
+                No B2C POS menu products for this company/location.
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Enable POS on products under Revenue Management → Products.
+                Set type to B2C, enter RRP, then tick POS under Revenue Management → Products.
               </p>
             </div>
           ) : (
@@ -243,7 +231,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">{product.category || '—'}</p>
                   <p className="mt-1 text-sm font-semibold tabular-nums">
-                    {currency(product.rrp ?? 0)}
+                    {currency(resolvePosMenuRrp(product, products))}
                   </p>
                 </button>
               ))}

@@ -546,6 +546,17 @@
       "notes": "Point-of-Sales bar — POS Test Tap after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
     },
     {
+      "id": "dr.page.pos-menu",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosMenuPage.tsx",
+      "symbol": "PosMenuPage",
+      "route": "/pos/menu",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-28",
+      "notes": "Point-of-Sales bar — POS Menu of company/location B2C products with POS enabled and RRP"
+    },
+    {
       "id": "dr.module.hr",
       "kind": "client-module",
       "path": "client/src/modules/hr/HrModule.tsx",
