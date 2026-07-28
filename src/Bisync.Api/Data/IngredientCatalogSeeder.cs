@@ -47,30 +47,36 @@ public static class IngredientCatalogSeeder
 
     public static async Task EnsureCatalogIngredientsAsync(BisyncDbContext db)
     {
-        var defaultCompanyId = await db.Companies.AsNoTracking()
+        // Only seed demo catalog into Bisync / QA sandbox companies — never customer tenants.
+        var seedCompanyIds = await db.Companies.AsNoTracking()
+            .Where(c => c.Name.StartsWith("Bisync") || c.Name.StartsWith("QA "))
             .OrderBy(c => c.Id)
-            .Select(c => (int?)c.Id)
-            .FirstOrDefaultAsync();
-        if (defaultCompanyId is null)
+            .Select(c => c.Id)
+            .ToListAsync();
+        if (seedCompanyIds.Count == 0)
             return;
 
-        var existingNames = await db.Ingredients
-            .Where(i => i.CompanyId == defaultCompanyId)
-            .Select(i => i.Name.ToLower())
-            .ToListAsync();
-
-        var existing = new HashSet<string>(existingNames);
         var added = false;
-
-        foreach (var seed in CatalogIngredients)
+        foreach (var defaultCompanyId in seedCompanyIds)
         {
-            if (existing.Contains(seed.Name.ToLower()))
-                continue;
+            var existingNames = await db.Ingredients
+                .Where(i => i.CompanyId == defaultCompanyId)
+                .Select(i => i.Name.ToLower())
+                .ToListAsync();
 
-            var code = await CompanyCodeService.ResolveCodeAsync(db, defaultCompanyId.Value);
-            var componentId = await ComponentIdGenerator.GenerateAsync(db, code, defaultCompanyId);
-            db.Ingredients.Add(seed.ToIngredient(componentId, defaultCompanyId.Value));
-            added = true;
+            var existing = new HashSet<string>(existingNames);
+
+            foreach (var seed in CatalogIngredients)
+            {
+                if (existing.Contains(seed.Name.ToLower()))
+                    continue;
+
+                var code = await CompanyCodeService.ResolveCodeAsync(db, defaultCompanyId);
+                var componentId = await ComponentIdGenerator.GenerateAsync(db, code, defaultCompanyId);
+                db.Ingredients.Add(seed.ToIngredient(componentId, defaultCompanyId));
+                existing.Add(seed.Name.ToLower());
+                added = true;
+            }
         }
 
         if (added)
