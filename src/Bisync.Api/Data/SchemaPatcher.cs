@@ -886,7 +886,7 @@ public static class SchemaPatcher
                 "TableLabel" TEXT NOT NULL DEFAULT '',
                 "TakeoutCallLabel" TEXT NOT NULL DEFAULT '',
                 "LinesJson" TEXT NOT NULL DEFAULT '[]',
-                "ChargesJson" TEXT NOT NULL DEFAULT '{}',
+                "ChargesJson" TEXT NOT NULL DEFAULT '{{}}',
                 "SplitSessionJson" TEXT NOT NULL DEFAULT '',
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "Active" INTEGER NOT NULL DEFAULT 1
@@ -953,7 +953,7 @@ public static class SchemaPatcher
                 "CashConfirmed" INTEGER NOT NULL DEFAULT 0,
                 "CashExpectedCents" bigint NOT NULL DEFAULT 0,
                 "CashCountedCents" bigint NOT NULL DEFAULT 0,
-                "CashCountQtysJson" TEXT NOT NULL DEFAULT '{}',
+                "CashCountQtysJson" TEXT NOT NULL DEFAULT '{{}}',
                 "CreditQrConfirmed" INTEGER NOT NULL DEFAULT 0,
                 "NonRevenueConfirmed" INTEGER NOT NULL DEFAULT 0,
                 "VoidsConfirmed" INTEGER NOT NULL DEFAULT 0,
