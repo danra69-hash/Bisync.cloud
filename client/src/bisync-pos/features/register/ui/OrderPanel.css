@@ -150,6 +150,15 @@
   padding-right: var(--space-2);
 }
 
+.order-lines-table__note {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .order-lines-table__qty,
 .order-lines-table__price,
 .order-lines-table__total {

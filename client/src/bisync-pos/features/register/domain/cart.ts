@@ -1,11 +1,17 @@
 import type { CartLine, OrderCharges, Product, ProductId } from './types'
 import type { MoneyCents } from '../../../core/types/money'
+import type { PosSaleVariableDetail } from './saleDetail'
+import { summarizeSaleDetail } from './saleDetail'
+
+function newLineKey() {
+  return `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
 
 export function addToCart(lines: CartLine[], productId: ProductId): CartLine[] {
-  const existing = lines.find((l) => l.productId === productId)
+  const existing = lines.find((l) => l.productId === productId && !l.saleDetail)
   if (existing) {
     return lines.map((l) =>
-      l.productId === productId ? { ...l, quantity: l.quantity + 1 } : l,
+      l === existing ? { ...l, quantity: l.quantity + 1 } : l,
     )
   }
   return [...lines, { productId, quantity: 1 }]
@@ -16,29 +22,75 @@ export function addWeightToCart(
   lines: CartLine[],
   productId: ProductId,
   weight: number,
+  detail: PosSaleVariableDetail,
 ): CartLine[] {
   if (!(weight > 0)) return lines
-  const existing = lines.find((l) => l.productId === productId)
+  const note = summarizeSaleDetail(detail)
+  const existing = lines.find((l) => l.productId === productId && l.saleDetail?.variableMode === 'weight')
   if (existing) {
     return lines.map((l) =>
-      l.productId === productId ? { ...l, quantity: weight } : l,
+      l === existing
+        ? { ...l, quantity: weight, saleDetail: detail, note }
+        : l,
     )
   }
-  return [...lines, { productId, quantity: weight }]
+  return [
+    ...lines,
+    {
+      productId,
+      quantity: weight,
+      lineKey: newLineKey(),
+      saleDetail: detail,
+      note,
+    },
+  ]
+}
+
+/** Add a combination or replacement variable line (never merges). */
+export function addVariableToCart(
+  lines: CartLine[],
+  productId: ProductId,
+  saleDetail: PosSaleVariableDetail,
+  quantity = 1,
+): CartLine[] {
+  if (!(quantity > 0)) return lines
+  return [
+    ...lines,
+    {
+      productId,
+      quantity,
+      lineKey: newLineKey(),
+      saleDetail,
+      note: summarizeSaleDetail(saleDetail),
+    },
+  ]
 }
 
 export function setLineQty(
   lines: CartLine[],
   productId: ProductId,
   quantity: number,
+  lineKey?: string,
 ): CartLine[] {
   if (quantity <= 0) {
-    return lines.filter((l) => l.productId !== productId)
+    return removeLine(lines, productId, lineKey)
   }
-  return lines.map((l) => (l.productId === productId ? { ...l, quantity } : l))
+  return lines.map((l) => {
+    if (lineKey) {
+      return l.lineKey === lineKey ? { ...l, quantity } : l
+    }
+    return l.productId === productId && !l.lineKey ? { ...l, quantity } : l
+  })
 }
 
-export function removeLine(lines: CartLine[], productId: ProductId): CartLine[] {
+export function removeLine(
+  lines: CartLine[],
+  productId: ProductId,
+  lineKey?: string,
+): CartLine[] {
+  if (lineKey) {
+    return lines.filter((l) => l.lineKey !== lineKey)
+  }
   return lines.filter((l) => l.productId !== productId)
 }
 
@@ -46,8 +98,14 @@ export function setLineNote(
   lines: CartLine[],
   productId: ProductId,
   note: string,
+  lineKey?: string,
 ): CartLine[] {
-  return lines.map((l) => (l.productId === productId ? { ...l, note } : l))
+  return lines.map((l) => {
+    if (lineKey) {
+      return l.lineKey === lineKey ? { ...l, note } : l
+    }
+    return l.productId === productId ? { ...l, note } : l
+  })
 }
 
 export function cartSubtotal(

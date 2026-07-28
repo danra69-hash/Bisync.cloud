@@ -1,3 +1,4 @@
+using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -557,12 +558,14 @@ public class ProductionInventoryService(
         IReadOnlyList<string> locationExternalIds,
         decimal quantitySold,
         string salesChannel,
+        PosSaleVariableDetailRequest? variableDetail = null,
         CancellationToken cancellationToken = default) =>
         productSaleInventory.RecordProductSaleAsync(
             productId,
             locationExternalIds,
             quantitySold,
             salesChannel,
+            variableDetail,
             cancellationToken);
 
     async Task<ProductB2bLocationStock> EnsureStockRowAsync(

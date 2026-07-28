@@ -1,8 +1,15 @@
 import type { MoneyCents } from '../../../core/types/money'
+import type {
+  VariableCombinationOption,
+  VariableReplacementSlot,
+} from '../../../../data/productVariable'
+import type { PosSaleVariableDetail } from './saleDetail'
 
 export type ProductId = string
 
 export type ProductDepartment = 'Food' | 'Beverage' | 'Retail'
+
+export type { PosSaleVariableDetail }
 
 export type Product = {
   id: ProductId
@@ -24,6 +31,12 @@ export type Product = {
   weightUom?: string
   /** Quoted package weight that the original product RRP applied to. */
   weightQty?: number
+  /** Variable product mode when applicable. */
+  variableMode?: 'combination' | 'replacement' | 'weight'
+  /** Combination: total choice units the customer must pick. */
+  choiceQty?: number
+  combinationOptions?: VariableCombinationOption[]
+  replacementSlots?: VariableReplacementSlot[]
 }
 
 export type CartLine = {
@@ -31,6 +44,10 @@ export type CartLine = {
   /** Count for normal items; sold weight (in weightUom) for weight-based items. */
   quantity: number
   note?: string
+  /** Unique key so variable lines with different selections do not merge. */
+  lineKey?: string
+  /** Quantified combination / replacement / weight detail for stock depletion. */
+  saleDetail?: PosSaleVariableDetail
 }
 
 export type OrderCharges = {

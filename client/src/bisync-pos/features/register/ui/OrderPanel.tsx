@@ -118,7 +118,7 @@ export function OrderPanel({
               </tr>
             </thead>
             <tbody>
-              {lines.map((line) => {
+              {lines.map((line, index) => {
                 const product = byId.get(line.productId)
                 if (!product) return null
                 const lineTotal = product.priceCents * line.quantity
@@ -129,8 +129,13 @@ export function OrderPanel({
                   ? `${formatMoney(product.priceCents)}/${product.weightUom}`
                   : formatMoney(product.priceCents)
                 return (
-                  <tr key={line.productId}>
-                    <td className="order-lines-table__product">{product.name}</td>
+                  <tr key={line.lineKey ?? `${line.productId}-${index}`}>
+                    <td className="order-lines-table__product">
+                      <div>{product.name}</div>
+                      {line.note ? (
+                        <div className="order-lines-table__note">{line.note}</div>
+                      ) : null}
+                    </td>
                     <td className="order-lines-table__qty">{qtyLabel}</td>
                     <td className="order-lines-table__price">
                       {unitLabel}
@@ -143,7 +148,9 @@ export function OrderPanel({
                         type="button"
                         className="order-line__remove"
                         aria-label={`Remove ${product.name}`}
-                        onClick={() => onChange(removeLine(lines, line.productId))}
+                        onClick={() =>
+                          onChange(removeLine(lines, line.productId, line.lineKey))
+                        }
                       >
                         <svg
                           viewBox="0 0 24 24"

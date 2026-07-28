@@ -984,8 +984,57 @@ public class RecordProductSaleRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal QuantitySold { get; set; }
-  /// <summary>pos, online, or offline</summary>
+    /// <summary>pos, online, or offline</summary>
     public string SalesChannel { get; set; } = "pos";
+    /// <summary>
+    /// Required for variable products: combination picks, replacement substitutions,
+    /// or exact weight served — each quantified and linked to products/components.
+    /// </summary>
+    public PosSaleVariableDetailRequest? VariableDetail { get; set; }
+}
+
+/// <summary>Quantified variable-product detail for a POS/channel sale line.</summary>
+public class PosSaleVariableDetailRequest
+{
+    /// <summary>combination | replacement | weight</summary>
+    [MaxLength(40)]
+    public string? VariableMode { get; set; }
+    /// <summary>Exact weight served (weight mode).</summary>
+    public decimal? EnteredWeight { get; set; }
+    [MaxLength(40)]
+    public string? WeightUom { get; set; }
+    /// <summary>Quoted weight the product RRP/BOM applies to.</summary>
+    public decimal? ReferenceWeightQty { get; set; }
+    public List<PosSaleCombinationSelectionRequest> CombinationSelections { get; set; } = [];
+    public List<PosSaleReplacementSelectionRequest> ReplacementSelections { get; set; } = [];
+}
+
+public class PosSaleCombinationSelectionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [MaxLength(80)]
+    public string? ProductCode { get; set; }
+    [MaxLength(200)]
+    public string? ProductName { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
+}
+
+public class PosSaleReplacementSelectionRequest
+{
+    [Required, MaxLength(80)]
+    public string BaseComponentId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? BaseComponentName { get; set; }
+    [Required, MaxLength(80)]
+    public string ChosenComponentId { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? ChosenComponentName { get; set; }
+    [MaxLength(40)]
+    public string? ComponentUom { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Quantity { get; set; }
 }
 
 public class PatchProductionBatchRequest

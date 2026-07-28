@@ -3451,7 +3451,34 @@ export const api = {
       'PATCH',
       payload,
     ),
-  recordProductSale: (productId: number, payload: { locationExternalIds: string[]; quantitySold: number; salesChannel?: 'pos' | 'online' | 'offline' }) =>
+  recordProductSale: (
+    productId: number,
+    payload: {
+      locationExternalIds: string[];
+      quantitySold: number;
+      salesChannel?: 'pos' | 'online' | 'offline';
+      variableDetail?: {
+        variableMode?: 'combination' | 'replacement' | 'weight' | string;
+        enteredWeight?: number;
+        weightUom?: string;
+        referenceWeightQty?: number;
+        combinationSelections?: Array<{
+          productId: number;
+          productCode?: string;
+          productName?: string;
+          quantity: number;
+        }>;
+        replacementSelections?: Array<{
+          baseComponentId: string;
+          baseComponentName?: string;
+          chosenComponentId: string;
+          chosenComponentName?: string;
+          componentUom?: string;
+          quantity: number;
+        }>;
+      };
+    },
+  ) =>
     fetchJsonWithMethod<void>(
       `/api/product-management/${productId}/record-sale`,
       'POST',
