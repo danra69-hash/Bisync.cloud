@@ -185,10 +185,13 @@ jobs:
           grep -q 'Dev Console session required' /tmp/launch-settings.json
 
           # SPA bundle must include current Dev Console tabs (catches stale wwwroot).
+          # Download to a file first: with pipefail, `curl | grep -q` fails with curl 23
+          # (SIGPIPE) whenever grep closes early after a match.
           INDEX_HTML="$(curl -fsS -H 'Cache-Control: no-cache' "${URL}/")"
           ASSET="$(printf '%s\n' "${INDEX_HTML}" | grep -oE '/assets/index-[^"]+\.js' | head -1)"
           echo "SPA asset: ${ASSET}"
-          curl -fsS "${URL}${ASSET}" | grep -q 'Ref & Library'
+          curl -fsS "${URL}${ASSET}" -o /tmp/spa-index.js
+          grep -q 'Ref & Library' /tmp/spa-index.js
 
           # Favicon must be the Bisync chain mark, never the old purple Vite icon.
           echo "${INDEX_HTML}" | grep -qE 'favicon\.svg\?v='

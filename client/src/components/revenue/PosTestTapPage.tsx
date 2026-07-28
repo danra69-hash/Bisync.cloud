@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
-import { api, type Product } from '../../api';
+import { api, type PosTestTapStatus, type Product } from '../../api';
 import { pageShellClass } from '../layout/pageLayout';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -38,6 +38,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
   const [cart, setCart] = useState<CartLine[]>([]);
   const [charging, setCharging] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [schemaStatus, setSchemaStatus] = useState<PosTestTapStatus | null>(null);
 
   const locationId = selectedLocationIds[0] ?? null;
 
@@ -66,6 +67,26 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSchema() {
+      if (!selectedCompanyId) {
+        setSchemaStatus(null);
+        return;
+      }
+      try {
+        const data = await api.posTestTapStatus(selectedCompanyId, locationId);
+        if (!cancelled) setSchemaStatus(data);
+      } catch {
+        if (!cancelled) setSchemaStatus(null);
+      }
+    }
+    void loadSchema();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId, locationId]);
 
   useEffect(() => {
     setCart([]);
@@ -172,6 +193,20 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
           <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">{status}</p>
         ) : null}
       </div>
+
+      {schemaStatus?.ready ? (
+        <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground space-y-1">
+          <p className="font-medium text-foreground/80">
+            Operational tables ready
+            {schemaStatus.openBlocksEod ? ' · open checks block EOD' : ''}
+          </p>
+          <p className="tabular-nums">
+            {(schemaStatus.tables ?? [])
+              .map(t => `${t.name.replace(/^Pos/, '')} ${t.count}`)
+              .join(' · ')}
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">

@@ -2044,6 +2044,15 @@ export interface ProductAlias {
   sortOrder?: number;
 }
 
+export interface PosTestTapStatus {
+  ready: boolean;
+  message?: string;
+  companyId?: number | null;
+  locationExternalId?: string;
+  openBlocksEod?: boolean;
+  tables?: { name: string; count: number; purpose: string }[];
+}
+
 export interface Product {
   id: number;
   productId: string;
@@ -3369,6 +3378,11 @@ export const api = {
       'POST',
       payload,
     ),
+  posTestTapStatus: (companyId: number, locationExternalId?: string | null) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (locationExternalId) params.set('locationExternalId', locationExternalId);
+    return fetchJson<PosTestTapStatus>(`/api/pos/test-tap/status?${params}`);
+  },
   salesData: (
     companyId: number | undefined,
     locationIds: string[],
