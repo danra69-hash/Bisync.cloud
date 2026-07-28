@@ -198,8 +198,10 @@ export interface EmployeeLevel {
   dutyMealQtyPerWorkingDay: number;
   /** Duty meal cash amount entitlement enabled. */
   dutyMealAmountEnabled: boolean;
-  /** Cash amount per working day when duty meal amount is enabled. */
-  dutyMealAmountPerWorkingDay: number;
+  /** Cash amount when duty meal amount is enabled. */
+  dutyMealAmount: number;
+  /** Weekly or Monthly. */
+  dutyMealAmountPeriod: 'Weekly' | 'Monthly';
   active: boolean;
 }
 

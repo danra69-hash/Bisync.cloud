@@ -171,11 +171,15 @@ public class EmployeeLevelsController(BisyncDbContext db) : ControllerBase
             ? Math.Max(0, request.DutyMealQtyPerWorkingDay)
             : 0;
         level.DutyMealAmountEnabled = request.DutyMealAmountEnabled;
-        level.DutyMealAmountPerWorkingDay = request.DutyMealAmountEnabled
-            ? Math.Max(0, request.DutyMealAmountPerWorkingDay)
+        level.DutyMealAmount = request.DutyMealAmountEnabled
+            ? Math.Max(0, request.DutyMealAmount)
             : 0;
+        level.DutyMealAmountPeriod = NormalizeDutyMealAmountPeriod(request.DutyMealAmountPeriod);
         level.Active = request.Active;
     }
+
+    private static string NormalizeDutyMealAmountPeriod(string? period)
+        => string.Equals(period, "Weekly", StringComparison.OrdinalIgnoreCase) ? "Weekly" : "Monthly";
 
     private async Task SyncEmployeesToLevel(EmployeeLevel level)
     {
