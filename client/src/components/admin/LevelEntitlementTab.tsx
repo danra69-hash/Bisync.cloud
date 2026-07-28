@@ -43,7 +43,8 @@ const emptyForm = {
   dutyMealQtyEnabled: false,
   dutyMealQtyPerWorkingDay: 0,
   dutyMealAmountEnabled: false,
-  dutyMealAmountPerWorkingDay: 0,
+  dutyMealAmount: 0,
+  dutyMealAmountPeriod: 'Monthly' as 'Weekly' | 'Monthly',
   active: true,
 };
 
@@ -73,7 +74,8 @@ function LevelPanel({
     dutyMealQtyEnabled: !!level.dutyMealQtyEnabled,
     dutyMealQtyPerWorkingDay: level.dutyMealQtyPerWorkingDay ?? 0,
     dutyMealAmountEnabled: !!level.dutyMealAmountEnabled,
-    dutyMealAmountPerWorkingDay: level.dutyMealAmountPerWorkingDay ?? 0,
+    dutyMealAmount: level.dutyMealAmount ?? 0,
+    dutyMealAmountPeriod: level.dutyMealAmountPeriod === 'Weekly' ? 'Weekly' : 'Monthly',
     active: level.active !== false,
   } : { ...emptyForm });
   const [error, setError] = useState<string | null>(null);
@@ -90,8 +92,8 @@ function LevelPanel({
       setError('Enter Duty Meal QTY per working day, or untick the box.');
       return;
     }
-    if (form.dutyMealAmountEnabled && form.dutyMealAmountPerWorkingDay <= 0) {
-      setError('Enter Duty Meal Amount per working day, or untick the box.');
+    if (form.dutyMealAmountEnabled && form.dutyMealAmount <= 0) {
+      setError('Enter Duty Meal Amount, or untick the box.');
       return;
     }
     setSaving(true);
@@ -101,7 +103,8 @@ function LevelPanel({
         ...form,
         dayOffPerWeek: Math.max(0, Math.min(7, Number(form.dayOffPerWeek) || 0)),
         dutyMealQtyPerWorkingDay: form.dutyMealQtyEnabled ? Math.max(0, form.dutyMealQtyPerWorkingDay) : 0,
-        dutyMealAmountPerWorkingDay: form.dutyMealAmountEnabled ? Math.max(0, form.dutyMealAmountPerWorkingDay) : 0,
+        dutyMealAmount: form.dutyMealAmountEnabled ? Math.max(0, form.dutyMealAmount) : 0,
+        dutyMealAmountPeriod: form.dutyMealAmountEnabled ? form.dutyMealAmountPeriod : 'Monthly',
         shiftType: null,
       };
       if (isNew) await hrApi.levels.create(payload);
@@ -210,7 +213,7 @@ function LevelPanel({
             </label>
 
             <div className="pt-2 border-t border-border space-y-3">
-              <p className="text-[11px] font-sans text-muted-foreground uppercase tracking-wider">Duty meal (per working day)</p>
+              <p className="text-[11px] font-sans text-muted-foreground uppercase tracking-wider">Duty meal</p>
               <div className="flex items-start gap-3">
                 <label className="flex items-center gap-2 text-xs cursor-pointer shrink-0 pt-2 min-w-[11rem]">
                   <input
@@ -252,20 +255,44 @@ function LevelPanel({
                     })}
                     className="rounded border-border"
                   />
-                  Duty Meal Amount Box/Working Day
+                  Duty Meal Amount
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 space-y-2">
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     disabled={!form.dutyMealAmountEnabled}
                     className={`${inputCls} ${!form.dutyMealAmountEnabled ? 'opacity-50' : ''}`}
-                    value={form.dutyMealAmountPerWorkingDay}
-                    onChange={e => setForm({ ...form, dutyMealAmountPerWorkingDay: Math.max(0, parseFloat(e.target.value) || 0) })}
-                    placeholder="Amount / working day"
-                    aria-label="Duty Meal Amount Box per working day"
+                    value={form.dutyMealAmount}
+                    onChange={e => setForm({ ...form, dutyMealAmount: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    placeholder="Amount"
+                    aria-label="Duty Meal Amount"
                   />
+                  <div className={`flex items-center gap-4 text-xs ${!form.dutyMealAmountEnabled ? 'opacity-50' : ''}`}>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="dutyMealAmountPeriod"
+                        disabled={!form.dutyMealAmountEnabled}
+                        checked={form.dutyMealAmountPeriod === 'Weekly'}
+                        onChange={() => setForm({ ...form, dutyMealAmountPeriod: 'Weekly' })}
+                        className="border-border"
+                      />
+                      Weekly
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="dutyMealAmountPeriod"
+                        disabled={!form.dutyMealAmountEnabled}
+                        checked={form.dutyMealAmountPeriod === 'Monthly'}
+                        onChange={() => setForm({ ...form, dutyMealAmountPeriod: 'Monthly' })}
+                        className="border-border"
+                      />
+                      Monthly
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -354,7 +381,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
           dayOff: l => l.dayOffPerWeek ?? 2,
           break: l => l.breakHoursPerShift,
           mealQty: l => (l.dutyMealQtyEnabled ? l.dutyMealQtyPerWorkingDay : -1),
-          mealAmt: l => (l.dutyMealAmountEnabled ? l.dutyMealAmountPerWorkingDay : -1),
+          mealAmt: l => (l.dutyMealAmountEnabled ? l.dutyMealAmount : -1),
           shift: l => l.isShift,
           ot: l => l.overtimeEligible,
           ph: l => l.publicHolidayEligible,
@@ -423,7 +450,9 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
                   {level.dutyMealQtyEnabled ? level.dutyMealQtyPerWorkingDay : '—'}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {level.dutyMealAmountEnabled ? level.dutyMealAmountPerWorkingDay : '—'}
+                  {level.dutyMealAmountEnabled
+                    ? `${level.dutyMealAmount}/${level.dutyMealAmountPeriod === 'Weekly' ? 'wk' : 'mo'}`
+                    : '—'}
                 </td>
                 <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                   <ToggleSwitch checked={level.isShift} onChange={v => void toggleFlag(level, { isShift: v })} label="Shift" />

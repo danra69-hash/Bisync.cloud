@@ -38,10 +38,12 @@ public class EmployeeLevel
     public bool DutyMealQtyEnabled { get; set; }
     /// <summary>Duty meal quantity per working day (used when <see cref="DutyMealQtyEnabled"/>).</summary>
     public decimal DutyMealQtyPerWorkingDay { get; set; }
-    /// <summary>When true, duty meal cash amount entitlement applies per working day.</summary>
+    /// <summary>When true, duty meal cash amount entitlement applies (weekly or monthly).</summary>
     public bool DutyMealAmountEnabled { get; set; }
-    /// <summary>Duty meal amount per working day (used when <see cref="DutyMealAmountEnabled"/>).</summary>
-    public decimal DutyMealAmountPerWorkingDay { get; set; }
+    /// <summary>Duty meal cash amount (used when <see cref="DutyMealAmountEnabled"/>).</summary>
+    public decimal DutyMealAmount { get; set; }
+    /// <summary>Period for <see cref="DutyMealAmount"/>: Weekly or Monthly.</summary>
+    public string DutyMealAmountPeriod { get; set; } = "Monthly";
     public bool Active { get; set; } = true;
 }
 

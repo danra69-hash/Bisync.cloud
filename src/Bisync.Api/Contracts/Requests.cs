@@ -242,7 +242,10 @@ public class EmployeeLevelRequest
     public decimal DutyMealQtyPerWorkingDay { get; set; }
     public bool DutyMealAmountEnabled { get; set; }
     [Range(0, 100000)]
-    public decimal DutyMealAmountPerWorkingDay { get; set; }
+    public decimal DutyMealAmount { get; set; }
+    /// <summary>Weekly or Monthly.</summary>
+    [MaxLength(20)]
+    public string DutyMealAmountPeriod { get; set; } = "Monthly";
     public bool Active { get; set; } = true;
 }
 
