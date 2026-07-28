@@ -621,6 +621,7 @@ const BASE_TASKS: TaskDef[] = [
         businessTypesJson: JSON.stringify([RESTAURANT]),
         vendorPolicyTagsJson: '[]',
         modulesJson: '[]',
+        active: restaurant!.active !== false,
       });
       await api.updateLocationConfig(kitchen!.id, {
         name: kitchen!.name,
@@ -635,6 +636,7 @@ const BASE_TASKS: TaskDef[] = [
         businessTypesJson: JSON.stringify([CENTRAL_KITCHEN]),
         vendorPolicyTagsJson: '[]',
         modulesJson: '[]',
+        active: kitchen!.active !== false,
       });
 
       const priced = [

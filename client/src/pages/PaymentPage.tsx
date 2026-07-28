@@ -198,6 +198,7 @@ export function PaymentPage({ onContinue }: Props) {
           vendorPolicyTagsJson: '[]',
           // Empty modules = inherit from company (Accounting never on location).
           modulesJson: '[]',
+          active: original.active !== false,
         });
       }
 

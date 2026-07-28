@@ -190,8 +190,13 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedCompanyId) return;
-    const forCompany = configLocations.filter(l => l.companyId === selectedCompanyId);
-    if (forCompany.length === 0) return;
+    const forCompany = configLocations.filter(
+      l => l.companyId === selectedCompanyId && l.active !== false,
+    );
+    if (forCompany.length === 0) {
+      setSelectedLocationIds(prev => (prev.length === 0 ? prev : []));
+      return;
+    }
     const allowed = new Set(forCompany.map(l => l.externalId));
     setSelectedLocationIds(prev => {
       const next = prev.filter(id => allowed.has(id));
@@ -211,7 +216,7 @@ export default function App() {
   }
 
   const companyScopedConfigLocations = selectedCompanyId
-    ? configLocations.filter(l => l.companyId === selectedCompanyId)
+    ? configLocations.filter(l => l.companyId === selectedCompanyId && l.active !== false)
     : [];
   const selectedCompany = companies.find(company => company.id === selectedCompanyId) ?? null;
   const orgCountryCode = selectedCompany?.countryCode ?? 'MY';
@@ -376,7 +381,9 @@ export default function App() {
               setSelectedLocationIds([]);
               return;
             }
-            const forCompany = configLocations.filter(l => l.companyId === companyId);
+            const forCompany = configLocations.filter(
+              l => l.companyId === companyId && l.active !== false,
+            );
             setSelectedLocationIds(
               forCompany.length === 1 ? [forCompany[0].externalId] : [],
             );

@@ -9,6 +9,8 @@ public class Location
 
     public int? CompanyId { get; set; }
     public Company? Company { get; set; }
+    /// <summary>Inactive locations stay in Platform Config but are hidden from day-to-day selection.</summary>
+    public bool Active { get; set; } = true;
     public string AddressLine1 { get; set; } = string.Empty;
     public string AddressLine2 { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
