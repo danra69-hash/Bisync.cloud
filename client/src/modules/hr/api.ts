@@ -6,6 +6,30 @@ import type {
   LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, PublicHolidayRequest, ScheduleType, ShiftSchedule,
 } from './types';
 
+function formatHttpError(status: number, statusText: string, body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return `${status} ${statusText}`;
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      message?: string;
+      title?: string;
+      errors?: Record<string, string[] | string>;
+    };
+    if (parsed.errors && typeof parsed.errors === 'object') {
+      const parts = Object.entries(parsed.errors).flatMap(([key, value]) => {
+        const messages = Array.isArray(value) ? value : [String(value)];
+        return messages.map(msg => (key ? `${key}: ${msg}` : msg));
+      });
+      if (parts.length > 0) return parts.join(' ');
+    }
+    if (parsed.message?.trim()) return parsed.message.trim();
+    if (parsed.title?.trim()) return parsed.title.trim();
+  } catch {
+    /* plain-text body */
+  }
+  return trimmed;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${HR_API_BASE}${path}`, {
     headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
@@ -13,10 +37,16 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `${res.status} ${res.statusText}`);
+    throw new Error(formatHttpError(res.status, res.statusText, text));
   }
   if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+function blankToNull(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export function toEmployeeRequest(e: Employee): EmployeeRequest {
@@ -44,8 +74,8 @@ export function toEmployeeRequest(e: Employee): EmployeeRequest {
     nationality: e.nationality,
     idPassportNumber: e.idPassportNumber,
     dateOfBirth: e.dateOfBirth,
-    personalEmail: e.personalEmail,
-    permanentAddress: e.permanentAddress,
+    personalEmail: blankToNull(e.personalEmail),
+    permanentAddress: blankToNull(e.permanentAddress),
     maritalStatus: e.maritalStatus,
     bankName: e.bankName,
     bankAccountNumber: e.bankAccountNumber,

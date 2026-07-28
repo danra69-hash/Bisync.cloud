@@ -28,6 +28,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   const [operatingCountryCode, setOperatingCountryCode] = useState('MY');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailSaving, setDetailSaving] = useState(false);
 
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
@@ -105,8 +106,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   };
 
   const platformUserFor = (employee: Employee) =>
-    platformUsers.find(u => u.employeeId === employee.id)
-    ?? platformUsers.find(u => u.email.toLowerCase() === employee.email.toLowerCase());
+    platformUsers.find(u => u.employeeId === employee.id);
 
   const filteredEmployees = useMemo(() => {
     if (!selectedCompanyId) return [];
@@ -236,12 +236,19 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
       setError(addressError);
       return;
     }
-    const saved = await api.employees.update(detailDraft.id, {
-      ...toEmployeeRequest(detailDraft),
-      companyId: platformUserFor(detailDraft)?.companyId ?? selectedCompanyId ?? undefined,
-    });
-    setDetailDraft(resolveEmployeeOrg(saved, orgTree));
-    await notifyChanged();
+    setDetailSaving(true);
+    try {
+      await api.employees.update(detailDraft.id, {
+        ...toEmployeeRequest(detailDraft),
+        companyId: platformUserFor(detailDraft)?.companyId ?? selectedCompanyId ?? undefined,
+      });
+      // Re-fetch full profile so nested collections stay intact after save.
+      const saved = await api.employees.get(detailDraft.id);
+      setDetailDraft(resolveEmployeeOrg(saved, orgTree));
+      await notifyChanged();
+    } finally {
+      setDetailSaving(false);
+    }
   });
 
   const handleDeleteEmployee = () => run(async () => {
@@ -367,17 +374,18 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
           departmentName={departmentName}
           countryCode={countryCodeForEmployee(detailDraft)}
           employeeIsShift={employeeIsShift}
+          saving={detailSaving}
+          error={error}
           onClose={closeEmployeeDetail}
-          onSave={saveEmployeeDetail}
-          onDelete={() => {
-            if (confirm('Delete this employee permanently?')) handleDeleteEmployee();
-          }}
+          onSave={() => void saveEmployeeDetail()}
+          onDelete={handleDeleteEmployee}
           onUpdate={updateDetailDraft}
           onGrantAccess={() => openGrantAccessForEmployee(detailDraft)}
           onAccessControlTypeChange={updateAccessControlType}
           accessControlSaving={accessControlSaving}
           onResetPosPin={resetPosPin}
           onResetPayrollPin={resetPayrollPin}
+          onClearError={() => setError(null)}
         />
       )}
 
