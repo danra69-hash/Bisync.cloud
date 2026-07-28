@@ -76,10 +76,12 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         var yearsOfService = YearsOfServiceFromJoinDate(employee.JoinDate);
         employee.LeaveBalance = new LeaveBalance
         {
-            AlBalance = LeaveTenureRules.ResolveDays(
-                level?.AnnualLeaveRulesJson,
-                yearsOfService,
-                level?.AnnualLeaveDays ?? 0),
+            AlBalance = level is { AnnualLeaveEnabled: true }
+                ? LeaveTenureRules.ResolveDays(
+                    level.AnnualLeaveRulesJson,
+                    yearsOfService,
+                    level.AnnualLeaveDays)
+                : 0,
         };
 
         db.Employees.Add(employee);

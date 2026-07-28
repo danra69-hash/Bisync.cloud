@@ -18,6 +18,9 @@ public static class HrStartup
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DayOffPerWeek", "INTEGER NOT NULL DEFAULT 2");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "SickLeaveRulesJson", "TEXT NOT NULL DEFAULT '[]'");
+        // Existing levels keep leave included; new rows default to included until unticked in UI.
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT true");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "SickLeaveEnabled", "BOOLEAN NOT NULL DEFAULT true");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealQtyEnabled", "BOOLEAN NOT NULL DEFAULT false");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealQtyPerWorkingDay", "NUMERIC(8,2) NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT false");
