@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { api, type AppUser } from '../api';
+import { api, setApiTenantCompanyId, type AppUser } from '../api';
 import { REQUIRE_PLATFORM_LOGIN } from '../config/platformAuth';
 import { clearUserActivity, markUserActivity, useIdleLogout } from '../hooks/useIdleLogout';
 import { clearAllOnboardingFlags } from '../data/onboardingFlags';
@@ -81,6 +81,9 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   };
 
   const login = useCallback(async (email: string, password: string) => {
+    // Drop any prior tenant selection (e.g. leftover QA company) so org APIs
+    // hit the control plane until the user explicitly picks a company.
+    setApiTenantCompanyId(null);
     const user = await api.login(email, password);
     if (!user.active) throw new Error('Invalid email or password.');
 
@@ -126,6 +129,8 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
         reason: 'user-logout',
       }).catch(() => { /* audit best-effort */ });
     }
+
+    setApiTenantCompanyId(null);
 
     if (!REQUIRE_PLATFORM_LOGIN) {
       // Auth paused — stay in-app on the default user instead of bouncing to landing.

@@ -184,6 +184,7 @@ export default function App() {
     if (!companies.some(c => c.id === selectedCompanyId)) {
       setSelectedCompanyId(null);
       setSelectedLocationIds([]);
+      setApiTenantCompanyId(null);
     }
   }, [companies, selectedCompanyId]);
 
