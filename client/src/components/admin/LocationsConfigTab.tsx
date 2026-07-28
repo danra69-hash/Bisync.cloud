@@ -5,13 +5,16 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
-import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type AppUser } from '../../api';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
 import type { AddressParts } from '../../utils/countryFormat';
+import {
+  DETAIL_PANEL_OVERLAY_ELEVATED_CLS,
+  DETAIL_PANEL_SHELL_ELEVATED_CLS,
+} from '../layout/sidePanelShared';
 import { CompanyProfileFields } from './CompanyProfileFields';
 import {
   buildLocationProfilePayload,
@@ -184,6 +187,7 @@ function LocationPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [overlayCloseArmed, setOverlayCloseArmed] = useState(false);
   const errorBannerRef = useRef<HTMLDivElement>(null);
   const company = companies.find(c => c.id === form.companyId);
   const country = getCountry(company?.countryCode ?? form.countryCode);
@@ -200,6 +204,12 @@ function LocationPanel({
       errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   }
+
+  useEffect(() => {
+    setOverlayCloseArmed(false);
+    const timer = window.setTimeout(() => setOverlayCloseArmed(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [location.id, isNew]);
 
   useEffect(() => {
     setForm(location);
@@ -420,19 +430,21 @@ function LocationPanel({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[105] flex items-stretch justify-end">
+    <>
       <div
-        className="absolute inset-0 bg-foreground/10"
-        onClick={() => !saving && onClose()}
+        className={DETAIL_PANEL_OVERLAY_ELEVATED_CLS}
+        onClick={() => {
+          if (!overlayCloseArmed || saving) return;
+          onClose();
+        }}
         aria-hidden
       />
       <form
-        className="relative z-[1] h-full w-[min(119vw,96vw)] max-w-[min(119vw,96vw)] bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden"
+        className={DETAIL_PANEL_SHELL_ELEVATED_CLS}
         onSubmit={e => {
           e.preventDefault();
           void save();
         }}
-        onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
@@ -652,7 +664,7 @@ function LocationPanel({
           </p>
         </div>
       </form>
-    </div>,
+    </>,
     document.body,
   );
 }
@@ -708,7 +720,10 @@ export function LocationsConfigTab({
 
   function openCreate() {
     setIsNew(true);
-    setEditLocation(blankLocation(selectedCompanyId));
+    // Defer mount so the opening click cannot land on the new overlay and instantly close it.
+    window.setTimeout(() => {
+      setEditLocation(blankLocation(selectedCompanyId));
+    }, 0);
   }
 
   function closePanel() {
@@ -820,7 +835,11 @@ export function LocationsConfigTab({
 
   return (
     <div className="space-y-4">
-      <PageStickyFilters opaque className="py-2">
+      {/* Stick below System Config's own data-page-filters (title/tabs), not at top:0. */}
+      <div
+        className="sticky z-[16] py-2 bg-background border-b border-border/60"
+        style={{ top: 'var(--app-page-filters-height, 0px)' }}
+      >
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
             {selectedCompanyId
@@ -836,7 +855,7 @@ export function LocationsConfigTab({
             Add Location
           </button>
         </div>
-      </PageStickyFilters>
+      </div>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {loading ? (
@@ -895,6 +914,7 @@ export function LocationsConfigTab({
 
       {editLocation && (
         <LocationPanel
+          key={isNew ? 'new-location' : `location-${editLocation.id}`}
           location={editLocation}
           isNew={isNew}
           companies={companies}
