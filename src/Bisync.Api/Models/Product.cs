@@ -8,6 +8,16 @@ public class Product
     public string Category { get; set; } = string.Empty;
     public string Group { get; set; } = string.Empty;
     public bool IsSubProduct { get; set; }
+    /// <summary>Sellable product with combination choices or component replacements.</summary>
+    public bool IsVariableProduct { get; set; }
+    /// <summary>combination | replacement</summary>
+    public string VariableMode { get; set; } = string.Empty;
+    /// <summary>For combination: total units the customer may choose.</summary>
+    public decimal VariableChoiceQty { get; set; }
+    /// <summary>JSON config for combination options or replacement slots.</summary>
+    public string VariableOptionsJson { get; set; } = "{}";
+    public decimal VariableMinCost { get; set; }
+    public decimal VariableMaxCost { get; set; }
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
     public string B2bPackageUnit { get; set; } = "pcs";

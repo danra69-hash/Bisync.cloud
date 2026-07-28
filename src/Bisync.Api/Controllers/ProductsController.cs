@@ -134,6 +134,7 @@ public class ProductsController(
             Category = request.Category?.Trim() ?? string.Empty,
             Group = request.Group?.Trim() ?? string.Empty,
             IsSubProduct = request.IsSubProduct,
+            IsVariableProduct = !request.IsSubProduct && request.IsVariableProduct,
             B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled,
             B2bEnabled = request.IsSubProduct ? false : request.B2bEnabled,
             B2bPackageUnit = request.IsSubProduct
@@ -173,6 +174,9 @@ public class ProductsController(
             Items = items,
             PackagingItems = packagingItems,
         };
+        ApplyVariableFields(product, request);
+        if (product.IsVariableProduct && product.VariableMode == "combination" && items.Count == 0)
+            product.TotalCost = product.VariableMinCost;
 
         db.Products.Add(product);
         await db.SaveChangesAsync();
@@ -258,6 +262,7 @@ public class ProductsController(
         product.IsSubProduct = request.IsSubProduct;
         product.B2cEnabled = request.IsSubProduct ? false : request.B2cEnabled;
         product.B2bEnabled = request.IsSubProduct ? false : request.B2bEnabled;
+        ApplyVariableFields(product, request);
         if (!request.IsSubProduct)
         {
             product.B2bPackageUnit = string.IsNullOrWhiteSpace(request.B2bPackageUnit)
@@ -309,6 +314,8 @@ public class ProductsController(
         db.ProductComponentItems.RemoveRange(product.Items);
         product.Items = MapItems(request.Items);
         var newTotalCost = product.Items.Sum(i => i.Subtotal);
+        if (product.IsVariableProduct && product.VariableMode == "combination" && product.Items.Count == 0)
+            newTotalCost = product.VariableMinCost;
 
         db.ProductPackagingItems.RemoveRange(product.PackagingItems);
         product.PackagingItems = MapPackagingItems(request.PackagingItems);
@@ -517,6 +524,8 @@ public class ProductsController(
             return "Category is required.";
         if (string.IsNullOrWhiteSpace(request.Group))
             return "Group is required.";
+        if (request.IsSubProduct && request.IsVariableProduct)
+            return "A product cannot be both a Sub-product and a Variable Product.";
         if (request.IsSubProduct)
         {
             if (request.YieldQuantity is null or <= 0)
@@ -538,10 +547,32 @@ public class ProductsController(
         {
             return "B2B product expiry period (days) must be greater than zero.";
         }
-        if (request.Items is null || request.Items.Count == 0)
-            return "Add at least one smart component to the product.";
 
-        foreach (var item in request.Items)
+        if (request.IsVariableProduct)
+        {
+            var mode = (request.VariableMode ?? string.Empty).Trim();
+            if (!string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(mode, "replacement", StringComparison.OrdinalIgnoreCase))
+                return "Variable Product mode must be Combination or Replacement.";
+            if (string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase))
+            {
+                if (request.VariableChoiceQty is null or <= 0)
+                    return "Enter the total package quantity for this combination.";
+                if (string.IsNullOrWhiteSpace(request.VariableOptionsJson)
+                    || request.VariableOptionsJson.Trim() is "{}" or "[]")
+                    return "Add at least two products to the combination choice list.";
+            }
+            else if (request.Items is null || request.Items.Count == 0)
+            {
+                return "Add base Product Components for replacement Variable Products.";
+            }
+        }
+        else if (request.Items is null || request.Items.Count == 0)
+        {
+            return "Add at least one smart component to the product.";
+        }
+
+        foreach (var item in request.Items ?? [])
         {
             if (string.IsNullOrWhiteSpace(item.ComponentId))
                 return "Each line requires a smart component.";
@@ -562,6 +593,32 @@ public class ProductsController(
         }
 
         return null;
+    }
+
+    static void ApplyVariableFields(Product product, UpsertProductRequest request)
+    {
+        if (request.IsSubProduct || !request.IsVariableProduct)
+        {
+            product.IsVariableProduct = false;
+            product.VariableMode = string.Empty;
+            product.VariableChoiceQty = 0;
+            product.VariableOptionsJson = "{}";
+            product.VariableMinCost = 0;
+            product.VariableMaxCost = 0;
+            return;
+        }
+
+        var mode = string.Equals(request.VariableMode, "replacement", StringComparison.OrdinalIgnoreCase)
+            ? "replacement"
+            : "combination";
+        product.IsVariableProduct = true;
+        product.VariableMode = mode;
+        product.VariableChoiceQty = mode == "combination" ? Math.Max(0, request.VariableChoiceQty ?? 0) : 0;
+        product.VariableOptionsJson = string.IsNullOrWhiteSpace(request.VariableOptionsJson)
+            ? "{}"
+            : request.VariableOptionsJson.Trim();
+        product.VariableMinCost = Math.Max(0, request.VariableMinCost ?? 0);
+        product.VariableMaxCost = Math.Max(0, request.VariableMaxCost ?? 0);
     }
 
     static int ResolveExpiryPeriodDays(UpsertProductRequest request)
@@ -642,6 +699,12 @@ public class ProductsController(
         category = product.Category,
         group = product.Group,
         isSubProduct = product.IsSubProduct,
+        isVariableProduct = product.IsVariableProduct,
+        variableMode = product.VariableMode,
+        variableChoiceQty = product.VariableChoiceQty,
+        variableOptionsJson = product.VariableOptionsJson,
+        variableMinCost = product.VariableMinCost,
+        variableMaxCost = product.VariableMaxCost,
         b2cEnabled = product.B2cEnabled,
         b2bEnabled = product.B2bEnabled,
         b2bPackageUnit = product.B2bPackageUnit,

@@ -181,12 +181,26 @@ export function ProductReadOnlyView({
             <p className={labelCls}>Type</p>
             <div className="flex flex-wrap gap-4">
               <label className="inline-flex items-center gap-2 text-xs">
-                <input type="checkbox" checked={!product.isSubProduct} disabled className="rounded border-border" />
+                <input
+                  type="checkbox"
+                  checked={!product.isSubProduct && !product.isVariableProduct}
+                  disabled
+                  className="rounded border-border"
+                />
                 Product
               </label>
               <label className="inline-flex items-center gap-2 text-xs">
                 <input type="checkbox" checked={product.isSubProduct} disabled className="rounded border-border" />
                 Sub-Product
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.isVariableProduct) && !product.isSubProduct}
+                  disabled
+                  className="rounded border-border"
+                />
+                Variable Product
               </label>
             </div>
           </div>
@@ -222,6 +236,12 @@ export function ProductReadOnlyView({
             {product.isSubProduct ? (
               <p className="text-[10px] text-muted-foreground">
                 Sub-products are made or prepped as part of a B2C or B2B product.
+              </p>
+            ) : product.isVariableProduct ? (
+              <p className="text-[10px] text-muted-foreground">
+                Variable {product.variableMode === 'replacement' ? 'replacement' : 'combination'}
+                {' · '}Min {currency(product.variableMinCost ?? 0)}
+                {' · '}Max {currency(product.variableMaxCost ?? 0)}
               </p>
             ) : null}
           </div>
