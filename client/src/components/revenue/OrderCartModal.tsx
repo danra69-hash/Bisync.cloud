@@ -131,7 +131,7 @@ export function OrderCartModal({
     Promise.all([api.companies(), api.locationsConfig(), api.vendors(true)])
       .then(([companies, configLocations, engagedVendors]) => {
         setCompany(companies.find(c => c.id === selectedCompanyId) ?? null);
-        setLocations(configLocations.filter(l => l.companyId === selectedCompanyId));
+        setLocations(configLocations.filter(l => l.companyId === selectedCompanyId && l.active !== false));
         setVendors(engagedVendors);
       })
       .catch(() => {

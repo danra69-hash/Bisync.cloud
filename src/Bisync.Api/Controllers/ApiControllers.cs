@@ -29,6 +29,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             companyName = l.Company?.Name,
             countryCode,
             timeZoneId,
+            l.Active,
             l.AddressLine1,
             l.AddressLine2,
             l.City,
@@ -140,6 +141,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             ExternalId = externalId,
             Name = body.Name.Trim(),
             CompanyId = body.CompanyId,
+            Active = body.Active,
             AddressLine1 = body.AddressLine1 ?? string.Empty,
             AddressLine2 = body.AddressLine2 ?? string.Empty,
             City = body.City ?? string.Empty,
@@ -202,6 +204,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (loc is null) return NotFound();
         loc.CompanyId = body.CompanyId;
         loc.Name = body.Name;
+        loc.Active = body.Active;
         loc.AddressLine1 = body.AddressLine1;
         loc.AddressLine2 = body.AddressLine2;
         loc.City = body.City;

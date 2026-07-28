@@ -100,22 +100,23 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Location>().HasIndex(l => l.ExternalId).IsUnique();
-        modelBuilder.Entity<Location>()
-            .HasOne(l => l.Company)
-            .WithMany(c => c.Locations)
-            .HasForeignKey(l => l.CompanyId)
-            .OnDelete(DeleteBehavior.SetNull);
-        modelBuilder.Entity<Location>()
-            .HasOne(l => l.PrincipalContact)
-            .WithMany()
-            .HasForeignKey(l => l.PrincipalContactUserId)
-            .OnDelete(DeleteBehavior.SetNull);
-        modelBuilder.Entity<Location>()
-            .HasOne(l => l.SecondaryContact)
-            .WithMany()
-            .HasForeignKey(l => l.SecondaryContactUserId)
-            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Location>(e =>
+        {
+            e.HasIndex(l => l.ExternalId).IsUnique();
+            e.Property(x => x.Active).HasConversion<int>();
+            e.HasOne(l => l.Company)
+                .WithMany(c => c.Locations)
+                .HasForeignKey(l => l.CompanyId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(l => l.PrincipalContact)
+                .WithMany()
+                .HasForeignKey(l => l.PrincipalContactUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(l => l.SecondaryContact)
+                .WithMany()
+                .HasForeignKey(l => l.SecondaryContactUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
         modelBuilder.Entity<AppUser>(e =>
         {
             e.ToTable("AppUsers");

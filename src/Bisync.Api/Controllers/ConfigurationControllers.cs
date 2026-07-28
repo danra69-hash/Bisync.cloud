@@ -604,7 +604,8 @@ public record LocationConfigUpdate(
     string VendorPolicyTagsJson,
     string ModulesJson,
     string? OpeningHoursJson = null,
-    int? SecondaryContactUserId = null
+    int? SecondaryContactUserId = null,
+    bool Active = true
 );
 
 public record LocationConfigCreate(
@@ -620,5 +621,6 @@ public record LocationConfigCreate(
     string? VendorPolicyTagsJson,
     string? ModulesJson,
     string? OpeningHoursJson = null,
-    int? SecondaryContactUserId = null
+    int? SecondaryContactUserId = null,
+    bool Active = true
 );

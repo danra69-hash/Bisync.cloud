@@ -80,6 +80,8 @@ export interface LocationConfig {
   countryCode: string;
   /** IANA timezone for this location (company country + state/province). */
   timeZoneId?: string;
+  /** Inactive locations stay in Platform Config but are hidden from day-to-day selection. */
+  active?: boolean;
   addressLine1: string;
   addressLine2: string;
   city: string;

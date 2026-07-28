@@ -52,6 +52,7 @@ import {
   type LocationWeekday,
 } from '../../data/locationOpeningHours';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ToggleSwitch } from './ToggleSwitch';
 
 type LocationSortColumn =
   | 'location'
@@ -60,7 +61,8 @@ type LocationSortColumn =
   | 'principalContact'
   | 'businessType'
   | 'productPolicy'
-  | 'country';
+  | 'country'
+  | 'status';
 
 type LocationTableColumn = LocationSortColumn | 'accessControl';
 
@@ -73,6 +75,7 @@ const LOCATION_TABLE_COLUMNS: SortableColumnDef<LocationTableColumn>[] = [
   { key: 'businessType', label: 'Type of Business' },
   { key: 'productPolicy', label: 'Product Policy' },
   { key: 'country', label: 'Country' },
+  { key: 'status', label: 'Status' },
 ];
 
 function LocationAccessControlCell({
@@ -133,6 +136,7 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     companyId,
     companyName: null,
     countryCode: 'MY',
+    active: true,
     addressLine1: '',
     addressLine2: '',
     city: '',
@@ -159,7 +163,11 @@ function LocationPanel({
   onClose: () => void;
   onSave: (saved: LocationConfig) => void;
 }) {
-  const [form, setForm] = useState(location);
+  const [form, setForm] = useState(() => ({
+    ...location,
+    active: location.active !== false,
+  }));
+  const locationActive = form.active !== false;
   const initialCompany = companies.find(c => c.id === location.companyId);
   const [inheritsCompanyProfile, setInheritsCompanyProfile] = useState(
     () => isNew || location.profileOverridden !== true,
@@ -212,7 +220,10 @@ function LocationPanel({
   }, [location.id, isNew]);
 
   useEffect(() => {
-    setForm(location);
+    setForm({
+      ...location,
+      active: location.active !== false,
+    });
     const initial = companies.find(c => c.id === location.companyId);
     const inherits = isNew || location.profileOverridden !== true;
     setInheritsCompanyProfile(inherits);
@@ -320,6 +331,69 @@ function LocationPanel({
     setError(null);
   }
 
+  async function toggleActive() {
+    if (isNew || !form.id || !form.companyId) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const nextActive = !locationActive;
+      const selectedCompany = company ?? companies.find(c => c.id === form.companyId);
+      if (!selectedCompany) {
+        showError('Selected company could not be found.');
+        return;
+      }
+      const effectiveVendorTags = vendorPolicyTags.length > 0
+        ? vendorPolicyTags
+        : profileArraysFromCompany(selectedCompany).vendorPolicyTags;
+      const profilePayload = buildLocationProfilePayload(
+        selectedCompany,
+        businessTypes,
+        effectiveVendorTags,
+        inheritsCompanyProfile,
+      );
+      const modulesPayload = buildLocationModulesPayload(
+        selectedCompany,
+        modules,
+        inheritsCompanyProfile,
+      );
+      const openingHoursJson = serializeOpeningHours(openingHours);
+      const saved = await api.updateLocationConfig(form.id, {
+        companyId: form.companyId,
+        name: form.name.trim() || form.name,
+        addressLine1: form.addressLine1,
+        addressLine2: form.addressLine2,
+        city: form.city,
+        stateProvince: form.stateProvince,
+        postcode: form.postcode,
+        principalContactUserId: form.principalContactUserId,
+        secondaryContactUserId: form.secondaryContactUserId ?? null,
+        businessTypesJson: profilePayload.businessTypesJson,
+        vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
+        modulesJson: modulesPayload.modulesJson,
+        openingHoursJson,
+        active: nextActive,
+      });
+      const next: LocationConfig = {
+        ...form,
+        ...saved,
+        active: nextActive,
+        companyName: selectedCompany.name,
+        countryCode: selectedCompany.countryCode,
+        businessTypesJson: saved.businessTypesJson ?? profilePayload.effectiveBusinessTypesJson,
+        vendorPolicyTagsJson: saved.vendorPolicyTagsJson ?? profilePayload.effectiveVendorPolicyTagsJson,
+        modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
+        openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
+      };
+      setForm({ ...next, active: nextActive });
+      onSave(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update location status.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function save() {
     if (saving) return;
     setError(null);
@@ -400,6 +474,7 @@ function LocationPanel({
         vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
         modulesJson: modulesPayload.modulesJson,
         openingHoursJson,
+        active: locationActive,
       };
 
       setSaving(true);
@@ -410,6 +485,7 @@ function LocationPanel({
       onSave({
         ...form,
         ...saved,
+        active: saved.active !== false,
         companyName: company.name,
         countryCode: company.countryCode,
         principalContactName: users.find(u => u.id === form.principalContactUserId)?.fullName ?? null,
@@ -422,6 +498,7 @@ function LocationPanel({
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
         secondaryContactUserId: saved.secondaryContactUserId ?? form.secondaryContactUserId ?? null,
       });
+      onClose();
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to save location.');
     } finally {
@@ -449,7 +526,14 @@ function LocationPanel({
         <div className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0">
           <div>
             <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest mb-0.5">Location</p>
-            <h3 className="text-sm font-semibold">{isNew ? 'New Location' : form.name}</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold">{isNew ? 'New Location' : form.name}</h3>
+              {!isNew && (
+                <span className={`text-[10px] font-sans px-1.5 py-0.5 rounded ${locationActive ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
+                  {locationActive ? 'Active' : 'Inactive'}
+                </span>
+              )}
+            </div>
           </div>
           <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"><X size={14} className="text-muted-foreground" /></button>
         </div>
@@ -640,6 +724,24 @@ function LocationPanel({
               </table>
             </div>
           </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+            <div>
+              <p className="text-xs font-medium">Location status</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Inactive locations stay in the registry but are hidden from day-to-day selection.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground">{locationActive ? 'Active' : 'Inactive'}</span>
+              <ToggleSwitch
+                checked={locationActive}
+                disabled={saving}
+                onChange={active => set('active', active)}
+                label={locationActive ? 'Deactivate location' : 'Activate location'}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="relative z-20 px-5 py-4 border-t border-border shrink-0 space-y-2 bg-card">
@@ -648,16 +750,34 @@ function LocationPanel({
               {error}
             </div>
           )}
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void save()}
-              className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : isNew ? 'Add Location' : 'Save Changes'}
-            </button>
+          <div className="flex items-center justify-between gap-3">
+            {!isNew && form.id ? (
+              <button
+                type="button"
+                onClick={() => void toggleActive()}
+                disabled={saving}
+                className={`text-xs font-sans border rounded-md px-4 py-2 disabled:opacity-50 ${
+                  locationActive
+                    ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
+                    : 'border-[#5A7A2A]/30 text-[#5A7A2A] hover:bg-[#5A7A2A]/10'
+                }`}
+              >
+                {saving ? 'Saving…' : locationActive ? 'Deactivate Location' : 'Activate Location'}
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} disabled={saving} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50">Cancel</button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void save()}
+                className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : isNew ? 'Add Location' : 'Save Changes'}
+              </button>
+            </div>
           </div>
           <p className="text-[11px] text-muted-foreground text-right">
             Required: company, location name, address, and business/policy settings (inherited from company is fine).
@@ -706,6 +826,7 @@ export function LocationsConfigTab({
       }
       return [...prev, saved].sort((a, b) => a.name.localeCompare(b.name));
     });
+    setEditLocation(prev => (prev && prev.id === saved.id ? { ...prev, ...saved } : prev));
     onOrgDataChanged?.();
     void Promise.all([api.locationsConfig(), api.companies(), api.users()])
       .then(([locs, comps, usrs]) => {
@@ -761,6 +882,7 @@ export function LocationsConfigTab({
         businessTypesJson: profile.businessTypesJson ?? '[]',
         vendorPolicyTagsJson: profile.vendorPolicyTagsJson ?? '[]',
         modulesJson: modulesPayload.modulesJson,
+        active: location.active !== false,
       });
       setLocations(prev => prev.map(loc => (
         loc.id === location.id
@@ -819,6 +941,7 @@ export function LocationsConfigTab({
             return formatVendorPolicyCell(resolveLocationProfileForDisplay(loc, company).vendorPolicyTagsJson);
           },
           country: loc => getCountry(loc.countryCode).name,
+          status: loc => loc.active !== false,
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
@@ -903,9 +1026,14 @@ export function LocationsConfigTab({
                     {profile.inherits && <span className="block text-[10px] text-primary/80 mt-0.5">From company</span>}
                   </td>
                   <td className="px-4 py-3">{getCountry(loc.countryCode).name}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-sans px-1.5 py-0.5 rounded ${loc.active !== false ? 'bg-[#5A7A2A]/15 text-[#5A7A2A]' : 'bg-muted text-muted-foreground'}`}>
+                      {loc.active !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
                 </tr>
               );})}
-              <InfiniteScrollTableSentinel colSpan={8} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+              <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
             </tbody>
           </table>
           </TableScrollContainer>
@@ -920,10 +1048,7 @@ export function LocationsConfigTab({
           companies={companies}
           users={users}
           onClose={closePanel}
-          onSave={saved => {
-            afterSave(saved);
-            closePanel();
-          }}
+          onSave={afterSave}
         />
       )}
     </div>
