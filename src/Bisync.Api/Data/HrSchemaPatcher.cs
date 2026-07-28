@@ -15,6 +15,7 @@ public static class HrSchemaPatcher
                 "SickLeaveDays" INTEGER NOT NULL,
                 "OvertimeEligible" INTEGER NOT NULL,
                 "WorkingHoursPerDay" REAL NOT NULL,
+                "DayOffPerWeek" INTEGER NOT NULL DEFAULT 2,
                 "BreakHoursPerShift" REAL NOT NULL,
                 "PublicHolidayEligible" INTEGER NOT NULL,
                 "IsShift" INTEGER NOT NULL DEFAULT 0,

@@ -229,6 +229,8 @@ public class EmployeeLevelRequest
     public bool OvertimeEligible { get; set; }
     [Range(0, 24)]
     public decimal WorkingHoursPerDay { get; set; } = 8;
+    [Range(0, 7)]
+    public int DayOffPerWeek { get; set; } = 2;
     [Range(0, 24)]
     public decimal BreakHoursPerShift { get; set; } = 1;
     public bool PublicHolidayEligible { get; set; }

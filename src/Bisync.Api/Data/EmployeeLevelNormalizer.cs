@@ -57,6 +57,7 @@ public static class EmployeeLevelNormalizer
             SickLeaveDays = 14,
             OvertimeEligible = true,
             WorkingHoursPerDay = 8,
+            DayOffPerWeek = 2,
             BreakHoursPerShift = 1,
             PublicHolidayEligible = true,
             IsShift = true,
@@ -72,6 +73,7 @@ public static class EmployeeLevelNormalizer
             SickLeaveDays = 18,
             OvertimeEligible = true,
             WorkingHoursPerDay = 8,
+            DayOffPerWeek = 2,
             BreakHoursPerShift = 1,
             PublicHolidayEligible = true,
             IsShift = true,
@@ -87,6 +89,7 @@ public static class EmployeeLevelNormalizer
             SickLeaveDays = 30,
             OvertimeEligible = false,
             WorkingHoursPerDay = 8,
+            DayOffPerWeek = 2,
             BreakHoursPerShift = 1,
             PublicHolidayEligible = false,
             IsShift = false,
@@ -109,6 +112,7 @@ public static class EmployeeLevelNormalizer
         level.SickLeaveDays = template.SickLeaveDays;
         level.OvertimeEligible = template.OvertimeEligible;
         level.WorkingHoursPerDay = template.WorkingHoursPerDay;
+        level.DayOffPerWeek = template.DayOffPerWeek;
         level.BreakHoursPerShift = template.BreakHoursPerShift;
         level.PublicHolidayEligible = template.PublicHolidayEligible;
         level.IsShift = template.IsShift;

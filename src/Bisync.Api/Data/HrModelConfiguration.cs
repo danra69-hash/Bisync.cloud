@@ -321,9 +321,9 @@ public static class HrModelConfiguration
     static void SeedReferenceData(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<EmployeeLevel>().HasData(
-            new EmployeeLevel { Id = 1, LevelName = "Junior", AnnualLeaveDays = 12, SickLeaveDays = 14, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Morning Shift" },
-            new EmployeeLevel { Id = 2, LevelName = "Management", AnnualLeaveDays = 20, SickLeaveDays = 18, OvertimeEligible = true, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift" },
-            new EmployeeLevel { Id = 3, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, OvertimeEligible = false, WorkingHoursPerDay = 8, BreakHoursPerShift = 1, PublicHolidayEligible = false });
+            new EmployeeLevel { Id = 1, LevelName = "Junior", AnnualLeaveDays = 12, SickLeaveDays = 14, OvertimeEligible = true, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Morning Shift" },
+            new EmployeeLevel { Id = 2, LevelName = "Management", AnnualLeaveDays = 20, SickLeaveDays = 18, OvertimeEligible = true, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = true, IsShift = true, ShiftType = "Flexible Shift" },
+            new EmployeeLevel { Id = 3, LevelName = "Director", AnnualLeaveDays = 28, SickLeaveDays = 30, OvertimeEligible = false, WorkingHoursPerDay = 8, DayOffPerWeek = 2, BreakHoursPerShift = 1, PublicHolidayEligible = false });
 
         modelBuilder.Entity<PublicHoliday>().HasData(
             new PublicHoliday { Id = 1, Name = "New Year's Day", Date = new DateOnly(2026, 1, 1), IsRecognized = true, CountryCode = "MY" },
