@@ -23,7 +23,8 @@ export function productMatchesPosOrgScope(
 
 /**
  * Products that belong on the POS Menu / Test Tap sell list:
- * finished B2C goods with POS ticked and a positive RRP.
+ * finished B2C goods with POS enabled and a positive RRP.
+ * (B2C + RRP builds are auto-enabled for POS on create/save/backfill.)
  */
 export function isPosMenuProduct(product: Product): boolean {
   if (product.isSubProduct) return false;
