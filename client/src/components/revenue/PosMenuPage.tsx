@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type Product } from '../../api';
 import {
-  listSelectedPosMenuUnits,
   productMatchesPosMenu,
   resolvePosMenuRrp,
 } from '../../data/posCatalog';
@@ -15,6 +14,11 @@ type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 };
+
+/** Compulsory modifiers / forced choices — not modeled on Product yet. */
+function formatCompulsoryOption(_product: Product): string {
+  return '—';
+}
 
 export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const { currency } = useCountryFormatters();
@@ -34,7 +38,13 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
       setProducts(
         rows
           .filter(p => productMatchesPosMenu(p, selectedCompanyId, selectedLocationIds))
-          .sort((a, b) => a.name.localeCompare(b.name)),
+          .sort((a, b) => {
+            const cat = (a.category || '').localeCompare(b.category || '');
+            if (cat !== 0) return cat;
+            const grp = (a.group || '').localeCompare(b.group || '');
+            if (grp !== 0) return grp;
+            return a.name.localeCompare(b.name);
+          }),
       );
     } catch (e) {
       setProducts([]);
@@ -50,11 +60,11 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
 
   const menuRows = useMemo(
     () =>
-      products.map(product => {
-        const units = listSelectedPosMenuUnits(product, products);
-        const rrp = resolvePosMenuRrp(product, products);
-        return { product, units, rrp };
-      }),
+      products.map(product => ({
+        product,
+        rrp: resolvePosMenuRrp(product, products),
+        compulsoryOption: formatCompulsoryOption(product),
+      })),
     [products],
   );
 
@@ -72,7 +82,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Menu</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            B2C products with RRP for this company (POS retail channel).
+            Products enabled for POS with a retail price (RRP) for this company.
           </p>
         </div>
         <button
@@ -101,50 +111,48 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
             No POS menu items for this company.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Build a B2C product with an RRP under Revenue Management → Products — it is enabled for POS automatically.
+            Create a customer-facing product with an RRP under Revenue Management → Products — it is enabled for POS automatically.
           </p>
         </div>
       ) : (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <TableScrollContainer className="max-h-[calc(100dvh-14rem)] overflow-y-auto">
             <table className="w-full table-fixed text-xs">
+              <colgroup>
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[28%]" />
+                <col className="w-[18%]" />
+                <col className="w-[14%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  <TableHeaderCell>Product</TableHeaderCell>
                   <TableHeaderCell>Category</TableHeaderCell>
-                  <TableHeaderCell>Packaging</TableHeaderCell>
+                  <TableHeaderCell>Group</TableHeaderCell>
+                  <TableHeaderCell>Product Code</TableHeaderCell>
+                  <TableHeaderCell>Product</TableHeaderCell>
+                  <TableHeaderCell>Compulsory Option</TableHeaderCell>
                   <TableHeaderCell headerAlign="right">RRP</TableHeaderCell>
                 </tr>
               </thead>
               <tbody>
-                {menuRows.map(({ product, units, rrp }) => (
+                {menuRows.map(({ product, rrp, compulsoryOption }) => (
                   <tr key={product.id} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2.5 text-muted-foreground min-w-0">
+                      <span className="line-clamp-2">{product.category?.trim() || '—'}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-muted-foreground min-w-0">
+                      <span className="line-clamp-2">{product.group?.trim() || '—'}</span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
+                      {product.productId || '—'}
+                    </td>
                     <td className="px-3 py-2.5 font-medium min-w-0">
                       <span className="line-clamp-2">{product.name}</span>
-                      <span className="block text-[10px] text-muted-foreground mt-0.5 font-sans">
-                        {product.productId}
-                      </span>
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {[product.category, product.group].filter(Boolean).join(' · ') || '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {units.length === 0 ? (
-                        'B2C Retail'
-                      ) : (
-                        <ul className="space-y-0.5">
-                          {units.map(unit => (
-                            <li key={unit.key} className="truncate" title={unit.unitTitle}>
-                              {unit.unitTitle}
-                              {unit.rrp > 0 && units.length > 1 ? (
-                                <span className="text-[10px] ml-1 tabular-nums">
-                                  ({currency(unit.rrp)})
-                                </span>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                    <td className="px-3 py-2.5 text-muted-foreground min-w-0">
+                      <span className="line-clamp-2">{compulsoryOption}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
                       {rrp > 0 ? currency(rrp) : '—'}

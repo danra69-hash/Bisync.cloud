@@ -59,7 +59,7 @@ export function ProductPosUnitsModal({
 
   function handleSave() {
     if (selected.length === 0) {
-      setError('Select at least one packaging variation for POS.');
+      setError('Select at least one sell unit for POS.');
       return;
     }
     setError(null);
@@ -75,10 +75,10 @@ export function ProductPosUnitsModal({
       >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div>
-            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">POS Packaging</p>
+            <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">POS Sell Units</p>
             <h3 className="text-sm font-semibold text-foreground mt-0.5">{product.name}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Choose which packaging variations are sold at POS. Sorted smallest to largest.
+              Choose which sell units are available at POS (e.g. standard item, or pack sizes). Sorted smallest to largest.
             </p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50">
@@ -88,7 +88,7 @@ export function ProductPosUnitsModal({
 
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4">
           {rows.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No sellable packaging variations found for this product.</p>
+            <p className="text-xs text-muted-foreground">No sellable units found for this product. Set an RRP on the product first.</p>
           ) : (
             <table className="w-full text-xs">
               <thead>
