@@ -1678,3 +1678,58 @@ public class SetPromotionActiveRequest
     public bool Active { get; set; }
 }
 
+public class CreatePosPromotionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    /// <summary>yyyy-MM-dd</summary>
+    [MaxLength(16)]
+    public string StartDate { get; set; } = string.Empty;
+    /// <summary>yyyy-MM-dd — omit or empty when EndDateOpen</summary>
+    [MaxLength(16)]
+    public string? EndDate { get; set; }
+    public bool EndDateOpen { get; set; }
+    /// <summary>HH:mm</summary>
+    [MaxLength(8)]
+    public string StartTime { get; set; } = "00:00";
+    /// <summary>HH:mm</summary>
+    [MaxLength(8)]
+    public string EndTime { get; set; } = "23:59";
+    /// <summary>daily | daysOfWeek</summary>
+    [MaxLength(20)]
+    public string RepeatMode { get; set; } = "daily";
+    /// <summary>Weekday codes when RepeatMode is daysOfWeek: Mon…Sun</summary>
+    public List<string> DaysOfWeek { get; set; } = [];
+    [MaxLength(100)]
+    public string? FilterCategory { get; set; }
+    [MaxLength(100)]
+    public string? FilterGroup { get; set; }
+    /// <summary>discountPercent | discountPrice</summary>
+    [MaxLength(40)]
+    public string PromoType { get; set; } = "discountPercent";
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+    public List<CreatePosPromotionProductRequest> Products { get; set; } = [];
+}
+
+public class CreatePosPromotionProductRequest
+{
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [Range(0, 999999999)]
+    public decimal Rrp { get; set; }
+    [Range(0, 999999999)]
+    public decimal Cogs { get; set; }
+    [Range(0, 999999999)]
+    public decimal Rpp { get; set; }
+    [Range(0, 100)]
+    public decimal DiscountPercent { get; set; }
+}
+
+public class SetPosPromotionActiveRequest
+{
+    public bool Active { get; set; }
+}
+

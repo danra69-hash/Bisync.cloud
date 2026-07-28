@@ -21,6 +21,7 @@ import { CogsAuditPage } from './CogsAuditPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
+import { PosPromotionSchedulerPage } from './PosPromotionSchedulerPage';
 import { ProductAuditPage } from './ProductAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
@@ -286,6 +287,11 @@ export function RevenueSection({
         <POSBar selectedItem={posItem} onSelectItem={setPosItem} />
         {posItem === 'POS Menu' ? (
           <PosMenuPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'Promotion Scheduler' ? (
+          <PosPromotionSchedulerPage
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}
           />

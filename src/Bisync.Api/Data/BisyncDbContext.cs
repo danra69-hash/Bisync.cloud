@@ -71,6 +71,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<B2bSalesOrderLine> B2bSalesOrderLines => Set<B2bSalesOrderLine>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
+    public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();
+    public DbSet<PosPromotionProduct> PosPromotionProducts => Set<PosPromotionProduct>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
     public DbSet<InventoryCountSession> InventoryCountSessions => Set<InventoryCountSession>();
@@ -484,6 +486,27 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.ProductId);
             e.Property(x => x.ProductName).HasMaxLength(200);
             e.Property(x => x.DeliveryUnit).HasMaxLength(80);
+        });
+        modelBuilder.Entity<PosPromotion>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Active });
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.RepeatMode).HasMaxLength(20);
+            e.Property(x => x.PromoType).HasMaxLength(40);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
+            e.Property(x => x.FilterCategory).HasMaxLength(100);
+            e.Property(x => x.FilterGroup).HasMaxLength(100);
+            e.HasMany(x => x.Products)
+                .WithOne(x => x.PosPromotion)
+                .HasForeignKey(x => x.PosPromotionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PosPromotionProduct>(e =>
+        {
+            e.HasIndex(x => new { x.PosPromotionId, x.ProductId }).IsUnique();
+            e.HasIndex(x => x.ProductId);
+            e.Property(x => x.ProductCode).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
         });
         modelBuilder.Entity<B2bSalesOrder>(e =>
         {
