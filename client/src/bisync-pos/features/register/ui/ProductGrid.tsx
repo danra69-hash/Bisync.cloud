@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react'
 import type { Product } from '../domain/types'
 import { formatMoney } from '../../../core/types/money'
 import './ProductGrid.css'
@@ -5,17 +6,41 @@ import './ProductGrid.css'
 type Props = {
   products: Product[]
   onAdd: (product: Product) => void
+  onAddTakeaway: (product: Product) => void
+  disabled?: boolean
 }
 
-export function ProductGrid({ products, onAdd }: Props) {
+export function ProductGrid({ products, onAdd, onAddTakeaway, disabled = false }: Props) {
   if (products.length === 0) {
     return <p className="product-grid__empty">No products match your filters.</p>
   }
 
+  function activateCard(product: Product) {
+    if (disabled) return
+    onAdd(product)
+  }
+
+  function onCardKeyDown(e: KeyboardEvent<HTMLElement>, product: Product) {
+    if (disabled) return
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onAdd(product)
+    }
+  }
+
   return (
-    <div className="product-grid">
+    <div className={`product-grid${disabled ? ' is-disabled' : ''}`}>
       {products.map((product) => (
-        <article key={product.id} className="product-card">
+        <article
+          key={product.id}
+          className="product-card"
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          aria-label={`Add ${product.name}`}
+          aria-disabled={disabled || undefined}
+          onClick={() => activateCard(product)}
+          onKeyDown={e => onCardKeyDown(e, product)}
+        >
           <div
             className="product-card__media"
             style={{ background: product.accent }}
@@ -33,11 +58,16 @@ export function ProductGrid({ products, onAdd }: Props) {
               </span>
               <button
                 type="button"
-                className="product-card__add"
-                aria-label={`Add ${product.name}`}
-                onClick={() => onAdd(product)}
+                className="product-card__takeaway"
+                aria-label={`Add ${product.name} as takeaway`}
+                disabled={disabled}
+                onClick={e => {
+                  e.stopPropagation()
+                  if (!disabled) onAddTakeaway(product)
+                }}
               >
-                +
+                <span className="product-card__takeaway-label">TA</span>
+                <span aria-hidden>+</span>
               </button>
             </div>
           </div>

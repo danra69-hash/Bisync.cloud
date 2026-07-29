@@ -162,6 +162,35 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         return new PayrollPinVerifyResult { Valid = employee.PayrollPin == pin };
     }
 
+    /// <summary>
+    /// Resolve a POS-enabled employee by 4-digit PIN (used for Check in/out duty activation).
+    /// </summary>
+    [HttpPost("verify-pos-pin")]
+    public async Task<ActionResult<PosPinVerifyResult>> VerifyPosPin(PosPinVerifyRequest request)
+    {
+        var pin = (request.Pin ?? string.Empty).Trim();
+        if (pin.Length != 4 || !pin.All(char.IsDigit))
+            return BadRequest("POS PIN must be exactly 4 digits.");
+
+        var match = await db.Employees.AsNoTracking()
+            .Where(e => e.Active && e.PosEnabled && e.PosPin == pin)
+            .OrderBy(e => e.EmployeeCode)
+            .Select(e => new { e.Id, e.Name, e.EmployeeCode, e.PosPinMustChange })
+            .FirstOrDefaultAsync();
+
+        if (match is null)
+            return new PosPinVerifyResult { Valid = false };
+
+        return new PosPinVerifyResult
+        {
+            Valid = true,
+            EmployeeId = match.Id,
+            EmployeeName = match.Name,
+            EmployeeCode = match.EmployeeCode,
+            MustChangePin = match.PosPinMustChange,
+        };
+    }
+
     [HttpPost("{id:int}/reset-payroll-pin")]
     public async Task<ActionResult<Employee>> ResetPayrollPin(int id)
     {

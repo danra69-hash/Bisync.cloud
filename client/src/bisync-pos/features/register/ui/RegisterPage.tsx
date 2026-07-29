@@ -22,6 +22,11 @@ import {
   releaseFloorTable,
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
+import {
+  loadPosDutySession,
+  POS_DUTY_SESSION_EVENT,
+  type PosDutySession,
+} from '../../../core/session/posDutySession'
 import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
@@ -78,11 +83,25 @@ export function RegisterPage() {
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [comboProduct, setComboProduct] = useState<Product | null>(null)
+  const [pendingTakeawayProduct, setPendingTakeawayProduct] = useState<Product | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
+  const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+
+  useEffect(() => {
+    function syncDuty() {
+      setDuty(loadPosDutySession())
+    }
+    window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
+    window.addEventListener('storage', syncDuty)
+    return () => {
+      window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
+      window.removeEventListener('storage', syncDuty)
+    }
+  }, [])
 
   useEffect(() => {
     const active = loadActiveRegisterSession()
@@ -107,6 +126,8 @@ export function RegisterPage() {
   }, [departments, groupsByDepartment, department, group])
 
   const groups = groupsByDepartment[department] ?? []
+  const groupColumns = Math.max(1, Math.ceil(groups.length / 2))
+  const onDuty = Boolean(duty)
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
 
@@ -140,6 +161,7 @@ export function RegisterPage() {
 
   function handlePickupCancel() {
     setPickupModalOpen(false)
+    setPendingTakeawayProduct(null)
   }
 
   function handlePickupConfirm(pickup: TakeawayPickup) {
@@ -147,11 +169,22 @@ export function RegisterPage() {
     setTakeawayPickup(pickup)
     setPickupModalOpen(false)
     flash(formatPickupLabel(pickup))
+    const pending = pendingTakeawayProduct
+    setPendingTakeawayProduct(null)
+    if (pending) {
+      window.setTimeout(() => addProduct(pending), 0)
+    }
   }
 
   function flash(message: string) {
     setToast(message)
     window.setTimeout(() => setToast(null), 2800)
+  }
+
+  function requireDuty(): boolean {
+    if (onDuty) return true
+    flash('Check in and enter your PIN to activate POS ordering.')
+    return false
   }
 
   function promptWeightAndAdd(product: Product) {
@@ -269,6 +302,7 @@ export function RegisterPage() {
   }
 
   function addProduct(product: Product) {
+    if (!requireDuty()) return
     if (product.pricedByWeight || product.variableMode === 'weight') {
       promptWeightAndAdd(product)
       return
@@ -303,6 +337,16 @@ export function RegisterPage() {
         : `Table ${activeTableSession.tableLabel} cancelled`,
     )
     navigate('/order/floor')
+  }
+
+  function addTakeawayProduct(product: Product) {
+    if (!requireDuty()) return
+    if (dining !== 'takeaway' || !takeawayPickup) {
+      setPendingTakeawayProduct(product)
+      setPickupModalOpen(true)
+      return
+    }
+    addProduct(product)
   }
 
   async function chargePayment() {
@@ -411,7 +455,12 @@ export function RegisterPage() {
           </div>
         </div>
 
-        <div className="register__tabs" role="tablist" aria-label="Groups">
+        <div
+          className="register__tabs"
+          role="tablist"
+          aria-label="Groups"
+          style={{ gridTemplateColumns: `repeat(${groupColumns}, minmax(0, 1fr))` }}
+        >
           {groups.map(g => (
             <button
               key={g}
@@ -426,10 +475,22 @@ export function RegisterPage() {
           ))}
         </div>
 
+        {!onDuty ? (
+          <p className="register__duty-banner" role="status">
+            Use Check in/out: scan with SuperApp, then enter your PIN to unlock ordering.
+          </p>
+        ) : (
+          <p className="register__duty-banner is-on" role="status">
+            On duty: {duty?.employeeName}
+          </p>
+        )}
+
         <div className="register__grid-scroll">
           <ProductGrid
             products={filtered}
             onAdd={addProduct}
+            onAddTakeaway={addTakeawayProduct}
+            disabled={!onDuty}
           />
         </div>
       </div>
