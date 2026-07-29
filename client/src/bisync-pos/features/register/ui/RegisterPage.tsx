@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { MOCK_PRODUCTS } from '../domain/catalog'
 import {
   addToCart,
@@ -15,6 +16,12 @@ import type {
 } from '../domain/saleDetail'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { buildDepartmentGroups } from '../../../core/session/mapPosCatalog'
+import {
+  clearActiveRegisterSession,
+  loadActiveRegisterSession,
+  releaseFloorTable,
+  type ActiveRegisterSession,
+} from '../../order/domain/tables'
 import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
@@ -35,6 +42,7 @@ const EMPTY_CHARGES: OrderCharges = {
 }
 
 export function RegisterPage() {
+  const navigate = useNavigate()
   const session = usePosSessionOptional()
   const liveCatalog = session?.catalog ?? []
 
@@ -63,7 +71,10 @@ export function RegisterPage() {
     return groups?.[0] ?? ''
   })
   const [dining, setDining] = useState('dine-in')
-  const [table, setTable] = useState('t5')
+  const [activeTableSession, setActiveTableSession] = useState<ActiveRegisterSession | null>(
+    () => loadActiveRegisterSession(),
+  )
+  const [table, setTable] = useState(() => loadActiveRegisterSession()?.tableId ?? 't5')
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [comboProduct, setComboProduct] = useState<Product | null>(null)
@@ -72,6 +83,15 @@ export function RegisterPage() {
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
+
+  useEffect(() => {
+    const active = loadActiveRegisterSession()
+    setActiveTableSession(active)
+    if (active) {
+      setDining('dine-in')
+      setTable(active.tableId)
+    }
+  }, [])
 
   useEffect(() => {
     if (!departments.includes(department)) {
@@ -264,6 +284,27 @@ export function RegisterPage() {
     setLines(prev => addToCart(prev, product.id))
   }
 
+  function handleCancelTable() {
+    if (lines.length > 0) {
+      flash('Remove order items before cancelling the table.')
+      return
+    }
+    if (!activeTableSession) {
+      flash('No opened table to cancel.')
+      return
+    }
+    const released = releaseFloorTable(activeTableSession.tableId)
+    clearActiveRegisterSession()
+    setActiveTableSession(null)
+    setCharges(EMPTY_CHARGES)
+    flash(
+      released
+        ? `Table ${activeTableSession.tableLabel} released`
+        : `Table ${activeTableSession.tableLabel} cancelled`,
+    )
+    navigate('/order/floor')
+  }
+
   async function chargePayment() {
     if (!session) {
       flash('Opening payment…')
@@ -315,6 +356,8 @@ export function RegisterPage() {
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       setLines([])
       setCharges(EMPTY_CHARGES)
+      clearActiveRegisterSession()
+      setActiveTableSession(null)
       flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)
       session.refreshCatalog()
     } catch (e) {
@@ -409,7 +452,12 @@ export function RegisterPage() {
         onOpenPickup={() => {
           if (dining === 'takeaway') setPickupModalOpen(true)
         }}
+        activeTableLabel={activeTableSession?.tableLabel ?? null}
         onAction={action => {
+          if (action === 'cancel') {
+            handleCancelTable()
+            return
+          }
           if (action === 'payment') {
             void chargePayment()
             return

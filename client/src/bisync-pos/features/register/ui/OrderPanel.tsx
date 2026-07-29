@@ -19,7 +19,9 @@ type Props = {
   onChargesChange: (charges: OrderCharges) => void
   onOpenHistory: () => void
   onOpenPickup?: () => void
-  onAction: (action: 'save' | 'print' | 'payment') => void
+  onAction: (action: 'save' | 'print' | 'payment' | 'cancel') => void
+  /** When set, Cancel releases this opened table if the check has no items. */
+  activeTableLabel?: string | null
 }
 
 export function OrderPanel({
@@ -39,11 +41,13 @@ export function OrderPanel({
   onOpenHistory,
   onOpenPickup,
   onAction,
+  activeTableLabel = null,
 }: Props) {
   const byId = new Map(products.map((p) => [p.id, p]))
   const subtotal = cartSubtotal(lines, products)
   const grandTotal = cartGrandTotal(lines, products, charges)
   const hasItems = lines.length > 0
+  const canCancelTable = Boolean(activeTableLabel) && !hasItems
 
   function editCents(
     key: keyof OrderCharges,
@@ -76,6 +80,9 @@ export function OrderPanel({
         </select>
         <select value={table} onChange={(e) => onTableChange(e.target.value)}>
           <option value="">Select Table</option>
+          {activeTableLabel ? (
+            <option value={table}>{activeTableLabel}</option>
+          ) : null}
           <option value="t1">Table 1</option>
           <option value="t2">Table 2</option>
           <option value="t5">Table 5</option>
@@ -218,6 +225,21 @@ export function OrderPanel({
       </div>
 
       <div className="order-panel__actions">
+        <button
+          type="button"
+          className="btn btn--danger"
+          disabled={!canCancelTable}
+          title={
+            !activeTableLabel
+              ? 'Open a table from the Floor Plan to cancel'
+              : hasItems
+                ? 'Remove order items before cancelling the table'
+                : `Cancel and release ${activeTableLabel}`
+          }
+          onClick={() => onAction('cancel')}
+        >
+          Cancel
+        </button>
         <button
           type="button"
           className="btn btn--ghost"

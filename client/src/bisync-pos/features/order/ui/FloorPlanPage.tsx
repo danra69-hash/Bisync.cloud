@@ -8,6 +8,7 @@ import {
   loadFloorPlan,
   normalizeTable,
   saveFloorPlan,
+  setActiveRegisterSession,
   type FloorPlanState,
   type FloorTable,
   type FloorZone,
@@ -112,6 +113,15 @@ export function FloorPlanPage() {
     printFixedQr(selectedTable)
   }
 
+  function beginRegisterForTable(table: FloorTable, openedAt?: string) {
+    setActiveRegisterSession({
+      tableId: table.id,
+      tableLabel: table.label,
+      openedAt,
+    })
+    navigate('/order/register')
+  }
+
   function openTableWithoutPrompt(table: FloorTable) {
     const openedAt = formatOpenedAt().iso
     const nextTables = plan.tables.map((t) =>
@@ -127,7 +137,7 @@ export function FloorPlanPage() {
         : t,
     )
     persistPlan({ ...plan, tables: nextTables })
-    navigate('/order/register')
+    beginRegisterForTable(table, openedAt)
   }
 
   function handleTableActivate(table: FloorTable) {
@@ -145,7 +155,7 @@ export function FloorPlanPage() {
     }
 
     // Ordered / reserved — continue service on the register.
-    navigate('/order/register')
+    beginRegisterForTable(table, table.openedAt)
   }
 
   function confirmOpenTable(pax: number) {
@@ -173,7 +183,7 @@ export function FloorPlanPage() {
       openedAt,
     })
     setOpeningTableId(null)
-    navigate('/order/register')
+    beginRegisterForTable(openingTable, openedAt)
   }
 
   useEffect(() => {
