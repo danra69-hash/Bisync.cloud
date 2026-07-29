@@ -85,6 +85,7 @@ export function VariableProductSection({
         productId: product.id,
         productCode: product.productId,
         productName: product.name,
+        productGroup: (product.group || product.category || '').trim() || undefined,
         unitCost,
       });
       existing.add(product.id);
@@ -178,17 +179,64 @@ export function VariableProductSection({
   const availableComboProducts = useMemo(() => {
     const chosen = new Set(config.combinationOptions.map(o => o.productId));
     const q = comboFilter.trim().toLowerCase();
-    return catalogProducts.filter(p => {
-      if (chosen.has(p.id)) return false;
-      if (!q) return true;
-      return (
-        p.name.toLowerCase().includes(q)
-        || (p.productId || '').toLowerCase().includes(q)
-        || (p.category || '').toLowerCase().includes(q)
-        || (p.group || '').toLowerCase().includes(q)
-      );
-    });
+    return catalogProducts
+      .filter(p => {
+        if (chosen.has(p.id)) return false;
+        if (!q) return true;
+        return (
+          p.name.toLowerCase().includes(q)
+          || (p.productId || '').toLowerCase().includes(q)
+          || (p.category || '').toLowerCase().includes(q)
+          || (p.group || '').toLowerCase().includes(q)
+        );
+      })
+      .slice()
+      .sort((a, b) => {
+        const groupA = (a.group || a.category || 'General').trim() || 'General';
+        const groupB = (b.group || b.category || 'General').trim() || 'General';
+        const byGroup = groupA.localeCompare(groupB);
+        if (byGroup !== 0) return byGroup;
+        return a.name.localeCompare(b.name);
+      });
   }, [catalogProducts, config.combinationOptions, comboFilter]);
+
+  const availableComboByGroup = useMemo(() => {
+    const groups: { group: string; products: typeof availableComboProducts }[] = [];
+    for (const product of availableComboProducts) {
+      const group = (product.group || product.category || 'General').trim() || 'General';
+      const last = groups[groups.length - 1];
+      if (last && last.group === group) {
+        last.products.push(product);
+      } else {
+        groups.push({ group, products: [product] });
+      }
+    }
+    return groups;
+  }, [availableComboProducts]);
+
+  const catalogById = useMemo(
+    () => new Map(catalogProducts.map(p => [p.id, p])),
+    [catalogProducts],
+  );
+
+  const sortedCombinationOptions = useMemo(() => {
+    return config.combinationOptions
+      .map(option => {
+        const product = catalogById.get(option.productId);
+        const productGroup = (
+          option.productGroup
+          || product?.group
+          || product?.category
+          || ''
+        ).trim() || 'General';
+        return { option, productGroup };
+      })
+      .sort((a, b) => {
+        const byGroup = a.productGroup.localeCompare(b.productGroup);
+        if (byGroup !== 0) return byGroup;
+        return a.option.productName.localeCompare(b.option.productName);
+      });
+  }, [config.combinationOptions, catalogById]);
 
   const allVisiblePendingChecked =
     availableComboProducts.length > 0
@@ -384,29 +432,41 @@ export function VariableProductSection({
                       </span>
                     </label>
                   </li>
-                  {availableComboProducts.map(p => {
-                    const checked = pendingComboIds.includes(p.id);
-                    return (
-                      <li key={p.id}>
-                        <label className="flex items-start gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-muted/40">
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 rounded border-border"
-                            disabled={disabled}
-                            checked={checked}
-                            onChange={e => togglePendingCombo(p.id, e.target.checked)}
-                          />
-                          <span className="min-w-0">
-                            <span className="font-medium text-foreground">{p.name}</span>
-                            <span className="block text-[10px] text-muted-foreground font-mono">
-                              {p.productId}
-                              {p.group ? ` · ${p.group}` : p.category ? ` · ${p.category}` : ''}
-                            </span>
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
+                  {availableComboByGroup.map(({ group, products }) => (
+                    <li key={group}>
+                      <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/30">
+                        {group}
+                      </div>
+                      <ul>
+                        {products.map(p => {
+                          const checked = pendingComboIds.includes(p.id);
+                          return (
+                            <li key={p.id}>
+                              <label className="flex items-start gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-muted/40">
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 rounded border-border"
+                                  disabled={disabled}
+                                  checked={checked}
+                                  onChange={e => togglePendingCombo(p.id, e.target.checked)}
+                                />
+                                <span className="min-w-0">
+                                  <span className="font-medium text-foreground">
+                                    <span className="text-muted-foreground font-normal">{group}</span>
+                                    <span className="text-muted-foreground font-normal"> · </span>
+                                    {p.name}
+                                  </span>
+                                  <span className="block text-[10px] text-muted-foreground font-mono">
+                                    {p.productId}
+                                  </span>
+                                </span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -419,6 +479,7 @@ export function VariableProductSection({
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="py-2 px-3 font-semibold">Group</th>
                   <th className="py-2 px-3 font-semibold">Product Code</th>
                   <th className="py-2 px-3 font-semibold">Product</th>
                   <th className="py-2 px-3 font-semibold text-right">Unit Cost</th>
@@ -426,15 +487,16 @@ export function VariableProductSection({
                 </tr>
               </thead>
               <tbody>
-                {config.combinationOptions.length === 0 ? (
+                {sortedCombinationOptions.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-4 px-3 text-muted-foreground">
+                    <td colSpan={5} className="py-4 px-3 text-muted-foreground">
                       Add at least two products the customer can choose from.
                     </td>
                   </tr>
                 ) : (
-                  config.combinationOptions.map(option => (
+                  sortedCombinationOptions.map(({ option, productGroup }) => (
                     <tr key={option.key} className="border-b border-border/70">
+                      <td className="py-2 px-3 text-muted-foreground">{productGroup}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground">{option.productCode}</td>
                       <td className="py-2 px-3">{option.productName}</td>
                       <td className="py-2 px-3 text-right">{currency(option.unitCost)}</td>

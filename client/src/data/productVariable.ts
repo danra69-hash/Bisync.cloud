@@ -7,6 +7,8 @@ export type VariableCombinationOption = {
   productId: number;
   productCode: string;
   productName: string;
+  /** Product group shown in front of the choice list. */
+  productGroup?: string;
   unitCost: number;
 };
 
@@ -134,6 +136,7 @@ export function serializeVariableOptionsJson(config: VariableProductConfig): str
         productId: o.productId,
         productCode: o.productCode,
         productName: o.productName,
+        productGroup: o.productGroup || '',
         unitCost: o.unitCost,
       })),
     });
@@ -194,6 +197,7 @@ export function parseVariableOptionsJson(
             productId: Number(row.productId) || 0,
             productCode: String(row.productCode ?? ''),
             productName: String(row.productName ?? ''),
+            productGroup: String(row.productGroup ?? row.group ?? '').trim() || undefined,
             unitCost: Number(row.unitCost) || 0,
           };
         }).filter(o => o.productId > 0),
