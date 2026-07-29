@@ -421,7 +421,7 @@ export interface Vendor {
   products: string;
   city: string;
   state: string;
-  postcode: string;
+  postcode?: string;
   address: string;
   contactPerson: string;
   contactPosition: string;

@@ -184,6 +184,7 @@ export function SampleRequestPanel({
         products: '',
         city: '',
         state: '',
+        postcode: '',
         address: vendorAddress,
         contactPerson: vendorContactPerson,
         contactPosition: '',
