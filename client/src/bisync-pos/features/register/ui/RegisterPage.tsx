@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { MOCK_PRODUCTS } from '../domain/catalog'
 import {
   addToCart,
@@ -15,11 +16,23 @@ import type {
 } from '../domain/saleDetail'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { buildDepartmentGroups } from '../../../core/session/mapPosCatalog'
+import {
+  clearActiveRegisterSession,
+  loadActiveRegisterSession,
+  releaseFloorTable,
+  type ActiveRegisterSession,
+} from '../../order/domain/tables'
+import {
+  loadPosDutySession,
+  POS_DUTY_SESSION_EVENT,
+  type PosDutySession,
+} from '../../../core/session/posDutySession'
 import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
 import { TakeawayPickupModal } from './TakeawayPickupModal'
+import { CombinationPickerModal } from './CombinationPickerModal'
 import {
   formatPickupLabel,
   type TakeawayPickup,
@@ -34,6 +47,7 @@ const EMPTY_CHARGES: OrderCharges = {
 }
 
 export function RegisterPage() {
+  const navigate = useNavigate()
   const session = usePosSessionOptional()
   const liveCatalog = session?.catalog ?? []
 
@@ -62,14 +76,41 @@ export function RegisterPage() {
     return groups?.[0] ?? ''
   })
   const [dining, setDining] = useState('dine-in')
-  const [table, setTable] = useState('t5')
+  const [activeTableSession, setActiveTableSession] = useState<ActiveRegisterSession | null>(
+    () => loadActiveRegisterSession(),
+  )
+  const [table, setTable] = useState(() => loadActiveRegisterSession()?.tableId ?? 't5')
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
+  const [comboProduct, setComboProduct] = useState<Product | null>(null)
+  const [pendingTakeawayProduct, setPendingTakeawayProduct] = useState<Product | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
+  const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+
+  useEffect(() => {
+    function syncDuty() {
+      setDuty(loadPosDutySession())
+    }
+    window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
+    window.addEventListener('storage', syncDuty)
+    return () => {
+      window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
+      window.removeEventListener('storage', syncDuty)
+    }
+  }, [])
+
+  useEffect(() => {
+    const active = loadActiveRegisterSession()
+    setActiveTableSession(active)
+    if (active) {
+      setDining('dine-in')
+      setTable(active.tableId)
+    }
+  }, [])
 
   useEffect(() => {
     if (!departments.includes(department)) {
@@ -85,6 +126,8 @@ export function RegisterPage() {
   }, [departments, groupsByDepartment, department, group])
 
   const groups = groupsByDepartment[department] ?? []
+  const groupColumns = Math.max(1, Math.ceil(groups.length / 2))
+  const onDuty = Boolean(duty)
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
 
@@ -118,6 +161,7 @@ export function RegisterPage() {
 
   function handlePickupCancel() {
     setPickupModalOpen(false)
+    setPendingTakeawayProduct(null)
   }
 
   function handlePickupConfirm(pickup: TakeawayPickup) {
@@ -125,11 +169,22 @@ export function RegisterPage() {
     setTakeawayPickup(pickup)
     setPickupModalOpen(false)
     flash(formatPickupLabel(pickup))
+    const pending = pendingTakeawayProduct
+    setPendingTakeawayProduct(null)
+    if (pending) {
+      window.setTimeout(() => addProduct(pending), 0)
+    }
   }
 
   function flash(message: string) {
     setToast(message)
     window.setTimeout(() => setToast(null), 2800)
+  }
+
+  function requireDuty(): boolean {
+    if (onDuty) return true
+    flash('Check in and enter your PIN to activate POS ordering.')
+    return false
   }
 
   function promptWeightAndAdd(product: Product) {
@@ -167,42 +222,18 @@ export function RegisterPage() {
       flash(`${product.name}: no combination options configured.`)
       return
     }
+    setComboProduct(product)
+  }
 
-    const picks: PosSaleCombinationSelection[] = []
-    for (let i = 0; i < need; i += 1) {
-      const list = options
-        .map((o, idx) => `${idx + 1}. ${o.productName || o.productCode || `#${o.productId}`}`)
-        .join('\n')
-      const raw = window.prompt(
-        `${product.name} — pick ${i + 1} of ${need}:\n${list}\nEnter number:`,
-        '1',
-      )
-      if (raw == null) return
-      const idx = Number(raw) - 1
-      const opt = options[idx]
-      if (!opt || !Number.isFinite(idx) || idx < 0) {
-        flash('Invalid combination pick.')
-        return
-      }
-      const existing = picks.find(p => p.productId === opt.productId)
-      if (existing) {
-        existing.quantity += 1
-      } else {
-        picks.push({
-          productId: opt.productId,
-          productCode: opt.productCode,
-          productName: opt.productName,
-          quantity: 1,
-        })
-      }
-    }
-
+  function confirmCombinationPicks(picks: PosSaleCombinationSelection[]) {
+    if (!comboProduct) return
     const detail: PosSaleVariableDetail = {
       variableMode: 'combination',
       combinationSelections: picks,
     }
-    setLines(prev => addVariableToCart(prev, product.id, detail, 1))
-    flash(`${product.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
+    setLines(prev => addVariableToCart(prev, comboProduct.id, detail, 1))
+    flash(`${comboProduct.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
+    setComboProduct(null)
   }
 
   function promptReplacementAndAdd(product: Product) {
@@ -271,6 +302,7 @@ export function RegisterPage() {
   }
 
   function addProduct(product: Product) {
+    if (!requireDuty()) return
     if (product.pricedByWeight || product.variableMode === 'weight') {
       promptWeightAndAdd(product)
       return
@@ -284,6 +316,37 @@ export function RegisterPage() {
       return
     }
     setLines(prev => addToCart(prev, product.id))
+  }
+
+  function handleCancelTable() {
+    if (lines.length > 0) {
+      flash('Remove order items before cancelling the table.')
+      return
+    }
+    if (!activeTableSession) {
+      flash('No opened table to cancel.')
+      return
+    }
+    const released = releaseFloorTable(activeTableSession.tableId)
+    clearActiveRegisterSession()
+    setActiveTableSession(null)
+    setCharges(EMPTY_CHARGES)
+    flash(
+      released
+        ? `Table ${activeTableSession.tableLabel} released`
+        : `Table ${activeTableSession.tableLabel} cancelled`,
+    )
+    navigate('/order/floor')
+  }
+
+  function addTakeawayProduct(product: Product) {
+    if (!requireDuty()) return
+    if (dining !== 'takeaway' || !takeawayPickup) {
+      setPendingTakeawayProduct(product)
+      setPickupModalOpen(true)
+      return
+    }
+    addProduct(product)
   }
 
   async function chargePayment() {
@@ -337,6 +400,8 @@ export function RegisterPage() {
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       setLines([])
       setCharges(EMPTY_CHARGES)
+      clearActiveRegisterSession()
+      setActiveTableSession(null)
       flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)
       session.refreshCatalog()
     } catch (e) {
@@ -390,7 +455,12 @@ export function RegisterPage() {
           </div>
         </div>
 
-        <div className="register__tabs" role="tablist" aria-label="Groups">
+        <div
+          className="register__tabs"
+          role="tablist"
+          aria-label="Groups"
+          style={{ gridTemplateColumns: `repeat(${groupColumns}, minmax(0, 1fr))` }}
+        >
           {groups.map(g => (
             <button
               key={g}
@@ -405,10 +475,22 @@ export function RegisterPage() {
           ))}
         </div>
 
+        {!onDuty ? (
+          <p className="register__duty-banner" role="status">
+            Use Check in/out: scan with SuperApp, then enter your PIN to unlock ordering.
+          </p>
+        ) : (
+          <p className="register__duty-banner is-on" role="status">
+            On duty: {duty?.employeeName}
+          </p>
+        )}
+
         <div className="register__grid-scroll">
           <ProductGrid
             products={filtered}
             onAdd={addProduct}
+            onAddTakeaway={addTakeawayProduct}
+            disabled={!onDuty}
           />
         </div>
       </div>
@@ -431,7 +513,12 @@ export function RegisterPage() {
         onOpenPickup={() => {
           if (dining === 'takeaway') setPickupModalOpen(true)
         }}
+        activeTableLabel={activeTableSession?.tableLabel ?? null}
         onAction={action => {
+          if (action === 'cancel') {
+            handleCancelTable()
+            return
+          }
           if (action === 'payment') {
             void chargePayment()
             return
@@ -450,6 +537,17 @@ export function RegisterPage() {
         <TakeawayPickupModal
           onCancel={handlePickupCancel}
           onConfirm={handlePickupConfirm}
+        />
+      )}
+      {comboProduct && (
+        <CombinationPickerModal
+          productName={comboProduct.name}
+          choiceQty={comboProduct.choiceQty && comboProduct.choiceQty > 0
+            ? Math.round(comboProduct.choiceQty)
+            : 1}
+          options={comboProduct.combinationOptions ?? []}
+          onCancel={() => setComboProduct(null)}
+          onConfirm={confirmCombinationPicks}
         />
       )}
 

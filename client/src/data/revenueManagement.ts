@@ -152,7 +152,7 @@ export const posItems = [
   'POS Menu',
   'POS Modifier Group',
   'Promotion Scheduler',
-  'POS Test Tap',
+  'POS Test',
   'Device Management',
   'E-Invoice',
 ] as const;

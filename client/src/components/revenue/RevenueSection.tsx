@@ -296,7 +296,7 @@ export function RevenueSection({
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}
           />
-        ) : posItem === 'POS Test Tap' ? (
+        ) : posItem === 'POS Test' ? (
           <PosTestTapPage
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}

@@ -283,7 +283,7 @@
 .order-panel__actions {
   margin-top: var(--space-2);
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: var(--space-1);
   flex-shrink: 0;
 }
@@ -325,6 +325,16 @@
 
 .btn--primary:hover:not(:disabled) {
   background: var(--color-primary-hover);
+}
+
+.btn--danger {
+  background: #fff;
+  border-color: #dc2626;
+  color: #b91c1c;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
 }
 
 .btn--success {

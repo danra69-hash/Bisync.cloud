@@ -543,7 +543,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — POS Test Tap after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
+      "notes": "Point-of-Sales bar — POS Test after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
     },
     {
       "id": "dr.page.pos-menu",
@@ -951,7 +951,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "POS Test Tap operational APIs — open/closed checks, payments, voids, EOD sessions"
+      "notes": "POS Test operational APIs — open/closed checks, payments, voids, EOD sessions"
     },
     {
       "id": "dr.api.pos-eod",

@@ -1,7 +1,14 @@
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { MODE_META } from '../core/modes/types'
 import { usePosMode } from '../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../core/session/PosSessionContext'
+import {
+  loadPosDutySession,
+  POS_DUTY_SESSION_EVENT,
+  type PosDutySession,
+} from '../core/session/posDutySession'
+import { CheckInOutModal } from './CheckInOutModal'
 import './TopBar.css'
 
 type Props = {
@@ -16,12 +23,28 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
   const session = usePosSessionOptional()
   const locations = session?.locations ?? []
   const locationId = session?.locationId ?? ''
+  const locationName =
+    locations.find(loc => loc.externalId === locationId)?.name || locationId || 'Outlet'
   /** Venue home is always Floor Plan (not mode-specific BOH/Cashier homes). */
   const homePath = MODE_META.order.homePath
   const isHome =
     pathname === '/order/floor'
     || (pathname.startsWith('/order/floor') && !pathname.includes('/edit'))
   const isSetup = pathname.startsWith('/boh/settings')
+  const [checkInOpen, setCheckInOpen] = useState(false)
+  const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+
+  useEffect(() => {
+    function syncDuty() {
+      setDuty(loadPosDutySession())
+    }
+    window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
+    window.addEventListener('storage', syncDuty)
+    return () => {
+      window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
+      window.removeEventListener('storage', syncDuty)
+    }
+  }, [])
 
   function goHome() {
     setMode('order')
@@ -98,6 +121,18 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
         </button>
         <button
           type="button"
+          className={`topbar__checkin${duty ? ' is-on' : ''}`}
+          onClick={() => setCheckInOpen(true)}
+          aria-label="Check in or check out"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+            <path d="M8 12h8M12 8v8" />
+          </svg>
+          <span>Check in/out</span>
+        </button>
+        <button
+          type="button"
           className={`topbar__home${isHome ? ' is-active' : ''}`}
           onClick={goHome}
           aria-label="Home"
@@ -118,6 +153,15 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
           Admin
         </button>
       </div>
+
+      {checkInOpen && (
+        <CheckInOutModal
+          locationExternalId={locationId || 'outlet'}
+          locationName={locationName}
+          onClose={() => setCheckInOpen(false)}
+          onDutyChange={setDuty}
+        />
+      )}
     </header>
   )
 }

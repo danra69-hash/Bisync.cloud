@@ -88,7 +88,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
   if (!selectedCompanyId) {
     return (
       <div className="pos-test-tap pos-test-tap--empty">
-        <p>Select a company to open POS Test Tap.</p>
+        <p>Select a company to open POS Test.</p>
       </div>
     )
   }
@@ -96,7 +96,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
   if (!activeLocationId) {
     return (
       <div className="pos-test-tap pos-test-tap--empty">
-        <p>Select an active location to open POS Test Tap.</p>
+        <p>Select an active location to open POS Test.</p>
       </div>
     )
   }
@@ -104,7 +104,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
   return (
     <div className="pos-test-tap">
       <div className="pos-test-tap__meta">
-        <span className="pos-test-tap__title">POS Test Tap</span>
+        <span className="pos-test-tap__title">POS Test</span>
         {schemaStatus?.ready ? (
           <span className="pos-test-tap__status">
             Ops ready

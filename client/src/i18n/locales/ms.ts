@@ -175,7 +175,7 @@ export const ms = {
       menu: 'Menu POS',
       modifierGroup: 'Kumpulan Pengubah POS',
       promotionScheduler: 'Penjadual Promosi',
-      testTap: 'POS Test Tap',
+      testTap: 'POS Test',
       deviceManagement: 'Pengurusan Peranti',
       eInvoice: 'E-Invois',
     },
