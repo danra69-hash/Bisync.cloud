@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom'
 import { ModeProvider, usePosMode } from '../core/modes/ModeProvider'
 import { ConfigProvider } from '../core/config/ConfigProvider'
 import type { PosMode } from '../core/modes/types'
-import { HomeBar } from './HomeBar'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import './AppShell.css'
@@ -42,7 +41,6 @@ function AppShellInner({ children }: Props) {
 
   return (
     <div className={`app-shell${menuOpen ? ' is-menu-open' : ''}`}>
-      <HomeBar />
       <TopBar
         menuOpen={menuOpen}
         onToggleMenu={() => setMenuOpen((open) => !open)}

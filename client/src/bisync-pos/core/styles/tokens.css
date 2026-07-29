@@ -43,7 +43,6 @@
   --sidebar-width: calc(220px * var(--pos-ui-scale));
   --order-width: calc(280px * var(--pos-ui-scale));
   --topbar-height: calc(38px * var(--pos-ui-scale));
-  --homebar-height: calc(34px * var(--pos-ui-scale));
 
   /* ~11.5–13px at arm’s length on 14" — scaled with viewport. */
   --pos-font-base: calc(12px * var(--pos-ui-scale));
