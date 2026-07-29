@@ -98,6 +98,14 @@ export interface LocationConfig {
   profileOverridden?: boolean;
   /** Weekly opening hours + last-order times (JSON). */
   openingHoursJson?: string;
+  /** Original filename for the location logo (may differ from company logo). */
+  logoFileName?: string;
+  /** MIME type, e.g. image/png. */
+  logoContentType?: string;
+  /** Raw base64 logo bytes (no data-URL prefix). */
+  logoBase64?: string;
+  /** True when a location logo is stored. */
+  logoSet?: boolean;
 }
 
 export interface Company {

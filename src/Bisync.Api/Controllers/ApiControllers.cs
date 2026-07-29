@@ -20,6 +20,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         var timeZoneId = string.IsNullOrWhiteSpace(l.TimeZoneId)
             ? OrgClock.ResolveTimeZoneId(countryCode, l.StateProvince)
             : l.TimeZoneId;
+        var hasLogo = !string.IsNullOrWhiteSpace(l.LogoBase64);
         return new
         {
             l.Id,
@@ -45,6 +46,10 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             modulesOverridden = CompanyModuleRules.LocationModulesOverridden(l.ModulesJson),
             profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
             openingHoursJson = string.IsNullOrWhiteSpace(l.OpeningHoursJson) ? "{}" : l.OpeningHoursJson,
+            logoFileName = l.LogoFileName ?? string.Empty,
+            logoContentType = l.LogoContentType ?? string.Empty,
+            logoBase64 = hasLogo ? (l.LogoBase64 ?? string.Empty) : string.Empty,
+            logoSet = hasLogo,
         };
     }
 
@@ -133,6 +138,17 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (modulesError is not null)
             return BadRequest(new { message = modulesError });
 
+        var logoError = LogoUploadRules.NormalizeAndValidate(
+            body.LogoFileName,
+            body.LogoContentType,
+            body.LogoBase64,
+            "Location",
+            out var logoFileName,
+            out var logoContentType,
+            out var logoBase64);
+        if (logoError is not null)
+            return BadRequest(new { message = logoError });
+
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Locations");
 
         var externalId = await GenerateUniqueExternalIdAsync(body.Name);
@@ -154,6 +170,9 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             ModulesJson = modulesJson,
             OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim(),
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
+            LogoFileName = logoFileName,
+            LogoContentType = logoContentType,
+            LogoBase64 = logoBase64,
         };
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
 
@@ -200,6 +219,30 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (modulesError is not null)
             return BadRequest(new { message = modulesError });
 
+        // Logo fields are optional on update: omit to keep the existing logo; send empty to clear.
+        var logoProvided = body.LogoFileName is not null
+            || body.LogoContentType is not null
+            || body.LogoBase64 is not null;
+        string? logoFileName = null;
+        string? logoContentType = null;
+        string? logoBase64 = null;
+        if (logoProvided)
+        {
+            var logoError = LogoUploadRules.NormalizeAndValidate(
+                body.LogoFileName,
+                body.LogoContentType,
+                body.LogoBase64,
+                "Location",
+                out var normalizedFileName,
+                out var normalizedContentType,
+                out var normalizedBase64);
+            if (logoError is not null)
+                return BadRequest(new { message = logoError });
+            logoFileName = normalizedFileName;
+            logoContentType = normalizedContentType;
+            logoBase64 = normalizedBase64;
+        }
+
         var loc = await db.Locations.FindAsync(id);
         if (loc is null) return NotFound();
         loc.CompanyId = body.CompanyId;
@@ -217,6 +260,12 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         loc.ModulesJson = modulesJson;
         if (body.OpeningHoursJson is not null)
             loc.OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim();
+        if (logoProvided)
+        {
+            loc.LogoFileName = logoFileName ?? string.Empty;
+            loc.LogoContentType = logoContentType ?? string.Empty;
+            loc.LogoBase64 = logoBase64 ?? string.Empty;
+        }
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
         await db.SaveChangesAsync();
