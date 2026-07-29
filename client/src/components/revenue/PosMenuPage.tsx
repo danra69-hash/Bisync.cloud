@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { api, type Product } from '../../api';
 import {
   productMatchesPosMenu,
   resolvePosMenuRrp,
 } from '../../data/posCatalog';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { filterSelectCls } from '../layout/formControls';
 import { pageShellClass } from '../layout/pageLayout';
+import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -15,9 +18,17 @@ type Props = {
   selectedLocationIds: string[];
 };
 
+const filterCls = filterSelectCls;
+
 /** Compulsory modifiers / forced choices — not modeled on Product yet. */
 function formatCompulsoryOption(_product: Product): string {
   return '—';
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.map(v => v.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+  );
 }
 
 export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
@@ -25,6 +36,10 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [groupFilter, setGroupFilter] = useState('All');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
 
   const loadProducts = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -58,15 +73,69 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
     void loadProducts();
   }, [loadProducts]);
 
-  const menuRows = useMemo(
-    () =>
-      products.map(product => ({
+  useEffect(() => {
+    setCategoryFilter('All');
+    setGroupFilter('All');
+    setSearchDraft('');
+    setAppliedSearch('');
+  }, [selectedCompanyId, selectedLocationIds]);
+
+  const categoryOptions = useMemo(
+    () => uniqueSorted(products.map(p => p.category || '')),
+    [products],
+  );
+
+  const groupOptions = useMemo(() => {
+    const scoped =
+      categoryFilter === 'All'
+        ? products
+        : products.filter(p => (p.category || '') === categoryFilter);
+    return uniqueSorted(scoped.map(p => p.group || ''));
+  }, [products, categoryFilter]);
+
+  useEffect(() => {
+    if (categoryFilter !== 'All' && !categoryOptions.includes(categoryFilter)) {
+      setCategoryFilter('All');
+    }
+  }, [categoryFilter, categoryOptions]);
+
+  useEffect(() => {
+    if (groupFilter !== 'All' && !groupOptions.includes(groupFilter)) {
+      setGroupFilter('All');
+    }
+  }, [groupFilter, groupOptions]);
+
+  const runSearch = useCallback(() => {
+    setAppliedSearch(searchDraft.trim());
+  }, [searchDraft]);
+
+  const menuRows = useMemo(() => {
+    const q = appliedSearch.toLowerCase();
+    return products
+      .filter(product => {
+        if (categoryFilter !== 'All' && (product.category || '') !== categoryFilter) return false;
+        if (groupFilter !== 'All' && (product.group || '') !== groupFilter) return false;
+        if (!q) return true;
+        const hay = [
+          product.name,
+          product.productId,
+          product.category,
+          product.group,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .map(product => ({
         product,
         rrp: resolvePosMenuRrp(product, products),
         compulsoryOption: formatCompulsoryOption(product),
-      })),
-    [products],
-  );
+      }));
+  }, [products, categoryFilter, groupFilter, appliedSearch]);
+
+  const filtersActive =
+    categoryFilter !== 'All' || groupFilter !== 'All' || appliedSearch.length > 0;
 
   if (!selectedCompanyId) {
     return (
@@ -95,6 +164,87 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
         </button>
       </div>
 
+      <PageStickyFilters opaque className="py-2">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <label
+              className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+              htmlFor="pos-menu-category-filter"
+            >
+              Category
+            </label>
+            <select
+              id="pos-menu-category-filter"
+              value={categoryFilter}
+              onChange={e => {
+                setCategoryFilter(e.target.value);
+                setGroupFilter('All');
+              }}
+              className={filterCls}
+            >
+              <option value="All">All categories</option>
+              {categoryOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label
+              className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+              htmlFor="pos-menu-group-filter"
+            >
+              Group
+            </label>
+            <select
+              id="pos-menu-group-filter"
+              value={groupFilter}
+              onChange={e => setGroupFilter(e.target.value)}
+              className={filterCls}
+            >
+              <option value="All">All groups</option>
+              {groupOptions.map(option => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1 flex-1 min-w-[14rem]">
+            <label
+              className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+              htmlFor="pos-menu-search"
+            >
+              Search
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="pos-menu-search"
+                type="search"
+                value={searchDraft}
+                onChange={e => setSearchDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    runSearch();
+                  }
+                }}
+                placeholder="Search by name, code, category, or group…"
+                className={`${filterCls} w-full`}
+              />
+              <button
+                type="button"
+                onClick={runSearch}
+                className="inline-flex items-center gap-1.5 shrink-0 text-xs font-semibold border border-border rounded-md px-3 py-1.5 text-foreground hover:bg-muted/50"
+              >
+                <Search size={12} />
+                Search
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground pb-2">
+            {menuRows.length} item{menuRows.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      </PageStickyFilters>
+
       {error ? (
         <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
           {error}
@@ -105,7 +255,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
         <div className="flex items-center justify-center py-16">
           <MillstoneLoader label="Loading POS menu…" />
         </div>
-      ) : menuRows.length === 0 ? (
+      ) : products.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-card px-4 py-12 text-center">
           <p className="text-sm text-muted-foreground">
             No POS menu items for this company.
@@ -114,9 +264,29 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
             Create a customer-facing product with an RRP under Revenue Management → Products — it is enabled for POS automatically.
           </p>
         </div>
+      ) : menuRows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card px-4 py-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            No POS menu items match the current filters.
+          </p>
+          {filtersActive ? (
+            <button
+              type="button"
+              className="mt-3 text-xs font-semibold text-primary hover:underline"
+              onClick={() => {
+                setCategoryFilter('All');
+                setGroupFilter('All');
+                setSearchDraft('');
+                setAppliedSearch('');
+              }}
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </div>
       ) : (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <TableScrollContainer className="max-h-[calc(100dvh-14rem)] overflow-y-auto">
+          <TableScrollContainer className="max-h-[calc(100dvh-16rem)] overflow-y-auto">
             <table className="w-full table-fixed text-xs">
               <colgroup>
                 <col className="w-[14%]" />
