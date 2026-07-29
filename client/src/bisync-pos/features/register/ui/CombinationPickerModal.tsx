@@ -115,7 +115,7 @@ export function CombinationPickerModal({
             <p className="combo-picker-modal__eyebrow">Combination</p>
             <h2 id="combo-picker-title">{productName}</h2>
             <p className="combo-picker-modal__copy">
-              Choose up to {need} item{need === 1 ? '' : 's'}. Tap a product to add it.
+              Choose {need} item{need === 1 ? '' : 's'}. Tap a product to add it.
             </p>
           </div>
           <div
