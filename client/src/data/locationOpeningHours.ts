@@ -54,6 +54,62 @@ export function blankOpeningHours(): LocationOpeningHours {
   };
 }
 
+export function cloneDayHours(day: LocationDayHours): LocationDayHours {
+  return {
+    openFrom: normalizeTime(day.openFrom),
+    openTo: normalizeTime(day.openTo),
+    lastOrder: normalizeTime(day.lastOrder),
+    closed: Boolean(day.closed),
+  };
+}
+
+export function isDayHoursBlank(day: LocationDayHours): boolean {
+  return !normalizeTime(day.openFrom)
+    && !normalizeTime(day.openTo)
+    && !normalizeTime(day.lastOrder)
+    && !day.closed;
+}
+
+export function dayHoursEqual(a: LocationDayHours, b: LocationDayHours): boolean {
+  return normalizeTime(a.openFrom) === normalizeTime(b.openFrom)
+    && normalizeTime(a.openTo) === normalizeTime(b.openTo)
+    && normalizeTime(a.lastOrder) === normalizeTime(b.lastOrder)
+    && Boolean(a.closed) === Boolean(b.closed);
+}
+
+/**
+ * Days that already have hours different from Monday should not receive Monday cascade.
+ * Blank days still follow Monday.
+ */
+export function initiallyCustomizedWeekdays(hours: LocationOpeningHours): Set<LocationWeekday> {
+  const customized = new Set<LocationWeekday>();
+  const monday = hours.monday;
+  for (const day of LOCATION_WEEKDAYS) {
+    if (day === 'monday') continue;
+    const row = hours[day];
+    if (!isDayHoursBlank(row) && !dayHoursEqual(row, monday)) {
+      customized.add(day);
+    }
+  }
+  return customized;
+}
+
+/** Copy Monday onto every day that the user has not customized. */
+export function applyMondayCascade(
+  hours: LocationOpeningHours,
+  customizedDays: ReadonlySet<LocationWeekday>,
+): LocationOpeningHours {
+  const monday = cloneDayHours(hours.monday);
+  const next: LocationOpeningHours = { ...hours, monday };
+  for (const day of LOCATION_WEEKDAYS) {
+    if (day === 'monday') continue;
+    if (!customizedDays.has(day)) {
+      next[day] = cloneDayHours(monday);
+    }
+  }
+  return next;
+}
+
 /** Parse HH:mm and snap minutes to :00 or :30. */
 export function normalizeTime(value: unknown): string {
   if (typeof value !== 'string') return '';
