@@ -115,6 +115,30 @@ export const hrApi = {
     update: (id: number, body: EmployeeRequest) => http<Employee>(`/employees/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     remove: (id: number) => http<void>(`/employees/${id}`, { method: 'DELETE' }),
     resetPosPin: (id: number) => http<Employee>(`/employees/${id}/reset-pos-pin`, { method: 'POST' }),
+    verifyPosPin: async (pin: string) => {
+      const result = await http<{
+        valid?: boolean
+        Valid?: boolean
+        employeeId?: number | null
+        EmployeeId?: number | null
+        employeeName?: string | null
+        EmployeeName?: string | null
+        employeeCode?: string | null
+        EmployeeCode?: string | null
+        mustChangePin?: boolean
+        MustChangePin?: boolean
+      }>('/employees/verify-pos-pin', {
+        method: 'POST',
+        body: JSON.stringify({ pin }),
+      });
+      return {
+        valid: result.valid ?? result.Valid ?? false,
+        employeeId: result.employeeId ?? result.EmployeeId ?? null,
+        employeeName: result.employeeName ?? result.EmployeeName ?? null,
+        employeeCode: result.employeeCode ?? result.EmployeeCode ?? null,
+        mustChangePin: result.mustChangePin ?? result.MustChangePin ?? false,
+      };
+    },
     verifyPayrollPin: async (id: number, pin: string) => {
       const result = await http<{ valid?: boolean; Valid?: boolean }>(`/employees/${id}/verify-payroll-pin`, {
         method: 'POST',

@@ -172,6 +172,21 @@ public class PayrollPinVerifyResult
     public bool Valid { get; set; }
 }
 
+public class PosPinVerifyRequest
+{
+    [Required, MinLength(4), MaxLength(4)]
+    public string Pin { get; set; } = null!;
+}
+
+public class PosPinVerifyResult
+{
+    public bool Valid { get; set; }
+    public int? EmployeeId { get; set; }
+    public string? EmployeeName { get; set; }
+    public string? EmployeeCode { get; set; }
+    public bool MustChangePin { get; set; }
+}
+
 public class AttendanceRecordRequest
 {
     [Required]
