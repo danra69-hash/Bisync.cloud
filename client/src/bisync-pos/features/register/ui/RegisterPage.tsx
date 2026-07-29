@@ -20,6 +20,7 @@ import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
 import { TakeawayPickupModal } from './TakeawayPickupModal'
+import { CombinationPickerModal } from './CombinationPickerModal'
 import {
   formatPickupLabel,
   type TakeawayPickup,
@@ -65,6 +66,7 @@ export function RegisterPage() {
   const [table, setTable] = useState('t5')
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
+  const [comboProduct, setComboProduct] = useState<Product | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
@@ -167,42 +169,18 @@ export function RegisterPage() {
       flash(`${product.name}: no combination options configured.`)
       return
     }
+    setComboProduct(product)
+  }
 
-    const picks: PosSaleCombinationSelection[] = []
-    for (let i = 0; i < need; i += 1) {
-      const list = options
-        .map((o, idx) => `${idx + 1}. ${o.productName || o.productCode || `#${o.productId}`}`)
-        .join('\n')
-      const raw = window.prompt(
-        `${product.name} — pick ${i + 1} of ${need}:\n${list}\nEnter number:`,
-        '1',
-      )
-      if (raw == null) return
-      const idx = Number(raw) - 1
-      const opt = options[idx]
-      if (!opt || !Number.isFinite(idx) || idx < 0) {
-        flash('Invalid combination pick.')
-        return
-      }
-      const existing = picks.find(p => p.productId === opt.productId)
-      if (existing) {
-        existing.quantity += 1
-      } else {
-        picks.push({
-          productId: opt.productId,
-          productCode: opt.productCode,
-          productName: opt.productName,
-          quantity: 1,
-        })
-      }
-    }
-
+  function confirmCombinationPicks(picks: PosSaleCombinationSelection[]) {
+    if (!comboProduct) return
     const detail: PosSaleVariableDetail = {
       variableMode: 'combination',
       combinationSelections: picks,
     }
-    setLines(prev => addVariableToCart(prev, product.id, detail, 1))
-    flash(`${product.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
+    setLines(prev => addVariableToCart(prev, comboProduct.id, detail, 1))
+    flash(`${comboProduct.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
+    setComboProduct(null)
   }
 
   function promptReplacementAndAdd(product: Product) {
@@ -450,6 +428,17 @@ export function RegisterPage() {
         <TakeawayPickupModal
           onCancel={handlePickupCancel}
           onConfirm={handlePickupConfirm}
+        />
+      )}
+      {comboProduct && (
+        <CombinationPickerModal
+          productName={comboProduct.name}
+          choiceQty={comboProduct.choiceQty && comboProduct.choiceQty > 0
+            ? Math.round(comboProduct.choiceQty)
+            : 1}
+          options={comboProduct.combinationOptions ?? []}
+          onCancel={() => setComboProduct(null)}
+          onConfirm={confirmCombinationPicks}
         />
       )}
 
