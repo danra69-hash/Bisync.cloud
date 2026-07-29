@@ -954,6 +954,17 @@
       "notes": "POS Test Tap operational APIs — open/closed checks, payments, voids, EOD sessions"
     },
     {
+      "id": "dr.api.pos-eod",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosEodController.cs",
+      "symbol": "PosEodController",
+      "route": "api/pos/eod",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-29",
+      "notes": "End-of-day summary, cash count checklist, close day, record closed checks"
+    },
+    {
       "id": "dr.api.inventory-count-sessions",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/InventoryCountSessionsController.cs",

@@ -161,36 +161,7 @@ export function PermissionsPage() {
   )
 }
 
-export function EodPage() {
-  return (
-    <FeaturePage
-      crumb="EOD"
-      title="End of Day"
-      subtitle="Close the business day: reconcile sales, cash, and open checks."
-    >
-      <div className="panel-grid">
-        {[
-          ['Gross sales', '$4,820.00'],
-          ['Net sales', '$4,410.50'],
-          ['Cash expected', '$612.40'],
-          ['Open checks', '2'],
-          ['Voids / comps', '$48.00'],
-          ['Tips owed', '$386.20'],
-        ].map(([label, value]) => (
-          <div key={label} className="panel-card">
-            <p>{label}</p>
-            <h3 style={{ fontSize: '1.4rem', marginTop: 8 }}>{value}</h3>
-          </div>
-        ))}
-      </div>
-      <div style={{ marginTop: 20 }}>
-        <button type="button" className="chip-btn chip-btn--primary">
-          Close day
-        </button>
-      </div>
-    </FeaturePage>
-  )
-}
+export { EodPage } from './EodPage'
 
 export function BohSettingsPage() {
   const { qrTableMode, setQrTableMode } = useConfig()

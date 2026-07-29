@@ -2204,6 +2204,49 @@ export interface PosTestTapStatus {
   tables?: { name: string; count: number; purpose: string }[];
 }
 
+export interface PosEodSessionDto {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  externalId: string;
+  businessDate: string;
+  cashConfirmed: boolean;
+  cashExpectedCents: number;
+  cashCountedCents: number;
+  cashCountQtysJson: string;
+  creditQrConfirmed: boolean;
+  nonRevenueConfirmed: boolean;
+  voidsConfirmed: boolean;
+  discountConfirmed: boolean;
+  dayClosed: boolean;
+  closedAt?: string | null;
+  updatedAt: string;
+  allConfirmed: boolean;
+  cashVarianceCents: number;
+}
+
+export interface PosEodSummaryDto {
+  businessDate: string;
+  openChecks: number;
+  closedChecks: number;
+  grossSalesCents: number;
+  netSalesCents: number;
+  discountCents: number;
+  taxCents: number;
+  voidCents: number;
+  cashExpectedCents: number;
+  creditQrCents: number;
+  nonRevenueCents: number;
+  tipsOwedCents: number;
+}
+
+export interface PosEodBundleDto {
+  session: PosEodSessionDto;
+  summary: PosEodSummaryDto;
+  alreadyClosed?: boolean;
+  closed?: boolean;
+}
+
 export interface Product {
   id: number;
   productId: string;
@@ -3620,6 +3663,53 @@ export const api = {
     if (locationExternalId) params.set('locationExternalId', locationExternalId);
     return fetchJson<PosTestTapStatus>(`/api/pos/test-tap/status?${params}`);
   },
+  posEodSummary: (companyId: number, locationExternalId: string, businessDate?: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    if (businessDate) params.set('businessDate', businessDate);
+    return fetchJson<PosEodBundleDto>(`/api/pos/eod/summary?${params}`);
+  },
+  posEodUpsertSession: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    businessDate?: string;
+    cashConfirmed?: boolean;
+    cashCountedCents?: number;
+    cashCountQtysJson?: string;
+    creditQrConfirmed?: boolean;
+    nonRevenueConfirmed?: boolean;
+    voidsConfirmed?: boolean;
+    discountConfirmed?: boolean;
+  }) =>
+    fetchJsonWithMethod<PosEodBundleDto>('/api/pos/eod/session', 'PUT', payload),
+  posEodCloseDay: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    businessDate?: string;
+    force?: boolean;
+  }) =>
+    fetchJsonWithMethod<PosEodBundleDto>('/api/pos/eod/close', 'POST', payload),
+  posRecordClosedCheck: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    checkNumber?: number;
+    checkLabel?: string;
+    covers?: number;
+    discountCents?: number;
+    taxCents?: number;
+    voidCents?: number;
+    grossCents: number;
+    paymentMethod?: string;
+    paymentAmountCents?: number;
+    paymentPurpose?: string;
+  }) =>
+    fetchJsonWithMethod<{ closedCheckId: number; checkNumber: number; paidAt: string }>(
+      '/api/pos/eod/record-check',
+      'POST',
+      payload,
+    ),
   salesData: (
     companyId: number | undefined,
     locationIds: string[],

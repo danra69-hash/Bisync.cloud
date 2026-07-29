@@ -1870,3 +1870,55 @@ public class PosPrinterSetupRequest
     public string? PrinterModel { get; set; }
 }
 
+public class UpsertPosEodSessionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    /// <summary>ISO date yyyy-MM-dd. Defaults to today (UTC) when omitted.</summary>
+    public DateOnly? BusinessDate { get; set; }
+    public bool? CashConfirmed { get; set; }
+    public long? CashCountedCents { get; set; }
+    /// <summary>JSON map of denomination cents → quantity, e.g. {"1000":2,"100":5}.</summary>
+    [MaxLength(4000)]
+    public string? CashCountQtysJson { get; set; }
+    public bool? CreditQrConfirmed { get; set; }
+    public bool? NonRevenueConfirmed { get; set; }
+    public bool? VoidsConfirmed { get; set; }
+    public bool? DiscountConfirmed { get; set; }
+}
+
+public class ClosePosEodSessionRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    public DateOnly? BusinessDate { get; set; }
+    /// <summary>When true, close even if open checks remain (manager override).</summary>
+    public bool Force { get; set; }
+}
+
+public class RecordPosClosedCheckRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    public int CheckNumber { get; set; }
+    [MaxLength(120)]
+    public string? CheckLabel { get; set; }
+    public int Covers { get; set; } = 1;
+    public long DiscountCents { get; set; }
+    public long TaxCents { get; set; }
+    public long VoidCents { get; set; }
+    public long GrossCents { get; set; }
+    /// <summary>cash | credit-card | qr-pay | entertainment | duty-meals | compliment</summary>
+    [MaxLength(40)]
+    public string PaymentMethod { get; set; } = "cash";
+    public long? PaymentAmountCents { get; set; }
+    [MaxLength(120)]
+    public string? PaymentPurpose { get; set; }
+}
+

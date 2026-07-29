@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MOCK_PRODUCTS } from '../domain/catalog'
-import { addToCart, addVariableToCart, addWeightToCart } from '../domain/cart'
+import {
+  addToCart,
+  addVariableToCart,
+  addWeightToCart,
+  cartGrandTotal,
+  cartSubtotal,
+} from '../domain/cart'
 import type { CartLine, OrderCharges, Product, ProductDepartment } from '../domain/types'
 import type {
   PosSaleCombinationSelection,
@@ -282,6 +288,24 @@ export function RegisterPage() {
               }
             : undefined,
         })
+      }
+      const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+      const grossCents = cartSubtotal(lines, products)
+      const grandCents = cartGrandTotal(lines, products, charges)
+      try {
+        await api.posRecordClosedCheck({
+          companyId: session.companyId,
+          locationExternalId: session.locationId,
+          covers: 1,
+          discountCents: charges.discountCents,
+          taxCents: charges.taxRegularCents + charges.taxAlcoholCents,
+          grossCents,
+          paymentMethod: 'cash',
+          paymentAmountCents: grandCents,
+          checkLabel: 'POS Register',
+        })
+      } catch {
+        /* inventory sale already recorded; EOD row is best-effort */
       }
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       setLines([])
