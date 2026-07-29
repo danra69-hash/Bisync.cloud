@@ -19,6 +19,11 @@ import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
+import { TakeawayPickupModal } from './TakeawayPickupModal'
+import {
+  formatPickupLabel,
+  type TakeawayPickup,
+} from '../domain/pickupTime'
 import './RegisterPage.css'
 
 const EMPTY_CHARGES: OrderCharges = {
@@ -58,6 +63,8 @@ export function RegisterPage() {
   })
   const [dining, setDining] = useState('dine-in')
   const [table, setTable] = useState('t5')
+  const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
+  const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
@@ -98,6 +105,26 @@ export function RegisterPage() {
   function selectDepartment(next: ProductDepartment) {
     setDepartment(next)
     setGroup(groupsByDepartment[next]?.[0] ?? '')
+  }
+
+  function handleDiningChange(value: string) {
+    if (value === 'takeaway') {
+      setPickupModalOpen(true)
+      return
+    }
+    setDining(value)
+    setTakeawayPickup(null)
+  }
+
+  function handlePickupCancel() {
+    setPickupModalOpen(false)
+  }
+
+  function handlePickupConfirm(pickup: TakeawayPickup) {
+    setDining('takeaway')
+    setTakeawayPickup(pickup)
+    setPickupModalOpen(false)
+    flash(formatPickupLabel(pickup))
   }
 
   function flash(message: string) {
@@ -394,12 +421,16 @@ export function RegisterPage() {
         charges={charges}
         dining={dining}
         table={table}
-        onDiningChange={setDining}
+        pickupLabel={dining === 'takeaway' ? formatPickupLabel(takeawayPickup) : undefined}
+        onDiningChange={handleDiningChange}
         onTableChange={setTable}
         onCoverChange={setCover}
         onChange={setLines}
         onChargesChange={setCharges}
         onOpenHistory={() => setHistoryOpen(true)}
+        onOpenPickup={() => {
+          if (dining === 'takeaway') setPickupModalOpen(true)
+        }}
         onAction={action => {
           if (action === 'payment') {
             void chargePayment()
@@ -415,6 +446,12 @@ export function RegisterPage() {
       />
 
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
+      {pickupModalOpen && (
+        <TakeawayPickupModal
+          onCancel={handlePickupCancel}
+          onConfirm={handlePickupConfirm}
+        />
+      )}
 
       {toast && (
         <div className="register__toast" role="status">

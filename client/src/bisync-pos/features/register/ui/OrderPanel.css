@@ -51,6 +51,25 @@
   color: var(--color-ink-muted);
 }
 
+.order-panel__pickup {
+  margin: var(--space-1) 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted, #f3f4f6);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--pos-font-xs);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.order-panel__pickup:hover {
+  border-color: var(--color-ink-muted);
+}
+
 .order-panel__heading {
   display: flex;
   align-items: center;
