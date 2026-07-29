@@ -9,9 +9,7 @@ import { orgSelectionPatch, resolveEmployeeOrg } from './orgSelectShared';
 import { PlatformAccessPanel, userUpsertForEmployee } from './UsersTab';
 import { checkinMethodLabel } from './employeeTabShared';
 import { getPhoneValidationError } from '../shared/CountryPhoneInput';
-import { getAddressValidationError } from '../shared/CountryAddressFields';
 import { parseUserAccess, setAccessControlType } from '../../data/userAccess';
-import { parseAddress } from '../../utils/countryFormat';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
@@ -27,6 +25,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [operatingCountryCode, setOperatingCountryCode] = useState('MY');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailSaving, setDetailSaving] = useState(false);
 
@@ -221,8 +220,17 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
 
   const saveEmployeeDetail = () => run(async () => {
     if (!detailDraft) return;
+    setSuccessMessage(null);
     if (!detailDraft.divisionId || !detailDraft.departmentId) {
       setError('Please select Division and Department.');
+      return;
+    }
+    if (!detailDraft.joinDate?.trim()) {
+      setError('Join Date is required.');
+      return;
+    }
+    if (!detailDraft.name?.trim() || !detailDraft.email?.trim() || !detailDraft.position?.trim()) {
+      setError('Name, work email, and position are required.');
       return;
     }
     const countryCode = countryCodeForEmployee(detailDraft);
@@ -231,20 +239,14 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
       setError(phoneError);
       return;
     }
-    const addressError = getAddressValidationError(countryCode, parseAddress(detailDraft.permanentAddress));
-    if (addressError) {
-      setError(addressError);
-      return;
-    }
     setDetailSaving(true);
     try {
       await api.employees.update(detailDraft.id, {
         ...toEmployeeRequest(detailDraft),
         companyId: platformUserFor(detailDraft)?.companyId ?? selectedCompanyId ?? undefined,
       });
-      // Re-fetch full profile so nested collections stay intact after save.
-      const saved = await api.employees.get(detailDraft.id);
-      setDetailDraft(resolveEmployeeOrg(saved, orgTree));
+      closeEmployeeDetail();
+      setSuccessMessage('Detail saved');
       await notifyChanged();
     } finally {
       setDetailSaving(false);
@@ -344,6 +346,7 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
         formData={formData}
         showEmployeeForm={showEmployeeForm}
         error={error}
+        successMessage={successMessage}
         noCompanySelected={!selectedCompanyId}
         platformUserFor={platformUserFor}
         employeeCompanyName={employeeCompanyName}
@@ -359,9 +362,13 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
         onFormChange={data => setFormData(prev => ({ ...prev, ...data }))}
         onSubmit={submitEmployeeForm}
         onSubmitWithGrantAccess={submitEmployeeFormWithGrantAccess}
-        onOpenDetail={id => void openEmployeeDetail(id)}
+        onOpenDetail={id => {
+          setSuccessMessage(null);
+          void openEmployeeDetail(id);
+        }}
         onToggleActive={toggleEmployeeActive}
         onClearError={() => setError(null)}
+        onClearSuccess={() => setSuccessMessage(null)}
       />
 
       {detailDraft && (
