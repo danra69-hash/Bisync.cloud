@@ -1,4 +1,5 @@
 using Bisync.Api.Data;
+using Bisync.Api.Serialization;
 using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -162,6 +163,8 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new NullableDateOnlyJsonConverter());
+        options.JsonSerializerOptions.Converters.Add(new DateOnlyJsonConverter());
     });
 builder.Services.AddOpenApi();
 

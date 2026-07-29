@@ -49,54 +49,70 @@ function blankToNull(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/** Normalize date fields to yyyy-MM-dd or null (API DateOnly rejects "" / ISO timestamps). */
+function toDateOnlyOrNull(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1]! : null;
+}
+
+function toDateOnlyRequired(value: string | null | undefined, fallback: string): string {
+  return toDateOnlyOrNull(value) ?? fallback;
+}
+
 export function toEmployeeRequest(e: Employee): EmployeeRequest {
+  const today = new Date().toISOString().slice(0, 10);
   return {
     employeeCode: e.employeeCode,
-    name: e.name,
-    email: e.email,
-    mobile: e.mobile,
-    department: e.department,
-    divisionId: e.divisionId,
-    departmentId: e.departmentId,
-    position: e.position,
-    joinDate: e.joinDate,
+    name: e.name?.trim() ?? '',
+    email: e.email?.trim() ?? '',
+    mobile: e.mobile?.trim() ?? '',
+    department: blankToNull(e.department) ?? undefined,
+    divisionId: e.divisionId ?? null,
+    departmentId: e.departmentId ?? null,
+    position: e.position?.trim() ?? '',
+    joinDate: toDateOnlyRequired(e.joinDate, today),
     fingerprintEnrolled: e.fingerprintEnrolled,
     faceRecognitionEnrolled: e.faceRecognitionEnrolled,
     isShiftEmployee: e.isShiftEmployee,
-    shiftType: e.shiftType,
+    shiftType: blankToNull(e.shiftType),
     posEnabled: e.posEnabled,
     bisyncEnabled: e.bisyncEnabled,
     active: e.active ?? true,
     checkinMethod: e.checkinMethod ?? 'Biometrics',
     workingHoursPerDay: e.workingHoursPerDay,
-    employeeLevelId: e.employeeLevelId,
-    reportsToId: e.reportsToId,
-    nationality: e.nationality,
-    idPassportNumber: e.idPassportNumber,
-    dateOfBirth: e.dateOfBirth,
+    employeeLevelId: e.employeeLevelId ?? null,
+    reportsToId: e.reportsToId ?? null,
+    nationality: blankToNull(e.nationality),
+    idPassportNumber: blankToNull(e.idPassportNumber),
+    dateOfBirth: toDateOnlyOrNull(e.dateOfBirth),
     personalEmail: blankToNull(e.personalEmail),
     permanentAddress: blankToNull(e.permanentAddress),
-    maritalStatus: e.maritalStatus,
-    bankName: e.bankName,
-    bankAccountNumber: e.bankAccountNumber,
-    bankAccountHolderName: e.bankAccountHolderName,
+    maritalStatus: blankToNull(e.maritalStatus),
+    bankName: blankToNull(e.bankName),
+    bankAccountNumber: blankToNull(e.bankAccountNumber),
+    bankAccountHolderName: blankToNull(e.bankAccountHolderName),
     baseSalary: e.baseSalary,
     serviceAllowance: e.serviceAllowance,
     transportAllowance: e.transportAllowance,
     accommodationAllowance: e.accommodationAllowance,
     mobileAllowance: e.mobileAllowance,
-    otherAllowances: e.otherAllowances,
+    otherAllowances: (e.otherAllowances ?? [])
+      .filter(a => (a.name ?? '').trim().length > 0)
+      .map(a => ({ name: a.name.trim(), amount: a.amount })),
     workPermitByCompany: e.workPermitByCompany,
     transportProvided: e.transportProvided ?? false,
-    transportCarModel: e.transportCarModel,
-    transportPlateNumber: e.transportPlateNumber,
+    transportCarModel: blankToNull(e.transportCarModel),
+    transportPlateNumber: blankToNull(e.transportPlateNumber),
     accommodationProvided: e.accommodationProvided ?? false,
-    accommodationAddress: e.accommodationAddress,
-    accommodationLeaseStart: e.accommodationLeaseStart,
-    accommodationLeaseEnd: e.accommodationLeaseEnd,
+    accommodationAddress: blankToNull(e.accommodationAddress),
+    accommodationLeaseStart: toDateOnlyOrNull(e.accommodationLeaseStart),
+    accommodationLeaseEnd: toDateOnlyOrNull(e.accommodationLeaseEnd),
     mobileProvided: e.mobileProvided ?? false,
-    mobileAllowancePhone: e.mobileAllowancePhone,
-    mobileProvider: e.mobileProvider,
+    mobileAllowancePhone: blankToNull(e.mobileAllowancePhone),
+    mobileProvider: blankToNull(e.mobileProvider),
     overtimeAllowanceEnabled: e.overtimeAllowanceEnabled ?? false,
     bonusEnabled: e.bonusEnabled ?? false,
     bonusMonthly: e.bonusMonthly ?? false,
