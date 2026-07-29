@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { Product } from '../../api';
 import type { ComponentRow } from '../../data/componentForm';
@@ -52,6 +53,9 @@ export function VariableProductSection({
   const { currency } = useCountryFormatters();
   const { minCost, maxCost } = calcVariableMinMaxCost(config, baseRecipeCost);
   const unitRrp = config.mode === 'weight' ? calcWeightUnitRrp(rrp, config.choiceQty) : 0;
+  /** Pending multi-ticks when picking products for the combination choice list. */
+  const [pendingComboIds, setPendingComboIds] = useState<number[]>([]);
+  const [comboFilter, setComboFilter] = useState('');
 
   const setMode = (mode: VariableMode) => {
     onChange({
@@ -62,23 +66,33 @@ export function VariableProductSection({
       combinationOptions: mode === 'combination' ? config.combinationOptions : [],
       replacementSlots: mode === 'replacement' ? config.replacementSlots : [],
     });
+    if (mode !== 'combination') {
+      setPendingComboIds([]);
+      setComboFilter('');
+    }
   };
 
-  const addCombinationProduct = (productId: number) => {
-    const product = catalogProducts.find(p => p.id === productId);
-    if (!product) return;
-    if (config.combinationOptions.some(o => o.productId === product.id)) return;
-    const unitCost = calcProductCogs(product.totalCost ?? 0, product.packagingCost ?? 0, product);
-    const option: VariableCombinationOption = {
-      key: newOptionKey('combo'),
-      productId: product.id,
-      productCode: product.productId,
-      productName: product.name,
-      unitCost,
-    };
+  const addCombinationProducts = (productIds: number[]) => {
+    const existing = new Set(config.combinationOptions.map(o => o.productId));
+    const toAdd: VariableCombinationOption[] = [];
+    for (const productId of productIds) {
+      if (existing.has(productId)) continue;
+      const product = catalogProducts.find(p => p.id === productId);
+      if (!product) continue;
+      const unitCost = calcProductCogs(product.totalCost ?? 0, product.packagingCost ?? 0, product);
+      toAdd.push({
+        key: newOptionKey('combo'),
+        productId: product.id,
+        productCode: product.productId,
+        productName: product.name,
+        unitCost,
+      });
+      existing.add(product.id);
+    }
+    if (toAdd.length === 0) return;
     onChange({
       ...config,
-      combinationOptions: [...config.combinationOptions, option],
+      combinationOptions: [...config.combinationOptions, ...toAdd],
     });
   };
 
@@ -87,6 +101,21 @@ export function VariableProductSection({
       ...config,
       combinationOptions: config.combinationOptions.filter(o => o.key !== key),
     });
+  };
+
+  const togglePendingCombo = (productId: number, checked: boolean) => {
+    setPendingComboIds(prev => {
+      if (checked) {
+        return prev.includes(productId) ? prev : [...prev, productId];
+      }
+      return prev.filter(id => id !== productId);
+    });
+  };
+
+  const addPendingComboProducts = () => {
+    if (pendingComboIds.length === 0) return;
+    addCombinationProducts(pendingComboIds);
+    setPendingComboIds([]);
   };
 
   const syncSlotsFromRecipe = () => {
@@ -146,9 +175,37 @@ export function VariableProductSection({
     });
   };
 
-  const availableComboProducts = catalogProducts.filter(
-    p => !config.combinationOptions.some(o => o.productId === p.id),
-  );
+  const availableComboProducts = useMemo(() => {
+    const chosen = new Set(config.combinationOptions.map(o => o.productId));
+    const q = comboFilter.trim().toLowerCase();
+    return catalogProducts.filter(p => {
+      if (chosen.has(p.id)) return false;
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q)
+        || (p.productId || '').toLowerCase().includes(q)
+        || (p.category || '').toLowerCase().includes(q)
+        || (p.group || '').toLowerCase().includes(q)
+      );
+    });
+  }, [catalogProducts, config.combinationOptions, comboFilter]);
+
+  const allVisiblePendingChecked =
+    availableComboProducts.length > 0
+    && availableComboProducts.every(p => pendingComboIds.includes(p.id));
+
+  const toggleAllVisiblePending = (checked: boolean) => {
+    if (!checked) {
+      const visible = new Set(availableComboProducts.map(p => p.id));
+      setPendingComboIds(prev => prev.filter(id => !visible.has(id)));
+      return;
+    }
+    setPendingComboIds(prev => {
+      const next = new Set(prev);
+      for (const p of availableComboProducts) next.add(p.id);
+      return [...next];
+    });
+  };
 
   return (
     <section className="rounded-lg border border-border bg-card p-4 space-y-4">
@@ -278,28 +335,84 @@ export function VariableProductSection({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[220px] flex-1 space-y-1.5">
-              <label className={labelCls}>Add product to choice list</label>
-              <select
-                className={inputCls}
-                disabled={disabled || availableComboProducts.length === 0}
-                value=""
-                onChange={e => {
-                  const id = Number(e.target.value);
-                  if (id > 0) addCombinationProduct(id);
-                }}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[220px] flex-1 space-y-1.5">
+                <label className={labelCls}>Add products to choice list</label>
+                <input
+                  type="search"
+                  className={inputCls}
+                  disabled={disabled}
+                  value={comboFilter}
+                  onChange={e => setComboFilter(e.target.value)}
+                  placeholder="Search products…"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={disabled || pendingComboIds.length === 0}
+                onClick={addPendingComboProducts}
+                className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-2 text-muted-foreground hover:text-foreground disabled:opacity-40"
               >
-                <option value="">
-                  {availableComboProducts.length === 0 ? 'No more products available' : 'Select product…'}
-                </option>
-                {availableComboProducts.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.productId} — {p.name}
-                  </option>
-                ))}
-              </select>
+                <Plus className="w-3.5 h-3.5" />
+                Add selected ({pendingComboIds.length})
+              </button>
             </div>
+
+            <div className="border border-border rounded-md max-h-56 overflow-y-auto">
+              {availableComboProducts.length === 0 ? (
+                <p className="py-4 px-3 text-xs text-muted-foreground">
+                  {catalogProducts.length === 0
+                    ? 'No products available.'
+                    : comboFilter.trim()
+                      ? 'No matching products.'
+                      : 'All available products are already on the choice list.'}
+                </p>
+              ) : (
+                <ul className="divide-y divide-border/70">
+                  <li className="sticky top-0 bg-card/95 backdrop-blur-sm px-3 py-2 border-b border-border">
+                    <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-border"
+                        disabled={disabled}
+                        checked={allVisiblePendingChecked}
+                        onChange={e => toggleAllVisiblePending(e.target.checked)}
+                      />
+                      <span className="font-semibold text-muted-foreground">
+                        Select all shown ({availableComboProducts.length})
+                      </span>
+                    </label>
+                  </li>
+                  {availableComboProducts.map(p => {
+                    const checked = pendingComboIds.includes(p.id);
+                    return (
+                      <li key={p.id}>
+                        <label className="flex items-start gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 rounded border-border"
+                            disabled={disabled}
+                            checked={checked}
+                            onChange={e => togglePendingCombo(p.id, e.target.checked)}
+                          />
+                          <span className="min-w-0">
+                            <span className="font-medium text-foreground">{p.name}</span>
+                            <span className="block text-[10px] text-muted-foreground font-mono">
+                              {p.productId}
+                              {p.group ? ` · ${p.group}` : p.category ? ` · ${p.category}` : ''}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Tick one or more products, then Add selected to put them on the choice list.
+            </p>
           </div>
 
           <div className="overflow-x-auto border border-border rounded-md">
