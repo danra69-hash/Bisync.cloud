@@ -1802,7 +1802,7 @@ public static class SchemaPatcher
                 "DnsPrimary" TEXT NOT NULL DEFAULT '',
                 "DnsSecondary" TEXT NOT NULL DEFAULT '',
                 "Hostname" TEXT NOT NULL DEFAULT '',
-                "NetworkNotesJson" TEXT NOT NULL DEFAULT '{}',
+                "NetworkNotesJson" TEXT NOT NULL DEFAULT '{{}}',
                 "PrinterSdkCode" TEXT NOT NULL DEFAULT '',
                 "PrinterBrand" TEXT NOT NULL DEFAULT '',
                 "PrinterModel" TEXT NOT NULL DEFAULT '',
