@@ -27,7 +27,7 @@ export const MODE_META: Record<PosMode, ModeMeta> = {
     shortLabel: 'Order',
     goal: 'Speed, accuracy, and kitchen communication',
     devices: ['handheld', 'tableside', 'waiter-terminal'],
-    homePath: '/order/register',
+    homePath: '/order/floor',
   },
   cashier: {
     id: 'cashier',

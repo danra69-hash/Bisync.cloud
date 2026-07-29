@@ -1,4 +1,6 @@
 import { useNavigate } from 'react-router-dom'
+import { MODE_META } from '../core/modes/types'
+import { usePosMode } from '../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../core/session/PosSessionContext'
 import './TopBar.css'
 
@@ -9,20 +11,26 @@ type Props = {
 
 export function TopBar({ menuOpen, onToggleMenu }: Props) {
   const navigate = useNavigate()
+  const { mode } = usePosMode()
   const session = usePosSessionOptional()
   const locations = session?.locations ?? []
   const locationId = session?.locationId ?? ''
 
   return (
     <header className="topbar">
-      <div className="topbar__brand">
+      <button
+        type="button"
+        className="topbar__brand"
+        onClick={() => navigate(MODE_META[mode].homePath)}
+        aria-label="Go to POS home"
+      >
         <img
           src="/bisync-logo.png"
           alt="Bisync"
           className="topbar__logo-img"
         />
         <span className="topbar__name">POS</span>
-      </div>
+      </button>
 
       <div className="topbar__controls">
         <label className="topbar__location">

@@ -12,6 +12,9 @@
 }
 
 .bisync-pos-root {
+  position: relative;
   display: flex;
   flex-direction: column;
+  /* Contain position:fixed overlays (Admin sidebar, modals) inside the POS frame. */
+  transform: translateZ(0);
 }

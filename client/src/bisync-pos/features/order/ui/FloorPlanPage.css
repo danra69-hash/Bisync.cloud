@@ -1,7 +1,7 @@
 .floor-page {
   display: flex;
   flex-direction: column;
-  height: calc(100svh - var(--topbar-height));
+  height: 100%;
   min-height: 0;
   padding: var(--space-3);
   gap: var(--space-3);

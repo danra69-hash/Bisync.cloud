@@ -18,6 +18,16 @@
   padding: 2px 4px;
   margin-left: -4px;
   flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.topbar__brand:hover {
+  background: var(--color-bg);
 }
 
 .topbar__logo-img {
