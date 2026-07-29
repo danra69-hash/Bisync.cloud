@@ -17,9 +17,11 @@ import {
   STORAGE_AREAS,
   storageEntryMatchesLocations,
   storageEntryKey,
+  type ItemStorageAssignment,
   type MyStorageEntry,
   type StorageAssignmentState,
 } from '../../data/storageAssignment';
+import { saveStorageAssignmentApi } from '../../data/revMgmtConfigStore';
 import {
   buildHierarchyAttachmentCounts,
   emptyHierarchyAttachmentCounts,
@@ -31,6 +33,7 @@ import {
 } from '../../data/componentHierarchy';
 import { getKnownStorageOptions } from '../../data/componentCatalogConfig';
 import { ComponentHierarchyPanel } from './ComponentHierarchyPanel';
+import { ItemStorageAssignmentPanel } from './ItemStorageAssignmentPanel';
 import { CreateStorageAreaDialog, CreateStorageDialog } from './StorageAreaPicker';
 import { UomConfigPanel } from './UomConfigPanel';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
@@ -43,7 +46,7 @@ const STORAGE_TABLE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
 ];
 
 const CONFIG_TABS = [
-  { id: 'hierarchy' as const, label: 'Component Hierarchy' },
+  { id: 'hierarchy' as const, label: 'Component Group and Storage' },
   { id: 'storage' as const, label: 'Storage Assignment' },
   { id: 'uom' as const, label: 'UOM Config' },
 ] as const;
@@ -74,7 +77,7 @@ export function ComponentConfigPage({
 }) {
   const [tab, setTab] = useState<'hierarchy' | 'storage' | 'uom'>('hierarchy');
 
-  const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Component Hierarchy';
+  const activeTabLabel = CONFIG_TABS.find(t => t.id === tab)?.label ?? 'Component Group and Storage';
   useRevMgmtPageLabel(activeTabLabel);
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
   const [attachmentCounts, setAttachmentCounts] = useState<HierarchyAttachmentCounts>(
@@ -91,6 +94,7 @@ export function ComponentConfigPage({
     : resolveFallbackLocationLabels(selectedLocationIds);
 
   const initialAssignment = loadStorageAssignment();
+  const [assignment, setAssignment] = useState<StorageAssignmentState>(() => initialAssignment);
   const [storageAreas, setStorageAreas] = useState<string[]>(() => uniqueAreas(initialAssignment.areas, initialAssignment.entries));
   const [myStorageEntries, setMyStorageEntries] = useState<MyStorageEntry[]>(() => initialAssignment.entries);
   const [nextEntryId, setNextEntryId] = useState(() => initialAssignment.nextEntryId);
@@ -98,15 +102,35 @@ export function ComponentConfigPage({
   const [createStorageOpen, setCreateStorageOpen] = useState(false);
 
   function persistAssignment(next: StorageAssignmentState) {
-    setStorageAreas(uniqueAreas(next.areas, next.entries));
-    setMyStorageEntries(next.entries);
-    setNextEntryId(next.nextEntryId);
-    saveStorageAssignment(next, selectedCompanyId);
+    const normalized: StorageAssignmentState = {
+      ...next,
+      itemAssignments: next.itemAssignments ?? assignment.itemAssignments ?? [],
+    };
+    setAssignment(normalized);
+    setStorageAreas(uniqueAreas(normalized.areas, normalized.entries));
+    setMyStorageEntries(normalized.entries);
+    setNextEntryId(normalized.nextEntryId);
+    saveStorageAssignment(normalized, selectedCompanyId);
   }
 
   function updateHierarchy(next: ComponentHierarchyState) {
     setHierarchy(next);
     saveComponentHierarchy(next, selectedCompanyId);
+  }
+
+  async function saveItemAssignments(rows: ItemStorageAssignment[]) {
+    const next: StorageAssignmentState = {
+      areas: storageAreas,
+      entries: myStorageEntries,
+      nextEntryId,
+      itemAssignments: rows,
+    };
+    setAssignment(next);
+    setStorageAreas(uniqueAreas(next.areas, next.entries));
+    setMyStorageEntries(next.entries);
+    setNextEntryId(next.nextEntryId);
+    if (!selectedCompanyId) return;
+    await saveStorageAssignmentApi(selectedCompanyId, next);
   }
 
   useEffect(() => {
@@ -131,6 +155,7 @@ export function ComponentConfigPage({
       if (ensured.changed) {
         saveStorageAssignment(state, selectedCompanyId);
       }
+      setAssignment(state);
       setStorageAreas(uniqueAreas(state.areas, state.entries));
       setMyStorageEntries(state.entries);
       setNextEntryId(state.nextEntryId);
@@ -142,6 +167,7 @@ export function ComponentConfigPage({
     const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
     const reloadStorage = () => {
       const nextStorage = loadStorageAssignment();
+      setAssignment(nextStorage);
       setStorageAreas(uniqueAreas(nextStorage.areas, nextStorage.entries));
       setMyStorageEntries(nextStorage.entries);
       setNextEntryId(nextStorage.nextEntryId);
@@ -189,6 +215,7 @@ export function ComponentConfigPage({
       areas,
       entries: myStorageEntries,
       nextEntryId,
+      itemAssignments: assignment.itemAssignments ?? [],
     });
     setCreateAreaOpen(false);
   }
@@ -227,6 +254,7 @@ export function ComponentConfigPage({
       areas: uniqueAreas([...storageAreas, payload.area], [...myStorageEntries, ...newEntries]),
       entries: [...myStorageEntries, ...newEntries],
       nextEntryId: nextId,
+      itemAssignments: assignment.itemAssignments ?? [],
     });
     setCreateStorageOpen(false);
   }
@@ -237,6 +265,7 @@ export function ComponentConfigPage({
       areas: uniqueAreas(storageAreas, nextEntries),
       entries: nextEntries,
       nextEntryId,
+      itemAssignments: assignment.itemAssignments ?? [],
     });
   }
 
@@ -259,104 +288,117 @@ export function ComponentConfigPage({
       </PageStickyFilters>
 
       {tab === 'hierarchy' ? (
-        <ComponentHierarchyPanel
-          state={hierarchy}
-          onChange={updateHierarchy}
-          attachmentCounts={attachmentCounts}
-        />
-      ) : tab === 'storage' ? (
-        <div className="space-y-3">
-          {!orgReady ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">
-              Select a company and at least one location to manage storage assignment.
-            </p>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <p className="text-xs text-muted-foreground">
-                  Location: <span className="font-medium text-foreground">{locationLabelDisplay}</span>
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCreateAreaOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-border bg-background text-foreground hover:bg-muted/40"
-                  >
-                    <Plus size={11} /> Create Storage Area
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCreateStorageOpen(true)}
-                    disabled={storageAreas.length === 0}
-                    title={storageAreas.length === 0 ? 'Create a storage area first' : 'Create storage'}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Plus size={11} /> Create Storage
-                  </button>
-                </div>
-              </div>
+        <div className="space-y-6">
+          <ComponentHierarchyPanel
+            state={hierarchy}
+            onChange={updateHierarchy}
+            attachmentCounts={attachmentCounts}
+          />
 
-              <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
-                <div className="px-3 py-2 border-b border-border bg-muted/30">
-                  <p className="text-xs font-semibold">Storage — {locationLabelDisplay}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Create storage areas, then add storages under each area.
-                  </p>
+          <div className="space-y-3">
+            {!orgReady ? (
+              <p className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
+                Select a company and at least one location to manage storage areas and storages.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Storage areas &amp; storages</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Location: <span className="font-medium text-foreground">{locationLabelDisplay}</span>
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCreateAreaOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border border-border bg-background text-foreground hover:bg-muted/40"
+                    >
+                      <Plus size={11} /> Create Storage Area
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateStorageOpen(true)}
+                      disabled={storageAreas.length === 0}
+                      title={storageAreas.length === 0 ? 'Create a storage area first' : 'Create storage'}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus size={11} /> Create Storage
+                    </button>
+                  </div>
                 </div>
-                <TableScrollContainer ref={storageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-                  <table className="w-full table-fixed text-xs">
-                    <thead>
-                      <SortableTableHeaderRow
-                        columns={STORAGE_TABLE_COLUMNS}
-                        sortColumn={sortColumn}
-                        sortDirection={sortDirection}
-                        onSort={toggleSort}
-                        className="border-b border-border bg-muted/40"
-                      />
-                    </thead>
-                    <tbody>
-                      {storageScroll.visibleItems.map(entry => (
-                        <tr key={entry.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
-                          <td className="px-3 py-2.5 font-medium">{entry.area}</td>
-                          <td className="px-3 py-2.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{entry.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => removeMyStorageEntry(entry.id)}
-                                className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40"
-                                title="Remove storage"
-                                aria-label={`Remove ${entry.name}`}
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {visibleEntries.length === 0 && (
-                        <tr>
-                          <td colSpan={2} className="px-3 py-8 text-center text-muted-foreground">
-                            No storage yet. Create a storage area, then create storage.
-                          </td>
-                        </tr>
-                      )}
-                      <InfiniteScrollTableSentinel
-                        colSpan={2}
-                        hasMore={storageScroll.hasMore}
-                        onLoadMore={storageScroll.loadMore}
-                        nextPageSize={storageScroll.nextPageSize}
-                        sentinelRef={storageScroll.sentinelRef}
-                        totalCount={storageScroll.totalCount}
-                        visibleCount={storageScroll.visibleCount}
-                      />
-                    </tbody>
-                  </table>
-                </TableScrollContainer>
-              </div>
-            </>
-          )}
+
+                <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
+                  <div className="px-3 py-2 border-b border-border bg-muted/30">
+                    <p className="text-xs font-semibold">Storage — {locationLabelDisplay}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Create storage areas, then add storages under each area. Assign them to items on Storage Assignment.
+                    </p>
+                  </div>
+                  <TableScrollContainer ref={storageScrollRef} className="max-h-[min(28rem,calc(100vh-16rem))] overflow-y-auto">
+                    <table className="w-full table-fixed text-xs">
+                      <thead>
+                        <SortableTableHeaderRow
+                          columns={STORAGE_TABLE_COLUMNS}
+                          sortColumn={sortColumn}
+                          sortDirection={sortDirection}
+                          onSort={toggleSort}
+                          className="border-b border-border bg-muted/40"
+                        />
+                      </thead>
+                      <tbody>
+                        {storageScroll.visibleItems.map(entry => (
+                          <tr key={entry.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
+                            <td className="px-3 py-2.5 font-medium">{entry.area}</td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span>{entry.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeMyStorageEntry(entry.id)}
+                                  className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40"
+                                  title="Remove storage"
+                                  aria-label={`Remove ${entry.name}`}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {visibleEntries.length === 0 && (
+                          <tr>
+                            <td colSpan={2} className="px-3 py-8 text-center text-muted-foreground">
+                              No storage yet. Create a storage area, then create storage.
+                            </td>
+                          </tr>
+                        )}
+                        <InfiniteScrollTableSentinel
+                          colSpan={2}
+                          hasMore={storageScroll.hasMore}
+                          onLoadMore={storageScroll.loadMore}
+                          nextPageSize={storageScroll.nextPageSize}
+                          sentinelRef={storageScroll.sentinelRef}
+                          totalCount={storageScroll.totalCount}
+                          visibleCount={storageScroll.visibleCount}
+                        />
+                      </tbody>
+                    </table>
+                  </TableScrollContainer>
+                </div>
+              </>
+            )}
+          </div>
         </div>
+      ) : tab === 'storage' ? (
+        <ItemStorageAssignmentPanel
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          locationLabelDisplay={locationLabelDisplay}
+          assignment={assignment}
+          onSaveAssignments={saveItemAssignments}
+        />
       ) : (
         <UomConfigPanel selectedCompanyId={selectedCompanyId} />
       )}

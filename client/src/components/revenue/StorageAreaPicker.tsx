@@ -31,7 +31,7 @@ export function CreateStorageAreaDialog({ existingAreas, onClose, onConfirm }: A
       <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card shadow-2xl">
         <div className="flex items-start justify-between border-b border-border px-4 py-3">
           <div>
-            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Storage assignment</p>
+            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Component group and storage</p>
             <h3 className="text-sm font-semibold mt-0.5">Create Storage Area</h3>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted">
@@ -115,7 +115,7 @@ export function CreateStorageDialog({ areas, storageTypes, onClose, onConfirm }:
       <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card shadow-2xl">
         <div className="flex items-start justify-between border-b border-border px-4 py-3">
           <div>
-            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Storage assignment</p>
+            <p className="text-xs font-sans uppercase tracking-wider text-muted-foreground">Component group and storage</p>
             <h3 className="text-sm font-semibold mt-0.5">Create Storage</h3>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-md hover:bg-muted">
