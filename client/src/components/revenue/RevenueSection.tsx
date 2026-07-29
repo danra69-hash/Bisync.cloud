@@ -22,6 +22,7 @@ import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
 import { PosPromotionSchedulerPage } from './PosPromotionSchedulerPage';
+import { PosDeviceManagementPage } from './PosDeviceManagementPage';
 import { ProductAuditPage } from './ProductAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
@@ -297,6 +298,11 @@ export function RevenueSection({
           />
         ) : posItem === 'POS Test Tap' ? (
           <PosTestTapPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'Device Management' ? (
+          <PosDeviceManagementPage
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}
           />

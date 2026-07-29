@@ -1793,3 +1793,80 @@ public class SetPosPromotionActiveRequest
     public bool Active { get; set; }
 }
 
+public class UpsertPosDeviceRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+    /// <summary>posMain | posOrderStation | kitchenDisplay | barDisplay | kiosk | printer</summary>
+    [Required, MaxLength(40)]
+    public string DeviceType { get; set; } = string.Empty;
+    /// <summary>ethernet | wifi | usb | bluetooth | cloud</summary>
+    [MaxLength(40)]
+    public string ConnectionType { get; set; } = "ethernet";
+    [MaxLength(120)]
+    public string? HostAddress { get; set; }
+    [Range(1, 65535)]
+    public int? Port { get; set; }
+    [MaxLength(40)]
+    public string? MacAddress { get; set; }
+    [MaxLength(80)]
+    public string? SubnetMask { get; set; }
+    [MaxLength(80)]
+    public string? Gateway { get; set; }
+    [MaxLength(80)]
+    public string? DnsPrimary { get; set; }
+    [MaxLength(80)]
+    public string? DnsSecondary { get; set; }
+    [MaxLength(120)]
+    public string? Hostname { get; set; }
+    [MaxLength(80)]
+    public string? PrinterSdkCode { get; set; }
+    [MaxLength(80)]
+    public string? PrinterBrand { get; set; }
+    [MaxLength(120)]
+    public string? PrinterModel { get; set; }
+    public int? PaperWidthMm { get; set; }
+    [MaxLength(20)]
+    public string? PrintAlignment { get; set; }
+    public int? PrintMarginLeft { get; set; }
+    public int? PrintMarginRight { get; set; }
+    public bool? PrinterSetupComplete { get; set; }
+    public bool Active { get; set; } = true;
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+}
+
+public class PosDeviceNetworkProbeRequest
+{
+    [MaxLength(120)]
+    public string? HostAddress { get; set; }
+    [Range(1, 65535)]
+    public int? Port { get; set; }
+    /// <summary>Optional device type for suggested default ports.</summary>
+    [MaxLength(40)]
+    public string? DeviceType { get; set; }
+}
+
+public class PosPrinterSetupRequest
+{
+    [Range(58, 112)]
+    public int PaperWidthMm { get; set; } = 80;
+    /// <summary>left | center</summary>
+    [MaxLength(20)]
+    public string PrintAlignment { get; set; } = "left";
+    public int PrintMarginLeft { get; set; }
+    public int PrintMarginRight { get; set; }
+    /// <summary>When true, mark setup complete after saving alignment.</summary>
+    public bool MarkComplete { get; set; } = true;
+    [MaxLength(80)]
+    public string? PrinterSdkCode { get; set; }
+    [MaxLength(80)]
+    public string? PrinterBrand { get; set; }
+    [MaxLength(120)]
+    public string? PrinterModel { get; set; }
+}
+
