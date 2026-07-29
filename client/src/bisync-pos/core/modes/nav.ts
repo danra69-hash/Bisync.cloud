@@ -19,8 +19,14 @@ export const MODE_NAV: Record<PosMode, NavGroup[]> = {
       title: 'Service',
       items: [
         { to: '/order/register', label: 'Register', end: true },
-        { to: '/order/floor', label: 'Floor Plan' },
+        { to: '/order/floor', label: 'Floor Plan', end: true },
         { to: '/order/reservations', label: 'Reservations' },
+      ],
+    },
+    {
+      title: 'Setup',
+      items: [
+        { to: '/order/floor/edit', label: 'Edit Floor Plan' },
       ],
     },
   ],
@@ -76,6 +82,7 @@ export const MODE_NAV: Record<PosMode, NavGroup[]> = {
 export type NavIconKey =
   | 'order'
   | 'floor'
+  | 'floorEdit'
   | 'calendar'
   | 'modifiers'
   | 'eightySix'
@@ -98,6 +105,7 @@ export type NavIconKey =
 export const NAV_ICONS: Record<string, NavIconKey> = {
   '/order/register': 'order',
   '/order/floor': 'floor',
+  '/order/floor/edit': 'floorEdit',
   '/order/reservations': 'calendar',
   '/cashier': 'checkout',
   '/cashier/split': 'split',

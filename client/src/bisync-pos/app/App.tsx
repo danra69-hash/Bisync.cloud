@@ -36,6 +36,7 @@ export function BisyncPosApp() {
 
           <Route path="/order" element={<Navigate to="/order/floor" replace />} />
           <Route path="/order/floor" element={<FloorPlanPage />} />
+          <Route path="/order/floor/edit" element={<FloorPlanPage />} />
           <Route path="/order/register" element={<RegisterPage />} />
           <Route
             path="/order/reservations"

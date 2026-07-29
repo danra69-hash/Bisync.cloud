@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   TABLE_STATUS_LABEL,
   clamp,
@@ -37,15 +37,37 @@ type ResizeState = {
 
 export function FloorPlanPage() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const editRoute = pathname.endsWith('/floor/edit')
   const { qrTableMode } = useConfig()
   const canvasRef = useRef<HTMLDivElement>(null)
   const [plan, setPlan] = useState<FloorPlanState>(() => loadFloorPlan())
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(editRoute)
   const [selected, setSelected] = useState<Selection | null>(null)
-  const [draft, setDraft] = useState<FloorPlanState | null>(null)
+  const [draft, setDraft] = useState<FloorPlanState | null>(() =>
+    editRoute ? structuredClone(loadFloorPlan()) : null,
+  )
   const [drag, setDrag] = useState<DragState | null>(null)
   const [resize, setResize] = useState<ResizeState | null>(null)
   const [openingTableId, setOpeningTableId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!editRoute) {
+      setEditing(false)
+      setDraft(null)
+      setSelected(null)
+      setDrag(null)
+      setResize(null)
+      return
+    }
+    const latest = loadFloorPlan()
+    setPlan(latest)
+    setDraft(structuredClone(latest))
+    setEditing(true)
+    setSelected(null)
+    setDrag(null)
+    setResize(null)
+  }, [editRoute])
 
   const visible = editing && draft ? draft : plan
   const selectedTable =
@@ -209,18 +231,13 @@ export function FloorPlanPage() {
     }
   }, [drag, resize, editing])
 
-  function startEdit() {
-    setDraft(structuredClone(plan))
-    setEditing(true)
-    setSelected(null)
-  }
-
   function cancelEdit() {
     setEditing(false)
     setDraft(null)
     setSelected(null)
     setDrag(null)
     setResize(null)
+    if (editRoute) navigate('/order/floor', { replace: true })
   }
 
   function saveEdit() {
@@ -230,6 +247,7 @@ export function FloorPlanPage() {
     setEditing(false)
     setDraft(null)
     setSelected(null)
+    if (editRoute) navigate('/order/floor', { replace: true })
   }
 
   function updateSelectedTable(patch: Partial<FloorTable>) {
@@ -337,9 +355,6 @@ export function FloorPlanPage() {
           </>
         ) : (
           <>
-            <button type="button" className="chip-btn" onClick={startEdit}>
-              Edit floor plan
-            </button>
             {qrTableMode === 'fixed' && (
               <button
                 type="button"

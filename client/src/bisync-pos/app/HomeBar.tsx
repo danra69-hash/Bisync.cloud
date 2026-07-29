@@ -39,6 +39,7 @@ export function HomeBar() {
 
 function screenLabel(pathname: string): string {
   if (pathname.startsWith('/order/register')) return 'Register'
+  if (pathname.startsWith('/order/floor/edit')) return 'Edit Floor Plan'
   if (pathname.startsWith('/order/floor')) return 'Floor Plan'
   if (pathname.startsWith('/order/reservations')) return 'Reservations'
   if (pathname.startsWith('/cashier')) return 'Cashier'

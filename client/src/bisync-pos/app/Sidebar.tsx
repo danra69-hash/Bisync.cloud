@@ -112,6 +112,8 @@ function renderIcon(key: NavIconKey | undefined) {
       return <IconPos />
     case 'floor':
       return <IconTable />
+    case 'floorEdit':
+      return <IconFloorEdit />
     case 'calendar':
       return <IconCalendar />
     case 'modifiers':
@@ -166,6 +168,15 @@ function IconTable() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M4 9h16M6 9v10M18 9v10M9 13h6" />
+    </svg>
+  )
+}
+
+function IconFloorEdit() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 9h10M6 9v10M14 9v4" />
+      <path d="M14.5 15.5l5-5 2 2-5 5h-2v-2z" />
     </svg>
   )
 }
