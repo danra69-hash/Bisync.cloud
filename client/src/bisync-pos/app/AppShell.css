@@ -38,5 +38,7 @@
 }
 
 .app-shell__main > .feature-page {
-  flex: 1 0 auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }

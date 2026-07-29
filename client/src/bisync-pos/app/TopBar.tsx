@@ -12,20 +12,33 @@ type Props = {
 export function TopBar({ menuOpen, onToggleMenu }: Props) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const { mode } = usePosMode()
+  const { setMode } = usePosMode()
   const session = usePosSessionOptional()
   const locations = session?.locations ?? []
   const locationId = session?.locationId ?? ''
-  const homePath = MODE_META[mode].homePath
+  /** Venue home is always Floor Plan (not mode-specific BOH/Cashier homes). */
+  const homePath = MODE_META.order.homePath
   const isHome =
-    pathname === homePath || (mode === 'order' && pathname.startsWith('/order/floor') && !pathname.includes('/edit'))
+    pathname === '/order/floor'
+    || (pathname.startsWith('/order/floor') && !pathname.includes('/edit'))
+  const isSetup = pathname.startsWith('/boh/settings')
+
+  function goHome() {
+    setMode('order')
+    navigate(homePath)
+  }
+
+  function goSetup() {
+    setMode('boh')
+    navigate('/boh/settings')
+  }
 
   return (
     <header className="topbar">
       <button
         type="button"
         className="topbar__brand"
-        onClick={() => navigate(homePath)}
+        onClick={goHome}
         aria-label="Go to POS home"
       >
         <img
@@ -59,8 +72,9 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
 
         <button
           type="button"
-          className="topbar__setup"
-          onClick={() => navigate('/boh/settings')}
+          className={`topbar__setup${isSetup ? ' is-active' : ''}`}
+          onClick={goSetup}
+          aria-current={isSetup ? 'page' : undefined}
         >
           POS Setup
         </button>
@@ -85,7 +99,7 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
         <button
           type="button"
           className={`topbar__home${isHome ? ' is-active' : ''}`}
-          onClick={() => navigate(homePath)}
+          onClick={goHome}
           aria-label="Home"
           aria-current={isHome ? 'page' : undefined}
         >
