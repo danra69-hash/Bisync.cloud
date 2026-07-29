@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { MOCK_PRODUCTS } from '../domain/catalog'
 import {
   addToCart,
@@ -15,11 +16,18 @@ import type {
 } from '../domain/saleDetail'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { buildDepartmentGroups } from '../../../core/session/mapPosCatalog'
+import {
+  clearActiveRegisterSession,
+  loadActiveRegisterSession,
+  releaseFloorTable,
+  type ActiveRegisterSession,
+} from '../../order/domain/tables'
 import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
 import { TakeawayPickupModal } from './TakeawayPickupModal'
+import { CombinationPickerModal } from './CombinationPickerModal'
 import {
   formatPickupLabel,
   type TakeawayPickup,
@@ -34,6 +42,7 @@ const EMPTY_CHARGES: OrderCharges = {
 }
 
 export function RegisterPage() {
+  const navigate = useNavigate()
   const session = usePosSessionOptional()
   const liveCatalog = session?.catalog ?? []
 
@@ -62,14 +71,27 @@ export function RegisterPage() {
     return groups?.[0] ?? ''
   })
   const [dining, setDining] = useState('dine-in')
-  const [table, setTable] = useState('t5')
+  const [activeTableSession, setActiveTableSession] = useState<ActiveRegisterSession | null>(
+    () => loadActiveRegisterSession(),
+  )
+  const [table, setTable] = useState(() => loadActiveRegisterSession()?.tableId ?? 't5')
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
+  const [comboProduct, setComboProduct] = useState<Product | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
+
+  useEffect(() => {
+    const active = loadActiveRegisterSession()
+    setActiveTableSession(active)
+    if (active) {
+      setDining('dine-in')
+      setTable(active.tableId)
+    }
+  }, [])
 
   useEffect(() => {
     if (!departments.includes(department)) {
@@ -167,42 +189,18 @@ export function RegisterPage() {
       flash(`${product.name}: no combination options configured.`)
       return
     }
+    setComboProduct(product)
+  }
 
-    const picks: PosSaleCombinationSelection[] = []
-    for (let i = 0; i < need; i += 1) {
-      const list = options
-        .map((o, idx) => `${idx + 1}. ${o.productName || o.productCode || `#${o.productId}`}`)
-        .join('\n')
-      const raw = window.prompt(
-        `${product.name} — pick ${i + 1} of ${need}:\n${list}\nEnter number:`,
-        '1',
-      )
-      if (raw == null) return
-      const idx = Number(raw) - 1
-      const opt = options[idx]
-      if (!opt || !Number.isFinite(idx) || idx < 0) {
-        flash('Invalid combination pick.')
-        return
-      }
-      const existing = picks.find(p => p.productId === opt.productId)
-      if (existing) {
-        existing.quantity += 1
-      } else {
-        picks.push({
-          productId: opt.productId,
-          productCode: opt.productCode,
-          productName: opt.productName,
-          quantity: 1,
-        })
-      }
-    }
-
+  function confirmCombinationPicks(picks: PosSaleCombinationSelection[]) {
+    if (!comboProduct) return
     const detail: PosSaleVariableDetail = {
       variableMode: 'combination',
       combinationSelections: picks,
     }
-    setLines(prev => addVariableToCart(prev, product.id, detail, 1))
-    flash(`${product.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
+    setLines(prev => addVariableToCart(prev, comboProduct.id, detail, 1))
+    flash(`${comboProduct.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
+    setComboProduct(null)
   }
 
   function promptReplacementAndAdd(product: Product) {
@@ -286,6 +284,27 @@ export function RegisterPage() {
     setLines(prev => addToCart(prev, product.id))
   }
 
+  function handleCancelTable() {
+    if (lines.length > 0) {
+      flash('Remove order items before cancelling the table.')
+      return
+    }
+    if (!activeTableSession) {
+      flash('No opened table to cancel.')
+      return
+    }
+    const released = releaseFloorTable(activeTableSession.tableId)
+    clearActiveRegisterSession()
+    setActiveTableSession(null)
+    setCharges(EMPTY_CHARGES)
+    flash(
+      released
+        ? `Table ${activeTableSession.tableLabel} released`
+        : `Table ${activeTableSession.tableLabel} cancelled`,
+    )
+    navigate('/order/floor')
+  }
+
   async function chargePayment() {
     if (!session) {
       flash('Opening payment…')
@@ -337,6 +356,8 @@ export function RegisterPage() {
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       setLines([])
       setCharges(EMPTY_CHARGES)
+      clearActiveRegisterSession()
+      setActiveTableSession(null)
       flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)
       session.refreshCatalog()
     } catch (e) {
@@ -431,7 +452,12 @@ export function RegisterPage() {
         onOpenPickup={() => {
           if (dining === 'takeaway') setPickupModalOpen(true)
         }}
+        activeTableLabel={activeTableSession?.tableLabel ?? null}
         onAction={action => {
+          if (action === 'cancel') {
+            handleCancelTable()
+            return
+          }
           if (action === 'payment') {
             void chargePayment()
             return
@@ -450,6 +476,17 @@ export function RegisterPage() {
         <TakeawayPickupModal
           onCancel={handlePickupCancel}
           onConfirm={handlePickupConfirm}
+        />
+      )}
+      {comboProduct && (
+        <CombinationPickerModal
+          productName={comboProduct.name}
+          choiceQty={comboProduct.choiceQty && comboProduct.choiceQty > 0
+            ? Math.round(comboProduct.choiceQty)
+            : 1}
+          options={comboProduct.combinationOptions ?? []}
+          onCancel={() => setComboProduct(null)}
+          onConfirm={confirmCombinationPicks}
         />
       )}
 

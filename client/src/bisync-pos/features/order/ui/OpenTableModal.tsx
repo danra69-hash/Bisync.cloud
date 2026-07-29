@@ -7,6 +7,7 @@ type Props = {
   onConfirm: (pax: number) => void
 }
 
+/** Shown only for Dynamic QR table mode when opening a free table. */
 export function OpenTableModal({ tableLabel, onCancel, onConfirm }: Props) {
   const [pax, setPax] = useState(2)
 
@@ -15,7 +16,7 @@ export function OpenTableModal({ tableLabel, onCancel, onConfirm }: Props) {
       <button type="button" className="open-table-modal__backdrop" aria-label="Close" onClick={onCancel} />
       <div className="open-table-modal__card">
         <h2 id="open-table-title">Open table {tableLabel}</h2>
-        <p>Confirm number of guests, then print a dynamic QR for this session.</p>
+        <p>Enter number of pax. A dynamic QR (time / date / table) prints immediately.</p>
         <label>
           Number of pax
           <input

@@ -99,7 +99,11 @@ export function mapApiProductsToPosCatalog(
       weightUom,
       weightQty,
       variableMode: mode,
-      choiceQty: cfg?.choiceQty,
+      choiceQty: mode === 'combination'
+        ? ((product.variableChoiceQty && product.variableChoiceQty > 0)
+          ? product.variableChoiceQty
+          : cfg?.choiceQty)
+        : cfg?.choiceQty,
       combinationOptions: mode === 'combination' ? cfg?.combinationOptions : undefined,
       replacementSlots: mode === 'replacement' ? cfg?.replacementSlots : undefined,
     })

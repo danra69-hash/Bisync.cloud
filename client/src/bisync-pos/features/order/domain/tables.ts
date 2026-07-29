@@ -362,3 +362,53 @@ export function loadFloorPlan(): FloorPlanState {
 export function saveFloorPlan(plan: FloorPlanState) {
   localStorage.setItem(FLOOR_STORAGE_KEY, JSON.stringify(plan))
 }
+
+/** Active dine-in table attached to the register check (Floor Plan → Register). */
+export const ACTIVE_REGISTER_SESSION_KEY = 'bisync-pos-active-register-session'
+
+export type ActiveRegisterSession = {
+  tableId: string
+  tableLabel: string
+  openedAt?: string
+}
+
+export function loadActiveRegisterSession(): ActiveRegisterSession | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_REGISTER_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as ActiveRegisterSession
+    if (!parsed?.tableId || !parsed?.tableLabel) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export function setActiveRegisterSession(session: ActiveRegisterSession) {
+  localStorage.setItem(ACTIVE_REGISTER_SESSION_KEY, JSON.stringify(session))
+}
+
+export function clearActiveRegisterSession() {
+  localStorage.removeItem(ACTIVE_REGISTER_SESSION_KEY)
+}
+
+/** Release an ordered table back to free/open (no order). */
+export function releaseFloorTable(tableId: string): FloorTable | null {
+  const plan = loadFloorPlan()
+  let released: FloorTable | null = null
+  const tables = plan.tables.map((table) => {
+    if (table.id !== tableId) return table
+    released = normalizeTable({
+      ...table,
+      status: 'open',
+      pax: undefined,
+      openedAt: undefined,
+      orderId: undefined,
+      serverName: undefined,
+    })
+    return released
+  })
+  if (!released) return null
+  saveFloorPlan({ ...plan, tables })
+  return released
+}
