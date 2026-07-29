@@ -25,10 +25,16 @@ export function OrgSelectFields({
         <select
           required={required}
           value={divisionId ?? ''}
-          onChange={e => onChange({
-            divisionId: e.target.value ? Number(e.target.value) : null,
-            departmentId: null,
-          })}
+          onChange={e => {
+            const nextDivisionId = e.target.value ? Number(e.target.value) : null;
+            const nextDepartments = orgTree.find(d => d.id === nextDivisionId)?.departments ?? [];
+            const keepDepartment = departmentId != null
+              && nextDepartments.some(department => department.id === departmentId);
+            onChange({
+              divisionId: nextDivisionId,
+              departmentId: keepDepartment ? departmentId : null,
+            });
+          }}
           className={`${selectCls} mt-1`}
         >
           <option value="">— Select division —</option>

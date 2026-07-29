@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppUser } from '../../api';
 import { inputCls, selectCls } from '../../data/countries';
 import type { CheckinMethod, DivisionTreeNode, Employee, EmployeeLevel } from '../../modules/hr/types';
@@ -59,10 +59,16 @@ export function EmployeeDetailPanel({
   onClearError,
 }: Props) {
   const [addressParts, setAddressParts] = useState<AddressParts>(() => parseAddress(employee.permanentAddress));
+  const footerErrorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setAddressParts(parseAddress(employee.permanentAddress));
   }, [employee.id, employee.permanentAddress]);
+
+  useEffect(() => {
+    if (!error) return;
+    footerErrorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [error]);
 
   function updateAddress(parts: AddressParts) {
     setAddressParts(parts);
@@ -134,7 +140,7 @@ export function EmployeeDetailPanel({
                 <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Join Date</label>
                 <input
                   type="date"
-                  value={employee.joinDate}
+                  value={(employee.joinDate ?? '').slice(0, 10)}
                   onChange={(e) => onUpdate({ joinDate: e.target.value })}
                   className={`${inputCls} mt-1`}
                 />
@@ -476,26 +482,39 @@ export function EmployeeDetailPanel({
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-border flex justify-between items-center shrink-0">
-          <button
-            type="button"
-            onClick={() => { if (confirm('Delete this employee permanently?')) onDelete(); }}
-            className="text-xs font-sans border border-destructive/30 text-destructive rounded-md px-4 py-2 hover:bg-destructive/10"
-          >
-            Delete Employee
-          </button>
-          <div className="flex gap-3">
-            <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
-              Cancel
-            </button>
+        <div className="px-5 py-4 border-t border-border shrink-0 space-y-3">
+          {error ? (
+            <div
+              ref={footerErrorRef}
+              className="px-4 py-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg text-xs flex justify-between gap-3"
+            >
+              <span>{error}</span>
+              {onClearError ? (
+                <button type="button" onClick={onClearError} className="hover:opacity-70 shrink-0">×</button>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex justify-between items-center">
             <button
               type="button"
-              onClick={onSave}
-              disabled={saving}
-              className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+              onClick={() => { if (confirm('Delete this employee permanently?')) onDelete(); }}
+              className="text-xs font-sans border border-destructive/30 text-destructive rounded-md px-4 py-2 hover:bg-destructive/10"
             >
-              {saving ? 'Saving…' : 'Save Changes'}
+              Delete Employee
             </button>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} className="text-xs font-sans border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saving}
+                className="text-xs font-sans bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
