@@ -72,6 +72,8 @@
   padding: 8px 10px;
   box-sizing: border-box;
   z-index: 1;
+  /* Zones are decorative during service — do not block table clicks. */
+  pointer-events: none;
 }
 
 .floor-zone__label {
@@ -133,6 +135,7 @@
 
 .floor-table {
   position: absolute;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -145,6 +148,7 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
+  pointer-events: auto;
   transition: box-shadow 120ms ease, border-color 120ms ease, transform 80ms ease;
 }
 
