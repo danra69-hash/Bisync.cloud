@@ -87,7 +87,7 @@
 
 .register__tabs {
   display: grid;
-  grid-template-rows: repeat(2, minmax(calc(36px * var(--pos-ui-scale)), auto));
+  grid-auto-rows: minmax(calc(36px * var(--pos-ui-scale)), auto);
   gap: var(--space-1);
   margin-bottom: var(--space-2);
   flex-shrink: 0;
@@ -96,7 +96,6 @@
 .register__tab {
   width: 100%;
   min-height: calc(36px * var(--pos-ui-scale));
-  height: 100%;
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
