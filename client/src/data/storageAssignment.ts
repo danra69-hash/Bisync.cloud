@@ -23,11 +23,106 @@ export type MyStorageEntry = {
   items: number;
 };
 
+/** Row types shown on the Storage Assignment assignment table. */
+export const ITEM_STORAGE_ASSIGNMENT_TYPES = [
+  'Sub-component',
+  'Component',
+  'Sub-product',
+  'B2C Product',
+  'B2B Product',
+] as const;
+
+export type ItemStorageAssignmentType = (typeof ITEM_STORAGE_ASSIGNMENT_TYPES)[number];
+
+export type ItemStorageAssignment = {
+  /** Stable key, e.g. `component:BISY-A001` or `product:42`. */
+  itemKey: string;
+  itemType: ItemStorageAssignmentType;
+  name: string;
+  storageArea: string;
+  storage1: string;
+  storage2: string;
+  storage3: string;
+};
+
 export type StorageAssignmentState = {
   areas: string[];
   entries: MyStorageEntry[];
   nextEntryId: number;
+  /** Per-item storage picks on the Storage Assignment tab. */
+  itemAssignments?: ItemStorageAssignment[];
 };
+
+export function emptyItemStorageAssignment(
+  itemKey: string,
+  itemType: ItemStorageAssignmentType,
+  name: string,
+): ItemStorageAssignment {
+  return {
+    itemKey,
+    itemType,
+    name,
+    storageArea: '',
+    storage1: '',
+    storage2: '',
+    storage3: '',
+  };
+}
+
+export function normalizeItemAssignments(
+  value: unknown,
+): ItemStorageAssignment[] {
+  if (!Array.isArray(value)) return [];
+  const rows: ItemStorageAssignment[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    const itemKey = String(row.itemKey ?? '').trim();
+    const itemType = String(row.itemType ?? '').trim() as ItemStorageAssignmentType;
+    if (!itemKey || !ITEM_STORAGE_ASSIGNMENT_TYPES.includes(itemType)) continue;
+    rows.push({
+      itemKey,
+      itemType,
+      name: String(row.name ?? '').trim(),
+      storageArea: String(row.storageArea ?? '').trim(),
+      storage1: String(row.storage1 ?? '').trim(),
+      storage2: String(row.storage2 ?? '').trim(),
+      storage3: String(row.storage3 ?? '').trim(),
+    });
+  }
+  return rows;
+}
+
+/** Unique storage names under an area for the selected locations. */
+export function listStorageNamesForArea(
+  state: StorageAssignmentState,
+  locationIds: string[],
+  area: string,
+): string[] {
+  const areaKey = area.trim().toLowerCase();
+  if (!areaKey) return [];
+  return [...new Set(
+    listStoragesForFilter(state, locationIds, area)
+      .map(entry => entry.name.trim())
+      .filter(Boolean),
+  )].sort((a, b) => a.localeCompare(b));
+}
+
+/** Resolve storage types for selected named storages (used to sync ingredient StorageJson). */
+export function resolveStorageTypesForNames(
+  state: StorageAssignmentState,
+  locationIds: string[],
+  area: string,
+  names: string[],
+): string[] {
+  const wanted = new Set(names.map(name => name.trim().toLowerCase()).filter(Boolean));
+  if (wanted.size === 0) return [];
+  const types = listStoragesForFilter(state, locationIds, area || 'All')
+    .filter(entry => wanted.has(entry.name.trim().toLowerCase()))
+    .map(entry => entry.type.trim())
+    .filter(Boolean);
+  return [...new Set(types)];
+}
 
 export const STORAGE_AREAS = ['Dining Room', 'Bar', 'Kitchen'] as const;
 
@@ -106,6 +201,7 @@ function defaultState(): StorageAssignmentState {
     areas: [...STORAGE_AREAS],
     entries: DEFAULT_MY_STORAGE_ENTRIES.map((entry, index) => ({ ...entry, id: index + 1 })),
     nextEntryId: DEFAULT_MY_STORAGE_ENTRIES.length + 1,
+    itemAssignments: [],
   };
 }
 
@@ -197,7 +293,12 @@ export function ensureLocationStorageEntries(
 
   const areas = [...new Set([...state.areas, ...STORAGE_AREAS])];
   return {
-    state: { areas, entries, nextEntryId: nextId },
+    state: {
+      areas,
+      entries,
+      nextEntryId: nextId,
+      itemAssignments: state.itemAssignments ?? [],
+    },
     changed: true,
   };
 }

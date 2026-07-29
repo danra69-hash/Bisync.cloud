@@ -59,6 +59,7 @@ function normalizeStorage(state: unknown): StorageAssignmentState | null {
     areas: parsed.areas ?? [],
     entries: parsed.entries ?? [],
     nextEntryId: parsed.nextEntryId ?? parsed.entries.length + 1,
+    itemAssignments: Array.isArray(parsed.itemAssignments) ? parsed.itemAssignments : [],
   };
 }
 

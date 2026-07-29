@@ -60,7 +60,7 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
       { id: 'editParStock', label: 'Edit Par Stock' },
       { id: 'componentConfig', label: 'Component Config' },
       { id: 'activateDeactivateVendorProducts', label: 'Activate/Deactivate Vendor Products' },
-      { id: 'createEditComponentGroup', label: 'Create and Edit Component Group' },
+      { id: 'createEditComponentGroup', label: 'Create and Edit Component Group and Storage' },
       { id: 'createEditStorageAssignment', label: 'Create and Edit Storage Assignment' },
       { id: 'accountMapping', label: 'Account Mapping' },
     ],
