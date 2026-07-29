@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api as bisyncApi, type AppUser, type Company, type UserUpsert } from '../../api';
 import { hrApi as api, toEmployeeRequest } from '../../modules/hr/api';
 import type { DivisionTreeNode, Employee, EmployeeLevel } from '../../modules/hr/types';
@@ -9,8 +9,11 @@ import { orgSelectionPatch, resolveEmployeeOrg } from './orgSelectShared';
 import { PlatformAccessPanel, userUpsertForEmployee } from './UsersTab';
 import { checkinMethodLabel } from './employeeTabShared';
 import { getPhoneValidationError } from '../shared/CountryPhoneInput';
+import { formatPhoneInput } from '../../utils/countryFormat';
 import { parseUserAccess, setAccessControlType } from '../../data/userAccess';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Props = {
   onDataChanged?: () => void;
@@ -31,6 +34,8 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
 
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [detailDraft, setDetailDraft] = useState<Employee | null>(null);
+  const detailDraftRef = useRef<Employee | null>(null);
+  detailDraftRef.current = detailDraft;
   const [formData, setFormData] = useState({ ...emptyEmployeeForm });
   const [accessPanel, setAccessPanel] = useState<{ user: AppUser | UserUpsert; isNew: boolean } | null>(null);
   const [accessControlSaving, setAccessControlSaving] = useState(false);
@@ -219,31 +224,62 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   const closeEmployeeDetail = () => setDetailDraft(null);
 
   const saveEmployeeDetail = () => run(async () => {
-    if (!detailDraft) return;
+    const draft = detailDraftRef.current;
+    if (!draft) return;
     setSuccessMessage(null);
-    if (!detailDraft.divisionId || !detailDraft.departmentId) {
+
+    const joinDate = (draft.joinDate ?? '').trim().match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? '';
+    const name = draft.name?.trim() ?? '';
+    const email = draft.email?.trim() ?? '';
+    const position = draft.position?.trim() ?? '';
+    const personalEmail = draft.personalEmail?.trim() ?? '';
+    const countryCode = countryCodeForEmployee(draft);
+    const mobile = formatPhoneInput(countryCode, draft.mobile ?? '');
+
+    if (!draft.divisionId || !draft.departmentId) {
       setError('Please select Division and Department.');
       return;
     }
-    if (!detailDraft.joinDate?.trim()) {
+    if (!joinDate) {
       setError('Join Date is required.');
       return;
     }
-    if (!detailDraft.name?.trim() || !detailDraft.email?.trim() || !detailDraft.position?.trim()) {
+    if (!name || !email || !position) {
       setError('Name, work email, and position are required.');
       return;
     }
-    const countryCode = countryCodeForEmployee(detailDraft);
-    const phoneError = getPhoneValidationError(countryCode, detailDraft.mobile, 'Mobile number', true);
+    if (!EMAIL_RE.test(email)) {
+      setError('Work email is not a valid e-mail address.');
+      return;
+    }
+    if (personalEmail && !EMAIL_RE.test(personalEmail)) {
+      setError('Personal email is not a valid e-mail address.');
+      return;
+    }
+    const phoneError = getPhoneValidationError(countryCode, mobile, 'Mobile number', true);
     if (phoneError) {
       setError(phoneError);
       return;
     }
+
+    const normalized: Employee = {
+      ...draft,
+      name,
+      email,
+      position,
+      mobile,
+      joinDate,
+      personalEmail: personalEmail || null,
+    };
+    // Keep the open panel in sync if we normalized phone/date while saving.
+    setDetailDraft(normalized);
+    detailDraftRef.current = normalized;
+
     setDetailSaving(true);
     try {
-      await api.employees.update(detailDraft.id, {
-        ...toEmployeeRequest(detailDraft),
-        companyId: platformUserFor(detailDraft)?.companyId ?? selectedCompanyId ?? undefined,
+      await api.employees.update(normalized.id, {
+        ...toEmployeeRequest(normalized),
+        companyId: platformUserFor(normalized)?.companyId ?? selectedCompanyId ?? undefined,
       });
       closeEmployeeDetail();
       setSuccessMessage('Detail saved');
@@ -308,20 +344,22 @@ export function EmployeeTab({ onDataChanged, selectedCompanyId = null }: Props) 
   });
 
   const updateDetailDraft = (patch: Partial<Employee>) => {
-    if (!detailDraft) return;
-    let next = { ...detailDraft, ...patch };
-    if ('divisionId' in patch || 'departmentId' in patch) {
-      next = {
-        ...next,
-        ...orgSelectionPatch(orgTree, next.divisionId ?? null, next.departmentId ?? null),
-      };
-    }
-    if ('permanentAddress' in patch && typeof patch.permanentAddress === 'string') {
-      next.permanentAddress = patch.permanentAddress || null;
-    }
-    if (patch.checkinMethod === 'POS') next.posEnabled = true;
-    if (patch.checkinMethod && patch.checkinMethod !== 'POS') next.posEnabled = false;
-    setDetailDraft(next);
+    setDetailDraft(prev => {
+      if (!prev) return prev;
+      let next = { ...prev, ...patch };
+      if ('divisionId' in patch || 'departmentId' in patch) {
+        next = {
+          ...next,
+          ...orgSelectionPatch(orgTree, next.divisionId ?? null, next.departmentId ?? null),
+        };
+      }
+      if ('permanentAddress' in patch && typeof patch.permanentAddress === 'string') {
+        next.permanentAddress = patch.permanentAddress || null;
+      }
+      if (patch.checkinMethod === 'POS') next.posEnabled = true;
+      if (patch.checkinMethod && patch.checkinMethod !== 'POS') next.posEnabled = false;
+      return next;
+    });
   };
 
   const handleAccessPanelSaved = async () => {
