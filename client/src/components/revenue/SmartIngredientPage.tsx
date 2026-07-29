@@ -179,7 +179,9 @@ export function SmartIngredientPage({
       .then(locations => {
         setCompanyLocations(
           locations
-            .filter(location => location.companyId === selectedCompanyId)
+            .filter(location =>
+              location.companyId === selectedCompanyId && location.active !== false,
+            )
             .map(location => ({ externalId: location.externalId, name: location.name }))
             .sort((a, b) => a.name.localeCompare(b.name)),
         );

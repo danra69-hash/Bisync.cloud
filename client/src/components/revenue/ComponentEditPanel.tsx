@@ -505,7 +505,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       .then(locations => {
         setCompanyLocations(
           locations
-            .filter(l => l.companyId === selectedCompanyId)
+            .filter(l => l.companyId === selectedCompanyId && l.active !== false)
             .map(l => ({ externalId: l.externalId, name: l.name }))
             .sort((a, b) => a.name.localeCompare(b.name)),
         );

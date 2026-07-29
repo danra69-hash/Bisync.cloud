@@ -619,11 +619,15 @@ export function ProductsPage({
       return;
     }
     api.locationsConfig()
-      .then(rows => setLocations(
-        rows
-          .filter(loc => loc.companyId === selectedCompanyId)
-          .map(configLocationToDropdown),
-      ))
+      .then(rows => {
+        const activeForCompany = rows
+          .filter(loc => loc.companyId === selectedCompanyId && loc.active !== false)
+          .map(configLocationToDropdown);
+        setLocations(activeForCompany);
+        const activeIds = new Set(activeForCompany.map(loc => loc.externalId));
+        // Drop deactivated locations so they cannot stay ticked/saved on the product.
+        setProductLocationIds(prev => prev.filter(id => activeIds.has(id)));
+      })
       .catch(() => setLocations([]));
   }, [selectedCompanyId]);
 
@@ -908,9 +912,18 @@ export function ProductsPage({
     setActivationPeriodHours(product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '');
     setParStock((product.parStock ?? 0) > 0 ? String(product.parStock) : '');
     setParStockUom(product.parStockUom ? fromApiUom(product.parStockUom) : '');
-    setProductLocationIds(product.locationExternalIds?.length
-      ? [...product.locationExternalIds]
-      : selectedLocationIds.length > 0 ? [...selectedLocationIds] : []);
+    {
+      const rawLocationIds = product.locationExternalIds?.length
+        ? [...product.locationExternalIds]
+        : selectedLocationIds.length > 0 ? [...selectedLocationIds] : [];
+      // Never keep deactivated locations ticked (they are hidden from the Location list).
+      const allowed = new Set(locations.map(loc => loc.externalId));
+      setProductLocationIds(
+        allowed.size > 0
+          ? rawLocationIds.filter(id => allowed.has(id))
+          : rawLocationIds,
+      );
+    }
     setAliases((product.aliases ?? []).map(alias => {
       const parsedAliasConfig = parseB2bSalesConfigJson(alias.b2bSalesConfigJson);
       if (alias.rrp > 0 && !parsedAliasConfig.principal.rrp.trim()) {
