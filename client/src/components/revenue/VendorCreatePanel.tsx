@@ -17,7 +17,6 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { CountryLocalityFields } from '../shared/CountryLocalityFields';
 import { CountryPhoneInput } from '../shared/CountryPhoneInput';
-import type { LocalityParts } from '../../utils/countryFormat';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
 
 type Props = {
@@ -37,6 +36,7 @@ const blank = (nextExternalId: string): VendorCreatePayload => ({
   products: '',
   city: '',
   state: '',
+  postcode: '',
   address: '',
   contactPerson: '',
   contactPosition: '',
@@ -47,7 +47,6 @@ const blank = (nextExternalId: string): VendorCreatePayload => ({
 
 export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors, onClose, onCreated, onProductsImported }: Props) {
   const [form, setForm] = useState<VendorCreatePayload>(() => blank(nextExternalId));
-  const [locality, setLocality] = useState<LocalityParts>({ city: '', state: '', postcode: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scannedDocs, setScannedDocs] = useState<File[]>([]);
@@ -214,7 +213,8 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
         products: form.products.trim(),
         city: form.city.trim(),
         state: form.state.trim(),
-        address: [form.address.trim(), locality.postcode.trim()].filter(Boolean).join(', '),
+        postcode: form.postcode.trim(),
+        address: form.address.trim(),
         contactPerson: form.contactPerson.trim(),
         contactPosition: form.contactPosition.trim(),
         mobile: form.mobile.trim(),
@@ -296,12 +296,12 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                 value={{
                   city: form.city,
                   state: form.state,
-                  postcode: locality.postcode,
+                  postcode: form.postcode,
                 }}
                 onChange={next => {
                   setField('city', next.city);
                   setField('state', next.state);
-                  setLocality(prev => ({ ...prev, postcode: next.postcode }));
+                  setField('postcode', next.postcode);
                 }}
                 extraCityOptions={cityOptions}
                 extraStateOptions={stateOptions}

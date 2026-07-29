@@ -192,6 +192,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "Postcode", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "EngagementStatus", "TEXT NOT NULL DEFAULT 'none'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "LinkedCompanyId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "MinOrderAmount", "numeric");

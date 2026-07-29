@@ -50,7 +50,7 @@ export function formatLocationAddress(location: LocationConfig): string {
 export function formatVendorAddress(vendor: Vendor): string {
   return [
     vendor.address,
-    [vendor.city, vendor.state].filter(Boolean).join(', '),
+    [vendor.city, vendor.state, vendor.postcode].filter(Boolean).join(', '),
   ].filter(Boolean).join('\n');
 }
 
