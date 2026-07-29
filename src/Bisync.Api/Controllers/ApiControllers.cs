@@ -340,6 +340,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             Products = request.Products.Trim(),
             City = request.City.Trim(),
             State = request.State.Trim(),
+            Postcode = request.Postcode.Trim(),
             Address = request.Address.Trim(),
             ContactPerson = request.ContactPerson.Trim(),
             ContactPosition = request.ContactPosition.Trim(),
@@ -392,6 +393,7 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         vendor.Products = request.Products.Trim();
         vendor.City = request.City.Trim();
         vendor.State = request.State.Trim();
+        vendor.Postcode = request.Postcode.Trim();
         vendor.Address = request.Address.Trim();
         vendor.ContactPerson = request.ContactPerson.Trim();
         vendor.ContactPosition = request.ContactPosition.Trim();

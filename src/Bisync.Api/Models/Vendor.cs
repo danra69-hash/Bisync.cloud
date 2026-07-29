@@ -12,6 +12,7 @@ public class Vendor
     public string Products { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
+    public string Postcode { get; set; } = string.Empty;
     public string ContactPerson { get; set; } = string.Empty;
     public string ContactPosition { get; set; } = string.Empty;
     public string Mobile { get; set; } = string.Empty;

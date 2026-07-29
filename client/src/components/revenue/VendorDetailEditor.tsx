@@ -49,6 +49,7 @@ function vendorToForm(vendor: Vendor): VendorUpdatePayload {
     address: vendor.address ?? '',
     city: vendor.city ?? '',
     state: vendor.state ?? '',
+    postcode: vendor.postcode ?? '',
     contactPerson: vendor.contactPerson ?? '',
     contactPosition: vendor.contactPosition ?? '',
     mobile: vendor.mobile ?? '',
@@ -229,6 +230,7 @@ export function VendorDetailEditor({ countryCode, vendor, selectedCompanyId, onV
       address: form.address,
       city: form.city,
       state: form.state,
+      postcode: form.postcode,
     }),
     contact: formatVendorContact({
       ...vendor,
@@ -237,7 +239,7 @@ export function VendorDetailEditor({ countryCode, vendor, selectedCompanyId, onV
       mobile: form.mobile,
       email: form.email,
     }),
-  }), [vendor, form.address, form.city, form.state, form.contactPerson, form.contactPosition, form.mobile, form.email]);
+  }), [vendor, form.address, form.city, form.state, form.postcode, form.contactPerson, form.contactPosition, form.mobile, form.email]);
 
   const dirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(vendorToForm(vendor)),
@@ -278,6 +280,7 @@ export function VendorDetailEditor({ countryCode, vendor, selectedCompanyId, onV
         address: form.address.trim(),
         city: form.city.trim(),
         state: form.state.trim(),
+        postcode: form.postcode.trim(),
         contactPerson: form.contactPerson.trim(),
         contactPosition: form.contactPosition.trim(),
         mobile: form.mobile.trim(),
@@ -343,10 +346,11 @@ export function VendorDetailEditor({ countryCode, vendor, selectedCompanyId, onV
             <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-3">
               <CountryLocalityFields
                 countryCode={countryCode}
-                value={{ city: form.city, state: form.state, postcode: '' }}
+                value={{ city: form.city, state: form.state, postcode: form.postcode }}
                 onChange={next => {
                   setField('city', next.city);
                   setField('state', next.state);
+                  setField('postcode', next.postcode);
                 }}
                 labelClassName="text-xs font-sans text-muted-foreground uppercase tracking-wider"
               />

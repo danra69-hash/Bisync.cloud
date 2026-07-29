@@ -62,18 +62,20 @@ def clean_email(value) -> str:
     return text[:256]
 
 
-def parse_city_state(address: str) -> tuple[str, str]:
+def parse_city_state_postcode(address: str) -> tuple[str, str, str]:
     if not address:
-        return "", ""
+        return "", "", ""
     parts = [p.strip() for p in address.split(",") if p.strip()]
+    postcode_match = re.search(r"\b(\d{5})\b", address)
+    postcode = postcode_match.group(1) if postcode_match else ""
     # Typical: ..., City, State, Postcode Country
     if len(parts) >= 3 and re.search(r"malaysia", parts[-1], re.I):
         state = re.sub(r"\b\d{5}\b", "", parts[-2]).strip() or parts[-2]
         city = parts[-3]
-        return city[:100], state[:100]
+        return city[:100], state[:100], postcode[:30]
     if len(parts) >= 2:
-        return parts[-2][:100], parts[-1][:100]
-    return "", ""
+        return parts[-2][:100], parts[-1][:100], postcode[:30]
+    return "", "", postcode[:30]
 
 
 def make_external_id(brn: str, index: int) -> str:
@@ -122,7 +124,7 @@ def load_rows():
         address = clean_text(row[3] if len(row) > 3 else "")
         phone = clean_phone(row[4] if len(row) > 4 else "")
         email = clean_email(row[6] if len(row) > 6 else "")
-        city, state = parse_city_state(address)
+        city, state, postcode = parse_city_state_postcode(address)
         out.append(
             {
                 "index": i,
@@ -131,6 +133,7 @@ def load_rows():
                 "address": address[:400],
                 "city": city,
                 "state": state,
+                "postcode": postcode,
                 "mobile": phone,
                 "email": email,
             }
@@ -177,6 +180,7 @@ def main() -> int:
             "products": "",
             "city": row["city"],
             "state": row["state"],
+            "postcode": row["postcode"],
             "address": row["address"],
             "contactPerson": contact_name,
             "contactPosition": "",
@@ -198,6 +202,7 @@ def main() -> int:
                 "products": existing_row.get("products") or "",
                 "city": row["city"] or existing_row.get("city") or "",
                 "state": row["state"] or existing_row.get("state") or "",
+                "postcode": row["postcode"] or existing_row.get("postcode") or "",
                 "address": row["address"] or existing_row.get("address") or "",
                 "contactPerson": contact_name,
                 "contactPosition": existing_row.get("contactPosition") or "",

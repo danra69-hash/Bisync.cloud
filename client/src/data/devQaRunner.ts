@@ -302,6 +302,7 @@ async function createOneComponentBundle(
     products: catalogName,
     city: 'Kuala Lumpur',
     state: 'Wilayah Persekutuan',
+    postcode: '50000',
     address: `${index + 1} QA Industrial Park`,
     contactPerson: `${VENDOR_SUFFIX[index]} Contact`,
     contactPosition: 'Sales',

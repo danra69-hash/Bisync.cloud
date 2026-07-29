@@ -421,6 +421,7 @@ export interface Vendor {
   products: string;
   city: string;
   state: string;
+  postcode: string;
   address: string;
   contactPerson: string;
   contactPosition: string;
@@ -542,6 +543,7 @@ export interface VendorCreatePayload {
   products: string;
   city: string;
   state: string;
+  postcode: string;
   address: string;
   contactPerson: string;
   contactPosition: string;
@@ -559,6 +561,7 @@ export interface VendorUpdatePayload {
   products: string;
   city: string;
   state: string;
+  postcode: string;
   address: string;
   contactPerson: string;
   contactPosition: string;

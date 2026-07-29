@@ -618,6 +618,8 @@ public class CreateVendorRequest
     public string City { get; set; } = string.Empty;
     [MaxLength(100)]
     public string State { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Postcode { get; set; } = string.Empty;
     [MaxLength(400)]
     public string Address { get; set; } = string.Empty;
     [MaxLength(200)]
@@ -648,6 +650,8 @@ public class UpdateVendorRequest
     public string City { get; set; } = string.Empty;
     [MaxLength(100)]
     public string State { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string Postcode { get; set; } = string.Empty;
     [MaxLength(400)]
     public string Address { get; set; } = string.Empty;
     [MaxLength(200)]
