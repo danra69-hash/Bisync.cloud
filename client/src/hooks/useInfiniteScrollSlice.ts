@@ -23,8 +23,11 @@ export function useInfiniteScrollSlice<T>(items: T[], options: Options = {}) {
   const itemsLength = items.length;
 
   useEffect(() => {
-    setVisibleCount(pageSize);
-  }, [items, pageSize]);
+    setVisibleCount(prev => {
+      if (itemsLength === 0) return pageSize;
+      return Math.min(Math.max(prev, pageSize), Math.max(pageSize, itemsLength));
+    });
+  }, [itemsLength, pageSize]);
 
   const visibleItems = useMemo(
     () => items.slice(0, visibleCount),

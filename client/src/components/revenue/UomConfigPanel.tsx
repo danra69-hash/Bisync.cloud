@@ -4,7 +4,13 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Plus } from 'lucide-react';
 import { inputCls } from '../../data/componentForm';
-import { ensureRecipeUnitsExist, getKnownRecipeUnits } from '../../data/componentCatalogConfig';
+import {
+  ensureRecipeUnitsExist,
+  getKnownRecipeUnits,
+  getMyRecipeUnits,
+  normalizeRecipeUnitInput,
+  saveMyRecipeUnits,
+} from '../../data/componentCatalogConfig';
 import {
   METRIC_FB_CHART,
   METRIC_IMPERIAL_PAIRS,
@@ -17,11 +23,11 @@ import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 const INITIAL_ALL_UOMS = ['GR', 'KG', 'ML', 'LT', 'Each', 'Slice', 'Can', 'BTL'] as const;
 
-type UomRow = { id: number; code: string };
-
-function buildInitialUoms(): UomRow[] {
-  const codes = [...new Set([...INITIAL_ALL_UOMS, ...getKnownRecipeUnits()])];
-  return codes.map((code, index) => ({ id: index + 1, code }));
+function buildAllUomCodes(): string[] {
+  return [...new Set([
+    ...INITIAL_ALL_UOMS.map(normalizeRecipeUnitInput),
+    ...getKnownRecipeUnits(),
+  ])].filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
 function ConversionTable({ title, description, rows, showCategory = false }: {
@@ -77,22 +83,30 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
 }
 
 export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: number | null }) {
-  const [allUoms, setAllUoms] = useState<UomRow[]>(buildInitialUoms);
-  const [myUomIds, setMyUomIds] = useState<number[]>([]);
+  const [allUomCodes, setAllUomCodes] = useState<string[]>(buildAllUomCodes);
+  const [myUomCodes, setMyUomCodes] = useState<string[]>(() => getMyRecipeUnits());
   const [newUomCode, setNewUomCode] = useState('');
   const [addUomError, setAddUomError] = useState<string | null>(null);
 
   useEffect(() => {
-    const reload = () => setAllUoms(buildInitialUoms());
+    const reload = () => {
+      setAllUomCodes(buildAllUomCodes());
+      setMyUomCodes(getMyRecipeUnits());
+    };
     reload();
     window.addEventListener('bisync:componentCatalogChanged', reload);
     return () => window.removeEventListener('bisync:componentCatalogChanged', reload);
   }, [selectedCompanyId]);
 
-  const myUoms = useMemo(
-    () => allUoms.filter(u => myUomIds.includes(u.id)),
-    [allUoms, myUomIds],
-  );
+  const myUoms = useMemo(() => {
+    const selected = new Set(myUomCodes.map(code => code.toLowerCase()));
+    // Keep My UOM order stable by All-list order, then any orphans.
+    const ordered = allUomCodes.filter(code => selected.has(code.toLowerCase()));
+    const orphans = myUomCodes.filter(
+      code => !allUomCodes.some(all => all.toLowerCase() === code.toLowerCase()),
+    );
+    return [...ordered, ...orphans];
+  }, [allUomCodes, myUomCodes]);
 
   const metricWeight = METRIC_IMPERIAL_PAIRS.filter(r =>
     ['Gr', 'Kg', 'Tonne', 'Oz', 'Lb'].includes(r.from),
@@ -103,30 +117,41 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
 
   const allUomsScrollRef = useRef<HTMLDivElement>(null);
   const myUomsScrollRef = useRef<HTMLDivElement>(null);
-  const allUomsScroll = useInfiniteScrollSlice(allUoms, { scrollRootRef: allUomsScrollRef });
+  const allUomsScroll = useInfiniteScrollSlice(allUomCodes, { scrollRootRef: allUomsScrollRef });
   const myUomsScroll = useInfiniteScrollSlice(myUoms, { scrollRootRef: myUomsScrollRef });
 
-  function addToMyUom(id: number) {
-    setMyUomIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+  function persistMyUoms(next: string[]) {
+    const normalized = [...new Set(next.map(normalizeRecipeUnitInput).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    setMyUomCodes(normalized);
+    saveMyRecipeUnits(normalized, selectedCompanyId);
   }
 
-  function removeFromMyUom(id: number) {
-    setMyUomIds(prev => prev.filter(x => x !== id));
+  function addToMyUom(code: string) {
+    const normalized = normalizeRecipeUnitInput(code);
+    if (!normalized) return;
+    if (myUomCodes.some(c => c.toLowerCase() === normalized.toLowerCase())) return;
+    persistMyUoms([...myUomCodes, normalized]);
+  }
+
+  function removeFromMyUom(code: string) {
+    persistMyUoms(myUomCodes.filter(c => c.toLowerCase() !== code.toLowerCase()));
   }
 
   function addUom() {
-    const trimmed = newUomCode.trim();
+    const trimmed = normalizeRecipeUnitInput(newUomCode);
     if (!trimmed) {
       setAddUomError('Enter a UOM code.');
       return;
     }
-    if (allUoms.some(u => u.code.toLowerCase() === trimmed.toLowerCase())) {
+    if (allUomCodes.some(u => u.toLowerCase() === trimmed.toLowerCase())) {
       setAddUomError('This UOM already exists.');
       return;
     }
     ensureRecipeUnitsExist([trimmed], selectedCompanyId);
-    const codes = [...new Set([...allUoms.map(u => u.code), trimmed])];
-    setAllUoms(codes.map((code, index) => ({ id: index + 1, code })));
+    setAllUomCodes(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b)));
+    // Newly created UOMs are selected into My UOM immediately.
+    persistMyUoms([...myUomCodes, trimmed]);
     setNewUomCode('');
     setAddUomError(null);
   }
@@ -177,20 +202,32 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
                 </tr>
               </thead>
               <tbody>
-                {allUomsScroll.visibleItems.map(u => {
-                  const inMyUom = myUomIds.includes(u.id);
+                {allUomsScroll.visibleItems.map(code => {
+                  const inMyUom = myUomCodes.some(c => c.toLowerCase() === code.toLowerCase());
                   return (
-                    <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20">
+                    <tr
+                      key={code}
+                      className={`border-b border-border last:border-0 ${
+                        inMyUom ? 'bg-muted/10' : 'hover:bg-muted/20 cursor-pointer'
+                      }`}
+                      onClick={() => {
+                        if (!inMyUom) addToMyUom(code);
+                      }}
+                    >
                       <td className="px-3 py-2.5">
                         <button
                           type="button"
-                          onClick={() => addToMyUom(u.id)}
+                          onClick={e => {
+                            e.stopPropagation();
+                            addToMyUom(code);
+                          }}
                           disabled={inMyUom}
                           className={`font-sans font-medium text-left hover:underline ${
                             inMyUom ? 'text-muted-foreground cursor-default' : 'text-primary'
                           }`}
                         >
-                          {u.code}
+                          {code}
+                          {inMyUom ? ' · added' : ''}
                         </button>
                       </td>
                     </tr>
@@ -204,7 +241,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
 
           <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
             <div className="px-3 py-2 border-b border-border bg-muted/30">
-              <p className="text-xs font-semibold">My UOM</p>
+              <p className="text-xs font-semibold">My UOM ({myUoms.length})</p>
               <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to remove it from My UOM</p>
             </div>
             <TableScrollContainer ref={myUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
@@ -215,15 +252,22 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
                 </tr>
               </thead>
               <tbody>
-                {myUomsScroll.visibleItems.map(u => (
-                  <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20">
+                {myUomsScroll.visibleItems.map(code => (
+                  <tr
+                    key={code}
+                    className="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
+                    onClick={() => removeFromMyUom(code)}
+                  >
                     <td className="px-3 py-2.5">
                       <button
                         type="button"
-                        onClick={() => removeFromMyUom(u.id)}
+                        onClick={e => {
+                          e.stopPropagation();
+                          removeFromMyUom(code);
+                        }}
                         className="font-sans font-medium text-left text-primary hover:underline"
                       >
-                        {u.code}
+                        {code}
                       </button>
                     </td>
                   </tr>

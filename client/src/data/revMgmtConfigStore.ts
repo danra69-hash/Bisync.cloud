@@ -9,6 +9,8 @@ export const REV_MGMT_CATALOG_KEY = 'componentCatalog';
 export type ComponentCatalogState = {
   extraGroups: string[];
   extraUoms: string[];
+  /** Company-selected UOMs shown in My UOM (Component Config). */
+  myUoms: string[];
   extraStorages: string[];
 };
 
@@ -71,12 +73,13 @@ function normalizeCatalog(state: unknown): ComponentCatalogState | null {
   return {
     extraGroups: uniqueSortedStrings(parsed.extraGroups),
     extraUoms: uniqueSortedStrings(parsed.extraUoms),
+    myUoms: uniqueSortedStrings(parsed.myUoms),
     extraStorages: uniqueSortedStrings(parsed.extraStorages),
   };
 }
 
 function emptyCatalog(): ComponentCatalogState {
-  return { extraGroups: [], extraUoms: [], extraStorages: [] };
+  return { extraGroups: [], extraUoms: [], myUoms: [], extraStorages: [] };
 }
 
 function readLegacyStringList(key: string): string[] {
@@ -94,6 +97,14 @@ export function getCachedStorageAssignment(): StorageAssignmentState | null {
 
 export function getCachedComponentCatalog(): ComponentCatalogState | null {
   return catalogCache;
+}
+
+/** Update in-memory catalog without requiring a company API write. */
+export function setCachedComponentCatalog(state: ComponentCatalogState, notify = true) {
+  catalogCache = normalizeCatalog(state) ?? emptyCatalog();
+  if (notify) {
+    window.dispatchEvent(new CustomEvent('bisync:componentCatalogChanged'));
+  }
 }
 
 export async function ensureComponentHierarchy(companyId: number): Promise<ComponentHierarchyState> {
@@ -188,12 +199,14 @@ export async function ensureComponentCatalog(companyId: number): Promise<Compone
   const hasLegacy = legacyGroups.length > 0 || legacyUoms.length > 0 || legacyStorages.length > 0;
   const isEmptySeed = state.extraGroups.length === 0
     && state.extraUoms.length === 0
+    && state.myUoms.length === 0
     && state.extraStorages.length === 0;
 
   if (hasLegacy && (response.seeded || isEmptySeed)) {
     state = {
       extraGroups: uniqueSortedStrings([...state.extraGroups, ...legacyGroups]),
       extraUoms: uniqueSortedStrings([...state.extraUoms, ...legacyUoms]),
+      myUoms: uniqueSortedStrings(state.myUoms),
       extraStorages: uniqueSortedStrings([...state.extraStorages, ...legacyStorages]),
     };
     await api.updateRevMgmtConfig(companyId, REV_MGMT_CATALOG_KEY, JSON.stringify(state));
@@ -215,6 +228,7 @@ export async function saveComponentCatalogApi(
   const normalized: ComponentCatalogState = {
     extraGroups: uniqueSortedStrings(state.extraGroups),
     extraUoms: uniqueSortedStrings(state.extraUoms),
+    myUoms: uniqueSortedStrings(state.myUoms),
     extraStorages: uniqueSortedStrings(state.extraStorages),
   };
   catalogCache = normalized;

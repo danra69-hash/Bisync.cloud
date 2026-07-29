@@ -5,6 +5,7 @@ import {
   ensureComponentCatalog,
   getCachedComponentCatalog,
   saveComponentCatalogApi,
+  setCachedComponentCatalog,
   type ComponentCatalogState,
 } from './revMgmtConfigStore';
 
@@ -20,7 +21,7 @@ function uniqueSorted(values: string[]): string[] {
 }
 
 function emptyCatalog(): ComponentCatalogState {
-  return { extraGroups: [], extraUoms: [], extraStorages: [] };
+  return { extraGroups: [], extraUoms: [], myUoms: [], extraStorages: [] };
 }
 
 function currentCatalog(): ComponentCatalogState {
@@ -44,7 +45,10 @@ function resolveCompanyId(companyId?: number | null): number | null {
 
 function persistCatalog(next: ComponentCatalogState, companyId?: number | null) {
   const id = resolveCompanyId(companyId);
-  if (!id) return;
+  if (!id) {
+    setCachedComponentCatalog(next);
+    return;
+  }
   void saveComponentCatalogApi(id, next);
 }
 
@@ -125,6 +129,20 @@ export function normalizeRecipeUnitInput(raw: string): string {
 export function getKnownRecipeUnits(): string[] {
   const extras = currentCatalog().extraUoms.map(normalizeRecipeUnitInput).filter(Boolean);
   return uniqueSorted([...RECIPE_UNITS, ...extras]);
+}
+
+export function getMyRecipeUnits(): string[] {
+  return uniqueSorted(
+    currentCatalog().myUoms.map(normalizeRecipeUnitInput).filter(Boolean),
+  );
+}
+
+export function saveMyRecipeUnits(units: string[], companyId?: number | null) {
+  const next = {
+    ...currentCatalog(),
+    myUoms: uniqueSorted(units.map(normalizeRecipeUnitInput).filter(Boolean)),
+  };
+  persistCatalog(next, companyId);
 }
 
 export function ensureRecipeUnitsExist(units: string[], companyId?: number | null): { added: string[] } {
