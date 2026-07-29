@@ -90,6 +90,7 @@ public static class RevMgmtDefaults
     {
         extraGroups = Array.Empty<string>(),
         extraUoms = Array.Empty<string>(),
+        myUoms = Array.Empty<string>(),
         extraStorages = Array.Empty<string>(),
     };
 }
