@@ -4,6 +4,7 @@ import { api, type Product } from '../../api';
 import {
   productMatchesPosMenu,
   resolvePosMenuRrp,
+  resolvePosMenuSellPrice,
 } from '../../data/posCatalog';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls } from '../layout/formControls';
@@ -34,6 +35,9 @@ function uniqueSorted(values: string[]): string[] {
 export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const { currency } = useCountryFormatters();
   const [products, setProducts] = useState<Product[]>([]);
+  const [promoRppByProductId, setPromoRppByProductId] = useState<Map<number, number>>(
+    () => new Map(),
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -44,25 +48,42 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const loadProducts = useCallback(async () => {
     if (!selectedCompanyId) {
       setProducts([]);
+      setPromoRppByProductId(new Map());
       return;
     }
     setLoading(true);
     setError(null);
     try {
       const rows = await api.products(selectedCompanyId);
-      setProducts(
-        rows
-          .filter(p => productMatchesPosMenu(p, selectedCompanyId, selectedLocationIds))
-          .sort((a, b) => {
-            const cat = (a.category || '').localeCompare(b.category || '');
-            if (cat !== 0) return cat;
-            const grp = (a.group || '').localeCompare(b.group || '');
-            if (grp !== 0) return grp;
-            return a.name.localeCompare(b.name);
-          }),
-      );
+      const menu = rows
+        .filter(p => productMatchesPosMenu(p, selectedCompanyId, selectedLocationIds))
+        .sort((a, b) => {
+          const cat = (a.category || '').localeCompare(b.category || '');
+          if (cat !== 0) return cat;
+          const grp = (a.group || '').localeCompare(b.group || '');
+          if (grp !== 0) return grp;
+          return a.name.localeCompare(b.name);
+        });
+      setProducts(menu);
+
+      try {
+        const active = await api.posPromotionActivePrices(selectedCompanyId, {
+          locationExternalId: selectedLocationIds[0],
+          productIds: menu.map(p => p.id),
+        });
+        const next = new Map<number, number>();
+        for (const row of active.prices) {
+          if (row.productId > 0 && Number.isFinite(row.rpp) && row.rpp >= 0) {
+            next.set(row.productId, row.rpp);
+          }
+        }
+        setPromoRppByProductId(next);
+      } catch {
+        setPromoRppByProductId(new Map());
+      }
     } catch (e) {
       setProducts([]);
+      setPromoRppByProductId(new Map());
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
@@ -127,12 +148,18 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
           .toLowerCase();
         return hay.includes(q);
       })
-      .map(product => ({
-        product,
-        rrp: resolvePosMenuRrp(product, products),
-        compulsoryOption: formatCompulsoryOption(product),
-      }));
-  }, [products, categoryFilter, groupFilter, appliedSearch]);
+      .map(product => {
+        const rrp = resolvePosMenuRrp(product, products);
+        const sellPrice = resolvePosMenuSellPrice(product, products, promoRppByProductId);
+        return {
+          product,
+          rrp,
+          sellPrice,
+          onPromo: promoRppByProductId.has(product.id),
+          compulsoryOption: formatCompulsoryOption(product),
+        };
+      });
+  }, [products, categoryFilter, groupFilter, appliedSearch, promoRppByProductId]);
 
   const filtersActive =
     categoryFilter !== 'All' || groupFilter !== 'All' || appliedSearch.length > 0;
@@ -289,12 +316,13 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
           <TableScrollContainer className="max-h-[calc(100dvh-16rem)] overflow-y-auto">
             <table className="w-full table-fixed text-xs">
               <colgroup>
-                <col className="w-[14%]" />
-                <col className="w-[14%]" />
                 <col className="w-[12%]" />
-                <col className="w-[28%]" />
-                <col className="w-[18%]" />
-                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[11%]" />
+                <col className="w-[24%]" />
+                <col className="w-[15%]" />
+                <col className="w-[13%]" />
+                <col className="w-[13%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-muted/30">
@@ -304,10 +332,11 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
                   <TableHeaderCell>Product</TableHeaderCell>
                   <TableHeaderCell>Compulsory Option</TableHeaderCell>
                   <TableHeaderCell headerAlign="right">RRP</TableHeaderCell>
+                  <TableHeaderCell headerAlign="right">Sell</TableHeaderCell>
                 </tr>
               </thead>
               <tbody>
-                {menuRows.map(({ product, rrp, compulsoryOption }) => (
+                {menuRows.map(({ product, rrp, sellPrice, onPromo, compulsoryOption }) => (
                   <tr key={product.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2.5 text-muted-foreground min-w-0">
                       <span className="line-clamp-2">{product.category?.trim() || '—'}</span>
@@ -324,8 +353,14 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
                     <td className="px-3 py-2.5 text-muted-foreground min-w-0">
                       <span className="line-clamp-2">{compulsoryOption}</span>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
+                    <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-muted-foreground">
                       {rrp > 0 ? currency(rrp) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">
+                      {sellPrice >= 0 ? currency(sellPrice) : '—'}
+                      {onPromo ? (
+                        <span className="ml-1 text-[10px] font-bold uppercase text-primary">RPP</span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

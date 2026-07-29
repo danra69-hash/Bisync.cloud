@@ -3,6 +3,7 @@ using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,12 +22,15 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
     public async Task<ActionResult<IEnumerable<object>>> List(
         [FromQuery] int companyId,
         [FromQuery] string? status,
+        [FromQuery] string? locationExternalId,
         CancellationToken cancellationToken)
     {
         if (companyId <= 0)
             return BadRequest(new { message = "companyId is required." });
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var (_, _, localNow) = await PosPromotionPricingService.ResolveLocalNowAsync(
+            db, companyId, locationExternalId, cancellationToken);
+
         var promotions = await db.PosPromotions
             .AsNoTracking()
             .Include(p => p.Products)
@@ -40,21 +44,74 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
         {
             var needle = status.Trim();
             filtered = promotions.Where(p =>
-                string.Equals(ResolveStatusLabel(p, today), needle, StringComparison.OrdinalIgnoreCase));
+                string.Equals(
+                    PosPromotionPricingService.ResolveStatusLabel(p, localNow),
+                    needle,
+                    StringComparison.OrdinalIgnoreCase));
         }
 
-        return Ok(filtered.Select(p => MapPromotion(p, today)));
+        return Ok(filtered.Select(p => MapPromotion(p, localNow)));
+    }
+
+    /// <summary>
+    /// Products with an in-effect POS promotion RPP for the company/location clock.
+    /// </summary>
+    [HttpGet("active-prices")]
+    public async Task<ActionResult<object>> ActivePrices(
+        [FromQuery] int companyId,
+        [FromQuery] string? locationExternalId,
+        [FromQuery] string? productIds,
+        CancellationToken cancellationToken)
+    {
+        if (companyId <= 0)
+            return BadRequest(new { message = "companyId is required." });
+
+        var ids = (productIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => int.TryParse(s, out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        var (_, location, localNow) = await PosPromotionPricingService.ResolveLocalNowAsync(
+            db, companyId, locationExternalId, cancellationToken);
+
+        var hits = await PosPromotionPricingService.ResolveActiveRppByProductAsync(
+            db, companyId, ids.Count > 0 ? ids : null, locationExternalId, cancellationToken);
+
+        return Ok(new
+        {
+            asOfLocal = PosPromotionPricingService.FormatLocalStamp(localNow),
+            locationExternalId = location?.ExternalId,
+            prices = hits.Values
+                .OrderBy(h => h.ProductId)
+                .Select(h => new
+                {
+                    productId = h.ProductId,
+                    promotionId = h.PromotionId,
+                    promotionName = h.PromotionName,
+                    rrp = h.Rrp,
+                    rpp = h.Rpp,
+                    discountPercent = h.DiscountPercent,
+                }),
+        });
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<object>> Get(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<object>> Get(
+        int id,
+        [FromQuery] string? locationExternalId,
+        CancellationToken cancellationToken)
     {
         var promotion = await db.PosPromotions.AsNoTracking()
             .Include(p => p.Products)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (promotion is null)
             return NotFound(new { message = "POS promotion not found." });
-        return Ok(MapPromotion(promotion, DateOnly.FromDateTime(DateTime.UtcNow)));
+
+        var (_, _, localNow) = await PosPromotionPricingService.ResolveLocalNowAsync(
+            db, promotion.CompanyId, locationExternalId, cancellationToken);
+        return Ok(MapPromotion(promotion, localNow));
     }
 
     [HttpPost]
@@ -174,7 +231,9 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
 
         db.PosPromotions.Add(entity);
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(MapPromotion(entity, DateOnly.FromDateTime(DateTime.UtcNow)));
+        var (_, _, localNow) = await PosPromotionPricingService.ResolveLocalNowAsync(
+            db, entity.CompanyId, null, cancellationToken);
+        return Ok(MapPromotion(entity, localNow));
     }
 
     [HttpPatch("{id:int}/active")]
@@ -192,7 +251,9 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
         promotion.Active = request.Active;
         promotion.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(MapPromotion(promotion, DateOnly.FromDateTime(DateTime.UtcNow)));
+        var (_, _, localNow) = await PosPromotionPricingService.ResolveLocalNowAsync(
+            db, promotion.CompanyId, null, cancellationToken);
+        return Ok(MapPromotion(promotion, localNow));
     }
 
     static string? NormalizeFilter(string? value)
@@ -223,25 +284,10 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
     static decimal RoundMoney(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
     static decimal RoundPercent(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
-    static string ResolveStatusLabel(PosPromotion promotion, DateOnly today)
+    static object MapPromotion(PosPromotion promotion, DateTime localNow)
     {
-        if (!promotion.Active) return "Inactive";
-        if (promotion.StartDate > today) return "Scheduled";
-        if (!promotion.EndDateOpen && promotion.EndDate is DateOnly end && end < today) return "Inactive";
-        return "Active";
-    }
-
-    static object MapPromotion(PosPromotion promotion, DateOnly today)
-    {
-        List<string> days;
-        try
-        {
-            days = JsonSerializer.Deserialize<List<string>>(promotion.DaysOfWeekJson ?? "[]") ?? [];
-        }
-        catch
-        {
-            days = [];
-        }
+        var days = PosPromotionPricingService.ReadDays(promotion.DaysOfWeekJson);
+        var inEffect = PosPromotionPricingService.IsInEffect(promotion, localNow);
 
         return new
         {
@@ -259,7 +305,8 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
             filterGroup = promotion.FilterGroup,
             promoType = promotion.PromoType,
             active = promotion.Active,
-            status = ResolveStatusLabel(promotion, today),
+            status = PosPromotionPricingService.ResolveStatusLabel(promotion, localNow),
+            inEffectNow = inEffect,
             createdBy = promotion.CreatedBy,
             createdAt = promotion.CreatedAt,
             updatedAt = promotion.UpdatedAt,

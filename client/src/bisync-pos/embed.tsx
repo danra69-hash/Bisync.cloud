@@ -15,6 +15,8 @@ import './index.css'
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap'
 const FONT_LINK_ID = 'bisync-pos-fonts'
+/** Refresh in-effect promo RPPs so schedule windows apply without a full reload. */
+const PROMO_PRICE_POLL_MS = 60_000
 
 function ensurePosFonts() {
   if (document.getElementById(FONT_LINK_ID)) return
@@ -54,6 +56,9 @@ export function BisyncPosEmbed({
   usePosViewportScale(rootRef)
 
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([])
+  const [promoRppByProductId, setPromoRppByProductId] = useState<Map<number, number>>(
+    () => new Map(),
+  )
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -70,12 +75,30 @@ export function BisyncPosEmbed({
       try {
         const rows = await api.products(companyId)
         if (cancelled) return
-        setApiProducts(
-          rows.filter(p => productMatchesPosMenu(p, companyId, [locationId])),
-        )
+        const menu = rows.filter(p => productMatchesPosMenu(p, companyId, [locationId]))
+        setApiProducts(menu)
+
+        const productIds = menu.map(p => p.id)
+        try {
+          const active = await api.posPromotionActivePrices(companyId, {
+            locationExternalId: locationId,
+            productIds,
+          })
+          if (cancelled) return
+          const next = new Map<number, number>()
+          for (const row of active.prices) {
+            if (row.productId > 0 && Number.isFinite(row.rpp) && row.rpp >= 0) {
+              next.set(row.productId, row.rpp)
+            }
+          }
+          setPromoRppByProductId(next)
+        } catch {
+          if (!cancelled) setPromoRppByProductId(new Map())
+        }
       } catch (e) {
         if (!cancelled) {
           setApiProducts([])
+          setPromoRppByProductId(new Map())
           setCatalogError(e instanceof Error ? e.message : String(e))
         }
       } finally {
@@ -88,9 +111,42 @@ export function BisyncPosEmbed({
     }
   }, [companyId, locationId, refreshKey])
 
+  // Keep promo windows current while the POS stays open across hour/day boundaries.
+  useEffect(() => {
+    let cancelled = false
+    async function refreshPromoPrices() {
+      if (apiProducts.length === 0) {
+        if (!cancelled) setPromoRppByProductId(new Map())
+        return
+      }
+      try {
+        const active = await api.posPromotionActivePrices(companyId, {
+          locationExternalId: locationId,
+          productIds: apiProducts.map(p => p.id),
+        })
+        if (cancelled) return
+        const next = new Map<number, number>()
+        for (const row of active.prices) {
+          if (row.productId > 0 && Number.isFinite(row.rpp) && row.rpp >= 0) {
+            next.set(row.productId, row.rpp)
+          }
+        }
+        setPromoRppByProductId(next)
+      } catch {
+        /* keep last known promo map */
+      }
+    }
+
+    const id = window.setInterval(() => void refreshPromoPrices(), PROMO_PRICE_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [apiProducts, companyId, locationId])
+
   const catalog = useMemo(
-    () => mapApiProductsToPosCatalog(apiProducts, apiProducts),
-    [apiProducts],
+    () => mapApiProductsToPosCatalog(apiProducts, apiProducts, promoRppByProductId),
+    [apiProducts, promoRppByProductId],
   )
 
   const refreshCatalog = useCallback(() => {
