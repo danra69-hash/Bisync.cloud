@@ -105,16 +105,13 @@ export function FloorPlanPage() {
     setSelected({ type: 'table', id: table.id })
     if (editing) return
 
-    if (qrTableMode === 'dynamic' && table.status === 'open') {
+    // Open tables: start a session (pax) then go to Register.
+    if (table.status === 'open') {
       setOpeningTableId(table.id)
       return
     }
 
-    if (qrTableMode === 'fixed') {
-      // Selection only — use Print table QR or Take Order.
-      return
-    }
-
+    // Ordered / reserved — continue service on the register.
     navigate('/order/register')
   }
 
@@ -128,16 +125,20 @@ export function FloorPlanPage() {
             status: 'ordered' as const,
             pax,
             openedAt,
+            orderId: undefined,
+            serverName: undefined,
           }
         : t,
     )
     persistPlan({ ...plan, tables: nextTables })
-    printTableQr({
-      mode: 'dynamic',
-      table: openingTable.label,
-      pax,
-      openedAt,
-    })
+    if (qrTableMode === 'dynamic') {
+      printTableQr({
+        mode: 'dynamic',
+        table: openingTable.label,
+        pax,
+        openedAt,
+      })
+    }
     setOpeningTableId(null)
     navigate('/order/register')
   }

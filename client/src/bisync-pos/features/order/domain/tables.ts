@@ -44,6 +44,8 @@ export type FloorPlanState = {
 export const FLOOR_STORAGE_KEY = 'bisync-pos-floor-plan-v2'
 /** Legacy key from table-only layouts */
 export const FLOOR_STORAGE_KEY_LEGACY = 'bisync-pos-floor-plan'
+/** One-time wipe of demo / residual table orders from earlier builds. */
+export const FLOOR_ORDERS_RESET_KEY = 'bisync-pos-floor-orders-reset-v1'
 
 export const MOCK_ZONES: FloorZone[] = [
   {
@@ -66,6 +68,7 @@ export const MOCK_ZONES: FloorZone[] = [
   },
 ]
 
+/** Default layout — all tables open (no demo orders / reservations). */
 export const MOCK_FLOOR: FloorTable[] = [
   {
     id: 't1',
@@ -83,9 +86,7 @@ export const MOCK_FLOOR: FloorTable[] = [
     id: 't2',
     label: 'T2',
     seats: 4,
-    status: 'ordered',
-    serverName: 'Maya',
-    orderId: '20',
+    status: 'open',
     section: 'Main',
     shape: 'square',
     x: 28,
@@ -97,9 +98,7 @@ export const MOCK_FLOOR: FloorTable[] = [
     id: 't3',
     label: 'T3',
     seats: 4,
-    status: 'ordered',
-    serverName: 'Leo',
-    orderId: '18',
+    status: 'open',
     section: 'Main',
     shape: 'square',
     x: 48,
@@ -111,9 +110,7 @@ export const MOCK_FLOOR: FloorTable[] = [
     id: 't4',
     label: 'T4',
     seats: 6,
-    status: 'ordered',
-    serverName: 'Maya',
-    orderId: '15',
+    status: 'open',
     section: 'Main',
     shape: 'rect',
     x: 68,
@@ -125,9 +122,7 @@ export const MOCK_FLOOR: FloorTable[] = [
     id: 't5',
     label: 'T5',
     seats: 2,
-    status: 'reserved',
-    reservedTime: '19:30',
-    reservedName: 'Chen',
+    status: 'open',
     section: 'Bar',
     shape: 'oval',
     x: 10,
@@ -151,9 +146,7 @@ export const MOCK_FLOOR: FloorTable[] = [
     id: 't7',
     label: 'T7',
     seats: 4,
-    status: 'ordered',
-    serverName: 'Sam',
-    orderId: '21',
+    status: 'open',
     section: 'Patio',
     shape: 'square',
     x: 65,
@@ -280,24 +273,43 @@ export function formatReservedLabel(table: FloorTable): string | null {
 }
 
 function normalizeTables(tables: FloorTable[]): FloorTable[] {
-  const defaults = new Map(MOCK_FLOOR.map((t) => [t.id, t]))
   return tables.map((table) => {
-    const fallback = defaults.get(table.id)
     const status = normalizeStatus(table.status)
     const withStatus = { ...table, status }
     const withReserve =
       status === 'reserved'
         ? {
             ...withStatus,
-            reservedTime: table.reservedTime ?? fallback?.reservedTime ?? '19:00',
-            reservedName: table.reservedName ?? fallback?.reservedName,
+            reservedTime: table.reservedTime ?? '19:00',
+            reservedName: table.reservedName,
           }
         : withStatus
     return normalizeTable(withReserve)
   })
 }
 
-export function loadFloorPlan(): FloorPlanState {
+/** Clear every open order / reservation residue from tables (keeps layout). */
+export function clearAllTableOrders(plan: FloorPlanState): FloorPlanState {
+  return {
+    ...plan,
+    tables: plan.tables.map((table) =>
+      normalizeTable({
+        id: table.id,
+        label: table.label,
+        seats: table.seats,
+        status: 'open',
+        section: table.section,
+        shape: table.shape,
+        x: table.x,
+        y: table.y,
+        w: table.w,
+        h: table.h,
+      }),
+    ),
+  }
+}
+
+function readStoredFloorPlan(): FloorPlanState | null {
   try {
     const raw = localStorage.getItem(FLOOR_STORAGE_KEY)
     if (raw) {
@@ -326,7 +338,25 @@ export function loadFloorPlan(): FloorPlanState {
   } catch {
     /* fall through */
   }
-  return structuredClone(DEFAULT_FLOOR_PLAN)
+  return null
+}
+
+export function loadFloorPlan(): FloorPlanState {
+  const stored = readStoredFloorPlan()
+  const base = stored ?? structuredClone(DEFAULT_FLOOR_PLAN)
+
+  try {
+    if (!localStorage.getItem(FLOOR_ORDERS_RESET_KEY)) {
+      const cleared = clearAllTableOrders(base)
+      saveFloorPlan(cleared)
+      localStorage.setItem(FLOOR_ORDERS_RESET_KEY, '1')
+      return cleared
+    }
+  } catch {
+    /* ignore storage failures */
+  }
+
+  return base
 }
 
 export function saveFloorPlan(plan: FloorPlanState) {
