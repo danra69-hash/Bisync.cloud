@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BisyncPosApp } from './app/App'
-import { PosSessionProvider, type PosSessionValue } from './core/session/PosSessionContext'
+import {
+  PosSessionProvider,
+  type PosLocationOption,
+  type PosSessionValue,
+} from './core/session/PosSessionContext'
+import { usePosViewportScale } from './core/session/usePosViewportScale'
 import { mapApiProductsToPosCatalog } from './core/session/mapPosCatalog'
 import { api, type Product as ApiProduct } from '../api'
 import { productMatchesPosMenu } from '../data/posCatalog'
@@ -34,10 +39,20 @@ function ensurePosFonts() {
 type Props = {
   companyId: number
   locationId: string
+  locations?: PosLocationOption[]
+  onLocationChange?: (locationId: string) => void
 }
 
 /** Mountable Bisync POS UI for POS Test Tap — live company catalog + demo POS shell. */
-export function BisyncPosEmbed({ companyId, locationId }: Props) {
+export function BisyncPosEmbed({
+  companyId,
+  locationId,
+  locations = [],
+  onLocationChange,
+}: Props) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  usePosViewportScale(rootRef)
+
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([])
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [catalogError, setCatalogError] = useState<string | null>(null)
@@ -82,20 +97,39 @@ export function BisyncPosEmbed({ companyId, locationId }: Props) {
     setRefreshKey(k => k + 1)
   }, [])
 
+  const setLocationId = useCallback(
+    (next: string) => {
+      if (!next || next === locationId) return
+      onLocationChange?.(next)
+    },
+    [locationId, onLocationChange],
+  )
+
   const session = useMemo<PosSessionValue>(
     () => ({
       companyId,
       locationId,
+      locations,
+      setLocationId,
       catalog,
       catalogLoading,
       catalogError,
       refreshCatalog,
     }),
-    [companyId, locationId, catalog, catalogLoading, catalogError, refreshCatalog],
+    [
+      companyId,
+      locationId,
+      locations,
+      setLocationId,
+      catalog,
+      catalogLoading,
+      catalogError,
+      refreshCatalog,
+    ],
   )
 
   return (
-    <div className="bisync-pos-root" data-bisync-pos-embed>
+    <div ref={rootRef} className="bisync-pos-root" data-bisync-pos-embed>
       <PosSessionProvider value={session}>
         <BisyncPosApp />
       </PosSessionProvider>

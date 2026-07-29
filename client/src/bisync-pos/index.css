@@ -10,3 +10,8 @@
 .bisync-pos-root select {
   font: inherit;
 }
+
+.bisync-pos-root {
+  display: flex;
+  flex-direction: column;
+}

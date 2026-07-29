@@ -354,10 +354,12 @@ export function RegisterPage() {
           ))}
         </div>
 
-        <ProductGrid
-          products={filtered}
-          onAdd={addProduct}
-        />
+        <div className="register__grid-scroll">
+          <ProductGrid
+            products={filtered}
+            onAdd={addProduct}
+          />
+        </div>
       </div>
 
       <OrderPanel

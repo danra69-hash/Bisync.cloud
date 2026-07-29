@@ -1,0 +1,72 @@
+/* Fill remaining app viewport so POS fits without page scroll. */
+.pos-test-tap {
+  --pos-host-chrome: 6.75rem;
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--pos-host-chrome));
+  max-height: calc(100dvh - var(--pos-host-chrome));
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.pos-test-tap--empty {
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  color: var(--muted-foreground, #667085);
+  font-size: 0.875rem;
+}
+
+.pos-test-tap__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border, #e6e8ec);
+}
+
+.pos-test-tap__title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted-foreground, #667085);
+}
+
+.pos-test-tap__status {
+  font-size: 0.65rem;
+  color: var(--muted-foreground, #667085);
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-test-tap__frame {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border, #e6e8ec);
+}
+
+.pos-test-tap__frame > * {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.pos-test-tap__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 12rem;
+}
+
+@media (max-width: 640px) {
+  .pos-test-tap {
+    --pos-host-chrome: 7.5rem;
+  }
+}

@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { api, type PosTestTapStatus } from '../../api'
-import { pageShellClass } from '../layout/pageLayout'
+import { configLocationToDropdown } from '../../utils/orgFilters'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
+import './PosTestTapPage.css'
 
 const BisyncPosEmbed = lazy(() =>
   import('../../bisync-pos/embed').then(m => ({ default: m.BisyncPosEmbed })),
@@ -14,7 +15,50 @@ type Props = {
 
 export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const [schemaStatus, setSchemaStatus] = useState<PosTestTapStatus | null>(null)
-  const locationId = selectedLocationIds[0] ?? null
+  const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([])
+  const [activeLocationId, setActiveLocationId] = useState(selectedLocationIds[0] ?? '')
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setLocations([])
+      return
+    }
+    let cancelled = false
+    api.locationsConfig()
+      .then(rows => {
+        if (cancelled) return
+        const active = rows
+          .filter(loc => loc.companyId === selectedCompanyId && loc.active !== false)
+          .map(configLocationToDropdown)
+          .sort((a, b) => a.name.localeCompare(b.name))
+        setLocations(active.map(l => ({ externalId: l.externalId, name: l.name })))
+      })
+      .catch(() => {
+        if (!cancelled) setLocations([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCompanyId])
+
+  useEffect(() => {
+    const preferred = selectedLocationIds.find(id =>
+      locations.some(loc => loc.externalId === id),
+    )
+    if (preferred) {
+      setActiveLocationId(preferred)
+      return
+    }
+    if (locations.length === 0) {
+      setActiveLocationId('')
+      return
+    }
+    setActiveLocationId(prev => (
+      locations.some(loc => loc.externalId === prev)
+        ? prev
+        : locations[0]!.externalId
+    ))
+  }, [selectedLocationIds, locations])
 
   useEffect(() => {
     let cancelled = false
@@ -24,7 +68,7 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
         return
       }
       try {
-        const data = await api.posTestTapStatus(selectedCompanyId, locationId)
+        const data = await api.posTestTapStatus(selectedCompanyId, activeLocationId || null)
         if (!cancelled) setSchemaStatus(data)
       } catch {
         if (!cancelled) setSchemaStatus(null)
@@ -34,50 +78,55 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
     return () => {
       cancelled = true
     }
-  }, [selectedCompanyId, locationId])
+  }, [selectedCompanyId, activeLocationId])
+
+  const locationOptions = useMemo(
+    () => locations.map(l => ({ externalId: l.externalId, name: l.name })),
+    [locations],
+  )
 
   if (!selectedCompanyId) {
     return (
-      <div className={pageShellClass()}>
-        <p className="text-sm text-muted-foreground">Select a company to open POS Test Tap.</p>
+      <div className="pos-test-tap pos-test-tap--empty">
+        <p>Select a company to open POS Test Tap.</p>
       </div>
     )
   }
 
-  if (!locationId) {
+  if (!activeLocationId) {
     return (
-      <div className={pageShellClass()}>
-        <p className="text-sm text-muted-foreground">Select a location to open POS Test Tap.</p>
+      <div className="pos-test-tap pos-test-tap--empty">
+        <p>Select an active location to open POS Test Tap.</p>
       </div>
     )
   }
 
   return (
-    <div className={`${pageShellClass({ spacing: 'tight' })} !p-0 sm:!p-0`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-2 sm:px-3 pt-2">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">POS Test Tap</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Live Bisync POS — menu from this company. Payment records a POS sale and depletes inventory.
-          </p>
-        </div>
+    <div className="pos-test-tap">
+      <div className="pos-test-tap__meta">
+        <span className="pos-test-tap__title">POS Test Tap</span>
         {schemaStatus?.ready ? (
-          <p className="text-[11px] text-muted-foreground tabular-nums">
-            Ops tables ready
+          <span className="pos-test-tap__status">
+            Ops ready
             {schemaStatus.openBlocksEod ? ' · open checks block EOD' : ''}
-          </p>
+          </span>
         ) : null}
       </div>
 
-      <div className="mt-2 overflow-hidden border-y border-border sm:border sm:rounded-lg sm:mx-2 sm:mb-2">
+      <div className="pos-test-tap__frame">
         <Suspense
           fallback={
-            <div className="flex items-center justify-center py-16">
+            <div className="pos-test-tap__loading">
               <MillstoneLoader label="Loading Bisync POS…" />
             </div>
           }
         >
-          <BisyncPosEmbed companyId={selectedCompanyId} locationId={locationId} />
+          <BisyncPosEmbed
+            companyId={selectedCompanyId}
+            locationId={activeLocationId}
+            locations={locationOptions}
+            onLocationChange={setActiveLocationId}
+          />
         </Suspense>
       </div>
     </div>
