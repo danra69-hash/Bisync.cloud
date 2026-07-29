@@ -39,8 +39,11 @@ import {
 } from '../../data/companyModules';
 import type { AccessModule } from '../../data/userAccess';
 import {
-  blankOpeningHours,
+  applyMondayCascade,
+  blankDayHours,
   HALF_HOUR_TIMES,
+  initiallyCustomizedWeekdays,
+  isDayHoursBlank,
   LOCATION_WEEKDAY_LABELS,
   LOCATION_WEEKDAYS,
   normalizeTime,
@@ -193,6 +196,10 @@ function LocationPanel({
   const [openingHours, setOpeningHours] = useState<LocationOpeningHours>(() =>
     parseOpeningHoursJson(location.openingHoursJson),
   );
+  /** Days the user edited (or that already differed from Monday on load) — skip Monday cascade. */
+  const hoursCustomizedDaysRef = useRef<Set<LocationWeekday>>(
+    initiallyCustomizedWeekdays(parseOpeningHoursJson(location.openingHoursJson)),
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [overlayCloseArmed, setOverlayCloseArmed] = useState(false);
@@ -237,7 +244,9 @@ function LocationPanel({
       setVendorPolicyTags(profile.vendorPolicyTags);
       setModules(initial ? locationModulesFromCompany(initial) : []);
     }
-    setOpeningHours(parseOpeningHoursJson(location.openingHoursJson));
+    const hours = parseOpeningHoursJson(location.openingHoursJson);
+    setOpeningHours(hours);
+    hoursCustomizedDaysRef.current = initiallyCustomizedWeekdays(hours);
     setError(null);
     // Only re-hydrate when the edited location (or create/edit mode) changes — not when
     // the companies list is refreshed, which would wipe in-progress edits and clear errors.
@@ -324,10 +333,22 @@ function LocationPanel({
     if (next.openFrom !== undefined) next.openFrom = normalizeTime(next.openFrom);
     if (next.openTo !== undefined) next.openTo = normalizeTime(next.openTo);
     if (next.lastOrder !== undefined) next.lastOrder = normalizeTime(next.lastOrder);
-    setOpeningHours(prev => ({
-      ...prev,
-      [day]: { ...(prev[day] ?? blankOpeningHours()[day]), ...next },
-    }));
+
+    if (day !== 'monday') {
+      const customized = new Set(hoursCustomizedDaysRef.current);
+      customized.add(day);
+      hoursCustomizedDaysRef.current = customized;
+    }
+
+    setOpeningHours(prev => {
+      const updatedDay = { ...(prev[day] ?? blankDayHours()), ...next };
+      const updated: LocationOpeningHours = { ...prev, [day]: updatedDay };
+      // When Monday is filled in, copy it to days the user has not customized.
+      if (day === 'monday' && !isDayHoursBlank(updatedDay)) {
+        return applyMondayCascade(updated, hoursCustomizedDaysRef.current);
+      }
+      return updated;
+    });
     setError(null);
   }
 
@@ -645,7 +666,7 @@ function LocationPanel({
             <div>
               <p className="text-xs font-semibold text-foreground">Opening Hours</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                From / To / Last Order per day. Minutes are :00 or :30 only.
+                From / To / Last Order per day. Minutes are :00 or :30 only. Monday copies to the rest of the week until you edit a day.
               </p>
             </div>
             <div className="overflow-x-auto">
