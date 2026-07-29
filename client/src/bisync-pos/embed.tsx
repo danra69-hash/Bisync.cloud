@@ -128,10 +128,14 @@ export function BisyncPosEmbed({
     ],
   )
 
+  // Keep one POS app instance so MemoryRouter navigation (POS Setup, Home, etc.)
+  // is not reset when catalog/session props refresh.
+  const posApp = useMemo(() => <BisyncPosApp />, [])
+
   return (
     <div ref={rootRef} className="bisync-pos-root" data-bisync-pos-embed>
       <PosSessionProvider value={session}>
-        <BisyncPosApp />
+        {posApp}
       </PosSessionProvider>
     </div>
   )

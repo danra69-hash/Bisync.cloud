@@ -168,8 +168,8 @@ export function BohSettingsPage() {
 
   return (
     <FeaturePage
-      crumb="Config"
-      title="Configuration"
+      crumb="POS Setup"
+      title="POS Setup"
       subtitle="Restaurant-wide settings for table QR, menus, printers, and integrations."
     >
       <section className="config-section panel-card">

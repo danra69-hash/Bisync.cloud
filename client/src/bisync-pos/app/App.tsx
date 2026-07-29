@@ -78,6 +78,7 @@ export function BisyncPosApp() {
           <Route path="/boh/permissions" element={<PermissionsPage />} />
           <Route path="/boh/eod" element={<EodPage />} />
           <Route path="/boh/settings" element={<BohSettingsPage />} />
+          <Route path="/pos/setup" element={<Navigate to="/boh/settings" replace />} />
 
           <Route path="*" element={<Navigate to="/order/floor" replace />} />
         </Routes>
