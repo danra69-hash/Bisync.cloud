@@ -175,7 +175,7 @@ export function BohSettingsPage() {
       <section className="config-section panel-card">
         <h3>Table QR mode</h3>
         <p className="config-section__copy">
-          Choose how guest QR codes work for dine-in tables.
+          Choose how dine-in table QR codes work. There is no QR Order box — only Fixed or Dynamic table QR.
         </p>
         <div className="qr-mode-switch" role="radiogroup" aria-label="Table QR mode">
           <button
@@ -187,7 +187,8 @@ export function BohSettingsPage() {
           >
             <strong>Fixed QR table</strong>
             <span>
-              Print permanent QR codes with table numbers from the Floor Plan.
+              Print a permanent QR from the Floor Plan using Location, Date, and Table Number.
+              It stays the same until you print again. Opening a table does not ask for pax or print.
             </span>
           </button>
           <button
@@ -199,7 +200,8 @@ export function BohSettingsPage() {
           >
             <strong>Dynamic QR table</strong>
             <span>
-              On table open, confirm pax and print a QR with table, date, and time.
+              When a table transaction starts, ask for number of pax and print a QR immediately
+              using Time, Date, and Table Number.
             </span>
           </button>
         </div>

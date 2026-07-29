@@ -17,6 +17,7 @@ import {
 } from '../domain/tables'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import { formatOpenedAt, printTableQr } from '../../../core/config/qrTable'
+import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { OpenTableModal } from './OpenTableModal'
 import './FloorPlanPage.css'
 import '../../common/FeaturePage.css'
@@ -40,6 +41,11 @@ export function FloorPlanPage() {
   const { pathname } = useLocation()
   const editRoute = pathname.endsWith('/floor/edit')
   const { qrTableMode } = useConfig()
+  const session = usePosSessionOptional()
+  const locationLabel =
+    session?.locations.find(loc => loc.externalId === session.locationId)?.name
+    || session?.locationId
+    || ''
   const canvasRef = useRef<HTMLDivElement>(null)
   const [plan, setPlan] = useState<FloorPlanState>(() => loadFloorPlan())
   const [editing, setEditing] = useState(editRoute)
@@ -89,7 +95,12 @@ export function FloorPlanPage() {
   }
 
   function printFixedQr(table: FloorTable) {
-    printTableQr({ mode: 'fixed', table: table.label })
+    printTableQr({
+      mode: 'fixed',
+      table: table.label,
+      location: locationLabel,
+      openedAt: formatOpenedAt().iso,
+    })
   }
 
   function handlePrintQrClick() {
@@ -101,12 +112,34 @@ export function FloorPlanPage() {
     printFixedQr(selectedTable)
   }
 
+  function openTableWithoutPrompt(table: FloorTable) {
+    const openedAt = formatOpenedAt().iso
+    const nextTables = plan.tables.map((t) =>
+      t.id === table.id
+        ? {
+            ...t,
+            status: 'ordered' as const,
+            pax: undefined,
+            openedAt,
+            orderId: undefined,
+            serverName: undefined,
+          }
+        : t,
+    )
+    persistPlan({ ...plan, tables: nextTables })
+    navigate('/order/register')
+  }
+
   function handleTableActivate(table: FloorTable) {
     setSelected({ type: 'table', id: table.id })
     if (editing) return
 
-    // Open tables: start a session (pax) then go to Register.
+    // Open tables: Fixed opens immediately (no pax / no print). Dynamic asks pax then prints.
     if (table.status === 'open') {
+      if (qrTableMode === 'fixed') {
+        openTableWithoutPrompt(table)
+        return
+      }
       setOpeningTableId(table.id)
       return
     }
@@ -131,14 +164,14 @@ export function FloorPlanPage() {
         : t,
     )
     persistPlan({ ...plan, tables: nextTables })
-    if (qrTableMode === 'dynamic') {
-      printTableQr({
-        mode: 'dynamic',
-        table: openingTable.label,
-        pax,
-        openedAt,
-      })
-    }
+    // Dynamic only — Fixed never reaches this modal.
+    printTableQr({
+      mode: 'dynamic',
+      table: openingTable.label,
+      location: locationLabel,
+      pax,
+      openedAt,
+    })
     setOpeningTableId(null)
     navigate('/order/register')
   }

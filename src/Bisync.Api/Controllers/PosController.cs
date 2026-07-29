@@ -25,7 +25,7 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
             return Ok(new
             {
                 ready = false,
-                message = "Select a company to inspect POS Test Tap data.",
+                message = "Select a company to inspect POS Test data.",
                 tables = Array.Empty<object>(),
             });
         }
