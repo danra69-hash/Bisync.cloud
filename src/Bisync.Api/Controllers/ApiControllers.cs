@@ -320,8 +320,19 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         if (policyError is not null)
             return BadRequest(new { message = policyError });
 
+        int? companyId = null;
+        if (request.CompanyId is int requestedCompanyId && requestedCompanyId > 0)
+        {
+            var companyExists = await db.Companies.AsNoTracking()
+                .AnyAsync(c => c.Id == requestedCompanyId);
+            if (!companyExists)
+                return BadRequest(new { message = "Company not found." });
+            companyId = requestedCompanyId;
+        }
+
         var vendor = new Vendor
         {
+            CompanyId = companyId,
             ExternalId = externalId,
             Name = name,
             Type = string.IsNullOrWhiteSpace(request.Type) ? "offline" : request.Type.Trim().ToLowerInvariant(),
