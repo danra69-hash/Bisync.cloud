@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom'
+import { usePosSessionOptional } from '../core/session/PosSessionContext'
 import './TopBar.css'
 
 type Props = {
@@ -6,6 +8,11 @@ type Props = {
 }
 
 export function TopBar({ menuOpen, onToggleMenu }: Props) {
+  const navigate = useNavigate()
+  const session = usePosSessionOptional()
+  const locations = session?.locations ?? []
+  const locationId = session?.locationId ?? ''
+
   return (
     <header className="topbar">
       <div className="topbar__brand">
@@ -15,6 +22,36 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
           className="topbar__logo-img"
         />
         <span className="topbar__name">POS</span>
+      </div>
+
+      <div className="topbar__controls">
+        <label className="topbar__location">
+          <span className="topbar__location-label">Location</span>
+          <select
+            value={locationId}
+            disabled={!session || locations.length === 0}
+            onChange={e => session?.setLocationId(e.target.value)}
+            aria-label="POS location filter"
+          >
+            {locations.length === 0 ? (
+              <option value="">No locations</option>
+            ) : (
+              locations.map(loc => (
+                <option key={loc.externalId} value={loc.externalId}>
+                  {loc.name}
+                </option>
+              ))
+            )}
+          </select>
+        </label>
+
+        <button
+          type="button"
+          className="topbar__setup"
+          onClick={() => navigate('/boh/settings')}
+        >
+          POS Setup
+        </button>
       </div>
 
       <div className="topbar__spacer" />
