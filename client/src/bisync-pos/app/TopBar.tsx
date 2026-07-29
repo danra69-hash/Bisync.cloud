@@ -8,6 +8,11 @@ import {
   POS_DUTY_SESSION_EVENT,
   type PosDutySession,
 } from '../core/session/posDutySession'
+import {
+  POS_DINING_CHANGED_EVENT,
+  readPosDiningFromEvent,
+  requestPosTakeaway,
+} from '../core/session/posDiningBridge'
 import { CheckInOutModal } from './CheckInOutModal'
 import './TopBar.css'
 
@@ -31,8 +36,10 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
     pathname === '/order/floor'
     || (pathname.startsWith('/order/floor') && !pathname.includes('/edit'))
   const isSetup = pathname.startsWith('/boh/settings')
+  const isRegister = pathname.startsWith('/order/register')
   const [checkInOpen, setCheckInOpen] = useState(false)
   const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+  const [dining, setDining] = useState('')
 
   useEffect(() => {
     function syncDuty() {
@@ -46,6 +53,14 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
     }
   }, [])
 
+  useEffect(() => {
+    function onDiningChanged(event: Event) {
+      setDining(readPosDiningFromEvent(event))
+    }
+    window.addEventListener(POS_DINING_CHANGED_EVENT, onDiningChanged)
+    return () => window.removeEventListener(POS_DINING_CHANGED_EVENT, onDiningChanged)
+  }, [])
+
   function goHome() {
     setMode('order')
     navigate(homePath)
@@ -54,6 +69,15 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
   function goSetup() {
     setMode('boh')
     navigate('/boh/settings')
+  }
+
+  function goTakeAway() {
+    setMode('order')
+    if (!isRegister) {
+      navigate('/order/register')
+    }
+    // Allow register mount/listener to attach before requesting pickup.
+    window.setTimeout(() => requestPosTakeaway(), isRegister ? 0 : 50)
   }
 
   return (
@@ -130,6 +154,19 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
             <path d="M8 12h8M12 8v8" />
           </svg>
           <span>Check in/out</span>
+        </button>
+        <button
+          type="button"
+          className={`topbar__takeaway${dining === 'takeaway' ? ' is-active' : ''}`}
+          onClick={goTakeAway}
+          aria-label="Take Away"
+          aria-pressed={dining === 'takeaway'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+            <path d="M4 8h16l-1.2 11.2a2 2 0 01-2 1.8H7.2a2 2 0 01-2-1.8L4 8z" />
+            <path d="M8 8V6a4 4 0 018 0v2" />
+          </svg>
+          <span>Take Away</span>
         </button>
         <button
           type="button"

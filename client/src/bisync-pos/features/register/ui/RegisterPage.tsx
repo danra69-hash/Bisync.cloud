@@ -27,6 +27,11 @@ import {
   POS_DUTY_SESSION_EVENT,
   type PosDutySession,
 } from '../../../core/session/posDutySession'
+import {
+  consumePendingTakeawayRequest,
+  POS_TAKEAWAY_REQUEST_EVENT,
+  publishPosDiningMode,
+} from '../../../core/session/posDiningBridge'
 import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
@@ -83,7 +88,6 @@ export function RegisterPage() {
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [comboProduct, setComboProduct] = useState<Product | null>(null)
-  const [pendingTakeawayProduct, setPendingTakeawayProduct] = useState<Product | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
@@ -102,6 +106,23 @@ export function RegisterPage() {
       window.removeEventListener('storage', syncDuty)
     }
   }, [])
+
+  useEffect(() => {
+    function openTakeaway() {
+      setPickupModalOpen(true)
+    }
+    if (consumePendingTakeawayRequest()) openTakeaway()
+    function onTakeawayRequest() {
+      consumePendingTakeawayRequest()
+      openTakeaway()
+    }
+    window.addEventListener(POS_TAKEAWAY_REQUEST_EVENT, onTakeawayRequest)
+    return () => window.removeEventListener(POS_TAKEAWAY_REQUEST_EVENT, onTakeawayRequest)
+  }, [])
+
+  useEffect(() => {
+    publishPosDiningMode(dining)
+  }, [dining])
 
   useEffect(() => {
     const active = loadActiveRegisterSession()
@@ -161,7 +182,6 @@ export function RegisterPage() {
 
   function handlePickupCancel() {
     setPickupModalOpen(false)
-    setPendingTakeawayProduct(null)
   }
 
   function handlePickupConfirm(pickup: TakeawayPickup) {
@@ -169,11 +189,6 @@ export function RegisterPage() {
     setTakeawayPickup(pickup)
     setPickupModalOpen(false)
     flash(formatPickupLabel(pickup))
-    const pending = pendingTakeawayProduct
-    setPendingTakeawayProduct(null)
-    if (pending) {
-      window.setTimeout(() => addProduct(pending), 0)
-    }
   }
 
   function flash(message: string) {
@@ -339,16 +354,6 @@ export function RegisterPage() {
     navigate('/order/floor')
   }
 
-  function addTakeawayProduct(product: Product) {
-    if (!requireDuty()) return
-    if (dining !== 'takeaway' || !takeawayPickup) {
-      setPendingTakeawayProduct(product)
-      setPickupModalOpen(true)
-      return
-    }
-    addProduct(product)
-  }
-
   async function chargePayment() {
     if (!session) {
       flash('Opening payment…')
@@ -489,7 +494,6 @@ export function RegisterPage() {
           <ProductGrid
             products={filtered}
             onAdd={addProduct}
-            onAddTakeaway={addTakeawayProduct}
             disabled={!onDuty}
           />
         </div>

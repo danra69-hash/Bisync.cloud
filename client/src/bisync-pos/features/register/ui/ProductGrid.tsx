@@ -6,11 +6,10 @@ import './ProductGrid.css'
 type Props = {
   products: Product[]
   onAdd: (product: Product) => void
-  onAddTakeaway: (product: Product) => void
   disabled?: boolean
 }
 
-export function ProductGrid({ products, onAdd, onAddTakeaway, disabled = false }: Props) {
+export function ProductGrid({ products, onAdd, disabled = false }: Props) {
   if (products.length === 0) {
     return <p className="product-grid__empty">No products match your filters.</p>
   }
@@ -58,16 +57,15 @@ export function ProductGrid({ products, onAdd, onAddTakeaway, disabled = false }
               </span>
               <button
                 type="button"
-                className="product-card__takeaway"
-                aria-label={`Add ${product.name} as takeaway`}
+                className="product-card__add"
+                aria-label={`Add ${product.name}`}
                 disabled={disabled}
                 onClick={e => {
                   e.stopPropagation()
-                  if (!disabled) onAddTakeaway(product)
+                  if (!disabled) onAdd(product)
                 }}
               >
-                <span className="product-card__takeaway-label">TA</span>
-                <span aria-hidden>+</span>
+                +
               </button>
             </div>
           </div>
