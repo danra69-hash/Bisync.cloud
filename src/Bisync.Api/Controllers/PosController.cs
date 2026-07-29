@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Bisync.Api.Controllers;
 
 /// <summary>
-/// POS Test Tap operational data — foundation for wiring register / EOD into Bisync.cloud.
+/// POS Test operational data — foundation for wiring register / EOD into Bisync.cloud.
 /// Tables follow CompanyId + LocationExternalId tenancy (SchemaPatcher EnsureCreated).
 /// </summary>
 [ApiController]

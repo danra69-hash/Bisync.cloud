@@ -43,7 +43,7 @@ type Props = {
   onLocationChange?: (locationId: string) => void
 }
 
-/** Mountable Bisync POS UI for POS Test Tap — live company catalog + demo POS shell. */
+/** Mountable Bisync POS UI for POS Test — live company catalog + demo POS shell. */
 export function BisyncPosEmbed({
   companyId,
   locationId,

@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Controllers;
 
-/// <summary>End-of-day session, summary, and close-day for POS Test Tap.</summary>
+/// <summary>End-of-day session, summary, and close-day for POS Test.</summary>
 [ApiController]
 [Route("api/pos/eod")]
 public class PosEodController(BisyncDbContext db, ITenantContext tenant) : ControllerBase
