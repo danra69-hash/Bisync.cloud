@@ -29,12 +29,12 @@ import {
 /** Bisync POS shell for embed in Bisync.cloud (MemoryRouter — no URL takeover). */
 export function BisyncPosApp() {
   return (
-    <MemoryRouter initialEntries={['/order/register']}>
+    <MemoryRouter initialEntries={['/order/floor']}>
       <AppShell>
         <Routes>
-          <Route path="/" element={<Navigate to="/order/register" replace />} />
+          <Route path="/" element={<Navigate to="/order/floor" replace />} />
 
-          <Route path="/order" element={<Navigate to="/order/register" replace />} />
+          <Route path="/order" element={<Navigate to="/order/floor" replace />} />
           <Route path="/order/floor" element={<FloorPlanPage />} />
           <Route path="/order/register" element={<RegisterPage />} />
           <Route
@@ -78,7 +78,7 @@ export function BisyncPosApp() {
           <Route path="/boh/eod" element={<EodPage />} />
           <Route path="/boh/settings" element={<BohSettingsPage />} />
 
-          <Route path="*" element={<Navigate to="/order/register" replace />} />
+          <Route path="*" element={<Navigate to="/order/floor" replace />} />
         </Routes>
       </AppShell>
     </MemoryRouter>
