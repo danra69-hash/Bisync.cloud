@@ -1108,10 +1108,27 @@ export interface PosPromotion {
   promoType: 'discountPercent' | 'discountPrice' | string;
   active: boolean;
   status: 'Active' | 'Scheduled' | 'Inactive' | string;
+  /** True when date/time/weekday window is in effect for the location clock. */
+  inEffectNow?: boolean;
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
   products: PosPromotionProductLine[];
+}
+
+export interface PosPromotionActivePrice {
+  productId: number;
+  promotionId: number;
+  promotionName: string;
+  rrp: number;
+  rpp: number;
+  discountPercent: number;
+}
+
+export interface PosPromotionActivePricesResponse {
+  asOfLocal: string;
+  locationExternalId?: string | null;
+  prices: PosPromotionActivePrice[];
 }
 
 export interface PosDevice {
@@ -3293,6 +3310,17 @@ export const api = {
     const params = new URLSearchParams({ companyId: String(companyId) });
     if (status) params.set('status', status);
     return fetchJson<PosPromotion[]>(`/api/pos-promotions?${params}`);
+  },
+  posPromotionActivePrices: (
+    companyId: number,
+    opts?: { locationExternalId?: string; productIds?: number[] },
+  ) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.locationExternalId) params.set('locationExternalId', opts.locationExternalId);
+    if (opts?.productIds && opts.productIds.length > 0) {
+      params.set('productIds', opts.productIds.join(','));
+    }
+    return fetchJson<PosPromotionActivePricesResponse>(`/api/pos-promotions/active-prices?${params}`);
   },
   createPosPromotion: (data: CreatePosPromotionPayload) =>
     fetchJsonWithMethod<PosPromotion>('/api/pos-promotions', 'POST', data),

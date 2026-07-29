@@ -454,13 +454,14 @@ export function PosPromotionSchedulerPage({
                     <th className="py-2 pr-3 font-semibold">Type</th>
                     <th className="py-2 pr-3 font-semibold">Products</th>
                     <th className="py-2 pr-3 font-semibold">Status</th>
+                    <th className="py-2 pr-3 font-semibold">Now</th>
                     <th className="py-2 font-semibold">Active</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredPromotions.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-6 text-muted-foreground">
+                      <td colSpan={9} className="py-6 text-muted-foreground">
                         No POS promotions yet. Create one on the Create Promotion tab.
                       </td>
                     </tr>
@@ -486,6 +487,13 @@ export function PosPromotionSchedulerPage({
                         </td>
                         <td className="py-2 pr-3 text-muted-foreground">{promo.products.length}</td>
                         <td className="py-2 pr-3">{promo.status}</td>
+                        <td className="py-2 pr-3">
+                          {promo.inEffectNow ? (
+                            <span className="text-emerald-700 font-semibold">RPP on</span>
+                          ) : (
+                            <span className="text-muted-foreground">Off</span>
+                          )}
+                        </td>
                         <td className="py-2">
                           <label className="inline-flex items-center gap-1.5 cursor-pointer">
                             <input

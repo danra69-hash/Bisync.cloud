@@ -77,3 +77,28 @@ export function resolvePosMenuRrp(
   if (units.length > 0 && units[0].rrp > 0) return units[0].rrp;
   return Number(product.rrp ?? 0);
 }
+
+/**
+ * POS sell price: in-effect promotion RPP when present, otherwise menu RRP.
+ * `promoRppByProductId` comes from `/api/pos-promotions/active-prices`.
+ */
+export function resolvePosMenuSellPrice(
+  product: Product,
+  catalogProducts: Product[] = [],
+  promoRppByProductId?: ReadonlyMap<number, number> | Record<number, number> | null,
+): number {
+  const rrp = resolvePosMenuRrp(product, catalogProducts);
+  if (!promoRppByProductId) return rrp;
+
+  let raw: number | undefined;
+  if (promoRppByProductId instanceof Map) {
+    raw = promoRppByProductId.get(product.id);
+  } else {
+    raw = (promoRppByProductId as Record<number, number>)[product.id];
+  }
+  const rpp = Number(raw);
+  if (!Number.isFinite(rpp) || rpp < 0) return rrp;
+  // Never sell above RRP via promo map; allow 0 for complimentary promos.
+  if (rrp > 0 && rpp > rrp) return rrp;
+  return rpp;
+}

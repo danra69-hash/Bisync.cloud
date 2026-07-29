@@ -1,5 +1,5 @@
 import type { Product as ApiProduct } from '../../../api'
-import { resolvePosMenuRrp } from '../../../data/posCatalog'
+import { resolvePosMenuRrp, resolvePosMenuSellPrice } from '../../../data/posCatalog'
 import {
   calcWeightUnitRrp,
   parseVariableMode,
@@ -9,6 +9,8 @@ import type {
   Product as PosProduct,
   ProductDepartment,
 } from '../../features/register/domain/types'
+
+export type PosPromoRppMap = ReadonlyMap<number, number> | Record<number, number> | null | undefined
 
 const ACCENTS = [
   '#dcfce7',
@@ -48,11 +50,14 @@ function mapDepartment(category: string, group: string): ProductDepartment {
 export function mapApiProductsToPosCatalog(
   apiProducts: ApiProduct[],
   catalogProducts: ApiProduct[] = apiProducts,
+  promoRppByProductId?: PosPromoRppMap,
 ): PosProduct[] {
   const rows: PosProduct[] = []
   for (const product of apiProducts) {
-    const rrp = resolvePosMenuRrp(product, catalogProducts)
-    if (rrp <= 0) continue
+    const baseRrp = resolvePosMenuRrp(product, catalogProducts)
+    if (baseRrp <= 0) continue
+    const sellPrice = resolvePosMenuSellPrice(product, catalogProducts, promoRppByProductId)
+    if (!(sellPrice >= 0)) continue
     const group = (product.group || product.category || 'General').trim() || 'General'
     const department = mapDepartment(product.category || '', group)
 
@@ -62,7 +67,7 @@ export function mapApiProductsToPosCatalog(
       ? parseVariableOptionsJson(product.variableOptionsJson, mode)
       : null
 
-    let priceCents = Math.round(rrp * 100)
+    let priceCents = Math.round(sellPrice * 100)
     let pricedByWeight = false
     let weightUom: string | undefined
     let weightQty: number | undefined
@@ -72,13 +77,13 @@ export function mapApiProductsToPosCatalog(
         ? product.variableChoiceQty
         : cfg.choiceQty
       if (!(qty > 0) || !cfg.weightUom) continue
-      const unitRrp = calcWeightUnitRrp(rrp, qty)
-      if (!(unitRrp > 0)) continue
+      const unitPrice = calcWeightUnitRrp(sellPrice, qty)
+      if (!(unitPrice > 0)) continue
       pricedByWeight = true
       weightUom = cfg.weightUom
       weightQty = qty
       // Cart uses quantity = entered weight; price is per 1 weight UOM.
-      priceCents = Math.round(unitRrp * 100)
+      priceCents = Math.round(unitPrice * 100)
     }
 
     rows.push({
