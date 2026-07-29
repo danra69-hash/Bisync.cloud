@@ -1111,6 +1111,99 @@ export interface PosPromotion {
   products: PosPromotionProductLine[];
 }
 
+export interface PosDevice {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  name: string;
+  deviceType: string;
+  deviceTypeLabel?: string;
+  connectionType: string;
+  hostAddress: string;
+  port?: number | null;
+  macAddress: string;
+  subnetMask: string;
+  gateway: string;
+  dnsPrimary: string;
+  dnsSecondary: string;
+  hostname: string;
+  printerSdkCode: string;
+  printerBrand: string;
+  printerModel: string;
+  paperWidthMm?: number | null;
+  printAlignment: string;
+  printMarginLeft: number;
+  printMarginRight: number;
+  printerSetupComplete: boolean;
+  lastProbeStatus?: string;
+  lastProbedAt?: string | null;
+  active: boolean;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PosPrinterSdk {
+  id: number;
+  sdkCode: string;
+  brand: string;
+  displayName: string;
+  protocol: string;
+  version: string;
+  description: string;
+  modelHints: string;
+  defaultPort: number;
+  supportedPaperWidthsMm: number[];
+  active: boolean;
+}
+
+export interface PosNetworkSuggestions {
+  deviceType: string;
+  defaultPort: number;
+  note: string;
+  privateRanges: { cidr: string; example: string; label: string }[];
+  commonPorts: { port: number; label: string }[];
+  hostInterfaces: { name: string; address: string; subnet: string; isPrivate: boolean }[];
+  connectionTips: string[];
+}
+
+export interface PosNetworkProbeResult {
+  host: string;
+  port: number;
+  reachable: boolean;
+  detail: string;
+  probedAt: string;
+  durationMs: number;
+  guidance: string;
+  hostInterfaces: { name: string; address: string; subnet: string; isPrivate: boolean }[];
+}
+
+export interface UpsertPosDevicePayload {
+  companyId: number;
+  locationExternalId: string;
+  name: string;
+  deviceType: string;
+  connectionType?: string;
+  hostAddress?: string;
+  port?: number | null;
+  macAddress?: string;
+  subnetMask?: string;
+  gateway?: string;
+  dnsPrimary?: string;
+  dnsSecondary?: string;
+  hostname?: string;
+  printerSdkCode?: string;
+  printerBrand?: string;
+  printerModel?: string;
+  paperWidthMm?: number | null;
+  printAlignment?: string;
+  printMarginLeft?: number;
+  printMarginRight?: number;
+  printerSetupComplete?: boolean;
+  active?: boolean;
+  createdBy?: string;
+}
+
 export interface CreatePosPromotionPayload {
   companyId: number;
   name: string;
@@ -3159,6 +3252,44 @@ export const api = {
     fetchJsonWithMethod<PosPromotion>('/api/pos-promotions', 'POST', data),
   setPosPromotionActive: (id: number, active: boolean) =>
     fetchJsonWithMethod<PosPromotion>(`/api/pos-promotions/${id}/active`, 'PATCH', { active }),
+  posDevices: (companyId: number, locationExternalId?: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (locationExternalId) params.set('locationExternalId', locationExternalId);
+    return fetchJson<PosDevice[]>(`/api/pos-devices?${params}`);
+  },
+  createPosDevice: (data: UpsertPosDevicePayload) =>
+    fetchJsonWithMethod<PosDevice>('/api/pos-devices', 'POST', data),
+  updatePosDevice: (id: number, data: UpsertPosDevicePayload) =>
+    fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}`, 'PUT', data),
+  setPosDeviceActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}/active`, 'PATCH', { active }),
+  posPrinterSdks: () => fetchJson<PosPrinterSdk[]>('/api/pos-devices/printer-sdks'),
+  posDeviceNetworkSuggestions: (deviceType?: string) => {
+    const params = new URLSearchParams();
+    if (deviceType) params.set('deviceType', deviceType);
+    const q = params.toString();
+    return fetchJson<PosNetworkSuggestions>(`/api/pos-devices/network-suggestions${q ? `?${q}` : ''}`);
+  },
+  probePosDeviceNetwork: (data: { hostAddress: string; port?: number; deviceType?: string }) =>
+    fetchJsonWithMethod<PosNetworkProbeResult>('/api/pos-devices/network-probe', 'POST', data),
+  deployPosPrinterSdk: (id: number) =>
+    fetchJsonWithMethod<{ device: PosDevice; sdk: PosPrinterSdk; deployed: boolean; message: string }>(
+      `/api/pos-devices/${id}/deploy-sdk`,
+      'POST',
+    ),
+  savePosPrinterSetup: (
+    id: number,
+    data: {
+      paperWidthMm: number;
+      printAlignment: string;
+      printMarginLeft?: number;
+      printMarginRight?: number;
+      markComplete?: boolean;
+      printerSdkCode?: string;
+      printerBrand?: string;
+      printerModel?: string;
+    },
+  ) => fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}/printer-setup`, 'POST', data),
   issueB2bSalesOrder: (id: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/issue`, 'POST'),
   markB2bSalesOrderLineReadyToShip: (orderId: number, lineId: number) =>

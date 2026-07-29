@@ -579,6 +579,28 @@
       "notes": "POS Promotion Scheduler CRUD — schedule windows, weekday repeat, per-product RRP/RPP lines"
     },
     {
+      "id": "dr.page.pos-device-management",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/PosDeviceManagementPage.tsx",
+      "symbol": "PosDeviceManagementPage",
+      "route": "/pos/device-management",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-29",
+      "notes": "Point-of-Sales bar — Device Management for stations/displays/kiosks/printers with network assistant and printer SDK setup"
+    },
+    {
+      "id": "dr.api.pos-devices",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosDevicesController.cs",
+      "symbol": "PosDevicesController",
+      "route": "api/pos-devices",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-29",
+      "notes": "POS Device Management CRUD — network probe, printer SDK repository, paper/alignment setup"
+    },
+    {
       "id": "dr.module.hr",
       "kind": "client-module",
       "path": "client/src/modules/hr/HrModule.tsx",

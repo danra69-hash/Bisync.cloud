@@ -74,6 +74,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
     public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();
     public DbSet<PosPromotionProduct> PosPromotionProducts => Set<PosPromotionProduct>();
+    public DbSet<PosDevice> PosDevices => Set<PosDevice>();
+    public DbSet<PosPrinterSdk> PosPrinterSdks => Set<PosPrinterSdk>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
     public DbSet<InventoryCountSession> InventoryCountSessions => Set<InventoryCountSession>();
@@ -519,6 +521,31 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.ProductId);
             e.Property(x => x.ProductCode).HasMaxLength(80);
             e.Property(x => x.ProductName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosDevice>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.Active });
+            e.HasIndex(x => new { x.CompanyId, x.DeviceType });
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.DeviceType).HasMaxLength(40);
+            e.Property(x => x.ConnectionType).HasMaxLength(40);
+            e.Property(x => x.HostAddress).HasMaxLength(120);
+            e.Property(x => x.MacAddress).HasMaxLength(40);
+            e.Property(x => x.PrinterSdkCode).HasMaxLength(80);
+            e.Property(x => x.PrinterBrand).HasMaxLength(80);
+            e.Property(x => x.PrinterModel).HasMaxLength(120);
+            e.Property(x => x.PrintAlignment).HasMaxLength(20);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
+        });
+        modelBuilder.Entity<PosPrinterSdk>(e =>
+        {
+            e.HasIndex(x => x.SdkCode).IsUnique();
+            e.Property(x => x.SdkCode).HasMaxLength(80);
+            e.Property(x => x.Brand).HasMaxLength(80);
+            e.Property(x => x.DisplayName).HasMaxLength(160);
+            e.Property(x => x.Protocol).HasMaxLength(40);
+            e.Property(x => x.Version).HasMaxLength(40);
         });
         modelBuilder.Entity<B2bSalesOrder>(e =>
         {
