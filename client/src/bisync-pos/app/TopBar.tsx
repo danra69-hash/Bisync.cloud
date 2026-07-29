@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { MODE_META } from '../core/modes/types'
 import { usePosMode } from '../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../core/session/PosSessionContext'
@@ -11,17 +11,21 @@ type Props = {
 
 export function TopBar({ menuOpen, onToggleMenu }: Props) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const { mode } = usePosMode()
   const session = usePosSessionOptional()
   const locations = session?.locations ?? []
   const locationId = session?.locationId ?? ''
+  const homePath = MODE_META[mode].homePath
+  const isHome =
+    pathname === homePath || (mode === 'order' && pathname.startsWith('/order/floor') && !pathname.includes('/edit'))
 
   return (
     <header className="topbar">
       <button
         type="button"
         className="topbar__brand"
-        onClick={() => navigate(MODE_META[mode].homePath)}
+        onClick={() => navigate(homePath)}
         aria-label="Go to POS home"
       >
         <img
@@ -77,6 +81,18 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
             <path d="M10 19a2 2 0 004 0" />
           </svg>
           <span className="topbar__dot" />
+        </button>
+        <button
+          type="button"
+          className={`topbar__home${isHome ? ' is-active' : ''}`}
+          onClick={() => navigate(homePath)}
+          aria-label="Home"
+          aria-current={isHome ? 'page' : undefined}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+            <path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1h-5v-6H10v6H5a1 1 0 01-1-1v-9.5z" />
+          </svg>
+          <span>Home</span>
         </button>
         <button
           type="button"
