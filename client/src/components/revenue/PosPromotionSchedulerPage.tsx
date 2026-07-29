@@ -80,7 +80,9 @@ function roundPercent(value: number) {
 }
 
 function parsePositiveNumber(raw: string): number | null {
-  const n = Number(raw);
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
   if (!Number.isFinite(n) || n < 0) return null;
   return n;
 }
@@ -228,8 +230,9 @@ export function PosPromotionSchedulerPage({
     const rpp = calcRppFromDiscount(rrp, clamped);
     updateDraft(product.id, {
       included: true,
-      discountPercent: String(clamped),
-      rpp: String(rpp),
+      // Keep the typed string so partial input (e.g. "1.") stays editable.
+      discountPercent: discountRaw,
+      rpp: rrp > 0 ? String(rpp) : '',
     });
   };
 
@@ -240,12 +243,12 @@ export function PosPromotionSchedulerPage({
       updateDraft(product.id, { included: false, rpp: rppRaw, discountPercent: '' });
       return;
     }
-    const clamped = Math.min(rrp, rpp);
+    const clamped = rrp > 0 ? Math.min(rrp, rpp) : rpp;
     const discount = calcDiscountFromRpp(rrp, clamped);
     updateDraft(product.id, {
       included: true,
-      rpp: String(clamped),
-      discountPercent: String(discount),
+      rpp: rppRaw,
+      discountPercent: rrp > 0 ? String(discount) : '',
     });
   };
 
@@ -504,6 +507,39 @@ export function PosPromotionSchedulerPage({
         </div>
       ) : (
         <div className="space-y-4 mt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void handleSave()}
+              className="text-xs font-semibold border border-primary bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
+            >
+              {saving ? 'Updating…' : 'Update'}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={resetCreateForm}
+              className="text-xs border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              Clear
+            </button>
+            <p className="text-[11px] text-muted-foreground">
+              RRP = Recommended Retail Price · RPP = Recommended Promotional Price
+            </p>
+          </div>
+
+          {saveError ? (
+            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+              {saveError}
+            </p>
+          ) : null}
+          {saveOk ? (
+            <p className="text-xs text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
+              {saveOk}
+            </p>
+          ) : null}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             <div className="xl:col-span-2">
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
@@ -651,7 +687,8 @@ export function PosPromotionSchedulerPage({
               <div className="mt-1 flex flex-wrap gap-4">
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="pos-promo-type"
                     checked={promoType === 'discountPercent'}
                     onChange={() => setPromoType('discountPercent')}
                   />
@@ -659,13 +696,17 @@ export function PosPromotionSchedulerPage({
                 </label>
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="pos-promo-type"
                     checked={promoType === 'discountPrice'}
                     onChange={() => setPromoType('discountPrice')}
                   />
-                  Discount by Price
+                  Discount by Price (RPP)
                 </label>
               </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Edit Discount % or RPP on each row — both stay in sync.
+              </p>
               {promoType === 'discountPercent' ? (
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <div>
@@ -691,17 +732,6 @@ export function PosPromotionSchedulerPage({
               ) : null}
             </div>
           </div>
-
-          {saveError ? (
-            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
-              {saveError}
-            </p>
-          ) : null}
-          {saveOk ? (
-            <p className="text-xs text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2">
-              {saveOk}
-            </p>
-          ) : null}
 
           {catalogLoading ? (
             <MillstoneLoader label="Loading POS products…" />
@@ -776,19 +806,20 @@ export function PosPromotionSchedulerPage({
                             {rrp > 0 ? cogsPercent(cogs, rrp) : '—'}
                           </td>
                           <td className="py-1.5 pr-2 text-right">
-                            {promoType === 'discountPrice' ? (
-                              <input
-                                className={`${inputCls} w-24 text-right ml-auto`}
-                                inputMode="decimal"
-                                value={draft.rpp}
-                                onChange={e => setRppForRow(product, e.target.value)}
-                                placeholder="0.00"
-                              />
-                            ) : (
-                              <span className="whitespace-nowrap">
-                                {rppValue != null ? currency(rppValue) : '—'}
-                              </span>
-                            )}
+                            <input
+                              className={`${inputCls} w-24 text-right ml-auto`}
+                              inputMode="decimal"
+                              value={draft.rpp}
+                              onChange={e => setRppForRow(product, e.target.value)}
+                              onBlur={() => {
+                                const parsed = parsePositiveNumber(draft.rpp);
+                                if (parsed == null) return;
+                                const clamped = rrp > 0 ? Math.min(rrp, parsed) : parsed;
+                                setRppForRow(product, String(roundMoney(clamped)));
+                              }}
+                              placeholder="0.00"
+                              aria-label={`RPP for ${product.name}`}
+                            />
                           </td>
                           <td className="py-1.5 pr-2 text-right whitespace-nowrap">
                             {currency(cogs)}
@@ -797,19 +828,20 @@ export function PosPromotionSchedulerPage({
                             {rppCogsPercent}
                           </td>
                           <td className="py-1.5 text-right">
-                            {promoType === 'discountPercent' ? (
-                              <input
-                                className={`${inputCls} w-20 text-right ml-auto`}
-                                inputMode="decimal"
-                                value={draft.discountPercent}
-                                onChange={e => setDiscountForRow(product, e.target.value)}
-                                placeholder="0"
-                              />
-                            ) : (
-                              <span className="whitespace-nowrap">
-                                {draft.discountPercent !== '' ? `${draft.discountPercent}%` : '—'}
-                              </span>
-                            )}
+                            <input
+                              className={`${inputCls} w-20 text-right ml-auto`}
+                              inputMode="decimal"
+                              value={draft.discountPercent}
+                              onChange={e => setDiscountForRow(product, e.target.value)}
+                              onBlur={() => {
+                                const parsed = parsePositiveNumber(draft.discountPercent);
+                                if (parsed == null) return;
+                                const clamped = Math.min(100, parsed);
+                                setDiscountForRow(product, String(roundPercent(clamped)));
+                              }}
+                              placeholder="0"
+                              aria-label={`Discount percent for ${product.name}`}
+                            />
                           </td>
                         </tr>
                       );
@@ -819,28 +851,6 @@ export function PosPromotionSchedulerPage({
               </table>
             </TableScrollContainer>
           )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleSave()}
-              className="text-xs font-semibold border border-primary bg-primary text-primary-foreground rounded-md px-4 py-2 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save Promotion'}
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={resetCreateForm}
-              className="text-xs border border-border rounded-md px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50"
-            >
-              Clear
-            </button>
-            <p className="text-[11px] text-muted-foreground">
-              RRP = Recommended Retail Price · RPP = Recommended Promotional Price
-            </p>
-          </div>
         </div>
       )}
     </div>
