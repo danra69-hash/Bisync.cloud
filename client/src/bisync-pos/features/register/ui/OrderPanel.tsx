@@ -11,12 +11,14 @@ type Props = {
   charges: OrderCharges
   dining: string
   table: string
+  pickupLabel?: string
   onDiningChange: (value: string) => void
   onTableChange: (value: string) => void
   onCoverChange: (cover: number) => void
   onChange: (lines: CartLine[]) => void
   onChargesChange: (charges: OrderCharges) => void
   onOpenHistory: () => void
+  onOpenPickup?: () => void
   onAction: (action: 'save' | 'print' | 'payment') => void
 }
 
@@ -28,12 +30,14 @@ export function OrderPanel({
   charges,
   dining,
   table,
+  pickupLabel,
   onDiningChange,
   onTableChange,
   onCoverChange,
   onChange,
   onChargesChange,
   onOpenHistory,
+  onOpenPickup,
   onAction,
 }: Props) {
   const byId = new Map(products.map((p) => [p.id, p]))
@@ -78,6 +82,17 @@ export function OrderPanel({
           <option value="t12">Table 12</option>
         </select>
       </div>
+
+      {dining === 'takeaway' && pickupLabel ? (
+        <button
+          type="button"
+          className="order-panel__pickup"
+          onClick={onOpenPickup}
+          title="Change pick up time"
+        >
+          {pickupLabel}
+        </button>
+      ) : null}
 
       <div className="order-panel__heading">
         <div className="order-panel__heading-main">
