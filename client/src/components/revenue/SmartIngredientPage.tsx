@@ -18,7 +18,7 @@ import {
   resolveDetailConfigForRow,
   type ComponentRow,
 } from '../../data/componentForm';
-import { getDefaultCategoryAndGroup, loadComponentHierarchy } from '../../data/componentHierarchy';
+import { getDefaultCategoryAndGroup, loadComponentHierarchy, loadComponentHierarchyForCompany } from '../../data/componentHierarchy';
 import {
   buildSmartComponentImportPlan,
   downloadSmartComponentTemplateCsv,
@@ -166,6 +166,7 @@ export function SmartIngredientPage({
   const [importPlan, setImportPlan] = useState<SmartComponentImportPlan | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [catalogRevision, setCatalogRevision] = useState(0);
+  const [hierarchyRevision, setHierarchyRevision] = useState(0);
   const templateRef = useRef<HTMLInputElement | null>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<IngredientSortColumn>();
 
@@ -179,14 +180,31 @@ export function SmartIngredientPage({
 
   useEffect(() => {
     let cancelled = false;
+    if (!selectedCompanyId) {
+      setHierarchyRevision(value => value + 1);
+      return;
+    }
+    void loadComponentHierarchyForCompany(selectedCompanyId).then(() => {
+      if (!cancelled) setHierarchyRevision(value => value + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    let cancelled = false;
     void refreshVendorProductCatalog().then(() => {
       if (!cancelled) setCatalogRevision(value => value + 1);
     });
     const onCatalogChange = () => setCatalogRevision(value => value + 1);
+    const onHierarchyChange = () => setHierarchyRevision(value => value + 1);
     window.addEventListener('bisync:vendorProductCatalogChanged', onCatalogChange);
+    window.addEventListener('bisync:componentHierarchyChanged', onHierarchyChange);
     return () => {
       cancelled = true;
       window.removeEventListener('bisync:vendorProductCatalogChanged', onCatalogChange);
+      window.removeEventListener('bisync:componentHierarchyChanged', onHierarchyChange);
     };
   }, []);
 
@@ -242,19 +260,21 @@ export function SmartIngredientPage({
     });
   }, [activityScopedRows, catFilter, grpFilter, search]);
 
+  // Filter dropdowns use hierarchy + every component row (active and inactive) so
+  // Category/Group always reflect the full updated catalog, not just the current bucket.
   const categoryFilterOptions = useMemo(
-    () => getSiCategoryFilterOptions(activityScopedRows.map(row => row.category)),
-    [activityScopedRows],
+    () => getSiCategoryFilterOptions(rows.map(row => row.category)),
+    [rows, hierarchyRevision],
   );
   const groupFilterOptions = useMemo(() => {
     const scopedRows = catFilter === 'All'
-      ? activityScopedRows
-      : activityScopedRows.filter(row => labelsEqual(row.category, catFilter));
+      ? rows
+      : rows.filter(row => labelsEqual(row.category, catFilter));
     return getSiGroupFilterOptions(
       scopedRows.map(row => row.group),
       catFilter,
     );
-  }, [activityScopedRows, catFilter]);
+  }, [rows, catFilter, hierarchyRevision]);
 
   useEffect(() => {
     if (grpFilter === 'All') return;
