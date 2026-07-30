@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
@@ -45,14 +45,14 @@ type CompanySortColumn = 'name' | 'brn' | 'gstTin' | 'country' | 'email' | 'loca
 type CompanyTableColumn = CompanySortColumn | 'accessControl';
 
 const COMPANY_TABLE_COLUMNS: SortableColumnDef<CompanyTableColumn>[] = [
-  { key: 'name', label: 'Company' },
-  { key: 'brn', label: 'BRN' },
-  { key: 'gstTin', label: 'GST/TIN' },
-  { key: 'country', label: 'Country' },
-  { key: 'accessControl', label: 'Access Control', sortable: false, className: 'w-[11.5rem]' },
-  { key: 'email', label: 'Email' },
-  { key: 'locations', label: 'Locations', align: 'center' },
-  { key: 'status', label: 'Status' },
+  { key: 'name', label: 'Company', ...tableColWidth('16%') },
+  { key: 'brn', label: 'BRN', ...tableColWidth('10%') },
+  { key: 'gstTin', label: 'GST/TIN', ...tableColWidth('10%') },
+  { key: 'country', label: 'Country', ...tableColWidth('8%') },
+  { key: 'accessControl', label: 'Access Control', sortable: false, ...tableColWidth('11.5rem') },
+  { key: 'email', label: 'Email', ...tableColWidth('16%') },
+  { key: 'locations', label: 'Locations', align: 'center', ...tableColWidth('8%') },
+  { key: 'status', label: 'Status', ...tableColWidth('8%') },
 ];
 
 function CompanyAccessControlCell({
@@ -1172,7 +1172,8 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
           <MillstoneLoader size="sm" layout="block" label="Loading companies…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
+            <TableColGroup columns={COMPANY_TABLE_COLUMNS as SortableColumnDef<CompanySortColumn>[]} />
             <thead>
               <SortableTableHeaderRow
                 columns={COMPANY_TABLE_COLUMNS as SortableColumnDef<CompanySortColumn>[]}

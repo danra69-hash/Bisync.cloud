@@ -327,7 +327,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             </div>
 
             <TableScrollContainer ref={bracketsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={BRACKET_TABLE_COLUMNS}
@@ -419,7 +419,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             </div>
 
             <TableScrollContainer ref={reliefsScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={RELIEF_TABLE_COLUMNS}
@@ -503,7 +503,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
             </div>
 
             <TableScrollContainer ref={rebatesScrollRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={REBATE_TABLE_COLUMNS}
@@ -564,7 +564,7 @@ export function IncomeTaxPanel({ selectedCompanyId, countryCode = 'MY' }: Props)
               </div>
 
               <TableScrollContainer ref={previewScrollRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-                <table className="w-full table-fixed">
+                <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
                       <th className={tableHeaderCls('left')}>Employee ID</th>

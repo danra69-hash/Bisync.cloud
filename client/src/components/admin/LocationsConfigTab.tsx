@@ -985,7 +985,7 @@ export function LocationsConfigTab({
           <MillstoneLoader size="sm" layout="block" label="Loading locations…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
             <thead>
               <SortableTableHeaderRow
                 columns={LOCATION_TABLE_COLUMNS as SortableColumnDef<LocationSortColumn>[]}

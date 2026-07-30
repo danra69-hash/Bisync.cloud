@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import type { AppUser } from '../../api';
@@ -30,18 +30,18 @@ type EmployeeSortColumn =
   | 'active';
 
 const EMPLOYEE_TABLE_COLUMNS: SortableColumnDef<EmployeeSortColumn>[] = [
-  { key: 'employeeId', label: 'Employee ID' },
-  { key: 'employee', label: 'Employee' },
-  { key: 'company', label: 'Company' },
-  { key: 'location', label: 'Location' },
-  { key: 'division', label: 'Division' },
-  { key: 'department', label: 'Department' },
-  { key: 'position', label: 'Position' },
-  { key: 'level', label: 'Employee Level' },
-  { key: 'shift', label: 'Shift', align: 'center' },
-  { key: 'platformAccess', label: 'Platform Access' },
-  { key: 'checkinMethod', label: 'Check-in Method' },
-  { key: 'active', label: 'Active', align: 'center' },
+  { key: 'employeeId', label: 'Employee ID', ...tableColWidth('8%') },
+  { key: 'employee', label: 'Employee', ...tableColWidth('14%') },
+  { key: 'company', label: 'Company', ...tableColWidth('10%') },
+  { key: 'location', label: 'Location', ...tableColWidth('10%') },
+  { key: 'division', label: 'Division', ...tableColWidth('8%') },
+  { key: 'department', label: 'Department', ...tableColWidth('8%') },
+  { key: 'position', label: 'Position', ...tableColWidth('9%') },
+  { key: 'level', label: 'Employee Level', ...tableColWidth('9%') },
+  { key: 'shift', label: 'Shift', align: 'center', ...tableColWidth(64) },
+  { key: 'platformAccess', label: 'Platform Access', ...tableColWidth('10%') },
+  { key: 'checkinMethod', label: 'Check-in Method', ...tableColWidth('8%') },
+  { key: 'active', label: 'Active', align: 'center', ...tableColWidth(72) },
 ];
 
 type EmployeeFormData = {
@@ -307,7 +307,8 @@ export function EmployeeDirectoryTab({
 
       {!noCompanySelected && (
       <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
+          <TableColGroup columns={EMPLOYEE_TABLE_COLUMNS} />
           <thead>
             <SortableTableHeaderRow
               columns={EMPLOYEE_TABLE_COLUMNS}

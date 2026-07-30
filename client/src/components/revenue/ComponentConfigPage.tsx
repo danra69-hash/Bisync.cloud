@@ -304,7 +304,7 @@ export function ComponentConfigPage({
                   </p>
                 </div>
                 <TableScrollContainer ref={storageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-                  <table className="w-full table-fixed text-xs">
+                  <table className="w-full text-xs">
                     <thead>
                       <SortableTableHeaderRow
                         columns={STORAGE_TABLE_COLUMNS}

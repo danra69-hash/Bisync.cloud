@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
@@ -56,18 +56,18 @@ type IngredientSortColumn =
   | 'active';
 
 const INGREDIENT_TABLE_COLUMNS: SortableColumnDef<IngredientSortColumn>[] = [
-  { key: 'componentId', label: 'Component ID' },
-  { key: 'name', label: 'Component Name' },
-  { key: 'uom', label: 'Principal Component UOM' },
-  { key: 'lastPrice', label: 'Last UOM Price', align: 'right' },
-  { key: 'dailyUsage', label: 'Daily Usage', align: 'right' },
-  { key: 'orderFreq', label: 'Order Freq (days)', align: 'right' },
-  { key: 'parStock', label: 'Par Stock', align: 'right' },
-  { key: 'onHand', label: 'Qty on Hand', align: 'right' },
-  { key: 'storage', label: 'Storage' },
-  { key: 'products', label: 'Products', align: 'center' },
-  { key: 'vendors', label: 'Vendors', align: 'center' },
-  { key: 'active', label: 'Active', align: 'center', sortable: false },
+  { key: 'componentId', label: 'Component ID', ...tableColWidth('10%') },
+  { key: 'name', label: 'Component Name', ...tableColWidth('14%') },
+  { key: 'uom', label: 'Principal Component UOM', ...tableColWidth('10%') },
+  { key: 'lastPrice', label: 'Last UOM Price', align: 'right', ...tableColWidth('8%') },
+  { key: 'dailyUsage', label: 'Daily Usage', align: 'right', ...tableColWidth('7%') },
+  { key: 'orderFreq', label: 'Order Freq (days)', align: 'right', ...tableColWidth('7%') },
+  { key: 'parStock', label: 'Par Stock', align: 'right', ...tableColWidth('10%') },
+  { key: 'onHand', label: 'Qty on Hand', align: 'right', ...tableColWidth('7%') },
+  { key: 'storage', label: 'Storage', ...tableColWidth('9%') },
+  { key: 'products', label: 'Products', align: 'center', ...tableColWidth(72) },
+  { key: 'vendors', label: 'Vendors', align: 'center', ...tableColWidth(72) },
+  { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
 ];
 
 type UomFilterMode = 'principal' | 'inventory' | string;
@@ -527,7 +527,8 @@ export function SmartIngredientPage({
           <MillstoneLoader size="sm" layout="block" label="Loading components…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-            <table className="w-full table-fixed text-xs">
+            <table className="w-full text-xs">
+              <TableColGroup columns={tableColumns} />
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
                   columns={tableColumns}
@@ -625,7 +626,7 @@ export function SmartIngredientPage({
                         ? `${formatCountryNumber(onHand.value, countryCode)} ${onHand.uom}`
                         : '—'}
                     </td>
-                    <td className="px-4 py-3 ">
+                    <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         {(Array.isArray(row.storage) ? row.storage : []).map((s, si) => (
                           <span key={si} className="text-xs px-1.5 py-0.5 rounded bg-muted font-sans inline-block w-fit">{s}</span>

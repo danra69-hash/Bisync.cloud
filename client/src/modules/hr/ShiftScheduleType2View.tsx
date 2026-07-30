@@ -441,7 +441,7 @@ export default function ShiftScheduleType2View({
       {sortedEmployees.length === 0 ? (
         <p className="text-xs text-gray-500 py-8 text-center">No shift workers in this department.</p>
       ) : (
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <SortableTableHead

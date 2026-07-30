@@ -605,7 +605,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
           <thead className="bg-muted/40 border-b border-border">
             <SortableTableHeaderRow
               columns={LEVEL_TABLE_COLUMNS}

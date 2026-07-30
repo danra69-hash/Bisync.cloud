@@ -693,7 +693,7 @@ export function ProductManagementPage({
           <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
             <div className="min-w-[52rem]">
               <div className="flex border-b border-border bg-muted/20 sticky top-0 z-10">
-                <table className="flex-1 table-fixed border-collapse">
+                <table className="flex-1 border-collapse">
                   {tableColGroup}
                   <thead>
                     <SortableTableHeaderRow
@@ -738,7 +738,7 @@ export function ProductManagementPage({
                               : ''
                         } ${isBatchLine ? 'bg-muted/10' : ''}`}
                       >
-                        <table className="flex-1 table-fixed border-collapse">
+                        <table className="flex-1 border-collapse">
                           {tableColGroup}
                           <tbody>
                             <tr className="hover:bg-muted/20">

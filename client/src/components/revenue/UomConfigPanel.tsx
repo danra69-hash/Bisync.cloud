@@ -52,7 +52,7 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {(showCategory ? ['Scale', 'From', 'To', 'Multiply by', 'Example'] : ['From', 'To', 'Multiply by', 'Example']).map(h => (
@@ -195,7 +195,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
               <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to add it to My UOM</p>
             </div>
             <TableScrollContainer ref={allUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-            <table className="w-full table-fixed text-xs">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className={tableHeaderCls('left')}>UOM</th>
@@ -245,7 +245,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
               <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to remove it from My UOM</p>
             </div>
             <TableScrollContainer ref={myUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-            <table className="w-full table-fixed text-xs">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className={tableHeaderCls('left')}>UOM</th>

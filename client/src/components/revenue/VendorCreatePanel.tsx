@@ -414,7 +414,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                   </div>
                   <div className="border border-border rounded-lg overflow-hidden">
                     <TableScrollContainer ref={parsedRowsScrollRef} className="overflow-auto max-h-72">
-                      <table className="w-full table-fixed text-xs">
+                      <table className="w-full text-xs">
                         <thead className="sticky top-0 bg-muted/50">
                           <tr className="border-b border-border">
                             <TableHeaderCell compact>Vendor Product ID</TableHeaderCell>
@@ -429,13 +429,13 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                         <tbody>
                           {pagedParsedRows.map((row, i) => (
                             <tr key={`row-${i}`} className="border-b border-border last:border-b-0">
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.vendorProductId ?? ''} onChange={e => updateParsedRow(i, { vendorProductId: e.target.value })} placeholder="VP-..." />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.productName} onChange={e => updateParsedRow(i, { productName: e.target.value })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <>
                                   <input
                                     list="vendor-group-options"
@@ -451,16 +451,16 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                                   </datalist>
                                 </>
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.specification} onChange={e => updateParsedRow(i, { specification: e.target.value })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs`} value={row.deliveryUnitText} onChange={e => updateParsedRow(i, { deliveryUnitText: e.target.value })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <input className={`${inputCls} text-xs min-w-[8.5rem] tabular-nums text-right`} type="number" step={0.01} value={row.deliveryPrice} onChange={e => updateParsedRow(i, { deliveryPrice: parseFloat(e.target.value) || 0 })} />
                               </td>
-                              <td className="p-1.5 ">
+                              <td className="p-1.5">
                                 <button
                                   type="button"
                                   onClick={() => removeParsedRow(i)}

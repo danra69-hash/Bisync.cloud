@@ -255,7 +255,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
 
       {tree.length === 0 ? (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={DIVISION_DEPT_TABLE_COLUMNS}
@@ -276,7 +276,7 @@ export function DivisionsDepartmentsTab({ onDataChanged }: { onDataChanged?: () 
         </div>
       ) : (
         <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={DIVISION_DEPT_TABLE_COLUMNS}

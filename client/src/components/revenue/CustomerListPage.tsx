@@ -14,7 +14,7 @@ import {
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
@@ -36,22 +36,22 @@ type B2bSortColumn = 'companyName' | 'contact' | 'address' | 'phone' | 'email' |
 type PosSortColumn = 'name' | 'address' | 'phone' | 'email' | 'loyalty' | 'action';
 
 const B2B_COLUMNS: SortableColumnDef<B2bSortColumn>[] = [
-  { key: 'companyName', label: 'Company Name' },
-  { key: 'contact', label: 'Contact Person' },
-  { key: 'address', label: 'Address' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'email', label: 'Email' },
-  { key: 'products', label: 'Tagged Products' },
-  { key: 'action', label: 'Action', align: 'right', sortable: false },
+  { key: 'companyName', label: 'Company Name', ...tableColWidth('16%') },
+  { key: 'contact', label: 'Contact Person', ...tableColWidth('12%') },
+  { key: 'address', label: 'Address', ...tableColWidth('18%') },
+  { key: 'phone', label: 'Phone', ...tableColWidth('10%') },
+  { key: 'email', label: 'Email', ...tableColWidth('14%') },
+  { key: 'products', label: 'Tagged Products', ...tableColWidth('14%') },
+  { key: 'action', label: 'Action', align: 'right', sortable: false, ...tableColWidth(160) },
 ];
 
 const POS_COLUMNS: SortableColumnDef<PosSortColumn>[] = [
-  { key: 'name', label: 'Customer Name' },
-  { key: 'address', label: 'Address' },
-  { key: 'phone', label: 'Phone' },
-  { key: 'email', label: 'Email' },
-  { key: 'loyalty', label: 'Points Balance' },
-  { key: 'action', label: 'Action', align: 'right', sortable: false },
+  { key: 'name', label: 'Customer Name', ...tableColWidth('18%') },
+  { key: 'address', label: 'Address', ...tableColWidth('22%') },
+  { key: 'phone', label: 'Phone', ...tableColWidth('12%') },
+  { key: 'email', label: 'Email', ...tableColWidth('16%') },
+  { key: 'loyalty', label: 'Points Balance', ...tableColWidth('12%') },
+  { key: 'action', label: 'Action', align: 'right', sortable: false, ...tableColWidth(160) },
 ];
 
 export function CustomerListPage({
@@ -286,6 +286,7 @@ export function CustomerListPage({
         <>
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full text-xs">
+              <TableColGroup columns={B2B_COLUMNS} />
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
                   columns={B2B_COLUMNS}
@@ -355,6 +356,7 @@ export function CustomerListPage({
         <>
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full text-xs">
+              <TableColGroup columns={POS_COLUMNS} />
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
                   columns={POS_COLUMNS}

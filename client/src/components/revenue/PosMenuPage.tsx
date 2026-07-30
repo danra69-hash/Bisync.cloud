@@ -314,7 +314,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
       ) : (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <TableScrollContainer className="max-h-[calc(100dvh-16rem)] overflow-y-auto">
-            <table className="w-full table-fixed text-xs">
+            <table className="w-full text-xs">
               <colgroup>
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />

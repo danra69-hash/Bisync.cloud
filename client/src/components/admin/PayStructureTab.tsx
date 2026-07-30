@@ -457,7 +457,7 @@ export function PayStructureTab() {
           <MillstoneLoader size="sm" layout="block" label="Loading pay structures…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={PAY_STRUCTURE_TABLE_COLUMNS}

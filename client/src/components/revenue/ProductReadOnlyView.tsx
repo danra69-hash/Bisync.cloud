@@ -92,7 +92,7 @@ function ComponentItemsTable({
         </p>
       ) : (
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed border-collapse">
+          <table className="w-full border-collapse">
             <thead>
               <tr>
                 <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Smart component</th>

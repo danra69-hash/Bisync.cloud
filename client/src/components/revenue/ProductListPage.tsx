@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
@@ -55,18 +55,18 @@ type ProductListSortColumn =
   | 'activate';
 
 const PRODUCT_LIST_TABLE_COLUMNS: SortableColumnDef<ProductListSortColumn>[] = [
-  { key: 'category', label: 'Category' },
-  { key: 'group', label: 'Group' },
-  { key: 'productId', label: 'Product ID' },
-  { key: 'type', label: 'Product Type' },
-  { key: 'name', label: 'Product' },
-  { key: 'deliveryUnit', label: 'Delivery Unit' },
-  { key: 'rrp', label: 'RRP' },
-  { key: 'cogs', label: 'COGS' },
-  { key: 'cogsPercent', label: 'COGS %' },
-  { key: 'channel', label: 'Channel' },
-  { key: 'pos', label: 'POS', align: 'center', sortable: false },
-  { key: 'activate', label: 'Activate', align: 'center', sortable: false },
+  { key: 'category', label: 'Category', ...tableColWidth('9%') },
+  { key: 'group', label: 'Group', ...tableColWidth('9%') },
+  { key: 'productId', label: 'Product ID', ...tableColWidth('9%') },
+  { key: 'type', label: 'Product Type', ...tableColWidth('8%') },
+  { key: 'name', label: 'Product', ...tableColWidth('16%') },
+  { key: 'deliveryUnit', label: 'Delivery Unit', ...tableColWidth('10%') },
+  { key: 'rrp', label: 'RRP', ...tableColWidth('8%') },
+  { key: 'cogs', label: 'COGS', ...tableColWidth('7%') },
+  { key: 'cogsPercent', label: 'COGS %', ...tableColWidth('7%') },
+  { key: 'channel', label: 'Channel', ...tableColWidth('8%') },
+  { key: 'pos', label: 'POS', align: 'center', sortable: false, ...tableColWidth(72) },
+  { key: 'activate', label: 'Activate', align: 'center', sortable: false, ...tableColWidth(80) },
 ];
 
 const PRODUCT_LIST_COL_SPAN = PRODUCT_LIST_TABLE_COLUMNS.length;
@@ -510,7 +510,8 @@ export function ProductListPage({
           ) : null}
 
           <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
-            <table className="w-full table-fixed border-collapse">
+            <table className="w-full border-collapse">
+              <TableColGroup columns={PRODUCT_LIST_TABLE_COLUMNS} />
               <thead>
                 <SortableTableHeaderRow
                   columns={PRODUCT_LIST_TABLE_COLUMNS}

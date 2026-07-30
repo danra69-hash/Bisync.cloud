@@ -280,7 +280,7 @@ function ComponentLinesSection({
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
-        <table className="w-full table-fixed border-collapse">
+        <table className="w-full border-collapse">
           <thead>
             <SortableTableHeaderRow
               columns={columns}

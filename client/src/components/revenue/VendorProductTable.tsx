@@ -253,22 +253,35 @@ export function VendorProductTableBody({
   return (
     <>
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-      <table className="w-full text-xs table-fixed">
+      <table className="w-full text-xs">
+        <colgroup>
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '18%' }} />
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '9%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '8%' }} />
+          {!hideYieldLoss && <col style={{ width: '7%' }} />}
+          <col style={{ width: '8%' }} />
+          <col style={{ width: '8%' }} />
+          {showLocationColumn && <col style={{ width: '72px' }} />}
+          {showTagColumn && <col style={{ width: '88px' }} />}
+        </colgroup>
         <thead>
           <tr className="border-b border-border bg-muted/40">
-            <th className={`${tableHeaderCompactCls('left')} w-[9%]`}><span className={TABLE_HEADER_LABEL_CLS}>Vendor Product ID</span></th>
-            <th className={`${tableHeaderCompactCls('left')} w-[20%]`}><span className={TABLE_HEADER_LABEL_CLS}>Vendor Product Name</span></th>
-            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Delivery Price</span></th>
-            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Principal UOM Qty</span></th>
-            <th className={`${tableHeaderCompactCls('left')} w-[9%]`}><span className={TABLE_HEADER_LABEL_CLS}>Component Principal UOM Price</span></th>
-            <th className={`${tableHeaderCompactCls('left')} w-[7%]`}><span className={TABLE_HEADER_LABEL_CLS}>Component UOM</span></th>
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Vendor Product ID</span></th>
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Vendor Product Name</span></th>
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Delivery Price</span></th>
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Principal UOM Qty</span></th>
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Component Principal UOM Price</span></th>
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Component UOM</span></th>
             {!hideYieldLoss ? (
-              <th className={`${tableHeaderCompactCls('left')} w-[7%]`}><span className={TABLE_HEADER_LABEL_CLS}>Yield Loss %</span></th>
+              <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Yield Loss %</span></th>
             ) : null}
-            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Qty</span></th>
-            <th className={`${tableHeaderCompactCls('left')} w-[8%]`}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Price</span></th>
-            {showLocationColumn && <th className={`${tableHeaderCompactCls('center')} w-[5%]`}><span className={TABLE_HEADER_LABEL_CLS}>Loc</span></th>}
-            {showTagColumn && <th className={`${tableHeaderCompactCls('center')} w-[5%]`}><span className={TABLE_HEADER_LABEL_CLS}>Tag</span></th>}
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Qty</span></th>
+            <th className={tableHeaderCompactCls('left')}><span className={TABLE_HEADER_LABEL_CLS}>Nett UOM Price</span></th>
+            {showLocationColumn && <th className={tableHeaderCompactCls('center')}><span className={TABLE_HEADER_LABEL_CLS}>Loc</span></th>}
+            {showTagColumn && <th className={tableHeaderCompactCls('center')}><span className={TABLE_HEADER_LABEL_CLS}>Tag</span></th>}
           </tr>
         </thead>
         <tbody>

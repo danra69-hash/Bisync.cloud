@@ -431,7 +431,7 @@ export function OverviewDashboard({
                 <h2 className="text-sm font-semibold leading-tight">{t('overview.productPerformance')}</h2>
               </div>
               <TableScrollContainer ref={menuScrollRef} className="max-h-44 overflow-y-auto">
-                <table className="w-full table-fixed text-xs">
+                <table className="w-full text-xs">
                   <thead>
                     <SortableTableHeaderRow
                       columns={menuTableColumns}
@@ -564,7 +564,7 @@ export function OverviewDashboard({
                 </span>
               </div>
               <TableScrollContainer ref={ordersScrollRef} className="max-h-44 overflow-y-auto">
-                <table className="w-full table-fixed text-xs">
+                <table className="w-full text-xs">
                   <thead>
                     <SortableTableHeaderRow
                       columns={ordersTableColumns}
@@ -621,7 +621,7 @@ export function OverviewDashboard({
                 <h2 className="text-sm font-semibold leading-tight">{t('overview.activeClientOrders')}</h2>
               </div>
               <TableScrollContainer ref={clientOrdersScrollRef} className="max-h-44 overflow-y-auto">
-                <table className="w-full table-fixed text-xs">
+                <table className="w-full text-xs">
                   <thead>
                     <SortableTableHeaderRow
                       columns={clientOrdersTableColumns}

@@ -818,7 +818,7 @@ export function PreCommittedPoPage({
                     Add vendor products from the list. Bulk price may differ from small-purchase price.
                   </p>
                 ) : (
-                  <table className="w-full table-fixed">
+                  <table className="w-full">
                     <thead className="bg-muted/20 sticky top-0">
                       <tr>
                         <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal">Product</th>
