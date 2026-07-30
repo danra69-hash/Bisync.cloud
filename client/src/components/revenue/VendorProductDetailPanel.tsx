@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FilePlus2, X } from 'lucide-react';
 import { api } from '../../api';
-import { inputCls, qtyPriceWidthCls } from '../../data/componentForm';
+import { inputCls, qtyPriceWidthCls, RECIPE_UNITS } from '../../data/componentForm';
 import {
   DELIVERY_ORDER_UNITS,
   DELIVERY_UNIT_LEVEL_LABELS,
@@ -88,6 +88,12 @@ export function VendorProductDetailPanel({
   const [delivery, setDelivery] = useState<DeliveryUnitBreakdown>({ ...product.delivery });
   const [isPrivate, setIsPrivate] = useState(Boolean(product.isPrivate));
   const [privateLocationIds, setPrivateLocationIds] = useState<string[]>(product.privateLocationIds ?? []);
+  const [returnableDeposit, setReturnableDeposit] = useState(Boolean(product.returnableDeposit));
+  const [returnableItemName, setReturnableItemName] = useState(product.returnableItemName ?? '');
+  const [returnableUom, setReturnableUom] = useState(product.returnableUom ?? '');
+  const [returnableDepositAmount, setReturnableDepositAmount] = useState(
+    String(product.returnableDepositAmount ?? ''),
+  );
   const [companyLocations, setCompanyLocations] = useState<CompanyLocationOption[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -99,6 +105,10 @@ export function VendorProductDetailPanel({
     setDelivery({ ...product.delivery });
     setIsPrivate(Boolean(product.isPrivate));
     setPrivateLocationIds(product.privateLocationIds ?? []);
+    setReturnableDeposit(Boolean(product.returnableDeposit));
+    setReturnableItemName(product.returnableItemName ?? '');
+    setReturnableUom(product.returnableUom ?? '');
+    setReturnableDepositAmount(String(product.returnableDepositAmount ?? ''));
     setSaveError(null);
   }, [product]);
 
@@ -168,6 +178,22 @@ export function VendorProductDetailPanel({
       setSaveError('Order UOM and quantity are required for Delivery Unit.');
       return;
     }
+    let depositAmount = 0;
+    if (returnableDeposit) {
+      if (!returnableItemName.trim()) {
+        setSaveError('Returnable item name is required when Returnable deposit is ticked.');
+        return;
+      }
+      if (!returnableUom.trim()) {
+        setSaveError('Returnable UOM is required when Returnable deposit is ticked.');
+        return;
+      }
+      depositAmount = parseFloat(returnableDepositAmount);
+      if (!Number.isFinite(depositAmount) || depositAmount < 0) {
+        setSaveError('Enter a valid returnable deposit amount.');
+        return;
+      }
+    }
     setSaveError(null);
     onSave({
       ...product,
@@ -178,6 +204,10 @@ export function VendorProductDetailPanel({
       delivery: { ...delivery },
       isPrivate,
       privateLocationIds: isPrivate ? [...privateLocationIds] : [],
+      returnableDeposit,
+      returnableItemName: returnableDeposit ? returnableItemName.trim() : '',
+      returnableUom: returnableDeposit ? returnableUom.trim() : '',
+      returnableDepositAmount: returnableDeposit ? depositAmount : 0,
     });
   }
 
@@ -328,6 +358,62 @@ export function VendorProductDetailPanel({
                     })}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={returnableDeposit}
+                onChange={e => setReturnableDeposit(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+              <span>
+                <span className="text-sm font-medium text-foreground">Returnable deposit</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Orders for this vendor product automatically attach a deposit line for the returnable container.
+                </p>
+              </span>
+            </label>
+
+            {returnableDeposit && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <Field label="Name of Returnable Item">
+                  <input
+                    value={returnableItemName}
+                    onChange={e => setReturnableItemName(e.target.value)}
+                    className={inputCls}
+                    placeholder="e.g. Keg deposit"
+                  />
+                </Field>
+                <Field label="UOM">
+                  <select
+                    value={returnableUom}
+                    onChange={e => setReturnableUom(e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">Select UOM</option>
+                    {RECIPE_UNITS.map(unit => (
+                      <option key={unit} value={unit}>{unit}</option>
+                    ))}
+                    {returnableUom && !(RECIPE_UNITS as readonly string[]).includes(returnableUom) ? (
+                      <option value={returnableUom}>{returnableUom}</option>
+                    ) : null}
+                  </select>
+                </Field>
+                <Field label="Deposit amount">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={returnableDepositAmount}
+                    onChange={e => setReturnableDepositAmount(e.target.value)}
+                    className={`${inputCls} ${qtyPriceWidthCls} font-sans`}
+                    placeholder="0.00"
+                  />
+                </Field>
               </div>
             )}
           </div>

@@ -1235,6 +1235,10 @@ public class PurchaseOrdersController(
                     Unit = i.Unit.Trim(),
                     ComponentUom = i.ComponentUom?.Trim() ?? i.Unit.Trim(),
                     DeliveryPackage = i.DeliveryPackage.Trim(),
+                    IsReturnableDeposit = i.IsReturnableDeposit,
+                    ReturnableItemName = i.IsReturnableDeposit
+                        ? (string.IsNullOrWhiteSpace(i.ReturnableItemName) ? i.Name.Trim() : i.ReturnableItemName.Trim())
+                        : string.Empty,
                 })
                 .ToList();
 
@@ -1486,6 +1490,7 @@ public class PurchaseOrdersController(
             var qty = shipmentQty;
             var price = item.ReconciledUnitPrice ?? line.UnitPrice;
             if (qty <= 0) continue; // out-of-stock / zero receipt — no inventory post
+            if (item.IsReturnableDeposit) continue; // deposit lines are financial only
             var uom = string.IsNullOrWhiteSpace(line.ComponentUom)
                 ? (string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom)
                 : line.ComponentUom.Trim();

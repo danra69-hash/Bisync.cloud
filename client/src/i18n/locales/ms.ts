@@ -131,6 +131,7 @@ export const ms = {
     },
     items: {
       myOrder: 'Pesanan Saya',
+      returnableGoods: 'Barangan Boleh Pulang',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'Pembelian Tunai',

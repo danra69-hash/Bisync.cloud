@@ -14,6 +14,11 @@ public class VendorProduct
     public string ProductPolicyTag { get; set; } = string.Empty;
     public bool IsPrivate { get; set; }
     public string PrivateLocationIdsJson { get; set; } = "[]";
+    /// <summary>When true, orders for this product attach a returnable deposit line.</summary>
+    public bool ReturnableDeposit { get; set; }
+    public string ReturnableItemName { get; set; } = string.Empty;
+    public string ReturnableUom { get; set; } = string.Empty;
+    public decimal ReturnableDepositAmount { get; set; }
     public bool Active { get; set; } = true;
     public DateTime UpdatedAt { get; set; }
 }

@@ -82,4 +82,8 @@ public class PurchaseOrderItem
     public string ProductExpiryDate { get; set; } = string.Empty;
     /// <summary>Optional temperature check (°C) captured at receive/consolidate.</summary>
     public decimal? ReceivedTemperature { get; set; }
+    /// <summary>True when this line is a returnable container deposit (not inventory stock).</summary>
+    public bool IsReturnableDeposit { get; set; }
+    /// <summary>Canonical returnable item name for deposit ledger grouping.</summary>
+    public string ReturnableItemName { get; set; } = string.Empty;
 }

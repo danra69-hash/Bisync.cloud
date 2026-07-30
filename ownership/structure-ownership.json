@@ -250,7 +250,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-24",
-      "notes": "Revenue Management / Products — month-filtered product field and BOM change audit"
+      "notes": "Revenue Management / Products \u2014 month-filtered product field and BOM change audit"
     },
     {
       "id": "dr.page.product-list",
@@ -422,7 +422,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-24",
-      "notes": "Revenue Management / Sales — Active + Create Promotion tabs; RRP applied on B2B sales orders"
+      "notes": "Revenue Management / Sales \u2014 Active + Create Promotion tabs; RRP applied on B2B sales orders"
     },
     {
       "id": "dr.page.b2b-active-order",
@@ -495,6 +495,16 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.returnable-goods",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ReturnableGoodsPage.tsx",
+      "symbol": "ReturnableGoodsPage",
+      "route": "/revenue/returnable-goods",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-30"
+    },
+    {
       "id": "dr.page.cogs-audit",
       "kind": "client-page",
       "path": "client/src/components/revenue/CogsAuditPage.tsx",
@@ -543,7 +553,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — POS Test after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
+      "notes": "Point-of-Sales bar \u2014 POS Test after Promotion Scheduler; tap-to-sell smoke surface using record-sale"
     },
     {
       "id": "dr.page.pos-menu",
@@ -554,7 +564,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — POS Menu of company/location B2C products with POS enabled and RRP"
+      "notes": "Point-of-Sales bar \u2014 POS Menu of company/location B2C products with POS enabled and RRP"
     },
     {
       "id": "dr.page.pos-promotion-scheduler",
@@ -565,7 +575,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "Point-of-Sales bar — Promotion Scheduler with date/time/day repeat, category/group filters, RRP/RPP discount table"
+      "notes": "Point-of-Sales bar \u2014 Promotion Scheduler with date/time/day repeat, category/group filters, RRP/RPP discount table"
     },
     {
       "id": "dr.api.pos-promotions",
@@ -576,7 +586,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "POS Promotion Scheduler CRUD — schedule windows, weekday repeat, per-product RRP/RPP lines"
+      "notes": "POS Promotion Scheduler CRUD \u2014 schedule windows, weekday repeat, per-product RRP/RPP lines"
     },
     {
       "id": "dr.page.pos-device-management",
@@ -587,7 +597,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-29",
-      "notes": "Point-of-Sales bar — Device Management for stations/displays/kiosks/printers with network assistant and printer SDK setup"
+      "notes": "Point-of-Sales bar \u2014 Device Management for stations/displays/kiosks/printers with network assistant and printer SDK setup"
     },
     {
       "id": "dr.api.pos-devices",
@@ -598,7 +608,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-29",
-      "notes": "POS Device Management CRUD — network probe, printer SDK repository, paper/alignment setup"
+      "notes": "POS Device Management CRUD \u2014 network probe, printer SDK repository, paper/alignment setup"
     },
     {
       "id": "dr.module.hr",
@@ -769,6 +779,16 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-15"
+    },
+    {
+      "id": "dr.api.returnable-goods",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/ReturnableGoodsController.cs",
+      "symbol": "ReturnableGoodsController",
+      "route": "api/returnable-goods",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-30"
     },
     {
       "id": "dr.api.transfers",
@@ -951,7 +971,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-28",
-      "notes": "POS Test operational APIs — open/closed checks, payments, voids, EOD sessions"
+      "notes": "POS Test operational APIs \u2014 open/closed checks, payments, voids, EOD sessions"
     },
     {
       "id": "dr.api.pos-eod",

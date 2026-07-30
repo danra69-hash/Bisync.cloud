@@ -131,6 +131,7 @@ export const th = {
     },
     items: {
       myOrder: 'คำสั่งซื้อของฉัน',
+      returnableGoods: 'สินค้าฝากภาชนะ',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'ซื้อเงินสด',

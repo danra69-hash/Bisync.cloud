@@ -11,6 +11,7 @@ import { ComparePricePage } from './ComparePricePage';
 import { OrderPage } from './OrderPage';
 import { CashPurchasePage } from './CashPurchasePage';
 import { OrderTemplatePage } from './OrderTemplatePage';
+import { ReturnableGoodsPage } from './ReturnableGoodsPage';
 import { ProductsSection } from './ProductsSection';
 import { ProductionSection } from './ProductionSection';
 import { StockCardPage } from './StockCardPage';
@@ -134,6 +135,8 @@ function renderRevMgmtContent(
           initialPrefillItems={createOrderPrefill}
         />
       );
+    case 'Returnable Goods':
+      return <ReturnableGoodsPage selectedCompanyId={selectedCompanyId} />;
     case 'Cash Purchase':
       return (
         <CashPurchasePage

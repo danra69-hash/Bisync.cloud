@@ -715,6 +715,10 @@ public class CreatePurchaseOrderItemRequest
     public string? ComponentUom { get; set; }
     [MaxLength(200)]
     public string DeliveryPackage { get; set; } = string.Empty;
+    /// <summary>When true, this line is a returnable container deposit (not inventory).</summary>
+    public bool IsReturnableDeposit { get; set; }
+    [MaxLength(300)]
+    public string? ReturnableItemName { get; set; }
 }
 
 public class CreatePurchaseOrderRequest

@@ -1357,6 +1357,8 @@ export interface PurchaseOrderItem {
   halalCertNo?: string;
   productExpiryDate?: string | null;
   receivedTemperature?: number | null;
+  isReturnableDeposit?: boolean;
+  returnableItemName?: string | null;
 }
 
 export interface PurchaseOrder {
@@ -1414,6 +1416,8 @@ export interface CreatePurchaseOrderItemPayload {
   unit: string;
   componentUom?: string;
   deliveryPackage: string;
+  isReturnableDeposit?: boolean;
+  returnableItemName?: string;
 }
 
 export interface CreatePurchaseOrderPayload {
@@ -1880,6 +1884,10 @@ export interface VendorProductCatalogRow {
   productPolicyTag?: string;
   isPrivate?: boolean;
   privateLocationIds?: string[];
+  returnableDeposit?: boolean;
+  returnableItemName?: string;
+  returnableUom?: string;
+  returnableDepositAmount?: number;
   active?: boolean;
   updatedAt?: string;
 }
@@ -1897,6 +1905,10 @@ export interface VendorProductCatalogUpsert {
   productPolicyTag?: string;
   isPrivate?: boolean;
   privateLocationIds?: string[];
+  returnableDeposit?: boolean;
+  returnableItemName?: string;
+  returnableUom?: string;
+  returnableDepositAmount?: number;
   active?: boolean;
 }
 
@@ -1959,6 +1971,61 @@ export interface CreateCashPurchasePayload {
 export interface CreateCashPurchaseResult {
   cashPurchase: CashPurchase;
   inventoryPurchase: InventoryPurchase;
+}
+
+export interface ReturnableGoodsLedgerRow {
+  id: number;
+  returnableItemName: string;
+  uom: string;
+  uomPrice: number;
+  qty: number;
+  amountTotal: number;
+  poNumber: string;
+  poId: number;
+  orderDate?: string;
+  vendorName?: string;
+  vendorProductId?: string;
+}
+
+export interface ReturnableGoodsSummaryRow {
+  returnableItemName: string;
+  uom: string;
+  unitPrice: number;
+  incomingQty: number;
+  incomingAmount: number;
+  returnedQty: number;
+  returnedAmount: number;
+  balanceQty: number;
+  balanceAmount: number;
+}
+
+export interface ReturnableGoodsReturnRow {
+  id: number;
+  companyId?: number | null;
+  returnableItemName: string;
+  uom: string;
+  unitPrice: number;
+  quantity: number;
+  amount: number;
+  returnDate: string;
+  creditNoteNumber: string;
+  createdAt?: string;
+}
+
+export interface ReturnableGoodsOverview {
+  ledger: ReturnableGoodsLedgerRow[];
+  summary: ReturnableGoodsSummaryRow[];
+  returns: ReturnableGoodsReturnRow[];
+}
+
+export interface CreateReturnableGoodsReturnPayload {
+  companyId?: number;
+  returnableItemName: string;
+  quantity: number;
+  uom?: string;
+  unitPrice?: number;
+  returnDate: string;
+  creditNoteNumber: string;
 }
 
 export interface WastageEntry {
@@ -3496,6 +3563,14 @@ export const api = {
     fetchJson<CashPurchase[]>(`/api/cashpurchases${companyId ? `?companyId=${companyId}` : ''}`),
   createCashPurchase: (payload: CreateCashPurchasePayload) =>
     fetchJsonWithMethod<CreateCashPurchaseResult>('/api/cashpurchases', 'POST', payload),
+  returnableGoods: (companyId?: number) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    const query = params.toString();
+    return fetchJson<ReturnableGoodsOverview>(`/api/returnable-goods${query ? `?${query}` : ''}`);
+  },
+  createReturnableGoodsReturn: (payload: CreateReturnableGoodsReturnPayload) =>
+    fetchJsonWithMethod<ReturnableGoodsReturnRow>('/api/returnable-goods/returns', 'POST', payload),
   wastageEntries: (
     companyId: number | undefined,
     locationIds: string[],

@@ -131,6 +131,7 @@ export const fr = {
     },
     items: {
       myOrder: 'Ma commande',
+      returnableGoods: 'Biens consignés',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'Achat comptant',

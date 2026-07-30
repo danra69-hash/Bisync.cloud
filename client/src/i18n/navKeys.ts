@@ -28,6 +28,7 @@ export const REV_MGMT_SUBTITLE_I18N: Record<string, string> = {
 
 export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'My Order': 'revMgmt.items.myOrder',
+  'Returnable Goods': 'revMgmt.items.returnableGoods',
   'Active Purchase': 'revMgmt.items.activePurchase',
   'Active Sales': 'revMgmt.items.activeSales',
   'Cash Purchase': 'revMgmt.items.cashPurchase',

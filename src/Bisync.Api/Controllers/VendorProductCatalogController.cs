@@ -61,11 +61,17 @@ public class VendorProductCatalogController(BisyncDbContext db) : ControllerBase
         if (await db.VendorProducts.AnyAsync(p => p.ExternalId == externalId))
             return Conflict(new { message = "Vendor product id already exists." });
 
-        var entity = MapToEntity(request, externalId);
-        db.VendorProducts.Add(entity);
-        await db.SaveChangesAsync();
-
-        return Ok(ToDto(entity, new Dictionary<string, decimal>()));
+        try
+        {
+            var entity = MapToEntity(request, externalId);
+            db.VendorProducts.Add(entity);
+            await db.SaveChangesAsync();
+            return Ok(ToDto(entity, new Dictionary<string, decimal>()));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPut("catalog/{externalId}")]
@@ -75,9 +81,16 @@ public class VendorProductCatalogController(BisyncDbContext db) : ControllerBase
         if (row is null)
             return NotFound();
 
-        ApplyUpsert(row, request);
-        row.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        try
+        {
+            ApplyUpsert(row, request);
+            row.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
 
         var price = await db.VendorProductPrices.AsNoTracking()
             .FirstOrDefaultAsync(p => p.ExternalId == externalId);
@@ -141,6 +154,29 @@ public class VendorProductCatalogController(BisyncDbContext db) : ControllerBase
                 ? JsonSerializer.Serialize(request.PrivateLocationIds, JsonOptions)
                 : row.PrivateLocationIdsJson)
             : request.PrivateLocationIdsJson.Trim();
+        if (request.ReturnableDeposit.HasValue)
+            row.ReturnableDeposit = request.ReturnableDeposit.Value;
+        if (request.ReturnableItemName is not null)
+            row.ReturnableItemName = request.ReturnableItemName.Trim();
+        if (request.ReturnableUom is not null)
+            row.ReturnableUom = request.ReturnableUom.Trim();
+        if (request.ReturnableDepositAmount.HasValue)
+            row.ReturnableDepositAmount = request.ReturnableDepositAmount.Value;
+        if (row.ReturnableDeposit)
+        {
+            if (string.IsNullOrWhiteSpace(row.ReturnableItemName))
+                throw new InvalidOperationException("Returnable item name is required when returnable deposit is enabled.");
+            if (string.IsNullOrWhiteSpace(row.ReturnableUom))
+                throw new InvalidOperationException("Returnable UOM is required when returnable deposit is enabled.");
+            if (row.ReturnableDepositAmount < 0)
+                throw new InvalidOperationException("Returnable deposit amount cannot be negative.");
+        }
+        else
+        {
+            row.ReturnableItemName = string.Empty;
+            row.ReturnableUom = string.Empty;
+            row.ReturnableDepositAmount = 0;
+        }
         if (request.Active.HasValue)
             row.Active = request.Active.Value;
     }
@@ -185,6 +221,10 @@ public class VendorProductCatalogController(BisyncDbContext db) : ControllerBase
             productPolicyTag = string.IsNullOrWhiteSpace(row.ProductPolicyTag) ? null : row.ProductPolicyTag,
             isPrivate = row.IsPrivate,
             privateLocationIds,
+            returnableDeposit = row.ReturnableDeposit,
+            returnableItemName = row.ReturnableItemName,
+            returnableUom = row.ReturnableUom,
+            returnableDepositAmount = row.ReturnableDepositAmount,
             active = row.Active,
             updatedAt = row.UpdatedAt,
         };
@@ -206,5 +246,9 @@ public class VendorProductUpsertRequest
     public bool? IsPrivate { get; set; }
     public List<string>? PrivateLocationIds { get; set; }
     public string? PrivateLocationIdsJson { get; set; }
+    public bool? ReturnableDeposit { get; set; }
+    public string? ReturnableItemName { get; set; }
+    public string? ReturnableUom { get; set; }
+    public decimal? ReturnableDepositAmount { get; set; }
     public bool? Active { get; set; }
 }

@@ -404,6 +404,9 @@ export type OrderCartItem = {
   deliveryPrice: number;
   quantity: number;
   lineTotal: number;
+  /** True when this cart line is an auto-attached returnable deposit. */
+  isReturnableDeposit?: boolean;
+  returnableItemName?: string;
 };
 
 export type OrderCartVendorGroup = {
@@ -420,7 +423,7 @@ export function buildCartItems(
   return lines.flatMap(line => {
     const quantity = parseFloat(orderQtyByKey[line.key] || '') || 0;
     if (quantity <= 0) return [];
-    return [{
+    const productLine: OrderCartItem = {
       lineKey: line.key,
       componentId: line.component.componentId,
       componentName: line.component.name,
@@ -433,7 +436,41 @@ export function buildCartItems(
       deliveryPrice: line.deliveryPrice,
       quantity,
       lineTotal: quantity * line.deliveryPrice,
-    }];
+    };
+
+    const vp = line.vendorProduct;
+    const depositName = (vp.returnableItemName ?? '').trim();
+    const depositUom = (vp.returnableUom ?? '').trim();
+    const depositAmount = Number(vp.returnableDepositAmount ?? 0);
+    if (
+      vp.returnableDeposit
+      && depositName
+      && depositUom
+      && Number.isFinite(depositAmount)
+      && depositAmount >= 0
+    ) {
+      return [
+        productLine,
+        {
+          lineKey: `${line.key}::returnable`,
+          componentId: '',
+          componentName: depositName,
+          componentUom: depositUom,
+          vendorProductId: vp.id,
+          vendorExternalId: vp.vendorExternalId,
+          vendorName: vp.vendorName,
+          productName: depositName,
+          deliveryUnitLabel: depositUom,
+          deliveryPrice: depositAmount,
+          quantity,
+          lineTotal: quantity * depositAmount,
+          isReturnableDeposit: true,
+          returnableItemName: depositName,
+        },
+      ];
+    }
+
+    return [productLine];
   });
 }
 

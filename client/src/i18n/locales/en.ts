@@ -129,6 +129,7 @@ export const en = {
     },
     items: {
       myOrder: 'My Order',
+      returnableGoods: 'Returnable Goods',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'Cash Purchase',

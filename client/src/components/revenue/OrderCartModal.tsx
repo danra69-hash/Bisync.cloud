@@ -279,6 +279,10 @@ export function OrderCartModal({
             unit: item.deliveryUnitLabel,
             componentUom: item.componentUom,
             deliveryPackage: item.deliveryUnitLabel,
+            isReturnableDeposit: item.isReturnableDeposit || undefined,
+            returnableItemName: item.isReturnableDeposit
+              ? (item.returnableItemName || item.productName)
+              : undefined,
           })),
         })),
       });
@@ -747,10 +751,21 @@ function VendorGroupCard({ group }: { group: OrderCartVendorGroup }) {
         {group.items.map(item => (
           <div key={item.lineKey} className="px-4 py-3 flex items-start justify-between gap-4 text-xs">
             <div className="min-w-0">
-              <p className="font-medium text-foreground">{item.productName}</p>
-              <p className="text-xs text-muted-foreground font-sans mt-0.5">
-                {item.componentName} · {item.componentId}
+              <p className="font-medium text-foreground">
+                {item.productName}
+                {item.isReturnableDeposit ? (
+                  <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">Deposit</span>
+                ) : null}
               </p>
+              {!item.isReturnableDeposit ? (
+                <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                  {item.componentName} · {item.componentId}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground font-sans mt-0.5">
+                  Returnable deposit · auto-attached
+                </p>
+              )}
               <p className="text-xs text-muted-foreground font-sans mt-0.5">{item.deliveryUnitLabel}</p>
             </div>
             <div className="text-right shrink-0">
