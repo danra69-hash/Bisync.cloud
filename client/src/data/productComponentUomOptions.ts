@@ -2,19 +2,15 @@ import type { Product } from '../api';
 import {
   fromApiUom,
   getComponentUomChoices,
-  getConversion,
+  getConversionFactor,
   resolveDetailConfigForRow,
   type AltUnitEntry,
   type ComponentRow,
 } from './componentForm';
+import { parseYieldAltUnitsJson } from './productBatchUom';
 import {
-  parseYieldAltUnitsJson,
-  refreshBatchAdditionalUoms,
-  resolveBatchAdditionalEntry,
-} from './productBatchUom';
-import {
-  calcProductCogs,
   formatSubProductPrimaryBatchUnit,
+  resolveSubProductRecipeUnit,
   type ProductLine,
 } from './productForm';
 
@@ -23,75 +19,47 @@ export type ProductComponentUomOption = {
   price: number;
 };
 
-function subProductBatchCogs(product: Product): number {
-  return calcProductCogs(product.totalCost, product.packagingCost ?? 0, {
-    isSubProduct: true,
-    b2bEnabled: false,
-    b2cEnabled: false,
-  });
+function uomKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, '');
 }
 
-function formatAltBatchLabel(qtyText: string, unit: string): string {
-  const qtyNum = parseFloat(qtyText);
-  if (!Number.isFinite(qtyNum) || qtyNum <= 0 || !unit.trim()) return '';
-  const qty = Number.isInteger(qtyNum)
-    ? String(qtyNum)
-    : String(Number(qtyNum.toFixed(2).replace(/\.?0+$/, '')));
-  return `${qty}${unit.trim().toLowerCase()}`;
-}
-
-function subProductAltUomLabel(
-  entry: AltUnitEntry,
-  resolved: ReturnType<typeof resolveBatchAdditionalEntry>,
-): string {
-  if (resolved.packStyle) {
-    return entry.unit;
-  }
-  return formatAltBatchLabel(resolved.qty || entry.qty, entry.unit);
-}
-
-function subProductAltUomPrice(
-  batchCogs: number,
-  entry: AltUnitEntry,
-  resolved: ReturnType<typeof resolveBatchAdditionalEntry>,
-): number {
-  if (resolved.packStyle) {
-    const packs = parseFloat(entry.fromQty) || 0;
-    return packs > 0 ? batchCogs / packs : batchCogs;
-  }
-  // Alt expresses the same batch (e.g. 10each = 1kg), so recipe qty 1 costs one batch.
-  return batchCogs;
+/** True when a stored recipe UOM is a whole-batch label like "2000gr" / "10 each". */
+export function isSubProductBatchUomLabel(
+  lineUom: string,
+  product: { yieldQuantity: number; yieldUom: string },
+): boolean {
+  const compact = uomKey(lineUom);
+  if (!compact) return false;
+  const batchLabel = formatSubProductPrimaryBatchUnit(product);
+  if (batchLabel !== '—' && uomKey(batchLabel) === compact) return true;
+  const yieldQty = product.yieldQuantity > 0 ? product.yieldQuantity : 0;
+  if (yieldQty <= 0) return false;
+  const qtyText = Number.isInteger(yieldQty)
+    ? String(yieldQty)
+    : String(Number(yieldQty.toFixed(2).replace(/\.?0+$/, '')));
+  const principal = uomKey(fromApiUom(product.yieldUom) || product.yieldUom);
+  if (!principal) return false;
+  return compact === `${qtyText}${principal}` || compact === `${qtyText}${uomKey(product.yieldUom)}`;
 }
 
 /** UOM choices when attaching a Sub-Product into a Product recipe mix. */
 export function subProductComponentUomOptions(product: Product): ProductComponentUomOption[] {
-  const batchUom = fromApiUom(product.yieldUom);
-  const batchQty = product.yieldQuantity;
-  const batchLabel = formatSubProductPrimaryBatchUnit(product);
-  const batchCogs = subProductBatchCogs(product);
-  const options: ProductComponentUomOption[] = [];
+  const { uom: principalUom, unitCost } = resolveSubProductRecipeUnit(product);
+  if (!principalUom.trim()) return [];
 
-  if (batchLabel !== '—') {
-    options.push({ label: batchLabel, price: batchCogs });
-  }
+  const options: ProductComponentUomOption[] = [
+    { label: principalUom, price: unitCost },
+  ];
 
-  const parsed = parseYieldAltUnitsJson(product.yieldAltUnitsJson).map(entry => ({
-    ...entry,
-    unit: fromApiUom(entry.unit) || entry.unit,
-  }));
-  const altEntries = batchUom.trim()
-    ? refreshBatchAdditionalUoms(parsed, batchQty, batchUom)
-    : parsed;
-
-  // Sub-products expose at most one alternative batch expression in the recipe picker.
-  for (const entry of altEntries.slice(0, 1)) {
-    const resolved = resolveBatchAdditionalEntry(entry, batchQty, batchUom);
-    const label = subProductAltUomLabel(entry, resolved);
-    if (!label || options.some(option => option.label === label)) continue;
-    options.push({
-      label,
-      price: subProductAltUomPrice(batchCogs, entry, resolved),
-    });
+  // Optional alternate yield UOMs at converted per-unit prices (never whole-batch labels).
+  const altUnits = parseYieldAltUnitsJson(product.yieldAltUnitsJson)
+    .map(entry => fromApiUom(entry.unit) || entry.unit.trim())
+    .filter(Boolean);
+  for (const altUnit of altUnits.slice(0, 3)) {
+    if (options.some(option => uomKey(option.label) === uomKey(altUnit))) continue;
+    const factor = getConversionFactor(altUnit, principalUom);
+    if (factor == null) continue;
+    options.push({ label: altUnit, price: unitCost * factor });
   }
 
   return options;
@@ -113,7 +81,7 @@ function priceForComponentUom(
     return recipePrice * (qty / from);
   }
 
-  const conv = getConversion(selectedUnit, recipeUnit);
+  const conv = getConversionFactor(selectedUnit, recipeUnit);
   if (conv !== null) return recipePrice * conv;
 
   return recipePrice;
@@ -150,6 +118,36 @@ export function isSubProductLine(line: ProductLine, subProducts: Product[]): boo
   return findSubProductForLine(line, subProducts) !== null;
 }
 
+/** Remount legacy whole-batch UOM/price onto principal UOM + unit COGS. */
+export function normalizeSubProductRecipeLine(
+  line: ProductLine,
+  subProduct: Product,
+): ProductLine {
+  const { uom, unitCost } = resolveSubProductRecipeUnit(subProduct);
+  if (!uom) return line;
+
+  const needsRemount = !line.componentUom.trim()
+    || isSubProductBatchUomLabel(line.componentUom, subProduct)
+    || uomKey(line.componentUom) === uomKey(uom)
+    || uomKey(line.componentUom) === uomKey(subProduct.yieldUom);
+
+  if (!needsRemount) return line;
+
+  const nextPrice = unitCost > 0 ? String(unitCost) : line.componentUomPrice;
+  if (
+    line.componentUom === uom
+    && line.componentUomPrice === nextPrice
+  ) {
+    return line;
+  }
+
+  return {
+    ...line,
+    componentUom: uom,
+    componentUomPrice: nextPrice,
+  };
+}
+
 export function resolveProductLineUomOptions(
   line: ProductLine,
   components: ComponentRow[],
@@ -172,6 +170,11 @@ export function withCurrentProductLineUomOption(
 ): ProductComponentUomOption[] {
   const currentLabel = line.componentUom.trim();
   if (!currentLabel || options.some(option => option.label === currentLabel)) {
+    return options;
+  }
+
+  // Do not keep legacy whole-batch labels (e.g. 2000gr) in the picker once principal UOM exists.
+  if (options.length > 0 && /^\d+(\.\d+)?[a-z]+$/i.test(currentLabel.replace(/\s+/g, ''))) {
     return options;
   }
 

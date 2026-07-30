@@ -99,7 +99,7 @@ public static class ProductCostRecalculator
 
     /// <summary>
     /// When a sub-product recipe/identity changes, remount denormalized parent BOM lines that
-    /// reference it (ComponentId / name / batch UOM / batch COGS) and resum parent totals.
+    /// reference it (ComponentId / name / principal UOM / unit COGS) and resum parent totals.
     /// Cascades into parent sub-products so nested recipes stay linked.
     /// </summary>
     public static async Task RelinkParentsForSubProductAsync(
@@ -127,6 +127,8 @@ public static class ProductCostRecalculator
 
         var batchCogs = ResolveSubProductBatchCogs(subProduct);
         var batchLabel = FormatSubProductBatchLabel(subProduct);
+        var principalUom = FormatPrincipalUom(subProduct.YieldUom);
+        var unitCost = subProduct.YieldQuantity > 0 ? batchCogs / subProduct.YieldQuantity : 0m;
         var yieldUom = subProduct.YieldUom?.Trim() ?? string.Empty;
         var name = subProduct.Name?.Trim() ?? string.Empty;
 
@@ -145,11 +147,11 @@ public static class ProductCostRecalculator
                     item,
                     currentId,
                     name,
+                    principalUom,
                     batchLabel,
                     previousBatchLabel,
                     yieldUom,
-                    batchCogs,
-                    subProduct.YieldQuantity))
+                    unitCost))
             {
                 parentIds.Add(item.ProductId);
             }
@@ -161,11 +163,11 @@ public static class ProductCostRecalculator
                     item,
                     currentId,
                     name,
+                    principalUom,
                     batchLabel,
                     previousBatchLabel,
                     yieldUom,
-                    batchCogs,
-                    subProduct.YieldQuantity))
+                    unitCost))
             {
                 parentIds.Add(item.ProductId);
             }
@@ -219,10 +221,44 @@ public static class ProductCostRecalculator
         }
     }
 
+    /// <summary>
+    /// One-shot/idempotent remount of parent recipe lines that still store whole-batch UOMs
+    /// (e.g. 2000gr @ batch COGS) onto principal Batch Produce UOM + per-unit COGS.
+    /// </summary>
+    public static async Task RemountAllSubProductRecipeUnitsAsync(BisyncDbContext db)
+    {
+        var uoms = await db.ProductComponentItems
+            .AsNoTracking()
+            .Select(i => i.ComponentUom)
+            .Distinct()
+            .ToListAsync();
+        var packagingUoms = await db.ProductPackagingItems
+            .AsNoTracking()
+            .Select(i => i.ComponentUom)
+            .Distinct()
+            .ToListAsync();
+
+        var hasLegacyBatchLabel = uoms.Concat(packagingUoms)
+            .Any(u => !string.IsNullOrWhiteSpace(u)
+                && Regex.IsMatch(CompactUomKey(u), @"^\d+(\.\d+)?[a-z]+$"));
+        if (!hasLegacyBatchLabel)
+            return;
+
+        var subs = await db.Products
+            .Where(p => p.IsSubProduct)
+            .OrderBy(p => p.Id)
+            .ToListAsync();
+
+        foreach (var sub in subs)
+        {
+            await RelinkParentsForSubProductAsync(db, sub);
+        }
+    }
+
     public static decimal ResolveSubProductBatchCogs(Product subProduct)
         => subProduct.TotalCost + subProduct.PackagingCost;
 
-    /// <summary>Matches client <c>formatSubProductPrimaryBatchUnit</c> (e.g. 10each, 1000gr).</summary>
+    /// <summary>Legacy whole-batch label (e.g. 10each, 2000gr) — used only to detect/migrate old rows.</summary>
     public static string FormatSubProductBatchLabel(Product subProduct)
     {
         if (subProduct.YieldQuantity <= 0 || string.IsNullOrWhiteSpace(subProduct.YieldUom))
@@ -235,15 +271,43 @@ public static class ProductCostRecalculator
         return $"{qty}{NormalizeDisplayUom(subProduct.YieldUom)}";
     }
 
+    /// <summary>Principal Batch Produce UOM for recipe usage (matches client <c>fromApiUom</c>).</summary>
+    public static string FormatPrincipalUom(string? yieldUom)
+    {
+        var trimmed = (yieldUom ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return string.Empty;
+
+        return trimmed.ToLowerInvariant() switch
+        {
+            "g" or "gr" or "gram" or "grams" => "Gr",
+            "mg" => "Mg",
+            "kg" => "Kg",
+            "ml" => "Ml",
+            "cl" => "Cl",
+            "l" or "ltr" or "litre" or "liter" => "Ltr",
+            "pcs" or "each" or "pc" => "Each",
+            "btl" or "bottle" => "Bottle",
+            "can" => "Can",
+            "tin" => "Tin",
+            "slice" => "Slice",
+            "pack" => "Pack",
+            "case" => "Case",
+            "box" => "Box",
+            "set" => "Set",
+            _ => char.ToUpperInvariant(trimmed[0]) + trimmed[1..].ToLowerInvariant(),
+        };
+    }
+
     private static bool ApplySubProductLineLink(
         ProductComponentItem item,
         string currentId,
         string name,
+        string principalUom,
         string batchLabel,
         string? previousBatchLabel,
         string yieldUom,
-        decimal batchCogs,
-        decimal yieldQuantity)
+        decimal unitCost)
     {
         var changed = false;
 
@@ -259,18 +323,24 @@ public static class ProductCostRecalculator
             changed = true;
         }
 
-        var usesPrimaryBatch = IsPrimaryBatchUom(item.ComponentUom, batchLabel, previousBatchLabel, yieldUom);
-        if (usesPrimaryBatch && !string.IsNullOrWhiteSpace(batchLabel)
-            && !UomKeysMatch(item.ComponentUom, batchLabel))
+        var remountPrincipal = ShouldRemountToPrincipalUom(
+            item.ComponentUom, principalUom, batchLabel, previousBatchLabel, yieldUom);
+        if (remountPrincipal && !string.IsNullOrWhiteSpace(principalUom)
+            && !string.Equals(item.ComponentUom, principalUom, StringComparison.Ordinal))
         {
-            item.ComponentUom = batchLabel;
+            item.ComponentUom = principalUom;
             changed = true;
         }
 
-        var newPrice = usesPrimaryBatch || string.IsNullOrWhiteSpace(item.ComponentUom)
-            ? batchCogs
-            : ResolveNonPrimaryLinePrice(item.ComponentUom, yieldUom, batchCogs, yieldQuantity);
+        // Only rewrite price for principal/legacy-batch lines — leave alternate UOMs alone.
+        if (!remountPrincipal
+            && !string.IsNullOrWhiteSpace(item.ComponentUom)
+            && !UomKeysMatch(item.ComponentUom, principalUom))
+        {
+            return changed;
+        }
 
+        var newPrice = unitCost;
         var newSubtotal = item.Quantity * newPrice;
         if (item.ComponentUomPrice != newPrice || item.Subtotal != newSubtotal)
         {
@@ -286,11 +356,11 @@ public static class ProductCostRecalculator
         ProductPackagingItem item,
         string currentId,
         string name,
+        string principalUom,
         string batchLabel,
         string? previousBatchLabel,
         string yieldUom,
-        decimal batchCogs,
-        decimal yieldQuantity)
+        decimal unitCost)
     {
         var changed = false;
 
@@ -306,18 +376,23 @@ public static class ProductCostRecalculator
             changed = true;
         }
 
-        var usesPrimaryBatch = IsPrimaryBatchUom(item.ComponentUom, batchLabel, previousBatchLabel, yieldUom);
-        if (usesPrimaryBatch && !string.IsNullOrWhiteSpace(batchLabel)
-            && !UomKeysMatch(item.ComponentUom, batchLabel))
+        var remountPrincipal = ShouldRemountToPrincipalUom(
+            item.ComponentUom, principalUom, batchLabel, previousBatchLabel, yieldUom);
+        if (remountPrincipal && !string.IsNullOrWhiteSpace(principalUom)
+            && !string.Equals(item.ComponentUom, principalUom, StringComparison.Ordinal))
         {
-            item.ComponentUom = batchLabel;
+            item.ComponentUom = principalUom;
             changed = true;
         }
 
-        var newPrice = usesPrimaryBatch || string.IsNullOrWhiteSpace(item.ComponentUom)
-            ? batchCogs
-            : ResolveNonPrimaryLinePrice(item.ComponentUom, yieldUom, batchCogs, yieldQuantity);
+        if (!remountPrincipal
+            && !string.IsNullOrWhiteSpace(item.ComponentUom)
+            && !UomKeysMatch(item.ComponentUom, principalUom))
+        {
+            return changed;
+        }
 
+        var newPrice = unitCost;
         var newSubtotal = item.Quantity * newPrice;
         if (item.ComponentUomPrice != newPrice || item.Subtotal != newSubtotal)
         {
@@ -329,36 +404,26 @@ public static class ProductCostRecalculator
         return changed;
     }
 
-    private static bool IsPrimaryBatchUom(
+    private static bool ShouldRemountToPrincipalUom(
         string? lineUom,
+        string principalUom,
         string batchLabel,
         string? previousBatchLabel,
         string yieldUom)
     {
         if (string.IsNullOrWhiteSpace(lineUom))
             return true;
+        if (!string.IsNullOrWhiteSpace(principalUom) && UomKeysMatch(lineUom, principalUom))
+            return true;
         if (!string.IsNullOrWhiteSpace(batchLabel) && UomKeysMatch(lineUom, batchLabel))
             return true;
         if (!string.IsNullOrWhiteSpace(previousBatchLabel) && UomKeysMatch(lineUom, previousBatchLabel))
             return true;
-        // Plain yield UOM without qty prefix is treated as the batch expression in many older rows.
         if (!string.IsNullOrWhiteSpace(yieldUom) && UomKeysMatch(lineUom, yieldUom))
             return true;
-        return false;
-    }
-
-    private static decimal ResolveNonPrimaryLinePrice(
-        string lineUom,
-        string yieldUom,
-        decimal batchCogs,
-        decimal yieldQuantity)
-    {
-        // Alt batch expressions (e.g. 1kg for a 10each batch) still cost one full batch per recipe qty 1.
-        // Per-unit yield UOM already handled as primary. Default to batch COGS.
-        _ = lineUom;
-        _ = yieldUom;
-        _ = yieldQuantity;
-        return batchCogs;
+        // Any compact "1234uom" label is treated as a legacy whole-batch UOM.
+        var compact = CompactUomKey(lineUom);
+        return Regex.IsMatch(compact, @"^\d+(\.\d+)?[a-z]+$");
     }
 
     private static bool ShouldUpdateLinePrice(string lineUom, string recipeUom)

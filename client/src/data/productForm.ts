@@ -283,6 +283,24 @@ export function productLineFromComponent(component: ComponentRow): ProductLine {
   };
 }
 
+/** Principal UOM + unit COGS for using a sub-product inside another recipe. */
+export function resolveSubProductRecipeUnit(product: {
+  totalCost: number;
+  packagingCost?: number;
+  yieldQuantity: number;
+  yieldUom: string;
+}): { uom: string; unitCost: number } {
+  const batchCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, {
+    isSubProduct: true,
+    b2bEnabled: false,
+    b2cEnabled: false,
+  });
+  const yieldQty = product.yieldQuantity > 0 ? product.yieldQuantity : 0;
+  const uom = fromApiUom(product.yieldUom) || product.yieldUom.trim();
+  const unitCost = yieldQty > 0 ? batchCogs / yieldQty : 0;
+  return { uom, unitCost };
+}
+
 export function productLineFromSubProduct(product: {
   id?: number;
   productId: string;
@@ -293,18 +311,14 @@ export function productLineFromSubProduct(product: {
   yieldUom: string;
   isSubProduct: boolean;
 }): ProductLine {
-  const batchCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, {
-    isSubProduct: true,
-    b2bEnabled: false,
-    b2cEnabled: false,
-  });
-  const batchLabel = formatSubProductPrimaryBatchUnit(product);
+  // Recipe usage follows Batch Produce UOM as principal component UOM (not whole-batch labels like 2000gr).
+  const { uom, unitCost } = resolveSubProductRecipeUnit(product);
   return {
     key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     componentId: product.productId,
     componentName: product.name,
-    componentUom: batchLabel !== '—' ? batchLabel : fromApiUom(product.yieldUom),
-    componentUomPrice: batchCogs > 0 ? String(batchCogs) : '',
+    componentUom: uom,
+    componentUomPrice: unitCost > 0 ? String(unitCost) : '',
     quantity: '1',
     sourceProductId: product.id,
   };
