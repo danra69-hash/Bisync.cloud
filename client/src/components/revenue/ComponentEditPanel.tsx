@@ -9,6 +9,7 @@ import {
   getHierarchyCategoryOptions,
   getHierarchyGroupOptions,
   loadComponentHierarchy,
+  loadComponentHierarchyForCompany,
   type ComponentHierarchyState,
 } from '../../data/componentHierarchy';
 import {
@@ -464,18 +465,25 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   }, [selectedCompanyId]);
 
   useEffect(() => {
+    let cancelled = false;
     const reloadHierarchy = () => setHierarchy(loadComponentHierarchy());
     const reloadCatalog = () => setCatalogVersion(version => version + 1);
     reloadHierarchy();
+    if (selectedCompanyId) {
+      void loadComponentHierarchyForCompany(selectedCompanyId).then(next => {
+        if (!cancelled) setHierarchy(next);
+      });
+    }
     window.addEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
     window.addEventListener('bisync:componentCatalogChanged', reloadCatalog);
     window.addEventListener('storage', reloadHierarchy);
     return () => {
+      cancelled = true;
       window.removeEventListener('bisync:componentHierarchyChanged', reloadHierarchy);
       window.removeEventListener('bisync:componentCatalogChanged', reloadCatalog);
       window.removeEventListener('storage', reloadHierarchy);
     };
-  }, []);
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     setForm(f => {
