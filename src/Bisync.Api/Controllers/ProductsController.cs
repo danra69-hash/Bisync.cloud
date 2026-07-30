@@ -448,9 +448,7 @@ public class ProductsController(
                     return BadRequest(new { message = "POS is not available for sub-products." });
                 if (!product.B2cEnabled)
                     return BadRequest(new { message = "POS requires a B2C product." });
-                var effectiveRrp = request.Rrp ?? product.Rrp;
-                if (effectiveRrp <= 0)
-                    return BadRequest(new { message = "Set an RRP before enabling POS." });
+                // RRP may be filled later — allow enabling POS sell units from the Product List.
             }
             product.PosEnabled = request.PosEnabled.Value;
         }
