@@ -33,6 +33,7 @@ import {
   toForm,
 } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_DETAIL_CLS, DETAIL_PANEL_OVERLAY_ELEVATED_CLS, DETAIL_PANEL_SHELL_ELEVATED_CLS } from '../layout/sidePanelShared';
+import { labelsEqual } from '../../utils/labelMatch';
 import {
   resolveScopedTaggedVendorProducts,
   VendorProductTable,
@@ -426,14 +427,26 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [hierarchy, setHierarchy] = useState<ComponentHierarchyState>(() => loadComponentHierarchy());
   const [catalogVersion, setCatalogVersion] = useState(0);
 
+  const categoryExtras = useMemo(
+    () => existingComponents.map(component => component.category).filter(Boolean),
+    [existingComponents],
+  );
+  const groupExtras = useMemo(
+    () => existingComponents
+      .filter(component => !form.category || labelsEqual(component.category, form.category))
+      .map(component => component.group)
+      .filter(Boolean),
+    [existingComponents, form.category],
+  );
+
   const categoryOptions = useMemo(
-    () => getHierarchyCategoryOptions(hierarchy, form.category, []),
-    [hierarchy, form.category],
+    () => getHierarchyCategoryOptions(hierarchy, form.category, categoryExtras),
+    [hierarchy, form.category, categoryExtras],
   );
 
   const groupOptions = useMemo(
-    () => getHierarchyGroupOptions(hierarchy, form.category, form.group, []),
-    [hierarchy, form.category, form.group],
+    () => getHierarchyGroupOptions(hierarchy, form.category, form.group, groupExtras),
+    [hierarchy, form.category, form.group, groupExtras],
   );
 
   const storageOptions = useMemo(() => {
@@ -487,18 +500,22 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
 
   useEffect(() => {
     setForm(f => {
-      const categories = getHierarchyCategoryOptions(hierarchy, f.category, []);
+      const categories = getHierarchyCategoryOptions(hierarchy, f.category, categoryExtras);
       const categoryValid = categories.some(
         category => category.toLowerCase() === f.category.toLowerCase(),
       );
       const category = categoryValid ? f.category : (categories[0] ?? f.category);
-      const groups = getHierarchyGroupOptions(hierarchy, category, f.group, []);
+      const groupsForCategory = existingComponents
+        .filter(component => !category || labelsEqual(component.category, category))
+        .map(component => component.group)
+        .filter(Boolean);
+      const groups = getHierarchyGroupOptions(hierarchy, category, f.group, groupsForCategory);
       const groupValid = groups.some(group => group.toLowerCase() === f.group.toLowerCase());
       const group = groupValid ? f.group : (groups[0] ?? f.group);
       if (category === f.category && group === f.group) return f;
       return { ...f, category, group };
     });
-  }, [hierarchy]);
+  }, [hierarchy, categoryExtras, existingComponents]);
 
   useEffect(() => {
     api.vendors(true).then(setVendors).catch(() => setVendors([]));

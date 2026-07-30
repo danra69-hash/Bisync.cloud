@@ -105,12 +105,17 @@ export function getHierarchyCategoryOptions(
   fallback: string[] = [],
 ): string[] {
   const fromHierarchy = state.categories.map(category => category.name);
-  const base = fromHierarchy.length > 0 ? fromHierarchy : fallback;
+  // Always merge fallbacks (e.g. categories already used on components) so uploads
+  // beyond the saved hierarchy still appear in detail/filter pickers.
+  const base = uniqueSorted([
+    ...(fromHierarchy.length > 0 ? fromHierarchy : []),
+    ...fallback,
+  ]);
   const current = currentValue.trim();
   if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
     return uniqueSorted([...base, current]);
   }
-  return uniqueSorted(base);
+  return base;
 }
 
 /** Group names under a category for component detail dropdowns. */
@@ -129,12 +134,13 @@ export function getHierarchyGroupOptions(
     : hasHierarchy
       ? uniqueSorted(state.groups.map(group => group.name))
       : [];
-  const base = fromHierarchy.length > 0 ? fromHierarchy : (hasHierarchy ? [] : fallback);
+  // Merge fallback groups from existing components even when hierarchy already has entries.
+  const base = uniqueSorted([...fromHierarchy, ...fallback]);
   const current = currentValue.trim();
   if (current && !base.some(name => name.toLowerCase() === current.toLowerCase())) {
     return uniqueSorted([...base, current]);
   }
-  return uniqueSorted(base);
+  return base;
 }
 
 export function flattenHierarchyForAssignment(state: ComponentHierarchyState): HierarchyAssignmentRow[] {
