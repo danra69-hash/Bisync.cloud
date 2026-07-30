@@ -22,6 +22,8 @@ let storageCache: StorageAssignmentState | null = null;
 let storageCompanyId: number | null = null;
 let catalogCache: ComponentCatalogState | null = null;
 let catalogCompanyId: number | null = null;
+/** Serializes catalog saves so an older in-flight PUT cannot overwrite a newer rename on the server. */
+let catalogWriteTail: Promise<unknown> = Promise.resolve();
 
 function readLocalJson<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
@@ -236,19 +238,39 @@ export async function saveComponentCatalogApi(
     extraStorages: uniqueSortedStrings(state.extraStorages),
     hiddenUoms: uniqueSortedStrings(state.hiddenUoms),
   };
+  // Apply optimistically so rename/UI see the new spelling immediately.
   catalogCache = normalized;
   catalogCompanyId = companyId;
   window.dispatchEvent(new CustomEvent('bisync:componentCatalogChanged'));
 
-  const response = await api.updateRevMgmtConfig(
-    companyId,
-    REV_MGMT_CATALOG_KEY,
-    JSON.stringify(normalized),
-  );
-  const saved = normalizeCatalog(response.state) ?? normalized;
-  catalogCache = saved;
-  catalogCompanyId = companyId;
-  return saved;
+  const run = async (): Promise<ComponentCatalogState> => {
+    // Persist whatever is latest in cache now (a newer rename may have replaced `normalized`).
+    const toSave: ComponentCatalogState = {
+      extraGroups: uniqueSortedStrings(catalogCache?.extraGroups ?? normalized.extraGroups),
+      extraUoms: uniqueSortedStrings(catalogCache?.extraUoms ?? normalized.extraUoms),
+      myUoms: uniqueSortedStrings(catalogCache?.myUoms ?? normalized.myUoms),
+      extraStorages: uniqueSortedStrings(catalogCache?.extraStorages ?? normalized.extraStorages),
+      hiddenUoms: uniqueSortedStrings(catalogCache?.hiddenUoms ?? normalized.hiddenUoms),
+    };
+    const toSaveJson = JSON.stringify(toSave);
+    const response = await api.updateRevMgmtConfig(
+      companyId,
+      REV_MGMT_CATALOG_KEY,
+      toSaveJson,
+    );
+    const saved = normalizeCatalog(response.state) ?? toSave;
+    // Do not clobber a newer optimistic update that landed while this request was in flight.
+    if (JSON.stringify(catalogCache) === toSaveJson) {
+      catalogCache = saved;
+      catalogCompanyId = companyId;
+      window.dispatchEvent(new CustomEvent('bisync:componentCatalogChanged'));
+    }
+    return catalogCache ?? saved;
+  };
+
+  const queued = catalogWriteTail.then(run, run);
+  catalogWriteTail = queued.then(() => undefined, () => undefined);
+  return queued;
 }
 
 export async function ensureRevMgmtConfig(companyId: number): Promise<void> {
