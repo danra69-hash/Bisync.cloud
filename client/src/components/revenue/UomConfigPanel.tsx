@@ -265,14 +265,15 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
   }
 
   async function saveEdit(original: string) {
-    const result = renameRecipeUnit(original, editDraft, selectedCompanyId);
-    if (!result.ok) {
-      setActionError(result.message);
-      return;
-    }
     setBusyCode(original);
     setActionError(null);
+    setActionInfo(null);
     try {
+      const result = await renameRecipeUnit(original, editDraft, selectedCompanyId);
+      if (!result.ok) {
+        setActionError(result.message);
+        return;
+      }
       const remapped = await remapIngredientUoms(selectedCompanyId, result.from, result.to);
       reloadLists();
       setEditingCode(null);
@@ -284,7 +285,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
       );
     } catch (e) {
       reloadLists();
-      setActionError(e instanceof Error ? e.message : 'Renamed in catalog, but component remap failed.');
+      setActionError(e instanceof Error ? e.message : 'Could not rename UOM.');
     } finally {
       setBusyCode(null);
     }
