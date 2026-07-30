@@ -791,6 +791,17 @@
       "createdAt": "2026-07-30"
     },
     {
+      "id": "dr.api.uom-rename",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/UomRenameController.cs",
+      "symbol": "UomRenameController",
+      "route": "api/companies/{companyId}/uoms",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-30",
+      "notes": "Company-scoped UOM rename remap across components, products, vendor products, and operations"
+    },
+    {
       "id": "dr.api.transfers",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/TransfersController.cs",

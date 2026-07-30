@@ -3557,6 +3557,14 @@ export const api = {
       'PUT',
       { stateJson },
     ),
+  renameCompanyUom: (companyId: number, from: string, to: string) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      from: string;
+      to: string;
+      total: number;
+      counts: Record<string, number>;
+    }>(`/api/companies/${companyId}/uoms/rename`, 'POST', { from, to }),
   inventoryPurchases: (companyId?: number) =>
     fetchJson<InventoryPurchase[]>(`/api/inventory/purchases${companyId ? `?companyId=${companyId}` : ''}`),
   cashPurchases: (companyId?: number) =>
