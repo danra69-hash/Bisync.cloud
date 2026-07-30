@@ -39,7 +39,6 @@ type Props = {
 };
 
 const CATEGORY_OPTIONS = getSiCategoryFilterOptions().filter(c => c !== 'All');
-const GROUP_OPTIONS = getSiGroupFilterOptions().filter(g => g !== 'All');
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -136,7 +135,7 @@ export function SampleRequestPanel({
   const groupOptions = useMemo(() => {
     const scoped = ingredients.filter(i => !productCategory || labelsEqual(i.category, productCategory));
     const fromData = scoped.map(i => i.group).filter(Boolean);
-    return [...new Set([...GROUP_OPTIONS, ...fromData])].sort((a, b) => a.localeCompare(b));
+    return getSiGroupFilterOptions(fromData, productCategory || 'All').filter(g => g !== 'All');
   }, [ingredients, productCategory]);
 
   const filteredIngredients = useMemo(() => {
@@ -521,6 +520,7 @@ export function SampleRequestPanel({
                       value={productCategory}
                       onChange={e => {
                         setProductCategory(e.target.value);
+                        setProductGroup('');
                         setIngredientComponentId('');
                       }}
                       className={selectCls}
