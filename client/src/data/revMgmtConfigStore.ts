@@ -12,6 +12,8 @@ export type ComponentCatalogState = {
   /** Company-selected UOMs shown in My UOM (Component Config). */
   myUoms: string[];
   extraStorages: string[];
+  /** Built-in UOMs hidden from All UOM for this company. */
+  hiddenUoms?: string[];
 };
 
 let hierarchyCache: ComponentHierarchyState | null = null;
@@ -75,11 +77,12 @@ function normalizeCatalog(state: unknown): ComponentCatalogState | null {
     extraUoms: uniqueSortedStrings(parsed.extraUoms),
     myUoms: uniqueSortedStrings(parsed.myUoms),
     extraStorages: uniqueSortedStrings(parsed.extraStorages),
+    hiddenUoms: uniqueSortedStrings(parsed.hiddenUoms),
   };
 }
 
 function emptyCatalog(): ComponentCatalogState {
-  return { extraGroups: [], extraUoms: [], myUoms: [], extraStorages: [] };
+  return { extraGroups: [], extraUoms: [], myUoms: [], extraStorages: [], hiddenUoms: [] };
 }
 
 function readLegacyStringList(key: string): string[] {
@@ -208,6 +211,7 @@ export async function ensureComponentCatalog(companyId: number): Promise<Compone
       extraUoms: uniqueSortedStrings([...state.extraUoms, ...legacyUoms]),
       myUoms: uniqueSortedStrings(state.myUoms),
       extraStorages: uniqueSortedStrings([...state.extraStorages, ...legacyStorages]),
+      hiddenUoms: uniqueSortedStrings(state.hiddenUoms),
     };
     await api.updateRevMgmtConfig(companyId, REV_MGMT_CATALOG_KEY, JSON.stringify(state));
     clearLocalKey('bisync.productExtraGroups');
@@ -230,6 +234,7 @@ export async function saveComponentCatalogApi(
     extraUoms: uniqueSortedStrings(state.extraUoms),
     myUoms: uniqueSortedStrings(state.myUoms),
     extraStorages: uniqueSortedStrings(state.extraStorages),
+    hiddenUoms: uniqueSortedStrings(state.hiddenUoms),
   };
   catalogCache = normalized;
   catalogCompanyId = companyId;

@@ -92,5 +92,6 @@ public static class RevMgmtDefaults
         extraUoms = Array.Empty<string>(),
         myUoms = Array.Empty<string>(),
         extraStorages = Array.Empty<string>(),
+        hiddenUoms = Array.Empty<string>(),
     };
 }

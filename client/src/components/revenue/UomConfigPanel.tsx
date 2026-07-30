@@ -10,10 +10,11 @@ import {
   getKnownRecipeUnits,
   getMyRecipeUnits,
   isBuiltinRecipeUnit,
-  isDeletableRecipeUnit,
+  isManageableRecipeUnit,
   normalizeRecipeUnitInput,
-  removeExtraRecipeUnit,
+  removeRecipeUnit,
   renameRecipeUnit,
+  resolveRenameTarget,
   sanitizeRecipeUnitsCatalog,
   saveMyRecipeUnits,
 } from '../../data/componentCatalogConfig';
@@ -35,7 +36,7 @@ function buildAllUomCodes(): string[] {
 function remapUomInJson(json: string | undefined, from: string, to: string): string | undefined {
   if (!json) return json;
   const fromKey = from.trim().toLowerCase();
-  const toNorm = normalizeRecipeUnitInput(to) || to.trim();
+  const toNorm = resolveRenameTarget(to) || to.trim();
   try {
     const parsed = JSON.parse(json) as unknown;
     const walk = (value: unknown): unknown => {
@@ -61,7 +62,7 @@ function remapUomInJson(json: string | undefined, from: string, to: string): str
 async function remapIngredientUoms(companyId: number | null | undefined, from: string, to: string) {
   if (!companyId || !from.trim() || !to.trim()) return 0;
   const fromKey = from.trim().toLowerCase();
-  const toNorm = normalizeRecipeUnitInput(to) || to.trim();
+  const toNorm = resolveRenameTarget(to) || to.trim();
   const ingredients = await api.ingredients(companyId);
   let updated = 0;
   for (const ingredient of ingredients) {
@@ -168,11 +169,31 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
   }
 
   useEffect(() => {
-    sanitizeRecipeUnitsCatalog(selectedCompanyId);
-    reloadLists();
+    let cancelled = false;
+    async function boot() {
+      sanitizeRecipeUnitsCatalog(selectedCompanyId);
+      if (selectedCompanyId) {
+        try {
+          const ingredients = await api.ingredients(selectedCompanyId);
+          const used = ingredients.flatMap(i => [
+            i.recipeUom,
+            i.inventoryUom,
+            i.parStockUom ?? '',
+          ]);
+          ensureRecipeUnitsExist(used, selectedCompanyId);
+        } catch {
+          // Catalog-only mode if ingredients fail to load.
+        }
+      }
+      if (!cancelled) reloadLists();
+    }
+    void boot();
     const onChange = () => reloadLists();
     window.addEventListener('bisync:componentCatalogChanged', onChange);
-    return () => window.removeEventListener('bisync:componentCatalogChanged', onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('bisync:componentCatalogChanged', onChange);
+    };
   }, [selectedCompanyId]);
 
   const myUoms = useMemo(() => {
@@ -233,16 +254,8 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
   }
 
   function startEdit(code: string) {
-    if (isBuiltinRecipeUnit(code) && !isDeletableRecipeUnit(code)) {
-      setActionError('Built-in UOMs cannot be renamed.');
-      return;
-    }
-    if (!isDeletableRecipeUnit(code) && isBuiltinRecipeUnit(code)) {
-      setActionError('Built-in UOMs cannot be renamed.');
-      return;
-    }
-    if (!isDeletableRecipeUnit(code)) {
-      setActionError('Only custom (added) UOMs can be edited or deleted.');
+    if (!isManageableRecipeUnit(code)) {
+      setActionError('This UOM cannot be edited.');
       return;
     }
     setEditingCode(code);
@@ -278,20 +291,27 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
   }
 
   async function deleteUom(code: string) {
-    if (!isDeletableRecipeUnit(code)) {
-      setActionError('Built-in UOMs cannot be deleted. Custom duplicates can be removed.');
+    if (!isManageableRecipeUnit(code)) {
+      setActionError('This UOM cannot be removed.');
       return;
     }
+    const builtin = isBuiltinRecipeUnit(code);
     const confirmed = window.confirm(
-      `Delete UOM “${code}” from All UOM?\n\nComponents still using this UOM will keep the old value until you edit them (or rename first).`,
+      builtin
+        ? `Hide built-in UOM “${code}” from All UOM for this company?\n\nConversion charts still keep it for reference. You can add it again later if needed.`
+        : `Delete UOM “${code}” from All UOM?\n\nComponents still using this UOM will keep the old value until you edit them (or rename first).`,
     );
     if (!confirmed) return;
     setBusyCode(code);
     setActionError(null);
     try {
-      removeExtraRecipeUnit(code, selectedCompanyId);
+      const result = removeRecipeUnit(code, selectedCompanyId);
       reloadLists();
-      setActionInfo(`Deleted “${code}” from All UOM.`);
+      setActionInfo(
+        result.mode === 'hidden'
+          ? `Hidden “${code}” from All UOM.`
+          : `Deleted “${code}” from All UOM.`,
+      );
     } finally {
       setBusyCode(null);
     }
@@ -302,8 +322,8 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
       <div className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Click a UOM name in All UOM to add it to My UOM. Custom UOMs can be edited or deleted.
-            Built-in units (Gr, Kg, Ltr, …) are fixed system units.
+            Click a UOM name in All UOM to add it to My UOM. Use Edit to rename any UOM, or Delete to
+            remove a custom UOM / hide a built-in UOM for this company.
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
@@ -337,7 +357,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
             <div className="px-3 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">All UOM</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Click name to add to My UOM · Edit / Delete for custom units
+                Click name to add to My UOM · Edit / Delete available for every row
               </p>
             </div>
             <TableScrollContainer ref={allUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
@@ -352,7 +372,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
               <tbody>
                 {allUomsScroll.visibleItems.map(code => {
                   const inMyUom = myUomCodes.some(c => c.toLowerCase() === code.toLowerCase());
-                  const deletable = isDeletableRecipeUnit(code);
+                  const manageable = isManageableRecipeUnit(code);
                   const editing = editingCode === code;
                   return (
                     <tr
@@ -420,8 +440,8 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
                             <>
                               <button
                                 type="button"
-                                title={deletable ? 'Edit UOM name' : 'Built-in UOM'}
-                                disabled={!deletable || busyCode === code}
+                                title="Edit UOM name"
+                                disabled={!manageable || busyCode === code}
                                 onClick={() => startEdit(code)}
                                 className="p-1 rounded text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
                               >
@@ -429,8 +449,8 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
                               </button>
                               <button
                                 type="button"
-                                title={deletable ? 'Delete UOM' : 'Built-in UOM'}
-                                disabled={!deletable || busyCode === code}
+                                title={isBuiltinRecipeUnit(code) ? 'Hide built-in UOM' : 'Delete UOM'}
+                                disabled={!manageable || busyCode === code}
                                 onClick={() => void deleteUom(code)}
                                 className="p-1 rounded text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
                               >
