@@ -1,4 +1,4 @@
-import { fromApiUom, RECIPE_UNITS, STORAGE_OPTIONS, toApiUom, type ComponentRow } from './componentForm';
+import { RECIPE_UNITS, STORAGE_OPTIONS, type ComponentRow } from './componentForm';
 import { resolveSiCategoryName, siGroups } from './revenueManagement';
 import type { SmartComponentImportDraft, SmartComponentImportPlan } from './smartComponentCatalog';
 import {
@@ -173,9 +173,9 @@ export function normalizeRecipeUnitInput(raw: string): string {
   if (aliases[lower]) return aliases[lower];
   const builtin = RECIPE_UNITS.find(unit => unit.toLowerCase() === lower);
   if (builtin) return builtin;
-  const mapped = fromApiUom(toApiUom(trimmed));
-  const mappedBuiltin = RECIPE_UNITS.find(unit => unit.toLowerCase() === mapped.toLowerCase());
-  return mappedBuiltin ?? mapped;
+  // Keep custom catalog spellings (Box, Ctn, Carton, …). Do not fold via API maps
+  // (e.g. box→Case) or newly typed UOMs disappear as "already exists".
+  return trimmed;
 }
 
 export function isBuiltinRecipeUnit(unit: string): boolean {

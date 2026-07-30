@@ -119,7 +119,9 @@ export function fromApiUom(unit: string): string {
     ml: 'Ml', cl: 'Cl', L: 'Ltr', l: 'Ltr', lt: 'Ltr', ltr: 'Ltr', litre: 'Ltr', liter: 'Ltr',
     pcs: 'Each', each: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case',
     btl: 'Bottle', bottle: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
-    oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal', box: 'Case', set: 'Each',
+    oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal',
+    // Packaging labels used in vendor delivery / UOM Config — keep distinct from Case/Each.
+    box: 'Box', set: 'Set',
   };
   const lower = trimmed.toLowerCase();
   if (map[trimmed]) return map[trimmed];
