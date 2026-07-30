@@ -9,7 +9,7 @@ export type { ComponentSplitUseConfig, SplitUseLine } from './componentSplitUse'
 export const RECIPE_UNITS = [
   'Mg', 'Gr', 'Kg', 'Tonne',
   'Ml', 'Cl', 'Ltr',
-  'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Bottle', 'Can', 'Tin', 'Slice',
+  'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Box', 'Set', 'Bottle', 'Can', 'Tin', 'Slice',
   'Oz', 'Lb', 'FlOz', 'Gal',
 ];
 export const STORAGE_OPTIONS = ['Chiller', 'Dry Store', 'Freezer', 'Wine Cellar', 'Storeroom', 'Office', 'Warehouse', 'Bar', 'Prep Kitchen'];
@@ -96,7 +96,8 @@ export function toApiUom(unit: string): string {
   const map: Record<string, string> = {
     Mg: 'mg', Gr: 'g', Kg: 'kg', Tonne: 't',
     Ml: 'ml', Cl: 'cl', Ltr: 'L',
-    Each: 'pcs', Punnet: 'punnet', Bunch: 'bunch', Tray: 'tray', Case: 'case', Bottle: 'btl', Can: 'can', Tin: 'tin', Slice: 'slice',
+    Each: 'pcs', Punnet: 'punnet', Bunch: 'bunch', Tray: 'tray', Case: 'case', Box: 'box', Set: 'set',
+    Bottle: 'btl', Can: 'can', Tin: 'tin', Slice: 'slice',
     Pack: 'pack',
     Oz: 'oz', Lb: 'lb', FlOz: 'fl oz', Gal: 'gal',
   };

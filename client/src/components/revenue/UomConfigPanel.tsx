@@ -4,13 +4,14 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../../api';
-import { inputCls } from '../../data/componentForm';
+import { fromApiUom, inputCls } from '../../data/componentForm';
 import {
   ensureRecipeUnitsExist,
   getKnownRecipeUnits,
   getMyRecipeUnits,
   isBuiltinRecipeUnit,
   isManageableRecipeUnit,
+  loadComponentCatalogForCompany,
   normalizeRecipeUnitInput,
   removeRecipeUnit,
   renameRecipeUnit,
@@ -134,14 +135,21 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
   useEffect(() => {
     let cancelled = false;
     async function boot() {
+      if (selectedCompanyId) {
+        try {
+          await loadComponentCatalogForCompany(selectedCompanyId);
+        } catch {
+          // Fall through with cached/empty catalog.
+        }
+      }
       sanitizeRecipeUnitsCatalog(selectedCompanyId);
       if (selectedCompanyId) {
         try {
           const ingredients = await api.ingredients(selectedCompanyId);
           const used = ingredients.flatMap(i => [
-            i.recipeUom,
-            i.inventoryUom,
-            i.parStockUom ?? '',
+            fromApiUom(i.recipeUom),
+            fromApiUom(i.inventoryUom),
+            fromApiUom(i.parStockUom ?? ''),
           ]);
           ensureRecipeUnitsExist(used, selectedCompanyId);
         } catch {
@@ -205,20 +213,27 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
       return;
     }
     const existing = allUomCodes.find(u => u.toLowerCase() === trimmed.toLowerCase());
-    if (existing) {
+    const code = existing ?? trimmed;
+    if (myUomCodes.some(c => c.toLowerCase() === code.toLowerCase())) {
       setAddUomError(
-        existing === trimmed
-          ? `“${trimmed}” is already in All UOM.`
-          : `“${trimmed}” matches existing UOM “${existing}”.`,
+        existing && existing !== trimmed
+          ? `“${trimmed}” matches “${existing}”, which is already in My UOM.`
+          : `“${code}” is already in My UOM.`,
       );
       return;
     }
-    ensureRecipeUnitsExist([trimmed], selectedCompanyId);
-    reloadLists();
-    persistMyUoms([...myUomCodes, trimmed]);
+    if (!existing) {
+      ensureRecipeUnitsExist([trimmed], selectedCompanyId);
+      reloadLists();
+    }
+    persistMyUoms([...myUomCodes, code]);
     setNewUomCode('');
     setAddUomError(null);
-    setActionInfo(`Added “${trimmed}”.`);
+    setActionInfo(
+      existing
+        ? `“${code}” is already in All UOM — added to My UOM.`
+        : `Added “${trimmed}”.`,
+    );
   }
 
   function startEdit(code: string) {
