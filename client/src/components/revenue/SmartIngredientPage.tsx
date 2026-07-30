@@ -11,6 +11,7 @@ import { filterSelectCls } from '../layout/formControls';
 import { FilePlus2, Search, Upload, X } from 'lucide-react';
 import { api } from '../../api';
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { labelsEqual } from '../../utils/labelMatch';
 import {
   blankComponentRow,
   fromApiUom,
@@ -203,8 +204,9 @@ export function SmartIngredientPage({
 
   const filtered = useMemo(() => {
     return rows.filter(row => {
-      const matchCat = catFilter === 'All' || row.category === catFilter;
-      const matchGrp = grpFilter === 'All' || row.group === grpFilter;
+      // Uploaded catalogs often use FOOD / BEVERAGE; filters use Food / Beverage.
+      const matchCat = catFilter === 'All' || labelsEqual(row.category, catFilter);
+      const matchGrp = grpFilter === 'All' || labelsEqual(row.group, grpFilter);
       const q = search.toLowerCase();
       const matchQ = !q
         || (row.name ?? '').toLowerCase().includes(q)
@@ -214,6 +216,15 @@ export function SmartIngredientPage({
       return matchCat && matchGrp && matchQ;
     });
   }, [rows, catFilter, grpFilter, search]);
+
+  const categoryFilterOptions = useMemo(
+    () => getSiCategoryFilterOptions(rows.map(row => row.category)),
+    [rows],
+  );
+  const groupFilterOptions = useMemo(
+    () => getSiGroupFilterOptions(rows.map(row => row.group)),
+    [rows],
+  );
 
   const alternateUomOptions = useMemo(() => {
     const units = new Set<string>();
@@ -476,8 +487,8 @@ export function SmartIngredientPage({
       <PageStickyFilters opaque className="space-y-2 pb-2">
       <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
-          <FilterSelect label="Category" value={catFilter} options={getSiCategoryFilterOptions()} onChange={setCatFilter} />
-          <FilterSelect label="Group" value={grpFilter} options={getSiGroupFilterOptions()} onChange={setGrpFilter} />
+          <FilterSelect label="Category" value={catFilter} options={categoryFilterOptions} onChange={setCatFilter} />
+          <FilterSelect label="Group" value={grpFilter} options={groupFilterOptions} onChange={setGrpFilter} />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
               Principal Component UOM

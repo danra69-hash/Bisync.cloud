@@ -209,6 +209,7 @@ public static class SchemaPatcher
         await BackfillCatalogCompanyIdsAsync(db);
         await EnsureCompanyScopedCatalogIndexesAsync(db);
         await ComponentIdentityMigrator.ApplyAsync(db);
+        await IngredientCatalogNormalizer.NormalizeExistingAsync(db);
         await EnsureTenantConnectionsTableAsync(db);
         await BackfillTenantConnectionsAsync(db);
         await EnsureTenantRollupSnapshotsTableAsync(db);

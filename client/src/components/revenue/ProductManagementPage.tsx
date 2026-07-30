@@ -13,6 +13,7 @@ import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { api, ApiError, type Product, type ProductManagementSummary, type ProduceBatchShortage } from '../../api';
 import { resolveManagementBatchUnit } from '../../data/productForm';
 import { formatCountryNumber } from '../../utils/numberFormat';
+import { labelsEqual } from '../../utils/labelMatch';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import {
   allocateFifoRemainingBatches,
@@ -522,10 +523,10 @@ export function ProductManagementPage({
       .filter((row): row is ManagementBatchRow => row !== null);
 
     if (categoryFilter !== 'All') {
-      rows = rows.filter(row => row.category === categoryFilter);
+      rows = rows.filter(row => labelsEqual(row.category, categoryFilter));
     }
     if (groupFilter !== 'All') {
-      rows = rows.filter(row => row.group === groupFilter);
+      rows = rows.filter(row => labelsEqual(row.group, groupFilter));
     }
 
     const query = search.trim().toLowerCase();

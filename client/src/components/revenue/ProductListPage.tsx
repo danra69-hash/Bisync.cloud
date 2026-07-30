@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
+import { labelsEqual } from '../../utils/labelMatch';
 import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -268,10 +269,10 @@ export function ProductListPage({
     let scoped = products.filter(p => productMatchesLocations(p, selectedLocationIds));
 
     if (categoryFilter !== 'All') {
-      scoped = scoped.filter(p => p.category === categoryFilter);
+      scoped = scoped.filter(p => labelsEqual(p.category, categoryFilter));
     }
     if (groupFilter !== 'All') {
-      scoped = scoped.filter(p => p.group === groupFilter);
+      scoped = scoped.filter(p => labelsEqual(p.group, groupFilter));
     }
 
     const typeFiltersOn = [filterProduct, filterSubProduct, filterVariableProduct].filter(Boolean).length;

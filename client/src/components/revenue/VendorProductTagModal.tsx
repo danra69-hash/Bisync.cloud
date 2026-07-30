@@ -34,6 +34,7 @@ import {
 import { resolveComponentUomQty } from '../../data/vendorProductCatalog';
 
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { labelsEqual } from '../../utils/labelMatch';
 
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
 
@@ -218,9 +219,9 @@ export function VendorProductTagModal({
 
     return available.filter(row => {
 
-      const matchCat = catFilter === 'All' || row.category === catFilter;
+      const matchCat = catFilter === 'All' || labelsEqual(row.category, catFilter);
 
-      const matchGrp = grpFilter === 'All' || row.group === grpFilter;
+      const matchGrp = grpFilter === 'All' || labelsEqual(row.group, grpFilter);
 
       const matchQ = !q
 
@@ -499,7 +500,7 @@ export function VendorProductTagModal({
 
                   <select className={selectCls} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
 
-                    {getSiCategoryFilterOptions().map(c => <option key={c}>{c}</option>)}
+                    {getSiCategoryFilterOptions(available.map(row => row.category)).map(c => <option key={c}>{c}</option>)}
 
                   </select>
 
@@ -511,7 +512,7 @@ export function VendorProductTagModal({
 
                   <select className={selectCls} value={grpFilter} onChange={e => setGrpFilter(e.target.value)}>
 
-                    {getSiGroupFilterOptions().map(g => <option key={g}>{g}</option>)}
+                    {getSiGroupFilterOptions(available.map(row => row.group)).map(g => <option key={g}>{g}</option>)}
 
                   </select>
 

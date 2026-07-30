@@ -869,8 +869,8 @@ public class IngredientsController(
 
         item.CompanyId = companyId;
         item.Name = name;
-        item.Category = updated.Category;
-        item.Group = updated.Group;
+        item.Category = IngredientCatalogNormalizer.NormalizeCategory(updated.Category);
+        item.Group = IngredientCatalogNormalizer.NormalizeGroup(updated.Group);
         item.RecipeUom = updated.RecipeUom;
         item.InventoryUom = updated.InventoryUom;
         if (item.Active && !updated.Active)
@@ -938,6 +938,7 @@ public class IngredientsController(
         var code = await CompanyCodeService.ResolveCodeAsync(db, companyId.Value);
         ingredient.CompanyId = companyId;
         ingredient.Name = name;
+        IngredientCatalogNormalizer.ApplyTo(ingredient);
         ingredient.ComponentId = await ComponentIdGenerator.GenerateAsync(db, code, companyId);
         if (string.IsNullOrWhiteSpace(ingredient.ParStockUom))
             ingredient.ParStockUom = ingredient.RecipeUom ?? string.Empty;
