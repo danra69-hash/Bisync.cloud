@@ -2,13 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
-import { Plus } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { api } from '../../api';
 import { inputCls } from '../../data/componentForm';
 import {
   ensureRecipeUnitsExist,
   getKnownRecipeUnits,
   getMyRecipeUnits,
+  isBuiltinRecipeUnit,
+  isDeletableRecipeUnit,
   normalizeRecipeUnitInput,
+  removeExtraRecipeUnit,
+  renameRecipeUnit,
+  sanitizeRecipeUnitsCatalog,
   saveMyRecipeUnits,
 } from '../../data/componentCatalogConfig';
 import {
@@ -18,17 +24,72 @@ import {
   formatFactor,
   type ConversionRow,
 } from '../../data/uomConfig';
-
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 import { ColGroup } from '../shared/SortableTableHead';
-
-const INITIAL_ALL_UOMS = ['GR', 'KG', 'ML', 'LT', 'Each', 'Slice', 'Can', 'BTL'] as const;
+import { ingredientToRow, rowToIngredient } from './smartIngredientShared';
 
 function buildAllUomCodes(): string[] {
-  return [...new Set([
-    ...INITIAL_ALL_UOMS.map(normalizeRecipeUnitInput),
-    ...getKnownRecipeUnits(),
-  ])].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  return getKnownRecipeUnits();
+}
+
+function remapUomInJson(json: string | undefined, from: string, to: string): string | undefined {
+  if (!json) return json;
+  const fromKey = from.trim().toLowerCase();
+  const toNorm = normalizeRecipeUnitInput(to) || to.trim();
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    const walk = (value: unknown): unknown => {
+      if (typeof value === 'string') {
+        return value.trim().toLowerCase() === fromKey ? toNorm : value;
+      }
+      if (Array.isArray(value)) return value.map(walk);
+      if (value && typeof value === 'object') {
+        const next: Record<string, unknown> = {};
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          next[key] = walk(child);
+        }
+        return next;
+      }
+      return value;
+    };
+    return JSON.stringify(walk(parsed));
+  } catch {
+    return json;
+  }
+}
+
+async function remapIngredientUoms(companyId: number | null | undefined, from: string, to: string) {
+  if (!companyId || !from.trim() || !to.trim()) return 0;
+  const fromKey = from.trim().toLowerCase();
+  const toNorm = normalizeRecipeUnitInput(to) || to.trim();
+  const ingredients = await api.ingredients(companyId);
+  let updated = 0;
+  for (const ingredient of ingredients) {
+    const row = ingredientToRow(ingredient);
+    let dirty = false;
+    const next = { ...row };
+    if ((next.recipeUOM ?? '').trim().toLowerCase() === fromKey) {
+      next.recipeUOM = toNorm;
+      dirty = true;
+    }
+    if ((next.inventoryUOM ?? '').trim().toLowerCase() === fromKey) {
+      next.inventoryUOM = toNorm;
+      dirty = true;
+    }
+    if ((next.parStockUom ?? '').trim().toLowerCase() === fromKey) {
+      next.parStockUom = toNorm;
+      dirty = true;
+    }
+    const remappedJson = remapUomInJson(next.detailConfigJson, from, toNorm);
+    if (remappedJson !== next.detailConfigJson) {
+      next.detailConfigJson = remappedJson;
+      dirty = true;
+    }
+    if (!dirty || next.id == null) continue;
+    await api.updateIngredient(next.id, rowToIngredient(next));
+    updated += 1;
+  }
+  return updated;
 }
 
 function ConversionTable({ title, description, rows, showCategory = false }: {
@@ -95,20 +156,27 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
   const [myUomCodes, setMyUomCodes] = useState<string[]>(() => getMyRecipeUnits());
   const [newUomCode, setNewUomCode] = useState('');
   const [addUomError, setAddUomError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [busyCode, setBusyCode] = useState<string | null>(null);
+
+  function reloadLists() {
+    setAllUomCodes(buildAllUomCodes());
+    setMyUomCodes(getMyRecipeUnits());
+  }
 
   useEffect(() => {
-    const reload = () => {
-      setAllUomCodes(buildAllUomCodes());
-      setMyUomCodes(getMyRecipeUnits());
-    };
-    reload();
-    window.addEventListener('bisync:componentCatalogChanged', reload);
-    return () => window.removeEventListener('bisync:componentCatalogChanged', reload);
+    sanitizeRecipeUnitsCatalog(selectedCompanyId);
+    reloadLists();
+    const onChange = () => reloadLists();
+    window.addEventListener('bisync:componentCatalogChanged', onChange);
+    return () => window.removeEventListener('bisync:componentCatalogChanged', onChange);
   }, [selectedCompanyId]);
 
   const myUoms = useMemo(() => {
     const selected = new Set(myUomCodes.map(code => code.toLowerCase()));
-    // Keep My UOM order stable by All-list order, then any orphans.
     const ordered = allUomCodes.filter(code => selected.has(code.toLowerCase()));
     const orphans = myUomCodes.filter(
       code => !allUomCodes.some(all => all.toLowerCase() === code.toLowerCase()),
@@ -157,11 +225,76 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
       return;
     }
     ensureRecipeUnitsExist([trimmed], selectedCompanyId);
-    setAllUomCodes(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b)));
-    // Newly created UOMs are selected into My UOM immediately.
+    reloadLists();
     persistMyUoms([...myUomCodes, trimmed]);
     setNewUomCode('');
     setAddUomError(null);
+    setActionInfo(`Added “${trimmed}”.`);
+  }
+
+  function startEdit(code: string) {
+    if (isBuiltinRecipeUnit(code) && !isDeletableRecipeUnit(code)) {
+      setActionError('Built-in UOMs cannot be renamed.');
+      return;
+    }
+    if (!isDeletableRecipeUnit(code) && isBuiltinRecipeUnit(code)) {
+      setActionError('Built-in UOMs cannot be renamed.');
+      return;
+    }
+    if (!isDeletableRecipeUnit(code)) {
+      setActionError('Only custom (added) UOMs can be edited or deleted.');
+      return;
+    }
+    setEditingCode(code);
+    setEditDraft(code);
+    setActionError(null);
+    setActionInfo(null);
+  }
+
+  async function saveEdit(original: string) {
+    const result = renameRecipeUnit(original, editDraft, selectedCompanyId);
+    if (!result.ok) {
+      setActionError(result.message);
+      return;
+    }
+    setBusyCode(original);
+    setActionError(null);
+    try {
+      const remapped = await remapIngredientUoms(selectedCompanyId, result.from, result.to);
+      reloadLists();
+      setEditingCode(null);
+      setEditDraft('');
+      setActionInfo(
+        remapped > 0
+          ? `Renamed “${result.from}” → “${result.to}” and updated ${remapped} component(s).`
+          : `Renamed “${result.from}” → “${result.to}”.`,
+      );
+    } catch (e) {
+      reloadLists();
+      setActionError(e instanceof Error ? e.message : 'Renamed in catalog, but component remap failed.');
+    } finally {
+      setBusyCode(null);
+    }
+  }
+
+  async function deleteUom(code: string) {
+    if (!isDeletableRecipeUnit(code)) {
+      setActionError('Built-in UOMs cannot be deleted. Custom duplicates can be removed.');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete UOM “${code}” from All UOM?\n\nComponents still using this UOM will keep the old value until you edit them (or rename first).`,
+    );
+    if (!confirmed) return;
+    setBusyCode(code);
+    setActionError(null);
+    try {
+      removeExtraRecipeUnit(code, selectedCompanyId);
+      reloadLists();
+      setActionInfo(`Deleted “${code}” from All UOM.`);
+    } finally {
+      setBusyCode(null);
+    }
   }
 
   return (
@@ -169,7 +302,8 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
       <div className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Click a UOM in All UOM to add it to My UOM. Click a UOM in My UOM to remove it.
+            Click a UOM name in All UOM to add it to My UOM. Custom UOMs can be edited or deleted.
+            Built-in units (Gr, Kg, Ltr, …) are fixed system units.
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
@@ -195,54 +329,121 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
           </div>
         </div>
         {addUomError && <p className="text-xs text-red-500">{addUomError}</p>}
+        {actionError && <p className="text-xs text-red-500">{actionError}</p>}
+        {actionInfo && <p className="text-xs text-emerald-700">{actionInfo}</p>}
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="bg-card border border-border rounded-lg overflow-hidden min-w-0">
             <div className="px-3 py-2 border-b border-border bg-muted/30">
               <p className="text-xs font-semibold">All UOM</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Click a UOM to add it to My UOM</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Click name to add to My UOM · Edit / Delete for custom units
+              </p>
             </div>
             <TableScrollContainer ref={allUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full text-xs">
-              <ColGroup widths={['100%']} />
+              <ColGroup widths={['70%', '30%']} />
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className={tableHeaderCls('left')}>UOM</th>
+                  <th className={tableHeaderCls('right')}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {allUomsScroll.visibleItems.map(code => {
                   const inMyUom = myUomCodes.some(c => c.toLowerCase() === code.toLowerCase());
+                  const deletable = isDeletableRecipeUnit(code);
+                  const editing = editingCode === code;
                   return (
                     <tr
                       key={code}
                       className={`border-b border-border last:border-0 ${
-                        inMyUom ? 'bg-muted/10' : 'hover:bg-muted/20 cursor-pointer'
+                        inMyUom ? 'bg-muted/10' : 'hover:bg-muted/20'
                       }`}
-                      onClick={() => {
-                        if (!inMyUom) addToMyUom(code);
-                      }}
                     >
                       <td className="px-3 py-2.5">
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation();
-                            addToMyUom(code);
-                          }}
-                          disabled={inMyUom}
-                          className={`font-sans font-medium text-left hover:underline ${
-                            inMyUom ? 'text-muted-foreground cursor-default' : 'text-primary'
-                          }`}
-                        >
-                          {code}
-                          {inMyUom ? ' · added' : ''}
-                        </button>
+                        {editing ? (
+                          <input
+                            className={`${inputCls} w-full max-w-[12rem]`}
+                            value={editDraft}
+                            autoFocus
+                            onChange={e => setEditDraft(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') void saveEdit(code);
+                              if (e.key === 'Escape') {
+                                setEditingCode(null);
+                                setEditDraft('');
+                              }
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => addToMyUom(code)}
+                            disabled={inMyUom}
+                            className={`font-sans font-medium text-left hover:underline ${
+                              inMyUom ? 'text-muted-foreground cursor-default' : 'text-primary'
+                            }`}
+                          >
+                            {code}
+                            {inMyUom ? ' · added' : ''}
+                            {isBuiltinRecipeUnit(code) ? '' : ' · custom'}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
+                          {editing ? (
+                            <>
+                              <button
+                                type="button"
+                                title="Save"
+                                disabled={busyCode === code}
+                                onClick={() => void saveEdit(code)}
+                                className="p-1 rounded text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                              >
+                                <Check size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Cancel"
+                                onClick={() => {
+                                  setEditingCode(null);
+                                  setEditDraft('');
+                                }}
+                                className="p-1 rounded text-muted-foreground hover:bg-muted"
+                              >
+                                <X size={14} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                title={deletable ? 'Edit UOM name' : 'Built-in UOM'}
+                                disabled={!deletable || busyCode === code}
+                                onClick={() => startEdit(code)}
+                                className="p-1 rounded text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                title={deletable ? 'Delete UOM' : 'Built-in UOM'}
+                                disabled={!deletable || busyCode === code}
+                                onClick={() => void deleteUom(code)}
+                                className="p-1 rounded text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
-                <InfiniteScrollTableSentinel colSpan={1} hasMore={allUomsScroll.hasMore} onLoadMore={allUomsScroll.loadMore} nextPageSize={allUomsScroll.nextPageSize} sentinelRef={allUomsScroll.sentinelRef} totalCount={allUomsScroll.totalCount} visibleCount={allUomsScroll.visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={2} hasMore={allUomsScroll.hasMore} onLoadMore={allUomsScroll.loadMore} nextPageSize={allUomsScroll.nextPageSize} sentinelRef={allUomsScroll.sentinelRef} totalCount={allUomsScroll.totalCount} visibleCount={allUomsScroll.visibleCount} />
               </tbody>
             </table>
             </TableScrollContainer>
