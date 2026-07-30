@@ -2625,6 +2625,8 @@ export interface Ingredient {
   parStock?: number;
   parStockUom?: string;
   onHandQty?: number;
+  /** True when the component has at least one inventory purchase lot. */
+  hasPurchaseRecord?: boolean;
   metricsLookbackDays?: number;
   dailyUsageAuto?: boolean;
   orderFreqAuto?: boolean;

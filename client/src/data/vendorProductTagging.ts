@@ -10,12 +10,17 @@ import {
 } from './componentForm';
 import {
   applyVendorProductOverrides,
+  calcComponentPrincipalUomPrice,
   calcNettUomPrice,
   calcNettUomQty,
   resolveComponentUomQty,
   type VendorProductCatalogItem,
 } from './vendorProductCatalog';
 import { calcSplitUseNettUnitCost, toSplitUseBasisQty } from './componentSplitUse';
+import {
+  convertComponentQtyBetweenUoms,
+  type ComponentUomSource,
+} from './componentParStock';
 
 export type VendorProductTagApplyOptions = {
   recipeUnit: string;
@@ -132,8 +137,117 @@ export function findComponentRowForTaggedProduct(
   return rows.find(r => componentRowTagsVendorProduct(r, productId)) ?? null;
 }
 
-function findCatalogProduct(productId: string): VendorProductCatalogItem | undefined {
-  return applyVendorProductOverrides().find(p => p.id === productId);
+function findCatalogProduct(productId: string, catalog?: VendorProductCatalogItem[]): VendorProductCatalogItem | undefined {
+  const source = catalog ?? applyVendorProductOverrides();
+  return source.find(p => p.id === productId);
+}
+
+function unitsEqual(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function uomSourceFromRow(row: ComponentRow): ComponentUomSource {
+  const detail = resolveDetailConfigForRow(row);
+  return {
+    recipeUom: fromApiUom(row.recipeUOM),
+    inventoryUom: fromApiUom(row.inventoryUOM),
+    altRecipeUnits: detail.altRecipeUnits,
+    altInventoryUnits: detail.altInventoryUnits,
+  };
+}
+
+function convertUnitPrice(
+  priceFrom: number,
+  fromUom: string,
+  toUom: string,
+  row: ComponentRow,
+): number {
+  if (!(priceFrom > 0)) return 0;
+  if (!fromUom || !toUom || unitsEqual(fromUom, toUom)) return priceFrom;
+  const detail = resolveDetailConfigForRow(row);
+  const qty = convertComponentQtyBetweenUoms(1, fromUom, toUom, {
+    ...uomSourceFromRow(row),
+    convertFromInventoryQty: detail.convertFromInventoryQty,
+    convertToRecipeQty: detail.convertToRecipeQty,
+  });
+  if (qty == null || !(qty > 0)) return priceFrom;
+  return priceFrom / qty;
+}
+
+/** Primary tagged vendor principal UOM pricing for My Component table fallback. */
+export function resolveAttachedVendorPrincipalPricing(
+  row: ComponentRow,
+  catalog: VendorProductCatalogItem[] = applyVendorProductOverrides(),
+): {
+  product: VendorProductCatalogItem;
+  componentUom: string;
+  principalQty: number;
+  principalPrice: number;
+  deliveryPrice: number;
+} | null {
+  const detail = resolveDetailConfigForRow(row);
+  const primaryId = detail.taggedVendorProductIds[0];
+  if (!primaryId) return null;
+
+  const product = findCatalogProduct(primaryId, catalog);
+  if (!product) return null;
+
+  const recipeUnit = fromApiUom(row.recipeUOM);
+  const componentUom = detail.vendorProductComponentUom[primaryId] ?? recipeUnit;
+  const { qty: principalQty } = resolveVendorProductPrincipalQty(
+    product,
+    recipeUnit,
+    detail.altRecipeUnits,
+    componentUom,
+    detail.vendorProductPrincipalQty[primaryId],
+  );
+  const principalPrice = calcComponentPrincipalUomPrice(product.deliveryPrice, principalQty);
+  if (!(principalPrice > 0) && !(product.deliveryPrice > 0)) return null;
+
+  return {
+    product,
+    componentUom,
+    principalQty,
+    principalPrice,
+    deliveryPrice: product.deliveryPrice,
+  };
+}
+
+/**
+ * Last UOM Price for My Component table.
+ * With purchase history → stored last prices.
+ * Without purchases → Principal Component UOM Price from the attached vendor (live from catalog).
+ */
+export function resolveMyComponentLastUomPrice(
+  row: ComponentRow,
+  uomFilter: 'principal' | 'inventory' | string = 'principal',
+  catalog: VendorProductCatalogItem[] = applyVendorProductOverrides(),
+): number {
+  if (row.hasPurchaseRecord) {
+    if (uomFilter === 'inventory') return row.lastPriceInventory || 0;
+    if (uomFilter === 'principal') return row.lastPriceRecipe || 0;
+    const recipeUom = fromApiUom(row.recipeUOM);
+    return convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+  }
+
+  const vendor = resolveAttachedVendorPrincipalPricing(row, catalog);
+  if (!vendor) {
+    if (uomFilter === 'inventory') return row.lastPriceInventory || 0;
+    if (uomFilter === 'principal') return row.lastPriceRecipe || 0;
+    const recipeUom = fromApiUom(row.recipeUOM);
+    return convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+  }
+
+  if (uomFilter === 'inventory') {
+    return vendor.deliveryPrice > 0 ? vendor.deliveryPrice : row.lastPriceInventory || 0;
+  }
+
+  const targetUom = uomFilter === 'principal' ? fromApiUom(row.recipeUOM) : uomFilter;
+  if (vendor.principalPrice > 0) {
+    return convertUnitPrice(vendor.principalPrice, vendor.componentUom, targetUom, row);
+  }
+
+  return row.lastPriceRecipe || 0;
 }
 
 /** Derive recipe/inventory prices from the primary tagged vendor product when missing. */
