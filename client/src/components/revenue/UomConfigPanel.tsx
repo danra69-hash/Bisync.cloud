@@ -204,8 +204,13 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
       setAddUomError('Enter a UOM code.');
       return;
     }
-    if (allUomCodes.some(u => u.toLowerCase() === trimmed.toLowerCase())) {
-      setAddUomError('This UOM already exists.');
+    const existing = allUomCodes.find(u => u.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      setAddUomError(
+        existing === trimmed
+          ? `“${trimmed}” is already in All UOM.`
+          : `“${trimmed}” matches existing UOM “${existing}”.`,
+      );
       return;
     }
     ensureRecipeUnitsExist([trimmed], selectedCompanyId);
