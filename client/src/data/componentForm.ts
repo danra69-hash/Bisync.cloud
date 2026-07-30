@@ -90,6 +90,9 @@ function resolveInventoryToRecipeQtyOnLoad(
 }
 
 export function toApiUom(unit: string): string {
+  const trimmed = unit.trim();
+  if (!trimmed) return '';
+  const canonical = RECIPE_UNITS.find(u => u.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
   const map: Record<string, string> = {
     Mg: 'mg', Gr: 'g', Kg: 'kg', Tonne: 't',
     Ml: 'ml', Cl: 'cl', Ltr: 'L',
@@ -97,17 +100,32 @@ export function toApiUom(unit: string): string {
     Pack: 'pack',
     Oz: 'oz', Lb: 'lb', FlOz: 'fl oz', Gal: 'gal',
   };
-  return map[unit] ?? unit.toLowerCase();
+  if (map[canonical]) return map[canonical];
+  const aliasApi: Record<string, string> = {
+    gr: 'g', gram: 'g', grams: 'g', g: 'g',
+    lt: 'L', ltr: 'L', litre: 'L', liter: 'L', l: 'L',
+    btl: 'btl', bottle: 'btl',
+    pcs: 'pcs', each: 'pcs',
+  };
+  return aliasApi[trimmed.toLowerCase()] ?? trimmed.toLowerCase();
 }
 
 export function fromApiUom(unit: string): string {
+  const trimmed = (unit ?? '').trim();
+  if (!trimmed) return '';
   const map: Record<string, string> = {
-    mg: 'Mg', g: 'Gr', kg: 'Kg', t: 'Tonne',
-    ml: 'Ml', cl: 'Cl', L: 'Ltr',
-    pcs: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case', btl: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
+    mg: 'Mg', g: 'Gr', gr: 'Gr', gram: 'Gr', grams: 'Gr',
+    kg: 'Kg', t: 'Tonne', tonne: 'Tonne',
+    ml: 'Ml', cl: 'Cl', L: 'Ltr', l: 'Ltr', lt: 'Ltr', ltr: 'Ltr', litre: 'Ltr', liter: 'Ltr',
+    pcs: 'Each', each: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case',
+    btl: 'Bottle', bottle: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
     oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal', box: 'Case', set: 'Each',
   };
-  return map[unit] ?? unit;
+  const lower = trimmed.toLowerCase();
+  if (map[trimmed]) return map[trimmed];
+  if (map[lower]) return map[lower];
+  const builtin = RECIPE_UNITS.find(u => u.toLowerCase() === lower);
+  return builtin ?? trimmed;
 }
 
 export type AltUnitEntry = { fromQty: string; qty: string; unit: string };

@@ -20,6 +20,26 @@ function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.map(value => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+/** Case-insensitive unique; prefers RECIPE_UNITS / preferred casing. */
+function uniqueSortedUnits(values: string[], preferred: readonly string[] = RECIPE_UNITS): string[] {
+  const preferredByKey = new Map(
+    preferred.map(value => [value.trim().toLowerCase(), value.trim()] as const).filter(([key]) => key),
+  );
+  const byKey = new Map<string, string>();
+  for (const raw of values) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    const preferredLabel = preferredByKey.get(key);
+    if (!byKey.has(key)) {
+      byKey.set(key, preferredLabel ?? trimmed);
+    } else if (preferredLabel) {
+      byKey.set(key, preferredLabel);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+}
+
 function emptyCatalog(): ComponentCatalogState {
   return { extraGroups: [], extraUoms: [], myUoms: [], extraStorages: [] };
 }
@@ -120,29 +140,173 @@ export function ensureGroupsExist(
 export function normalizeRecipeUnitInput(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return '';
+  const aliases: Record<string, string> = {
+    gr: 'Gr',
+    gram: 'Gr',
+    grams: 'Gr',
+    g: 'Gr',
+    kg: 'Kg',
+    lt: 'Ltr',
+    l: 'Ltr',
+    ltr: 'Ltr',
+    litre: 'Ltr',
+    liter: 'Ltr',
+    ml: 'Ml',
+    btl: 'Bottle',
+    bottle: 'Bottle',
+    pcs: 'Each',
+    each: 'Each',
+  };
+  const lower = trimmed.toLowerCase();
+  if (aliases[lower]) return aliases[lower];
+  const builtin = RECIPE_UNITS.find(unit => unit.toLowerCase() === lower);
+  if (builtin) return builtin;
   const mapped = fromApiUom(toApiUom(trimmed));
-  if (mapped) return mapped;
-  const direct = RECIPE_UNITS.find(unit => unit.toLowerCase() === trimmed.toLowerCase());
-  return direct ?? trimmed;
+  const mappedBuiltin = RECIPE_UNITS.find(unit => unit.toLowerCase() === mapped.toLowerCase());
+  return mappedBuiltin ?? mapped;
+}
+
+export function isBuiltinRecipeUnit(unit: string): boolean {
+  const normalized = normalizeRecipeUnitInput(unit);
+  if (!normalized) return false;
+  return RECIPE_UNITS.some(builtin => builtin.toLowerCase() === normalized.toLowerCase());
+}
+
+export function isDeletableRecipeUnit(unit: string): boolean {
+  const normalized = normalizeRecipeUnitInput(unit);
+  if (!normalized || isBuiltinRecipeUnit(normalized)) return false;
+  return currentCatalog().extraUoms.some(
+    extra => normalizeRecipeUnitInput(extra).toLowerCase() === normalized.toLowerCase()
+      || extra.trim().toLowerCase() === unit.trim().toLowerCase(),
+  );
 }
 
 export function getKnownRecipeUnits(): string[] {
   const extras = currentCatalog().extraUoms.map(normalizeRecipeUnitInput).filter(Boolean);
-  return uniqueSorted([...RECIPE_UNITS, ...extras]);
+  return uniqueSortedUnits([...RECIPE_UNITS, ...extras], RECIPE_UNITS);
 }
 
 export function getMyRecipeUnits(): string[] {
-  return uniqueSorted(
+  return uniqueSortedUnits(
     currentCatalog().myUoms.map(normalizeRecipeUnitInput).filter(Boolean),
+    RECIPE_UNITS,
   );
 }
 
 export function saveMyRecipeUnits(units: string[], companyId?: number | null) {
   const next = {
     ...currentCatalog(),
-    myUoms: uniqueSorted(units.map(normalizeRecipeUnitInput).filter(Boolean)),
+    myUoms: uniqueSortedUnits(units.map(normalizeRecipeUnitInput).filter(Boolean), RECIPE_UNITS),
   };
   persistCatalog(next, companyId);
+}
+
+/** Normalize / de-dupe extraUoms + myUoms (case-insensitive, alias fold). */
+export function sanitizeRecipeUnitsCatalog(companyId?: number | null): {
+  removedExtras: string[];
+  changed: boolean;
+} {
+  const catalog = currentCatalog();
+  const nextExtras = uniqueSortedUnits(
+    catalog.extraUoms
+      .map(normalizeRecipeUnitInput)
+      .filter(unit => unit && !isBuiltinRecipeUnit(unit)),
+    RECIPE_UNITS,
+  );
+  const nextMy = uniqueSortedUnits(
+    catalog.myUoms.map(normalizeRecipeUnitInput).filter(Boolean),
+    RECIPE_UNITS,
+  );
+  const prevExtras = uniqueSorted(catalog.extraUoms);
+  const prevMy = uniqueSorted(catalog.myUoms);
+  const removedExtras = prevExtras.filter(
+    old => !nextExtras.some(next => next.toLowerCase() === normalizeRecipeUnitInput(old).toLowerCase())
+      && !isBuiltinRecipeUnit(old),
+  );
+  const changed =
+    JSON.stringify(prevExtras.map(normalizeRecipeUnitInput).sort()) !== JSON.stringify([...nextExtras].sort())
+    || JSON.stringify(prevMy.map(normalizeRecipeUnitInput).sort()) !== JSON.stringify([...nextMy].sort());
+
+  if (changed) {
+    persistCatalog({ ...catalog, extraUoms: nextExtras, myUoms: nextMy }, companyId);
+  }
+  return { removedExtras, changed };
+}
+
+export function removeExtraRecipeUnit(unit: string, companyId?: number | null): string[] {
+  const key = unit.trim().toLowerCase();
+  const normalizedKey = normalizeRecipeUnitInput(unit).toLowerCase();
+  if (!key || isBuiltinRecipeUnit(unit)) return loadExtraRecipeUnits();
+  const nextExtras = currentCatalog().extraUoms.filter(extra => {
+    const extraKey = extra.trim().toLowerCase();
+    const extraNorm = normalizeRecipeUnitInput(extra).toLowerCase();
+    return extraKey !== key && extraNorm !== normalizedKey;
+  });
+  const nextMy = currentCatalog().myUoms.filter(extra => {
+    const extraKey = extra.trim().toLowerCase();
+    const extraNorm = normalizeRecipeUnitInput(extra).toLowerCase();
+    return extraKey !== key && extraNorm !== normalizedKey;
+  });
+  persistCatalog(
+    {
+      ...currentCatalog(),
+      extraUoms: uniqueSortedUnits(nextExtras.map(normalizeRecipeUnitInput).filter(u => u && !isBuiltinRecipeUnit(u)), RECIPE_UNITS),
+      myUoms: uniqueSortedUnits(nextMy.map(normalizeRecipeUnitInput).filter(Boolean), RECIPE_UNITS),
+    },
+    companyId,
+  );
+  return loadExtraRecipeUnits();
+}
+
+export function loadExtraRecipeUnits(): string[] {
+  return uniqueSortedUnits(
+    currentCatalog().extraUoms.map(normalizeRecipeUnitInput).filter(unit => unit && !isBuiltinRecipeUnit(unit)),
+    RECIPE_UNITS,
+  );
+}
+
+export function renameRecipeUnit(
+  fromRaw: string,
+  toRaw: string,
+  companyId?: number | null,
+): { ok: true; from: string; to: string } | { ok: false; message: string } {
+  const from = fromRaw.trim();
+  const to = normalizeRecipeUnitInput(toRaw);
+  if (!from) return { ok: false, message: 'Current UOM is required.' };
+  if (!to) return { ok: false, message: 'Enter a new UOM name.' };
+  if (from.toLowerCase() === to.toLowerCase()) {
+    return { ok: false, message: 'New name is the same as the current name.' };
+  }
+  if (!isDeletableRecipeUnit(from)) {
+    return { ok: false, message: 'Only custom (added) UOMs can be renamed.' };
+  }
+
+  const catalog = currentCatalog();
+  const fromKey = from.toLowerCase();
+  const replaceUnit = (value: string) => (
+    value.trim().toLowerCase() === fromKey ? to : value
+  );
+
+  const nextExtras = uniqueSortedUnits(
+    catalog.extraUoms
+      .map(replaceUnit)
+      .map(normalizeRecipeUnitInput)
+      .filter(unit => unit && !isBuiltinRecipeUnit(unit)),
+    RECIPE_UNITS,
+  );
+  const extrasClean = isBuiltinRecipeUnit(to)
+    ? nextExtras.filter(unit => unit.toLowerCase() !== to.toLowerCase())
+    : nextExtras.some(unit => unit.toLowerCase() === to.toLowerCase())
+      ? nextExtras
+      : uniqueSortedUnits([...nextExtras, to], RECIPE_UNITS);
+
+  const nextMy = uniqueSortedUnits(
+    catalog.myUoms.map(replaceUnit).map(normalizeRecipeUnitInput).filter(Boolean),
+    RECIPE_UNITS,
+  );
+
+  persistCatalog({ ...catalog, extraUoms: extrasClean, myUoms: nextMy }, companyId);
+  return { ok: true, from, to };
 }
 
 export function ensureRecipeUnitsExist(units: string[], companyId?: number | null): { added: string[] } {
@@ -161,7 +325,16 @@ export function ensureRecipeUnitsExist(units: string[], companyId?: number | nul
   }
 
   if (added.length > 0) {
-    persistCatalog({ ...currentCatalog(), extraUoms: uniqueSorted(extras) }, companyId);
+    persistCatalog(
+      {
+        ...currentCatalog(),
+        extraUoms: uniqueSortedUnits(
+          extras.map(normalizeRecipeUnitInput).filter(unit => unit && !isBuiltinRecipeUnit(unit)),
+          RECIPE_UNITS,
+        ),
+      },
+      companyId,
+    );
   }
   return { added };
 }
