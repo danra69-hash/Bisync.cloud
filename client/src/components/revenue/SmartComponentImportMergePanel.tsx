@@ -6,6 +6,7 @@ import {
   type SmartComponentImportConflict,
 } from '../../data/smartComponentCatalog';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import {
   SIDE_PANEL_OVERLAY_CLS,
   SIDE_PANEL_SHELL_CREATE_VENDOR_CLS,
@@ -110,6 +111,18 @@ export function SmartComponentImportMergePanel({
               <div className="border border-border rounded-lg overflow-hidden">
                 <div className="overflow-auto max-h-[50vh]">
                   <table className="w-full text-xs">
+                    <ColGroup
+                      widths={[
+                        112,
+                        '8%',
+                        ...MERGE_COMPARE_FIELDS.map(field => (
+                          field.key === 'name' ? '10%'
+                          : field.key === 'active' ? 72
+                          : field.key === 'componentId' ? '7%'
+                          : '6%'
+                        )),
+                      ]}
+                    />
                     <thead className="bg-muted/40 sticky top-0">
                       <tr className="border-b border-border">
                         <TableHeaderCell className="w-28">Keep</TableHeaderCell>

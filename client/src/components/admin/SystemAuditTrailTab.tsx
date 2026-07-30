@@ -11,6 +11,7 @@ import { isSuperAdmin, parseUserAccess } from '../../data/userAccess';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 function activityTypeLabel(category: string): string {
   switch (category) {
@@ -291,6 +292,7 @@ export function SystemAuditTrailTab({ allowDevConsoleAccess = false }: SystemAud
       ) : (
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <table className="w-full text-xs">
+            <ColGroup widths={['22%', '16%', '42%', '20%']} />
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <TableHeaderCell>Date / Time</TableHeaderCell>

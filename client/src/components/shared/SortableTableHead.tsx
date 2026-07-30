@@ -39,6 +39,25 @@ export function TableColGroup<T extends string>({
   );
 }
 
+/** Simple `<colgroup>` from width list (%, px number, or CSS length). Use for non-sortable tables. */
+export function ColGroup({
+  widths,
+}: {
+  widths: readonly (string | number | undefined | null)[];
+}) {
+  return (
+    <colgroup>
+      {widths.map((width, index) => {
+        if (width == null || width === '') {
+          return <col key={index} />;
+        }
+        const value = typeof width === 'number' ? `${width}px` : width;
+        return <col key={index} style={{ width: value }} />;
+      })}
+    </colgroup>
+  );
+}
+
 type SortableTableHeadProps<T extends string> = {
   label: string;
   header?: ReactNode;

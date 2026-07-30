@@ -7,6 +7,7 @@ import { fromApiUom } from '../../data/componentForm';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 
 export type ProduceSubProductOption = {
   id: number;
@@ -537,6 +538,13 @@ export function ProduceBatchModal({
               </div>
               <div className="border border-border rounded-md overflow-x-auto max-h-56 overflow-y-auto">
                 <table className="w-full text-[11px] min-w-[32rem]">
+                  <ColGroup
+                    widths={
+                      purpose === 'produce' || purpose === 'edit'
+                        ? ['28%', '10%', '12%', '14%', '12%', '12%', '12%']
+                        : ['30%', '12%', '14%', '14%', '14%', '16%']
+                    }
+                  />
                   <thead className="sticky top-0 bg-muted/40">
                     <tr className="text-left">
                       <TableHeaderCell compact>Component</TableHeaderCell>

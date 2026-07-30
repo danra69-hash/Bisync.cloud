@@ -15,9 +15,11 @@ import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import { CountryLocalityFields } from '../shared/CountryLocalityFields';
 import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
+import { TABLE_COL_ACTION } from '../layout/pageLayout';
 
 type Props = {
   countryCode: string;
@@ -415,6 +417,7 @@ export function VendorCreatePanel({ countryCode, nextExternalId, existingVendors
                   <div className="border border-border rounded-lg overflow-hidden">
                     <TableScrollContainer ref={parsedRowsScrollRef} className="overflow-auto max-h-72">
                       <table className="w-full text-xs">
+                        <ColGroup widths={['14%', '20%', '12%', '16%', '12%', '10%', TABLE_COL_ACTION.style.width]} />
                         <thead className="sticky top-0 bg-muted/50">
                           <tr className="border-b border-border">
                             <TableHeaderCell compact>Vendor Product ID</TableHeaderCell>

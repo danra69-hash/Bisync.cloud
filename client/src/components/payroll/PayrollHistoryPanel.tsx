@@ -14,6 +14,7 @@ import {
 } from './payrollProcess';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
+import { ColGroup } from '../shared/SortableTableHead';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 type Props = {
@@ -156,8 +157,9 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
                       <MillstoneLoader size="sm" layout="block" label="Loading payment details…" />
                     )}
                     {detail && (
-                      <div className="overflow-x-hidden" data-table-scroll>
+                      <div className="overflow-x-auto" data-table-scroll>
                         <table className="w-full text-xs">
+                          <ColGroup widths={['12%', '22%', '22%', '14%', '15%', '15%']} />
                           <thead>
                             <tr className="border-b border-border/60">
                               <th className={tableHeaderCls('left')}>Employee ID</th>

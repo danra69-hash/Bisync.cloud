@@ -11,6 +11,7 @@ import {
   type ComponentHierarchyState,
   type HierarchyAttachmentCounts,
 } from '../../data/componentHierarchy';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   state: ComponentHierarchyState;
@@ -261,6 +262,7 @@ export function ComponentHierarchyPanel({
           </p>
         </div>
         <table className="w-full text-xs">
+          <ColGroup widths={['22%', '22%', '22%', '18%', 88]} />
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {['Category', 'Group', 'Sub-Group', 'Components', ''].map(label => (

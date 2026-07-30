@@ -19,6 +19,8 @@ import {
   type SalesDiaryStatus,
 } from '../../data/salesDiary';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { ColGroup } from '../shared/SortableTableHead';
+import { TABLE_COL_ACTION } from '../layout/pageLayout';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 
 type Props = {

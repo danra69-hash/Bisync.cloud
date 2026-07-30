@@ -18,8 +18,9 @@ import {
   resolvePosMenuRrp,
 } from '../../data/posCatalog';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
-import { pageShellClass } from '../layout/pageLayout';
+import { pageShellClass, TABLE_COL_CHECK, TABLE_COL_TOGGLE } from '../layout/pageLayout';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
@@ -445,6 +446,7 @@ export function PosPromotionSchedulerPage({
           ) : (
             <TableScrollContainer>
               <table className="w-full text-xs">
+                <ColGroup widths={['16%', '14%', '10%', '10%', '12%', '8%', '10%', '8%', TABLE_COL_TOGGLE.style.width]} />
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-2 pr-3 font-semibold">Name</th>
@@ -746,6 +748,7 @@ export function PosPromotionSchedulerPage({
           ) : (
             <TableScrollContainer>
               <table className="w-full text-xs min-w-[1100px]">
+                <ColGroup widths={[TABLE_COL_CHECK.style.width, '10%', '22%', '8%', '9%', '8%', '8%', '9%', '8%', '10%']} />
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-2 pr-2 font-semibold">Include</th>

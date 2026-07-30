@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import type { AppUser } from '../../api';
 import { parseUserAccess } from '../../data/userAccess';
+import { ColGroup } from '../shared/SortableTableHead';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 
 function accessBadges(accessJson: string): string[] {
@@ -34,6 +35,7 @@ export function PlatformAccessSummary({ user, onManageAccess }: Props) {
       {user && (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <table className="w-full text-xs">
+            <ColGroup widths={['16%', '18%', '22%', '10%', '22%', 72]} />
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {['Company', 'Locations', 'Email', 'Role', 'Access', 'Status'].map(h => (

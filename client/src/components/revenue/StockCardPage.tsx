@@ -12,7 +12,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { StockCardDetailPanel } from './StockCardDetailPanel';
 import {
@@ -42,15 +42,15 @@ type StockCardSortColumn =
   | 'avgCogs';
 
 const STOCK_CARD_TABLE_COLUMNS: SortableColumnDef<StockCardSortColumn>[] = [
-  { key: 'type', label: 'Type' },
-  { key: 'group', label: 'Group' },
-  { key: 'name', label: 'Name' },
-  { key: 'uom', label: 'UOM' },
-  { key: 'inboundQty', label: 'Inbound QTY', align: 'right' },
-  { key: 'outboundQty', label: 'Outbound QTY', align: 'right' },
-  { key: 'avgOutboundCogs', label: 'Avg outbound COGS', align: 'right' },
-  { key: 'onHandQty', label: 'Qty on hand', align: 'right' },
-  { key: 'avgCogs', label: 'Avg COGS', align: 'right' },
+  { key: 'type', label: 'Type', ...tableColWidth('10%') },
+  { key: 'group', label: 'Group', ...tableColWidth('12%') },
+  { key: 'name', label: 'Name', ...tableColWidth('18%') },
+  { key: 'uom', label: 'UOM', ...tableColWidth('7%') },
+  { key: 'inboundQty', label: 'Inbound QTY', align: 'right', ...tableColWidth('10%') },
+  { key: 'outboundQty', label: 'Outbound QTY', align: 'right', ...tableColWidth('10%') },
+  { key: 'avgOutboundCogs', label: 'Avg outbound COGS', align: 'right', ...tableColWidth('12%') },
+  { key: 'onHandQty', label: 'Qty on hand', align: 'right', ...tableColWidth('10%') },
+  { key: 'avgCogs', label: 'Avg COGS', align: 'right', ...tableColWidth('11%') },
 ];
 
 function fmtQty(value: number, countryCode: string) {
@@ -254,6 +254,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
 
       <TableScrollContainer ref={scrollRootRef}>
         <table className="w-full text-sm font-sans">
+          <TableColGroup columns={STOCK_CARD_TABLE_COLUMNS} />
           <thead>
             <SortableTableHeaderRow
               columns={STOCK_CARD_TABLE_COLUMNS}

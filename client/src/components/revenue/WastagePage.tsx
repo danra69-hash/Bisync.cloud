@@ -12,6 +12,7 @@ import { filterSelectCls } from '../layout/formControls';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { componentMatchesLocations } from '../../data/createOrder';
@@ -649,17 +650,18 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
         >
           <table className="w-full border-collapse text-sm">
+            <ColGroup widths={[64, 96, '22%', 112, 136, 64, 136, '18%', 112]} />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="text-left px-2 py-1.5 w-16">Source</th>
-                <th className="text-left px-2 py-1.5 w-24">Date</th>
+                <th className="text-left px-2 py-1.5">Source</th>
+                <th className="text-left px-2 py-1.5">Date</th>
                 <th className="text-left px-2 py-1.5">Item</th>
-                <th className="text-left px-2 py-1.5 w-28">Type</th>
-                <th className="text-right px-2 py-1.5 w-[8.5rem]">Qty</th>
-                <th className="text-left px-2 py-1.5 w-16">UOM</th>
-                <th className="text-right px-2 py-1.5 w-[8.5rem]">Value</th>
+                <th className="text-left px-2 py-1.5">Type</th>
+                <th className="text-right px-2 py-1.5">Qty</th>
+                <th className="text-left px-2 py-1.5">UOM</th>
+                <th className="text-right px-2 py-1.5">Value</th>
                 <th className="text-left px-2 py-1.5">Reason</th>
-                <th className="text-left px-2 py-1.5 w-28">Check no.</th>
+                <th className="text-left px-2 py-1.5">Check no.</th>
               </tr>
             </thead>
             <tbody>

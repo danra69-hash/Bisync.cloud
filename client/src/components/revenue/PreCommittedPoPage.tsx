@@ -35,6 +35,7 @@ import { useOrgVendorPolicy } from '../../hooks/useOrgVendorPolicy';
 import { ingredientToRow } from './smartIngredientShared';
 import { OrderTemplateVendorProductPickerModal } from './OrderTemplateVendorProductPickerModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { resolvePurchaseOrderSignatories } from '../../data/purchaseOrderSignatories';
@@ -819,6 +820,7 @@ export function PreCommittedPoPage({
                   </p>
                 ) : (
                   <table className="w-full">
+                    <ColGroup widths={['40%', '15%', '15%', '15%', 88]} />
                     <thead className="bg-muted/20 sticky top-0">
                       <tr>
                         <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-normal">Product</th>

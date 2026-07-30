@@ -12,6 +12,7 @@ import {
 } from '../../data/componentSplitUse';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   form: ComponentForm;
@@ -98,6 +99,7 @@ export function ComponentSplitUseSection({ form, componentPrice, principalQty, o
 
       <div className="overflow-x-auto border border-border rounded-md">
         <table className="w-full text-xs min-w-[760px]">
+          <ColGroup widths={['24%', '10%', '14%', '14%', '14%', 72, 88]} />
           <thead>
             <tr className="border-b border-border bg-muted/20">
               <TableHeaderCell>Sub-component Name</TableHeaderCell>

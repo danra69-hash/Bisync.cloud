@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
 import { Check, Copy, PackageCheck, X } from 'lucide-react';
@@ -286,6 +287,35 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     !hidePrices ? 'Line total' : null,
   ].filter(Boolean) as string[];
   const lineColSpan = lineHeaders.length;
+  const lineColWidths = lineHeaders.map(header => {
+    switch (header) {
+      case 'Component':
+        return '14%';
+      case 'Product':
+        return '14%';
+      case 'UOM':
+        return '5%';
+      case 'Halal cert no.':
+        return '9%';
+      case 'Expiry date':
+        return '8%';
+      case 'Temp °C':
+        return '5%';
+      case 'Line total':
+        return '8%';
+      case 'Tax':
+        return '5%';
+      case 'Received & consolidated':
+        return '9%';
+      case 'Remaining to order':
+        return '8%';
+      case 'Unit Price Received':
+      case 'Unit Price Variance':
+        return '8%';
+      default:
+        return '7%';
+    }
+  });
 
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -687,6 +717,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
             </div>
             <TableScrollContainer ref={scrollRootRef} className="max-h-[min(42vh,24rem)] overflow-y-auto">
               <table className="w-full text-xs">
+                <ColGroup widths={lineColWidths} />
                 <thead>
                   <tr className="border-b border-border">
                     {lineHeaders.map(h => (

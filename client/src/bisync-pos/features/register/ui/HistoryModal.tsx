@@ -5,6 +5,7 @@ import {
   MOCK_CLOSED_CHECKS,
   type ClosedCheck,
 } from '../domain/history'
+import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './HistoryModal.css'
 
 type Props = {
@@ -94,6 +95,7 @@ function CheckDetail({ check }: { check: ClosedCheck }) {
       </div>
 
       <table className="history-detail__table">
+        <ColGroup widths={['40%', '15%', '22%', '23%']} />
         <thead>
           <tr>
             <th scope="col">Product</th>

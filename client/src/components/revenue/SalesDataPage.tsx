@@ -6,6 +6,7 @@ import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 import {

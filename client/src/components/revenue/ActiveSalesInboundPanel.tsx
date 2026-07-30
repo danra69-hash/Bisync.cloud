@@ -8,6 +8,7 @@ import {
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { inputCls, qtyPriceWidthCls } from '../../data/componentForm';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type LineDraft = {
   id: number;
@@ -169,6 +170,7 @@ export function ActiveSalesInboundPanel({ selectedCompanyId, onApproved }: Props
                   <div className="space-y-3 pt-1">
                     <div className="overflow-x-auto rounded-md border border-border">
                       <table className="w-full text-xs">
+                        <ColGroup widths={['50%', '25%', '25%']} />
                         <thead className="bg-muted/40">
                           <tr className="border-b border-border text-left">
                             <th className="px-2 py-1.5 font-medium">Product</th>

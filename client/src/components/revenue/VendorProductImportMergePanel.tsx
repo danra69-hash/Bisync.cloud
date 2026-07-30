@@ -6,6 +6,7 @@ import {
   type VendorProductImportConflict,
 } from '../../data/vendorProductImportCatalog';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import {
   SIDE_PANEL_OVERLAY_CLS,
   SIDE_PANEL_SHELL_CREATE_VENDOR_CLS,
@@ -110,6 +111,18 @@ export function VendorProductImportMergePanel({
               <div className="border border-border rounded-lg overflow-hidden">
                 <div className="overflow-auto max-h-[50vh]">
                   <table className="w-full text-xs">
+                    <ColGroup
+                      widths={[
+                        112,
+                        '10%',
+                        ...VENDOR_PRODUCT_MERGE_COMPARE_FIELDS.map(field => (
+                          field.key === 'productName' ? '18%'
+                          : field.key === 'specification' ? '16%'
+                          : field.key === 'vendorProductId' ? '12%'
+                          : '12%'
+                        )),
+                      ]}
+                    />
                     <thead className="bg-muted/40 sticky top-0">
                       <tr className="border-b border-border">
                         <TableHeaderCell className="w-28">Keep</TableHeaderCell>

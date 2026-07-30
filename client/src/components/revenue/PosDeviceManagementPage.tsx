@@ -19,6 +19,7 @@ import {
 } from '../../data/posDevices'
 import { getPrinterSdkAdapter } from '../../bisync-pos/core/printing/PrinterSdkRegistry'
 import { pageShellClass } from '../layout/pageLayout'
+import { ColGroup } from '../shared/SortableTableHead'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
 import { TableScrollContainer } from '../shared/TableScrollContainer'
 

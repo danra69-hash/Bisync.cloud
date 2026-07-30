@@ -11,6 +11,7 @@ import {
   type DevTeamUserRow,
 } from '../../data/devConsoleAuthApi';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   open: boolean;
@@ -252,6 +253,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
 
           <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-sm">
+              <ColGroup widths={['22%', '12%', '28%', '12%', 88]} />
               <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Name</th>

@@ -11,9 +11,10 @@ import {
   type SalesModuleTeamCalendarEvent,
   type SalesModuleTeamMember,
 } from '../../api';
-import { pageShellClass } from '../layout/pageLayout';
+import { pageShellClass, TABLE_COL_ACTION } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
