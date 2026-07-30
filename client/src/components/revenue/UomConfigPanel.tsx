@@ -14,7 +14,6 @@ import {
   normalizeRecipeUnitInput,
   removeRecipeUnit,
   renameRecipeUnit,
-  resolveRenameTarget,
   sanitizeRecipeUnitsCatalog,
   saveMyRecipeUnits,
 } from '../../data/componentCatalogConfig';
@@ -27,70 +26,34 @@ import {
 } from '../../data/uomConfig';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 import { ColGroup } from '../shared/SortableTableHead';
-import { ingredientToRow, rowToIngredient } from './smartIngredientShared';
 
 function buildAllUomCodes(): string[] {
   return getKnownRecipeUnits();
 }
 
-function remapUomInJson(json: string | undefined, from: string, to: string): string | undefined {
-  if (!json) return json;
-  const fromKey = from.trim().toLowerCase();
-  const toNorm = resolveRenameTarget(to) || to.trim();
-  try {
-    const parsed = JSON.parse(json) as unknown;
-    const walk = (value: unknown): unknown => {
-      if (typeof value === 'string') {
-        return value.trim().toLowerCase() === fromKey ? toNorm : value;
-      }
-      if (Array.isArray(value)) return value.map(walk);
-      if (value && typeof value === 'object') {
-        const next: Record<string, unknown> = {};
-        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-          next[key] = walk(child);
-        }
-        return next;
-      }
-      return value;
-    };
-    return JSON.stringify(walk(parsed));
-  } catch {
-    return json;
-  }
-}
-
-async function remapIngredientUoms(companyId: number | null | undefined, from: string, to: string) {
-  if (!companyId || !from.trim() || !to.trim()) return 0;
-  const fromKey = from.trim().toLowerCase();
-  const toNorm = resolveRenameTarget(to) || to.trim();
-  const ingredients = await api.ingredients(companyId);
-  let updated = 0;
-  for (const ingredient of ingredients) {
-    const row = ingredientToRow(ingredient);
-    let dirty = false;
-    const next = { ...row };
-    if ((next.recipeUOM ?? '').trim().toLowerCase() === fromKey) {
-      next.recipeUOM = toNorm;
-      dirty = true;
-    }
-    if ((next.inventoryUOM ?? '').trim().toLowerCase() === fromKey) {
-      next.inventoryUOM = toNorm;
-      dirty = true;
-    }
-    if ((next.parStockUom ?? '').trim().toLowerCase() === fromKey) {
-      next.parStockUom = toNorm;
-      dirty = true;
-    }
-    const remappedJson = remapUomInJson(next.detailConfigJson, from, toNorm);
-    if (remappedJson !== next.detailConfigJson) {
-      next.detailConfigJson = remappedJson;
-      dirty = true;
-    }
-    if (!dirty || next.id == null) continue;
-    await api.updateIngredient(next.id, rowToIngredient(next));
-    updated += 1;
-  }
-  return updated;
+function summarizeUomRemap(total: number, counts: Record<string, number>): string {
+  if (total <= 0) return '';
+  const parts: string[] = [];
+  const push = (key: string, label: string) => {
+    const n = counts[key] ?? 0;
+    if (n > 0) parts.push(`${n} ${label}`);
+  };
+  push('ingredients', 'component(s)');
+  push('products', 'product(s)');
+  push('vendorProducts', 'vendor product(s)');
+  push('orderTemplateItems', 'order template line(s)');
+  push('purchaseOrderItems', 'PO line(s)');
+  push('inventoryPurchases', 'stock lot(s)');
+  push('inventoryMovements', 'stock movement(s)');
+  const named = new Set([
+    'ingredients', 'products', 'vendorProducts', 'orderTemplateItems',
+    'purchaseOrderItems', 'inventoryPurchases', 'inventoryMovements',
+  ]);
+  const otherTotal = Object.entries(counts)
+    .filter(([key]) => !named.has(key))
+    .reduce((sum, [, n]) => sum + (n || 0), 0);
+  if (otherTotal > 0) parts.push(`${otherTotal} other`);
+  return parts.length > 0 ? parts.join(', ') : `${total} record(s)`;
 }
 
 function ConversionTable({ title, description, rows, showCategory = false }: {
@@ -274,13 +237,17 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
         setActionError(result.message);
         return;
       }
-      const remapped = await remapIngredientUoms(selectedCompanyId, result.from, result.to);
+      let remapSummary = '';
+      if (selectedCompanyId) {
+        const remapped = await api.renameCompanyUom(selectedCompanyId, result.from, result.to);
+        remapSummary = summarizeUomRemap(remapped.total, remapped.counts);
+      }
       reloadLists();
       setEditingCode(null);
       setEditDraft('');
       setActionInfo(
-        remapped > 0
-          ? `Renamed “${result.from}” → “${result.to}” and updated ${remapped} component(s).`
+        remapSummary
+          ? `Renamed “${result.from}” → “${result.to}” and updated ${remapSummary}.`
           : `Renamed “${result.from}” → “${result.to}”.`,
       );
     } catch (e) {
