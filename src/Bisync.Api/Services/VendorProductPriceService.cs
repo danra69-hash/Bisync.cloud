@@ -15,6 +15,7 @@ public static class VendorProductPriceService
 
         foreach (var item in items)
         {
+            if (item.IsReturnableDeposit) continue;
             var vendorProductId = item.VendorProductId?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(vendorProductId)) continue;
 

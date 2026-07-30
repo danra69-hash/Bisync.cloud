@@ -255,6 +255,8 @@ public static class PurchaseOrderWorkflow
             halalCertNo = item.HalalCertNo,
             productExpiryDate = string.IsNullOrWhiteSpace(item.ProductExpiryDate) ? null : item.ProductExpiryDate,
             receivedTemperature = item.ReceivedTemperature,
+            isReturnableDeposit = item.IsReturnableDeposit,
+            returnableItemName = string.IsNullOrWhiteSpace(item.ReturnableItemName) ? null : item.ReturnableItemName,
         };
     }
 

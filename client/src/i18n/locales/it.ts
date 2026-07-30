@@ -131,6 +131,7 @@ export const it = {
     },
     items: {
       myOrder: 'Il mio ordine',
+      returnableGoods: 'Beni restituibili',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'Acquisto contanti',

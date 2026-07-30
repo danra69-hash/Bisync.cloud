@@ -131,6 +131,7 @@ export const ja = {
     },
     items: {
       myOrder: 'マイオーダー',
+      returnableGoods: 'リターナブル商品',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: '現金仕入',

@@ -46,6 +46,11 @@ export type VendorProductCatalogItem = {
   isPrivate?: boolean;
   /** Location external IDs that can see this product when isPrivate is true. */
   privateLocationIds?: string[];
+  /** When true, orders attach a returnable deposit line. */
+  returnableDeposit?: boolean;
+  returnableItemName?: string;
+  returnableUom?: string;
+  returnableDepositAmount?: number;
 };
 
 export type VendorProductImportDraft = {
@@ -433,6 +438,10 @@ function mapApiRow(row: VendorProductCatalogRow): VendorProductCatalogItem {
     productPolicyTag: row.productPolicyTag as VendorProductPolicyTag | undefined,
     isPrivate: row.isPrivate,
     privateLocationIds: row.privateLocationIds ?? [],
+    returnableDeposit: Boolean(row.returnableDeposit),
+    returnableItemName: row.returnableItemName ?? '',
+    returnableUom: row.returnableUom ?? '',
+    returnableDepositAmount: row.returnableDepositAmount ?? 0,
   };
 }
 
@@ -450,6 +459,10 @@ function toUpsertPayload(product: VendorProductCatalogItem): VendorProductCatalo
     productPolicyTag: product.productPolicyTag,
     isPrivate: product.isPrivate,
     privateLocationIds: product.privateLocationIds ?? [],
+    returnableDeposit: Boolean(product.returnableDeposit),
+    returnableItemName: product.returnableDeposit ? (product.returnableItemName ?? '').trim() : '',
+    returnableUom: product.returnableDeposit ? (product.returnableUom ?? '').trim() : '',
+    returnableDepositAmount: product.returnableDeposit ? (product.returnableDepositAmount ?? 0) : 0,
     active: true,
   };
 }

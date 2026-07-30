@@ -102,6 +102,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<LocationSubscription> LocationSubscriptions => Set<LocationSubscription>();
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
+    public DbSet<ReturnableGoodsReturn> ReturnableGoodsReturns => Set<ReturnableGoodsReturn>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
