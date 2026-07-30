@@ -29,7 +29,11 @@ import {
 import { ComponentEditPanel } from './ComponentEditPanel';
 import { SmartComponentImportReviewPanel } from './SmartComponentImportReviewPanel';
 import { ingredientToRow, mergeSavedRow, rowToIngredient } from './smartIngredientShared';
-import { countComponentTaggedVendors } from '../../data/vendorProductTagging';
+import { countComponentTaggedVendors, resolveMyComponentLastUomPrice } from '../../data/vendorProductTagging';
+import {
+  applyVendorProductOverrides,
+  refreshVendorProductCatalog,
+} from '../../data/vendorProductCatalog';
 import {
   convertComponentQtyBetweenUoms,
   formatParStock,
@@ -160,6 +164,7 @@ export function SmartIngredientPage({
   const [savingParId, setSavingParId] = useState<number | null>(null);
   const [importPlan, setImportPlan] = useState<SmartComponentImportPlan | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [catalogRevision, setCatalogRevision] = useState(0);
   const templateRef = useRef<HTMLInputElement | null>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<IngredientSortColumn>();
 
@@ -170,6 +175,19 @@ export function SmartIngredientPage({
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
   }, [selectedCompanyId, selectedLocationIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void refreshVendorProductCatalog().then(() => {
+      if (!cancelled) setCatalogRevision(value => value + 1);
+    });
+    const onCatalogChange = () => setCatalogRevision(value => value + 1);
+    window.addEventListener('bisync:vendorProductCatalogChanged', onCatalogChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('bisync:vendorProductCatalogChanged', onCatalogChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedCompanyId) {
@@ -238,10 +256,12 @@ export function SmartIngredientPage({
     return [...units].sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
-  const price = (r: ComponentRow) => {
-    if (uomFilter === 'inventory') return r.lastPriceInventory;
-    return r.lastPriceRecipe;
-  };
+  const vendorCatalog = useMemo(
+    () => applyVendorProductOverrides(),
+    [catalogRevision],
+  );
+
+  const price = (r: ComponentRow) => resolveMyComponentLastUomPrice(r, uomFilter, vendorCatalog);
   const vendorCount = (r: ComponentRow) => countComponentTaggedVendors(r, selectedLocationIds);
 
   const qtyInDisplayUom = (r: ComponentRow, recipeQty: number) => {
@@ -271,7 +291,7 @@ export function SmartIngredientPage({
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
-    [filtered, sortColumn, sortDirection, uomFilter, selectedLocationIds],
+    [filtered, sortColumn, sortDirection, uomFilter, selectedLocationIds, vendorCatalog],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);

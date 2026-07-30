@@ -49,6 +49,7 @@ export function ingredientToRow(i: Ingredient): ComponentRow {
     parStock: i.parStock ?? 0,
     parStockUom: i.parStockUom ?? i.recipeUom ?? '',
     onHandQty: i.onHandQty ?? 0,
+    hasPurchaseRecord: i.hasPurchaseRecord ?? false,
     dailyUsageAuto: i.dailyUsageAuto ?? false,
     orderFreqAuto: i.orderFreqAuto ?? false,
     storage,
@@ -97,6 +98,7 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
   const savedRow = ingredientToRow(saved);
   const sentConfig = resolveDetailConfigForRow(sent);
   const savedConfig = resolveDetailConfigForRow(savedRow);
+  const preservePurchase = sent.hasPurchaseRecord ?? savedRow.hasPurchaseRecord ?? false;
 
   const sentHasTags = sentConfig.taggedVendorProductIds.length > 0;
   const savedHasTags = savedConfig.taggedVendorProductIds.length > 0;
@@ -111,6 +113,7 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
 
     return {
       ...savedRow,
+      hasPurchaseRecord: preservePurchase,
       lastPriceRecipe: sent.lastPriceRecipe > 0 ? sent.lastPriceRecipe : savedRow.lastPriceRecipe,
       lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
       detailConfig,
@@ -122,6 +125,7 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
   if (sentHasTags && !savedHasTags) {
     return {
       ...savedRow,
+      hasPurchaseRecord: preservePurchase,
       detailConfig: sentConfig,
       detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }),
       attachedVendors: countComponentTaggedVendors({ detailConfig: sentConfig, detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }) }),
@@ -133,10 +137,11 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
   if (sentHasPrice && sent.lastPriceRecipe !== savedRow.lastPriceRecipe) {
     return {
       ...savedRow,
+      hasPurchaseRecord: preservePurchase,
       lastPriceRecipe: sent.lastPriceRecipe,
       lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
     };
   }
 
-  return savedRow;
+  return { ...savedRow, hasPurchaseRecord: preservePurchase };
 }

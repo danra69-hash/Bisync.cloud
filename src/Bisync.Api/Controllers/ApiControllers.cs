@@ -798,6 +798,26 @@ public class IngredientsController(
             }
         }
 
+        var componentIds = ingredients
+            .Select(i => i.ComponentId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var purchasedComponentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (componentIds.Count > 0)
+        {
+            IQueryable<InventoryPurchase> purchaseQuery = db.InventoryPurchases.AsNoTracking()
+                .Where(p => componentIds.Contains(p.ComponentId));
+            if (cid is int purchaseCompanyId)
+                purchaseQuery = purchaseQuery.Where(p => p.CompanyId == purchaseCompanyId);
+            var purchased = await purchaseQuery
+                .Select(p => p.ComponentId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            foreach (var purchasedId in purchased)
+                purchasedComponentIds.Add(purchasedId);
+        }
+
         return Ok(ingredients.Select(i =>
         {
             metrics.DailyUsageByComponentId.TryGetValue(i.ComponentId, out var computedUsage);
@@ -829,6 +849,7 @@ public class IngredientsController(
                 parStock,
                 parStockUom,
                 onHandQty = onHand,
+                hasPurchaseRecord = purchasedComponentIds.Contains(i.ComponentId),
                 metricsLookbackDays = metrics.LookbackDays,
                 dailyUsageAuto = computedUsage > 0,
                 orderFreqAuto = computedFreq > 0,

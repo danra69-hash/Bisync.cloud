@@ -394,6 +394,8 @@ export type ComponentRow = {
   parStock?: number;
   parStockUom?: string;
   onHandQty?: number;
+  /** True when inventory has at least one purchase lot for this component. */
+  hasPurchaseRecord?: boolean;
   dailyUsageAuto?: boolean;
   orderFreqAuto?: boolean;
   storage: string[];
@@ -467,6 +469,7 @@ export const blankComponentRow: ComponentRow = {
   parStock: 0,
   parStockUom: 'g',
   onHandQty: 0,
+  hasPurchaseRecord: false,
   dailyUsageAuto: false,
   orderFreqAuto: false,
   storage: ['Dry Store'],
