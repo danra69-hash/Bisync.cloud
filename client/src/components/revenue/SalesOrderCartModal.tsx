@@ -17,6 +17,7 @@ import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { PurchaseOrderPdfPreview } from './PurchaseOrderPdfPreview';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   companyId: number;
@@ -253,6 +254,7 @@ export function SalesOrderCartModal({
 
               <div className="rounded-lg border border-border overflow-hidden">
                 <table className="w-full text-xs">
+                  <ColGroup widths={['30%', '18%', '14%', '18%', '20%']} />
                   <thead className="bg-muted/30">
                     <tr className="border-b border-border">
                       <th className="px-3 py-2 text-left font-semibold">Product</th>

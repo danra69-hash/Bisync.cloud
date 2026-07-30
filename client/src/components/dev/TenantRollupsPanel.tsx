@@ -8,6 +8,7 @@ import {
   type DevUsageResponse,
 } from '../../data/devConsoleApi';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
@@ -520,6 +521,7 @@ export function TenantRollupsPanel() {
       ) : (
         <div className="rounded-lg border border-border bg-card overflow-x-auto">
           <table className="w-full text-xs">
+            <ColGroup widths={['22%', '18%', '14%', '14%', '14%', '18%']} />
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <th className="px-3 py-2 font-medium">Company</th>

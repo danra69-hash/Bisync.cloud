@@ -6,6 +6,7 @@ import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls } from '../layout/formControls';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 import {
@@ -218,6 +219,7 @@ export function SalesDataPage({ selectedCompanyId, selectedLocationIds, embedded
 
           <TableScrollContainer className={TABLE_SCROLL_CLS}>
             <table className="w-full border-collapse min-w-[60rem]">
+              <ColGroup widths={['10%', '14%', '22%', '6%', '8%', '12%', '8%', '8%', '12%']} />
               <thead>
                 <tr className="border-b border-border bg-muted/20">
                   <th className={tableHeaderCls('left')}>Date</th>

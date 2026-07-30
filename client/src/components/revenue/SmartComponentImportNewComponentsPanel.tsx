@@ -5,6 +5,7 @@ import { prepareImportDraftForSave } from '../../data/smartComponentCatalog';
 import { componentParStockUomOptions } from '../../data/componentParStock';
 import { inputCls } from '../layout/formControls';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import {
   SIDE_PANEL_OVERLAY_CLS,
   SIDE_PANEL_SHELL_CREATE_VENDOR_CLS,
@@ -136,6 +137,7 @@ export function SmartComponentImportNewComponentsPanel({
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="overflow-auto max-h-[62vh]">
               <table className="w-full text-xs min-w-[1400px]">
+                <ColGroup widths={[72, '8%', '7%', '7%', '12%', '8%', '8%', '6%', '8%', '7%', '7%', '6%', '6%', '6%', '6%', '6%']} />
                 <thead className="bg-muted/40 sticky top-0 z-10">
                   <tr className="border-b border-border">
                     <TableHeaderCell>Active</TableHeaderCell>

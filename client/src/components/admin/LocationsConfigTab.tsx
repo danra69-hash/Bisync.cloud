@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, ColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
@@ -67,15 +67,15 @@ type LocationSortColumn =
 type LocationTableColumn = LocationSortColumn | 'accessControl';
 
 const LOCATION_TABLE_COLUMNS: SortableColumnDef<LocationTableColumn>[] = [
-  { key: 'location', label: 'Location' },
-  { key: 'company', label: 'Company' },
-  { key: 'address', label: 'Address' },
-  { key: 'accessControl', label: 'Access Control', sortable: false, className: 'w-[11.5rem]' },
-  { key: 'principalContact', label: 'Principal Contact' },
-  { key: 'businessType', label: 'Type of Business' },
-  { key: 'productPolicy', label: 'Product Policy' },
-  { key: 'country', label: 'Country' },
-  { key: 'status', label: 'Status' },
+  { key: 'location', label: 'Location', ...tableColWidth('12%') },
+  { key: 'company', label: 'Company', ...tableColWidth('10%') },
+  { key: 'address', label: 'Address', ...tableColWidth('16%') },
+  { key: 'accessControl', label: 'Access Control', sortable: false, ...tableColWidth(184) },
+  { key: 'principalContact', label: 'Principal Contact', ...tableColWidth('12%') },
+  { key: 'businessType', label: 'Type of Business', ...tableColWidth('10%') },
+  { key: 'productPolicy', label: 'Product Policy', ...tableColWidth('10%') },
+  { key: 'country', label: 'Country', ...tableColWidth('8%') },
+  { key: 'status', label: 'Status', ...tableColWidth('8%') },
 ];
 
 function LocationAccessControlCell({
@@ -650,6 +650,7 @@ function LocationPanel({
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs min-w-[28rem]">
+                <ColGroup widths={['18%', '22%', '22%', '22%', 72]} />
                 <thead>
                   <tr className="border-b border-border text-muted-foreground">
                     <th className="py-1.5 pr-2 text-left font-medium">Day</th>
@@ -986,6 +987,7 @@ export function LocationsConfigTab({
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full text-xs">
+            <TableColGroup columns={LOCATION_TABLE_COLUMNS} />
             <thead>
               <SortableTableHeaderRow
                 columns={LOCATION_TABLE_COLUMNS as SortableColumnDef<LocationSortColumn>[]}

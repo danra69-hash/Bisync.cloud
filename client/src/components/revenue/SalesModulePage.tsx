@@ -11,9 +11,10 @@ import {
   type SalesModuleTeamCalendarEvent,
   type SalesModuleTeamMember,
 } from '../../api';
-import { pageShellClass } from '../layout/pageLayout';
+import { pageShellClass, TABLE_COL_ACTION } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { HrConfigTabBar } from '../admin/HrConfigTabBar';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
@@ -1037,6 +1038,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       {tab === 'overview' ? (
         <TableScrollContainer ref={scrollRootRef}>
           <table className="w-full text-xs">
+            <ColGroup widths={['22%', '26%', '30%', '22%']} />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="px-2 py-1.5 text-left">Hunter</th>
@@ -1092,6 +1094,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       ) : tab === 'client-update' ? (
         <TableScrollContainer ref={scrollRootRef}>
           <table className="w-full text-xs">
+            <ColGroup widths={['8%', '8%', '10%', '8%', '7%', '7%', '8%', '8%', '7%', '10%', '8%', '8%', TABLE_COL_ACTION.style.width]} />
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="px-2 py-1.5 text-left">Date Created</th>

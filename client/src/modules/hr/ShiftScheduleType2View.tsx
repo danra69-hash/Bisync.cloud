@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
-import { SortableTableHead } from '../../components/shared/SortableTableHead';
+import { SortableTableHead, ColGroup } from '../../components/shared/SortableTableHead';
 import { TableScrollContainer } from '../../components/shared/TableScrollContainer';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { Copy, Save } from 'lucide-react';
@@ -442,6 +442,14 @@ export default function ShiftScheduleType2View({
         <p className="text-xs text-gray-500 py-8 text-center">No shift workers in this department.</p>
       ) : (
         <table className="w-full text-xs">
+          <ColGroup
+            widths={[
+              '12%',
+              '10%',
+              '8%',
+              ...weekDates.map(() => `${(70 / Math.max(weekDates.length, 1)).toFixed(2)}%`),
+            ]}
+          />
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <SortableTableHead

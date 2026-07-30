@@ -20,6 +20,7 @@ import {
   type QaAuditEnvelope,
 } from '../../data/qaAuditTrail';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 import { QaLiveMonitorOverlay } from './QaLiveMonitorOverlay';
 
 type QaPanelTab = 'run' | 'history';
@@ -146,6 +147,7 @@ function StepDetailPanel({
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-sans mb-2">Irregular numbers</p>
               <div className="rounded-lg border border-border overflow-hidden">
                 <table className="w-full text-xs">
+                  <ColGroup widths={['30%', '28%', '28%', '14%']} />
                   <thead>
                     <tr className="bg-muted/30 text-left text-muted-foreground border-b border-border">
                       <th className="px-3 py-2 font-medium">Check</th>
@@ -702,6 +704,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           )}
           <div className="rounded-lg border border-border bg-card overflow-hidden">
             <table className="w-full text-xs">
+              <ColGroup widths={['14%', '10%', '10%', '16%', '50%']} />
               <thead>
                 <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground">
                   <th className="px-3 py-2 font-medium">When</th>

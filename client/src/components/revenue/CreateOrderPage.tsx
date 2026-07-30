@@ -20,7 +20,7 @@ import { ingredientToRow } from './smartIngredientShared';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { OrderCartModal } from './OrderCartModal';
@@ -44,17 +44,17 @@ type CreateOrderSortColumn =
   | 'totalOrderValue';
 
 const CREATE_ORDER_TABLE_COLUMNS: SortableColumnDef<CreateOrderSortColumn>[] = [
-  { key: 'componentId', label: 'Component ID' },
-  { key: 'name', label: 'Component Name' },
-  { key: 'stockOnHand', label: 'Stock On Hand', align: 'right' },
-  { key: 'usagePerDay', label: 'Usage Per Day', align: 'right' },
-  { key: 'parstock', label: 'Parstock', align: 'right' },
-  { key: 'suggestedOrder', label: 'Suggested Order (Delivery Unit)', align: 'right' },
-  { key: 'vendorProduct', label: 'Vendor Product' },
-  { key: 'deliveryUnit', label: 'Delivery Unit' },
-  { key: 'deliveryPrice', label: 'Delivery Price', align: 'right' },
-  { key: 'orderQty', label: 'Order Qty', sortable: false },
-  { key: 'totalOrderValue', label: 'Total Order Value', align: 'right' },
+  { key: 'componentId', label: 'Component ID', ...tableColWidth('9%') },
+  { key: 'name', label: 'Component Name', ...tableColWidth('13%') },
+  { key: 'stockOnHand', label: 'Stock On Hand', align: 'right', ...tableColWidth('8%') },
+  { key: 'usagePerDay', label: 'Usage Per Day', align: 'right', ...tableColWidth('8%') },
+  { key: 'parstock', label: 'Parstock', align: 'right', ...tableColWidth('7%') },
+  { key: 'suggestedOrder', label: 'Suggested Order (Delivery Unit)', align: 'right', ...tableColWidth('10%') },
+  { key: 'vendorProduct', label: 'Vendor Product', ...tableColWidth('12%') },
+  { key: 'deliveryUnit', label: 'Delivery Unit', ...tableColWidth('8%') },
+  { key: 'deliveryPrice', label: 'Delivery Price', align: 'right', ...tableColWidth('8%') },
+  { key: 'orderQty', label: 'Order Qty', sortable: false, ...tableColWidth('8%') },
+  { key: 'totalOrderValue', label: 'Total Order Value', align: 'right', ...tableColWidth('9%') },
 ];
 
 type Props = {
@@ -463,6 +463,7 @@ export function CreateOrderPage({
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
               <table className="w-full">
+                <TableColGroup columns={CREATE_ORDER_TABLE_COLUMNS} />
                 <thead className="bg-muted/30">
                   <SortableTableHeaderRow
                     columns={CREATE_ORDER_TABLE_COLUMNS}

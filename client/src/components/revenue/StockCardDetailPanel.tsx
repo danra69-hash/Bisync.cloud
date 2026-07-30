@@ -16,6 +16,7 @@ import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { StockCardSplitUsePanel } from './StockCardSplitUsePanel';
 import { parseDetailConfigJson } from '../../data/componentForm';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { ColGroup } from '../shared/SortableTableHead';
 
 import {
 
@@ -574,7 +575,7 @@ export function StockCardDetailPanel({
             <div className="flex-1 overflow-auto">
 
               <table className="w-full text-sm font-sans">
-
+                <ColGroup widths={['12%', '9%', '8%', '8%', '7%', '9%', '9%', '16%', '14%', '8%']} />
                 <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
 
                   <tr>

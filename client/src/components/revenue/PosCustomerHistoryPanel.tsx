@@ -10,6 +10,7 @@ import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls } from '../layout/formControls';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS, SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   customer: PosCustomer;
@@ -52,6 +53,7 @@ function ReceiptDetailModal({
             </p>
           ) : (
             <table className="w-full text-xs">
+              <ColGroup widths={['40%', '15%', '22%', '23%']} />
               <thead>
                 <tr className="border-b border-border">
                   <TableHeaderCell>Item</TableHeaderCell>
@@ -147,6 +149,7 @@ export function PosCustomerHistoryPanel({ customer, onClose }: Props) {
             </p>
           ) : (
             <table className="w-full text-xs">
+              <ColGroup widths={['12%', '14%', '10%', '10%', '10%', '10%', '10%', '10%', '14%']} />
               <thead>
                 <tr className="border-b border-border">
                   <TableHeaderCell>Activity Date</TableHeaderCell>

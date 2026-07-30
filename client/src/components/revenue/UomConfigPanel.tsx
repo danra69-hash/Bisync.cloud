@@ -20,6 +20,7 @@ import {
 } from '../../data/uomConfig';
 
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { ColGroup } from '../shared/SortableTableHead';
 
 const INITIAL_ALL_UOMS = ['GR', 'KG', 'ML', 'LT', 'Each', 'Slice', 'Can', 'BTL'] as const;
 
@@ -53,6 +54,13 @@ function ConversionTable({ title, description, rows, showCategory = false }: {
       </div>
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full text-xs">
+          <ColGroup
+            widths={
+              showCategory
+                ? ['14%', '18%', '18%', '20%', '30%']
+                : ['22%', '22%', '22%', '34%']
+            }
+          />
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {(showCategory ? ['Scale', 'From', 'To', 'Multiply by', 'Example'] : ['From', 'To', 'Multiply by', 'Example']).map(h => (
@@ -196,6 +204,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
             </div>
             <TableScrollContainer ref={allUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full text-xs">
+              <ColGroup widths={['100%']} />
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className={tableHeaderCls('left')}>UOM</th>
@@ -246,6 +255,7 @@ export function UomConfigPanel({ selectedCompanyId }: { selectedCompanyId?: numb
             </div>
             <TableScrollContainer ref={myUomsScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
             <table className="w-full text-xs">
+              <ColGroup widths={['100%']} />
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   <th className={tableHeaderCls('left')}>UOM</th>

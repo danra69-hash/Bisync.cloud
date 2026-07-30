@@ -25,6 +25,7 @@ import { inputCls, qtyPriceWidthCls } from '../../data/componentForm';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   customer: B2bCustomer;
@@ -129,6 +130,7 @@ export function B2bCustomerMyProductsPanel({ customer, companyId, onClose, onSav
           ) : (
             <>
               <table className="w-full text-xs">
+                <ColGroup widths={[48, '22%', '14%', '12%', '12%', '10%', '10%', '10%']} />
                 <thead>
                   <tr className="border-b border-border">
                     <TableHeaderCell>Tag</TableHeaderCell>

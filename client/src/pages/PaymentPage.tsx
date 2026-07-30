@@ -29,6 +29,7 @@ import {
 } from '../data/subscriptionPricing';
 import { inputCls } from '../data/countries';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
+import { ColGroup } from '../components/shared/SortableTableHead';
 
 type CompanyDraft = {
   id: number;
@@ -257,6 +258,7 @@ export function PaymentPage({ onContinue }: Props) {
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-border bg-white shadow-sm">
             <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <ColGroup widths={['28%', '36%', '36%']} />
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   <th className="px-4 py-3 font-semibold text-herme-ink">{t('auth.paymentColBase')}</th>

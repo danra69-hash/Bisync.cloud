@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, X } from 'lucide-react';
@@ -24,18 +24,18 @@ import { ToggleSwitch } from './ToggleSwitch';
 type LevelSortColumn = 'level' | 'annual' | 'sick' | 'hrsPerDay' | 'dayOff' | 'break' | 'mealQty' | 'mealAmt' | 'shift' | 'ot' | 'ph' | 'active';
 
 const LEVEL_TABLE_COLUMNS: SortableColumnDef<LevelSortColumn>[] = [
-  { key: 'level', label: 'Level' },
-  { key: 'annual', label: 'Annual' },
-  { key: 'sick', label: 'Sick' },
-  { key: 'hrsPerDay', label: 'Hrs/Day' },
-  { key: 'dayOff', label: 'DayOff/week' },
-  { key: 'break', label: 'Break' },
-  { key: 'mealQty', label: 'Meal Qty' },
-  { key: 'mealAmt', label: 'Meal Amt' },
-  { key: 'shift', label: 'Shift' },
-  { key: 'ot', label: 'OT' },
-  { key: 'ph', label: 'PH' },
-  { key: 'active', label: 'Active', align: 'center' },
+  { key: 'level', label: 'Level', ...tableColWidth('14%') },
+  { key: 'annual', label: 'Annual', ...tableColWidth('10%') },
+  { key: 'sick', label: 'Sick', ...tableColWidth('10%') },
+  { key: 'hrsPerDay', label: 'Hrs/Day', ...tableColWidth('7%') },
+  { key: 'dayOff', label: 'DayOff/week', ...tableColWidth('7%') },
+  { key: 'break', label: 'Break', ...tableColWidth('7%') },
+  { key: 'mealQty', label: 'Meal Qty', ...tableColWidth('7%') },
+  { key: 'mealAmt', label: 'Meal Amt', ...tableColWidth('8%') },
+  { key: 'shift', label: 'Shift', ...tableColWidth(48) },
+  { key: 'ot', label: 'OT', ...tableColWidth(48) },
+  { key: 'ph', label: 'PH', ...tableColWidth(48) },
+  { key: 'active', label: 'Active', align: 'center', ...tableColWidth(72) },
 ];
 
 const emptyForm = {
@@ -606,6 +606,7 @@ export function LevelEntitlementTab({ onDataChanged }: { onDataChanged?: () => v
 
       <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg overflow-hidden max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full text-xs">
+          <TableColGroup columns={LEVEL_TABLE_COLUMNS} />
           <thead className="bg-muted/40 border-b border-border">
             <SortableTableHeaderRow
               columns={LEVEL_TABLE_COLUMNS}

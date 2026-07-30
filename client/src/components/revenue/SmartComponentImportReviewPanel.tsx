@@ -17,6 +17,7 @@ import {
 import type { ComponentRow } from '../../data/componentForm';
 import { rowToIngredient, mergeSavedRow } from './smartIngredientShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import {
   SIDE_PANEL_OVERLAY_CLS,
   SIDE_PANEL_SHELL_CREATE_VENDOR_CLS,
@@ -272,6 +273,7 @@ export function SmartComponentImportReviewPanel({
               <div className="border border-border rounded-lg overflow-hidden">
                 <div className="overflow-auto max-h-72">
                   <table className="w-full text-xs">
+                    <ColGroup widths={['14%', '20%', '46%', '20%']} />
                     <thead className="bg-muted/40 sticky top-0">
                       <tr className="border-b border-border">
                         <TableHeaderCell>Component ID</TableHeaderCell>

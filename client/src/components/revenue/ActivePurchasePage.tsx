@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
-import { pageShellClass } from '../layout/pageLayout';
+import { pageShellClass, TABLE_COL_ACTION } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { RefreshCw } from 'lucide-react';
 import { api, type PurchaseOrder } from '../../api';
@@ -38,15 +38,15 @@ type ActivePurchaseSortColumn =
   | 'action';
 
 const ACTIVE_PURCHASE_TABLE_COLUMNS: SortableColumnDef<ActivePurchaseSortColumn>[] = [
-  { key: 'type', label: 'Type' },
-  { key: 'number', label: 'Number' },
-  { key: 'vendor', label: 'Vendor' },
-  { key: 'ordered', label: 'Ordered' },
-  { key: 'delivery', label: 'Delivery' },
-  { key: 'items', label: 'Items', align: 'right' },
-  { key: 'total', label: 'Total', align: 'right' },
-  { key: 'status', label: 'Status' },
-  { key: 'action', label: 'Action', sortable: false },
+  { key: 'type', label: 'Type', ...tableColWidth('8%') },
+  { key: 'number', label: 'Number', ...tableColWidth('12%') },
+  { key: 'vendor', label: 'Vendor', ...tableColWidth('16%') },
+  { key: 'ordered', label: 'Ordered', ...tableColWidth('11%') },
+  { key: 'delivery', label: 'Delivery', ...tableColWidth('11%') },
+  { key: 'items', label: 'Items', align: 'right', ...tableColWidth('7%') },
+  { key: 'total', label: 'Total', align: 'right', ...tableColWidth('10%') },
+  { key: 'status', label: 'Status', ...tableColWidth('12%') },
+  { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
 ];
 
 type PreCommittedSortColumn =
@@ -60,14 +60,14 @@ type PreCommittedSortColumn =
   | 'action';
 
 const PRE_COMMITTED_TABLE_COLUMNS: SortableColumnDef<PreCommittedSortColumn>[] = [
-  { key: 'number', label: 'Number' },
-  { key: 'vendor', label: 'Vendor' },
-  { key: 'commitment', label: 'Commitment' },
-  { key: 'committed', label: 'Committed qty', align: 'right' },
-  { key: 'consolidated', label: 'Received & consolidated', align: 'right' },
-  { key: 'remaining', label: 'Remaining to order', align: 'right' },
-  { key: 'status', label: 'Status' },
-  { key: 'action', label: 'Action', sortable: false },
+  { key: 'number', label: 'Number', ...tableColWidth('12%') },
+  { key: 'vendor', label: 'Vendor', ...tableColWidth('16%') },
+  { key: 'commitment', label: 'Commitment', ...tableColWidth('14%') },
+  { key: 'committed', label: 'Committed qty', align: 'right', ...tableColWidth('12%') },
+  { key: 'consolidated', label: 'Received & consolidated', align: 'right', ...tableColWidth('14%') },
+  { key: 'remaining', label: 'Remaining to order', align: 'right', ...tableColWidth('12%') },
+  { key: 'status', label: 'Status', ...tableColWidth('10%') },
+  { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
 ];
 
 function orderTotal(order: PurchaseOrder): number {
@@ -328,6 +328,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         </div>
         <TableScrollContainer ref={preScrollRootRef} className="max-h-[min(40vh,22rem)] overflow-y-auto">
           <table className="w-full">
+            <TableColGroup columns={PRE_COMMITTED_TABLE_COLUMNS} />
             <thead className="bg-muted/30">
               <SortableTableHeaderRow
                 columns={PRE_COMMITTED_TABLE_COLUMNS}
@@ -390,6 +391,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         </div>
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full">
+            <TableColGroup columns={ACTIVE_PURCHASE_TABLE_COLUMNS} />
             <thead className="bg-muted/30">
               <SortableTableHeaderRow
                 columns={ACTIVE_PURCHASE_TABLE_COLUMNS}

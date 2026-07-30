@@ -5,6 +5,7 @@ import { filterPurchaseHistoryLastTwoYears, parseB2bPurchaseHistory } from '../.
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_STANDARD_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   customer: B2bCustomer;
@@ -62,6 +63,7 @@ export function B2bCustomerPurchaseHistoryPanel({ customer, onClose }: Props) {
                 </div>
               </div>
               <table className="w-full text-xs">
+                <ColGroup widths={['10%', '10%', '18%', '10%', '9%', '8%', '9%', '10%', '9%', '7%']} />
                 <thead>
                   <tr className="border-b border-border">
                     <TableHeaderCell>Date Ordered</TableHeaderCell>

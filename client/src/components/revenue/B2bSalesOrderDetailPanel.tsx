@@ -12,6 +12,7 @@ import {
   DETAIL_PANEL_OVERLAY_ELEVATED_CLS,
   DETAIL_PANEL_SHELL_ELEVATED_CLS,
 } from '../layout/sidePanelShared';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 
 type Props = {
@@ -230,6 +231,7 @@ export function B2bSalesOrderDetailPanel({ order: initialOrder, onClose, onUpdat
             </div>
             <TableScrollContainer className="max-h-[50vh] overflow-y-auto">
               <table className="w-full text-xs">
+                <ColGroup widths={['24%', '16%', '8%', '8%', '12%', '14%', '18%']} />
                 <thead className="bg-muted/30">
                   <tr className="border-b border-border text-left">
                     <th className="px-3 py-2 font-medium">Product</th>

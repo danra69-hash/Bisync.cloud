@@ -15,6 +15,7 @@ import {
 } from '../../data/productProductionMethod';
 import { MODAL_OVERLAY_CLS } from '../layout/sidePanelShared';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   category?: string;
@@ -216,6 +217,7 @@ export function ProductionMethodModal({
               <p className="px-4 py-6 text-xs text-muted-foreground text-center">No product components added yet.</p>
             ) : (
               <table className="w-full text-xs">
+                <ColGroup widths={['8%', '30%', '12%', '12%', '18%', '20%']} />
                 <thead>
                   <tr>
                     {['Seq', 'Smart component', 'UOM', 'Qty', 'UOM price', 'Subtotal'].map(label => (
@@ -265,6 +267,7 @@ export function ProductionMethodModal({
               </p>
             </div>
             <table className="w-full text-xs">
+              <ColGroup widths={['40%', '35%', '25%']} />
               <thead>
                 <tr>
                   {['Factor', 'Per serving', 'Unit'].map(label => (

@@ -3,7 +3,7 @@ import React from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScroll';
-import { SortableTableHead } from '../../components/shared/SortableTableHead';
+import { SortableTableHead, ColGroup, tableColWidth } from '../../components/shared/SortableTableHead';
 import { tableHeaderCls, tableHeaderCompactCls } from '../../components/shared/tableHeaderStyles';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
@@ -100,10 +100,10 @@ type AttendanceEmployeeSortColumn = 'name' | `day:${string}`;
 type LeaveBalanceSortColumn = 'employee' | 'rdo' | 'rph' | 'al';
 
 const LEAVE_BALANCE_COLUMNS = [
-  { key: 'employee' as const, label: 'Employee' },
-  { key: 'rdo' as const, label: 'RDO', align: 'center' as const },
-  { key: 'rph' as const, label: 'RPH', align: 'center' as const },
-  { key: 'al' as const, label: 'AL', align: 'center' as const },
+  { key: 'employee' as const, label: 'Employee', align: 'left' as const, ...tableColWidth('40%') },
+  { key: 'rdo' as const, label: 'RDO', align: 'center' as const, ...tableColWidth('20%') },
+  { key: 'rph' as const, label: 'RPH', align: 'center' as const, ...tableColWidth('20%') },
+  { key: 'al' as const, label: 'AL', align: 'center' as const, ...tableColWidth('20%') },
 ];
 
 // ---------- app ----------
@@ -684,6 +684,15 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
                 <table className="w-full">
+                  <ColGroup
+                    widths={[
+                      '11%',
+                      ...Array.from(
+                        { length: attendanceDates.length * 4 },
+                        () => `${(89 / Math.max(attendanceDates.length * 4, 1)).toFixed(2)}%`,
+                      ),
+                    ]}
+                  />
                   <thead className="bg-gray-50">
                     <tr>
                       <SortableTableHead
@@ -796,6 +805,15 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
                 <table className="w-full">
+                  <ColGroup
+                    widths={[
+                      '11%',
+                      ...Array.from(
+                        { length: attendanceDates.length },
+                        () => `${(89 / Math.max(attendanceDates.length, 1)).toFixed(2)}%`,
+                      ),
+                    ]}
+                  />
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <SortableTableHead
@@ -947,6 +965,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 <h3 className="text-lg text-gray-900 mb-4">Leave Balance Summary</h3>
                 <div ref={leaveBalanceScrollRef} className="overflow-auto flex-1 max-h-[calc(100vh-12rem)]">
                   <table className="w-full">
+                    <ColGroup widths={['40%', '20%', '20%', '20%']} />
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         {LEAVE_BALANCE_COLUMNS.map(column => (
@@ -1144,6 +1163,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               <h3 className="text-xl text-gray-900 mb-4">Detailed Attendance Records</h3>
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-auto">
                 <table className="w-full">
+                  <ColGroup widths={['14%', '12%', '12%', '12%', '12%', '14%', '12%', '12%']} />
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className={tableHeaderCls('left', 'px-6 text-gray-700')}>Date</th>

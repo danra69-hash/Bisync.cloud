@@ -16,6 +16,7 @@ import { formatProductParStock } from '../../data/productParStock';
 import { SubProductBatchAdditionalUoms } from './SubProductBatchUomSection';
 import { SubProductBatchProduceFields } from './SubProductBatchProduceFields';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
+import { ColGroup } from '../shared/SortableTableHead';
 import { ProductEstimatedNutrientBox } from './ProductEstimatedNutrientBox';
 
 const fieldCls =
@@ -93,6 +94,7 @@ function ComponentItemsTable({
       ) : (
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full border-collapse">
+            <ColGroup widths={['36%', '16%', '18%', '14%', '16%']} />
             <thead>
               <tr>
                 <th className={tableHeaderCls('left', 'border-b border-border bg-muted/20')}>Smart component</th>

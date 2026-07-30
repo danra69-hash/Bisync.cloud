@@ -8,6 +8,7 @@ import {
 } from '../../data/qaAuditTrail';
 import type { QaStatus, QaTaskResult } from '../../data/devQaRunner';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
+import { ColGroup } from '../shared/SortableTableHead';
 
 const STATUS_DOT: Record<QaStatus, string> = {
   pending: 'bg-muted-foreground/40',
@@ -273,6 +274,7 @@ export function AuditTrailPanel() {
 
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <table className="w-full text-xs">
+          <ColGroup widths={['14%', '10%', '10%', '14%', '18%', '34%']} />
           <thead>
             <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground">
               <th className="px-3 py-2 font-medium">When</th>

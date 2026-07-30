@@ -7,6 +7,7 @@ import {
 import { FeaturePage } from '../../common/FeaturePage'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import type { QrTableMode } from '../../../core/config/qrTable'
+import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './BohPages.css'
 
 export function KdsPage() {
@@ -135,6 +136,12 @@ export function PermissionsPage() {
     >
       <div className="perm-table-wrap">
         <table className="perm-table">
+          <ColGroup
+            widths={[
+              '28%',
+              ...roles.map(() => `${(72 / Math.max(roles.length, 1)).toFixed(2)}%`),
+            ]}
+          />
           <thead>
             <tr>
               <th>Action</th>

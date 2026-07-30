@@ -3,6 +3,7 @@ import { FileUp, X } from 'lucide-react';
 import type { VendorProductImportDraft } from '../../data/vendorProductCatalog';
 import { inputCls } from '../layout/formControls';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 import {
   SIDE_PANEL_OVERLAY_CLS,
   SIDE_PANEL_SHELL_CREATE_VENDOR_CLS,
@@ -85,6 +86,7 @@ export function VendorProductImportNewProductsPanel({
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="overflow-auto max-h-[62vh]">
               <table className="w-full text-xs min-w-[1200px]">
+                <ColGroup widths={[72, '14%', '22%', '12%', '18%', '14%', '10%']} />
                 <thead className="bg-muted/40 sticky top-0 z-10">
                   <tr className="border-b border-border">
                     <TableHeaderCell>Active</TableHeaderCell>

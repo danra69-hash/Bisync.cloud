@@ -18,7 +18,7 @@ import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
 import type { DashboardActivityMode, PeriodTotals } from '../../utils/locationMetrics';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { ProgressPanel } from './ProgressPanel';
 import { ActivePurchasePanel } from '../revenue/ActivePurchasePanel';
@@ -264,26 +264,26 @@ export function OverviewDashboard({
   }, [editLayout, layout]);
 
   const menuTableColumns = useMemo<SortableColumnDef<MenuSortColumn>[]>(() => [
-    { key: 'item', label: t('overview.item') },
-    { key: 'orders', label: t('overview.orders'), align: 'right' },
-    { key: 'revenue', label: t('overview.revenue'), align: 'right' },
-    { key: 'margin', label: t('overview.margin'), align: 'right' },
+    { key: 'item', label: t('overview.item'), ...tableColWidth('40%') },
+    { key: 'orders', label: t('overview.orders'), align: 'right', ...tableColWidth('15%') },
+    { key: 'revenue', label: t('overview.revenue'), align: 'right', ...tableColWidth('25%') },
+    { key: 'margin', label: t('overview.margin'), align: 'right', ...tableColWidth('20%') },
   ], [t]);
 
   const ordersTableColumns = useMemo<SortableColumnDef<OrderSortColumn>[]>(() => [
-    { key: 'po', label: t('overview.po') },
-    { key: 'vendor', label: t('common.vendor') },
-    { key: 'delivery', label: t('overview.delivery') },
-    { key: 'value', label: t('overview.value'), align: 'right' },
-    { key: 'status', label: t('common.status') },
+    { key: 'po', label: t('overview.po'), ...tableColWidth('18%') },
+    { key: 'vendor', label: t('common.vendor'), ...tableColWidth('28%') },
+    { key: 'delivery', label: t('overview.delivery'), ...tableColWidth('18%') },
+    { key: 'value', label: t('overview.value'), align: 'right', ...tableColWidth('18%') },
+    { key: 'status', label: t('common.status'), ...tableColWidth('18%') },
   ], [t]);
 
   const clientOrdersTableColumns = useMemo<SortableColumnDef<ClientOrderSortColumn>[]>(() => [
-    { key: 'so', label: t('overview.so') },
-    { key: 'customer', label: t('overview.customer') },
-    { key: 'date', label: t('overview.orderDate') },
-    { key: 'value', label: t('overview.value'), align: 'right' },
-    { key: 'status', label: t('common.status') },
+    { key: 'so', label: t('overview.so'), ...tableColWidth('18%') },
+    { key: 'customer', label: t('overview.customer'), ...tableColWidth('28%') },
+    { key: 'date', label: t('overview.orderDate'), ...tableColWidth('18%') },
+    { key: 'value', label: t('overview.value'), align: 'right', ...tableColWidth('18%') },
+    { key: 'status', label: t('common.status'), ...tableColWidth('18%') },
   ], [t]);
 
   const { sortColumn: menuSortColumn, sortDirection: menuSortDirection, toggleSort: toggleMenuSort } =
@@ -432,6 +432,7 @@ export function OverviewDashboard({
               </div>
               <TableScrollContainer ref={menuScrollRef} className="max-h-44 overflow-y-auto">
                 <table className="w-full text-xs">
+                  <TableColGroup columns={menuTableColumns} />
                   <thead>
                     <SortableTableHeaderRow
                       columns={menuTableColumns}
@@ -565,6 +566,7 @@ export function OverviewDashboard({
               </div>
               <TableScrollContainer ref={ordersScrollRef} className="max-h-44 overflow-y-auto">
                 <table className="w-full text-xs">
+                  <TableColGroup columns={ordersTableColumns} />
                   <thead>
                     <SortableTableHeaderRow
                       columns={ordersTableColumns}
@@ -622,6 +624,7 @@ export function OverviewDashboard({
               </div>
               <TableScrollContainer ref={clientOrdersScrollRef} className="max-h-44 overflow-y-auto">
                 <table className="w-full text-xs">
+                  <TableColGroup columns={clientOrdersTableColumns} />
                   <thead>
                     <SortableTableHeaderRow
                       columns={clientOrdersTableColumns}

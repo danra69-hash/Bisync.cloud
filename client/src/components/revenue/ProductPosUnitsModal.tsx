@@ -12,6 +12,7 @@ import {
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   product: Product;
@@ -91,6 +92,7 @@ export function ProductPosUnitsModal({
             <p className="text-xs text-muted-foreground">No sellable units found for this product. Set an RRP on the product first.</p>
           ) : (
             <table className="w-full text-xs">
+              <ColGroup widths={[48, '40%', '18%', '18%', '14%']} />
               <thead>
                 <tr className="border-b border-border">
                   <TableHeaderCell>Use</TableHeaderCell>

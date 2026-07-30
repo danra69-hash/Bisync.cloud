@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
@@ -132,12 +132,12 @@ const addBtnCls =
 type BomLineSortColumn = 'component' | 'uom' | 'price' | 'qty' | 'subtotal' | 'action';
 
 const BOM_LINE_TABLE_COLUMNS: SortableColumnDef<BomLineSortColumn>[] = [
-  { key: 'component', label: 'Smart component' },
-  { key: 'uom', label: 'Smart component UOM' },
-  { key: 'price', label: 'Smart component UOM price', sortable: false },
-  { key: 'qty', label: 'Qty', sortable: false },
-  { key: 'subtotal', label: 'Subtotal', align: 'right' },
-  { key: 'action', label: '', sortable: false, className: 'w-10' },
+  { key: 'component', label: 'Smart component', ...tableColWidth('32%') },
+  { key: 'uom', label: 'Smart component UOM', ...tableColWidth('16%') },
+  { key: 'price', label: 'Smart component UOM price', sortable: false, ...tableColWidth('18%') },
+  { key: 'qty', label: 'Qty', sortable: false, ...tableColWidth('12%') },
+  { key: 'subtotal', label: 'Subtotal', align: 'right', ...tableColWidth('14%') },
+  { key: 'action', label: '', sortable: false, ...tableColWidth(48) },
 ];
 
 const categoryOptions = getSiCategoryFilterOptions().filter(c => c !== 'All');
@@ -281,6 +281,7 @@ function ComponentLinesSection({
 
       <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
         <table className="w-full border-collapse">
+          <TableColGroup columns={columns} />
           <thead>
             <SortableTableHeaderRow
               columns={columns}

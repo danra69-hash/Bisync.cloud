@@ -15,6 +15,7 @@ import {
   type VariableReplacementSlot,
 } from '../../data/productVariable';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { ColGroup } from '../shared/SortableTableHead';
 
 type Props = {
   config: VariableProductConfig;
@@ -477,6 +478,7 @@ export function VariableProductSection({
 
           <div className="overflow-x-auto border border-border rounded-md">
             <table className="w-full text-xs">
+              <ColGroup widths={['18%', '16%', '36%', '14%', 88]} />
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="py-2 px-3 font-semibold">Group</th>

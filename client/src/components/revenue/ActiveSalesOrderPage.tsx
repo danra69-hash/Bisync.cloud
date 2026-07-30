@@ -15,8 +15,8 @@ import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
-import { pageShellClass } from '../layout/pageLayout';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { pageShellClass, TABLE_COL_ACTION } from '../layout/pageLayout';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
@@ -31,13 +31,13 @@ type Props = {
 type SortColumn = 'orderNumber' | 'customer' | 'status' | 'items' | 'total' | 'updated' | 'action';
 
 const COLUMNS: SortableColumnDef<SortColumn>[] = [
-  { key: 'orderNumber', label: 'SO Number' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'status', label: 'Status' },
-  { key: 'items', label: 'Items', align: 'right' },
-  { key: 'total', label: 'Total', align: 'right' },
-  { key: 'updated', label: 'Updated' },
-  { key: 'action', label: 'Action', sortable: false },
+  { key: 'orderNumber', label: 'SO Number', ...tableColWidth('14%') },
+  { key: 'customer', label: 'Customer', ...tableColWidth('22%') },
+  { key: 'status', label: 'Status', ...tableColWidth('12%') },
+  { key: 'items', label: 'Items', align: 'right', ...tableColWidth('8%') },
+  { key: 'total', label: 'Total', align: 'right', ...tableColWidth('12%') },
+  { key: 'updated', label: 'Updated', ...tableColWidth('14%') },
+  { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
 ];
 
 function orderTotal(order: B2bSalesOrder): number {
@@ -254,6 +254,7 @@ export function ActiveSalesOrderPage({ selectedCompanyId, selectedLocationIds }:
 
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
         <table className="w-full text-xs">
+          <TableColGroup columns={COLUMNS} />
           <thead className="bg-muted/30">
             <SortableTableHeaderRow
               columns={COLUMNS}

@@ -8,6 +8,7 @@ import {
   type VendorProductCatalogItem,
 } from '../../data/vendorProductCatalog';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
@@ -263,6 +264,7 @@ export function QuoteComparisonModal({
             <p className="text-sm text-muted-foreground text-center py-8">No quote data to compare.</p>
           ) : (
             <table className="w-full text-xs border-collapse">
+              <ColGroup widths={[180, ...quoteVendors.map(() => 160)]} />
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-3 py-2 font-semibold text-foreground sticky left-0 bg-card z-10 min-w-[160px]">

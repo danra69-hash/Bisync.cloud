@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -36,14 +36,14 @@ import { MillstoneLoader } from '../shared/MillstoneLoader';
 type PayStructureSortColumn = 'company' | 'country' | 'payType' | 'payCycle' | 'pf' | 'socso' | 'otherContributions' | 'active';
 
 const PAY_STRUCTURE_TABLE_COLUMNS: SortableColumnDef<PayStructureSortColumn>[] = [
-  { key: 'company', label: 'Company' },
-  { key: 'country', label: 'Country' },
-  { key: 'payType', label: 'Pay Type' },
-  { key: 'payCycle', label: 'Pay Cycle' },
-  { key: 'pf', label: 'PF (Co/Emp)' },
-  { key: 'socso', label: 'SOCSO' },
-  { key: 'otherContributions', label: 'Other Contributions' },
-  { key: 'active', label: 'Active', align: 'center' },
+  { key: 'company', label: 'Company', ...tableColWidth('16%') },
+  { key: 'country', label: 'Country', ...tableColWidth('10%') },
+  { key: 'payType', label: 'Pay Type', ...tableColWidth('10%') },
+  { key: 'payCycle', label: 'Pay Cycle', ...tableColWidth('10%') },
+  { key: 'pf', label: 'PF (Co/Emp)', ...tableColWidth('12%') },
+  { key: 'socso', label: 'SOCSO', ...tableColWidth('12%') },
+  { key: 'otherContributions', label: 'Other Contributions', ...tableColWidth('14%') },
+  { key: 'active', label: 'Active', align: 'center', ...tableColWidth(72) },
 ];
 
 function PayStructurePanel({
@@ -458,6 +458,7 @@ export function PayStructureTab() {
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
           <table className="w-full text-xs">
+            <TableColGroup columns={PAY_STRUCTURE_TABLE_COLUMNS} />
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={PAY_STRUCTURE_TABLE_COLUMNS}

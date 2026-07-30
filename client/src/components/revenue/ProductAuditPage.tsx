@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, type ProductAuditResult } from '../../api';
 import { inputCls, selectCls } from '../../data/componentForm';
 import { pageShellClass } from '../layout/pageLayout';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
@@ -135,6 +136,7 @@ export function ProductAuditPage({ selectedCompanyId }: Props) {
         <div className="mt-3 bg-card border border-border rounded-lg overflow-hidden">
           <TableScrollContainer className="max-h-[calc(100vh-14rem)] overflow-y-auto">
             <table className="w-full min-w-[880px] text-left border-collapse">
+              <ColGroup widths={['12%', '18%', '14%', '22%', '22%', '12%']} />
               <thead className="bg-muted/40 sticky top-0 z-10">
                 <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2 font-semibold border-b border-border">Product ID</th>

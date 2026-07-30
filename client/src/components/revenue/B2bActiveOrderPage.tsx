@@ -15,9 +15,10 @@ import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { TABLE_COL_ACTION } from '../layout/pageLayout';
 import { ProduceBatchModal, type ProduceConfirmPayload } from './ProduceBatchModal';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { ActiveSalesInboundPanel } from './ActiveSalesInboundPanel';
@@ -61,14 +62,14 @@ type SortColumn =
   | 'action';
 
 const COLUMNS: SortableColumnDef<SortColumn>[] = [
-  { key: 'orderNumber', label: 'SO Number' },
-  { key: 'orderDate', label: 'Order Date' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'product', label: 'Product' },
-  { key: 'lockPeriod', label: 'Lock Period' },
-  { key: 'qtyOrdered', label: 'QTY Ordered', align: 'right' },
-  { key: 'stockAvailable', label: 'Stock on Hand', align: 'right' },
-  { key: 'action', label: 'Action', sortable: false },
+  { key: 'orderNumber', label: 'SO Number', ...tableColWidth('12%') },
+  { key: 'orderDate', label: 'Order Date', ...tableColWidth('11%') },
+  { key: 'customer', label: 'Customer', ...tableColWidth('16%') },
+  { key: 'product', label: 'Product', ...tableColWidth('18%') },
+  { key: 'lockPeriod', label: 'Lock Period', ...tableColWidth('12%') },
+  { key: 'qtyOrdered', label: 'QTY Ordered', align: 'right', ...tableColWidth('10%') },
+  { key: 'stockAvailable', label: 'Stock on Hand', align: 'right', ...tableColWidth('10%') },
+  { key: 'action', label: 'Action', sortable: false, ...TABLE_COL_ACTION },
 ];
 
 const actionBtnCls =
@@ -487,6 +488,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
 
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-18rem)] overflow-y-auto">
         <table className="w-full text-xs">
+          <TableColGroup columns={COLUMNS} />
           <thead className="bg-muted/30">
             <SortableTableHeaderRow
               columns={COLUMNS}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { sortTableRows } from '../../utils/tableSort';
 import { pageShellClass } from '../layout/pageLayout';
@@ -38,8 +38,8 @@ import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 type StorageSortColumn = 'area' | 'storage';
 
 const STORAGE_TABLE_COLUMNS: SortableColumnDef<StorageSortColumn>[] = [
-  { key: 'area', label: 'Storage Area' },
-  { key: 'storage', label: 'Storage' },
+  { key: 'area', label: 'Storage Area', ...tableColWidth('40%') },
+  { key: 'storage', label: 'Storage', ...tableColWidth('60%') },
 ];
 
 const CONFIG_TABS = [
@@ -305,6 +305,7 @@ export function ComponentConfigPage({
                 </div>
                 <TableScrollContainer ref={storageScrollRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
                   <table className="w-full text-xs">
+                    <TableColGroup columns={STORAGE_TABLE_COLUMNS} />
                     <thead>
                       <SortableTableHeaderRow
                         columns={STORAGE_TABLE_COLUMNS}

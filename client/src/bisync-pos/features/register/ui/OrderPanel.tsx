@@ -1,6 +1,7 @@
 import type { CartLine, OrderCharges, Product } from '../domain/types'
 import { cartGrandTotal, cartSubtotal, removeLine } from '../domain/cart'
 import { formatMoney } from '../../../core/types/money'
+import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './OrderPanel.css'
 
 type Props = {
@@ -128,6 +129,7 @@ export function OrderPanel({
           <p className="order-panel__empty">Add products to start this order.</p>
         ) : (
           <table className="order-lines-table">
+            <ColGroup widths={['36%', '12%', '18%', '18%', 88]} />
             <thead>
               <tr>
                 <th scope="col">Product</th>
