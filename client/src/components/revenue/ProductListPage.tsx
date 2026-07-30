@@ -206,6 +206,7 @@ export function ProductListPage({
   const [filterVariableProduct, setFilterVariableProduct] = useState(false);
   const [filterB2c, setFilterB2c] = useState(false);
   const [filterB2b, setFilterB2b] = useState(false);
+  const [filterPos, setFilterPos] = useState(false);
   /** When false (default), deactivated products are hidden from the list. */
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
@@ -247,6 +248,8 @@ export function ProductListPage({
     filterVariableProduct,
     filterB2c,
     filterB2b,
+    filterPos,
+    showDeactivated,
     selectedLocationIds,
     resetSort,
   ]);
@@ -296,6 +299,10 @@ export function ProductListPage({
       ));
     }
 
+    if (filterPos) {
+      scoped = scoped.filter(p => p.posEnabled);
+    }
+
     const query = search.trim().toLowerCase();
     if (!query) return scoped;
 
@@ -305,7 +312,7 @@ export function ProductListPage({
       p.category,
       p.group,
     ].join(' ').toLowerCase().includes(query));
-  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterVariableProduct, filterB2c, filterB2b, showDeactivated]);
+  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterVariableProduct, filterB2c, filterB2b, filterPos, showDeactivated]);
 
   const sortedVisibleProducts = useMemo(
     () =>
@@ -375,6 +382,7 @@ export function ProductListPage({
     || filterVariableProduct
     || filterB2c
     || filterB2b
+    || filterPos
     || showDeactivated,
   );
 
@@ -468,6 +476,15 @@ export function ProductListPage({
                   className="rounded border-border"
                 />
                 B2B
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filterPos}
+                  onChange={e => setFilterPos(e.target.checked)}
+                  className="rounded border-border"
+                />
+                POS
               </label>
               <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
                 <input
@@ -635,10 +652,9 @@ export function ProductListPage({
                               rowBusy
                               || product.isSubProduct
                               || !product.b2cEnabled
-                              || (product.rrp ?? 0) <= 0
                             }
                             onChange={e => {
-                              if (product.isSubProduct || !product.b2cEnabled || (product.rrp ?? 0) <= 0) return;
+                              if (product.isSubProduct || !product.b2cEnabled) return;
                               if (e.target.checked) {
                                 setPosModalProduct(product);
                                 return;
@@ -652,10 +668,10 @@ export function ProductListPage({
                                 ? 'POS is not available for sub-products'
                                 : !product.b2cEnabled
                                   ? 'POS requires a B2C product'
-                                  : (product.rrp ?? 0) <= 0
-                                    ? 'Set an RRP before enabling POS'
-                                    : product.posEnabled
-                                      ? 'POS enabled — double-click to change sell units, uncheck to disable'
+                                  : product.posEnabled
+                                    ? 'POS enabled — double-click to change sell units, uncheck to disable'
+                                    : (product.rrp ?? 0) <= 0
+                                      ? 'Enable POS and choose sell units (RRP can be set after)'
                                       : 'Enable POS and choose sell units'
                             }
                           />
