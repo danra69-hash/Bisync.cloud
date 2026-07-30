@@ -579,8 +579,22 @@ export function ProductListPage({
                   pagedVisibleProducts.map(product => {
                     const rowBusy = savingId === product.id;
                     const variationPoints = collectProductListRrpPoints(product, products);
+                    const openDetails = () => setDetailProduct(product);
                     return (
-                      <tr key={product.id} className={`hover:bg-muted/20 ${!product.active ? 'opacity-60' : ''}`}>
+                      <tr
+                        key={product.id}
+                        className={`hover:bg-muted/30 cursor-pointer ${!product.active ? 'opacity-60' : ''} ${detailProduct?.id === product.id ? 'bg-primary/5' : ''}`}
+                        onClick={openDetails}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openDetails();
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`View details for ${product.name}`}
+                      >
                         <td className={`${tdCls} text-muted-foreground min-w-0`}>
                           <span className="line-clamp-2">{product.category?.trim() || '—'}</span>
                         </td>
@@ -598,13 +612,9 @@ export function ProductListPage({
                               : 'Product'}
                         </td>
                         <td className={tdCls}>
-                          <button
-                            type="button"
-                            onClick={() => setDetailProduct(product)}
-                            className="font-medium text-left hover:text-primary hover:underline line-clamp-2"
-                          >
+                          <span className="font-medium text-left line-clamp-2">
                             {product.name}
-                          </button>
+                          </span>
                         </td>
                         <td className={tdCls}>
                           <VariationStack
@@ -612,7 +622,7 @@ export function ProductListPage({
                             render={point => point.deliveryUnit}
                           />
                         </td>
-                        <td className={tdCls}>
+                        <td className={tdCls} onClick={e => e.stopPropagation()}>
                           <InlineRrpInput
                             product={product}
                             disabled={rowBusy}
@@ -639,6 +649,7 @@ export function ProductListPage({
                         <td className={tdCls}>{channelLabel(product)}</td>
                         <td
                           className={`${tdCls} text-center`}
+                          onClick={e => e.stopPropagation()}
                           onDoubleClick={() => {
                             if (!product.isSubProduct && product.b2cEnabled && product.posEnabled) {
                               setPosModalProduct(product);
@@ -676,7 +687,7 @@ export function ProductListPage({
                             }
                           />
                         </td>
-                        <td className={`${tdCls} text-center`}>
+                        <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
                           <div className="inline-flex justify-center">
                             <ToggleSwitch
                               checked={product.active}

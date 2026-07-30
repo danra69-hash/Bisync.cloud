@@ -14,8 +14,8 @@ import {
 import { serializeProductParStockUom } from '../../data/productParStock';
 import { configLocationToDropdown } from '../../utils/orgFilters';
 import {
-  SIDE_PANEL_OVERLAY_CLS,
-  SIDE_PANEL_SHELL_PRODUCT_DETAIL_CLS,
+  MODAL_OVERLAY_CLS,
+  MODAL_SHELL_CLS,
 } from '../layout/sidePanelShared';
 import {
   createDefaultBatchAdditionalEntry,
@@ -241,13 +241,32 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
     await patchProduct({ locationExternalIds: next });
   }
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose, saving]);
+
   return createPortal(
     <>
-      <div className={SIDE_PANEL_OVERLAY_CLS} onClick={() => !saving && onClose()} />
-      <aside className={SIDE_PANEL_SHELL_PRODUCT_DETAIL_CLS}>
+      <div
+        className={MODAL_OVERLAY_CLS}
+        onClick={() => !saving && onClose()}
+        role="presentation"
+        aria-hidden
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Product details: ${product.name}`}
+        className={`${MODAL_SHELL_CLS} w-[min(96vw,920px)] max-h-[92vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden`}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4 shrink-0">
           <div className="min-w-0">
-            <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">Product</p>
+            <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">Product details</p>
             <h2 className="text-base font-semibold mt-1 truncate">{product.name}</h2>
             <p className="text-[11px] text-muted-foreground mt-1 font-mono">{product.productId}</p>
           </div>
@@ -283,7 +302,7 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
           {error ? (
             <p className="text-xs text-destructive border border-destructive/30 bg-destructive/5 rounded-md px-3 py-2 mb-4">
               {error}
@@ -307,7 +326,7 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
             onOpenProductionMethod={() => setProductionMethodOpen(true)}
           />
         </div>
-      </aside>
+      </div>
 
       {productionMethodOpen ? (
         <ProductionMethodModal
