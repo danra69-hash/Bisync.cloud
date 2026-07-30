@@ -121,9 +121,13 @@ type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
   embedded?: boolean;
+  /** Compact chrome for embedding inside the Product List detail popup. */
+  popupMode?: boolean;
   editorRequest?: { mode: 'new' } | { mode: 'edit'; id: number } | null;
   onEditorRequestConsumed?: () => void;
   onClose?: () => void;
+  /** Called after a successful create/update (popup returns to the list). */
+  onSaved?: (product: Product) => void;
 };
 
 const fieldCls =
@@ -468,9 +472,11 @@ export function ProductsPage({
   selectedCompanyId,
   selectedLocationIds,
   embedded = false,
+  popupMode = false,
   editorRequest = null,
   onEditorRequestConsumed,
   onClose,
+  onSaved,
 }: Props) {
   const { rm, symbol, cogsPercent } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -1480,8 +1486,12 @@ export function ProductsPage({
       if (!isSubProduct && b2bEnabled) {
         setB2bSalesConfig(b2bConfigForSave);
       }
-      setIsEditing(false);
       loadSavedProducts();
+      if (onSaved) {
+        onSaved(saved);
+        return;
+      }
+      setIsEditing(false);
     } catch (err) {
       showSaveError(err instanceof Error ? err.message : 'Failed to save product.');
     } finally {
@@ -1490,8 +1500,8 @@ export function ProductsPage({
   }
 
   return (
-    <div className={pageShellClass({ embedded, spacing: 'loose' })}>
-      {!embedded ? (
+    <div className={pageShellClass({ embedded: embedded || popupMode, spacing: popupMode ? 'default' : 'loose' })}>
+      {popupMode ? null : !embedded ? (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Products</p>
@@ -2208,13 +2218,14 @@ export function ProductsPage({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-border text-xs font-semibold hover:bg-muted/40"
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-border text-xs font-semibold hover:bg-muted/40 disabled:opacity-50"
                 >
                   <X size={14} />
-                  Close
+                  {popupMode ? 'Cancel' : 'Close'}
                 </button>
               ) : null}
-              {isEditing ? (
+              {isEditing || popupMode ? (
                 <button
                   type="button"
                   disabled={saving}
@@ -2222,7 +2233,7 @@ export function ProductsPage({
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
                 >
                   <Check size={14} />
-                  {saving ? 'Saving…' : selectedProductId ? 'Update product' : 'Save product'}
+                  {saving ? 'Saving…' : selectedProductId ? 'Save' : 'Save product'}
                 </button>
               ) : (
                 <>

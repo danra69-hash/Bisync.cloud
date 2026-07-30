@@ -21,22 +21,30 @@ import {
   createDefaultBatchAdditionalEntry,
 } from './SubProductBatchUomSection';
 import { clampSubProductAltUnits } from './SubProductBatchProduceFields';
+import { ProductReadOnlyView } from './ProductReadOnlyView';
+import { ProductionMethodModal } from './ProductionMethodModal';
+import { ProductsPage } from './ProductsPage';
+import { productKeyFromParts } from '../../data/productProductionMethod';
 
 const addBtnCls =
   'shrink-0 inline-flex items-center justify-center h-[34px] w-[34px] rounded-md border border-border bg-background hover:bg-muted/40 text-muted-foreground disabled:opacity-50';
-import { ProductReadOnlyView } from './ProductReadOnlyView';
-import { ProductionMethodModal } from './ProductionMethodModal';
-import { productKeyFromParts } from '../../data/productProductionMethod';
 
 type Props = {
   product: Product;
   companyId: number | null;
+  selectedLocationIds?: string[];
   onClose: () => void;
-  onEdit?: () => void;
   onUpdated?: (product: Product) => void;
 };
 
-export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpdated }: Props) {
+export function ProductDetailPanel({
+  product,
+  companyId,
+  selectedLocationIds = [],
+  onClose,
+  onUpdated,
+}: Props) {
+  const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rrpDraft, setRrpDraft] = useState(product.rrp > 0 ? String(product.rrp) : '');
@@ -48,6 +56,11 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
   const [locationIds, setLocationIds] = useState<string[]>(product.locationExternalIds ?? []);
   const [locations, setLocations] = useState<{ externalId: string; name: string }[]>([]);
   const [productionMethodOpen, setProductionMethodOpen] = useState(false);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setError(null);
+  }, [product.id]);
 
   useEffect(() => {
     setRrpDraft(product.rrp > 0 ? String(product.rrp) : '');
@@ -213,6 +226,7 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
     }
     setError(null);
     const saved = await patchProduct(payload);
+    // Return to the list behind the popup; list state stays mounted/unreset.
     if (saved) onClose();
   }
 
@@ -241,61 +255,83 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
     await patchProduct({ locationExternalIds: next });
   }
 
+  function handleDialogClose() {
+    if (saving) return;
+    if (isEditing) {
+      setIsEditing(false);
+      return;
+    }
+    onClose();
+  }
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) onClose();
+      if (e.key !== 'Escape' || saving) return;
+      if (isEditing) {
+        setIsEditing(false);
+        return;
+      }
+      onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, saving]);
+  }, [isEditing, saving, onClose]);
 
   return createPortal(
     <>
       <div
         className={MODAL_OVERLAY_CLS}
-        onClick={() => !saving && onClose()}
+        onClick={handleDialogClose}
         role="presentation"
         aria-hidden
       />
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Product details: ${product.name}`}
-        className={`${MODAL_SHELL_CLS} w-[min(96vw,920px)] max-h-[92vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden`}
+        aria-label={isEditing ? `Edit product: ${product.name}` : `Product details: ${product.name}`}
+        className={`${MODAL_SHELL_CLS} ${
+          isEditing ? 'w-[min(98vw,1100px)]' : 'w-[min(96vw,920px)]'
+        } max-h-[94vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden`}
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4 shrink-0">
           <div className="min-w-0">
-            <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">Product details</p>
+            <p className="text-xs font-sans uppercase tracking-widest text-muted-foreground">
+              {isEditing ? 'Edit product' : 'Product details'}
+            </p>
             <h2 className="text-base font-semibold mt-1 truncate">{product.name}</h2>
             <p className="text-[11px] text-muted-foreground mt-1 font-mono">{product.productId}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => void saveAll()}
-              disabled={saving || !hasUnsavedChanges}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            {onEdit ? (
-              <button
-                type="button"
-                onClick={onEdit}
-                disabled={saving}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/50 disabled:opacity-50"
-              >
-                <Pencil size={12} />
-                Edit
-              </button>
+            {!isEditing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void saveAll()}
+                  disabled={saving || !hasUnsavedChanges}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                {companyId ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/50 disabled:opacity-50"
+                  >
+                    <Pencil size={12} />
+                    Edit
+                  </button>
+                ) : null}
+              </>
             ) : null}
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleDialogClose}
               disabled={saving}
               className="p-2 rounded-md hover:bg-muted text-muted-foreground disabled:opacity-50"
-              aria-label="Close product detail"
+              aria-label={isEditing ? 'Cancel edit' : 'Close product detail'}
             >
               <X size={16} />
             </button>
@@ -303,28 +339,46 @@ export function ProductDetailPanel({ product, companyId, onClose, onEdit, onUpda
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-          {error ? (
-            <p className="text-xs text-destructive border border-destructive/30 bg-destructive/5 rounded-md px-3 py-2 mb-4">
-              {error}
-            </p>
-          ) : null}
+          {isEditing && companyId ? (
+            <ProductsPage
+              embedded
+              popupMode
+              selectedCompanyId={companyId}
+              selectedLocationIds={selectedLocationIds}
+              editorRequest={{ mode: 'edit', id: product.id }}
+              onClose={() => setIsEditing(false)}
+              onSaved={saved => {
+                onUpdated?.(saved);
+                setIsEditing(false);
+                onClose();
+              }}
+            />
+          ) : (
+            <>
+              {error ? (
+                <p className="text-xs text-destructive border border-destructive/30 bg-destructive/5 rounded-md px-3 py-2 mb-4">
+                  {error}
+                </p>
+              ) : null}
 
-          <ProductReadOnlyView
-            product={product}
-            locations={locations}
-            locationIds={locationIds}
-            saving={saving}
-            rrpDraft={rrpDraft}
-            onRrpChange={setRrpDraft}
-            parStockDraft={parStockDraft}
-            onParStockChange={setParStockDraft}
-            yieldAltUnits={yieldAltUnits}
-            onYieldAltUnitsChange={handleYieldAltUnitsChange}
-            onAddBatchAdditionalUom={supportsBatchAdditionalUom && !product.isSubProduct ? addBatchAdditionalUom : undefined}
-            addBatchUomButtonCls={addBtnCls}
-            onToggleLocation={externalId => void toggleLocation(externalId)}
-            onOpenProductionMethod={() => setProductionMethodOpen(true)}
-          />
+              <ProductReadOnlyView
+                product={product}
+                locations={locations}
+                locationIds={locationIds}
+                saving={saving}
+                rrpDraft={rrpDraft}
+                onRrpChange={setRrpDraft}
+                parStockDraft={parStockDraft}
+                onParStockChange={setParStockDraft}
+                yieldAltUnits={yieldAltUnits}
+                onYieldAltUnitsChange={handleYieldAltUnitsChange}
+                onAddBatchAdditionalUom={supportsBatchAdditionalUom && !product.isSubProduct ? addBatchAdditionalUom : undefined}
+                addBatchUomButtonCls={addBtnCls}
+                onToggleLocation={externalId => void toggleLocation(externalId)}
+                onOpenProductionMethod={() => setProductionMethodOpen(true)}
+              />
+            </>
+          )}
         </div>
       </div>
 

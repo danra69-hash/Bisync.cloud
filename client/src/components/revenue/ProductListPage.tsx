@@ -35,7 +35,6 @@ type Props = {
   selectedLocationIds: string[];
   embedded?: boolean;
   onCreateProduct?: () => void;
-  onEditProduct?: (productId: number) => void;
 };
 
 const tdCls = 'px-3 py-2.5 align-middle border-r border-b border-border last:border-r-0 text-xs';
@@ -190,7 +189,6 @@ export function ProductListPage({
   selectedLocationIds,
   embedded = false,
   onCreateProduct,
-  onEditProduct,
 }: Props) {
   const countryCode = useOrgCountryCode();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -712,13 +710,9 @@ export function ProductListPage({
         <ProductDetailPanel
           product={detailProduct}
           companyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
           onClose={() => setDetailProduct(null)}
           onUpdated={replaceProduct}
-          onEdit={onEditProduct ? () => {
-            const id = detailProduct.id;
-            setDetailProduct(null);
-            onEditProduct(id);
-          } : undefined}
         />
       ) : null}
 
