@@ -100,7 +100,7 @@ type AttendanceEmployeeSortColumn = 'name' | `day:${string}`;
 type LeaveBalanceSortColumn = 'employee' | 'rdo' | 'rph' | 'al';
 
 const LEAVE_BALANCE_COLUMNS = [
-  { key: 'employee' as const, label: 'Employee', ...tableColWidth('40%') },
+  { key: 'employee' as const, label: 'Employee', align: 'left' as const, ...tableColWidth('40%') },
   { key: 'rdo' as const, label: 'RDO', align: 'center' as const, ...tableColWidth('20%') },
   { key: 'rph' as const, label: 'RPH', align: 'center' as const, ...tableColWidth('20%') },
   { key: 'al' as const, label: 'AL', align: 'center' as const, ...tableColWidth('20%') },

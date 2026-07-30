@@ -424,6 +424,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
         ) : (
           <TableScrollContainer>
             <table className="w-full text-xs">
+              <ColGroup widths={['22%', '12%', '18%', '18%', '12%', 112]} />
               <thead>
                 <tr className="text-left text-muted-foreground border-b border-border">
                   <th className="py-2 pr-2 font-semibold">Name</th>
@@ -431,7 +432,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
                   <th className="py-2 pr-2 font-semibold">Network</th>
                   <th className="py-2 pr-2 font-semibold">SDK / Setup</th>
                   <th className="py-2 pr-2 font-semibold">Status</th>
-                  <th className="py-2 font-semibold w-28" />
+                  <th className="py-2 font-semibold" />
                 </tr>
               </thead>
               <tbody>

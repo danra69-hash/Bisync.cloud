@@ -170,6 +170,7 @@ export function SalesDiaryPanel({
 
       <TableScrollContainer>
         <table className="w-full text-xs">
+          <ColGroup widths={['12%', '14%', '16%', '28%', '18%', TABLE_COL_ACTION.style.width]} />
           <thead>
             <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
               <th className="px-2 py-1.5 text-left">Date</th>

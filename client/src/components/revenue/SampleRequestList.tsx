@@ -13,6 +13,7 @@ import {
 } from '../../data/requestForSample';
 import { formatVendorPolicyLabel } from '../../data/vendorPolicyRules';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
+import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
@@ -364,6 +365,7 @@ export function SampleRequestList({ selectedCompanyId, refreshKey = 0 }: Props) 
         ) : (
           <TableScrollContainer className="max-h-[40vh] overflow-y-auto">
             <table className="w-full text-xs">
+              <ColGroup widths={['12%', '16%', '20%', '22%', '14%', '16%']} />
               <thead className="bg-muted/30 sticky top-0">
                 <tr className="border-b border-border text-left">
                   <th className="px-4 py-2.5 font-semibold">Request #</th>
