@@ -50,6 +50,7 @@ import {
 import {
   findSubProductForLine,
   resolveProductLineUomOptions,
+  normalizeSubProductRecipeLine,
   subProductComponentUomOptions,
   withCurrentProductLineUomOption,
 } from '../../data/productComponentUomOptions';
@@ -428,7 +429,7 @@ function mapProductItemsToLines(
       product.isSubProduct
       && product.productId.trim().toLowerCase() === item.componentId.trim().toLowerCase(),
     );
-    return {
+    const line: ProductLine = {
       key: item.id ? `saved-${item.id}` : `line-${item.componentId}`,
       componentId: item.componentId,
       componentName: item.componentName,
@@ -437,6 +438,7 @@ function mapProductItemsToLines(
       quantity: String(item.quantity),
       sourceProductId: linkedSubProduct?.id,
     };
+    return linkedSubProduct ? normalizeSubProductRecipeLine(line, linkedSubProduct) : line;
   });
   return mapped.length > 0 ? mapped : [blankProductLine()];
 }
