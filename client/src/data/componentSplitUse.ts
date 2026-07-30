@@ -2,7 +2,7 @@ const API_UOM_TO_DISPLAY: Record<string, string> = {
   mg: 'Mg', g: 'Gr', kg: 'Kg', t: 'Tonne',
   ml: 'Ml', cl: 'Cl', L: 'Ltr',
   pcs: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case', btl: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
-  oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal', box: 'Case', set: 'Each',
+  oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal', box: 'Box', set: 'Set',
 };
 
 const UNIT_CONV: Record<string, Record<string, number>> = {
@@ -35,7 +35,7 @@ function getConversionFactor(from: string, to: string): number | null {
 export const SPLIT_USE_UOM_OPTIONS = [
   'Mg', 'Gr', 'Kg', 'Tonne',
   'Ml', 'Cl', 'Ltr',
-  'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Bottle', 'Can', 'Tin', 'Slice',
+  'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Box', 'Set', 'Bottle', 'Can', 'Tin', 'Slice',
   'Oz', 'Lb', 'FlOz', 'Gal',
 ] as const;
 
