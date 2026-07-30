@@ -549,9 +549,13 @@ export function ProductListPage({
                 ) : visibleProducts.length === 0 ? (
                   <tr>
                     <td colSpan={PRODUCT_LIST_COL_SPAN} className="px-3 py-8 text-center text-xs text-muted-foreground">
-                      {hasActiveFilters
-                        ? 'No products match your filters.'
-                        : 'No products saved yet. Create one from the Products tab.'}
+                      {!showDeactivated
+                        && products.some(p => !p.active && productMatchesLocations(p, selectedLocationIds))
+                        && !hasActiveFilters
+                        ? 'No active products. Tick “Show deactivated” to view inactive ones.'
+                        : hasActiveFilters
+                          ? 'No products match your filters.'
+                          : 'No products saved yet. Create one from the Products tab.'}
                     </td>
                   </tr>
                 ) : (
