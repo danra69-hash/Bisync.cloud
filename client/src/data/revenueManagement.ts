@@ -1,4 +1,4 @@
-import { loadComponentHierarchy } from './componentHierarchy';
+import { getHierarchyGroupOptions, loadComponentHierarchy } from './componentHierarchy';
 import { uniqueLabelsPreferCanonical } from '../utils/labelMatch';
 
 export type RevMgmtItem = { label: string };
@@ -248,11 +248,23 @@ export function getSiCategoryFilterOptions(extra: string[] = []): string[] {
 /**
  * Group filter options: company hierarchy groups + static fallbacks + caller extras.
  * Dedupes case-insensitively so DRY GOODS / Dry Goods collapse to Dry Goods.
+ * When `categoryFilter` is a specific category (not "All"), only groups under that
+ * category are returned so the Group dropdown stays scoped to the selected Category.
  */
-export function getSiGroupFilterOptions(extra: string[] = []): string[] {
-  const hierarchyNames = loadComponentHierarchy().groups.map(group => group.name);
+export function getSiGroupFilterOptions(extra: string[] = [], categoryFilter = 'All'): string[] {
+  const hierarchy = loadComponentHierarchy();
+  const scopedCategory = categoryFilter.trim();
+  const scopedToCategory = Boolean(scopedCategory) && scopedCategory.toLowerCase() !== 'all';
+
+  const hierarchyNames = scopedToCategory
+    ? getHierarchyGroupOptions(hierarchy, scopedCategory, '', [])
+    : hierarchy.groups.map(group => group.name);
+
+  // Avoid re-injecting every built-in group when a category is selected.
+  const canonicalFallback = scopedToCategory ? [] : SI_GROUP_CANONICAL;
+
   return ['All', ...uniqueLabelsPreferCanonical(
-    [...hierarchyNames, ...SI_GROUP_CANONICAL, ...extra],
+    [...hierarchyNames, ...canonicalFallback, ...extra],
     SI_GROUP_CANONICAL,
   )];
 }

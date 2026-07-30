@@ -239,10 +239,23 @@ export function SmartIngredientPage({
     () => getSiCategoryFilterOptions(rows.map(row => row.category)),
     [rows],
   );
-  const groupFilterOptions = useMemo(
-    () => getSiGroupFilterOptions(rows.map(row => row.group)),
-    [rows],
-  );
+  const groupFilterOptions = useMemo(() => {
+    const scopedRows = catFilter === 'All'
+      ? rows
+      : rows.filter(row => labelsEqual(row.category, catFilter));
+    return getSiGroupFilterOptions(
+      scopedRows.map(row => row.group),
+      catFilter,
+    );
+  }, [rows, catFilter]);
+
+  useEffect(() => {
+    if (grpFilter === 'All') return;
+    const stillValid = groupFilterOptions.some(
+      option => option === 'All' || labelsEqual(option, grpFilter),
+    );
+    if (!stillValid) setGrpFilter('All');
+  }, [catFilter, groupFilterOptions, grpFilter]);
 
   const alternateUomOptions = useMemo(() => {
     const units = new Set<string>();
@@ -507,7 +520,15 @@ export function SmartIngredientPage({
       <PageStickyFilters opaque className="space-y-2 pb-2">
       <div className="bg-card border border-border rounded-lg p-2">
         <div className="flex flex-wrap items-end gap-4">
-          <FilterSelect label="Category" value={catFilter} options={categoryFilterOptions} onChange={setCatFilter} />
+          <FilterSelect
+            label="Category"
+            value={catFilter}
+            options={categoryFilterOptions}
+            onChange={value => {
+              setCatFilter(value);
+              setGrpFilter('All');
+            }}
+          />
           <FilterSelect label="Group" value={grpFilter} options={groupFilterOptions} onChange={setGrpFilter} />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">

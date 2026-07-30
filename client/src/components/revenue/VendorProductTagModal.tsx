@@ -498,7 +498,14 @@ export function VendorProductTagModal({
 
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Category</label>
 
-                  <select className={selectCls} value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                  <select
+                    className={selectCls}
+                    value={catFilter}
+                    onChange={e => {
+                      setCatFilter(e.target.value);
+                      setGrpFilter('All');
+                    }}
+                  >
 
                     {getSiCategoryFilterOptions(available.map(row => row.category)).map(c => <option key={c}>{c}</option>)}
 
@@ -512,7 +519,13 @@ export function VendorProductTagModal({
 
                   <select className={selectCls} value={grpFilter} onChange={e => setGrpFilter(e.target.value)}>
 
-                    {getSiGroupFilterOptions(available.map(row => row.group)).map(g => <option key={g}>{g}</option>)}
+                    {getSiGroupFilterOptions(
+                      (catFilter === 'All'
+                        ? available
+                        : available.filter(row => labelsEqual(row.category, catFilter))
+                      ).map(row => row.group),
+                      catFilter,
+                    ).map(g => <option key={g}>{g}</option>)}
 
                   </select>
 
