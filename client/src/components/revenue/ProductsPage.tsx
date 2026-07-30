@@ -39,6 +39,7 @@ import {
   calcProductCogs,
   calcSubProductUnitCost,
   calcTotalCost,
+  findSimilarProductNames,
   generateProductId,
   isProductLineFilled,
   parseOptionalActivationPeriodHours,
@@ -47,6 +48,8 @@ import {
   type ProductAliasLine,
   type ProductLine,
 } from '../../data/productForm';
+import { hasExactCatalogNameMatch } from '../../utils/catalogNameMatch';
+import { SimilarNameMatchesNotice } from '../shared/SimilarNameMatchesNotice';
 import {
   findSubProductForLine,
   resolveProductLineUomOptions,
@@ -542,6 +545,12 @@ export function ProductsPage({
     ]);
     return [...merged].sort((a, b) => a.localeCompare(b));
   }, [components, extraGroups, group, savedProducts]);
+
+  const similarProductNameMatches = useMemo(() => {
+    if (!name.trim() || name.trim().length < 3) return [];
+    const excludeId = selectedProductId ? Number(selectedProductId) : undefined;
+    return findSimilarProductNames(name, savedProducts, excludeId);
+  }, [name, savedProducts, selectedProductId]);
 
   const loadComponents = useCallback(() => {
     if (!orgReady) {
@@ -1220,6 +1229,10 @@ export function ProductsPage({
         : 'Enter a principal product name to generate the product ID.');
       return;
     }
+    if (hasExactCatalogNameMatch(similarProductNameMatches)) {
+      showSaveError('A product with this name already exists (active or inactive). Use the existing product or choose a different name.');
+      return;
+    }
     if (!category) {
       showSaveError('Category is required.');
       return;
@@ -1742,8 +1755,9 @@ export function ProductsPage({
                     value={name}
                     onChange={e => setName(e.target.value)}
                     placeholder="e.g. Burger Patty Prep, Espresso Base"
-                    className={fieldCls}
+                    className={`${fieldCls}${hasExactCatalogNameMatch(similarProductNameMatches) ? ' border-destructive focus:ring-destructive' : ''}`}
                   />
+                  <SimilarNameMatchesNotice matches={similarProductNameMatches} entityLabel="product" />
                 </div>
 
                 <SubProductBatchProduceFields
@@ -1764,27 +1778,30 @@ export function ProductsPage({
             ) : (
               <>
                 <div className="space-y-3">
-                  <div className="flex gap-1.5 items-end">
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      <label className={labelCls} htmlFor="principal-product-name">Principal Product Name</label>
-                      <input
-                        id="principal-product-name"
-                        type="text"
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        placeholder="e.g. Wagyu Burger, Espresso Latte"
-                        className={fieldCls}
-                      />
+                  <div className="space-y-1.5">
+                    <div className="flex gap-1.5 items-end">
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <label className={labelCls} htmlFor="principal-product-name">Principal Product Name</label>
+                        <input
+                          id="principal-product-name"
+                          type="text"
+                          value={name}
+                          onChange={e => setName(e.target.value)}
+                          placeholder="e.g. Wagyu Burger, Espresso Latte"
+                          className={`${fieldCls}${hasExactCatalogNameMatch(similarProductNameMatches) ? ' border-destructive focus:ring-destructive' : ''}`}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addAlias}
+                        className={addBtnCls}
+                        title="Add product alias"
+                        aria-label="Add product alias"
+                      >
+                        <Plus size={14} />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={addAlias}
-                      className={addBtnCls}
-                      title="Add product alias"
-                      aria-label="Add product alias"
-                    >
-                      <Plus size={14} />
-                    </button>
+                    <SimilarNameMatchesNotice matches={similarProductNameMatches} entityLabel="product" />
                   </div>
 
                   {aliases.length > 0 ? (
