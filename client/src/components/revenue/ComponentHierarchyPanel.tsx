@@ -260,7 +260,7 @@ export function ComponentHierarchyPanel({
             Category → Group → Sub-Group. Delete is available only when nothing is attached.
           </p>
         </div>
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {['Category', 'Group', 'Sub-Group', 'Components', ''].map(label => (

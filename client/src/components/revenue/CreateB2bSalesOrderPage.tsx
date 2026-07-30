@@ -327,7 +327,7 @@ export function CreateB2bSalesOrderPage({
       ) : (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <TableScrollContainer className="max-h-[calc(100vh-18rem)] overflow-y-auto">
-            <table className="w-full table-fixed">
+            <table className="w-full">
               <thead className="bg-muted/30">
                 <tr className="border-b border-border text-xs">
                   <th className="px-3 py-2 text-left font-semibold">Product</th>

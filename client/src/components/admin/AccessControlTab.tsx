@@ -180,7 +180,7 @@ export function AccessControlTab() {
       </div>
 
       <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-16rem)] overflow-auto border border-border rounded-lg">
-        <table className="w-full text-xs table-fixed min-w-[1080px]">
+        <table className="w-full text-xs min-w-[1080px]">
           <colgroup>
             <col className="w-[10rem]" />
             <col className="w-[12rem]" />

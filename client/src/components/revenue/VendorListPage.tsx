@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { pageShellClass } from '../layout/pageLayout';
@@ -54,15 +54,15 @@ import { ToggleSwitch } from '../admin/ToggleSwitch';
 type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'active' | 'rating' | 'action';
 
 const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
-  { key: 'name', label: 'Vendor Name' },
-  { key: 'products', label: 'Type of Product Supplied' },
-  { key: 'policy', label: 'Product Policy' },
-  { key: 'address', label: 'Address' },
-  { key: 'phone', label: 'Phone Number' },
-  { key: 'email', label: 'Email' },
-  { key: 'active', label: 'Active', align: 'center', sortable: false },
-  { key: 'rating', label: 'Vendor Rating', align: 'center' },
-  { key: 'action', label: 'Action', align: 'right', sortable: false },
+  { key: 'name', label: 'Vendor Name', ...tableColWidth('16%') },
+  { key: 'products', label: 'Type of Product Supplied', ...tableColWidth('14%') },
+  { key: 'policy', label: 'Product Policy', ...tableColWidth('10%') },
+  { key: 'address', label: 'Address', ...tableColWidth('16%') },
+  { key: 'phone', label: 'Phone Number', ...tableColWidth('10%') },
+  { key: 'email', label: 'Email', ...tableColWidth('12%') },
+  { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
+  { key: 'rating', label: 'Vendor Rating', align: 'center', ...tableColWidth('8%') },
+  { key: 'action', label: 'Action', align: 'right', sortable: false, ...tableColWidth(100) },
 ];
 
 const VENDOR_TABS = [
@@ -395,7 +395,7 @@ export function VendorListPage({
             )}
           </div>
         </td>
-        <td className="px-4 py-3 text-foreground ">{v.products || '—'}</td>
+        <td className="px-4 py-3 text-foreground">{v.products || '—'}</td>
         <td className="px-4 py-3 text-foreground whitespace-nowrap">
           <div className="flex flex-col gap-0.5">
             <span>{formatVendorPolicyLabel(inferVendorPolicyTag(v))}</span>
@@ -406,11 +406,11 @@ export function VendorListPage({
             ) : null}
           </div>
         </td>
-        <td className="px-4 py-3 text-muted-foreground ">
+        <td className="px-4 py-3 text-muted-foreground">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>
         <td className="px-4 py-3 font-sans text-foreground whitespace-nowrap">{displayMobile}</td>
-        <td className="px-4 py-3 text-foreground ">
+        <td className="px-4 py-3 text-foreground">
           {displayEmail ? (
             <a href={`mailto:${displayEmail}`} className="hover:text-primary hover:underline break-all">
               {displayEmail}
@@ -578,7 +578,8 @@ export function VendorListPage({
           <MillstoneLoader size="sm" layout="block" label="Loading vendors…" />
         ) : (
           <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-            <table className="w-full table-fixed text-xs">
+            <table className="w-full text-xs">
+              <TableColGroup columns={VENDOR_TABLE_COLUMNS} />
               <thead className="bg-muted/30">
                 <SortableTableHeaderRow
                   columns={VENDOR_TABLE_COLUMNS}

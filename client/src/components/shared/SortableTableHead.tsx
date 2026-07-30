@@ -18,6 +18,27 @@ export type SortableColumnDef<T extends string> = {
   sortable?: boolean;
 };
 
+/** Build style for a column width (px number or CSS length / %). */
+export function tableColWidth(width: string | number): Pick<SortableColumnDef<string>, 'style'> {
+  const value = typeof width === 'number' ? `${width}px` : width;
+  return { style: { width: value } };
+}
+
+/** Renders `<colgroup>` so scroll tables opt into balanced `table-layout: fixed`. */
+export function TableColGroup<T extends string>({
+  columns,
+}: {
+  columns: readonly SortableColumnDef<T>[];
+}) {
+  return (
+    <colgroup>
+      {columns.map(column => (
+        <col key={column.key} style={column.style} className={column.className} />
+      ))}
+    </colgroup>
+  );
+}
+
 type SortableTableHeadProps<T extends string> = {
   label: string;
   header?: ReactNode;

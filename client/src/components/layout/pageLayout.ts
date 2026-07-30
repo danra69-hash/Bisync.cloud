@@ -10,24 +10,33 @@ export const PAGE_PADDING_CLS = 'p-2 sm:p-3';
 export const CONTENT_FRAME_CLS = 'w-full max-w-none min-w-0 px-4 sm:px-6';
 
 /**
- * Vertical scroll region for data tables.
+ * Vertical (and when needed horizontal) scroll region for data tables.
  * Height leaves room for sticky app header + module bar + page filters.
  */
 export const TABLE_SCROLL_CLS =
-  'overflow-x-hidden rounded-lg border border-border bg-card max-h-[calc(100dvh-var(--app-chrome-offset))] overflow-y-auto w-full min-w-0';
+  'overflow-x-auto rounded-lg border border-border bg-card max-h-[calc(100dvh-var(--app-chrome-offset))] overflow-y-auto w-full min-w-0';
 
 /** Sticky module nav (Rev Mgmt / POS) — use with data-module-bar. */
 export const MODULE_BAR_STICKY_CLS =
   'sticky top-0 z-20 bg-card border-b border-border';
 
-/** Fit tables to container width; pair with truncate/line-clamp in cells when needed. */
-export const DATA_TABLE_CLS = 'w-full table-fixed border-collapse';
+/**
+ * Fit tables to container width. Prefer pairing with `<TableColGroup />` so
+ * `table-layout: fixed` is activated by CSS `:has(colgroup)`.
+ */
+export const DATA_TABLE_CLS = 'w-full border-collapse';
 
 /** Compact table header / cell helpers (override with CSS when inside data-table-scroll). */
 export const TABLE_TH_CLS =
-  'text-left px-2 py-1 text-[11px] font-sans uppercase tracking-wide text-muted-foreground font-semibold truncate';
+  'text-left px-2 py-1 text-[11px] font-sans uppercase tracking-wide text-muted-foreground font-semibold break-words';
 
-export const TABLE_TD_CLS = 'px-2 py-1 align-middle text-xs min-w-0';
+export const TABLE_TD_CLS = 'px-2 py-1 align-top text-xs min-w-0 break-words [overflow-wrap:anywhere]';
+
+/** Narrow action / toggle / photo columns that should not flex. */
+export const TABLE_COL_PHOTO = { style: { width: '72px' }, className: 'w-[72px]' } as const;
+export const TABLE_COL_ACTION = { style: { width: '88px' }, className: 'w-[88px]' } as const;
+export const TABLE_COL_TOGGLE = { style: { width: '72px' }, className: 'w-[72px]' } as const;
+export const TABLE_COL_CHECK = { style: { width: '48px' }, className: 'w-12' } as const;
 
 type ShellOptions = {
   embedded?: boolean;

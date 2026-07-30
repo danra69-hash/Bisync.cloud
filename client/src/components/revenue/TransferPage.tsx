@@ -635,7 +635,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed border-collapse text-sm">
+            <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="text-left px-2 py-1.5 w-24">Date</th>
@@ -837,7 +837,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
           ref={historyScrollRef}
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
         >
-          <table className="w-full table-fixed border-collapse text-sm">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="text-left px-2 py-1.5 w-24">Date</th>

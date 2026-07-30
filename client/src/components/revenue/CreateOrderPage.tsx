@@ -462,7 +462,7 @@ export function CreateOrderPage({
 
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed">
+              <table className="w-full">
                 <thead className="bg-muted/30">
                   <SortableTableHeaderRow
                     columns={CREATE_ORDER_TABLE_COLUMNS}

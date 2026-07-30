@@ -327,7 +327,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
           </p>
         </div>
         <TableScrollContainer ref={preScrollRootRef} className="max-h-[min(40vh,22rem)] overflow-y-auto">
-          <table className="w-full table-fixed">
+          <table className="w-full">
             <thead className="bg-muted/30">
               <SortableTableHeaderRow
                 columns={PRE_COMMITTED_TABLE_COLUMNS}
@@ -389,7 +389,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
           </p>
         </div>
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed">
+          <table className="w-full">
             <thead className="bg-muted/30">
               <SortableTableHeaderRow
                 columns={ACTIVE_PURCHASE_TABLE_COLUMNS}

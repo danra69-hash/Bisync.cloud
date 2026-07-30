@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { SortableTableHeaderRow, type SortableColumnDef } from '../shared/SortableTableHead';
+import { SortableTableHeaderRow, TableColGroup, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { createPortal } from 'react-dom';
@@ -422,12 +422,8 @@ export function VendorProductsList({
     <>
       <div className="border border-border rounded-lg overflow-hidden">
         <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs border-collapse">
-            <colgroup>
-              {tableColumns.map(column => (
-                <col key={column.key} style={column.style} className={column.className} />
-              ))}
-            </colgroup>
+          <table className="w-full text-xs border-collapse">
+            <TableColGroup columns={tableColumns} />
             <thead className="bg-muted/40">
               <SortableTableHeaderRow
                 columns={tableColumns}

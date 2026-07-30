@@ -240,7 +240,7 @@ export function ProcessPayrollPanel({
             </div>
 
             <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-sm">
+              <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b border-border">
                   <SortableTableHeaderRow
                     columns={TABLE_COLUMNS}

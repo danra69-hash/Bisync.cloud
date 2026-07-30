@@ -568,7 +568,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
       {/* Navigation Tabs */}
       <div className="bg-white border-b border-gray-200">
         <div className={embedded ? 'px-4' : 'px-8'}>
-          <div className="flex gap-4 md:gap-8 ">
+          <div className="flex gap-4 md:gap-8">
             {([
               ['employees', Users, 'Employee Directory'],
               ['attendance', Calendar, 'Attendance'],
@@ -683,7 +683,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 ref={shiftAttendanceScrollRef}
                 className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
-                <table className="w-full table-fixed">
+                <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
                       <SortableTableHead
@@ -795,7 +795,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                 ref={nonShiftAttendanceScrollRef}
                 className={`bg-white rounded-lg shadow-sm border border-gray-200 ${attendanceWeekView ? '' : ''}`}
               >
-                <table className="w-full table-fixed">
+                <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <SortableTableHead
@@ -946,7 +946,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col">
                 <h3 className="text-lg text-gray-900 mb-4">Leave Balance Summary</h3>
                 <div ref={leaveBalanceScrollRef} className="overflow-auto flex-1 max-h-[calc(100vh-12rem)]">
-                  <table className="w-full table-fixed">
+                  <table className="w-full">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         {LEAVE_BALANCE_COLUMNS.map(column => (
@@ -1143,7 +1143,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
             <div>
               <h3 className="text-xl text-gray-900 mb-4">Detailed Attendance Records</h3>
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-auto">
-                <table className="w-full table-fixed">
+                <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className={tableHeaderCls('left', 'px-6 text-gray-700')}>Date</th>

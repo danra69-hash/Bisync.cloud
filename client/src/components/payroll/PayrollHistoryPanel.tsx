@@ -157,7 +157,7 @@ export function PayrollHistoryPanel({ companyId, countryCode, refreshKey, onClos
                     )}
                     {detail && (
                       <div className="overflow-x-hidden" data-table-scroll>
-                        <table className="w-full table-fixed text-xs">
+                        <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b border-border/60">
                               <th className={tableHeaderCls('left')}>Employee ID</th>

@@ -108,7 +108,7 @@ export function MalaysiaProvidentFundSection({
         </div>
 
         <TableScrollContainer ref={scrollRootRef} className="border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
-          <table className="w-full table-fixed text-xs">
+          <table className="w-full text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={EPF_TABLE_COLUMNS}
@@ -211,8 +211,8 @@ export function MalaysiaProvidentFundSection({
           </p>
         </div>
 
-        <div className="border border-border rounded-lg ">
-          <table className="w-full table-fixed text-xs">
+        <div className="border border-border rounded-lg">
+          <table className="w-full text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={EPF_FOREIGN_TABLE_COLUMNS}

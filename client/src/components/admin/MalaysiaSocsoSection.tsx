@@ -87,8 +87,8 @@ function SocsoCategoryTable({
         <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
       <div className="border border-border rounded-lg overflow-hidden">
-        <TableScrollContainer ref={scrollRootRef} className="max-h-56 overflow-y-auto ">
-          <table className="w-full table-fixed text-xs">
+        <TableScrollContainer ref={scrollRootRef} className="max-h-56 overflow-y-auto">
+          <table className="w-full text-xs">
             <thead className="bg-muted/40 border-b border-border sticky top-0 z-10">
               <SortableTableHeaderRow
                 columns={SOCSO_TABLE_COLUMNS}
@@ -172,8 +172,8 @@ export function MalaysiaSocsoSection({ brackets, onChange, foreignEmployerPct, o
           </p>
         </div>
 
-        <div className="border border-border rounded-lg ">
-          <table className="w-full table-fixed text-xs">
+        <div className="border border-border rounded-lg">
+          <table className="w-full text-xs">
             <thead className="bg-muted/40 border-b border-border">
               <SortableTableHeaderRow
                 columns={FOREIGN_SOCSO_TABLE_COLUMNS}

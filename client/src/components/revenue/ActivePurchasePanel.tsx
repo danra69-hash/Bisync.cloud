@@ -686,7 +686,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
               <p className="text-xs font-semibold">Line items</p>
             </div>
             <TableScrollContainer ref={scrollRootRef} className="max-h-[min(42vh,24rem)] overflow-y-auto">
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border">
                     {lineHeaders.map(h => (

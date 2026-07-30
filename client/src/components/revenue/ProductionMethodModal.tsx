@@ -215,7 +215,7 @@ export function ProductionMethodModal({
             {sequencedComponents.length === 0 ? (
               <p className="px-4 py-6 text-xs text-muted-foreground text-center">No product components added yet.</p>
             ) : (
-              <table className="w-full table-fixed text-xs">
+              <table className="w-full text-xs">
                 <thead>
                   <tr>
                     {['Seq', 'Smart component', 'UOM', 'Qty', 'UOM price', 'Subtotal'].map(label => (
@@ -264,7 +264,7 @@ export function ProductionMethodModal({
                 {yieldQuantity > 0 ? ` (yield ${yieldQuantity})` : ''}.
               </p>
             </div>
-            <table className="w-full table-fixed text-xs">
+            <table className="w-full text-xs">
               <thead>
                 <tr>
                   {['Factor', 'Per serving', 'Unit'].map(label => (
