@@ -16,6 +16,7 @@ import { pageShellClass } from '../layout/pageLayout';
 import { PageStickyFilters } from '../layout/PageStickyFilters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
+import { labelsEqual } from '../../utils/labelMatch';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { useTableSort } from '../../hooks/useTableSort';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
@@ -460,7 +461,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
     if (categoryFilter !== 'All') {
       next = next.filter(row => {
         const category = itemCategoryByKey[`${row.itemType}-${row.itemKey}`];
-        return category === categoryFilter;
+        return labelsEqual(category, categoryFilter);
       });
     }
     if (activeStorageTypes.length > 0) {

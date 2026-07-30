@@ -1,4 +1,5 @@
 import { loadComponentHierarchy } from './componentHierarchy';
+import { uniqueLabelsPreferCanonical } from '../utils/labelMatch';
 
 export type RevMgmtItem = { label: string };
 export type RevMgmtSubSection = { subtitle?: string; items: RevMgmtItem[] };
@@ -193,34 +194,66 @@ export type NavItem = (typeof NAV_ITEMS)[number];
 export const siCategories = ['All', 'Assets', 'Ops Expenses', 'FF&E', 'Maintenance', 'MarComm', 'Food', 'Beverage', 'Retail'];
 export const siGroups = ['All', 'Proteins', 'Dairy', 'Produce', 'Dry Goods', 'Beverages', 'Spirits', 'Cleaning', 'Equipment', 'Packaging'];
 
-function uniqueSortedLabels(values: string[]): string[] {
-  return [...new Set(values.map(value => value.trim()).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b));
+const SI_CATEGORY_CANONICAL = siCategories.filter(category => category !== 'All');
+const SI_GROUP_CANONICAL = siGroups.filter(group => group !== 'All');
+
+/** Map common import spellings onto built-in category labels. */
+const SI_CATEGORY_ALIASES: Record<string, string> = {
+  food: 'Food',
+  beverage: 'Beverage',
+  beverages: 'Beverage',
+  bev: 'Beverage',
+  retail: 'Retail',
+  assets: 'Assets',
+  'ops expenses': 'Ops Expenses',
+  'ops expense': 'Ops Expenses',
+  opex: 'Ops Expenses',
+  'ff&e': 'FF&E',
+  ffe: 'FF&E',
+  maintenance: 'Maintenance',
+  marcomm: 'MarComm',
+  'mar comm': 'MarComm',
+};
+
+/**
+ * Resolve an import/UI category to the canonical built-in label when known.
+ * Unknown categories keep their trimmed original text.
+ */
+export function resolveSiCategoryName(raw: string, extras: string[] = []): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  const key = trimmed.toLowerCase();
+  const alias = SI_CATEGORY_ALIASES[key];
+  if (alias) return alias;
+  const fromBuiltin = SI_CATEGORY_CANONICAL.find(category => category.toLowerCase() === key);
+  if (fromBuiltin) return fromBuiltin;
+  const fromExtra = extras.find(category => category.trim().toLowerCase() === key);
+  return fromExtra?.trim() || trimmed;
 }
 
 /**
  * Category filter options: company hierarchy + static fallbacks + caller extras.
  * Always includes "All" so dropdowns never look blank on cloud.
+ * Dedupes case-insensitively so FOOD / Food collapse to Food.
  */
 export function getSiCategoryFilterOptions(extra: string[] = []): string[] {
   const hierarchyNames = loadComponentHierarchy().categories.map(category => category.name);
-  return ['All', ...uniqueSortedLabels([
-    ...hierarchyNames,
-    ...siCategories.filter(category => category !== 'All'),
-    ...extra,
-  ])];
+  return ['All', ...uniqueLabelsPreferCanonical(
+    [...hierarchyNames, ...SI_CATEGORY_CANONICAL, ...extra],
+    SI_CATEGORY_CANONICAL,
+  )];
 }
 
 /**
  * Group filter options: company hierarchy groups + static fallbacks + caller extras.
+ * Dedupes case-insensitively so DRY GOODS / Dry Goods collapse to Dry Goods.
  */
 export function getSiGroupFilterOptions(extra: string[] = []): string[] {
   const hierarchyNames = loadComponentHierarchy().groups.map(group => group.name);
-  return ['All', ...uniqueSortedLabels([
-    ...hierarchyNames,
-    ...siGroups.filter(group => group !== 'All'),
-    ...extra,
-  ])];
+  return ['All', ...uniqueLabelsPreferCanonical(
+    [...hierarchyNames, ...SI_GROUP_CANONICAL, ...extra],
+    SI_GROUP_CANONICAL,
+  )];
 }
 
 export type IngredientRow = {

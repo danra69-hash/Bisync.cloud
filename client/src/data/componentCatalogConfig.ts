@@ -1,5 +1,5 @@
 import { fromApiUom, RECIPE_UNITS, STORAGE_OPTIONS, toApiUom, type ComponentRow } from './componentForm';
-import { siGroups } from './revenueManagement';
+import { resolveSiCategoryName, siGroups } from './revenueManagement';
 import type { SmartComponentImportDraft, SmartComponentImportPlan } from './smartComponentCatalog';
 import {
   ensureComponentCatalog,
@@ -243,6 +243,13 @@ export function resolveGroupName(raw: string, existingRows: ComponentRow[] = [])
   return match ?? trimmed;
 }
 
+export function resolveCategoryName(raw: string, existingRows: ComponentRow[] = []): string {
+  return resolveSiCategoryName(
+    raw,
+    existingRows.map(row => row.category).filter(Boolean),
+  );
+}
+
 export function resolveStorageName(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return trimmed;
@@ -278,6 +285,7 @@ export function normalizeImportDraft(
 ): SmartComponentImportDraft {
   return {
     ...draft,
+    category: resolveCategoryName(draft.category, existingRows),
     group: resolveGroupName(draft.group, existingRows),
     recipeUom: normalizeRecipeUnitInput(draft.recipeUom),
     inventoryUom: normalizeRecipeUnitInput(draft.inventoryUom),

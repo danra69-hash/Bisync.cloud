@@ -19,6 +19,7 @@ import {
   previewSampleRequestNumber,
 } from '../../data/requestForSample';
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
+import { labelsEqual } from '../../utils/labelMatch';
 import {
   formatVendorPolicyLabel,
   VENDOR_PRODUCT_POLICY_OPTIONS,
@@ -133,15 +134,15 @@ export function SampleRequestPanel({
   }, [ingredients]);
 
   const groupOptions = useMemo(() => {
-    const scoped = ingredients.filter(i => !productCategory || i.category === productCategory);
+    const scoped = ingredients.filter(i => !productCategory || labelsEqual(i.category, productCategory));
     const fromData = scoped.map(i => i.group).filter(Boolean);
     return [...new Set([...GROUP_OPTIONS, ...fromData])].sort((a, b) => a.localeCompare(b));
   }, [ingredients, productCategory]);
 
   const filteredIngredients = useMemo(() => {
     return ingredients
-      .filter(i => !productCategory || i.category === productCategory)
-      .filter(i => !productGroup || i.group === productGroup)
+      .filter(i => !productCategory || labelsEqual(i.category, productCategory))
+      .filter(i => !productGroup || labelsEqual(i.group, productGroup))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [ingredients, productCategory, productGroup]);
 
