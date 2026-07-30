@@ -155,6 +155,7 @@ export function SmartIngredientPage({
   const [catFilter, setCatFilter] = useState('All');
   const [grpFilter, setGrpFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false);
   const [uomFilter, setUomFilter] = useState<UomFilterMode>('principal');
   const [editRow, setEditRow] = useState<ComponentRow | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
@@ -218,10 +219,16 @@ export function SmartIngredientPage({
 
   useEffect(() => {
     resetSort();
-  }, [catFilter, grpFilter, search, uomFilter, resetSort]);
+  }, [catFilter, grpFilter, search, uomFilter, showInactiveOnly, resetSort]);
+
+  /** Active and inactive components stay in the same table; the UI buckets them via this filter. */
+  const activityScopedRows = useMemo(
+    () => rows.filter(row => (showInactiveOnly ? !row.active : row.active)),
+    [rows, showInactiveOnly],
+  );
 
   const filtered = useMemo(() => {
-    return rows.filter(row => {
+    return activityScopedRows.filter(row => {
       // Uploaded catalogs often use FOOD / BEVERAGE; filters use Food / Beverage.
       const matchCat = catFilter === 'All' || labelsEqual(row.category, catFilter);
       const matchGrp = grpFilter === 'All' || labelsEqual(row.group, grpFilter);
@@ -233,21 +240,21 @@ export function SmartIngredientPage({
         || (row.group ?? '').toLowerCase().includes(q);
       return matchCat && matchGrp && matchQ;
     });
-  }, [rows, catFilter, grpFilter, search]);
+  }, [activityScopedRows, catFilter, grpFilter, search]);
 
   const categoryFilterOptions = useMemo(
-    () => getSiCategoryFilterOptions(rows.map(row => row.category)),
-    [rows],
+    () => getSiCategoryFilterOptions(activityScopedRows.map(row => row.category)),
+    [activityScopedRows],
   );
   const groupFilterOptions = useMemo(() => {
     const scopedRows = catFilter === 'All'
-      ? rows
-      : rows.filter(row => labelsEqual(row.category, catFilter));
+      ? activityScopedRows
+      : activityScopedRows.filter(row => labelsEqual(row.category, catFilter));
     return getSiGroupFilterOptions(
       scopedRows.map(row => row.group),
       catFilter,
     );
-  }, [rows, catFilter]);
+  }, [activityScopedRows, catFilter]);
 
   useEffect(() => {
     if (grpFilter === 'All') return;
@@ -259,7 +266,7 @@ export function SmartIngredientPage({
 
   const alternateUomOptions = useMemo(() => {
     const units = new Set<string>();
-    for (const row of rows) {
+    for (const row of activityScopedRows) {
       const source = uomSourceForRow(row);
       for (const alt of [...source.altRecipeUnits, ...source.altInventoryUnits]) {
         const unit = fromApiUom(alt.unit);
@@ -267,7 +274,7 @@ export function SmartIngredientPage({
       }
     }
     return [...units].sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+  }, [activityScopedRows]);
 
   const vendorCatalog = useMemo(
     () => applyVendorProductOverrides(),
@@ -558,6 +565,20 @@ export function SmartIngredientPage({
               />
             </div>
           </div>
+          <label className="flex items-center gap-2 text-xs text-foreground pb-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showInactiveOnly}
+              onChange={e => setShowInactiveOnly(e.target.checked)}
+              className="rounded border-border"
+            />
+            <span className="font-sans">
+              Inactive components
+              <span className="block text-[10px] text-muted-foreground font-normal">
+                Show only inactive
+              </span>
+            </span>
+          </label>
           {hasFilters && (
             <button
               onClick={() => { setCatFilter('All'); setGrpFilter('All'); setSearch(''); }}
@@ -570,7 +591,9 @@ export function SmartIngredientPage({
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-sans text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
+        <p className="text-xs font-sans text-muted-foreground">
+          {filtered.length} {showInactiveOnly ? 'inactive ' : ''}result{filtered.length !== 1 ? 's' : ''}
+        </p>
       </div>
       </PageStickyFilters>
 
@@ -594,7 +617,9 @@ export function SmartIngredientPage({
                 {filtered.length === 0 ? (
                   <tr>
                     <td colSpan={columnCount} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
-                      No items match the selected filters.
+                      {showInactiveOnly
+                        ? 'No inactive components match the selected filters.'
+                        : 'No items match the selected filters.'}
                     </td>
                   </tr>
                 ) : pagedFiltered.map(row => {
