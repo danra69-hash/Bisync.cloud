@@ -809,7 +809,7 @@ public class IngredientsController(
             IQueryable<InventoryPurchase> purchaseQuery = db.InventoryPurchases.AsNoTracking()
                 .Where(p => componentIds.Contains(p.ComponentId));
             if (cid is int purchaseCompanyId)
-                purchaseQuery = purchaseQuery.Where(p => p.CompanyId == purchaseCompanyId);
+                purchaseQuery = purchaseQuery.Where(p => p.CompanyId == null || p.CompanyId == purchaseCompanyId);
             var purchased = await purchaseQuery
                 .Select(p => p.ComponentId)
                 .Distinct()
