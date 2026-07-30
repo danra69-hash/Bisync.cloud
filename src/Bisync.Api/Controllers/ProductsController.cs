@@ -211,6 +211,10 @@ public class ProductsController(
         await db.SaveChangesAsync();
         await nutritionLibrary.EnsureReadyAsync();
         await nutrientEstimates.RecalculateForProductAsync(product.Id);
+        if (product.IsSubProduct)
+        {
+            await ProductCostRecalculator.RelinkParentsForSubProductAsync(db, product);
+        }
 
         product = await db.Products
             .AsNoTracking()
@@ -238,6 +242,10 @@ public class ProductsController(
         if (product is null)
             return NotFound();
 
+        var previousProductId = product.ProductId;
+        var previousBatchLabel = product.IsSubProduct
+            ? ProductCostRecalculator.FormatSubProductBatchLabel(product)
+            : null;
         var beforeFields = ProductFieldChangeRecorder.Snapshot(product);
         var beforeRecipe = product.Items
             .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
@@ -381,6 +389,14 @@ public class ProductsController(
         await db.SaveChangesAsync();
         await nutritionLibrary.EnsureReadyAsync();
         await nutrientEstimates.RecalculateForProductAsync(product.Id);
+        if (product.IsSubProduct)
+        {
+            await ProductCostRecalculator.RelinkParentsForSubProductAsync(
+                db,
+                product,
+                previousProductId,
+                previousBatchLabel);
+        }
 
         product = await db.Products
             .AsNoTracking()
