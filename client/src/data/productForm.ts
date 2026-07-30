@@ -2,6 +2,11 @@ import { fromApiUom } from './componentForm';
 import type { ComponentRow } from './componentForm';
 import type { Product } from '../api';
 import { formatCountryPercent } from '../utils/numberFormat';
+import {
+  findSimilarCatalogNames,
+  type CatalogNameCandidate,
+  type SimilarNameMatch,
+} from '../utils/catalogNameMatch';
 import type { B2bSalesConfig } from './productB2bSales';
 import { blankB2bSalesConfig } from './productB2bSales';
 import { parseYieldAltUnitsJson } from './productBatchUom';
@@ -380,4 +385,46 @@ export function filterSubProductsForPicker(
   return scored
     .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
     .map(row => row.product);
+}
+
+function productNameCandidates(products: Product[]): CatalogNameCandidate[] {
+  const candidates: CatalogNameCandidate[] = [];
+  for (const product of products) {
+    const kindLabel = product.isSubProduct
+      ? 'Sub-Product'
+      : product.isVariableProduct
+        ? 'Variable Product'
+        : 'Product';
+    candidates.push({
+      id: product.id,
+      name: product.name,
+      active: product.active,
+      code: product.productId,
+      kindLabel,
+    });
+    for (const alias of product.aliases ?? []) {
+      if (!alias.name?.trim()) continue;
+      candidates.push({
+        id: product.id,
+        name: alias.name,
+        active: product.active,
+        code: product.productId,
+        kindLabel: 'Alias',
+      });
+    }
+  }
+  return candidates;
+}
+
+/** Exact + similar product/alias names (includes inactive) for create/edit duplicate warnings. */
+export function findSimilarProductNames(
+  name: string,
+  products: Product[],
+  excludeId?: number,
+): SimilarNameMatch[] {
+  return findSimilarCatalogNames(name, productNameCandidates(products), {
+    excludeId,
+    limit: 8,
+    minInputLength: 3,
+  });
 }

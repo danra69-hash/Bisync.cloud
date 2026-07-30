@@ -23,6 +23,7 @@ import {
   resolveInventoryToRecipeQty,
   inputCls,
   isComponentNameTaken,
+  findSimilarComponentNames,
   componentNameValidationMessage,
   normalizeComponentName,
   MAX_ALTERNATE_UOMS,
@@ -57,6 +58,8 @@ import {
   toSplitUseBasisQty,
   validateSplitUseConfig,
 } from '../../data/componentSplitUse';
+import { hasExactCatalogNameMatch } from '../../utils/catalogNameMatch';
+import { SimilarNameMatchesNotice } from '../shared/SimilarNameMatchesNotice';
 
 function computeTaggedVendorProductPricing(
   product: VendorProductCatalogItem,
@@ -418,6 +421,10 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
   const [companyCode, setCompanyCode] = useState<string | null>(null);
   const [form, setForm] = useState<ComponentForm>(() => toForm(row, existingComponentIds));
   const [nameError, setNameError] = useState<string | null>(null);
+  const similarComponentNameMatches = useMemo(
+    () => findSimilarComponentNames(form.name, existingComponents, row.id),
+    [form.name, existingComponents, row.id],
+  );
   const [productSearch, setProductSearch] = useState('');
   const [vendorSearch, setVendorSearch] = useState('');
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -566,7 +573,7 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
         if (validation) {
           setNameError(validation);
         } else if (isComponentNameTaken(val, existingComponents, row.id)) {
-          setNameError('A component with this name already exists for this company.');
+          setNameError('A component with this name already exists (active or inactive).');
         } else {
           setNameError(null);
         }
@@ -894,8 +901,9 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
       return;
     }
     const trimmedName = normalizeComponentName(form.name);
-    if (isComponentNameTaken(trimmedName, existingComponents, row.id)) {
-      setNameError('A component with this name already exists for this company.');
+    if (isComponentNameTaken(trimmedName, existingComponents, row.id)
+      || hasExactCatalogNameMatch(similarComponentNameMatches)) {
+      setNameError('A component with this name already exists (active or inactive).');
       return;
     }
     const splitError = validateSplitUseConfig(
@@ -959,12 +967,13 @@ export function ComponentEditPanel({ row, isNew = false, existingComponents, sel
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Component Name">
                 <input
-                  className={`${inputCls}${nameError ? ' border-red-500 focus:ring-red-500' : ''}`}
+                  className={`${inputCls}${nameError || hasExactCatalogNameMatch(similarComponentNameMatches) ? ' border-red-500 focus:ring-red-500' : ''}`}
                   value={form.name}
                   onChange={e => set('name', e.target.value)}
                   placeholder="e.g. Wagyu Beef A5"
                 />
                 {nameError && <p className="text-xs text-red-500 mt-0.5">{nameError}</p>}
+                <SimilarNameMatchesNotice matches={similarComponentNameMatches} entityLabel="component" />
               </FormField>
               <FormField label="Component ID">
                 <input className={`${inputCls} bg-muted text-muted-foreground`} value={form.componentId} readOnly />

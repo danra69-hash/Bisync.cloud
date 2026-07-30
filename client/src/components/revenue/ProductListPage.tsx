@@ -206,6 +206,8 @@ export function ProductListPage({
   const [filterVariableProduct, setFilterVariableProduct] = useState(false);
   const [filterB2c, setFilterB2c] = useState(false);
   const [filterB2b, setFilterB2b] = useState(false);
+  /** When false (default), deactivated products are hidden from the list. */
+  const [showDeactivated, setShowDeactivated] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [posModalProduct, setPosModalProduct] = useState<Product | null>(null);
@@ -268,6 +270,10 @@ export function ProductListPage({
   const visibleProducts = useMemo(() => {
     let scoped = products.filter(p => productMatchesLocations(p, selectedLocationIds));
 
+    if (!showDeactivated) {
+      scoped = scoped.filter(p => p.active);
+    }
+
     if (categoryFilter !== 'All') {
       scoped = scoped.filter(p => labelsEqual(p.category, categoryFilter));
     }
@@ -299,7 +305,7 @@ export function ProductListPage({
       p.category,
       p.group,
     ].join(' ').toLowerCase().includes(query));
-  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterVariableProduct, filterB2c, filterB2b]);
+  }, [products, selectedLocationIds, search, categoryFilter, groupFilter, filterProduct, filterSubProduct, filterVariableProduct, filterB2c, filterB2b, showDeactivated]);
 
   const sortedVisibleProducts = useMemo(
     () =>
@@ -368,7 +374,8 @@ export function ProductListPage({
     || filterSubProduct
     || filterVariableProduct
     || filterB2c
-    || filterB2b,
+    || filterB2b
+    || showDeactivated,
   );
 
   return (
@@ -461,6 +468,20 @@ export function ProductListPage({
                   className="rounded border-border"
                 />
                 B2B
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showDeactivated}
+                  onChange={e => setShowDeactivated(e.target.checked)}
+                  className="rounded border-border"
+                />
+                <span>
+                  Show deactivated
+                  <span className="block text-[10px] text-muted-foreground font-normal">
+                    Include inactive products
+                  </span>
+                </span>
               </label>
             </div>
             <div className="space-y-1">

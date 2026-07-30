@@ -3,6 +3,10 @@ import {
   parseSplitUseConfig,
   type ComponentSplitUseConfig,
 } from './componentSplitUse';
+import {
+  findSimilarCatalogNames,
+  type SimilarNameMatch,
+} from '../utils/catalogNameMatch';
 
 export type { ComponentSplitUseConfig, SplitUseLine } from './componentSplitUse';
 
@@ -379,6 +383,25 @@ export function isComponentNameTaken(
   const normalized = normalizeComponentNameKey(name);
   if (!normalized) return false;
   return existing.some(c => c.id !== excludeId && normalizeComponentNameKey(c.name) === normalized);
+}
+
+/** Exact + similar component names (includes inactive) for create/edit duplicate warnings. */
+export function findSimilarComponentNames(
+  name: string,
+  existing: { id?: number; name: string; active?: boolean; componentId?: string }[],
+  excludeId?: number,
+): SimilarNameMatch[] {
+  return findSimilarCatalogNames(
+    name,
+    existing.map(component => ({
+      id: component.id,
+      name: component.name,
+      active: component.active !== false,
+      code: component.componentId,
+      kindLabel: 'Component',
+    })),
+    { excludeId, limit: 8, minInputLength: 3 },
+  );
 }
 
 export type ComponentRow = {
