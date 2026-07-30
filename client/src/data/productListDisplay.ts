@@ -6,7 +6,6 @@ import {
   calcCogsPercentValue,
   calcSubProductUnitCost,
   formatCogsPercent,
-  formatSubProductBatchPackageUnit,
 } from './productForm';
 import {
   isB2bAlternateLineActive,
@@ -113,7 +112,9 @@ export function collectProductListRrpPoints(
 ): ProductListRrpPoint[] {
   if (product.isSubProduct) {
     const productCogs = calcProductCogs(product.totalCost, product.packagingCost ?? 0, product);
-    const deliveryUnit = formatSubProductBatchPackageUnit(product);
+    // Delivery Unit is the Batch Produce UOM only (no batch qty). Sub-products are
+    // consumed in parent recipes as principal component UOM, not as whole batches.
+    const deliveryUnit = product.yieldUom ? fromApiUom(product.yieldUom) : '';
     const unitCost = product.yieldQuantity > 0
       ? calcSubProductUnitCost(productCogs, String(product.yieldQuantity))
       : null;
