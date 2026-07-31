@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { filterSelectCls } from '../../layout/formControls';
 import { useCountryFormatters } from '../../../hooks/useCountryFormatters';
 import { ReportPageShell, type ReportColumn } from './ReportPageShell';
 import { reportApi, reportMoney, useReportData } from './useReportData';
@@ -21,10 +22,9 @@ const COLUMNS: ReportColumn[] = [
   { key: 'category', label: 'Category', width: '12%' },
   { key: 'group', label: 'Group', width: '10%' },
   { key: 'qtySold', label: 'Qty sold', align: 'right', width: '8%' },
-  { key: 'currentValue', label: 'Current value', align: 'right', width: '11%' },
-  { key: 'previousValue', label: 'Prior value', align: 'right', width: '11%' },
-  { key: 'relativeShare', label: 'Rel. share', align: 'right', width: '9%' },
-  { key: 'growthLabel', label: 'Growth', align: 'right', width: '9%' },
+  { key: 'sales', label: 'Sales', align: 'right', width: '12%' },
+  { key: 'marginAmount', label: 'Margin $', align: 'right', width: '12%' },
+  { key: 'marginPercent', label: 'Margin %', align: 'right', width: '10%' },
 ];
 
 function num(value: unknown): number {
@@ -36,51 +36,71 @@ function pct(value: unknown): string {
   return `${(num(value) * 100).toFixed(1)}%`;
 }
 
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+    : sorted[mid]!;
+}
+
+function classifyQuadrant(marginPercent: number, sales: number, marginThreshold: number, salesThreshold: number): string {
+  const highMargin = marginPercent >= marginThreshold;
+  const highSales = sales >= salesThreshold;
+  if (highSales && highMargin) return 'Star';
+  if (highSales && !highMargin) return 'Cash Cow';
+  if (!highSales && highMargin) return 'Question Mark';
+  return 'Dog';
+}
+
 function BcgMatrixChart({
   rows,
-  shareThreshold,
-  growthThreshold,
+  marginThreshold,
+  salesThreshold,
+  formatMoney,
 }: {
   rows: Record<string, unknown>[];
-  shareThreshold: number;
-  growthThreshold: number;
+  marginThreshold: number;
+  salesThreshold: number;
+  formatMoney: (n: number) => string;
 }) {
   const points = useMemo(() => {
     return rows
       .map(row => ({
         name: String(row.productName ?? ''),
         quadrant: String(row.quadrant ?? 'Dog'),
-        x: Math.max(0, Math.min(1.05, num(row.relativeShare))),
-        y: num(row.growthRate),
-        value: num(row.currentValue),
+        x: num(row.marginPercent),
+        y: Math.max(0, num(row.sales)),
+        value: Math.max(0, num(row.sales)),
       }))
       .filter(p => p.name);
   }, [rows]);
 
-  const yMin = Math.min(-0.2, ...points.map(p => p.y), growthThreshold);
-  const yMax = Math.max(0.4, ...points.map(p => p.y), growthThreshold);
-  const pad = { l: 48, r: 16, t: 20, b: 36 };
-  const w = 640;
-  const h = 320;
+  if (points.length === 0) return null;
+
+  const xMin = Math.min(0, ...points.map(p => p.x), marginThreshold);
+  const xMax = Math.max(0.2, ...points.map(p => p.x), marginThreshold);
+  const yMax = Math.max(...points.map(p => p.y), salesThreshold, 1);
+  const yMin = 0;
+  const pad = { l: 56, r: 20, t: 28, b: 44 };
+  const w = 720;
+  const h = 420;
   const plotW = w - pad.l - pad.r;
   const plotH = h - pad.t - pad.b;
-  const xScale = (x: number) => pad.l + (x / 1.05) * plotW;
+  const xScale = (x: number) => pad.l + ((x - xMin) / (xMax - xMin || 1)) * plotW;
   const yScale = (y: number) => pad.t + ((yMax - y) / (yMax - yMin || 1)) * plotH;
   const maxValue = Math.max(...points.map(p => p.value), 1);
-  const threshX = xScale(shareThreshold);
-  const threshY = yScale(growthThreshold);
-
-  if (points.length === 0) return null;
+  const threshX = xScale(marginThreshold);
+  const threshY = yScale(salesThreshold);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3 space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Portfolio matrix
-          </h3>
+          <h3 className="text-sm font-semibold text-foreground">BCG Matrix</h3>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Relative share vs leader (x) · month-over-month growth (y). Bubble size = current value.
+            X = Margin % · Y = Sales · bubble size = sales · axes cross at portfolio medians
           </p>
         </div>
         <div className="flex flex-wrap gap-3 text-[11px]">
@@ -93,7 +113,7 @@ function BcgMatrixChart({
         </div>
       </div>
       <div className="w-full overflow-x-auto">
-        <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-3xl h-auto text-foreground">
+        <svg viewBox={`0 0 ${w} ${h}`} className="w-full max-w-4xl h-auto text-foreground" role="img" aria-label="BCG matrix chart of margin versus sales">
           <rect
             x={pad.l}
             y={pad.t}
@@ -101,71 +121,70 @@ function BcgMatrixChart({
             height={plotH}
             className="fill-muted/20 stroke-border"
           />
-          {/* Quadrant fills */}
-          <rect x={threshX} y={pad.t} width={pad.l + plotW - threshX} height={threshY - pad.t} fill="#0f766e14" />
-          <rect x={threshX} y={threshY} width={pad.l + plotW - threshX} height={pad.t + plotH - threshY} fill="#1d4ed814" />
-          <rect x={pad.l} y={pad.t} width={threshX - pad.l} height={threshY - pad.t} fill="#b4530914" />
-          <rect x={pad.l} y={threshY} width={threshX - pad.l} height={pad.t + plotH - threshY} fill="#64748b14" />
+          <rect x={threshX} y={pad.t} width={Math.max(0, pad.l + plotW - threshX)} height={Math.max(0, threshY - pad.t)} fill="#0f766e18" />
+          <rect x={pad.l} y={pad.t} width={Math.max(0, threshX - pad.l)} height={Math.max(0, threshY - pad.t)} fill="#1d4ed818" />
+          <rect x={threshX} y={threshY} width={Math.max(0, pad.l + plotW - threshX)} height={Math.max(0, pad.t + plotH - threshY)} fill="#b4530918" />
+          <rect x={pad.l} y={threshY} width={Math.max(0, threshX - pad.l)} height={Math.max(0, pad.t + plotH - threshY)} fill="#64748b18" />
 
-          <line x1={threshX} y1={pad.t} x2={threshX} y2={pad.t + plotH} stroke="currentColor" strokeOpacity={0.35} strokeDasharray="4 3" />
-          <line x1={pad.l} y1={threshY} x2={pad.l + plotW} y2={threshY} stroke="currentColor" strokeOpacity={0.35} strokeDasharray="4 3" />
+          <line x1={threshX} y1={pad.t} x2={threshX} y2={pad.t + plotH} stroke="currentColor" strokeOpacity={0.4} strokeDasharray="4 3" />
+          <line x1={pad.l} y1={threshY} x2={pad.l + plotW} y2={threshY} stroke="currentColor" strokeOpacity={0.4} strokeDasharray="4 3" />
 
-          <text x={threshX + 6} y={pad.t + 14} className="fill-teal-800" fontSize={10} fontWeight={600}>
+          <text x={threshX + 8} y={pad.t + 16} className="fill-teal-800" fontSize={11} fontWeight={700}>
             Stars
           </text>
-          <text x={threshX + 6} y={pad.t + plotH - 8} className="fill-blue-800" fontSize={10} fontWeight={600}>
+          <text x={pad.l + 8} y={pad.t + 16} className="fill-blue-800" fontSize={11} fontWeight={700}>
             Cash cows
           </text>
-          <text x={pad.l + 6} y={pad.t + 14} className="fill-amber-800" fontSize={10} fontWeight={600}>
+          <text x={threshX + 8} y={pad.t + plotH - 10} className="fill-amber-800" fontSize={11} fontWeight={700}>
             Question marks
           </text>
-          <text x={pad.l + 6} y={pad.t + plotH - 8} className="fill-slate-600" fontSize={10} fontWeight={600}>
+          <text x={pad.l + 8} y={pad.t + plotH - 10} className="fill-slate-600" fontSize={11} fontWeight={700}>
             Dogs
           </text>
 
           {points.map(p => {
-            const r = 4 + (p.value / maxValue) * 10;
+            const r = 5 + (p.value / maxValue) * 14;
             return (
-              <g key={p.name}>
-                <circle
-                  cx={xScale(p.x)}
-                  cy={yScale(p.y)}
-                  r={r}
-                  fill={QUADRANT_COLORS[p.quadrant] ?? QUADRANT_COLORS.Dog}
-                  fillOpacity={0.85}
-                  stroke="white"
-                  strokeWidth={1}
-                >
-                  <title>{`${p.name} · ${p.quadrant}`}</title>
-                </circle>
-              </g>
+              <circle
+                key={p.name}
+                cx={xScale(Math.min(xMax, Math.max(xMin, p.x)))}
+                cy={yScale(Math.min(yMax, Math.max(yMin, p.y)))}
+                r={r}
+                fill={QUADRANT_COLORS[p.quadrant] ?? QUADRANT_COLORS.Dog}
+                fillOpacity={0.88}
+                stroke="white"
+                strokeWidth={1.25}
+              >
+                <title>{`${p.name} · ${p.quadrant} · Margin ${(p.x * 100).toFixed(1)}% · Sales ${formatMoney(p.y)}`}</title>
+              </circle>
             );
           })}
 
-          <text x={pad.l + plotW / 2} y={h - 6} textAnchor="middle" fontSize={10} className="fill-muted-foreground">
-            Relative share →
+          <text x={pad.l + plotW / 2} y={h - 8} textAnchor="middle" fontSize={11} className="fill-muted-foreground" fontWeight={600}>
+            Margin % →
           </text>
           <text
             x={14}
             y={pad.t + plotH / 2}
             textAnchor="middle"
-            fontSize={10}
+            fontSize={11}
             className="fill-muted-foreground"
+            fontWeight={600}
             transform={`rotate(-90 14 ${pad.t + plotH / 2})`}
           >
-            Growth →
+            Sales →
           </text>
-          <text x={pad.l} y={h - 18} fontSize={9} className="fill-muted-foreground">
-            0
+          <text x={pad.l} y={h - 22} fontSize={9} className="fill-muted-foreground">
+            {(xMin * 100).toFixed(0)}%
           </text>
-          <text x={pad.l + plotW} y={h - 18} textAnchor="end" fontSize={9} className="fill-muted-foreground">
-            1.0× leader
+          <text x={pad.l + plotW} y={h - 22} textAnchor="end" fontSize={9} className="fill-muted-foreground">
+            {(xMax * 100).toFixed(0)}%
           </text>
           <text x={pad.l - 6} y={pad.t + 4} textAnchor="end" fontSize={9} className="fill-muted-foreground">
-            {(yMax * 100).toFixed(0)}%
+            {formatMoney(yMax)}
           </text>
           <text x={pad.l - 6} y={pad.t + plotH} textAnchor="end" fontSize={9} className="fill-muted-foreground">
-            {(yMin * 100).toFixed(0)}%
+            {formatMoney(0)}
           </text>
         </svg>
       </div>
@@ -178,6 +197,8 @@ export function BcgMatrixReportPage({
   selectedLocationIds,
 }: Props) {
   const { rm } = useCountryFormatters();
+  const [category, setCategory] = useState('all');
+  const [group, setGroup] = useState('all');
   const loader = useCallback(
     (companyId: number, locationIds: string[], period: string) =>
       reportApi.bcgMatrix(companyId, locationIds, period),
@@ -185,11 +206,69 @@ export function BcgMatrixReportPage({
   );
   const report = useReportData(selectedCompanyId, selectedLocationIds, loader);
 
+  const categoryOptions = useMemo(() => {
+    const fromSummary = Array.isArray(report.summary.categories)
+      ? (report.summary.categories as string[])
+      : [];
+    if (fromSummary.length > 0) return fromSummary;
+    return [...new Set(report.rows.map(r => String(r.category ?? '').trim()).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [report.summary.categories, report.rows]);
+
+  const groupOptions = useMemo(() => {
+    const fromSummary = Array.isArray(report.summary.groups)
+      ? (report.summary.groups as string[])
+      : [];
+    if (fromSummary.length > 0) return fromSummary;
+    return [...new Set(report.rows.map(r => String(r.group ?? '').trim()).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }, [report.summary.groups, report.rows]);
+
+  const filteredBase = useMemo(() => {
+    return report.rows.filter(row => {
+      const rowCategory = String(row.category ?? '');
+      const rowGroup = String(row.group ?? '');
+      if (category !== 'all' && rowCategory.toLowerCase() !== category.toLowerCase()) return false;
+      if (group !== 'all' && rowGroup.toLowerCase() !== group.toLowerCase()) return false;
+      return true;
+    });
+  }, [report.rows, category, group]);
+
+  const classifiedRows = useMemo(() => {
+    const marginThreshold = median(filteredBase.map(r => num(r.marginPercent)));
+    const salesThreshold = median(filteredBase.map(r => num(r.sales)));
+    return {
+      marginThreshold,
+      salesThreshold,
+      rows: filteredBase.map(row => {
+        const marginPercent = num(row.marginPercent);
+        const sales = num(row.sales);
+        return {
+          ...row,
+          quadrant: classifyQuadrant(marginPercent, sales, marginThreshold, salesThreshold),
+          x: marginPercent,
+          y: sales,
+        };
+      }),
+    };
+  }, [filteredBase]);
+
+  const quadrantCounts = useMemo(() => {
+    const counts = { Star: 0, 'Cash Cow': 0, 'Question Mark': 0, Dog: 0 };
+    for (const row of classifiedRows.rows) {
+      const q = String(row.quadrant ?? 'Dog') as keyof typeof counts;
+      if (q in counts) counts[q] += 1;
+    }
+    return counts;
+  }, [classifiedRows.rows]);
+
   const columns: ReportColumn[] = COLUMNS.map(col => {
-    if (col.key === 'currentValue' || col.key === 'previousValue') {
+    if (col.key === 'sales' || col.key === 'marginAmount') {
       return { ...col, format: value => reportMoney(value, rm) };
     }
-    if (col.key === 'relativeShare') {
+    if (col.key === 'marginPercent') {
       return { ...col, format: value => pct(value) };
     }
     if (col.key === 'quadrant') {
@@ -210,37 +289,71 @@ export function BcgMatrixReportPage({
     return col;
   });
 
-  const shareThreshold = num(report.summary.shareThreshold) || 0.5;
-  const growthThreshold = num(report.summary.growthThreshold) || 0.1;
-  const previousMonth = String(report.summary.previousMonth ?? '');
-
   return (
     <ReportPageShell
       title="BCG Matrix"
-      description={`Product portfolio by relative revenue share vs the period leader and growth vs ${previousMonth || 'prior month'}. High share ≥ ${(shareThreshold * 100).toFixed(0)}% of leader · high growth ≥ ${(growthThreshold * 100).toFixed(0)}% MoM.`}
+      description="Chart products by Margin % (X) and Sales (Y). Quadrants split at the median of the filtered portfolio."
       tableId="reports.bcg-matrix"
       selectedCompanyId={selectedCompanyId}
       selectedLocationIds={selectedLocationIds}
       columns={columns}
-      rows={report.rows}
+      rows={classifiedRows.rows}
       loading={report.loading}
       error={report.error}
       period={report.period}
       onPeriodChange={report.setPeriod}
       onRefresh={() => void report.refresh()}
       csvFilename="bcg-matrix"
+      visualFirst
+      extraFilters={
+        <>
+          <label className="flex flex-col gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Category
+            <select
+              className={filterSelectCls}
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              disabled={!selectedCompanyId || selectedLocationIds.length === 0}
+            >
+              <option value="all">All categories</option>
+              {categoryOptions.map(opt => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Group
+            <select
+              className={filterSelectCls}
+              value={group}
+              onChange={e => setGroup(e.target.value)}
+              disabled={!selectedCompanyId || selectedLocationIds.length === 0}
+            >
+              <option value="all">All groups</option>
+              {groupOptions.map(opt => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      }
       metrics={[
-        { label: 'Stars', value: String(report.summary.stars ?? 0) },
-        { label: 'Cash cows', value: String(report.summary.cashCows ?? 0) },
-        { label: 'Question marks', value: String(report.summary.questionMarks ?? 0) },
-        { label: 'Dogs', value: String(report.summary.dogs ?? 0) },
+        { label: 'Stars', value: String(quadrantCounts.Star) },
+        { label: 'Cash cows', value: String(quadrantCounts['Cash Cow']) },
+        { label: 'Question marks', value: String(quadrantCounts['Question Mark']) },
+        { label: 'Dogs', value: String(quadrantCounts.Dog) },
       ]}
       visual={
-        !report.loading && report.rows.length > 0 ? (
+        !report.loading && classifiedRows.rows.length > 0 ? (
           <BcgMatrixChart
-            rows={report.rows}
-            shareThreshold={shareThreshold}
-            growthThreshold={growthThreshold}
+            rows={classifiedRows.rows}
+            marginThreshold={classifiedRows.marginThreshold}
+            salesThreshold={classifiedRows.salesThreshold}
+            formatMoney={rm}
           />
         ) : null
       }
