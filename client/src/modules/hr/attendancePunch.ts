@@ -10,13 +10,28 @@ function toMinutes(t: string) {
   return h * 60 + m;
 }
 
-/** Record or update today's HR attendance from a Team/POS punch clock. */
+export type AttendancePunchAction = 'check-in' | 'check-out';
+
+export type AttendancePunchResult = {
+  record: AttendanceRecord;
+  action: AttendancePunchAction;
+};
+
+/**
+ * Record or update today's HR attendance from a Team/POS punch clock.
+ *
+ * Multiple in/out cycles are allowed in one day (lunch, meetings, coffee, etc.):
+ * - First punch → check-in (keeps earliest actualIn)
+ * - While in → check-out (sets / updates actualOut)
+ * - After a completed out → check-in again (clears actualOut; original actualIn kept)
+ * - Later outs update actualOut to the latest departure (first-in / last-out for the day)
+ */
 export async function punchHrAttendance(opts: {
   employeeId: number;
   date: string;
   timeHhMm: string;
   shiftSchedules?: ShiftSchedule[];
-}): Promise<AttendanceRecord> {
+}): Promise<AttendancePunchResult> {
   const { employeeId, date, timeHhMm, shiftSchedules = [] } = opts;
   const stamp = timeOnly(timeHhMm.slice(0, 5));
   const sched = shiftSchedules.find(s => s.employeeId === employeeId && s.date === date && s.type === 'Work');
@@ -30,20 +45,22 @@ export async function punchHrAttendance(opts: {
     scheduledIn != null
     && toMinutes(stamp) > toMinutes(scheduledIn);
 
+  // First check-in of the day (or legacy row with no actualIn yet).
   if (!record || !record.actualIn) {
     const status = late ? 'Late' : 'Present';
     if (record) {
-      return hrApi.attendance.update(record.id, {
+      const updated = await hrApi.attendance.update(record.id, {
         employeeId,
         date,
         status,
         scheduledIn: record.scheduledIn ?? scheduledIn,
         scheduledOut: record.scheduledOut ?? scheduledOut,
         actualIn: stamp,
-        actualOut: record.actualOut ?? null,
+        actualOut: null,
       });
+      return { record: updated, action: 'check-in' };
     }
-    return hrApi.attendance.create({
+    const created = await hrApi.attendance.create({
       employeeId,
       date,
       status,
@@ -52,21 +69,35 @@ export async function punchHrAttendance(opts: {
       actualIn: stamp,
       actualOut: null,
     });
+    return { record: created, action: 'check-in' };
   }
 
-  if (!record.actualOut) {
-    return hrApi.attendance.update(record.id, {
+  // Currently out (or already completed a prior cycle) → check back in for the next stint.
+  // Keep the day's first actualIn; clear actualOut so the open period is visible.
+  if (record.actualOut) {
+    const updated = await hrApi.attendance.update(record.id, {
       employeeId,
       date,
       status: record.status === 'Late' ? 'Late' : 'Present',
       scheduledIn: record.scheduledIn ?? scheduledIn,
       scheduledOut: record.scheduledOut ?? scheduledOut,
       actualIn: record.actualIn,
-      actualOut: stamp,
+      actualOut: null,
     });
+    return { record: updated, action: 'check-in' };
   }
 
-  throw new Error('Already checked in and out for today.');
+  // Currently in → check out (latest departure of the day).
+  const updated = await hrApi.attendance.update(record.id, {
+    employeeId,
+    date,
+    status: record.status === 'Late' ? 'Late' : 'Present',
+    scheduledIn: record.scheduledIn ?? scheduledIn,
+    scheduledOut: record.scheduledOut ?? scheduledOut,
+    actualIn: record.actualIn,
+    actualOut: stamp,
+  });
+  return { record: updated, action: 'check-out' };
 }
 
 export function clockHhMm(d = new Date()) {

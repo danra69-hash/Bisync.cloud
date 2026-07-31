@@ -160,7 +160,7 @@ export function CheckInOutModal({
           })
         } catch (err) {
           // Duty still activates; surface attendance issue without blocking POS.
-          if (err instanceof Error && !/Already checked in and out/i.test(err.message)) {
+          if (err instanceof Error) {
             setError(`On duty — HR attendance: ${err.message}`)
           }
         }
@@ -203,8 +203,8 @@ export function CheckInOutModal({
             <h2 id="checkin-modal-title">Check in / out</h2>
             <p>
               {duty
-                ? 'Enter the same Team PIN to check out. POS stays open until then.'
-                : 'Scan with Bisync Team (/TEAM), then enter your Team PIN. POS stays open until check out.'}
+                ? 'Enter the same Team PIN to check out for a break or end of shift. You can check back in later the same day.'
+                : 'Enter your Team / POS PIN to start duty. Check out for lunch, meetings, or coffee — then check in again when you return.'}
             </p>
           </div>
           <button type="button" className="checkin-modal__close" onClick={onClose} aria-label="Close">
@@ -224,7 +224,7 @@ export function CheckInOutModal({
           ) : (
             <>
               <strong>Not on duty</strong>
-              <span>POS ordering is locked until check-in</span>
+              <span>POS ordering is locked until check-in (breaks allowed anytime)</span>
             </>
           )}
         </div>
