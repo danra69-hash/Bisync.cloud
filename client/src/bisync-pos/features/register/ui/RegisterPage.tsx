@@ -29,18 +29,11 @@ import {
   type PosDutySession,
 } from '../../../core/session/posDutySession'
 import {
-  isPosRegisterLocked,
-  lockPosRegister,
-  POS_IDLE_LOCK_MS,
-  POS_REGISTER_LOCK_EVENT,
-} from '../../../core/session/posRegisterLock'
-import {
   consumePendingTakeawayRequest,
   POS_TAKEAWAY_REQUEST_EVENT,
   publishPosDiningMode,
 } from '../../../core/session/posDiningBridge'
 import { api } from '../../../../api'
-import { CheckInOutModal } from '../../../app/CheckInOutModal'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
@@ -114,50 +107,18 @@ export function RegisterPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
   const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
-  const [registerLocked, setRegisterLocked] = useState(() => isPosRegisterLocked())
 
   useEffect(() => {
     function syncDuty() {
       setDuty(loadPosDutySession())
-      setRegisterLocked(isPosRegisterLocked())
     }
     window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-    window.addEventListener(POS_REGISTER_LOCK_EVENT, syncDuty)
     window.addEventListener('storage', syncDuty)
     return () => {
       window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-      window.removeEventListener(POS_REGISTER_LOCK_EVENT, syncDuty)
       window.removeEventListener('storage', syncDuty)
     }
   }, [])
-
-  // Soft-lock after 60s idle while on duty and unlocked.
-  useEffect(() => {
-    if (!duty || registerLocked || charging) return
-
-    let timer: number | null = null
-    const arm = () => {
-      if (timer != null) window.clearTimeout(timer)
-      timer = window.setTimeout(() => {
-        lockPosRegister()
-        setRegisterLocked(true)
-        setToast('Register locked after 60s idle — enter your Team PIN to continue.')
-        window.setTimeout(() => setToast(null), 3200)
-      }, POS_IDLE_LOCK_MS)
-    }
-
-    const onActivity = () => arm()
-    arm()
-    window.addEventListener('pointerdown', onActivity, true)
-    window.addEventListener('keydown', onActivity, true)
-    window.addEventListener('touchstart', onActivity, true)
-    return () => {
-      if (timer != null) window.clearTimeout(timer)
-      window.removeEventListener('pointerdown', onActivity, true)
-      window.removeEventListener('keydown', onActivity, true)
-      window.removeEventListener('touchstart', onActivity, true)
-    }
-  }, [duty, registerLocked, charging])
 
   useEffect(() => {
     function openTakeaway() {
@@ -201,7 +162,6 @@ export function RegisterPage() {
   const groups = groupsByDepartment[department] ?? []
   const groupColumns = Math.max(1, Math.ceil(groups.length / 2))
   const onDuty = Boolean(duty)
-  const unlocked = onDuty && !registerLocked
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
 
@@ -250,15 +210,9 @@ export function RegisterPage() {
   }
 
   function requireDuty(): boolean {
-    if (!onDuty) {
-      flash('Check in and enter your Team PIN to activate POS ordering.')
-      return false
-    }
-    if (registerLocked) {
-      flash('Register is locked — enter your Team PIN to continue.')
-      return false
-    }
-    return true
+    if (onDuty) return true
+    flash('Check in and enter your Team PIN to activate POS ordering.')
+    return false
   }
 
   function promptWeightAndAdd(product: Product) {
@@ -436,8 +390,6 @@ export function RegisterPage() {
       flash('Opening payment…')
       setLines([])
       setCharges(EMPTY_CHARGES)
-      lockPosRegister()
-      setRegisterLocked(true)
       return
     }
     if (lines.length === 0 || charging) return
@@ -486,9 +438,7 @@ export function RegisterPage() {
       setCharges(EMPTY_CHARGES)
       clearActiveRegisterSession()
       setActiveTableSession(null)
-      lockPosRegister()
-      setRegisterLocked(true)
-      flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'} · register locked`)
+      flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)
       session.refreshCatalog()
     } catch (e) {
       flash(e instanceof Error ? e.message : 'Payment failed')
@@ -565,13 +515,9 @@ export function RegisterPage() {
           <p className="register__duty-banner" role="status">
             Use Check in/out: scan with Team (/TEAM), then enter your Team PIN to unlock ordering.
           </p>
-        ) : registerLocked ? (
-          <p className="register__duty-banner" role="status">
-            Locked — enter Team PIN for {duty?.employeeName} to continue.
-          </p>
         ) : (
           <p className="register__duty-banner is-on" role="status">
-            On duty: {duty?.employeeName}
+            On duty: {duty?.employeeName} — POS stays open until check out
           </p>
         )}
 
@@ -579,7 +525,7 @@ export function RegisterPage() {
           <ProductGrid
             products={filtered}
             onAdd={addProduct}
-            disabled={!unlocked}
+            disabled={!onDuty}
           />
         </div>
       </div>
@@ -622,24 +568,6 @@ export function RegisterPage() {
           flash(labels[action])
         }}
       />
-
-      {onDuty && registerLocked && session ? (
-        <CheckInOutModal
-          locationExternalId={session.locationId}
-          locationName={
-            session.locations.find(l => l.externalId === session.locationId)?.name
-            ?? session.locationId
-          }
-          unlockOnly
-          onClose={() => {
-            /* stay until unlocked */
-          }}
-          onDutyChange={next => {
-            setDuty(next)
-            setRegisterLocked(isPosRegisterLocked())
-          }}
-        />
-      ) : null}
 
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
       {pickupModalOpen && (

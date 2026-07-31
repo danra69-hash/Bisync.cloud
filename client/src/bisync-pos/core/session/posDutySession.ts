@@ -31,13 +31,13 @@ export function loadPosDutySession(): PosDutySession | null {
 
 export function savePosDutySession(session: PosDutySession) {
   localStorage.setItem(KEY, JSON.stringify(session))
+  // Clear legacy soft-lock flag from earlier builds.
   try {
     localStorage.removeItem('bisync-pos-register-locked')
   } catch {
     /* ignore */
   }
   window.dispatchEvent(new CustomEvent(POS_DUTY_SESSION_EVENT))
-  window.dispatchEvent(new CustomEvent('bisync-pos-register-lock-changed'))
 }
 
 export function clearPosDutySession() {
@@ -48,7 +48,6 @@ export function clearPosDutySession() {
     /* ignore */
   }
   window.dispatchEvent(new CustomEvent(POS_DUTY_SESSION_EVENT))
-  window.dispatchEvent(new CustomEvent('bisync-pos-register-lock-changed'))
 }
 
 export function buildCheckInQrPayload(outletInitial: string, at = new Date()): string {
