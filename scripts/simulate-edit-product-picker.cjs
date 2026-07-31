@@ -70,13 +70,28 @@ async function shot(page, name) {
   await page.waitForTimeout(400);
   const menuPanel = page.locator('div.absolute.top-full').filter({ hasText: 'Product Audit' }).first();
   await menuPanel.getByRole('button', { name: /^Products$/i }).click();
-  await page.waitForTimeout(2200);
+  await page.waitForTimeout(1500);
+  // Clear type filters that can hide ordinary products.
+  for (const label of ['Variable Product', 'Sub-Product', 'B2B', 'POS', 'Show deactivated']) {
+    const box = page.getByRole('checkbox', { name: new RegExp(`^${label}$`, 'i') }).first();
+    if (await box.count() && await box.isChecked().catch(() => false)) {
+      await box.uncheck().catch(() => {});
+    }
+  }
+  const productFilter = page.getByRole('checkbox', { name: /^Product$/i }).first();
+  if (await productFilter.count() && !(await productFilter.isChecked().catch(() => false))) {
+    await productFilter.check().catch(() => {});
+  }
+  await page.getByRole('button', { name: /^Refresh$/i }).first().click().catch(() => {});
+  await page.locator('table tbody tr').filter({ hasNotText: /loading/i }).first()
+    .waitFor({ state: 'visible', timeout: 45000 });
   await shot(page, 'sim-product-list');
 
-  await page.locator('table tbody tr').first().waitFor({ state: 'visible' });
   await page.locator('table tbody tr').first().click();
-  await page.waitForTimeout(1200);
-  await page.getByRole('button', { name: /^edit$/i }).first().click();
+  await page.waitForTimeout(1500);
+  const editBtn = page.getByRole('button', { name: /^edit$/i }).first();
+  await editBtn.waitFor({ state: 'visible', timeout: 15000 });
+  await editBtn.click();
   await page.waitForTimeout(1800);
   await shot(page, 'sim-edit-product');
 
