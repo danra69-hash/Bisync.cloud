@@ -21,10 +21,13 @@ import {
   clearActiveRegisterSession,
   loadActiveRegisterSession,
   loadFloorPlan,
+  markFloorTableOrdered,
   releaseFloorTable,
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
 import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
+import { fireCartToStations } from '../../boh/domain/kitchenTickets'
+import { MODE_META } from '../../../core/modes/types'
 import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import {
   consumePendingTakeawayRequest,
@@ -349,28 +352,62 @@ export function RegisterPage() {
     })
   }
 
-  function handleCancelTable() {
-    if (lines.length > 0) {
-      flash('Remove order items before cancelling the table.')
-      return
+  function goHome() {
+    navigate(MODE_META.order.homePath)
+  }
+
+  /** Discard the current check (no kitchen fire) and return to the floor home. */
+  function handleCancelOrder() {
+    const label = activeTableSession?.tableLabel
+    if (activeTableSession) {
+      releaseFloorTable(activeTableSession.tableId)
+      if (session?.companyId && session.locationId) {
+        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+      }
     }
-    if (!activeTableSession) {
-      flash('No opened table to cancel.')
-      return
-    }
-    const released = releaseFloorTable(activeTableSession.tableId)
-    if (session?.companyId && session.locationId) {
-      void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
-    }
+    setLines([])
+    setCharges(EMPTY_CHARGES)
     clearActiveRegisterSession()
     setActiveTableSession(null)
+    flash(label ? `Order cancelled · ${label} released` : 'Order cancelled')
+    goHome()
+  }
+
+  /** Fire items to Bar/Kitchen, keep the table occupied, return home. */
+  function handleSaveOrder() {
+    if (lines.length === 0) {
+      flash('Add items before saving.')
+      return
+    }
+    const products = catalogForFilter
+    const tableLabel =
+      activeTableSession?.tableLabel
+      || (table ? `Table ${table}` : 'Takeaway')
+    const tickets = fireCartToStations({
+      lines,
+      products,
+      checkNumber,
+      tableLabel,
+      dining: dining || 'dine-in',
+    })
+    if (tickets.length === 0) {
+      flash('Nothing to send to Bar or Kitchen.')
+      return
+    }
+    const orderId = `chk-${checkNumber}`
+    if (activeTableSession) {
+      markFloorTableOrdered(activeTableSession.tableId, orderId)
+      if (session?.companyId && session.locationId) {
+        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+      }
+    }
+    const stations = [...new Set(tickets.map(t => t.station))].join(' · ')
+    setLines([])
     setCharges(EMPTY_CHARGES)
-    flash(
-      released
-        ? `Table ${activeTableSession.tableLabel} released`
-        : `Table ${activeTableSession.tableLabel} cancelled`,
-    )
-    navigate('/order/floor')
+    clearActiveRegisterSession()
+    setActiveTableSession(null)
+    flash(`Order #${checkNumber} sent to ${stations}`)
+    goHome()
   }
 
   async function chargePayment() {
@@ -542,19 +579,18 @@ export function RegisterPage() {
         onAction={action => {
           if (!requireDuty()) return
           if (action === 'cancel') {
-            handleCancelTable()
+            handleCancelOrder()
+            return
+          }
+          if (action === 'save') {
+            handleSaveOrder()
             return
           }
           if (action === 'payment') {
             void chargePayment()
             return
           }
-          const labels = {
-            save: 'Order saved',
-            print: 'Printing…',
-            payment: 'Opening payment…',
-          } as const
-          flash(labels[action])
+          flash('Printing…')
         }}
       />
 

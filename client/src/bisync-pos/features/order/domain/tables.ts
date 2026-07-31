@@ -412,3 +412,22 @@ export function releaseFloorTable(tableId: string): FloorTable | null {
   saveFloorPlan({ ...plan, tables })
   return released
 }
+
+/** Keep table occupied after an order is fired to Bar/Kitchen. */
+export function markFloorTableOrdered(tableId: string, orderId: string): FloorTable | null {
+  const plan = loadFloorPlan()
+  let updated: FloorTable | null = null
+  const tables = plan.tables.map((table) => {
+    if (table.id !== tableId) return table
+    updated = normalizeTable({
+      ...table,
+      status: 'ordered',
+      orderId,
+      openedAt: table.openedAt || new Date().toISOString(),
+    })
+    return updated
+  })
+  if (!updated) return null
+  saveFloorPlan({ ...plan, tables })
+  return updated
+}

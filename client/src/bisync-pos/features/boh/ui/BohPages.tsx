@@ -1,9 +1,17 @@
+import { useEffect, useState } from 'react'
 import {
   PERMISSION_LABEL,
   ROLE_PERMISSIONS,
   type PermissionAction,
   type StaffRole,
 } from '../domain/permissions'
+import {
+  bumpKitchenTicket,
+  KDS_TICKETS_EVENT,
+  loadKitchenTickets,
+  ticketAgeLabel,
+  type KitchenTicket,
+} from '../domain/kitchenTickets'
 import { FeaturePage } from '../../common/FeaturePage'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import type { QrTableMode } from '../../../core/config/qrTable'
@@ -11,37 +19,68 @@ import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './BohPages.css'
 
 export function KdsPage() {
-  const tickets = [
-    { id: '18', station: 'Fry', items: ['Onion Rings', 'Pepperoni Slice'], age: '4m' },
-    { id: '20', station: 'Cold', items: ['Fresh Basil Salad ×2', 'Shrimp Basil Salad'], age: '1m' },
-    { id: '21', station: 'Bar', items: ['Iced Latte', 'Green Tea'], age: '0m' },
-  ]
+  const [tickets, setTickets] = useState<KitchenTicket[]>(() => loadKitchenTickets())
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    function refresh() {
+      setTickets(loadKitchenTickets())
+    }
+    window.addEventListener(KDS_TICKETS_EVENT, refresh)
+    window.addEventListener('storage', refresh)
+    const ageId = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => {
+      window.removeEventListener(KDS_TICKETS_EVENT, refresh)
+      window.removeEventListener('storage', refresh)
+      window.clearInterval(ageId)
+    }
+  }, [])
+
+  const openTickets = tickets.filter(t => t.status === 'open')
 
   return (
     <FeaturePage
       crumb="BOH / Kitchen Display"
       title="Kitchen Order Routing (KDS)"
-      subtitle="Orders from Order and Cashier modes route to the right prep station in real time."
+      subtitle="Saved register orders route here — Beverage to Bar, Food to Kitchen."
     >
-      <div className="kds-board">
-        {tickets.map((ticket) => (
-          <article key={ticket.id} className="kds-ticket">
-            <header>
-              <strong>#{ticket.id}</strong>
-              <span>{ticket.station}</span>
-              <em>{ticket.age}</em>
-            </header>
-            <ul>
-              {ticket.items.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <button type="button" className="chip-btn chip-btn--primary">
-              Bump
-            </button>
-          </article>
-        ))}
-      </div>
+      {openTickets.length === 0 ? (
+        <p className="kds-empty">No open tickets. Save an order on the register to fire Bar / Kitchen.</p>
+      ) : (
+        <div className="kds-board">
+          {openTickets.map(ticket => (
+            <article key={ticket.id} className="kds-ticket">
+              <header>
+                <strong>#{ticket.checkNumber}</strong>
+                <span>{ticket.station}</span>
+                <em>{ticketAgeLabel(ticket.createdAt, now)}</em>
+              </header>
+              <p className="kds-ticket__meta">
+                {ticket.tableLabel}
+                {ticket.dining ? ` · ${ticket.dining}` : ''}
+              </p>
+              <ul>
+                {ticket.items.map(item => (
+                  <li key={`${ticket.id}-${item.name}`}>
+                    {item.name}
+                    {item.quantity > 1 ? ` ×${item.quantity}` : ''}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="chip-btn chip-btn--primary"
+                onClick={() => {
+                  bumpKitchenTicket(ticket.id)
+                  setTickets(loadKitchenTickets())
+                }}
+              >
+                Bump
+              </button>
+            </article>
+          ))}
+        </div>
+      )}
     </FeaturePage>
   )
 }
