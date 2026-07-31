@@ -1,10 +1,13 @@
 import type { CartLine, Product, ProductDepartment } from '../../register/domain/types'
+import { summarizeSaleDetail } from '../../register/domain/saleDetail'
 
 export type KitchenStation = 'Bar' | 'Kitchen'
 
 export type KitchenTicketItem = {
   name: string
   quantity: number
+  /** Combination / swap / weight detail for station prep (e.g. beers in a 4+1 Bucket). */
+  detail?: string
 }
 
 export type KitchenTicket = {
@@ -49,6 +52,13 @@ export function bumpKitchenTicket(id: string): void {
   persist(next)
 }
 
+function lineDetail(line: CartLine): string {
+  const fromNote = (line.note ?? '').trim()
+  if (fromNote) return fromNote
+  if (line.saleDetail) return summarizeSaleDetail(line.saleDetail).trim()
+  return ''
+}
+
 /**
  * Split cart lines into Bar / Kitchen tickets and enqueue them for the KDS board.
  * Returns the tickets that were created (empty when the cart had nothing to fire).
@@ -70,9 +80,19 @@ export function fireCartToStations(opts: {
     const product = byId.get(line.productId)
     if (!product) continue
     const station = stationForDepartment(product.department)
-    const existing = buckets[station].find(i => i.name === product.name)
-    if (existing) existing.quantity += line.quantity
-    else buckets[station].push({ name: product.name, quantity: line.quantity })
+    const detail = lineDetail(line)
+    const existing = buckets[station].find(
+      i => i.name === product.name && (i.detail || '') === detail,
+    )
+    if (existing) {
+      existing.quantity += line.quantity
+    } else {
+      buckets[station].push({
+        name: product.name,
+        quantity: line.quantity,
+        ...(detail ? { detail } : {}),
+      })
+    }
   }
 
   const createdAt = new Date().toISOString()
@@ -105,4 +125,14 @@ export function ticketAgeLabel(iso: string, now = Date.now()): string {
   if (mins < 60) return `${mins}m`
   const hours = Math.floor(mins / 60)
   return `${hours}h ${mins % 60}m`
+}
+
+/** Absolute fire time for station dockets (e.g. "18:05"). */
+export function ticketTimestampLabel(iso: string): string {
+  const ms = Date.parse(iso)
+  if (!Number.isFinite(ms)) return '—'
+  return new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(ms))
 }
