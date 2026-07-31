@@ -65,6 +65,7 @@ export const MODE_NAV: Record<PosMode, NavGroup[]> = {
         { to: '/boh/kds', label: 'Kitchen Display (KDS)', end: true },
         { to: '/boh/bds', label: 'Bar Display (BDS)' },
         { to: '/boh/cds', label: 'Customer Display (CDS)' },
+        { to: '/boh/qr-order', label: 'QR Order' },
         { to: '/boh/routing', label: 'Order Routing' },
       ],
     },
@@ -100,6 +101,7 @@ export type NavIconKey =
   | 'kds'
   | 'bds'
   | 'cds'
+  | 'qrOrder'
   | 'routing'
   | 'clock'
   | 'reports'
@@ -123,6 +125,7 @@ export const NAV_ICONS: Record<string, NavIconKey> = {
   '/boh/kds': 'kds',
   '/boh/bds': 'bds',
   '/boh/cds': 'cds',
+  '/boh/qr-order': 'qrOrder',
   '/boh/routing': 'routing',
   '/boh/time-clock': 'clock',
   '/boh/reports': 'reports',

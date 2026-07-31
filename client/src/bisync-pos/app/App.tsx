@@ -17,6 +17,7 @@ import {
   EodPage,
   KdsPage,
   PermissionsPage,
+  QrOrderBoardPage,
   ReportsPage,
   RoutingPage,
   TimeClockPage,
@@ -63,6 +64,7 @@ export function BisyncPosApp({ initialEntry = '/order/floor' }: Props) {
           <Route path="/boh/kds" element={<KdsPage />} />
           <Route path="/boh/bds" element={<BdsPage />} />
           <Route path="/boh/cds" element={<CdsPage />} />
+          <Route path="/boh/qr-order" element={<QrOrderBoardPage />} />
           <Route path="/boh/routing" element={<RoutingPage />} />
           <Route path="/boh/time-clock" element={<TimeClockPage />} />
           <Route path="/boh/reports" element={<ReportsPage />} />

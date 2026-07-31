@@ -144,6 +144,8 @@ function renderIcon(key: NavIconKey | undefined) {
       return <IconBds />
     case 'cds':
       return <IconCds />
+    case 'qrOrder':
+      return <IconQrOrder />
     case 'routing':
       return <IconRoute />
     case 'clock':
@@ -299,6 +301,17 @@ function IconCds() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <rect x="3" y="5" width="18" height="12" rx="2" />
       <path d="M8 21h8M12 17v4M8 10h5M8 13h3" />
+    </svg>
+  )
+}
+
+function IconQrOrder() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3M20 14v3M14 20h3M18 18h2v2" />
     </svg>
   )
 }

@@ -667,6 +667,28 @@
       "notes": "Public customer waitlist join form (name, mobile, pax) opened from POS Waitlist QR"
     },
     {
+      "id": "dr.page.qr-order-join",
+      "kind": "client-page",
+      "path": "client/src/pages/QrOrderJoinPage.tsx",
+      "symbol": "QrOrderJoinPage",
+      "route": "/QR",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Public guest e-menu / QR order page opened from POS QR Order button"
+    },
+    {
+      "id": "dr.page.qr-order-board",
+      "kind": "client-page",
+      "path": "client/src/bisync-pos/features/boh/ui/QrOrderPage.tsx",
+      "symbol": "QrOrderPage",
+      "route": "/boh/qr-order",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "POS QR Order board — guest scan QR plus incoming e-menu orders to send to BDS/KDS"
+    },
+    {
       "id": "dr.page.accounting",
       "kind": "client-page",
       "path": "client/src/components/accounting/AccountingPage.tsx",

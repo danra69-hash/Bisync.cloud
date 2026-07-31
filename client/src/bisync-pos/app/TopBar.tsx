@@ -16,6 +16,7 @@ export function TopBar() {
   const isKds = pathname.startsWith('/boh/kds')
   const isBds = pathname.startsWith('/boh/bds')
   const isCds = pathname.startsWith('/boh/cds')
+  const isQrOrder = pathname.startsWith('/boh/qr-order')
 
   function goHome() {
     setMode('order')
@@ -40,6 +41,11 @@ export function TopBar() {
   function goCds() {
     setMode('boh')
     navigate('/boh/cds')
+  }
+
+  function goQrOrder() {
+    setMode('boh')
+    navigate('/boh/qr-order')
   }
 
   return (
@@ -113,6 +119,15 @@ export function TopBar() {
           title="Customer Display System"
         >
           CDS
+        </button>
+        <button
+          type="button"
+          className={`topbar__setup${isQrOrder ? ' is-active' : ''}`}
+          onClick={goQrOrder}
+          aria-current={isQrOrder ? 'page' : undefined}
+          title="Guest QR Order"
+        >
+          QR Order
         </button>
       </div>
 

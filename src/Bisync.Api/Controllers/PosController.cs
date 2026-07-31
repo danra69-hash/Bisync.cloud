@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Bisync.Api.Tenancy;
@@ -124,6 +125,17 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         int Pax);
 
     public record UpdateWaitlistStatusRequest(string Status);
+
+    public record QrOrderItemRequest(int ProductId, string Name, decimal Quantity, string? Detail, decimal UnitPrice);
+
+    public record PlaceQrOrderRequest(
+        int CompanyId,
+        string LocationExternalId,
+        string? TableLabel,
+        string? GuestName,
+        List<QrOrderItemRequest> Items);
+
+    public record UpdateQrOrderStatusRequest(string Status);
 
     [HttpGet("floor-plan")]
     public async Task<ActionResult<object>> GetFloorPlan(
@@ -367,6 +379,205 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
                 message = "Could not update waitlist entry.",
                 detail = ex.GetBaseException().Message,
             });
+        }
+    }
+
+    /// <summary>Public POS menu for guest QR order (B2C + POS enabled + RRP).</summary>
+    [HttpGet("qr-order/menu")]
+    public async Task<ActionResult<object>> QrOrderMenu(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null)
+    {
+        var cid = companyId is int id && id > 0 ? id : TenantQuery.ResolveCompanyId(tenant, companyId);
+        if (cid is null || cid <= 0)
+            return BadRequest(new { message = "companyId is required." });
+
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        IQueryable<Product> q = db.Products.AsNoTracking()
+            .Where(p => p.Active
+                && !p.IsSubProduct
+                && p.B2cEnabled
+                && p.PosEnabled
+                && p.Rrp > 0
+                && (p.CompanyId == null || p.CompanyId == cid.Value));
+
+        var rows = await q.OrderBy(p => p.Category).ThenBy(p => p.Group).ThenBy(p => p.Name).Take(500).ToListAsync();
+        if (!string.IsNullOrEmpty(loc))
+        {
+            rows = rows.Where(p =>
+            {
+                var locs = ParseLocationIds(p.LocationIdsJson);
+                return locs.Count == 0 || locs.Contains(loc, StringComparer.OrdinalIgnoreCase);
+            }).ToList();
+        }
+
+        return Ok(rows.Select(p => new
+        {
+            id = p.Id,
+            productId = p.ProductId,
+            name = p.Name,
+            category = p.Category,
+            group = p.Group,
+            rrp = p.Rrp,
+        }));
+    }
+
+    [HttpGet("qr-order")]
+    public async Task<ActionResult<object>> ListQrOrders(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null,
+        [FromQuery] bool includeClosed = false)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        if (cid is null || string.IsNullOrEmpty(loc))
+            return Ok(Array.Empty<object>());
+
+        try
+        {
+            await SchemaPatcher.EnsurePosQrOrdersTableAsync(db);
+            IQueryable<PosQrOrder> q = db.PosQrOrders.AsNoTracking()
+                .Where(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+            if (!includeClosed)
+                q = q.Where(x => x.Status == "open");
+
+            var rows = await q.OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync();
+            return Ok(rows.Select(MapQrOrder));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "QR order storage is not ready.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    /// <summary>Public place-order from guest /QR e-menu.</summary>
+    [HttpPost("qr-order")]
+    public async Task<ActionResult<object>> PlaceQrOrder([FromBody] PlaceQrOrderRequest body)
+    {
+        var cid = body.CompanyId;
+        var loc = (body.LocationExternalId ?? string.Empty).Trim();
+        var table = (body.TableLabel ?? string.Empty).Trim();
+        var guest = (body.GuestName ?? string.Empty).Trim();
+        var items = (body.Items ?? [])
+            .Where(i => i.ProductId > 0 && !string.IsNullOrWhiteSpace(i.Name) && i.Quantity > 0)
+            .Select(i => new
+            {
+                productId = i.ProductId,
+                name = i.Name.Trim(),
+                quantity = Math.Round(i.Quantity, 3),
+                detail = (i.Detail ?? string.Empty).Trim(),
+                unitPrice = Math.Max(0, i.UnitPrice),
+            })
+            .ToList();
+
+        if (cid <= 0 || string.IsNullOrEmpty(loc))
+            return BadRequest(new { message = "companyId and locationExternalId are required." });
+        if (items.Count == 0)
+            return BadRequest(new { message = "Add at least one menu item." });
+        if (table.Length > 64 || guest.Length > 120)
+            return BadRequest(new { message = "Table or guest name is too long." });
+
+        try
+        {
+            await SchemaPatcher.EnsurePosQrOrdersTableAsync(db);
+            var total = items.Sum(i => i.quantity * i.unitPrice);
+            var row = new PosQrOrder
+            {
+                CompanyId = cid,
+                LocationExternalId = loc,
+                TableLabel = string.IsNullOrEmpty(table) ? "QR" : table,
+                GuestName = guest,
+                Status = "open",
+                ItemsJson = JsonSerializer.Serialize(items),
+                TotalValue = total,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            db.PosQrOrders.Add(row);
+            await db.SaveChangesAsync();
+            return Ok(MapQrOrder(row));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Could not place QR order.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    [HttpPatch("qr-order/{id:int}")]
+    public async Task<ActionResult<object>> UpdateQrOrderStatus(
+        int id,
+        [FromBody] UpdateQrOrderStatusRequest body)
+    {
+        var status = (body.Status ?? string.Empty).Trim().ToLowerInvariant();
+        if (status is not ("open" or "sent" or "cancelled"))
+            return BadRequest(new { message = "Status must be open, sent, or cancelled." });
+
+        try
+        {
+            await SchemaPatcher.EnsurePosQrOrdersTableAsync(db);
+            var row = await db.PosQrOrders.FirstOrDefaultAsync(x => x.Id == id);
+            if (row is null) return NotFound(new { message = "QR order not found." });
+
+            row.Status = status;
+            row.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            return Ok(MapQrOrder(row));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Could not update QR order.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    static object MapQrOrder(PosQrOrder row)
+    {
+        object items;
+        try
+        {
+            items = JsonSerializer.Deserialize<JsonElement>(row.ItemsJson);
+        }
+        catch
+        {
+            items = Array.Empty<object>();
+        }
+
+        return new
+        {
+            id = row.Id,
+            companyId = row.CompanyId,
+            locationExternalId = row.LocationExternalId,
+            tableLabel = row.TableLabel,
+            guestName = row.GuestName,
+            status = row.Status,
+            items,
+            totalValue = row.TotalValue,
+            createdAt = row.CreatedAt,
+            updatedAt = row.UpdatedAt,
+        };
+    }
+
+    static List<string> ParseLocationIds(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
         }
     }
 }
