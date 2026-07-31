@@ -487,8 +487,35 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableOptionsJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMinCost", "NUMERIC NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMaxCost", "NUMERIC NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsVariableComponent", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableComponentOptionsJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosDeliveryUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
+
+        // Migrate legacy Variable Product "replacement" mode → Variable Component.
+        var variableProducts = await db.Products
+            .Where(p => p.IsVariableProduct)
+            .ToListAsync();
+        var replacementProducts = variableProducts
+            .Where(p => string.Equals(p.VariableMode, "replacement", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var product in replacementProducts)
+        {
+            product.IsVariableComponent = true;
+            if (!string.IsNullOrWhiteSpace(product.VariableOptionsJson)
+                && product.VariableOptionsJson.Trim() is not ("{}" or "[]"))
+            {
+                product.VariableComponentOptionsJson = product.VariableOptionsJson;
+            }
+            product.IsVariableProduct = false;
+            product.VariableMode = string.Empty;
+            product.VariableChoiceQty = 0;
+            product.VariableOptionsJson = "{}";
+            product.VariableMinCost = 0;
+            product.VariableMaxCost = 0;
+        }
+        if (replacementProducts.Count > 0)
+            await db.SaveChangesAsync();
 
         // B2C products with RRP are the POS retail channel — enable POS + default retail unit
         // so built/imported B2C recipes appear on POS Menu / Test Tap without a second tick.

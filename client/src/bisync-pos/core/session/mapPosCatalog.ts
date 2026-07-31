@@ -5,6 +5,10 @@ import {
   parseVariableMode,
   parseVariableOptionsJson,
 } from '../../../data/productVariable'
+import {
+  hasConfiguredVariableComponentSlots,
+  parseVariableComponentOptionsJson,
+} from '../../../data/productVariableComponent'
 import type {
   Product as PosProduct,
   ProductDepartment,
@@ -86,6 +90,13 @@ export function mapApiProductsToPosCatalog(
       priceCents = Math.round(unitPrice * 100)
     }
 
+    const vcConfig = product.isVariableComponent
+      ? parseVariableComponentOptionsJson(product.variableComponentOptionsJson)
+      : null
+    const variableComponentSlots = vcConfig && hasConfiguredVariableComponentSlots(vcConfig)
+      ? vcConfig.slots.filter(s => s.alternatives.length > 0)
+      : undefined
+
     rows.push({
       id: String(product.id),
       sku: product.productId || String(product.id),
@@ -105,7 +116,8 @@ export function mapApiProductsToPosCatalog(
           : cfg?.choiceQty)
         : cfg?.choiceQty,
       combinationOptions: mode === 'combination' ? cfg?.combinationOptions : undefined,
-      replacementSlots: mode === 'replacement' ? cfg?.replacementSlots : undefined,
+      isVariableComponent: Boolean(variableComponentSlots?.length),
+      variableComponentSlots,
     })
   }
   return rows.sort((a, b) => a.name.localeCompare(b.name))

@@ -204,6 +204,15 @@ export function ProductReadOnlyView({
                 />
                 Variable Product
               </label>
+              <label className="inline-flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={Boolean(product.isVariableComponent) && !product.isSubProduct}
+                  disabled
+                  className="rounded border-border"
+                />
+                Variable Component
+              </label>
             </div>
           </div>
 
@@ -258,11 +267,15 @@ export function ProductReadOnlyView({
                   </>
                 ) : (
                   <>
-                    Variable {product.variableMode === 'replacement' ? 'replacement' : 'combination'}
+                    Variable {product.variableMode === 'weight' ? 'weight' : 'combination'}
                     {' · '}Min {currency(product.variableMinCost ?? 0)}
                     {' · '}Max {currency(product.variableMaxCost ?? 0)}
                   </>
                 )}
+              </p>
+            ) : product.isVariableComponent ? (
+              <p className="text-[10px] text-muted-foreground">
+                Variable Component — POS SWAP substitutes on recipe components.
               </p>
             ) : null}
           </div>

@@ -888,7 +888,7 @@ public class UpsertProductRequest
     public string? Group { get; set; }
     public bool IsSubProduct { get; set; }
     public bool IsVariableProduct { get; set; }
-    /// <summary>combination | replacement</summary>
+    /// <summary>combination | weight</summary>
     [MaxLength(20)]
     public string? VariableMode { get; set; }
     [Range(0, 999999999)]
@@ -898,6 +898,8 @@ public class UpsertProductRequest
     public decimal? VariableMinCost { get; set; }
     [Range(0, 999999999)]
     public decimal? VariableMaxCost { get; set; }
+    public bool IsVariableComponent { get; set; }
+    public string? VariableComponentOptionsJson { get; set; }
     public bool B2cEnabled { get; set; }
     public bool B2bEnabled { get; set; }
     [MaxLength(20)]
@@ -1019,7 +1021,7 @@ public class RecordProductSaleRequest
 /// <summary>Quantified variable-product detail for a POS/channel sale line.</summary>
 public class PosSaleVariableDetailRequest
 {
-    /// <summary>combination | replacement | weight</summary>
+    /// <summary>combination | replacement | weight | variableComponent</summary>
     [MaxLength(40)]
     public string? VariableMode { get; set; }
     /// <summary>Exact weight served (weight mode).</summary>
@@ -1058,6 +1060,9 @@ public class PosSaleReplacementSelectionRequest
     public string? ComponentUom { get; set; }
     [Range(0.0001, 999999999)]
     public decimal Quantity { get; set; }
+    /// <summary>Optional customer surcharge for a Variable Component substitute (0 = free).</summary>
+    [Range(0, 999999999)]
+    public decimal? ExtraCharge { get; set; }
 }
 
 public class PatchProductionBatchRequest
