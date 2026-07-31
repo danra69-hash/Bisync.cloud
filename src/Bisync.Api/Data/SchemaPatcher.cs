@@ -189,6 +189,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmount", "NUMERIC(12,2) NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "DutyMealAmountPeriod", "TEXT NOT NULL DEFAULT 'Monthly'");
+        // LeaveBalances.AlCarryForward — required by /api/leave-balances (HR Module load).
+        // Keep in critical bootstrap (not only deferred HrStartup) so HR cannot 500 after deploy.
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "LeaveBalances", "AlCarryForward", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactPosition", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "ContactsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Vendors", "CompanyId", "INTEGER");
