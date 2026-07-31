@@ -11,6 +11,50 @@ namespace Bisync.Api.Data;
 /// </summary>
 public static class PlatformOwnerIdentityMigrator
 {
+    static int _requestPathGate;
+
+    /// <summary>
+    /// Cheap request-path trigger: only runs a full merge when an alias AppUser still exists.
+    /// </summary>
+    public static async Task EnsureMergedAsync(BisyncDbContext db, ILogger? logger = null)
+    {
+        // Avoid thundering herd; allow retry if a prior attempt failed before clearing aliases.
+        if (Interlocked.CompareExchange(ref _requestPathGate, 1, 0) != 0)
+            return;
+
+        try
+        {
+            var aliasEmails = SuperAdminAccess.AliasEmails
+                .Select(e => e.Trim().ToLowerInvariant())
+                .Where(e => e.Length > 0)
+                .ToArray();
+            if (aliasEmails.Length == 0) return;
+
+            var users = await db.AppUsers.AsNoTracking()
+                .Select(u => new { u.Id, u.Email, u.EmployeeId })
+                .ToListAsync();
+            var needsMerge = users.Any(u =>
+                aliasEmails.Contains((u.Email ?? string.Empty).Trim().ToLowerInvariant()));
+            var keeper = users.FirstOrDefault(u =>
+                string.Equals((u.Email ?? string.Empty).Trim(), SuperAdminAccess.SuperAdminEmail, StringComparison.OrdinalIgnoreCase));
+            if (!needsMerge && keeper?.EmployeeId is > 0)
+                return;
+
+            await ApplyAsync(db, logger);
+
+            var stillAlias = await db.AppUsers.AsNoTracking()
+                .Select(u => u.Email)
+                .ToListAsync();
+            if (stillAlias.Any(e => aliasEmails.Contains((e ?? string.Empty).Trim().ToLowerInvariant())))
+                Interlocked.Exchange(ref _requestPathGate, 0);
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Exchange(ref _requestPathGate, 0);
+            logger?.LogError(ex, "PlatformOwnerIdentityMigrator.EnsureMergedAsync failed");
+        }
+    }
+
     public static async Task ApplyAsync(BisyncDbContext db, ILogger? logger = null)
     {
         try
@@ -116,12 +160,6 @@ public static class PlatformOwnerIdentityMigrator
 
         await db.SaveChangesAsync();
 
-        foreach (var absorb in absorbEmployees)
-            db.Employees.Remove(absorb);
-
-        foreach (var aliasUser in aliasUsers)
-            db.AppUsers.Remove(aliasUser);
-
         hrKeeper.Email = SuperAdminAccess.SuperAdminEmail;
         if (string.IsNullOrWhiteSpace(hrKeeper.Name))
             hrKeeper.Name = "Daniel Ra";
@@ -143,6 +181,39 @@ public static class PlatformOwnerIdentityMigrator
 
         await EnsureWeissbrauHomeAsync(db, keeper, logger);
         await db.SaveChangesAsync();
+
+        // Delete absorb/alias rows via SQL so leftover FKs cannot block EF Remove.
+        foreach (var absorb in absorbEmployees)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """DELETE FROM "Employees" WHERE "Id" = {0}""",
+                absorb.Id);
+        }
+
+        foreach (var aliasUser in aliasUsers)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """UPDATE "Locations" SET "PrincipalContactUserId" = {0} WHERE "PrincipalContactUserId" = {1}""",
+                keeper.Id,
+                aliasUser.Id);
+            await db.Database.ExecuteSqlRawAsync(
+                """UPDATE "Locations" SET "SecondaryContactUserId" = {0} WHERE "SecondaryContactUserId" = {1}""",
+                keeper.Id,
+                aliasUser.Id);
+            await db.Database.ExecuteSqlRawAsync(
+                """UPDATE "UserNotifications" SET "UserId" = {0} WHERE "UserId" = {1}""",
+                keeper.Id,
+                aliasUser.Id);
+            await db.Database.ExecuteSqlRawAsync(
+                """DELETE FROM "AppUsers" WHERE "Id" = {0}""",
+                aliasUser.Id);
+        }
+
+        // Detach deleted tracked entities so the context stays consistent.
+        foreach (var absorb in absorbEmployees)
+            db.Entry(absorb).State = EntityState.Detached;
+        foreach (var aliasUser in aliasUsers)
+            db.Entry(aliasUser).State = EntityState.Detached;
 
         logger?.LogInformation(
             "Merged platform-owner identity into {Email} (AppUser {UserId}, Employee {EmployeeId}); removed {AliasCount} alias user(s) and {AbsorbCount} duplicate employee(s)",
