@@ -23,10 +23,13 @@ export function AppShell({ children }: Props) {
 }
 
 function showsHomeSideNav(pathname: string): boolean {
+  // Register stays full-bleed. Home rail (nav + PIN + Admin) stays on floor,
+  // waitlist/reservations, and BOH pages including EOD so it never disappears.
   if (pathname.startsWith('/order/register')) return false
   if (pathname.startsWith('/order/floor')) return true
   if (pathname.startsWith('/order/reservations')) return true
   if (pathname.startsWith('/order/waitlist')) return true
+  if (pathname.startsWith('/boh')) return true
   return pathname === '/order' || pathname === '/'
 }
 
