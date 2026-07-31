@@ -67,7 +67,8 @@
 }
 
 .app-shell__main > .feature-page,
-.app-shell__main > .station-display {
+.app-shell__main > .station-display,
+.app-shell__main > .cds-display {
   flex: 1;
   min-height: 0;
   overflow: auto;

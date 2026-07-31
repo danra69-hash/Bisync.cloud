@@ -9,6 +9,7 @@ import { useConfig } from '../../../core/config/ConfigProvider'
 import type { QrTableMode } from '../../../core/config/qrTable'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import { StationDisplayPage } from './StationDisplayPage'
+import { CustomerDisplayPage } from './CustomerDisplayPage'
 import './BohPages.css'
 
 /** Kitchen Display System — food dockets grouped by table. */
@@ -33,6 +34,11 @@ export function BdsPage() {
       subtitle="Beverage orders by table — bar docket view."
     />
   )
+}
+
+/** Customer Display System — pre-payment transaction details only. */
+export function CdsPage() {
+  return <CustomerDisplayPage />
 }
 
 export function RoutingPage() {

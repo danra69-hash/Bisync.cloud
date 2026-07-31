@@ -14,6 +14,7 @@ import {
 import {
   BdsPage,
   BohSettingsPage,
+  CdsPage,
   EodPage,
   KdsPage,
   PermissionsPage,
@@ -91,6 +92,7 @@ export function BisyncPosApp() {
 
           <Route path="/boh/kds" element={<KdsPage />} />
           <Route path="/boh/bds" element={<BdsPage />} />
+          <Route path="/boh/cds" element={<CdsPage />} />
           <Route path="/boh/routing" element={<RoutingPage />} />
           <Route path="/boh/time-clock" element={<TimeClockPage />} />
           <Route path="/boh/reports" element={<ReportsPage />} />

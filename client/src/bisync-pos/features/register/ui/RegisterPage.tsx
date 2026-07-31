@@ -27,6 +27,11 @@ import {
 } from '../../order/domain/tables'
 import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
 import { fireCartToStations } from '../../boh/domain/kitchenTickets'
+import {
+  clearCustomerDisplaySnapshot,
+  publishCustomerDisplaySnapshot,
+} from '../../boh/domain/customerDisplay'
+import { saleDetailExtraChargeCents } from '../domain/saleDetail'
 import { MODE_META } from '../../../core/modes/types'
 import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import {
@@ -153,6 +158,51 @@ export function RegisterPage() {
   const onDuty = Boolean(duty)
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
+
+  // Keep CDS in sync with the open register check (pre-payment only).
+  useEffect(() => {
+    if (lines.length === 0) {
+      clearCustomerDisplaySnapshot()
+      return
+    }
+    const byId = new Map(catalogForFilter.map(p => [p.id, p]))
+    const displayLines = lines.flatMap(line => {
+      const product = byId.get(line.productId)
+      if (!product) return []
+      const extraCents = saleDetailExtraChargeCents(line.saleDetail)
+      return [{
+        name: product.name,
+        note: line.note,
+        quantityLabel: product.pricedByWeight && product.weightUom
+          ? `${line.quantity} ${product.weightUom}`
+          : String(line.quantity),
+        unitPriceCents: product.priceCents,
+        lineTotalCents: product.priceCents * line.quantity + extraCents,
+      }]
+    })
+    publishCustomerDisplaySnapshot({
+      checkNumber,
+      dining,
+      tableLabel:
+        activeTableSession?.tableLabel
+        || (dining === 'takeaway' ? 'Takeaway' : table ? `Table ${table}` : ''),
+      cover,
+      lines: displayLines,
+      charges,
+      subtotalCents: cartSubtotal(lines, catalogForFilter),
+      grandTotalCents: cartGrandTotal(lines, catalogForFilter, charges),
+      updatedAt: new Date().toISOString(),
+    })
+  }, [
+    lines,
+    charges,
+    dining,
+    table,
+    cover,
+    checkNumber,
+    activeTableSession,
+    catalogForFilter,
+  ])
 
   const filtered = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
@@ -367,6 +417,7 @@ export function RegisterPage() {
     }
     setLines([])
     setCharges(EMPTY_CHARGES)
+    clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
     flash(label ? `Order cancelled · ${label} released` : 'Order cancelled')
@@ -404,6 +455,7 @@ export function RegisterPage() {
     const stations = [...new Set(tickets.map(t => t.station))].join(' · ')
     setLines([])
     setCharges(EMPTY_CHARGES)
+    clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
     flash(`Order #${checkNumber} sent to ${stations}`)
@@ -416,6 +468,7 @@ export function RegisterPage() {
       flash('Opening payment…')
       setLines([])
       setCharges(EMPTY_CHARGES)
+      clearCustomerDisplaySnapshot()
       return
     }
     if (lines.length === 0 || charging) return
@@ -462,6 +515,7 @@ export function RegisterPage() {
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       setLines([])
       setCharges(EMPTY_CHARGES)
+      clearCustomerDisplaySnapshot()
       clearActiveRegisterSession()
       setActiveTableSession(null)
       flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)

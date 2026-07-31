@@ -15,6 +15,7 @@ export function TopBar() {
   const isSetup = pathname.startsWith('/boh/settings')
   const isKds = pathname.startsWith('/boh/kds')
   const isBds = pathname.startsWith('/boh/bds')
+  const isCds = pathname.startsWith('/boh/cds')
 
   function goHome() {
     setMode('order')
@@ -34,6 +35,11 @@ export function TopBar() {
   function goBds() {
     setMode('boh')
     navigate('/boh/bds')
+  }
+
+  function goCds() {
+    setMode('boh')
+    navigate('/boh/cds')
   }
 
   return (
@@ -98,6 +104,15 @@ export function TopBar() {
           title="Bar Display System"
         >
           BDS
+        </button>
+        <button
+          type="button"
+          className={`topbar__setup${isCds ? ' is-active' : ''}`}
+          onClick={goCds}
+          aria-current={isCds ? 'page' : undefined}
+          title="Customer Display System"
+        >
+          CDS
         </button>
       </div>
 
