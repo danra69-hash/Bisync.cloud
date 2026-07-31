@@ -19,7 +19,12 @@ import './FloorSideNav.css'
 
 type NavId = 'home' | 'takeout' | 'reservation' | 'waitlist' | 'history' | 'checkin'
 
-export function FloorSideNav() {
+type Props = {
+  adminOpen: boolean
+  onToggleAdmin: () => void
+}
+
+export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { setMode } = usePosMode()
@@ -181,6 +186,16 @@ export function FloorSideNav() {
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          className={`floor-side-nav__admin${adminOpen ? ' is-open' : ''}`}
+          onClick={onToggleAdmin}
+          aria-expanded={adminOpen}
+          aria-controls="app-side-menu"
+        >
+          Admin
+        </button>
       </nav>
 
       {checkInOpen && (
