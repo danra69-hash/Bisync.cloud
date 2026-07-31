@@ -87,11 +87,12 @@ async function shot(page, name) {
     .waitFor({ state: 'visible', timeout: 45000 });
   await shot(page, 'sim-product-list');
 
-  await page.locator('table tbody tr').first().click();
+  const dataRow = page.locator('table tbody tr').filter({ hasText: /PRD-|SUB-/i }).first();
+  await dataRow.locator('td').nth(4).click();
   await page.waitForTimeout(1500);
-  const editBtn = page.getByRole('button', { name: /^edit$/i }).first();
-  await editBtn.waitFor({ state: 'visible', timeout: 15000 });
-  await editBtn.click();
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Product details|Edit product/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 15000 });
+  await dialog.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.waitForTimeout(1800);
   await shot(page, 'sim-edit-product');
 
