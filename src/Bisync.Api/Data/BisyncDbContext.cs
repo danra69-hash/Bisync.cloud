@@ -75,6 +75,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();
     public DbSet<PosPromotionProduct> PosPromotionProducts => Set<PosPromotionProduct>();
     public DbSet<PosDevice> PosDevices => Set<PosDevice>();
+    public DbSet<PosFloorPlan> PosFloorPlans => Set<PosFloorPlan>();
     public DbSet<PosPrinterSdk> PosPrinterSdks => Set<PosPrinterSdk>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
@@ -231,6 +232,11 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.VoidsConfirmed).HasConversion<int>();
             e.Property(x => x.DiscountConfirmed).HasConversion<int>();
             e.Property(x => x.DayClosed).HasConversion<int>();
+        });
+        modelBuilder.Entity<PosFloorPlan>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId }).IsUnique();
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
         });
         modelBuilder.Entity<SalesModuleCustomer>(e =>
         {
