@@ -305,7 +305,11 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
 
   const companyEmployees = useMemo(() => {
     if (!selectedCompanyId) return [];
-    return employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
+    const linked = employees.filter(employee => platformUserFor(employee)?.companyId === selectedCompanyId);
+    if (linked.length > 0) return linked;
+    // If platform user links are incomplete, still show active employees so QR punches are visible.
+    if (platformUsers.length === 0) return employees.filter(e => e.active !== false);
+    return linked;
   }, [employees, platformUsers, selectedCompanyId, platformUserFor]);
 
   useEffect(() => {
@@ -853,10 +857,15 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                         {attendanceDates.map((date) => {
                           const record = recordFor(employee.id, date);
                           return (
-                            <td key={date} className="px-0.5 py-2 text-center text-xs border-l border-gray-200">
-                              {record?.status === 'Present' ? <span className="text-green-600">P</span>
-                                : record?.status === 'Absent' ? <span className="text-red-600">A</span>
-                                : record?.status === 'Late' ? <span className="text-orange-600">L</span>
+                            <td key={date} className="px-0.5 py-2 text-center text-[11px] border-l border-gray-200">
+                              {record?.status === 'Present' || record?.status === 'Late' ? (
+                                <span className={record.status === 'Late' ? 'text-orange-600' : 'text-green-600'} title={record.status}>
+                                  {hm(record.actualIn) || (record.status === 'Late' ? 'L' : 'P')}
+                                  {hm(record.actualOut) ? (
+                                    <span className="block text-[10px] text-gray-500">{hm(record.actualOut)}</span>
+                                  ) : null}
+                                </span>
+                              ) : record?.status === 'Absent' ? <span className="text-red-600">A</span>
                                 : record?.status === 'HalfDay' ? <span className="text-herme">½</span>
                                 : <span className="text-gray-400">-</span>}
                             </td>

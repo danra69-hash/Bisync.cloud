@@ -23,6 +23,7 @@ import {
   savePinEnrollment,
   unlockPinPayload,
 } from './teamPin';
+import { punchHrAttendance } from './attendancePunch';
 import './TeamPortal.css';
 
 interface TeamPortalProps {
@@ -141,10 +142,6 @@ function parsePosQr(payload: string): { outletInitial: string; date: string; tim
   const m = QR_RE.exec(payload.trim());
   if (!m) return null;
   return { outletInitial: m[1], date: m[2], time: m[3] };
-}
-
-function timeOnly(hhmm: string): string {
-  return hhmm.length === 5 ? `${hhmm}:00` : hhmm;
 }
 
 function clockNowLabel(d = new Date()) {
@@ -284,6 +281,8 @@ export default function TeamPortal({
         setAuthError('Employee linked to this PIN is no longer available.');
         return;
       }
+      // Keep server POS PIN in sync with Team mobile PIN (for POS unlock on other devices).
+      void hrApi.employees.setPosPin(emp.id, loginPin).catch(() => { /* best-effort */ });
       enterApp(emp);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'PIN login failed');
@@ -355,9 +354,14 @@ export default function TeamPortal({
         employeeId: teamEmp.id,
         name: teamEmp.name,
       });
+      try {
+        await hrApi.employees.setPosPin(teamEmp.id, settingsPin);
+      } catch {
+        /* local PIN still works for Team; POS API sync is best-effort */
+      }
       setSettingsPin('');
       setSettingsPinConfirm('');
-      showToast('PIN number saved on this device.');
+      showToast('PIN saved for Team login and POS unlock.');
     } catch (err) {
       setSettingsError(err instanceof Error ? err.message : 'Could not save PIN');
     } finally {
@@ -498,54 +502,20 @@ export default function TeamPortal({
     setCheckBusy(true);
     setScanError('');
     try {
-      const sched = shiftSchedules.find(s => s.employeeId === teamEmp.id && s.date === TODAY && s.type === 'Work');
-      const scheduledIn = sched?.startTime ? timeOnly(sched.startTime.slice(0, 5)) : null;
-      const scheduledOut = sched?.endTime ? timeOnly(sched.endTime.slice(0, 5)) : null;
-      const stamp = timeOnly(parsed.time);
-      const rows = await hrApi.attendance.list(TODAY, TODAY, teamEmp.id);
-      let record = rows[0] ?? null;
-
-      if (!record || !record.actualIn) {
-        if (record) {
-          record = await hrApi.attendance.update(record.id, {
-            employeeId: teamEmp.id,
-            date: TODAY,
-            status: 'Present',
-            scheduledIn: record.scheduledIn ?? scheduledIn,
-            scheduledOut: record.scheduledOut ?? scheduledOut,
-            actualIn: stamp,
-            actualOut: record.actualOut ?? null,
-          });
-        } else {
-          record = await hrApi.attendance.create({
-            employeeId: teamEmp.id,
-            date: TODAY,
-            status: 'Present',
-            scheduledIn,
-            scheduledOut,
-            actualIn: stamp,
-            actualOut: null,
-          });
-        }
-        setTodayAttendance(record);
-        showToast(`Checked in at ${parsed.time}`);
-      } else if (!record.actualOut) {
-        record = await hrApi.attendance.update(record.id, {
-          employeeId: teamEmp.id,
-          date: TODAY,
-          status: 'Present',
-          scheduledIn: record.scheduledIn ?? scheduledIn,
-          scheduledOut: record.scheduledOut ?? scheduledOut,
-          actualIn: record.actualIn,
-          actualOut: stamp,
-        });
-        setTodayAttendance(record);
-        showToast(`Checked out at ${parsed.time}`);
-      } else {
-        setScanError('Already checked in and out for today.');
-        setCheckBusy(false);
-        return;
-      }
+      const before = todayAttendance;
+      const record = await punchHrAttendance({
+        employeeId: teamEmp.id,
+        date: TODAY,
+        timeHhMm: parsed.time,
+        shiftSchedules,
+      });
+      setTodayAttendance(record);
+      const wasCheckIn = !before?.actualIn;
+      showToast(
+        wasCheckIn
+          ? `Checked in at ${parsed.time} · HR attendance recorded`
+          : `Checked out at ${parsed.time} · HR attendance recorded`,
+      );
 
       stopScanner();
       setShowScanner(false);

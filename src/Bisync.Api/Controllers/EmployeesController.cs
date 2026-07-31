@@ -145,6 +145,28 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         return employee;
     }
 
+    /// <summary>
+    /// Set the employee's POS unlock PIN (also used by Team mobile PIN). Enables POS when needed.
+    /// </summary>
+    [HttpPost("{id:int}/set-pos-pin")]
+    public async Task<ActionResult<Employee>> SetPosPin(int id, PosPinVerifyRequest request)
+    {
+        var employee = await db.Employees.FindAsync(id);
+        if (employee is null) return NotFound();
+
+        var pin = (request.Pin ?? string.Empty).Trim();
+        if (pin.Length != 4 || !pin.All(char.IsDigit))
+            return BadRequest("POS PIN must be exactly 4 digits.");
+
+        employee.PosEnabled = true;
+        employee.PosPin = pin;
+        employee.PosPinMustChange = false;
+        if (employee.CheckinMethod != CheckinMethod.POS)
+            employee.CheckinMethod = CheckinMethod.POS;
+        await db.SaveChangesAsync();
+        return employee;
+    }
+
     [HttpPost("{id:int}/verify-payroll-pin")]
     public async Task<ActionResult<PayrollPinVerifyResult>> VerifyPayrollPin(int id, PayrollPinVerifyRequest request)
     {
