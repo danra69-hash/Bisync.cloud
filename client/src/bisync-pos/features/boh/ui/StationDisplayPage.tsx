@@ -4,6 +4,7 @@ import {
   KDS_TICKETS_EVENT,
   loadKitchenTickets,
   ticketAgeLabel,
+  ticketTimestampLabel,
   type KitchenStation,
   type KitchenTicket,
 } from '../domain/kitchenTickets'
@@ -106,7 +107,10 @@ export function StationDisplayPage({ station, code, title, subtitle }: Props) {
                   <strong>{docket.tableLabel}</strong>
                 </div>
                 <div className="kitchen-docket__meta">
-                  <span>{ticketAgeLabel(docket.oldestAt, now)}</span>
+                  <time dateTime={docket.oldestAt} className="kitchen-docket__time">
+                    {ticketTimestampLabel(docket.oldestAt)}
+                  </time>
+                  <span className="kitchen-docket__age">{ticketAgeLabel(docket.oldestAt, now)}</span>
                   <span>
                     {docket.tickets.length === 1
                       ? `#${docket.tickets[0].checkNumber}`
@@ -119,22 +123,22 @@ export function StationDisplayPage({ station, code, title, subtitle }: Props) {
 
               {docket.tickets.map(ticket => (
                 <section key={ticket.id} className="kitchen-docket__check">
-                  {docket.tickets.length > 1 ? (
-                    <p className="kitchen-docket__check-no">
-                      #{ticket.checkNumber}
-                      <span>{ticketAgeLabel(ticket.createdAt, now)}</span>
-                      {ticket.dining ? <span>{ticket.dining}</span> : null}
-                    </p>
-                  ) : ticket.dining ? (
-                    <p className="kitchen-docket__check-no">
-                      <span>{ticket.dining}</span>
-                    </p>
-                  ) : null}
+                  <p className="kitchen-docket__check-no">
+                    {docket.tickets.length > 1 ? <span>#{ticket.checkNumber}</span> : null}
+                    <time dateTime={ticket.createdAt}>{ticketTimestampLabel(ticket.createdAt)}</time>
+                    <span>{ticketAgeLabel(ticket.createdAt, now)}</span>
+                    {ticket.dining ? <span>{ticket.dining}</span> : null}
+                  </p>
                   <ul className="kitchen-docket__items">
-                    {ticket.items.map(item => (
-                      <li key={`${ticket.id}-${item.name}`}>
+                    {ticket.items.map((item, itemIndex) => (
+                      <li key={`${ticket.id}-${item.name}-${item.detail ?? ''}-${itemIndex}`}>
                         <span className="kitchen-docket__qty">{item.quantity}</span>
-                        <span className="kitchen-docket__name">{item.name}</span>
+                        <span className="kitchen-docket__item-body">
+                          <span className="kitchen-docket__name">{item.name}</span>
+                          {item.detail ? (
+                            <span className="kitchen-docket__detail">{item.detail}</span>
+                          ) : null}
+                        </span>
                       </li>
                     ))}
                   </ul>
