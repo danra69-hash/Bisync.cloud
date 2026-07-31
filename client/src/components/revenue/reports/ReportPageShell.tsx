@@ -44,6 +44,7 @@ type Props = {
   onRefresh: () => void;
   csvFilename: string;
   extraFilters?: ReactNode;
+  visual?: ReactNode;
   secondaryTable?: {
     title: string;
     columns: ReportColumn[];
@@ -87,6 +88,7 @@ export function ReportPageShell({
   onRefresh,
   csvFilename,
   extraFilters,
+  visual,
   secondaryTable,
 }: Props) {
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -189,6 +191,8 @@ export function ReportPageShell({
               ))}
             </div>
           ) : null}
+
+          {visual}
 
           <TableScrollContainer
             ref={scrollRootRef}

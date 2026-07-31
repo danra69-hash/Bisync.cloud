@@ -162,6 +162,7 @@ export const ms = {
       detailedPurchaseSummary: 'Ringkasan Pembelian Terperinci',
       productionReport: 'Laporan Pengeluaran',
       wastageReport: 'Laporan Pembaziran',
+      bcgMatrix: 'Matriks BCG',
       cogsAudit: 'COGS Audit',
     },
     selectModule: 'Pilih modul daripada bar navigasi di atas.',

@@ -159,6 +159,7 @@ export const en = {
       detailedPurchaseSummary: 'Detailed Purchase Summary',
       productionReport: 'Production Report',
       wastageReport: 'Wastage Report',
+      bcgMatrix: 'BCG Matrix',
       cogsAudit: 'COGS Audit',
     },
     selectModule: 'Select a module from the navigation bar above.',

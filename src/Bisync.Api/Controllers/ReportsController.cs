@@ -61,6 +61,15 @@ public class ReportsController(ReportsService reports, ITenantContext tenant) : 
         => Run(companyId, locationIds, month, (cid, locs, period, ct) =>
             reports.WastageReportAsync(cid, locs, period, ct), cancellationToken);
 
+    [HttpGet("bcg-matrix")]
+    public Task<ActionResult<ReportPayload>> BcgMatrix(
+        [FromQuery] int? companyId,
+        [FromQuery] string? locationIds,
+        [FromQuery] string? month,
+        CancellationToken cancellationToken = default)
+        => Run(companyId, locationIds, month, (cid, locs, period, ct) =>
+            reports.BcgMatrixAsync(cid, locs, period, ct), cancellationToken);
+
     async Task<ActionResult<ReportPayload>> Run(
         int? companyId,
         string? locationIds,

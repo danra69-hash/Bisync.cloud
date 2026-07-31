@@ -162,6 +162,7 @@ export const ja = {
       detailedPurchaseSummary: '仕入明細サマリー',
       productionReport: '生産レポート',
       wastageReport: '廃棄レポート',
+      bcgMatrix: 'BCGマトリクス',
       cogsAudit: 'COGS Audit',
     },
     selectModule: '上部のナビゲーションバーからモジュールを選択してください。',

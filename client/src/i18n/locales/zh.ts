@@ -162,6 +162,7 @@ export const zh = {
       detailedPurchaseSummary: '采购明细汇总',
       productionReport: '生产报表',
       wastageReport: '损耗报表',
+      bcgMatrix: 'BCG 矩阵',
       cogsAudit: 'COGS Audit',
     },
     selectModule: '请从上方导航栏选择模块。',

@@ -107,6 +107,7 @@ export const revMgmtNav: RevMgmtSection[] = [
           { label: 'Detailed Purchase Summary' },
           { label: 'Production Report' },
           { label: 'Wastage Report' },
+          { label: 'BCG Matrix' },
           { label: 'COGS Audit' },
         ],
       },

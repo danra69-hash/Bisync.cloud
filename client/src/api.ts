@@ -4147,6 +4147,14 @@ export const api = {
     });
     return fetchJson<ReportPayload>(`/api/reports/wastage?${params}`);
   },
+  reportBcgMatrix: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/bcg-matrix?${params}`);
+  },
   systemAuditMonths: (params: { companyId?: number; locationId?: number } = {}) => {
     const q = new URLSearchParams();
     if (params.companyId != null) q.set('companyId', String(params.companyId));

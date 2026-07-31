@@ -233,6 +233,151 @@ public sealed class ReportsService(
             rows);
     }
 
+    public async Task<ReportPayload> BcgMatrixAsync(
+        int? companyId,
+        IReadOnlyList<string> locationIds,
+        string month,
+        CancellationToken ct = default)
+    {
+        if (!TryParseMonth(month, out var monthStart, out _))
+            return Empty("BCG Matrix", month);
+
+        var previousMonth = monthStart.AddMonths(-1).ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        const decimal shareThreshold = 0.5m;
+        const decimal growthThreshold = 0.10m;
+
+        var currentSales = await salesData.GetAsync(companyId, locationIds, month, "product", ct);
+        var previousSales = await salesData.GetAsync(companyId, locationIds, previousMonth, "product", ct);
+
+        static Dictionary<string, (decimal Value, decimal Qty, string Category, string Group, string ProductType)> Aggregate(
+            IEnumerable<SalesDataRow> rows)
+        {
+            var map = new Dictionary<string, (decimal Value, decimal Qty, string Category, string Group, string ProductType)>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var row in rows)
+            {
+                var name = (row.ProductName ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                if (!map.TryGetValue(name, out var existing))
+                {
+                    map[name] = (
+                        row.TotalValue,
+                        row.QtySold,
+                        (row.Category ?? string.Empty).Trim(),
+                        (row.Group ?? string.Empty).Trim(),
+                        (row.ProductType ?? string.Empty).Trim());
+                    continue;
+                }
+
+                map[name] = (
+                    existing.Value + row.TotalValue,
+                    existing.Qty + row.QtySold,
+                    string.IsNullOrWhiteSpace(existing.Category) ? (row.Category ?? string.Empty).Trim() : existing.Category,
+                    string.IsNullOrWhiteSpace(existing.Group) ? (row.Group ?? string.Empty).Trim() : existing.Group,
+                    string.IsNullOrWhiteSpace(existing.ProductType) ? (row.ProductType ?? string.Empty).Trim() : existing.ProductType);
+            }
+
+            return map;
+        }
+
+        var current = Aggregate(currentSales.Rows);
+        var previous = Aggregate(previousSales.Rows);
+        var names = current.Keys.Union(previous.Keys, StringComparer.OrdinalIgnoreCase).ToList();
+        var maxValue = current.Values.Select(v => v.Value).DefaultIfEmpty(0m).Max();
+        if (maxValue <= 0m)
+            maxValue = previous.Values.Select(v => v.Value).DefaultIfEmpty(0m).Max();
+
+        var totalCurrent = current.Values.Sum(v => v.Value);
+        var rows = new List<Dictionary<string, object?>>();
+
+        foreach (var name in names)
+        {
+            current.TryGetValue(name, out var cur);
+            previous.TryGetValue(name, out var prev);
+            var currentValue = cur.Value;
+            var previousValue = prev.Value;
+            var qtySold = cur.Qty;
+            var category = !string.IsNullOrWhiteSpace(cur.Category) ? cur.Category : prev.Category;
+            var group = !string.IsNullOrWhiteSpace(cur.Group) ? cur.Group : prev.Group;
+            var productType = !string.IsNullOrWhiteSpace(cur.ProductType) ? cur.ProductType : prev.ProductType;
+
+            var relativeShare = maxValue > 0m ? currentValue / maxValue : 0m;
+            decimal growthRate;
+            string growthLabel;
+            if (previousValue > 0m)
+            {
+                growthRate = (currentValue - previousValue) / previousValue;
+                growthLabel = $"{growthRate * 100m:0.#}%";
+            }
+            else if (currentValue > 0m)
+            {
+                growthRate = 1m;
+                growthLabel = "New";
+            }
+            else
+            {
+                growthRate = 0m;
+                growthLabel = "0%";
+            }
+
+            var highShare = relativeShare >= shareThreshold;
+            var highGrowth = growthRate >= growthThreshold;
+            var quadrant = (highGrowth, highShare) switch
+            {
+                (true, true) => "Star",
+                (false, true) => "Cash Cow",
+                (true, false) => "Question Mark",
+                _ => "Dog",
+            };
+
+            rows.Add(new Dictionary<string, object?>
+            {
+                ["productName"] = name,
+                ["category"] = category,
+                ["group"] = group,
+                ["productType"] = productType,
+                ["qtySold"] = qtySold,
+                ["currentValue"] = currentValue,
+                ["previousValue"] = previousValue,
+                ["valueDelta"] = currentValue - previousValue,
+                ["relativeShare"] = Math.Round(relativeShare, 4),
+                ["portfolioShare"] = totalCurrent > 0m ? Math.Round(currentValue / totalCurrent, 4) : 0m,
+                ["growthRate"] = Math.Round(growthRate, 4),
+                ["growthLabel"] = growthLabel,
+                ["quadrant"] = quadrant,
+                ["x"] = Math.Round(relativeShare, 4),
+                ["y"] = Math.Round(growthRate, 4),
+            });
+        }
+
+        rows = rows
+            .OrderByDescending(r => Convert.ToDecimal(r["currentValue"], CultureInfo.InvariantCulture))
+            .ThenBy(r => (string?)r["productName"], StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var quadrantCounts = rows
+            .GroupBy(r => (string)r["quadrant"]!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (object?)g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        return new ReportPayload(
+            "BCG Matrix",
+            month,
+            new Dictionary<string, object?>
+            {
+                ["productCount"] = rows.Count,
+                ["totalValue"] = totalCurrent,
+                ["previousTotalValue"] = previous.Values.Sum(v => v.Value),
+                ["previousMonth"] = previousMonth,
+                ["shareThreshold"] = shareThreshold,
+                ["growthThreshold"] = growthThreshold,
+                ["stars"] = quadrantCounts.GetValueOrDefault("Star", 0),
+                ["cashCows"] = quadrantCounts.GetValueOrDefault("Cash Cow", 0),
+                ["questionMarks"] = quadrantCounts.GetValueOrDefault("Question Mark", 0),
+                ["dogs"] = quadrantCounts.GetValueOrDefault("Dog", 0),
+            },
+            rows);
+    }
+
     public async Task<ReportPayload> WastageReportAsync(
         int? companyId,
         IReadOnlyList<string> locationIds,

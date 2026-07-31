@@ -162,6 +162,7 @@ export const th = {
       detailedPurchaseSummary: 'สรุปการซื้อรายละเอียด',
       productionReport: 'รายงานการผลิต',
       wastageReport: 'รายงานของเสีย',
+      bcgMatrix: 'เมทริกซ์ BCG',
       cogsAudit: 'COGS Audit',
     },
     selectModule: 'เลือกโมดูลจากแถบนำทางด้านบน',
