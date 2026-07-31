@@ -7,6 +7,22 @@ import { hrApi } from './api';
 import type {
   AttendanceRecord, Employee, LeaveBalanceRow, LeaveRequest, LeaveType, PublicHoliday, ShiftSchedule,
 } from './types';
+import {
+  assertPlatformCredential,
+  canShowBiometricLogin,
+  clearBiometricEnrollment,
+  createPlatformCredential,
+  isWebAuthnPlatformAvailable,
+  loadBiometricEnrollment,
+  saveBiometricEnrollment,
+} from './teamBiometric';
+import {
+  clearPinEnrollment,
+  isValidPin,
+  loadPinEnrollment,
+  savePinEnrollment,
+  unlockPinPayload,
+} from './teamPin';
 import './TeamPortal.css';
 
 interface TeamPortalProps {
@@ -28,12 +44,18 @@ type DayInfo = { type: string; label: string };
 type TeamTodo = { id: string; text: string; done: boolean };
 type TeamMessage = { id: string; from: string; body: string; at: string; read: boolean };
 type AppTab = 'home' | 'schedule' | 'messages' | 'leave';
+type LoginMode = 'password' | 'pin';
+type PortalStep = 'login' | 'change-password' | 'app' | 'settings';
 
 const fmt = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const STANDARD_PW = 'Pass@123';
 const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const QR_RE = /^([^/]+)\/(\d{4}-\d{2}-\d{2})\/(\d{2}:\d{2})$/;
+
+function employeeLoginUsername(emp: Employee) {
+  return (emp.email || emp.mobile || emp.employeeCode || emp.name).trim();
+}
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, '');
@@ -132,14 +154,23 @@ function clockNowLabel(d = new Date()) {
 export default function TeamPortal({
   employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, onSubmitLeave,
 }: TeamPortalProps) {
-  const [step, setStep] = useState<'login' | 'change-password' | 'app'>('login');
+  const enrolledPin = loadPinEnrollment();
+  const [step, setStep] = useState<PortalStep>('login');
   const [teamEmp, setTeamEmp] = useState<Employee | null>(null);
+  const [loginMode, setLoginMode] = useState<LoginMode>(() => (enrolledPin ? 'pin' : 'password'));
   const [identity, setIdentity] = useState('');
   const [loginPw, setLoginPw] = useState('');
+  const [loginPin, setLoginPin] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [authError, setAuthError] = useState('');
   const [submittingAuth, setSubmittingAuth] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(() => canShowBiometricLogin());
+
+  const [settingsPin, setSettingsPin] = useState('');
+  const [settingsPinConfirm, setSettingsPinConfirm] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsBusy, setSettingsBusy] = useState(false);
 
   const [appTab, setAppTab] = useState<AppTab>('home');
   const [calYear, setCalYear] = useState(new Date().getFullYear());
@@ -182,11 +213,28 @@ export default function TeamPortal({
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    setBiometricReady(canShowBiometricLogin());
+  }, [step]);
+
   const hasChangedPw = (empId: number) => localStorage.getItem(pwChangedKey(empId)) === '1';
+
+  const enterApp = (emp: Employee) => {
+    setTeamEmp(emp);
+    setLoginPw('');
+    setLoginPin('');
+    setAuthError('');
+    setStep('app');
+    setAppTab('home');
+  };
 
   const doLogin = async (e?: FormEvent) => {
     e?.preventDefault();
     setAuthError('');
+    if (loginMode === 'pin') {
+      await doPinLogin();
+      return;
+    }
     const emp = findEmployee(employees, identity);
     if (!emp) {
       setAuthError('No employee found for that email or mobile.');
@@ -208,13 +256,63 @@ export default function TeamPortal({
           setTeamEmp(null);
         }
       } else if (loginPw.length >= 8) {
-        setLoginPw('');
-        setStep('app');
-        setAppTab('home');
+        enterApp(emp);
       } else {
         setAuthError('Invalid password.');
         setTeamEmp(null);
       }
+    } finally {
+      setSubmittingAuth(false);
+    }
+  };
+
+  const doPinLogin = async () => {
+    setAuthError('');
+    if (!loadPinEnrollment()) {
+      setAuthError('No PIN on this device yet. Sign in with password, then set a PIN from your name on the top bar.');
+      return;
+    }
+    if (!isValidPin(loginPin)) {
+      setAuthError('Enter your 4-digit PIN');
+      return;
+    }
+    setSubmittingAuth(true);
+    try {
+      const payload = await unlockPinPayload(loginPin);
+      const emp = employees.find(e => e.id === payload.employeeId) ?? findEmployee(employees, payload.username);
+      if (!emp) {
+        setAuthError('Employee linked to this PIN is no longer available.');
+        return;
+      }
+      enterApp(emp);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'PIN login failed');
+      setLoginPin('');
+    } finally {
+      setSubmittingAuth(false);
+    }
+  };
+
+  const doBiometricLogin = async () => {
+    setAuthError('');
+    const enrollment = loadBiometricEnrollment();
+    if (!enrollment) {
+      setAuthError('Biometric login is not set up on this device.');
+      return;
+    }
+    setSubmittingAuth(true);
+    try {
+      await assertPlatformCredential(enrollment.credentialId);
+      const emp = employees.find(e => e.id === enrollment.employeeId)
+        ?? findEmployee(employees, enrollment.username);
+      if (!emp) {
+        setAuthError('Employee linked to biometrics is no longer available.');
+        return;
+      }
+      enterApp(emp);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Biometric login failed');
+      setBiometricReady(canShowBiometricLogin());
     } finally {
       setSubmittingAuth(false);
     }
@@ -228,8 +326,83 @@ export default function TeamPortal({
     if (newPw === STANDARD_PW) { setAuthError('New password cannot match the standard password.'); return; }
     localStorage.setItem(pwChangedKey(teamEmp.id), '1');
     setNewPw(''); setConfirmPw(''); setAuthError('');
-    setStep('app');
-    setAppTab('home');
+    enterApp(teamEmp);
+  };
+
+  const openSettings = () => {
+    setSettingsPin('');
+    setSettingsPinConfirm('');
+    setSettingsError('');
+    setStep('settings');
+  };
+
+  const saveTeamPin = async () => {
+    if (!teamEmp) return;
+    setSettingsError('');
+    if (!isValidPin(settingsPin)) {
+      setSettingsError('PIN must be exactly 4 digits.');
+      return;
+    }
+    if (settingsPin !== settingsPinConfirm) {
+      setSettingsError('PIN confirmation does not match.');
+      return;
+    }
+    setSettingsBusy(true);
+    try {
+      await savePinEnrollment(settingsPin, {
+        kind: 'team-session',
+        username: employeeLoginUsername(teamEmp),
+        employeeId: teamEmp.id,
+        name: teamEmp.name,
+      });
+      setSettingsPin('');
+      setSettingsPinConfirm('');
+      showToast('PIN number saved on this device.');
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : 'Could not save PIN');
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const removeTeamPin = () => {
+    clearPinEnrollment();
+    setSettingsPin('');
+    setSettingsPinConfirm('');
+    setSettingsError('');
+    showToast('PIN login turned off on this device.');
+  };
+
+  const enableTeamBiometric = async () => {
+    if (!teamEmp) return;
+    setSettingsError('');
+    if (!isWebAuthnPlatformAvailable()) {
+      setSettingsError('Biometrics are not supported in this browser (needs HTTPS + platform authenticator).');
+      return;
+    }
+    setSettingsBusy(true);
+    try {
+      const username = employeeLoginUsername(teamEmp);
+      const credentialId = await createPlatformCredential(username);
+      saveBiometricEnrollment({
+        username,
+        employeeId: teamEmp.id,
+        credentialId,
+      });
+      setBiometricReady(true);
+      showToast('Biometric login enabled on this device.');
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : 'Biometric enrollment failed');
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const disableTeamBiometric = () => {
+    clearBiometricEnrollment();
+    setBiometricReady(false);
+    setSettingsError('');
+    showToast('Biometric login turned off on this device.');
   };
 
   const doLogout = () => {
@@ -239,7 +412,10 @@ export default function TeamPortal({
     setShowLeaveModal(false);
     setShowScanner(false);
     setLoginPw('');
+    setLoginPin('');
     setAuthError('');
+    setLoginMode(loadPinEnrollment() ? 'pin' : 'password');
+    setBiometricReady(canShowBiometricLogin());
   };
 
   useEffect(() => {
@@ -484,6 +660,7 @@ export default function TeamPortal({
 
   // ── LOGIN LANDING ──
   if (step === 'login') {
+    const pinAvailable = Boolean(loadPinEnrollment());
     return (
       <div className="team-app">
         <div className="team-login">
@@ -501,34 +678,161 @@ export default function TeamPortal({
             <form className="team-login-panel" onSubmit={e => void doLogin(e)} noValidate>
               <div className="team-login-panel-head">
                 <h1>Sign in</h1>
-                <p className="team-muted">Sign in with your work email or mobile number from HR</p>
+                <p className="team-muted">
+                  {loginMode === 'pin'
+                    ? 'Enter the 4-digit PIN set up under your name in Team'
+                    : 'Sign in with your work email or mobile number from HR'}
+                </p>
               </div>
-              <label className="team-field">
-                <span>Email or mobile</span>
-                <input
-                  type="text"
-                  inputMode="email"
-                  autoComplete="username"
-                  placeholder="email or 0123456789"
-                  value={identity}
-                  onChange={e => setIdentity(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="team-field">
-                <span>Password</span>
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  value={loginPw}
-                  onChange={e => setLoginPw(e.target.value)}
-                  required
-                />
-              </label>
+
+              <div className="team-login-mode-tabs" role="tablist" aria-label="Sign-in method">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={loginMode === 'password'}
+                  className={loginMode === 'password' ? 'team-login-mode-tab is-active' : 'team-login-mode-tab'}
+                  disabled={submittingAuth}
+                  onClick={() => {
+                    setLoginMode('password');
+                    setAuthError('');
+                    setLoginPin('');
+                  }}
+                >
+                  Password
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={loginMode === 'pin'}
+                  className={loginMode === 'pin' ? 'team-login-mode-tab is-active' : 'team-login-mode-tab'}
+                  disabled={submittingAuth}
+                  onClick={() => {
+                    setLoginMode('pin');
+                    setAuthError('');
+                    setLoginPw('');
+                  }}
+                >
+                  PIN number
+                </button>
+              </div>
+
+              {loginMode === 'password' ? (
+                <>
+                  <label className="team-field">
+                    <span>Email or mobile</span>
+                    <input
+                      type="text"
+                      inputMode="email"
+                      autoComplete="username"
+                      placeholder="email or 0123456789"
+                      value={identity}
+                      onChange={e => setIdentity(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="team-field">
+                    <span>Password</span>
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      value={loginPw}
+                      onChange={e => setLoginPw(e.target.value)}
+                      required
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  {pinAvailable ? (
+                    <label className="team-field">
+                      <span>Account</span>
+                      <input type="text" value={loadPinEnrollment()?.username || ''} readOnly autoComplete="username" />
+                    </label>
+                  ) : null}
+                  <label className="team-field">
+                    <span>PIN number (4 digits)</span>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      pattern="\d{4}"
+                      maxLength={4}
+                      autoComplete="one-time-code"
+                      placeholder="••••"
+                      className="team-login-pin-input"
+                      value={loginPin}
+                      onChange={e => setLoginPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      disabled={!pinAvailable}
+                      required={pinAvailable}
+                    />
+                  </label>
+                  <p className="team-muted team-login-pin-hint">
+                    {pinAvailable
+                      ? 'Change your PIN anytime by tapping your name on the title bar.'
+                      : 'No PIN on this device yet. Sign in with password, then tap your name on the title bar to set a PIN.'}
+                  </p>
+                </>
+              )}
+
               {authError ? <p className="team-error">{authError}</p> : null}
-              <button className="team-btn team-btn-primary" type="submit" disabled={submittingAuth}>
-                {submittingAuth ? 'Signing in…' : 'Sign in'}
+
+              <button
+                className="team-btn team-btn-primary"
+                type="submit"
+                disabled={submittingAuth || (loginMode === 'pin' && !pinAvailable)}
+              >
+                {submittingAuth
+                  ? 'Signing in…'
+                  : loginMode === 'pin'
+                    ? 'Sign in with PIN'
+                    : 'Sign in'}
               </button>
+
+              {loginMode === 'password' ? (
+                <button
+                  type="button"
+                  className="team-btn team-btn-secondary"
+                  disabled={submittingAuth}
+                  onClick={() => {
+                    setLoginMode('pin');
+                    setAuthError('');
+                    setLoginPw('');
+                  }}
+                >
+                  Login with PIN number
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="team-btn team-btn-secondary"
+                  disabled={submittingAuth}
+                  onClick={() => {
+                    setLoginMode('password');
+                    setAuthError('');
+                    setLoginPin('');
+                  }}
+                >
+                  Use password instead
+                </button>
+              )}
+
+              {biometricReady && loginMode === 'password' ? (
+                <button
+                  type="button"
+                  className="team-btn team-btn-secondary team-login-biometric-btn"
+                  disabled={submittingAuth}
+                  onClick={() => void doBiometricLogin()}
+                >
+                  <span className="team-login-biometric-icon" aria-hidden>
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path d="M12 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3Z" />
+                      <path d="M7 20v-1a5 5 0 0 1 10 0v1" />
+                      <path d="M5.5 9.5a7.5 7.5 0 0 1 13 0" />
+                      <path d="M3.5 8a10 10 0 0 1 17 0" />
+                    </svg>
+                  </span>
+                  Biometric login
+                </button>
+              ) : null}
             </form>
           </div>
         </div>
@@ -572,6 +876,116 @@ export default function TeamPortal({
     );
   }
 
+  // ── SETTINGS (via topbar name) ──
+  if (step === 'settings' && teamEmp) {
+    const pinOn = Boolean(loadPinEnrollment());
+    const bioEnrollment = loadBiometricEnrollment();
+    const bioOn = Boolean(bioEnrollment && bioEnrollment.employeeId === teamEmp.id);
+    return (
+      <div className="team-app">
+        {toast ? <div className="team-toast">{toast}</div> : null}
+        <div className="team-shell">
+          <header className="team-topbar">
+            <img className="team-brand" src="/bisync-logo-white.png" alt="Bisync" />
+            <div className="team-topbar-meta">
+              <strong>{teamEmp.name}</strong>
+              <span>Account settings</span>
+            </div>
+            <button type="button" className="team-topbar-logout" onClick={() => setStep('app')}>
+              Back
+            </button>
+          </header>
+          <main className="team-main">
+            <section className="team-card">
+              <h3>PIN number</h3>
+              <p className="team-muted" style={{ margin: '0 0 10px' }}>
+                {pinOn
+                  ? `PIN is set for ${loadPinEnrollment()?.username}. Enter a new 4-digit PIN to change it.`
+                  : 'Set a 4-digit PIN to unlock Team on this device without typing your password.'}
+              </p>
+              <label className="team-field">
+                <span>{pinOn ? 'New PIN' : 'PIN (4 digits)'}</span>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  className="team-login-pin-input"
+                  value={settingsPin}
+                  onChange={e => setSettingsPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="••••"
+                />
+              </label>
+              <label className="team-field" style={{ marginTop: 8 }}>
+                <span>Confirm PIN</span>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  className="team-login-pin-input"
+                  value={settingsPinConfirm}
+                  onChange={e => setSettingsPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="••••"
+                />
+              </label>
+              {settingsError ? <p className="team-error" style={{ marginTop: 8 }}>{settingsError}</p> : null}
+              <button
+                type="button"
+                className="team-btn team-btn-primary"
+                style={{ marginTop: 10 }}
+                disabled={settingsBusy}
+                onClick={() => void saveTeamPin()}
+              >
+                {settingsBusy ? 'Saving…' : pinOn ? 'Update PIN' : 'Set PIN number'}
+              </button>
+              {pinOn ? (
+                <button
+                  type="button"
+                  className="team-btn team-btn-secondary"
+                  style={{ marginTop: 8 }}
+                  disabled={settingsBusy}
+                  onClick={removeTeamPin}
+                >
+                  Turn off PIN login
+                </button>
+              ) : null}
+            </section>
+
+            <section className="team-card">
+              <h3>Biometric login</h3>
+              <p className="team-muted" style={{ margin: '0 0 10px' }}>
+                Use Face ID, fingerprint, or Windows Hello to open Team on this device.
+              </p>
+              {bioOn ? (
+                <button
+                  type="button"
+                  className="team-btn team-btn-secondary"
+                  disabled={settingsBusy}
+                  onClick={disableTeamBiometric}
+                >
+                  Turn off biometric login
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="team-btn team-btn-primary"
+                  disabled={settingsBusy || !isWebAuthnPlatformAvailable()}
+                  onClick={() => void enableTeamBiometric()}
+                >
+                  {settingsBusy ? 'Waiting…' : 'Enable biometric login'}
+                </button>
+              )}
+              {!isWebAuthnPlatformAvailable() ? (
+                <p className="team-muted" style={{ margin: '8px 0 0', fontSize: 10 }}>
+                  Biometrics need HTTPS and a platform authenticator.
+                </p>
+              ) : null}
+            </section>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   // ── MOBILE APP SHELL ──
   if (step === 'app' && teamEmp && todayInfo) {
     const monthCells = getMonthCells();
@@ -586,10 +1000,10 @@ export default function TeamPortal({
         <div className="team-shell">
           <header className="team-topbar">
             <img className="team-brand" src="/bisync-logo-white.png" alt="Bisync" />
-            <div className="team-topbar-meta">
+            <button type="button" className="team-topbar-meta team-topbar-meta-btn" onClick={openSettings}>
               <strong>{teamEmp.name}</strong>
               <span>{teamEmp.position} · {teamEmp.department}</span>
-            </div>
+            </button>
             <button type="button" className="team-topbar-logout" onClick={doLogout}>
               <LogOut size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 4 }} />
               Out
