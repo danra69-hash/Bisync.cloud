@@ -535,6 +535,17 @@
       "createdAt": "2026-07-15"
     },
     {
+      "id": "dr.page.team-app",
+      "kind": "client-page",
+      "path": "client/src/pages/TeamAppPage.tsx",
+      "symbol": "TeamAppPage",
+      "route": "/TEAM",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone mobile Team app (Clock-style login/PIN/biometric) at /TEAM for phone testing without HR shell"
+    },
+    {
       "id": "dr.page.accounting",
       "kind": "client-page",
       "path": "client/src/components/accounting/AccountingPage.tsx",
