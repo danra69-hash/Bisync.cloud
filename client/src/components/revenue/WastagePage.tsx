@@ -648,6 +648,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
         <TableScrollContainer
           ref={historyScrollRef}
           className="overflow-x-auto max-h-[calc(100dvh-22rem)] overflow-y-auto"
+          tableId="revenue.wastage.summary"
         >
           <table className="w-full border-collapse text-sm">
             <ColGroup widths={[64, 96, '22%', 112, 136, 64, 136, '18%', 112]} />

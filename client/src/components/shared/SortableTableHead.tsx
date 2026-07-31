@@ -1,6 +1,10 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { SortDirection } from '../../utils/tableSort';
 import {
+  resolveColumnWidthStyle,
+  useResizableTable,
+} from './ResizableTableContext';
+import {
   tableHeaderCls,
   tableHeaderSortBtnCls,
   tableHeaderSortLabelCls,
@@ -30,10 +34,16 @@ export function TableColGroup<T extends string>({
 }: {
   columns: readonly SortableColumnDef<T>[];
 }) {
+  const resize = useResizableTable();
   return (
     <colgroup>
       {columns.map(column => (
-        <col key={column.key} style={column.style} className={column.className} />
+        <col
+          key={column.key}
+          data-col-key={column.key}
+          style={resolveColumnWidthStyle(column.key, column.style, resize?.widths)}
+          className={column.className}
+        />
       ))}
     </colgroup>
   );
@@ -42,17 +52,28 @@ export function TableColGroup<T extends string>({
 /** Simple `<colgroup>` from width list (%, px number, or CSS length). Use for non-sortable tables. */
 export function ColGroup({
   widths,
+  columnKeys,
 }: {
   widths: readonly (string | number | undefined | null)[];
+  /** Optional stable keys for persisted column widths (defaults to c0, c1, …). */
+  columnKeys?: readonly string[];
 }) {
+  const resize = useResizableTable();
   return (
     <colgroup>
       {widths.map((width, index) => {
-        if (width == null || width === '') {
-          return <col key={index} />;
-        }
-        const value = typeof width === 'number' ? `${width}px` : width;
-        return <col key={index} style={{ width: value }} />;
+        const key = columnKeys?.[index] || `c${index}`;
+        const baseStyle =
+          width == null || width === ''
+            ? undefined
+            : { width: typeof width === 'number' ? `${width}px` : width };
+        return (
+          <col
+            key={key}
+            data-col-key={key}
+            style={resolveColumnWidthStyle(key, baseStyle, resize?.widths)}
+          />
+        );
       })}
     </colgroup>
   );
@@ -96,6 +117,7 @@ export function SortableTableHead<T extends string>({
       <th
         rowSpan={rowSpan}
         colSpan={colSpan}
+        data-col-key={column}
         style={style}
         className={tableHeaderCls(align, className)}
       >
@@ -108,6 +130,7 @@ export function SortableTableHead<T extends string>({
     <th
       rowSpan={rowSpan}
       colSpan={colSpan}
+      data-col-key={column}
       aria-sort={ariaSort}
       style={style}
       className={tableHeaderCls(align, className)}

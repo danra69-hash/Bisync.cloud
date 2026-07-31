@@ -306,7 +306,11 @@ export function EmployeeDirectoryTab({
       )}
 
       {!noCompanySelected && (
-      <TableScrollContainer ref={scrollRootRef} className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto">
+      <TableScrollContainer
+        ref={scrollRootRef}
+        className="bg-card border border-border rounded-lg max-h-[calc(100vh-12rem)] overflow-y-auto"
+        tableId="admin.employee-directory"
+      >
         <table className="w-full text-xs">
           <TableColGroup columns={EMPLOYEE_TABLE_COLUMNS} />
           <thead>

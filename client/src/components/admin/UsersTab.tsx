@@ -630,7 +630,11 @@ export function UsersTab({ onDataChanged }: { onDataChanged?: () => void }) {
         {loading ? (
           <MillstoneLoader size="sm" layout="block" label="Loading users…" />
         ) : (
-          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+            tableId="admin.users"
+          >
           <table className="w-full text-xs">
             <TableColGroup columns={USER_TABLE_COLUMNS} />
             <thead>

@@ -577,7 +577,11 @@ export function VendorListPage({
         {loading ? (
           <MillstoneLoader size="sm" layout="block" label="Loading vendors…" />
         ) : (
-          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+            tableId="revenue.vendor-list"
+          >
             <table className="w-full text-xs">
               <TableColGroup columns={VENDOR_TABLE_COLUMNS} />
               <thead className="bg-muted/30">

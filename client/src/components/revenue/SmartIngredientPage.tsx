@@ -621,7 +621,11 @@ export function SmartIngredientPage({
         {loading ? (
           <MillstoneLoader size="sm" layout="block" label="Loading components…" />
         ) : (
-          <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+            tableId="revenue.smart-components"
+          >
             <table className="w-full text-xs">
               <TableColGroup columns={tableColumns} />
               <thead className="bg-muted/30">
