@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  Camera, Check, CheckSquare, ChevronLeft, ChevronRight, Eye, EyeOff, FileText,
-  Lock, LogOut, MessageSquare, ScanLine, Send, Square, UserCheck, X,
+  CalendarDays, Camera, CheckSquare, ChevronLeft, ChevronRight,
+  Home, LogOut, MessageSquare, Send, Square, Umbrella, X,
 } from 'lucide-react';
 import { hrApi } from './api';
 import type {
   AttendanceRecord, Employee, LeaveBalanceRow, LeaveRequest, LeaveType, PublicHoliday, ShiftSchedule,
 } from './types';
+import './TeamPortal.css';
 
 interface TeamPortalProps {
   employees: Employee[];
@@ -24,22 +25,45 @@ interface TeamPortalProps {
 }
 
 type DayInfo = { type: string; label: string };
-
 type TeamTodo = { id: string; text: string; done: boolean };
 type TeamMessage = { id: string; from: string; body: string; at: string; read: boolean };
+type AppTab = 'home' | 'schedule' | 'messages' | 'leave';
 
-const initials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase();
 const fmt = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const STANDARD_PW = 'Pass@123';
-const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const QR_RE = /^([^/]+)\/(\d{4}-\d{2}-\d{2})\/(\d{2}:\d{2})$/;
+
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, '');
+}
+
+function normalizeIdentity(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function findEmployee(employees: Employee[], identity: string): Employee | null {
+  const key = normalizeIdentity(identity);
+  if (!key) return null;
+  const byEmail = employees.find(e => normalizeIdentity(e.email) === key);
+  if (byEmail) return byEmail;
+  const digits = digitsOnly(identity);
+  if (digits.length >= 7) {
+    const byMobile = employees.find(e => digitsOnly(e.mobile).endsWith(digits) || digits.endsWith(digitsOnly(e.mobile)));
+    if (byMobile) return byMobile;
+  }
+  return employees.find(e => normalizeIdentity(e.employeeCode) === key) ?? null;
+}
 
 function todosKey(employeeId: number) {
   return `bisync-team-todos-${employeeId}`;
 }
 function messagesKey(employeeId: number) {
   return `bisync-team-messages-${employeeId}`;
+}
+function pwChangedKey(employeeId: number) {
+  return `bisync-team-pw-changed-${employeeId}`;
 }
 
 function loadTodos(employeeId: number): TeamTodo[] {
@@ -65,7 +89,7 @@ function loadMessages(employeeId: number, employeeName: string): TeamMessage[] {
       if (Array.isArray(parsed)) return parsed;
     }
   } catch {
-    /* seed below */
+    /* seed */
   }
   const seeded: TeamMessage[] = [
     {
@@ -101,23 +125,28 @@ function timeOnly(hhmm: string): string {
   return hhmm.length === 5 ? `${hhmm}:00` : hhmm;
 }
 
+function clockNowLabel(d = new Date()) {
+  return d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 export default function TeamPortal({
   employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, onSubmitLeave,
 }: TeamPortalProps) {
-  const [step, setStep] = useState<'select' | 'login' | 'change-password' | 'dashboard'>('select');
+  const [step, setStep] = useState<'login' | 'change-password' | 'app'>('login');
   const [teamEmp, setTeamEmp] = useState<Employee | null>(null);
-  const [pwChanged, setPwChanged] = useState<Set<number>>(new Set());
+  const [identity, setIdentity] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
-  const [showPw, setShowPw] = useState(false);
-  const [showNewPw, setShowNewPw] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [submittingAuth, setSubmittingAuth] = useState(false);
 
+  const [appTab, setAppTab] = useState<AppTab>('home');
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [toast, setToast] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [nowLabel, setNowLabel] = useState(() => clockNowLabel());
 
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [leaveType, setLeaveType] = useState<LeaveType>('AL');
@@ -148,38 +177,73 @@ export default function TeamPortal({
     window.setTimeout(() => setToast(''), 2800);
   };
 
-  const doLogin = () => {
-    if (!teamEmp) return;
-    const isFirst = !pwChanged.has(teamEmp.id);
-    if (isFirst) {
-      if (loginPw === STANDARD_PW) { setAuthError(''); setLoginPw(''); setStep('change-password'); }
-      else setAuthError('Incorrect password. Hint: standard password is Pass@123');
-    } else if (loginPw.length >= 8) {
-      setAuthError(''); setLoginPw(''); setStep('dashboard');
-    } else {
-      setAuthError('Invalid password.');
+  useEffect(() => {
+    const id = window.setInterval(() => setNowLabel(clockNowLabel()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const hasChangedPw = (empId: number) => localStorage.getItem(pwChangedKey(empId)) === '1';
+
+  const doLogin = async (e?: FormEvent) => {
+    e?.preventDefault();
+    setAuthError('');
+    const emp = findEmployee(employees, identity);
+    if (!emp) {
+      setAuthError('No employee found for that email or mobile.');
+      return;
+    }
+    if (!loginPw) {
+      setAuthError('Password is required.');
+      return;
+    }
+    setSubmittingAuth(true);
+    try {
+      setTeamEmp(emp);
+      if (!hasChangedPw(emp.id)) {
+        if (loginPw === STANDARD_PW) {
+          setLoginPw('');
+          setStep('change-password');
+        } else {
+          setAuthError('Incorrect password. First login uses Pass@123');
+          setTeamEmp(null);
+        }
+      } else if (loginPw.length >= 8) {
+        setLoginPw('');
+        setStep('app');
+        setAppTab('home');
+      } else {
+        setAuthError('Invalid password.');
+        setTeamEmp(null);
+      }
+    } finally {
+      setSubmittingAuth(false);
     }
   };
 
-  const doChangePassword = () => {
+  const doChangePassword = (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!teamEmp) return;
     if (newPw.length < 8) { setAuthError('Password must be at least 8 characters.'); return; }
     if (newPw !== confirmPw) { setAuthError('Passwords do not match.'); return; }
     if (newPw === STANDARD_PW) { setAuthError('New password cannot match the standard password.'); return; }
-    setPwChanged(prev => new Set([...prev, teamEmp!.id]));
+    localStorage.setItem(pwChangedKey(teamEmp.id), '1');
     setNewPw(''); setConfirmPw(''); setAuthError('');
-    setStep('dashboard');
+    setStep('app');
+    setAppTab('home');
   };
 
   const doLogout = () => {
     stopScanner();
-    setStep('select');
+    setStep('login');
     setTeamEmp(null);
     setShowLeaveModal(false);
     setShowScanner(false);
+    setLoginPw('');
+    setAuthError('');
   };
 
   useEffect(() => {
-    if (step !== 'dashboard' || !teamEmp) return;
+    if (step !== 'app' || !teamEmp) return;
     setTodos(loadTodos(teamEmp.id));
     setMessages(loadMessages(teamEmp.id, teamEmp.name));
     void hrApi.attendance.list(TODAY, TODAY, teamEmp.id)
@@ -206,15 +270,15 @@ export default function TeamPortal({
         if (sched.type === 'Work') {
           const start = sched.startTime?.slice(0, 5) ?? '';
           const end = sched.endTime?.slice(0, 5) ?? '';
-          return { type: 'work', label: start && end ? `${start}–${end}` : 'Work Day' };
+          return { type: 'work', label: start && end ? `${start}–${end}` : 'Work' };
         }
         if (sched.type === 'DO' || sched.type === 'RDO') return { type: 'do', label: sched.type };
         return { type: 'leave-approved', label: sched.type };
       }
-      return { type: 'unscheduled', label: 'No schedule' };
+      return { type: 'unscheduled', label: '—' };
     }
-    if (dow === 0 || dow === 6) return { type: 'weekend', label: 'Weekend' };
-    return { type: 'work', label: 'Work Day' };
+    if (dow === 0 || dow === 6) return { type: 'weekend', label: 'Off' };
+    return { type: 'work', label: 'Work' };
   };
 
   const getMonthCells = () => {
@@ -262,7 +326,7 @@ export default function TeamPortal({
       const scheduledIn = sched?.startTime ? timeOnly(sched.startTime.slice(0, 5)) : null;
       const scheduledOut = sched?.endTime ? timeOnly(sched.endTime.slice(0, 5)) : null;
       const stamp = timeOnly(parsed.time);
-      let rows = await hrApi.attendance.list(TODAY, TODAY, teamEmp.id);
+      const rows = await hrApi.attendance.list(TODAY, TODAY, teamEmp.id);
       let record = rows[0] ?? null;
 
       if (!record || !record.actualIn) {
@@ -288,7 +352,7 @@ export default function TeamPortal({
           });
         }
         setTodayAttendance(record);
-        showToast(`Checked in at ${parsed.time} · ${parsed.outletInitial}`);
+        showToast(`Checked in at ${parsed.time}`);
       } else if (!record.actualOut) {
         record = await hrApi.attendance.update(record.id, {
           employeeId: teamEmp.id,
@@ -300,7 +364,7 @@ export default function TeamPortal({
           actualOut: stamp,
         });
         setTodayAttendance(record);
-        showToast(`Checked out at ${parsed.time} · ${parsed.outletInitial}`);
+        showToast(`Checked out at ${parsed.time}`);
       } else {
         setScanError('Already checked in and out for today.');
         setCheckBusy(false);
@@ -339,7 +403,7 @@ export default function TeamPortal({
       }).BarcodeDetector;
 
       if (!Detector) {
-        setScanError('Camera ready. This browser has no QR detector — paste the POS QR text below.');
+        setScanError('Camera ready. Paste the POS QR text below if this browser cannot scan QR.');
         return;
       }
 
@@ -356,7 +420,7 @@ export default function TeamPortal({
         }
       }, 500);
     } catch {
-      setScanError('Camera permission denied. Paste the POS QR text below to check in/out.');
+      setScanError('Camera permission denied. Paste the POS QR text below.');
     }
   };
 
@@ -418,98 +482,54 @@ export default function TeamPortal({
     }
   };
 
-  const dayBg = (type: string, isToday: boolean) => {
-    const ring = isToday ? 'ring-2 ring-herme ' : '';
-    switch (type) {
-      case 'public-holiday': return `${ring}bg-amber-50 border border-amber-200 `;
-      case 'leave-approved': return `${ring}bg-emerald-50 border border-emerald-200 `;
-      case 'leave-pending': return `${ring}bg-yellow-50 border border-yellow-200 `;
-      case 'do':
-      case 'weekend': return `${ring}bg-slate-100 border border-slate-200 `;
-      case 'unscheduled': return `${ring}bg-slate-50 border border-dashed border-slate-200 `;
-      default: return `${ring}bg-white border border-slate-100 `;
-    }
-  };
-
-  // ── SELECT ──
-  if (step === 'select') {
+  // ── LOGIN LANDING ──
+  if (step === 'login') {
     return (
-      <div className="min-h-[calc(100vh-200px)] bg-herme-cream flex flex-col items-center justify-center p-8">
-        <div className="w-full max-w-none">
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-herme-dark rounded-2xl mb-5 shadow-lg">
-              <UserCheck className="w-8 h-8 text-white" />
-            </div>
-            <h2 className="text-2xl font-semibold text-slate-800 tracking-tight">Team</h2>
-            <p className="text-slate-500 mt-2 text-sm">Schedule, messages, check-in, and leave — select your account</p>
+      <div className="team-app">
+        <div className="team-login">
+          <div className="team-login-ambient" aria-hidden>
+            <span className="team-login-orb team-login-orb-a" />
+            <span className="team-login-orb team-login-orb-b" />
+            <span className="team-login-orb team-login-orb-c" />
+            <span className="team-login-grain" />
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {employees.map(emp => (
-              <button
-                key={emp.id}
-                onClick={() => { setTeamEmp(emp); setLoginPw(''); setAuthError(''); setStep('login'); }}
-                className="bg-white border border-slate-200 rounded-2xl p-5 text-left hover:border-herme hover:shadow-md transition-all group"
-              >
-                <div className="w-12 h-12 bg-herme-soft text-herme-dark rounded-xl flex items-center justify-center font-bold text-sm mb-3 group-hover:bg-herme-dark group-hover:text-white transition-colors">
-                  {initials(emp.name)}
-                </div>
-                <div className="font-semibold text-slate-800 text-sm leading-tight">{emp.name}</div>
-                <div className="text-xs text-slate-500 mt-0.5">{emp.position}</div>
-                <div className="text-xs text-slate-400 mt-0.5">{emp.department}</div>
-                {!pwChanged.has(emp.id) && (
-                  <span className="inline-block mt-2.5 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">First Login</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── LOGIN ──
-  if (step === 'login' && teamEmp) {
-    const isFirst = !pwChanged.has(teamEmp.id);
-    return (
-      <div className="min-h-[calc(100vh-200px)] bg-herme-cream flex items-center justify-center p-8">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 w-full max-w-sm p-8">
-          <button onClick={() => setStep('select')} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 mb-6 transition-colors">
-            <ChevronLeft className="w-3.5 h-3.5" /> Back to accounts
-          </button>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-herme-dark text-white rounded-xl flex items-center justify-center font-bold text-sm">{initials(teamEmp.name)}</div>
-            <div>
-              <div className="font-semibold text-slate-800">{teamEmp.name}</div>
-              <div className="text-xs text-slate-500">{teamEmp.email}</div>
-            </div>
-          </div>
-          {isFirst && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
-              <div className="text-xs font-semibold text-amber-800">First-time Login</div>
-              <div className="text-xs text-amber-700 mt-0.5">Use your standard password. You will be asked to set a new password.</div>
-            </div>
-          )}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Password</label>
-              <div className="relative">
+          <div className="team-login-inner">
+            <header className="team-login-brand">
+              <img src="/bisync-logo.png" alt="Bisync" />
+              <p>Time clock & attendance</p>
+            </header>
+            <form className="team-login-panel" onSubmit={e => void doLogin(e)} noValidate>
+              <div className="team-login-panel-head">
+                <h1>Sign in</h1>
+                <p className="team-muted">Sign in with your work email or mobile number from HR</p>
+              </div>
+              <label className="team-field">
+                <span>Email or mobile</span>
                 <input
-                  type={showPw ? 'text' : 'password'}
+                  type="text"
+                  inputMode="email"
+                  autoComplete="username"
+                  placeholder="email or 0123456789"
+                  value={identity}
+                  onChange={e => setIdentity(e.target.value)}
+                  required
+                />
+              </label>
+              <label className="team-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
                   value={loginPw}
                   onChange={e => setLoginPw(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && doLogin()}
-                  placeholder={isFirst ? 'Enter standard password' : 'Enter your password'}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme focus:border-transparent placeholder:text-slate-300"
+                  required
                 />
-                <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            {authError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{authError}</p>}
-            <button onClick={doLogin} className="w-full bg-herme-dark hover:bg-herme-darker text-white font-semibold rounded-xl py-3 text-sm transition-colors">
-              Sign In
-            </button>
+              </label>
+              {authError ? <p className="team-error">{authError}</p> : null}
+              <button className="team-btn team-btn-primary" type="submit" disabled={submittingAuth}>
+                {submittingAuth ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -519,399 +539,374 @@ export default function TeamPortal({
   // ── CHANGE PASSWORD ──
   if (step === 'change-password' && teamEmp) {
     return (
-      <div className="min-h-[calc(100vh-200px)] bg-herme-cream flex items-center justify-center p-8">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 w-full max-w-sm p-8">
-          <div className="flex items-center justify-center w-12 h-12 bg-herme-soft rounded-xl mb-5 mx-auto">
-            <Lock className="w-6 h-6 text-herme-dark" />
+      <div className="team-app">
+        <div className="team-login">
+          <div className="team-login-ambient" aria-hidden>
+            <span className="team-login-orb team-login-orb-a" />
+            <span className="team-login-orb team-login-orb-b" />
+            <span className="team-login-grain" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-800 text-center mb-1">Set Your Password</h3>
-          <p className="text-xs text-slate-500 text-center mb-6">Choose a secure password to protect your Team account.</p>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">New Password</label>
-              <div className="relative">
-                <input
-                  type={showNewPw ? 'text' : 'password'}
-                  value={newPw}
-                  onChange={e => setNewPw(e.target.value)}
-                  placeholder="Min. 8 characters"
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 pr-10 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme focus:border-transparent placeholder:text-slate-300"
-                />
-                <button type="button" onClick={() => setShowNewPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Confirm Password</label>
-              <input
-                type="password"
-                value={confirmPw}
-                onChange={e => setConfirmPw(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && doChangePassword()}
-                placeholder="Re-enter your password"
-                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme focus:border-transparent placeholder:text-slate-300"
-              />
-            </div>
-            {authError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{authError}</p>}
-            <button onClick={doChangePassword} className="w-full bg-herme-dark hover:bg-herme-darker text-white font-semibold rounded-xl py-3 text-sm transition-colors">
-              Set Password & Sign In
-            </button>
+          <div className="team-login-inner">
+            <header className="team-login-brand">
+              <img src="/bisync-logo.png" alt="Bisync" />
+              <p>Set a secure password for {teamEmp.name.split(' ')[0]}</p>
+            </header>
+            <form className="team-login-panel" onSubmit={doChangePassword} noValidate>
+              <h1>Set password</h1>
+              <p className="team-muted">First-time login — choose a new password (min. 8 characters).</p>
+              <label className="team-field">
+                <span>New password</span>
+                <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} required />
+              </label>
+              <label className="team-field">
+                <span>Confirm password</span>
+                <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} required />
+              </label>
+              {authError ? <p className="team-error">{authError}</p> : null}
+              <button className="team-btn team-btn-primary" type="submit">Set password & continue</button>
+              <button type="button" className="team-btn team-btn-secondary" onClick={doLogout}>Back to sign in</button>
+            </form>
           </div>
         </div>
       </div>
     );
   }
 
-  // ── DASHBOARD ──
-  if (step === 'dashboard' && teamEmp && todayInfo) {
+  // ── MOBILE APP SHELL ──
+  if (step === 'app' && teamEmp && todayInfo) {
     const monthCells = getMonthCells();
     const monthLabel = new Date(calYear, calMonth, 1).toLocaleDateString('en-MY', { month: 'long', year: 'numeric' });
     const unread = messages.filter(m => !m.read).length;
     const openTodos = todos.filter(t => !t.done).length;
 
     return (
-      <div className="bg-herme-cream min-h-[calc(100vh-200px)]">
-        <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-herme-dark text-white rounded-xl flex items-center justify-center font-bold text-sm">{initials(teamEmp.name)}</div>
-            <div>
-              <div className="font-semibold text-slate-800 text-sm">{teamEmp.name}</div>
-              <div className="text-xs text-slate-500">{teamEmp.position} · {teamEmp.department}</div>
-            </div>
-          </div>
-          <button onClick={doLogout} className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50">
-            <LogOut className="w-3.5 h-3.5" /> Sign Out
-          </button>
-        </div>
+      <div className="team-app">
+        {toast ? <div className="team-toast">{toast}</div> : null}
 
-        <div className="p-4 sm:p-5 lg:p-6 space-y-6 w-full min-w-0 max-w-none">
-          {toast && (
-            <div className="fixed top-6 right-6 z-50 bg-emerald-700 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
-              <Check className="w-4 h-4" /> {toast}
+        <div className="team-shell">
+          <header className="team-topbar">
+            <img className="team-brand" src="/bisync-logo-white.png" alt="Bisync" />
+            <div className="team-topbar-meta">
+              <strong>{teamEmp.name}</strong>
+              <span>{teamEmp.position} · {teamEmp.department}</span>
             </div>
-          )}
+            <button type="button" className="team-topbar-logout" onClick={doLogout}>
+              <LogOut size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 4 }} />
+              Out
+            </button>
+          </header>
 
-          {/* Actions + leave */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Outstanding Leave — {new Date().getFullYear()}</div>
-              <div className="space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm text-slate-600">Annual Leave</span>
-                  <span className="text-2xl font-bold text-herme-dark">
-                    {balance?.alBalance ?? 0}
-                    {carryForward > 0 && (
-                      <span className="text-base font-semibold text-slate-400"> ({carryForward})</span>
-                    )}
-                  </span>
-                </div>
-                {carryForward > 0 && (
-                  <p className="text-xs text-slate-400">Bracket = carry-forward from previous year</p>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">RDO</span>
-                  <span className="font-semibold text-slate-700">{balance?.rdoBalance ?? 0}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">RPH</span>
-                  <span className="font-semibold text-slate-700">{balance?.rphBalance ?? 0}</span>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowLeaveModal(true)}
-                className="mt-5 w-full flex items-center justify-center gap-2 bg-herme-dark hover:bg-herme-darker text-white text-sm font-semibold px-4 py-3 rounded-xl transition-colors"
-              >
-                <FileText className="w-4 h-4" /> Leave Request
-              </button>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 lg:col-span-2">
-              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">Check In / Out</div>
-                  <p className="text-sm text-slate-600">Scan the QR code shown on the POS Check In/Out screen.</p>
-                </div>
-                <button
-                  onClick={() => { void startScanner(); }}
-                  disabled={checkedIn && checkedOut}
-                  className="flex items-center gap-2 bg-herme-dark hover:bg-herme-darker disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-xl transition-colors"
-                >
-                  <Camera className="w-4 h-4" /> {checkLabel}
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">
-                  <div className="text-xs text-slate-400 uppercase tracking-wide">Status</div>
-                  <div className="text-sm font-semibold text-slate-800 mt-1">
-                    {!checkedIn ? 'Not checked in' : checkedOut ? 'Shift complete' : 'On duty'}
+          <main className="team-main">
+            {appTab === 'home' ? (
+              <>
+                <section className="team-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <h3 style={{ margin: 0 }}>Clock</h3>
+                    <span className={`team-status-pill ${checkedIn && !checkedOut ? 'is-in' : 'is-out'}`}>
+                      {!checkedIn ? 'Not checked in' : checkedOut ? 'Shift complete' : 'On duty'}
+                    </span>
                   </div>
-                </div>
-                <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">
-                  <div className="text-xs text-slate-400 uppercase tracking-wide">Actual In</div>
-                  <div className="text-sm font-semibold text-slate-800 mt-1">{todayAttendance?.actualIn?.slice(0, 5) || '—'}</div>
-                </div>
-                <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">
-                  <div className="text-xs text-slate-400 uppercase tracking-wide">Actual Out</div>
-                  <div className="text-sm font-semibold text-slate-800 mt-1">{todayAttendance?.actualOut?.slice(0, 5) || '—'}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Today's schedule */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Today&apos;s Schedule</div>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="text-lg font-semibold text-slate-800">
-                {new Date(TODAY + 'T00:00:00').toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-              </div>
-              <span className={`text-sm font-semibold px-3 py-1.5 rounded-xl ${
-                todayInfo.type === 'work' ? 'bg-herme-soft text-herme-dark' :
-                todayInfo.type === 'public-holiday' ? 'bg-amber-100 text-amber-800' :
-                todayInfo.type.startsWith('leave') ? 'bg-emerald-100 text-emerald-800' :
-                'bg-slate-100 text-slate-600'
-              }`}>
-                {todayInfo.label}
-              </span>
-            </div>
-          </div>
-
-          {/* Month schedule + message box */}
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-            <div className="xl:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <h3 className="font-semibold text-slate-800 text-sm">Current Month Schedule</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-600 font-medium">{monthLabel}</span>
-                  <button
-                    onClick={() => {
-                      if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
-                      else setCalMonth(m => m - 1);
-                    }}
-                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
-                      else setCalMonth(m => m + 1);
-                    }}
-                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-7 border-b border-slate-100">
-                {DOW_LABELS.map(d => (
-                  <div key={d} className="py-2 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">{d}</div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7">
-                {monthCells.map((cell, idx) => {
-                  if (!cell) return <div key={idx} className="min-h-[72px] p-1 border-r border-b border-slate-100 bg-slate-50/50" />;
-                  const dateStr = fmt(cell);
-                  const info = getDayInfo(dateStr, teamEmp);
-                  const isToday = dateStr === TODAY;
-                  return (
-                    <div key={idx} className="min-h-[72px] p-1 border-r border-b border-slate-100">
-                      <div className={`${dayBg(info.type, isToday)} h-full rounded-lg p-1.5`}>
-                        <span className={`text-xs font-semibold ${isToday ? 'text-herme-dark' : 'text-slate-700'}`}>{cell.getDate()}</span>
-                        <span className="block text-[10px] leading-tight text-slate-500 mt-0.5 truncate">{info.label}</span>
-                      </div>
+                  <div className="team-hero">
+                    <p className="team-hero-label">Local time</p>
+                    <p className="team-hero-time">{nowLabel}</p>
+                    <button
+                      type="button"
+                      className="team-punch-btn"
+                      disabled={checkedIn && checkedOut}
+                      onClick={() => void startScanner()}
+                    >
+                      <Camera size={16} style={{ display: 'inline', verticalAlign: '-3px', marginRight: 6 }} />
+                      {checkLabel}
+                    </button>
+                    <p className="team-muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
+                      Scan the QR on the POS Check In/Out screen
+                    </p>
+                  </div>
+                  <dl className="team-kv" style={{ marginTop: 10 }}>
+                    <div>
+                      <dt>Actual in</dt>
+                      <dd>{todayAttendance?.actualIn?.slice(0, 5) || '—'}</dd>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                    <div>
+                      <dt>Actual out</dt>
+                      <dd>{todayAttendance?.actualOut?.slice(0, 5) || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Today</dt>
+                      <dd style={{ fontSize: 11 }}>{todayInfo.label}</dd>
+                    </div>
+                  </dl>
+                </section>
 
-            <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[420px]">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-herme" /> Message Box
-                </h3>
-                <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs">
-                  <button
-                    onClick={() => setMessageTab('todo')}
-                    className={`px-3 py-1.5 font-medium ${messageTab === 'todo' ? 'bg-herme-dark text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    To Do {openTodos > 0 ? `(${openTodos})` : ''}
-                  </button>
-                  <button
-                    onClick={() => setMessageTab('inbox')}
-                    className={`px-3 py-1.5 font-medium ${messageTab === 'inbox' ? 'bg-herme-dark text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    Messages {unread > 0 ? `(${unread})` : ''}
-                  </button>
-                </div>
-              </div>
+                <section className="team-card">
+                  <h3>Today&apos;s schedule</h3>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13 }}>
+                    {new Date(TODAY + 'T00:00:00').toLocaleDateString('en-MY', {
+                      weekday: 'long', day: 'numeric', month: 'short',
+                    })}
+                  </p>
+                  <span className="team-today-label">{todayInfo.label}</span>
+                </section>
+              </>
+            ) : null}
 
-              {messageTab === 'todo' ? (
-                <div className="flex flex-col flex-1 p-4 gap-3">
-                  <div className="flex gap-2">
-                    <input
-                      value={newTodo}
-                      onChange={e => setNewTodo(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && addTodo()}
-                      placeholder="Add a to-do for today…"
-                      className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme"
-                    />
-                    <button onClick={addTodo} className="px-3 py-2 rounded-xl bg-herme-dark text-white text-sm font-semibold hover:bg-herme-darker">
-                      Add
+            {appTab === 'schedule' ? (
+              <section className="team-card">
+                <div className="team-month-head">
+                  <h3>Month schedule</h3>
+                  <div className="team-month-nav">
+                    <button
+                      type="button"
+                      aria-label="Previous month"
+                      onClick={() => {
+                        if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
+                        else setCalMonth(m => m - 1);
+                      }}
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Next month"
+                      onClick={() => {
+                        if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
+                        else setCalMonth(m => m + 1);
+                      }}
+                    >
+                      <ChevronRight size={14} />
                     </button>
                   </div>
-                  <div className="flex-1 overflow-auto space-y-2">
-                    {todos.length === 0 && (
-                      <p className="text-xs text-slate-400 text-center py-8">No to-dos yet for today.</p>
-                    )}
-                    {todos.map(t => (
-                      <div key={t.id} className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                        <button onClick={() => toggleTodo(t.id)} className="mt-0.5 text-herme-dark">
-                          {t.done ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                </div>
+                <p className="team-muted" style={{ margin: '0 0 8px', fontWeight: 700 }}>{monthLabel}</p>
+                <div className="team-month-dows">
+                  {DOW_LABELS.map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
+                </div>
+                <div className="team-month-grid">
+                  {monthCells.map((cell, idx) => {
+                    if (!cell) return <div key={idx} className="team-month-cell is-empty" />;
+                    const dateStr = fmt(cell);
+                    const info = getDayInfo(dateStr, teamEmp);
+                    const isToday = dateStr === TODAY;
+                    return (
+                      <div key={idx} className={`team-month-cell${isToday ? ' is-today' : ''}`}>
+                        <span className="day">{cell.getDate()}</span>
+                        <span className="shift">{info.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            {appTab === 'messages' ? (
+              <section className="team-card">
+                <h3>Message box</h3>
+                <div className="team-msg-tabs">
+                  <button type="button" className={messageTab === 'todo' ? 'is-active' : ''} onClick={() => setMessageTab('todo')}>
+                    To Do{openTodos > 0 ? ` (${openTodos})` : ''}
+                  </button>
+                  <button type="button" className={messageTab === 'inbox' ? 'is-active' : ''} onClick={() => setMessageTab('inbox')}>
+                    Messages{unread > 0 ? ` (${unread})` : ''}
+                  </button>
+                </div>
+                {messageTab === 'todo' ? (
+                  <>
+                    <div className="team-add-row">
+                      <input
+                        value={newTodo}
+                        onChange={e => setNewTodo(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && addTodo()}
+                        placeholder="Add a to-do for today…"
+                      />
+                      <button type="button" className="team-btn team-btn-primary" style={{ width: 'auto' }} onClick={addTodo}>Add</button>
+                    </div>
+                    {todos.length === 0 ? (
+                      <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No to-dos yet.</p>
+                    ) : todos.map(t => (
+                      <div key={t.id} className={`team-todo-row${t.done ? ' is-done' : ''}`}>
+                        <button type="button" className="team-btn-ghost" onClick={() => toggleTodo(t.id)} aria-label="Toggle">
+                          {t.done ? <CheckSquare size={16} /> : <Square size={16} />}
                         </button>
-                        <span className={`flex-1 text-sm ${t.done ? 'line-through text-slate-400' : 'text-slate-700'}`}>{t.text}</span>
-                        <button onClick={() => removeTodo(t.id)} className="text-slate-300 hover:text-slate-500">
-                          <X className="w-3.5 h-3.5" />
+                        <span style={{ flex: 1 }}>{t.text}</span>
+                        <button type="button" className="team-btn-ghost" onClick={() => removeTodo(t.id)} aria-label="Remove">
+                          <X size={14} />
                         </button>
                       </div>
                     ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 overflow-auto divide-y divide-slate-100">
-                  {messages.length === 0 && (
-                    <p className="text-xs text-slate-400 text-center py-8">No messages from others.</p>
-                  )}
-                  {messages.map(m => (
+                  </>
+                ) : (
+                  messages.length === 0 ? (
+                    <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No messages.</p>
+                  ) : messages.map(m => (
                     <button
                       key={m.id}
+                      type="button"
+                      className="team-inbox-row"
+                      style={{ width: '100%', background: m.read ? 'transparent' : 'color-mix(in srgb, var(--team-primary-soft) 55%, transparent)', border: 0, textAlign: 'left', cursor: 'pointer' }}
                       onClick={() => markMessageRead(m.id)}
-                      className={`w-full text-left px-5 py-4 hover:bg-slate-50 transition-colors ${m.read ? '' : 'bg-herme-light/40'}`}
                     >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-sm font-semibold text-slate-800">{m.from}</span>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(m.at).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                      <MessageSquare size={14} style={{ marginTop: 2, color: 'var(--team-primary)' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <strong style={{ fontSize: 12 }}>{m.from}</strong>
+                          <span className="team-muted" style={{ fontSize: 10 }}>
+                            {new Date(m.at).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--team-muted-fg)' }}>{m.body}</p>
                       </div>
-                      <p className="text-xs text-slate-600 leading-relaxed">{m.body}</p>
-                      {!m.read && <span className="inline-block mt-2 text-[10px] font-semibold text-herme">Unread</span>}
                     </button>
-                  ))}
+                  ))
+                )}
+              </section>
+            ) : null}
+
+            {appTab === 'leave' ? (
+              <section className="team-card">
+                <h3>Outstanding leave — {new Date().getFullYear()}</h3>
+                <div className="team-leave-row">
+                  <span>Annual leave</span>
+                  <strong>
+                    {balance?.alBalance ?? 0}
+                    {carryForward > 0 ? <em> ({carryForward})</em> : null}
+                  </strong>
                 </div>
-              )}
-            </div>
-          </div>
+                {carryForward > 0 ? (
+                  <p className="team-muted" style={{ margin: '0 0 6px', fontSize: 10 }}>Bracket = carry-forward from previous year</p>
+                ) : null}
+                <div className="team-leave-row">
+                  <span>RDO</span>
+                  <strong style={{ fontSize: 15 }}>{balance?.rdoBalance ?? 0}</strong>
+                </div>
+                <div className="team-leave-row">
+                  <span>RPH</span>
+                  <strong style={{ fontSize: 15 }}>{balance?.rphBalance ?? 0}</strong>
+                </div>
+                <button
+                  type="button"
+                  className="team-btn team-btn-primary"
+                  style={{ marginTop: 12 }}
+                  onClick={() => setShowLeaveModal(true)}
+                >
+                  Leave request
+                </button>
+              </section>
+            ) : null}
+          </main>
+
+          <nav className="team-bottom-nav" aria-label="Team">
+            <button type="button" className={appTab === 'home' ? 'is-active' : ''} onClick={() => setAppTab('home')}>
+              <Home />
+              <span>Home</span>
+            </button>
+            <button type="button" className={appTab === 'schedule' ? 'is-active' : ''} onClick={() => setAppTab('schedule')}>
+              <CalendarDays />
+              <span>Schedule</span>
+            </button>
+            <button type="button" className={appTab === 'messages' ? 'is-active' : ''} onClick={() => setAppTab('messages')}>
+              <MessageSquare />
+              <span>Messages</span>
+            </button>
+            <button type="button" className={appTab === 'leave' ? 'is-active' : ''} onClick={() => setAppTab('leave')}>
+              <Umbrella />
+              <span>Leave</span>
+            </button>
+          </nav>
         </div>
 
-        {/* Leave modal */}
-        {showLeaveModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-semibold text-slate-800">Leave Request</h3>
-                <button onClick={() => setShowLeaveModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
-                  <X className="w-4 h-4" />
-                </button>
+        {showLeaveModal ? (
+          <div className="team-modal-backdrop" role="presentation" onClick={() => setShowLeaveModal(false)}>
+            <div className="team-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+              <h3>Leave request</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                <label className="team-field">
+                  <span>Start</span>
+                  <input type="date" value={leaveStart} onChange={e => setLeaveStart(e.target.value)} />
+                </label>
+                <label className="team-field">
+                  <span>End</span>
+                  <input type="date" value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} />
+                </label>
               </div>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">Start</label>
-                  <input type="date" value={leaveStart} onChange={e => setLeaveStart(e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1.5">End</label>
-                  <input type="date" value={leaveEnd} onChange={e => setLeaveEnd(e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme" />
-                </div>
+              <p className="team-muted" style={{ margin: '0 0 6px', fontWeight: 700 }}>Leave type</p>
+              <div className="team-type-grid">
+                {([
+                  { key: 'AL' as LeaveType, label: 'Annual', avail: balance?.alBalance },
+                  { key: 'RDO' as LeaveType, label: 'RDO', avail: balance?.rdoBalance },
+                  { key: 'RPH' as LeaveType, label: 'RPH', avail: balance?.rphBalance },
+                  { key: 'UPL' as LeaveType, label: 'Unpaid', avail: null },
+                ]).map(({ key, label, avail }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={leaveType === key ? 'is-active' : ''}
+                    onClick={() => setLeaveType(key)}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 11 }}>{key}</div>
+                    <div className="team-muted" style={{ fontSize: 10 }}>{label}</div>
+                    {avail != null ? (
+                      <div style={{ fontSize: 10, fontWeight: 700, marginTop: 2 }}>
+                        {avail}{key === 'AL' && carryForward > 0 ? ` (${carryForward})` : ''}
+                      </div>
+                    ) : null}
+                  </button>
+                ))}
               </div>
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Leave Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    { key: 'AL' as LeaveType, label: 'Annual Leave', avail: balance?.alBalance },
-                    { key: 'RDO' as LeaveType, label: 'Rest Day Off', avail: balance?.rdoBalance },
-                    { key: 'RPH' as LeaveType, label: 'Rest Public Holiday', avail: balance?.rphBalance },
-                    { key: 'UPL' as LeaveType, label: 'Unpaid Leave', avail: null },
-                  ]).map(({ key, label, avail }) => (
-                    <button
-                      key={key}
-                      onClick={() => setLeaveType(key)}
-                      className={`text-left px-3 py-2.5 rounded-xl border text-sm transition-all ${leaveType === key ? 'border-herme bg-herme-light text-herme-darker' : 'border-slate-200 hover:border-slate-300 text-slate-700'}`}
-                    >
-                      <div className="font-semibold text-xs">{key}</div>
-                      <div className="text-xs text-slate-500 leading-tight mt-0.5">{label}</div>
-                      {avail != null && (
-                        <div className={`text-xs mt-1 font-semibold ${leaveType === key ? 'text-herme' : 'text-slate-400'}`}>
-                          {avail} days
-                          {key === 'AL' && carryForward > 0 ? ` (${carryForward})` : ''}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="mb-5">
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Reason <span className="text-slate-400 normal-case font-normal">(optional)</span></label>
+              <label className="team-field" style={{ marginTop: 10 }}>
+                <span>Reason (optional)</span>
                 <textarea
                   value={leaveReason}
                   onChange={e => setLeaveReason(e.target.value)}
-                  placeholder="Briefly describe the reason for leave..."
                   rows={3}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme resize-none"
+                  style={{ width: '100%', border: '1px solid var(--team-border)', borderRadius: 8, padding: 8, resize: 'none' }}
                 />
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setShowLeaveModal(false)} className="flex-1 border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium rounded-xl py-3 text-sm">Cancel</button>
-                <button onClick={() => void handleSubmitLeave()} disabled={submitting} className="flex-1 bg-herme-dark hover:bg-herme-darker disabled:opacity-50 text-white font-semibold rounded-xl py-3 text-sm flex items-center justify-center gap-2">
-                  <Send className="w-4 h-4" /> {submitting ? 'Submitting…' : 'Submit'}
+              </label>
+              <div className="team-modal-actions">
+                <button type="button" className="team-btn team-btn-secondary" onClick={() => setShowLeaveModal(false)}>Cancel</button>
+                <button type="button" className="team-btn team-btn-primary" disabled={submitting} onClick={() => void handleSubmitLeave()}>
+                  <Send size={14} style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4 }} />
+                  {submitting ? '…' : 'Submit'}
                 </button>
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* QR scanner modal */}
-        {showScanner && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                  <ScanLine className="w-4 h-4 text-herme" /> Scan POS QR — {checkLabel}
-                </h3>
+        {showScanner ? (
+          <div className="team-modal-backdrop" role="presentation">
+            <div className="team-modal" role="dialog" aria-modal="true">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h3 style={{ margin: 0 }}>Scan POS QR — {checkLabel}</h3>
                 <button
+                  type="button"
+                  className="team-btn-ghost"
                   onClick={() => { stopScanner(); setShowScanner(false); setScanError(''); }}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400"
+                  aria-label="Close"
                 >
-                  <X className="w-4 h-4" />
+                  <X size={16} />
                 </button>
               </div>
-              <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-[4/3] mb-4">
-                <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
-                <div className="pointer-events-none absolute inset-8 border-2 border-white/70 rounded-xl" />
-              </div>
-              {scanError && (
-                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">{scanError}</p>
-              )}
-              <div className="flex gap-2">
+              <video ref={videoRef} playsInline muted className="team-scanner-video" />
+              {scanError ? <p className="team-error" style={{ marginTop: 8 }}>{scanError}</p> : null}
+              <div className="team-add-row" style={{ marginTop: 10 }}>
                 <input
                   value={manualQr}
                   onChange={e => setManualQr(e.target.value)}
-                  placeholder="Or paste QR text: OUTLET/yyyy-mm-dd/HH:mm"
-                  className="flex-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-herme"
+                  placeholder="Or paste: OUTLET/yyyy-mm-dd/HH:mm"
                 />
                 <button
+                  type="button"
+                  className="team-btn team-btn-primary"
+                  style={{ width: 'auto' }}
                   disabled={checkBusy || !manualQr.trim()}
                   onClick={() => void applyQrCheck(manualQr)}
-                  className="px-4 py-2.5 rounded-xl bg-herme-dark text-white text-sm font-semibold disabled:opacity-50 hover:bg-herme-darker"
                 >
-                  {checkBusy ? '…' : 'Use'}
+                  Use
                 </button>
               </div>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     );
   }
