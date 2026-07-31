@@ -44,7 +44,13 @@ async function shot(page, name) {
   await modal.getByRole('button', { name: /^login$/i }).click();
   await page.waitForTimeout(2800);
 
-  await page.locator('header select').first().selectOption({ label: /Weissbrau/i });
+  const companySelect = page.locator('header select').first();
+  const companyValue = await companySelect.locator('option').evaluateAll(opts => {
+    const match = opts.find(o => /weissbrau/i.test(o.textContent || ''));
+    return match?.value || opts.find(o => o.value)?.value || '';
+  });
+  if (!companyValue) throw new Error('No company option available');
+  await companySelect.selectOption(companyValue);
   await page.waitForTimeout(900);
   const locBtn = page.locator('header button').filter({ hasText: /Select locations|All Locations|location/i }).first();
   if (await locBtn.count()) {
