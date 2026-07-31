@@ -1,5 +1,5 @@
 .floor-side-nav {
-  width: var(--order-width);
+  width: var(--home-nav-width);
   max-width: 100%;
   min-width: 0;
   height: 100%;
