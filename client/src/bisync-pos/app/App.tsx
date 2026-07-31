@@ -28,10 +28,15 @@ import {
   KioskPayPage,
 } from '../features/kiosk/ui/KioskPages'
 
+type Props = {
+  /** Internal MemoryRouter start path (e.g. /order/floor, /boh/kds). */
+  initialEntry?: string
+}
+
 /** Bisync POS shell for embed in Bisync.cloud (MemoryRouter — no URL takeover). */
-export function BisyncPosApp() {
+export function BisyncPosApp({ initialEntry = '/order/floor' }: Props) {
   return (
-    <MemoryRouter initialEntries={['/order/floor']}>
+    <MemoryRouter initialEntries={[initialEntry || '/order/floor']}>
       <AppShell>
         <Routes>
           <Route path="/" element={<Navigate to="/order/floor" replace />} />

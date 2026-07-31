@@ -111,6 +111,24 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
             {schemaStatus.openBlocksEod ? ' · open checks block EOD' : ''}
           </span>
         ) : null}
+        <nav className="pos-test-tap__links" aria-label="External POS station links">
+          {[
+            { href: '/POS', label: 'POS' },
+            { href: '/KDS', label: 'KDS' },
+            { href: '/BDS', label: 'BDS' },
+            { href: '/CDS', label: 'CDS' },
+          ].map(link => (
+            <a
+              key={link.href}
+              href={link.href}
+              target="_blank"
+              rel="noreferrer"
+              title={`Open ${link.label} in a new tab`}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
       </div>
 
       <div className="pos-test-tap__frame">

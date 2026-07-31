@@ -12,6 +12,22 @@ const BisyncPosEmbed = lazy(() =>
 const STORAGE_COMPANY = 'bisync-pos-standalone-company';
 const STORAGE_LOCATION = 'bisync-pos-standalone-location';
 
+export type PosStandaloneEntry = 'pos' | 'kds' | 'bds' | 'cds'
+
+const ENTRY_PATH: Record<PosStandaloneEntry, string> = {
+  pos: '/order/floor',
+  kds: '/boh/kds',
+  bds: '/boh/bds',
+  cds: '/boh/cds',
+}
+
+const ENTRY_LABEL: Record<PosStandaloneEntry, string> = {
+  pos: 'POS',
+  kds: 'KDS',
+  bds: 'BDS',
+  cds: 'CDS',
+}
+
 function readStoredInt(key: string): number | null {
   try {
     const raw = localStorage.getItem(key);
@@ -35,14 +51,21 @@ function companyHasPos(company: Company) {
   return parseCompanyModules(company.modulesJson).includes('POS');
 }
 
-/** Standalone POS at /POS — full-screen register for phone / tablet testing. */
-export function PosAppPage() {
+type PosAppPageProps = {
+  /** Which standalone screen to open (/POS, /KDS, /BDS, /CDS). */
+  entry?: PosStandaloneEntry
+}
+
+/** Standalone POS shell at /POS — full-screen for phone / tablet / station testing. */
+export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [locations, setLocations] = useState<LocationConfig[]>([]);
   const [companyId, setCompanyId] = useState<number | null>(null);
   const [locationId, setLocationId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const entryLabel = ENTRY_LABEL[entry];
+  const initialEntry = ENTRY_PATH[entry];
 
   useEffect(() => {
     let cancelled = false;
@@ -139,13 +162,13 @@ export function PosAppPage() {
   };
 
   if (loading) {
-    return <MillstoneLoader layout="screen" size="lg" label="Loading POS…" />;
+    return <MillstoneLoader layout="screen" size="lg" label={`Loading ${entryLabel}…`} />;
   }
 
   if (error || companyId == null || !locationId) {
     return (
       <div className="pos-standalone pos-standalone-error">
-        <p>{error || 'Select a company and location to open POS.'}</p>
+        <p>{error || `Select a company and location to open ${entryLabel}.`}</p>
         {companies.length > 0 ? (
           <label className="pos-standalone-field">
             <span>Company</span>
@@ -217,9 +240,25 @@ export function PosAppPage() {
             locationId={locationId}
             locations={locationOptions}
             onLocationChange={setLocationId}
+            initialEntry={initialEntry}
           />
         </Suspense>
       </div>
     </div>
   );
+}
+
+/** Standalone Kitchen Display at /KDS. */
+export function KdsAppPage() {
+  return <PosAppPage entry="kds" />;
+}
+
+/** Standalone Bar Display at /BDS. */
+export function BdsAppPage() {
+  return <PosAppPage entry="bds" />;
+}
+
+/** Standalone Customer Display at /CDS. */
+export function CdsAppPage() {
+  return <PosAppPage entry="cds" />;
 }

@@ -554,7 +554,40 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "Standalone POS register at /POS for phone/tablet testing without Bisync shell"
+      "notes": "Standalone POS floor/register at /POS for phone/tablet testing without Bisync shell"
+    },
+    {
+      "id": "dr.page.kds-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "KdsAppPage",
+      "route": "/KDS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone Kitchen Display System at /KDS for external station testing"
+    },
+    {
+      "id": "dr.page.bds-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "BdsAppPage",
+      "route": "/BDS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone Bar Display System at /BDS for external station testing"
+    },
+    {
+      "id": "dr.page.cds-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "CdsAppPage",
+      "route": "/CDS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone Customer Display System at /CDS for external pre-payment display testing"
     },
     {
       "id": "dr.page.accounting",
