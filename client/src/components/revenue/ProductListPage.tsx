@@ -546,7 +546,11 @@ export function ProductListPage({
             </p>
           ) : null}
 
-          <TableScrollContainer ref={scrollRootRef} className={TABLE_SCROLL_CLS}>
+          <TableScrollContainer
+            ref={scrollRootRef}
+            className={TABLE_SCROLL_CLS}
+            tableId="revenue.product-list"
+          >
             <table className="w-full border-collapse">
               <TableColGroup columns={PRODUCT_LIST_TABLE_COLUMNS} />
               <thead>

@@ -134,6 +134,30 @@
     vertical-align: top;
     background-color: color-mix(in srgb, var(--muted) 55%, var(--card));
     box-shadow: inset 0 -1px 0 var(--border);
+    position: relative;
+  }
+
+  /* Column resize affordance — drag the right edge of any header cell. */
+  [data-table-scroll][data-column-resize='true'] thead th::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 2;
+  }
+
+  [data-table-scroll].is-col-resize-hover,
+  [data-table-scroll].is-col-resizing {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  [data-table-scroll].is-col-resizing thead th,
+  [data-table-scroll].is-col-resizing tbody td {
+    pointer-events: none;
   }
 
   /* Section title strip above a scrolling table (Summary / History bars) */

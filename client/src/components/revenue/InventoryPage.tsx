@@ -899,7 +899,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
       {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 
-      <TableScrollContainer ref={scrollRootRef}>
+      <TableScrollContainer ref={scrollRootRef} tableId="revenue.inventory.count">
         <table className="w-full text-sm font-sans">
           <TableColGroup columns={COUNT_TABLE_COLUMNS} />
           <thead>
@@ -992,7 +992,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
 
           {historyError ? <p className="text-sm text-destructive">{historyError}</p> : null}
 
-          <TableScrollContainer>
+          <TableScrollContainer tableId="revenue.inventory.history">
             <table className="w-full text-sm font-sans">
               <TableColGroup columns={HISTORY_TABLE_COLUMNS} />
               <thead>

@@ -252,7 +252,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
 
       {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 
-      <TableScrollContainer ref={scrollRootRef}>
+      <TableScrollContainer ref={scrollRootRef} tableId="revenue.stock-card">
         <table className="w-full text-sm font-sans">
           <TableColGroup columns={STOCK_CARD_TABLE_COLUMNS} />
           <thead>

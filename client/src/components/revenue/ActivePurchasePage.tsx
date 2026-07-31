@@ -326,7 +326,11 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
             each drawdown PO is received and consolidated — masters do not affect inbound stock directly.
           </p>
         </div>
-        <TableScrollContainer ref={preScrollRootRef} className="max-h-[min(40vh,22rem)] overflow-y-auto">
+        <TableScrollContainer
+          ref={preScrollRootRef}
+          className="max-h-[min(40vh,22rem)] overflow-y-auto"
+          tableId="revenue.active-purchase.precommitted"
+        >
           <table className="w-full">
             <TableColGroup columns={PRE_COMMITTED_TABLE_COLUMNS} />
             <thead className="bg-muted/30">
@@ -389,7 +393,11 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
             qty draws against the commitment above.
           </p>
         </div>
-        <TableScrollContainer ref={scrollRootRef} className="max-h-[calc(100vh-12rem)] overflow-y-auto">
+        <TableScrollContainer
+          ref={scrollRootRef}
+          className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+          tableId="revenue.active-purchase.open"
+        >
           <table className="w-full">
             <TableColGroup columns={ACTIVE_PURCHASE_TABLE_COLUMNS} />
             <thead className="bg-muted/30">
