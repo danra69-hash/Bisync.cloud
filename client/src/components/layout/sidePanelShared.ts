@@ -32,6 +32,9 @@ export const NESTED_PANEL_SHELL_WIDE_CLS =
 export const MODAL_OVERLAY_CLS = 'fixed inset-0 bg-black/50 z-[120]';
 export const MODAL_SHELL_CLS = 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[121]';
 
+/** Portaled combobox/picker menus must sit above modal shells (z-121). */
+export const PICKER_MENU_Z_CLS = 'z-[130]';
+
 /** Photo preview — below engage/tag modals. */
 export const LIGHTBOX_OVERLAY_CLS = 'fixed inset-0 bg-black/50 z-[108]';
 export const LIGHTBOX_SHELL_CLS = 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[109]';
