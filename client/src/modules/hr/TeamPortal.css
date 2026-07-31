@@ -1,5 +1,40 @@
 /* Team mobile shell — mirrors attendance-app Clock login / shell language. */
 
+/* Standalone /TEAM entry — full phone viewport, no HR chrome. */
+.team-standalone {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #faf5ee;
+}
+
+.team-standalone .team-app,
+.team-standalone .team-login,
+.team-standalone .team-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.team-standalone-error {
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  font-family: 'Nunito', ui-sans-serif, sans-serif;
+  color: #2c1a0a;
+}
+
+.team-standalone-error button {
+  justify-self: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #f37021;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .team-app {
   --team-bg: #faf5ee;
   --team-fg: #2c1a0a;

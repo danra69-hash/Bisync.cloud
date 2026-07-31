@@ -14,6 +14,7 @@ import { SubscriptionPlaceholderPage } from './pages/SubscriptionPlaceholderPage
 import { EulaPage } from './pages/EulaPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { DpaPage } from './pages/DpaPage';
+import { TeamAppPage } from './pages/TeamAppPage';
 import {
   clearAwaitingLocation,
   clearAwaitingPayment,
@@ -40,6 +41,7 @@ export function AppRoot() {
   const isEulaPage = /^\/legal\/eula$/i.test(legalPath);
   const isPrivacyPage = /^\/legal\/privacy$/i.test(legalPath);
   const isDpaPage = /^\/legal\/dpa$/i.test(legalPath);
+  const isTeamApp = /^\/TEAM$/i.test(legalPath);
   const { isAuthenticated, loading, currentUser } = useCurrentUser();
   /** Explicit steps so next gate opens even if user sync races. */
   const [forceLocation, setForceLocation] = useState(false);
@@ -58,6 +60,11 @@ export function AppRoot() {
   }
   if (isDpaPage) {
     return <DpaPage />;
+  }
+
+  // Mobile Team app — public entry (own employee login), no platform shell.
+  if (isTeamApp) {
+    return <TeamAppPage />;
   }
 
   if (vendorShare) {
