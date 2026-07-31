@@ -134,16 +134,31 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
             });
         }
 
-        var row = await db.PosFloorPlans.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
-
-        return Ok(new
+        try
         {
-            companyId = cid.Value,
-            locationExternalId = loc,
-            layoutJson = row?.LayoutJson ?? """{"tables":[],"zones":[]}""",
-            updatedAt = row?.UpdatedAt,
-        });
+            await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
+            var row = await db.PosFloorPlans.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+
+            return Ok(new
+            {
+                companyId = cid.Value,
+                locationExternalId = loc,
+                layoutJson = row?.LayoutJson ?? """{"tables":[],"zones":[]}""",
+                updatedAt = row?.UpdatedAt,
+            });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new
+            {
+                companyId = cid.Value,
+                locationExternalId = loc,
+                layoutJson = """{"tables":[],"zones":[]}""",
+                updatedAt = (DateTime?)null,
+                warning = ex.Message,
+            });
+        }
     }
 
     [HttpPut("floor-plan")]
@@ -159,6 +174,8 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
             : body.LayoutJson.Trim();
         if (layoutJson.Length > 1_500_000)
             return BadRequest(new { message = "Floor plan payload is too large." });
+
+        await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
 
         var row = await db.PosFloorPlans
             .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);

@@ -31,15 +31,16 @@ public sealed class DeferredDbStartupHostedService(
             .UseNpgsql(resolver.DefaultOperationalConnection)
             .Options;
 
-        // Identity merge must not depend on other seeders succeeding.
+        // Identity merge / POS floor-plan table must not block PORT bind.
         try
         {
             await using var mergeDb = new BisyncDbContext(controlOptions);
+            await SchemaPatcher.EnsurePosFloorPlansTableAsync(mergeDb);
             await PlatformOwnerIdentityMigrator.ApplyAsync(mergeDb, logger);
         }
         catch (Exception mergeEx)
         {
-            logger.LogError(mergeEx, "Platform owner identity merge failed; continuing startup");
+            logger.LogError(mergeEx, "Platform owner identity merge / floor-plan table failed; continuing startup");
         }
 
         try
