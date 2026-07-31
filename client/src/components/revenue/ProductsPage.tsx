@@ -2143,8 +2143,6 @@ export function ProductsPage({
                 && (!selectedProductId || p.id !== Number(selectedProductId))
                 && (p.b2cEnabled || p.b2bEnabled)
               ))}
-              recipeLines={lines}
-              ingredients={availableComponents}
               disabled={!isEditing || saving}
               baseRecipeCost={totalCost}
               rrp={rrpValue}
