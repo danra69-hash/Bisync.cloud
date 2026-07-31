@@ -13,14 +13,21 @@ import {
   resolveSubProductRecipeUnit,
   type ProductLine,
 } from './productForm';
+import { convertComponentUnitPrice, formatBomUnitPrice } from './resolveBomComponentPrice';
 
 export type ProductComponentUomOption = {
   label: string;
   price: number;
 };
 
-function uomKey(value: string): string {
+export function uomKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function sameUom(left: string, right: string): boolean {
+  const a = fromApiUom(left) || left;
+  const b = fromApiUom(right) || right;
+  return Boolean(a) && uomKey(a) === uomKey(b);
 }
 
 /** True when a stored recipe UOM is a whole-batch label like "2000gr" / "10 each". */
@@ -56,7 +63,7 @@ export function subProductComponentUomOptions(product: Product): ProductComponen
     .map(entry => fromApiUom(entry.unit) || entry.unit.trim())
     .filter(Boolean);
   for (const altUnit of altUnits.slice(0, 3)) {
-    if (options.some(option => uomKey(option.label) === uomKey(altUnit))) continue;
+    if (options.some(option => sameUom(option.label, altUnit))) continue;
     const factor = getConversionFactor(altUnit, principalUom);
     if (factor == null) continue;
     options.push({ label: altUnit, price: unitCost * factor });
@@ -71,32 +78,67 @@ function priceForComponentUom(
   recipePrice: number,
   altUnits: AltUnitEntry[],
 ): number {
-  if (selectedUnit === recipeUnit) return recipePrice;
+  if (!(recipePrice > 0)) return 0;
+  const selected = fromApiUom(selectedUnit) || selectedUnit;
+  const recipe = fromApiUom(recipeUnit) || recipeUnit;
+  if (!selected || !recipe) return 0;
+  if (sameUom(selected, recipe)) return recipePrice;
 
-  const alt = altUnits.find(item => item.unit === selectedUnit);
+  const alt = altUnits.find(item => sameUom(item.unit, selected));
   if (alt) {
     const from = parseFloat(alt.fromQty || '1') || 1;
     const qty = parseFloat(alt.qty || '1') || 1;
-    if (qty <= 0) return recipePrice;
+    if (qty <= 0 || from <= 0) return 0;
     return recipePrice * (qty / from);
   }
 
-  const conv = getConversionFactor(selectedUnit, recipeUnit);
+  const conv = getConversionFactor(selected, recipe);
   if (conv !== null) return recipePrice * conv;
 
-  return recipePrice;
+  return 0;
+}
+
+function priceForComponentOption(component: ComponentRow, selectedUnit: string): number {
+  const recipeUnit = fromApiUom(component.recipeUOM);
+  const basePrice = component.lastPriceRecipe ?? 0;
+  if (!(basePrice > 0) || !recipeUnit) return 0;
+
+  const converted = convertComponentUnitPrice(basePrice, recipeUnit, selectedUnit, component);
+  if (converted !== null && converted > 0) return converted;
+
+  const detail = resolveDetailConfigForRow(component);
+  return priceForComponentUom(selectedUnit, recipeUnit, basePrice, detail.altRecipeUnits);
 }
 
 export function componentComponentUomOptions(component: ComponentRow): ProductComponentUomOption[] {
   const recipeUnit = fromApiUom(component.recipeUOM);
-  const basePrice = component.lastPriceRecipe ?? 0;
+  const inventoryUnit = fromApiUom(component.inventoryUOM);
   const detail = resolveDetailConfigForRow(component);
-  const choices = getComponentUomChoices(recipeUnit, detail.altRecipeUnits);
+  const choices = getComponentUomChoices(recipeUnit, detail.altRecipeUnits)
+    .map(unit => fromApiUom(unit) || unit)
+    .filter(Boolean);
 
-  return choices.map(unit => ({
-    label: unit,
-    price: priceForComponentUom(unit, recipeUnit, basePrice, detail.altRecipeUnits),
-  }));
+  const options: ProductComponentUomOption[] = [];
+  for (const unit of choices) {
+    if (options.some(option => sameUom(option.label, unit))) continue;
+    options.push({
+      label: unit,
+      price: priceForComponentOption(component, unit),
+    });
+  }
+
+  // Inventory UOM is a first-class selectable recipe unit when it differs from principal.
+  if (
+    inventoryUnit
+    && !options.some(option => sameUom(option.label, inventoryUnit))
+  ) {
+    options.push({
+      label: inventoryUnit,
+      price: priceForComponentOption(component, inventoryUnit),
+    });
+  }
+
+  return options;
 }
 
 export function findSubProductForLine(line: ProductLine, subProducts: Product[]): Product | null {
@@ -169,7 +211,10 @@ export function withCurrentProductLineUomOption(
   line: ProductLine,
 ): ProductComponentUomOption[] {
   const currentLabel = line.componentUom.trim();
-  if (!currentLabel || options.some(option => option.label === currentLabel)) {
+  if (!currentLabel) return options;
+
+  const normalizedCurrent = fromApiUom(currentLabel) || currentLabel;
+  if (options.some(option => sameUom(option.label, normalizedCurrent) || sameUom(option.label, currentLabel))) {
     return options;
   }
 
@@ -181,8 +226,49 @@ export function withCurrentProductLineUomOption(
   return [
     ...options,
     {
-      label: currentLabel,
+      label: normalizedCurrent,
       price: parseFloat(line.componentUomPrice) || 0,
     },
   ];
+}
+
+/** Resolve the select value so API/UI UOM aliases (g/Gr) still match an option. */
+export function resolveSelectedUomOptionLabel(
+  options: ProductComponentUomOption[],
+  lineUom: string,
+): string {
+  const current = lineUom.trim();
+  if (!current) return '';
+  if (options.some(option => option.label === current)) return current;
+  const normalized = fromApiUom(current) || current;
+  const match = options.find(option => sameUom(option.label, normalized) || sameUom(option.label, current));
+  return match?.label ?? current;
+}
+
+/**
+ * Auto-fill Smart component UOM price when the line UOM changes.
+ * Prefers live BOM estimate, then converts the current line price, then the option catalog price.
+ */
+export function resolveAutomatedComponentUomPrice(options: {
+  selected: ProductComponentUomOption;
+  component?: ComponentRow | null;
+  lineUom: string;
+  lineUomPrice: string;
+  estimatedPrice?: string;
+}): string {
+  const { selected, component, lineUom, lineUomPrice, estimatedPrice = '' } = options;
+  if (estimatedPrice.trim()) return estimatedPrice.trim();
+
+  if (component && lineUom.trim()) {
+    const currentPrice = parseFloat(lineUomPrice);
+    if (currentPrice > 0) {
+      const converted = convertComponentUnitPrice(currentPrice, lineUom, selected.label, component);
+      if (converted !== null && converted > 0) {
+        return formatBomUnitPrice(converted);
+      }
+    }
+  }
+
+  if (selected.price > 0) return formatBomUnitPrice(selected.price);
+  return '';
 }

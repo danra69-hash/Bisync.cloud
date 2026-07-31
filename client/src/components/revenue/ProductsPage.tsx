@@ -52,7 +52,9 @@ import { hasExactCatalogNameMatch } from '../../utils/catalogNameMatch';
 import { SimilarNameMatchesNotice } from '../shared/SimilarNameMatchesNotice';
 import {
   findSubProductForLine,
+  resolveAutomatedComponentUomPrice,
   resolveProductLineUomOptions,
+  resolveSelectedUomOptionLabel,
   normalizeSubProductRecipeLine,
   subProductComponentUomOptions,
   withCurrentProductLineUomOption,
@@ -159,6 +161,8 @@ type ComponentLinesSectionProps = {
   totalCost: number;
   totalLabel: string;
   availableComponents: ComponentRow[];
+  /** Full component catalog for UOM/price resolution (includes out-of-filter rows on existing BOM lines). */
+  uomComponents?: ComponentRow[];
   includeSubProducts?: boolean;
   availableSubProducts?: Product[];
   subProductCatalog?: Product[];
@@ -179,6 +183,7 @@ function ComponentLinesSection({
   totalCost,
   totalLabel,
   availableComponents,
+  uomComponents,
   includeSubProducts = false,
   availableSubProducts = [],
   subProductCatalog = [],
@@ -191,6 +196,7 @@ function ComponentLinesSection({
   onOpenProductionMethod,
   estimateComponentPrice,
 }: ComponentLinesSectionProps) {
+  const componentsForUom = uomComponents ?? availableComponents;
   const { rm, symbol } = useCountryFormatters();
   const columns = includeSubProducts
     ? BOM_LINE_TABLE_COLUMNS.map(column => (
@@ -254,13 +260,13 @@ function ComponentLinesSection({
       map.set(
         line.key,
         withCurrentProductLineUomOption(
-          resolveProductLineUomOptions(line, availableComponents, resolvedSubProductCatalog),
+          resolveProductLineUomOptions(line, componentsForUom, resolvedSubProductCatalog),
           line,
         ),
       );
     }
     return map;
-  }, [lines, availableComponents, resolvedSubProductCatalog]);
+  }, [lines, componentsForUom, resolvedSubProductCatalog]);
 
   const {
     visibleItems: pagedLines,
@@ -338,17 +344,23 @@ function ComponentLinesSection({
                   <td className={tdCls}>
                     {uomOptions.length > 1 ? (
                       <select
-                        value={line.componentUom}
+                        value={resolveSelectedUomOptionLabel(uomOptions, line.componentUom)}
                         onChange={e => {
                           const selected = uomOptions.find(option => option.label === e.target.value);
                           if (!selected) return;
-                          const component = availableComponents.find(item => item.componentId === line.componentId);
+                          const component = componentsForUom.find(item => item.componentId === line.componentId);
                           const estimated = component && estimateComponentPrice
                             ? estimateComponentPrice(component, selected.label)
                             : '';
                           onUpdateLine(line.key, {
                             componentUom: selected.label,
-                            componentUomPrice: estimated || (selected.price > 0 ? String(selected.price) : ''),
+                            componentUomPrice: resolveAutomatedComponentUomPrice({
+                              selected,
+                              component,
+                              lineUom: line.componentUom,
+                              lineUomPrice: line.componentUomPrice,
+                              estimatedPrice: estimated,
+                            }),
                           });
                         }}
                         className={`${fieldCls} min-w-[6rem] max-w-full`}
@@ -440,7 +452,7 @@ function mapProductItemsToLines(
       key: item.id ? `saved-${item.id}` : `line-${item.componentId}`,
       componentId: item.componentId,
       componentName: item.componentName,
-      componentUom: item.componentUom,
+      componentUom: fromApiUom(item.componentUom) || item.componentUom,
       componentUomPrice: String(item.componentUomPrice),
       quantity: String(item.quantity),
       sourceProductId: linkedSubProduct?.id,
@@ -2151,6 +2163,7 @@ export function ProductsPage({
               totalCost={totalCost}
               totalLabel="Total cost"
               availableComponents={availableComponents}
+              uomComponents={components}
               includeSubProducts
               availableSubProducts={productComponentSubProducts}
               subProductCatalog={subProductCatalog}
@@ -2172,6 +2185,7 @@ export function ProductsPage({
             totalCost={totalPackagingCost}
             totalLabel="Total packaging cost"
             availableComponents={availableComponents}
+            uomComponents={components}
             onUpdateLine={updatePackagingLine}
             onComponentSelect={handlePackagingComponentSelect}
             onRemoveLine={removePackagingLine}
