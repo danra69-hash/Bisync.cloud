@@ -1,3 +1,4 @@
+import { orgTodayYmd } from '../utils/countryTimeZones';
 export const SALES_DIARY_ACTIVITY_TYPES = ['Status Change', 'Sales Call'] as const;
 export type SalesDiaryActivityType = (typeof SALES_DIARY_ACTIVITY_TYPES)[number];
 
@@ -45,8 +46,7 @@ export function contactTypeSkipsTaggedCompany(contactType: string): boolean {
   return contactType === 'Cold Call' || contactType === 'Email Blast';
 }
 
-export function todayDateInputValue(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** Today's date for inputs — pass org/cloud timeZoneId when available. */
+export function todayDateInputValue(timeZoneId?: string | null): string {
+  return orgTodayYmd(timeZoneId);
 }

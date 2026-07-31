@@ -20,7 +20,7 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
         if (companyId <= 0)
             return BadRequest(new { message = "companyId is required." });
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = await OrgBusinessDate.TodayAsync(db, companyId, cancellationToken: cancellationToken);
         var promotions = await db.Promotions
             .AsNoTracking()
             .Include(p => p.Products)
@@ -67,7 +67,7 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
             .Where(p => ids.Contains(p.Id) && p.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = await OrgBusinessDate.TodayAsync(db, companyId, cancellationToken: cancellationToken);
         var baseRrp = products.ToDictionary(
             p => p.Id,
             p =>
@@ -96,7 +96,7 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
         if (companyId <= 0)
             return BadRequest(new { message = "companyId is required." });
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = await OrgBusinessDate.TodayAsync(db, companyId, cancellationToken: cancellationToken);
         var combos = await PromotionPricingService.ListActiveCombosAsync(db, companyId, today, cancellationToken);
         return Ok(combos.Select(c => new
         {
@@ -125,7 +125,8 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (promotion is null)
             return NotFound(new { message = "Promotion not found." });
-        return Ok(MapPromotion(promotion, DateOnly.FromDateTime(DateTime.UtcNow)));
+        var today = await OrgBusinessDate.TodayAsync(db, promotion.CompanyId, cancellationToken: cancellationToken);
+        return Ok(MapPromotion(promotion, today));
     }
 
     [HttpPost]
@@ -290,7 +291,7 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
 
         db.Promotions.Add(promotion);
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(MapPromotion(promotion, DateOnly.FromDateTime(DateTime.UtcNow)));
+        return Ok(MapPromotion(promotion, await OrgBusinessDate.TodayAsync(db, promotion.CompanyId, cancellationToken: cancellationToken)));
     }
 
     [HttpPatch("{id:int}/active")]
@@ -308,7 +309,7 @@ public class PromotionsController(BisyncDbContext db) : ControllerBase
         promotion.Active = request.Active;
         promotion.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(MapPromotion(promotion, DateOnly.FromDateTime(DateTime.UtcNow)));
+        return Ok(MapPromotion(promotion, await OrgBusinessDate.TodayAsync(db, promotion.CompanyId, cancellationToken: cancellationToken)));
     }
 
     static object MapPromotion(Promotion p, DateOnly asOf) => new

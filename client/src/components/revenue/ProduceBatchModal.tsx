@@ -6,6 +6,8 @@ import type { ProduceBatchShortage } from '../../api';
 import { fromApiUom } from '../../data/componentForm';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
+import { addCalendarDaysToYmd } from '../../utils/countryTimeZones';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { ColGroup } from '../shared/SortableTableHead';
 
@@ -58,19 +60,8 @@ type Props = {
   onConfirm: (payload: ProduceConfirmPayload) => void;
 };
 
-function todayInputValue(): string {
-  const d = new Date();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${month}-${day}`;
-}
-
 function addDaysToIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${month}-${day}`;
+  return addCalendarDaysToYmd(iso, days);
 }
 
 function compareIsoDates(a: string, b: string): number {
@@ -123,15 +114,16 @@ export function ProduceBatchModal({
   onConfirm,
 }: Props) {
   const countryCode = useOrgCountryCode();
+  const { todayYmd } = useOrgDateInput();
   const defaultExpiryDays = expiryPeriodDays > 0 ? expiryPeriodDays : 7;
   const [batchQty, setBatchQty] = useState(
     defaultBatchQty > 0 ? String(defaultBatchQty) : '1',
   );
   const [productionDate, setProductionDate] = useState(
-    () => initialProductionDate || todayInputValue(),
+    () => initialProductionDate || todayYmd,
   );
   const [expiryDate, setExpiryDate] = useState(
-    () => initialExpiryDate || addDaysToIso(initialProductionDate || todayInputValue(), defaultExpiryDays),
+    () => initialExpiryDate || addDaysToIso(initialProductionDate || todayYmd, defaultExpiryDays),
   );
   const [expiryManuallyEdited, setExpiryManuallyEdited] = useState(purpose === 'edit');
   const [validationError, setValidationError] = useState<string | null>(null);

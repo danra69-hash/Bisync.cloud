@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Company } from '../../api';
 import type { DropdownLocation } from '../../utils/orgFilters';
-import { formatOrgClockLine, resolveOrgTimeZoneId } from '../../utils/countryTimeZones';
+import { formatOrgClockLine, resolveSessionTimeZoneId } from '../../utils/countryTimeZones';
 import { useAppTranslation } from '../../i18n/useAppTranslation';
 
 type Props = {
@@ -22,13 +22,14 @@ function resolveClockContext(
     ? locations.filter(l => selectedLocationIds.includes(l.externalId))
     : [];
   const primaryLocation = selected[0] ?? null;
-  const countryCode = primaryLocation?.countryCode || company?.countryCode || 'MY';
-  const stateProvince = primaryLocation?.stateProvince || company?.stateProvince || '';
-  const timeZoneId = resolveOrgTimeZoneId(
-    countryCode,
-    stateProvince,
-    primaryLocation?.timeZoneId || company?.timeZoneId,
-  );
+  const timeZoneId = resolveSessionTimeZoneId({
+    countryCode: company?.countryCode,
+    stateProvince: company?.stateProvince,
+    companyTimeZoneId: company?.timeZoneId,
+    locationTimeZoneId: primaryLocation?.timeZoneId,
+    locationCountryCode: primaryLocation?.countryCode,
+    locationStateProvince: primaryLocation?.stateProvince,
+  });
   return { timeZoneId, hasOrg: Boolean(company) };
 }
 

@@ -21,6 +21,7 @@ import {
 } from '../../data/requestForSample';
 import { getSiCategoryFilterOptions, getSiGroupFilterOptions } from '../../data/revenueManagement';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   company: Company;
@@ -41,9 +42,6 @@ function newKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -102,12 +100,13 @@ function RadioOption({
 }
 
 export function RequestForSamplePanel({ company, onClose, onCreated }: Props) {
+  const { todayYmd } = useOrgDateInput();
   const [companyUsers, setCompanyUsers] = useState<AppUser[]>([]);
   const [customers, setCustomers] = useState<B2bCustomer[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
-  const [dateRequested, setDateRequested] = useState(todayIso);
+  const [dateRequested, setDateRequested] = useState(todayYmd);
   const [contactEmployeeId, setContactEmployeeId] = useState<number | ''>('');
   const [contactPersonName, setContactPersonName] = useState('');
   const [customerPick, setCustomerPick] = useState('__new__');

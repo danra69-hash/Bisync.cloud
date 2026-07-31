@@ -18,6 +18,7 @@ import { EmployeeTab } from '../../components/admin/EmployeeTab';
 import { resolveEmployeeOrg } from '../../components/admin/orgSelectShared';
 import { HrEmployeeConfigSection } from '../../components/admin/HrEmployeeConfigSection';
 import type { HrConfigTabId } from '../../components/admin/hrConfigTabs';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 import type {
   AttendanceRecord, DivisionTreeNode, Employee, EmployeeLevel,
   LeaveBalanceRow, LeaveRequest, PublicHoliday, ScheduleType, ShiftSchedule,
@@ -112,6 +113,7 @@ const LEAVE_BALANCE_COLUMNS = [
 type HrModuleProps = { embedded?: boolean; selectedCompanyId?: number | null };
 
 export default function HrModule({ embedded = false, selectedCompanyId = null }: HrModuleProps) {
+  const { todayYmd } = useOrgDateInput();
   const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'hrconfig' | 'team' | 'portal' | 'payroll'>('employees');
   const [hrConfigTab, setHrConfigTab] = useState<HrConfigTabId>('ph');
 
@@ -127,10 +129,16 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
   const [error, setError] = useState<string | null>(null);
 
   const [attendanceView, setAttendanceView] = useState<'month' | 'week'>('week');
-  const [attendanceAnchorDate, setAttendanceAnchorDate] = useState(() => iso(new Date()));
+  const [attendanceAnchorDate, setAttendanceAnchorDate] = useState(todayYmd);
   const [attendanceCalendarOpen, setAttendanceCalendarOpen] = useState(false);
-  const [attendanceCalendarMonth, setAttendanceCalendarMonth] = useState(() => new Date().getMonth());
-  const [attendanceCalendarYear, setAttendanceCalendarYear] = useState(() => new Date().getFullYear());
+  const [attendanceCalendarMonth, setAttendanceCalendarMonth] = useState(() => {
+    const [, m] = todayYmd.split('-').map(Number);
+    return (m || 1) - 1;
+  });
+  const [attendanceCalendarYear, setAttendanceCalendarYear] = useState(() => {
+    const [y] = todayYmd.split('-').map(Number);
+    return y || new Date().getFullYear();
+  });
   const [selectedAttendanceEmployee, setSelectedAttendanceEmployee] = useState<Employee | null>(null);
   const shiftAttendanceScrollRef = useRef<HTMLDivElement>(null);
   const nonShiftAttendanceScrollRef = useRef<HTMLDivElement>(null);
@@ -138,9 +146,9 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
   const [scheduleWeekStart, setScheduleWeekStart] = useState(initialScheduleWeekStart);
   const [scheduleDepartmentId, setScheduleDepartmentId] = useState<number | null>(null);
 
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth();
+  const [orgY, orgM] = todayYmd.split('-').map(Number);
+  const currentYear = orgY || new Date().getFullYear();
+  const currentMonth = (orgM || 1) - 1;
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const monthDates = Array.from({ length: daysInMonth }, (_, i) => iso(new Date(currentYear, currentMonth, i + 1)));
   const yearStart = `${currentYear}-01-01`;
@@ -665,6 +673,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                   {attendanceCalendarOpen && (
                     <AttendanceDatePicker
                       selectedDate={attendanceAnchorDate}
+                      todayIso={todayYmd}
                       viewMode={attendanceView}
                       viewMonth={attendanceCalendarMonth}
                       viewYear={attendanceCalendarYear}

@@ -3,6 +3,8 @@ import { api, type Company, type LocationConfig } from '../api';
 import { parseCompanyModules } from '../data/companyModules';
 import { configLocationToDropdown } from '../utils/orgFilters';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
+import { OrgCountryProvider } from '../context/OrgCountryContext';
+import { resolveSessionTimeZoneId } from '../utils/countryTimeZones';
 import './PosAppPage.css';
 
 const BisyncPosEmbed = lazy(() =>
@@ -129,6 +131,17 @@ export function PosAppPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [locations, companyId]);
 
+  const selectedCompany = companies.find(c => c.id === companyId) ?? null;
+  const selectedLocation = locationOptions.find(l => l.externalId === locationId) ?? null;
+  const orgTimeZoneId = resolveSessionTimeZoneId({
+    countryCode: selectedCompany?.countryCode,
+    stateProvince: selectedCompany?.stateProvince,
+    companyTimeZoneId: selectedCompany?.timeZoneId,
+    locationTimeZoneId: selectedLocation?.timeZoneId,
+    locationCountryCode: selectedLocation?.countryCode,
+    locationStateProvince: selectedLocation?.stateProvince,
+  });
+
   const onCompanyChange = (nextId: number) => {
     setCompanyId(nextId);
     const nextLocs = locations
@@ -175,51 +188,56 @@ export function PosAppPage() {
   }
 
   return (
-    <div className="pos-standalone">
-      {companies.length > 1 || locationOptions.length > 1 ? (
-        <div className="pos-standalone-chrome">
-          {companies.length > 1 ? (
-            <label>
-              <span>Company</span>
-              <select
-                value={companyId}
-                onChange={e => onCompanyChange(Number(e.target.value))}
-              >
-                {companies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {locationOptions.length > 1 ? (
-            <label>
-              <span>Location</span>
-              <select value={locationId} onChange={e => setLocationId(e.target.value)}>
-                {locationOptions.map(l => (
-                  <option key={l.externalId} value={l.externalId}>{l.name}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
-      ) : null}
+    <OrgCountryProvider
+      countryCode={selectedCompany?.countryCode ?? 'MY'}
+      timeZoneId={orgTimeZoneId}
+    >
+      <div className="pos-standalone">
+        {companies.length > 1 || locationOptions.length > 1 ? (
+          <div className="pos-standalone-chrome">
+            {companies.length > 1 ? (
+              <label>
+                <span>Company</span>
+                <select
+                  value={companyId}
+                  onChange={e => onCompanyChange(Number(e.target.value))}
+                >
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {locationOptions.length > 1 ? (
+              <label>
+                <span>Location</span>
+                <select value={locationId} onChange={e => setLocationId(e.target.value)}>
+                  {locationOptions.map(l => (
+                    <option key={l.externalId} value={l.externalId}>{l.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
 
-      <div className="pos-standalone-frame">
-        <Suspense
-          fallback={
-            <div className="pos-standalone-loading">
-              <MillstoneLoader label="Loading Bisync POS…" />
-            </div>
-          }
-        >
-          <BisyncPosEmbed
-            companyId={companyId}
-            locationId={locationId}
-            locations={locationOptions}
-            onLocationChange={setLocationId}
-          />
-        </Suspense>
+        <div className="pos-standalone-frame">
+          <Suspense
+            fallback={
+              <div className="pos-standalone-loading">
+                <MillstoneLoader label="Loading Bisync POS…" />
+              </div>
+            }
+          >
+            <BisyncPosEmbed
+              companyId={companyId}
+              locationId={locationId}
+              locations={locationOptions}
+              onLocationChange={setLocationId}
+            />
+          </Suspense>
+        </div>
       </div>
-    </div>
+    </OrgCountryProvider>
   );
 }

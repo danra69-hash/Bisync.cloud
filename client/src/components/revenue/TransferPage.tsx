@@ -26,6 +26,7 @@ import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { formatPriceOrHidden } from '../../data/priceVisibility';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -42,18 +43,6 @@ type CatalogItem = {
   searchText: string;
 };
 
-function toDateInputValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function earliestLiveDate(): string {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 2);
-  return toDateInputValue(d);
-}
 
 function parseAltUnits(json?: string): string[] {
   if (!json) return [];
@@ -139,6 +128,8 @@ const fieldCls =
 const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted-foreground mb-1';
 
 export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const { todayYmd, toDateInputValue, earliestLiveYmd } = useOrgDateInput();
+  const earliestLiveDate = earliestLiveYmd;
   const { currentUser } = useCurrentUser();
   const hidePrices = useShouldHidePrices();
   const { rm } = useCountryFormatters();
@@ -174,7 +165,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
   const [uom, setUom] = useState('');
   const [availableQty, setAvailableQty] = useState<number | null>(null);
   const [availableLoading, setAvailableLoading] = useState(false);
-  const [transferDate, setTransferDate] = useState(() => toDateInputValue(new Date()));
+  const [transferDate, setTransferDate] = useState(todayYmd);
 
   const companyLocations = useMemo(
     () => locations.filter(l => l.companyId === selectedCompanyId).sort((a, b) => a.name.localeCompare(b.name)),
@@ -472,7 +463,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
         companyId: selectedCompanyId,
         receivedBy: currentUser.fullName.trim(),
         receivedQuantity: qty,
-        receivedDate: toDateInputValue(new Date()),
+        receivedDate: toDateInputValue(),
       });
       setInfo(
         `Received XFR-${receiveTarget.id}: ${qty} ${receiveTarget.uom} ${receiveTarget.itemName} by ${currentUser.fullName.trim()}. Source stock depleted; inbound reconciled.`,
@@ -810,7 +801,7 @@ export function TransferPage({ selectedCompanyId, selectedLocationIds }: Props) 
             className={fieldCls}
             value={transferDate}
             min={earliestLiveDate()}
-            max={toDateInputValue(new Date())}
+            max={todayYmd}
             onChange={e => setTransferDate(e.target.value)}
           />
         </div>

@@ -53,6 +53,7 @@ import {
 } from '../../data/vendorOrderShare';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
 import type { OrderCartVendorGroup } from '../../data/createOrder';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -76,12 +77,6 @@ type CommitmentLine = {
   unitPrice: string;
 };
 
-function toDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function formatDisplayDate(date: Date): string {
   return date.toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -97,6 +92,7 @@ export function PreCommittedPoPage({
   selectedCompanyId,
   embedded = false,
 }: Props) {
+  const { todayYmd, addMonths } = useOrgDateInput();
   const { rm } = useCountryFormatters();
   const { currentUser, loading: userLoading } = useCurrentUser();
   const [loading, setLoading] = useState(false);
@@ -111,13 +107,8 @@ export function PreCommittedPoPage({
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<CommitmentLine[]>([]);
   const [pickerComponent, setPickerComponent] = useState<ComponentRow | null>(null);
-  const today = useMemo(() => new Date(), []);
-  const [commitmentStart, setCommitmentStart] = useState(() => toDateInputValue(today));
-  const [commitmentEnd, setCommitmentEnd] = useState(() => {
-    const end = new Date();
-    end.setMonth(end.getMonth() + 3);
-    return toDateInputValue(end);
-  });
+  const [commitmentStart, setCommitmentStart] = useState(todayYmd);
+  const [commitmentEnd, setCommitmentEnd] = useState(() => addMonths(todayYmd, 3));
   const [created, setCreated] = useState<{
     order: PurchaseOrder;
     pdf: PurchaseOrderPdfData;
@@ -372,7 +363,7 @@ export function PreCommittedPoPage({
     setSaving(true);
     setError(null);
     try {
-      const orderDate = toDateInputValue(new Date());
+      const orderDate = todayYmd;
       const createdOrders = await api.createPurchaseOrders({
         companyId: selectedCompanyId,
         locationExternalIds: drawdownLocationIds,

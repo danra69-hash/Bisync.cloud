@@ -7,10 +7,10 @@ import {
 } from '../../api';
 import {
   SALES_DIARY_STATUSES,
-  todayDateInputValue,
   type SalesDiaryStatus,
 } from '../../data/salesDiary';
 import { buildWhatsAppHref } from '../../data/shareLinks';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   row: SalesModuleClientUpdate;
@@ -49,6 +49,7 @@ export function ClientUpdateFollowupPanel({
   onClose,
   onSaved,
 }: Props) {
+  const { todayYmd } = useOrgDateInput();
   const [sendAppointment, setSendAppointment] = useState(true);
   const [changeStatus, setChangeStatus] = useState(false);
   const [title, setTitle] = useState(`Follow-up · ${row.company || row.brand || 'Client'}`);
@@ -59,7 +60,7 @@ export function ClientUpdateFollowupPanel({
   const [openWhatsApp, setOpenWhatsApp] = useState(true);
   const [statuses, setStatuses] = useState<SalesDiaryStatus[]>([]);
   const [comment, setComment] = useState('');
-  const [contactDate, setContactDate] = useState(todayDateInputValue);
+  const [contactDate, setContactDate] = useState(todayYmd);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);

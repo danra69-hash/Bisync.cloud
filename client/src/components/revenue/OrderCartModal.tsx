@@ -24,6 +24,7 @@ import {
   copyVendorOrderShareLink,
 } from '../../data/vendorOrderShare';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   items: OrderCartItem[];
@@ -51,18 +52,6 @@ function formatDisplayDate(date: Date): string {
   return date.toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function toDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function defaultDeliveryDateValue(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 3);
-  return toDateInputValue(date);
-}
 
 function parseDateInputValue(value: string): Date | null {
   if (!value) return null;
@@ -82,6 +71,8 @@ export function OrderCartModal({
   onClose,
   onConfirmed,
 }: Props) {
+  const { todayYmd, toDateInputValue, addDays, addMonths } = useOrgDateInput();
+  const defaultDeliveryDateValue = () => addDays(todayYmd, 3);
   const isPreCommitted = mode === 'pre_committed';
   const { rm } = useCountryFormatters();
   const { currentUser, loading: userLoading } = useCurrentUser();
@@ -92,19 +83,14 @@ export function OrderCartModal({
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deliveryDateValue, setDeliveryDateValue] = useState(defaultDeliveryDateValue);
-  const todayValue = useMemo(() => toDateInputValue(new Date()), []);
-  const [commitmentStartValue, setCommitmentStartValue] = useState(todayValue);
-  const [commitmentEndValue, setCommitmentEndValue] = useState(() => {
-    const end = new Date();
-    end.setMonth(end.getMonth() + 3);
-    return toDateInputValue(end);
-  });
+  const [commitmentStartValue, setCommitmentStartValue] = useState(todayYmd);
+  const [commitmentEndValue, setCommitmentEndValue] = useState(() => addMonths(todayYmd, 3));
   const [step, setStep] = useState<Step>('review');
   const [createdOrders, setCreatedOrders] = useState<CreatedVendorOrder[]>([]);
   const [activeVendorIndex, setActiveVendorIndex] = useState(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const minDeliveryDate = todayValue;
+  const minDeliveryDate = todayYmd;
 
   const groups = useMemo(() => groupCartByVendor(items), [items]);
   const grandTotal = useMemo(

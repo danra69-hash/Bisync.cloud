@@ -14,6 +14,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -73,12 +74,6 @@ function seedProductDrafts(
   return next;
 }
 
-function toDateInputValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 function formatDateLabel(value?: string | null) {
   if (!value) return '—';
@@ -106,6 +101,7 @@ export function PromotionSchedulerPage({
   selectedCompanyId,
   selectedLocationIds,
 }: Props) {
+  const { todayYmd } = useOrgDateInput();
   const [tab, setTab] = useState<TabId>('active');
   const activeTabLabel = TABS.find(t => t.id === tab)?.label ?? 'Active Promotion';
   useRevMgmtPageLabel(activeTabLabel);
@@ -123,7 +119,7 @@ export function PromotionSchedulerPage({
 
   const [name, setName] = useState('');
   const [durationMode, setDurationMode] = useState<DurationMode>('byDate');
-  const [startDate, setStartDate] = useState(toDateInputValue(new Date()));
+  const [startDate, setStartDate] = useState(todayYmd);
   const [endDate, setEndDate] = useState('');
   const [promotionType, setPromotionType] = useState<PromotionType>('discountPercent');
   const [discountPercent, setDiscountPercent] = useState('');
@@ -212,7 +208,7 @@ export function PromotionSchedulerPage({
   const resetCreateForm = () => {
     setName('');
     setDurationMode('byDate');
-    setStartDate(toDateInputValue(new Date()));
+    setStartDate(todayYmd);
     setEndDate('');
     setPromotionType('discountPercent');
     setDiscountPercent('');

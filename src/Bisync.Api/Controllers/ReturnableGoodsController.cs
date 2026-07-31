@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -134,7 +135,8 @@ public class ReturnableGoodsController(BisyncDbContext db, ITenantContext tenant
             return BadRequest(new { message = "Credit note number is required." });
         if (!DateOnly.TryParse(request.ReturnDate, out var returnDate))
             return BadRequest(new { message = "Invalid return date." });
-        if (returnDate > DateOnly.FromDateTime(DateTime.UtcNow.Date))
+        var today = await OrgBusinessDate.TodayAsync(db, companyId.Value);
+        if (returnDate > today)
             return BadRequest(new { message = "Return date cannot be in the future." });
 
         var deposits = await db.PurchaseOrderItems.AsNoTracking()

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -37,7 +38,7 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
         if (string.IsNullOrEmpty(loc))
             return BadRequest(new { error = "locationExternalId is required." });
 
-        var date = businessDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var date = businessDate ?? await OrgBusinessDate.TodayAsync(db, cid.Value, loc);
         var session = await GetOrCreateSessionAsync(cid.Value, loc, date);
         var summary = await BuildSummaryAsync(cid.Value, loc, date);
 
@@ -67,7 +68,7 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
         if (string.IsNullOrEmpty(loc))
             return BadRequest(new { error = "locationExternalId is required." });
 
-        var date = request.BusinessDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var date = request.BusinessDate ?? await OrgBusinessDate.TodayAsync(db, cid.Value, loc);
         var session = await GetOrCreateSessionAsync(cid.Value, loc, date);
         if (session.DayClosed)
             return Conflict(new { error = "Business day is already closed." });
@@ -110,7 +111,7 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
         if (string.IsNullOrEmpty(loc))
             return BadRequest(new { error = "locationExternalId is required." });
 
-        var date = request.BusinessDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var date = request.BusinessDate ?? await OrgBusinessDate.TodayAsync(db, cid.Value, loc);
         var session = await GetOrCreateSessionAsync(cid.Value, loc, date);
         if (session.DayClosed)
             return Ok(new { session = MapSession(session), alreadyClosed = true });

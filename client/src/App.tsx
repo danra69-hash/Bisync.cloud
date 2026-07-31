@@ -27,6 +27,7 @@ import type { CreateOrderPrefillItem } from './data/createOrderPrefill';
 import { configLocationToDropdown, filterMetricsByOrg } from './utils/orgFilters';
 import { useOrgFilters } from './hooks/useOrgFilters';
 import { OrgCountryProvider } from './context/OrgCountryContext';
+import { resolveSessionTimeZoneId } from './utils/countryTimeZones';
 import { isNavItemEnabled, moduleForNavItem, resolveOrgEnabledModules } from './data/companyModules';
 import {
   filterAccessModulesByPlatformGoLive,
@@ -220,6 +221,20 @@ export default function App() {
     : [];
   const selectedCompany = companies.find(company => company.id === selectedCompanyId) ?? null;
   const orgCountryCode = selectedCompany?.countryCode ?? 'MY';
+  const orgTimeZoneId = useMemo(() => {
+    const selected = selectedLocationIds.length > 0
+      ? companyScopedConfigLocations.filter(l => selectedLocationIds.includes(l.externalId))
+      : [];
+    const primary = selected[0] ?? null;
+    return resolveSessionTimeZoneId({
+      countryCode: selectedCompany?.countryCode,
+      stateProvince: selectedCompany?.stateProvince,
+      companyTimeZoneId: selectedCompany?.timeZoneId,
+      locationTimeZoneId: primary?.timeZoneId,
+      locationCountryCode: primary?.countryCode,
+      locationStateProvince: primary?.stateProvince,
+    });
+  }, [selectedCompany, companyScopedConfigLocations, selectedLocationIds]);
   const enabledModules = useMemo(
     () => filterAccessModulesByPlatformGoLive(
       resolveOrgEnabledModules(selectedCompany, configLocations, selectedCompanyId, selectedLocationIds),
@@ -398,7 +413,7 @@ export default function App() {
           onToggleEditLayout={() => setEditLayout(v => !v)}
         />
 
-        <OrgCountryProvider countryCode={orgCountryCode}>
+        <OrgCountryProvider countryCode={orgCountryCode} timeZoneId={orgTimeZoneId}>
         <StickyChromeSync />
         <main
           data-app-main

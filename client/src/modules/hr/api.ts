@@ -1,4 +1,5 @@
 import { HR_API_BASE } from '../../config/hrBackend';
+import { orgTodayYmd } from '../../utils/countryTimeZones';
 import type {
   AttendanceRecord, AttendanceStatus, CompanySetting, CompanySettingUpdate, CountryOption, Department, Division, DivisionTreeNode,
   Employee, EmployeeCreateRequest, EmployeeLevel, EmployeeRequest,
@@ -63,7 +64,7 @@ function toDateOnlyRequired(value: string | null | undefined, fallback: string):
 }
 
 export function toEmployeeRequest(e: Employee): EmployeeRequest {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = orgTodayYmd();
   return {
     employeeCode: e.employeeCode,
     name: e.name?.trim() ?? '',
