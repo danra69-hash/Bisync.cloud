@@ -21,6 +21,9 @@ export type TableQrPayload = {
   table: string
   /** Location name baked into the QR at print time. */
   location?: string
+  /** When set with locationExternalId, QR opens the guest mobile menu at /QR. */
+  companyId?: number
+  locationExternalId?: string
   pax?: number
   /** ISO timestamp baked into the QR (print time for fixed; session open for dynamic). */
   openedAt?: string
@@ -42,7 +45,23 @@ export function formatOpenedAt(iso = new Date().toISOString()) {
   }
 }
 
+/** Guest mobile menu URL encoded into table QR codes. */
+export function buildTableGuestMenuUrl(data: TableQrPayload): string | null {
+  const companyId = data.companyId ?? 0
+  const locationExternalId = (data.locationExternalId ?? '').trim()
+  if (companyId <= 0 || !locationExternalId) return null
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const params = new URLSearchParams({
+    c: String(companyId),
+    l: locationExternalId,
+    t: data.table.trim() || 'Table',
+  })
+  return `${origin}/QR?${params.toString()}`
+}
+
 export function buildQrPayload(data: TableQrPayload): string {
+  const guestUrl = buildTableGuestMenuUrl(data)
+  if (guestUrl) return guestUrl
   const opened = data.openedAt ? formatOpenedAt(data.openedAt) : formatOpenedAt()
   return JSON.stringify({
     app: 'BisyncPOS',
@@ -80,18 +99,22 @@ export function printTableQr(data: TableQrPayload) {
       ? `Fixed QR · Table ${data.table}`
       : `Dynamic QR · Table ${data.table}`
 
+  const guestUrl = buildTableGuestMenuUrl({ ...data, openedAt })
+  const menuNote = guestUrl
+    ? `<p class="meta muted">Scan to open the mobile menu and send orders to kitchen</p>`
+    : ''
   const details =
     data.mode === 'fixed'
       ? `<p class="meta"><strong>Location:</strong> ${escapeHtml(location)}</p>
          <p class="meta"><strong>Date:</strong> ${escapeHtml(opened.date)}</p>
          <p class="meta"><strong>Table:</strong> ${escapeHtml(data.table)}</p>
-         <p class="meta muted">Permanent until reprinted</p>`
+         ${menuNote || '<p class="meta muted">Permanent until reprinted</p>'}`
       : `<p class="meta"><strong>Location:</strong> ${escapeHtml(location)}</p>
          <p class="meta"><strong>Date:</strong> ${escapeHtml(opened.date)}</p>
          <p class="meta"><strong>Time:</strong> ${escapeHtml(opened.time)}</p>
          <p class="meta"><strong>Table:</strong> ${escapeHtml(data.table)}</p>
          <p class="meta"><strong>Pax:</strong> ${data.pax ?? '—'}</p>
-         <p class="meta muted">Session QR — printed at table open</p>`
+         ${menuNote || '<p class="meta muted">Session QR — printed at table open</p>'}`
 
   const html = `<!doctype html>
 <html>
