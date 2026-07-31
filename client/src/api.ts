@@ -3784,6 +3784,29 @@ export const api = {
     if (locationExternalId) params.set('locationExternalId', locationExternalId);
     return fetchJson<PosTestTapStatus>(`/api/pos/test-tap/status?${params}`);
   },
+  posFloorPlan: (companyId: number, locationExternalId: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    return fetchJson<{
+      companyId: number;
+      locationExternalId: string;
+      layoutJson: string;
+      updatedAt: string | null;
+    }>(`/api/pos/floor-plan?${params}`);
+  },
+  posFloorPlanUpsert: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    layoutJson: string;
+  }) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      locationExternalId: string;
+      layoutJson: string;
+      updatedAt: string;
+    }>('/api/pos/floor-plan', 'PUT', payload),
   posEodSummary: (companyId: number, locationExternalId: string, businessDate?: string) => {
     const params = new URLSearchParams({
       companyId: String(companyId),

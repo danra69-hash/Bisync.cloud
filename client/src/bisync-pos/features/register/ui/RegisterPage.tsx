@@ -20,9 +20,11 @@ import { buildDepartmentGroups } from '../../../core/session/mapPosCatalog'
 import {
   clearActiveRegisterSession,
   loadActiveRegisterSession,
+  loadFloorPlan,
   releaseFloorTable,
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
+import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
 import {
   loadPosDutySession,
   POS_DUTY_SESSION_EVENT,
@@ -373,6 +375,9 @@ export function RegisterPage() {
       return
     }
     const released = releaseFloorTable(activeTableSession.tableId)
+    if (session?.companyId && session.locationId) {
+      void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+    }
     clearActiveRegisterSession()
     setActiveTableSession(null)
     setCharges(EMPTY_CHARGES)

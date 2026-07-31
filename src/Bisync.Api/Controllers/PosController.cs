@@ -113,4 +113,80 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
 
         return Ok(await q.OrderByDescending(x => x.BusinessDate).Take(60).ToListAsync());
     }
+
+    public record UpsertFloorPlanRequest(int CompanyId, string LocationExternalId, string LayoutJson);
+
+    [HttpGet("floor-plan")]
+    public async Task<ActionResult<object>> GetFloorPlan(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        if (cid is null || string.IsNullOrEmpty(loc))
+        {
+            return Ok(new
+            {
+                companyId = cid,
+                locationExternalId = loc,
+                layoutJson = """{"tables":[],"zones":[]}""",
+                updatedAt = (DateTime?)null,
+            });
+        }
+
+        var row = await db.PosFloorPlans.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+
+        return Ok(new
+        {
+            companyId = cid.Value,
+            locationExternalId = loc,
+            layoutJson = row?.LayoutJson ?? """{"tables":[],"zones":[]}""",
+            updatedAt = row?.UpdatedAt,
+        });
+    }
+
+    [HttpPut("floor-plan")]
+    public async Task<ActionResult<object>> UpsertFloorPlan([FromBody] UpsertFloorPlanRequest body)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, body.CompanyId);
+        var loc = (body.LocationExternalId ?? string.Empty).Trim();
+        if (cid is null || string.IsNullOrEmpty(loc))
+            return BadRequest(new { message = "companyId and locationExternalId are required." });
+
+        var layoutJson = string.IsNullOrWhiteSpace(body.LayoutJson)
+            ? """{"tables":[],"zones":[]}"""
+            : body.LayoutJson.Trim();
+        if (layoutJson.Length > 1_500_000)
+            return BadRequest(new { message = "Floor plan payload is too large." });
+
+        var row = await db.PosFloorPlans
+            .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+        if (row is null)
+        {
+            row = new PosFloorPlan
+            {
+                CompanyId = cid.Value,
+                LocationExternalId = loc,
+                LayoutJson = layoutJson,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            db.PosFloorPlans.Add(row);
+        }
+        else
+        {
+            row.LayoutJson = layoutJson;
+            row.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            companyId = row.CompanyId,
+            locationExternalId = row.LocationExternalId,
+            layoutJson = row.LayoutJson,
+            updatedAt = row.UpdatedAt,
+        });
+    }
 }

@@ -7,7 +7,6 @@ import {
   createZone,
   loadFloorPlan,
   normalizeTable,
-  saveFloorPlan,
   setActiveRegisterSession,
   type FloorPlanState,
   type FloorTable,
@@ -16,6 +15,11 @@ import {
   type TableStatus,
   type ZoneKind,
 } from '../domain/tables'
+import {
+  loadFloorPlanLocal,
+  persistFloorPlanRemote,
+  syncFloorPlan,
+} from '../domain/floorPlanSync'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import { formatOpenedAt, printTableQr } from '../../../core/config/qrTable'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
@@ -48,15 +52,44 @@ export function FloorPlanPage() {
     || session?.locationId
     || ''
   const canvasRef = useRef<HTMLDivElement>(null)
-  const [plan, setPlan] = useState<FloorPlanState>(() => loadFloorPlan())
+  const companyId = session?.companyId ?? 0
+  const locationId = session?.locationId ?? ''
+  const [plan, setPlan] = useState<FloorPlanState>(() =>
+    companyId > 0 && locationId
+      ? loadFloorPlanLocal(companyId, locationId)
+      : loadFloorPlan(),
+  )
   const [editing, setEditing] = useState(editRoute)
   const [selected, setSelected] = useState<Selection | null>(null)
   const [draft, setDraft] = useState<FloorPlanState | null>(() =>
-    editRoute ? structuredClone(loadFloorPlan()) : null,
+    editRoute
+      ? structuredClone(
+          companyId > 0 && locationId
+            ? loadFloorPlanLocal(companyId, locationId)
+            : loadFloorPlan(),
+        )
+      : null,
   )
   const [drag, setDrag] = useState<DragState | null>(null)
   const [resize, setResize] = useState<ResizeState | null>(null)
   const [openingTableId, setOpeningTableId] = useState<string | null>(null)
+  const [syncNote, setSyncNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!companyId || !locationId) return
+    let cancelled = false
+    void (async () => {
+      const synced = await syncFloorPlan(companyId, locationId)
+      if (cancelled) return
+      setPlan(synced)
+      if (editRoute) setDraft(structuredClone(synced))
+      setSyncNote('Floor layout saved for this location')
+      window.setTimeout(() => setSyncNote(null), 2800)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [companyId, locationId, editRoute])
 
   useEffect(() => {
     if (!editRoute) {
@@ -67,14 +100,17 @@ export function FloorPlanPage() {
       setResize(null)
       return
     }
-    const latest = loadFloorPlan()
+    const latest =
+      companyId > 0 && locationId
+        ? loadFloorPlanLocal(companyId, locationId)
+        : loadFloorPlan()
     setPlan(latest)
     setDraft(structuredClone(latest))
     setEditing(true)
     setSelected(null)
     setDrag(null)
     setResize(null)
-  }, [editRoute])
+  }, [editRoute, companyId, locationId])
 
   const visible = editing && draft ? draft : plan
   const selectedTable =
@@ -92,7 +128,9 @@ export function FloorPlanPage() {
 
   function persistPlan(next: FloorPlanState) {
     setPlan(next)
-    saveFloorPlan(next)
+    if (companyId > 0 && locationId) {
+      void persistFloorPlanRemote(next, companyId, locationId)
+    }
   }
 
   function beginRegisterForTable(table: FloorTable, openedAt?: string) {
@@ -268,11 +306,12 @@ export function FloorPlanPage() {
 
   function saveEdit() {
     if (!draft) return
-    setPlan(draft)
-    saveFloorPlan(draft)
+    persistPlan(draft)
     setEditing(false)
     setDraft(null)
     setSelected(null)
+    setSyncNote('Floor layout saved for this location')
+    window.setTimeout(() => setSyncNote(null), 2800)
     if (editRoute) navigate('/order/floor', { replace: true })
   }
 
@@ -377,6 +416,10 @@ export function FloorPlanPage() {
           >
             Save layout
           </button>
+        </div>
+      ) : syncNote ? (
+        <div className="floor-toolbar">
+          <span className="floor-edit-hint" role="status">{syncNote}</span>
         </div>
       ) : null}
 
