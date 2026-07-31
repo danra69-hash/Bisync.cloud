@@ -31,12 +31,24 @@ export function loadPosDutySession(): PosDutySession | null {
 
 export function savePosDutySession(session: PosDutySession) {
   localStorage.setItem(KEY, JSON.stringify(session))
+  try {
+    localStorage.removeItem('bisync-pos-register-locked')
+  } catch {
+    /* ignore */
+  }
   window.dispatchEvent(new CustomEvent(POS_DUTY_SESSION_EVENT))
+  window.dispatchEvent(new CustomEvent('bisync-pos-register-lock-changed'))
 }
 
 export function clearPosDutySession() {
   localStorage.removeItem(KEY)
+  try {
+    localStorage.removeItem('bisync-pos-register-locked')
+  } catch {
+    /* ignore */
+  }
   window.dispatchEvent(new CustomEvent(POS_DUTY_SESSION_EVENT))
+  window.dispatchEvent(new CustomEvent('bisync-pos-register-lock-changed'))
 }
 
 export function buildCheckInQrPayload(outletInitial: string, at = new Date()): string {

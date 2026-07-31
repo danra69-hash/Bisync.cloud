@@ -131,6 +131,8 @@ export const hrApi = {
     update: (id: number, body: EmployeeRequest) => http<Employee>(`/employees/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     remove: (id: number) => http<void>(`/employees/${id}`, { method: 'DELETE' }),
     resetPosPin: (id: number) => http<Employee>(`/employees/${id}/reset-pos-pin`, { method: 'POST' }),
+    setPosPin: (id: number, pin: string) =>
+      http<Employee>(`/employees/${id}/set-pos-pin`, { method: 'POST', body: JSON.stringify({ pin }) }),
     verifyPosPin: async (pin: string) => {
       const result = await http<{
         valid?: boolean
