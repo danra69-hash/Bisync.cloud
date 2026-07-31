@@ -3807,6 +3807,54 @@ export const api = {
       layoutJson: string;
       updatedAt: string;
     }>('/api/pos/floor-plan', 'PUT', payload),
+  posWaitlistList: (companyId: number, locationExternalId: string, includeClosed = false) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    if (includeClosed) params.set('includeClosed', 'true');
+    return fetchJson<Array<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      name: string;
+      mobile: string;
+      pax: number;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+    }>>(`/api/pos/waitlist?${params}`);
+  },
+  posWaitlistJoin: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    name: string;
+    mobile: string;
+    pax: number;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      name: string;
+      mobile: string;
+      pax: number;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+    }>('/api/pos/waitlist', 'POST', payload),
+  posWaitlistUpdateStatus: (id: number, status: 'waiting' | 'seated' | 'cancelled') =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      name: string;
+      mobile: string;
+      pax: number;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+    }>(`/api/pos/waitlist/${id}`, 'PATCH', { status }),
   posEodSummary: (companyId: number, locationExternalId: string, businessDate?: string) => {
     const params = new URLSearchParams({
       companyId: String(companyId),

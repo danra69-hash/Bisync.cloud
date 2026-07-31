@@ -590,6 +590,17 @@
       "notes": "Standalone Customer Display System at /CDS for external pre-payment display testing"
     },
     {
+      "id": "dr.page.waitlist-join",
+      "kind": "client-page",
+      "path": "client/src/pages/WaitlistJoinPage.tsx",
+      "symbol": "WaitlistJoinPage",
+      "route": "/WAITLIST",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Public customer waitlist join form (name, mobile, pax) opened from POS Waitlist QR"
+    },
+    {
       "id": "dr.page.accounting",
       "kind": "client-page",
       "path": "client/src/components/accounting/AccountingPage.tsx",

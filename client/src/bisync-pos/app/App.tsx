@@ -2,7 +2,6 @@ import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { RegisterPage } from '../features/register/ui/RegisterPage'
 import { FloorPlanPage } from '../features/order/ui/FloorPlanPage'
-import { FeaturePage } from '../features/common/FeaturePage'
 import {
   CashierCheckoutPage,
   DispatchPage,
@@ -47,23 +46,8 @@ export function BisyncPosApp({ initialEntry = '/order/floor' }: Props) {
           <Route path="/order/register" element={<RegisterPage />} />
           {/* Reservations list lives in the home side rail below Home. */}
           <Route path="/order/reservations" element={<Navigate to="/order/floor" replace />} />
-          <Route
-            path="/order/waitlist"
-            element={
-              <FeaturePage
-                crumb="Order / Waitlist"
-                title="Waitlist"
-                subtitle="Queue walk-in parties until a table is ready."
-              >
-                <div className="panel-grid">
-                  <div className="panel-card">
-                    <h3>Waitlist</h3>
-                    <p>Build this screen next — parties waiting for a table will appear here.</p>
-                  </div>
-                </div>
-              </FeaturePage>
-            }
-          />
+          {/* Waitlist list + join QR live in the home side rail. */}
+          <Route path="/order/waitlist" element={<Navigate to="/order/floor" replace />} />
 
           <Route path="/cashier" element={<CashierCheckoutPage />} />
           <Route path="/cashier/split" element={<SplitCheckPage />} />

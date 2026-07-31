@@ -36,6 +36,7 @@ public sealed class DeferredDbStartupHostedService(
         {
             await using var mergeDb = new BisyncDbContext(controlOptions);
             await SchemaPatcher.EnsurePosFloorPlansTableAsync(mergeDb);
+            await SchemaPatcher.EnsurePosWaitlistEntriesTableAsync(mergeDb);
             await PlatformOwnerIdentityMigrator.ApplyAsync(mergeDb, logger);
         }
         catch (Exception mergeEx)

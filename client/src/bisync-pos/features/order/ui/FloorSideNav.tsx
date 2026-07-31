@@ -21,6 +21,17 @@ import {
   upcomingReservations,
   type PosReservation,
 } from '../domain/reservations'
+import {
+  WAITLIST_CHANGED_EVENT,
+  buildWaitlistJoinUrl,
+  cancelWaitlistEntry,
+  fetchWaitingList,
+  formatWaitlistJoinedAt,
+  markWaitlistSeated,
+  notifyWaitlistChanged,
+  waitlistQrImageUrl,
+  type PosWaitlistEntry,
+} from '../domain/waitlist'
 import type { FloorTable } from '../domain/tables'
 import { AssignTableModal } from './AssignTableModal'
 import './FloorSideNav.css'
@@ -67,16 +78,20 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     pathname === '/order/floor'
     || (pathname.startsWith('/order/floor') && !pathname.includes('/edit'))
   const isRegister = pathname.startsWith('/order/register')
-  const isWaitlist = pathname.startsWith('/order/waitlist')
 
   const [checkInOpen, setCheckInOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [reservationsOpen, setReservationsOpen] = useState(
     () => pathname.startsWith('/order/reservations'),
   )
+  const [waitlistOpen, setWaitlistOpen] = useState(
+    () => pathname.startsWith('/order/waitlist'),
+  )
   const [reservations, setReservations] = useState<PosReservation[]>(() =>
     loadReservations(companyId, locationId),
   )
+  const [waitlist, setWaitlist] = useState<PosWaitlistEntry[]>([])
+  const [waitlistBusyId, setWaitlistBusyId] = useState<number | null>(null)
   const [assigning, setAssigning] = useState<PosReservation | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [draft, setDraft] = useState(emptyNewReservation)
@@ -115,22 +130,64 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   }, [companyId, locationId])
 
   useEffect(() => {
+    let cancelled = false
+    async function refreshWaitlist() {
+      if (!waitlistOpen || companyId <= 0 || !locationId) {
+        if (!cancelled) setWaitlist([])
+        return
+      }
+      try {
+        const rows = await fetchWaitingList(companyId, locationId)
+        if (!cancelled) setWaitlist(rows)
+      } catch {
+        if (!cancelled) setWaitlist([])
+      }
+    }
+    void refreshWaitlist()
+    const timer = window.setInterval(() => void refreshWaitlist(), 8000)
+    window.addEventListener(WAITLIST_CHANGED_EVENT, refreshWaitlist)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener(WAITLIST_CHANGED_EVENT, refreshWaitlist)
+    }
+  }, [waitlistOpen, companyId, locationId])
+
+  useEffect(() => {
     if (pathname.startsWith('/order/reservations')) {
       setReservationsOpen(true)
+      setWaitlistOpen(false)
+      setMode('order')
+      navigate(homePath, { replace: true })
+    }
+    if (pathname.startsWith('/order/waitlist')) {
+      setWaitlistOpen(true)
+      setReservationsOpen(false)
       setMode('order')
       navigate(homePath, { replace: true })
     }
   }, [pathname, homePath, navigate, setMode])
 
+  const waitlistJoinUrl = useMemo(
+    () => (companyId > 0 && locationId ? buildWaitlistJoinUrl(companyId, locationId) : ''),
+    [companyId, locationId],
+  )
+  const waitlistQrSrc = useMemo(
+    () => (companyId > 0 && locationId ? waitlistQrImageUrl(companyId, locationId, 160) : ''),
+    [companyId, locationId],
+  )
+
   function goHome() {
     setMode('order')
     setReservationsOpen(false)
+    setWaitlistOpen(false)
     navigate(homePath)
   }
 
   function goTakeOut() {
     setMode('order')
     setReservationsOpen(false)
+    setWaitlistOpen(false)
     if (!isRegister) {
       navigate('/order/register')
     }
@@ -140,13 +197,15 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   function goReservation() {
     setMode('order')
     navigate(homePath)
+    setWaitlistOpen(false)
     setReservationsOpen(open => !open)
   }
 
   function goWaitlist() {
     setMode('order')
+    navigate(homePath)
     setReservationsOpen(false)
-    navigate('/order/waitlist')
+    setWaitlistOpen(open => !open)
   }
 
   function notify(message: string) {
@@ -190,6 +249,36 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     setDraft(emptyNewReservation())
     setShowAdd(false)
     notify(`Reservation added · ${name}`)
+  }
+
+  async function handleWaitlistSeat(entry: PosWaitlistEntry) {
+    if (waitlistBusyId != null) return
+    setWaitlistBusyId(entry.id)
+    try {
+      await markWaitlistSeated(entry.id)
+      notifyWaitlistChanged()
+      setWaitlist(await fetchWaitingList(companyId, locationId))
+      notify(`Seated · ${entry.name}`)
+    } catch {
+      notify('Could not seat party.')
+    } finally {
+      setWaitlistBusyId(null)
+    }
+  }
+
+  async function handleWaitlistCancel(entry: PosWaitlistEntry) {
+    if (waitlistBusyId != null) return
+    setWaitlistBusyId(entry.id)
+    try {
+      await cancelWaitlistEntry(entry.id)
+      notifyWaitlistChanged()
+      setWaitlist(await fetchWaitingList(companyId, locationId))
+      notify(`Removed · ${entry.name}`)
+    } catch {
+      notify('Could not remove party.')
+    } finally {
+      setWaitlistBusyId(null)
+    }
   }
 
   async function submitSidePin(nextPin: string) {
@@ -252,7 +341,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     {
       id: 'home',
       label: 'Home',
-      active: isHome && !reservationsOpen,
+      active: isHome && !reservationsOpen && !waitlistOpen,
       onClick: goHome,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -296,7 +385,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     {
       id: 'waitlist',
       label: 'Waitlist',
-      active: isWaitlist,
+      active: waitlistOpen,
       onClick: goWaitlist,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -455,7 +544,88 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
                   ))
                 )}
               </div>
-              {flash ? <p className="floor-side-nav__rsv-flash">{flash}</p> : null}
+              {flash && reservationsOpen ? (
+                <p className="floor-side-nav__rsv-flash">{flash}</p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {waitlistOpen ? (
+            <section className="floor-side-nav__waitlist" aria-label="Customer waitlist">
+              <header className="floor-side-nav__rsv-head">
+                <div>
+                  <strong>Waiting</strong>
+                  <span>{waitlist.length}</span>
+                </div>
+              </header>
+
+              <div className="floor-side-nav__wl-qr">
+                {waitlistQrSrc ? (
+                  <img src={waitlistQrSrc} alt="Scan to join waitlist" width={160} height={160} />
+                ) : (
+                  <p className="floor-side-nav__rsv-empty">Select a location to show QR.</p>
+                )}
+                <div className="floor-side-nav__wl-qr-copy">
+                  <strong>Customer QR</strong>
+                  <p>Guests scan to enter name, mobile, and pax.</p>
+                  {waitlistJoinUrl ? (
+                    <button
+                      type="button"
+                      className="floor-side-nav__rsv-add"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(waitlistJoinUrl).then(
+                          () => notify('Waitlist link copied'),
+                          () => notify('Could not copy link'),
+                        )
+                      }}
+                    >
+                      Copy link
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="floor-side-nav__rsv-list">
+                {waitlist.length === 0 ? (
+                  <p className="floor-side-nav__rsv-empty">No parties waiting.</p>
+                ) : (
+                  waitlist.map(entry => (
+                    <article key={entry.id} className="floor-side-nav__rsv-card">
+                      <div className="floor-side-nav__rsv-main">
+                        <strong>{entry.name}</strong>
+                        <span>{entry.mobile}</span>
+                        <span>
+                          {entry.pax} pax
+                          {entry.createdAt
+                            ? ` · joined ${formatWaitlistJoinedAt(entry.createdAt)}`
+                            : ''}
+                        </span>
+                      </div>
+                      <div className="floor-side-nav__wl-actions">
+                        <button
+                          type="button"
+                          className="floor-side-nav__rsv-assign"
+                          disabled={waitlistBusyId === entry.id}
+                          onClick={() => void handleWaitlistSeat(entry)}
+                        >
+                          Seat
+                        </button>
+                        <button
+                          type="button"
+                          className="floor-side-nav__wl-cancel"
+                          disabled={waitlistBusyId === entry.id}
+                          onClick={() => void handleWaitlistCancel(entry)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+              {flash && waitlistOpen ? (
+                <p className="floor-side-nav__rsv-flash">{flash}</p>
+              ) : null}
             </section>
           ) : null}
 
