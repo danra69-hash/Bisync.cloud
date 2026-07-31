@@ -68,10 +68,106 @@
   align-items: start;
 }
 
+.qr-order-board__layout--preview {
+  grid-template-columns: minmax(220px, 280px) minmax(260px, 320px) 1fr;
+}
+
+@media (max-width: 1100px) {
+  .qr-order-board__layout--preview {
+    grid-template-columns: minmax(220px, 280px) 1fr;
+  }
+
+  .qr-order-board__orders {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 820px) {
-  .qr-order-board__layout {
+  .qr-order-board__layout,
+  .qr-order-board__layout--preview {
     grid-template-columns: 1fr;
   }
+}
+
+.qr-order-board__demo-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.qr-order-board__demo-table input {
+  height: calc(32px * var(--pos-ui-scale));
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font: inherit;
+  font-size: var(--pos-font-sm);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-ink);
+}
+
+.qr-order-board__phone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.qr-order-board__phone-frame {
+  width: min(100%, 300px);
+  height: min(640px, 72vh);
+  border-radius: 2rem;
+  border: 10px solid #0f1724;
+  background: #0f1724;
+  box-shadow: 0 18px 40px rgba(15, 23, 36, 0.28);
+  position: relative;
+  overflow: hidden;
+}
+
+.qr-order-board__phone-notch {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92px;
+  height: 18px;
+  border-radius: 999px;
+  background: #111827;
+  z-index: 2;
+}
+
+.qr-order-board__phone-screen {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #f7f3ea;
+}
+
+.qr-order-board__phone-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  text-align: center;
+  color: #cbd5e1;
+  font-size: var(--pos-font-sm);
+}
+
+.qr-order-board__phone-caption {
+  margin: 0;
+  max-width: 280px;
+  text-align: center;
+  color: var(--color-ink-muted);
+  font-size: var(--pos-font-xs);
+  line-height: 1.4;
 }
 
 .qr-order-board__qr-card {

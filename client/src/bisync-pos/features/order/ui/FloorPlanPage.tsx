@@ -214,6 +214,8 @@ export function FloorPlanPage() {
       mode: 'dynamic',
       table: openingTable.label,
       location: locationLabel,
+      companyId,
+      locationExternalId: locationId,
       pax,
       openedAt,
     })

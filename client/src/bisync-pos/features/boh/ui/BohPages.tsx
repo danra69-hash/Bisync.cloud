@@ -183,7 +183,7 @@ export function BohSettingsPage() {
       <section className="config-section panel-card">
         <h3>Table QR mode</h3>
         <p className="config-section__copy">
-          Choose how dine-in table QR codes work. There is no QR Order box — only Fixed or Dynamic table QR.
+          Choose how dine-in table QR codes work. Printed table codes open the guest mobile menu at /QR so customers can browse and send orders to the kitchen.
         </p>
         <div className="qr-mode-switch" role="radiogroup" aria-label="Table QR mode">
           <button
