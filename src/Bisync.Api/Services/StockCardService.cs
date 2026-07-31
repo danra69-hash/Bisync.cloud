@@ -402,12 +402,14 @@ public class StockCardService(
 
         var signedQty = isInbound ? quantity : -quantity;
         var asOfEnd = EndOfUtcDay(adjustmentDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
-        var archiveCutoff = DateTime.UtcNow.Date.AddYears(-HistoryRetentionYears);
+        var orgToday = companyId is int cid && cid > 0
+            ? await OrgBusinessDate.TodayAsync(db, cid, locationExternalId, cancellationToken)
+            : OrgClock.TodayLocal("MY");
+        var archiveCutoff = orgToday.AddYears(-HistoryRetentionYears).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         if (asOfEnd < archiveCutoff)
             return StockCardAdjustmentResult.Fail("Adjustment date is outside the retained history window.");
-        // Compare calendar dates — end-of-day is always > UtcNow until midnight, which wrongly
-        // blocked same-day adjustments for the entire day.
-        if (adjustmentDate > DateOnly.FromDateTime(DateTime.UtcNow))
+        // Compare calendar dates in the company/location cloud timezone — not UTC midnight.
+        if (adjustmentDate > orgToday)
             return StockCardAdjustmentResult.Fail("Adjustment date cannot be in the future.");
 
         var normalizedType = itemType.Trim().ToLowerInvariant();

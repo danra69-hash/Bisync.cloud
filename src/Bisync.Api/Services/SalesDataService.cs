@@ -374,7 +374,7 @@ public sealed class SalesDataService(BisyncDbContext db)
     {
         monthStart = default;
         monthEnd = default;
-        earliestAllowed = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2);
+        earliestAllowed = OrgClock.TodayLocal("MY").AddYears(-2);
 
         if (string.IsNullOrWhiteSpace(month))
             return false;

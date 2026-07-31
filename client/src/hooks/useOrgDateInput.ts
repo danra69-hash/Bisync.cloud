@@ -4,9 +4,11 @@ import {
   addCalendarDaysToYmd,
   addCalendarMonthsToYmd,
   addCalendarYearsToYmd,
+  dateTimeLocalInTzToUtcIso,
   orgClockHhMm,
   orgTodayYmd,
   toDateInputValueInTz,
+  toDateTimeLocalValueInTz,
 } from '../utils/countryTimeZones';
 
 /**
@@ -24,6 +26,10 @@ export function useOrgDateInput() {
       todayYmd,
       /** Format an instant as YYYY-MM-DD in org TZ (for `<input type="date">`). */
       toDateInputValue: (date: Date = new Date()) => toDateInputValueInTz(date, timeZoneId),
+      /** Format an instant as YYYY-MM-DDTHH:mm in org TZ (for `<input type="datetime-local">`). */
+      toDateTimeLocalValue: (date: Date = new Date()) => toDateTimeLocalValueInTz(date, timeZoneId),
+      /** Convert datetime-local wall time in org TZ → UTC ISO for the API. */
+      dateTimeLocalToUtcIso: (localValue: string) => dateTimeLocalInTzToUtcIso(localValue, timeZoneId),
       /** Two years before org today (live history window). */
       earliestLiveYmd: () => addCalendarYearsToYmd(orgTodayYmd(timeZoneId), -2),
       addDays: (ymd: string, days: number) => addCalendarDaysToYmd(ymd, days),

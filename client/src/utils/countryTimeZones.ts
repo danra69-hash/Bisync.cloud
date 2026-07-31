@@ -143,24 +143,88 @@ export function orgTodayYmd(timeZoneId?: string | null, date: Date = new Date())
   return toDateInputValueInTz(date, timeZoneId);
 }
 
+type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
+
+function zonedParts(date: Date, timeZoneId: string): ZonedParts {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZoneId,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const num = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find(p => p.type === type)?.value ?? '0');
+  let hour = num('hour');
+  // Some engines emit hour 24 at midnight.
+  if (hour === 24) hour = 0;
+  return {
+    year: num('year'),
+    month: num('month'),
+    day: num('day'),
+    hour,
+    minute: num('minute'),
+    second: num('second'),
+  };
+}
+
 /** Wall-clock HH:mm in the org/cloud timezone. */
 export function orgClockHhMm(date: Date = new Date(), timeZoneId?: string | null): string {
   const tz = timeZoneId?.trim() || DEFAULT_ORG_TIME_ZONE_ID;
   try {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: tz,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(date);
-    const hour = parts.find(p => p.type === 'hour')?.value ?? '00';
-    const minute = parts.find(p => p.type === 'minute')?.value ?? '00';
-    return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+    const p = zonedParts(date, tz);
+    return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
   } catch {
     const h = String(date.getUTCHours()).padStart(2, '0');
     const m = String(date.getUTCMinutes()).padStart(2, '0');
     return `${h}:${m}`;
   }
+}
+
+/** `<input type="datetime-local">` value (YYYY-MM-DDTHH:mm) in org/cloud timezone. */
+export function toDateTimeLocalValueInTz(date: Date = new Date(), timeZoneId?: string | null): string {
+  const ymd = toDateInputValueInTz(date, timeZoneId);
+  const hm = orgClockHhMm(date, timeZoneId);
+  return `${ymd}T${hm}`;
+}
+
+/**
+ * Interpret a datetime-local string as wall time in the org/cloud timezone
+ * and return a UTC ISO instant for API persistence.
+ */
+export function dateTimeLocalInTzToUtcIso(
+  localValue: string,
+  timeZoneId?: string | null,
+): string {
+  const m = localValue.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) {
+    const fallback = new Date(localValue);
+    return Number.isNaN(fallback.getTime()) ? new Date().toISOString() : fallback.toISOString();
+  }
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = Number(m[6] ?? '0');
+  const tz = timeZoneId?.trim() || DEFAULT_ORG_TIME_ZONE_ID;
+  const desiredAsUtcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  let utcMs = desiredAsUtcMs;
+  try {
+    for (let i = 0; i < 3; i++) {
+      const wall = zonedParts(new Date(utcMs), tz);
+      const wallAsUtcMs = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
+      const diff = desiredAsUtcMs - wallAsUtcMs;
+      utcMs += diff;
+      if (diff === 0) break;
+    }
+  } catch {
+    utcMs = desiredAsUtcMs;
+  }
+  return new Date(utcMs).toISOString();
 }
 
 /** Add whole calendar years to a YYYY-MM-DD string (clamps Feb 29). */

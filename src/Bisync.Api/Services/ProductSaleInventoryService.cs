@@ -503,12 +503,16 @@ public class ProductSaleInventoryService(
             stockRow.UpdatedAt = DateTime.UtcNow;
         }
 
+        var productionDate = product.CompanyId is int cid && cid > 0
+            ? await OrgBusinessDate.TodayAsync(db, cid, locationId, cancellationToken)
+            : OrgClock.TodayLocal("MY");
+
         db.ProductProductionLogs.Add(new ProductProductionLog
         {
             ProductId = product.Id,
             EntryType = referenceType,
             Quantity = quantitySold,
-            ProductionDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
+            ProductionDate = productionDate.ToString("yyyy-MM-dd"),
             LocationIdsJson = JsonSerializer.Serialize(new[] { locationId }),
             CompanyId = product.CompanyId,
             CreatedAt = DateTime.UtcNow,
@@ -551,12 +555,16 @@ public class ProductSaleInventoryService(
             stockRow.InStock = Math.Max(0, stockRow.InStock - fromProducedStock);
             stockRow.UpdatedAt = DateTime.UtcNow;
 
+            var productionDate = subProduct.CompanyId is int cid && cid > 0
+                ? await OrgBusinessDate.TodayAsync(db, cid, locationId, cancellationToken)
+                : OrgClock.TodayLocal("MY");
+
             db.ProductProductionLogs.Add(new ProductProductionLog
             {
                 ProductId = subProduct.Id,
                 EntryType = referenceType,
                 Quantity = fromProducedStock,
-                ProductionDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
+                ProductionDate = productionDate.ToString("yyyy-MM-dd"),
                 LocationIdsJson = JsonSerializer.Serialize(new[] { locationId }),
                 CompanyId = subProduct.CompanyId,
                 CreatedAt = DateTime.UtcNow,

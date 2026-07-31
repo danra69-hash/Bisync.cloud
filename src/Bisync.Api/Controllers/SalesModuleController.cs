@@ -750,9 +750,10 @@ public class SalesModuleController(
             if (string.IsNullOrWhiteSpace(comment))
                 return BadRequest(new { message = "Comment is required when changing status." });
 
+            var orgToday = await OrgBusinessDate.TodayAsync(db, company.Id, cancellationToken: ct);
             var contactDate = request.ContactDate.HasValue
                 ? DateTime.SpecifyKind(request.ContactDate.Value.Date, DateTimeKind.Utc)
-                : DateTime.UtcNow.Date;
+                : orgToday.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
             var diary = new SalesModuleDiaryEntry
             {
