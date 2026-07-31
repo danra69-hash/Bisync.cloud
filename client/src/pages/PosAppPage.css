@@ -1,0 +1,100 @@
+/* Standalone /POS — full viewport POS Test embed (phone / tablet). */
+
+.pos-standalone {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+  color: #f8fafc;
+  overflow: hidden;
+}
+
+.pos-standalone-chrome {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #111827;
+  border-bottom: 1px solid rgba(248, 250, 252, 0.12);
+}
+
+.pos-standalone-chrome label {
+  display: grid;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.65);
+  min-width: 140px;
+  flex: 1;
+}
+
+.pos-standalone-chrome select,
+.pos-standalone-field select {
+  border: 1px solid rgba(248, 250, 252, 0.18);
+  border-radius: 8px;
+  background: #1f2937;
+  color: #f8fafc;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pos-standalone-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-standalone-frame > * {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.pos-standalone-loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 12rem;
+}
+
+.pos-standalone-error {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: #faf5ee;
+  color: #2c1a0a;
+  font-family: 'Nunito', ui-sans-serif, sans-serif;
+}
+
+.pos-standalone-field {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  justify-self: stretch;
+  max-width: 320px;
+  width: 100%;
+  margin: 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pos-standalone-error button {
+  justify-self: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #f37021;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
