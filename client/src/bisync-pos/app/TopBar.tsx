@@ -4,12 +4,7 @@ import { usePosMode } from '../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../core/session/PosSessionContext'
 import './TopBar.css'
 
-type Props = {
-  menuOpen: boolean
-  onToggleMenu: () => void
-}
-
-export function TopBar({ menuOpen, onToggleMenu }: Props) {
+export function TopBar() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { setMode } = usePosMode()
@@ -91,15 +86,6 @@ export function TopBar({ menuOpen, onToggleMenu }: Props) {
             <path d="M10 19a2 2 0 004 0" />
           </svg>
           <span className="topbar__dot" />
-        </button>
-        <button
-          type="button"
-          className={`topbar__admin${menuOpen ? ' is-open' : ''}`}
-          onClick={onToggleMenu}
-          aria-expanded={menuOpen}
-          aria-controls="app-side-menu"
-        >
-          Admin
         </button>
       </div>
     </header>

@@ -51,13 +51,15 @@ function AppShellInner({ children }: Props) {
 
   return (
     <div className={`app-shell${menuOpen ? ' is-menu-open' : ''}`}>
-      <TopBar
-        menuOpen={menuOpen}
-        onToggleMenu={() => setMenuOpen((open) => !open)}
-      />
+      <TopBar />
       <div className={`app-shell__body${homeNav ? ' has-home-nav' : ''}`}>
-        {homeNav ? <FloorSideNav /> : null}
         <div className="app-shell__main">{children}</div>
+        {homeNav ? (
+          <FloorSideNav
+            adminOpen={menuOpen}
+            onToggleAdmin={() => setMenuOpen(open => !open)}
+          />
+        ) : null}
       </div>
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
     </div>

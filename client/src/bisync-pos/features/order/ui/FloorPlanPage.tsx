@@ -95,24 +95,6 @@ export function FloorPlanPage() {
     saveFloorPlan(next)
   }
 
-  function printFixedQr(table: FloorTable) {
-    printTableQr({
-      mode: 'fixed',
-      table: table.label,
-      location: locationLabel,
-      openedAt: formatOpenedAt().iso,
-    })
-  }
-
-  function handlePrintQrClick() {
-    if (qrTableMode !== 'fixed') return
-    if (!selectedTable) {
-      window.alert('Select a table on the floor plan, then print its QR.')
-      return
-    }
-    printFixedQr(selectedTable)
-  }
-
   function beginRegisterForTable(table: FloorTable, openedAt?: string) {
     setActiveRegisterSession({
       tableId: table.id,
@@ -382,48 +364,21 @@ export function FloorPlanPage() {
 
   return (
     <div className="floor-page">
-      <div className="floor-toolbar">
-        {editing ? (
-          <>
-            <span className="floor-edit-hint">Edit mode — drag tables & zones</span>
-            <button type="button" className="chip-btn" onClick={cancelEdit}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="chip-btn chip-btn--primary"
-              onClick={saveEdit}
-            >
-              Save layout
-            </button>
-          </>
-        ) : (
-          <>
-            {qrTableMode === 'fixed' && (
-              <button
-                type="button"
-                className="chip-btn"
-                onClick={handlePrintQrClick}
-                disabled={!selectedTable}
-                title={
-                  selectedTable
-                    ? `Print QR for ${selectedTable.label}`
-                    : 'Select a table first'
-                }
-              >
-                Print table QR
-              </button>
-            )}
-            <button
-              type="button"
-              className="chip-btn chip-btn--primary"
-              onClick={() => navigate('/order/register')}
-            >
-              Take Order
-            </button>
-          </>
-        )}
-      </div>
+      {editing ? (
+        <div className="floor-toolbar">
+          <span className="floor-edit-hint">Edit mode — drag tables & zones</span>
+          <button type="button" className="chip-btn" onClick={cancelEdit}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="chip-btn chip-btn--primary"
+            onClick={saveEdit}
+          >
+            Save layout
+          </button>
+        </div>
+      ) : null}
 
       <div className={`floor-workspace${editing ? ' is-editing' : ''}`}>
         <div

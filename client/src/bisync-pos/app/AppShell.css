@@ -23,7 +23,7 @@
 
 .app-shell__body.has-home-nav {
   display: grid;
-  grid-template-columns: var(--order-width) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) var(--order-width);
   gap: var(--space-3);
   padding: var(--space-3);
   box-sizing: border-box;
