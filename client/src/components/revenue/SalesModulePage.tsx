@@ -122,7 +122,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [followupRow, setFollowupRow] = useState<SalesModuleClientUpdate | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const [y, m] = todayYmd.split('-').map(Number);
+    return new Date(y || new Date().getFullYear(), (m || 1) - 1, 1);
+  });
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [apptFormOpen, setApptFormOpen] = useState(false);
   const [apptTitle, setApptTitle] = useState('');
