@@ -5,12 +5,18 @@ import type { Product } from '../../api';
 import type { ComponentRow } from '../../data/componentForm';
 import { filterComponentsForPicker, filterSubProductsForPicker, formatSubProductBatchPackageUnit } from '../../data/productForm';
 import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
-import { eventTargetElement, isEventInsideSelector } from './pickerMenuEvents';
+import {
+  bindPickerOptionActivate,
+  eventTargetElement,
+  isEventInsideSelector,
+} from './pickerMenuEvents';
 
 type Props = {
   components: ComponentRow[];
   subProducts?: Product[];
   value: string;
+  /** Shown when value is set but missing from catalogs (inactive/unscoped). */
+  fallbackLabel?: string;
   placeholder?: string;
   disabled?: boolean;
   onComponentSelect: (component: ComponentRow | null) => void;
@@ -23,6 +29,7 @@ export function ProductComponentPicker({
   components,
   subProducts = [],
   value,
+  fallbackLabel = '',
   placeholder = 'Search component or sub-product…',
   disabled = false,
   onComponentSelect,
@@ -44,21 +51,37 @@ export function ProductComponentPicker({
     [subProducts, value],
   );
 
-  const filteredComponents = useMemo(
-    () => filterComponentsForPicker(components, query),
-    [components, query],
-  );
+  const filteredComponents = useMemo(() => {
+    const rows = filterComponentsForPicker(components, query);
+    if (
+      selectedComponent
+      && !rows.some(c => c.componentId === selectedComponent.componentId)
+      && !query.trim()
+    ) {
+      return [selectedComponent, ...rows];
+    }
+    return rows;
+  }, [components, query, selectedComponent]);
 
-  const filteredSubProducts = useMemo(
-    () => filterSubProductsForPicker(subProducts, query),
-    [subProducts, query],
-  );
+  const filteredSubProducts = useMemo(() => {
+    const rows = filterSubProductsForPicker(subProducts, query);
+    if (
+      selectedSubProduct
+      && !rows.some(p => p.productId === selectedSubProduct.productId)
+      && !query.trim()
+    ) {
+      return [selectedSubProduct, ...rows];
+    }
+    return rows;
+  }, [subProducts, query, selectedSubProduct]);
 
   const selectedLabel = selectedSubProduct
     ? `${selectedSubProduct.name} (${selectedSubProduct.productId})`
     : selectedComponent
       ? `${selectedComponent.name} (${selectedComponent.componentId})`
-      : '';
+      : value && fallbackLabel
+        ? `${fallbackLabel} (${value})`
+        : value || '';
 
   useEffect(() => {
     if (!open) {
@@ -189,10 +212,8 @@ export function ProductComponentPicker({
                         <button
                           key={product.productId}
                           type="button"
-                          onMouseDown={event => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            selectSubProduct(product);
+                          onPointerDown={event => {
+                            bindPickerOptionActivate(event, () => selectSubProduct(product));
                           }}
                           className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 ${
                             product.productId === value ? 'bg-primary/10 text-primary' : ''
@@ -215,10 +236,8 @@ export function ProductComponentPicker({
                         <button
                           key={component.componentId}
                           type="button"
-                          onMouseDown={event => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            selectComponent(component);
+                          onPointerDown={event => {
+                            bindPickerOptionActivate(event, () => selectComponent(component));
                           }}
                           className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 ${
                             component.componentId === value ? 'bg-primary/10 text-primary' : ''

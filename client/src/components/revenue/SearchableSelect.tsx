@@ -2,7 +2,11 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
-import { eventTargetElement, isEventInsideSelector } from './pickerMenuEvents';
+import {
+  bindPickerOptionActivate,
+  eventTargetElement,
+  isEventInsideSelector,
+} from './pickerMenuEvents';
 
 type Props = {
   value: string;
@@ -143,10 +147,8 @@ export function SearchableSelect({
                   className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted/40 ${
                     option === value ? 'bg-primary/10 font-medium' : ''
                   }`}
-                  onMouseDown={event => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    selectOption(option);
+                  onPointerDown={event => {
+                    bindPickerOptionActivate(event, () => selectOption(option));
                   }}
                 >
                   {option}

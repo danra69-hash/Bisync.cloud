@@ -17,6 +17,7 @@ import {
   MODAL_OVERLAY_CLS,
   MODAL_SHELL_CLS,
 } from '../layout/sidePanelShared';
+import { createOverlayCloseHandlers } from './modalOverlayClose';
 import {
   createDefaultBatchAdditionalEntry,
 } from './SubProductBatchUomSection';
@@ -277,11 +278,14 @@ export function ProductDetailPanel({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isEditing, saving, onClose]);
 
+  const overlayClose = createOverlayCloseHandlers(handleDialogClose);
+
   return createPortal(
     <>
       <div
         className={MODAL_OVERLAY_CLS}
-        onClick={handleDialogClose}
+        onPointerDown={overlayClose.onPointerDown}
+        onClick={overlayClose.onClick}
         role="presentation"
         aria-hidden
       />
