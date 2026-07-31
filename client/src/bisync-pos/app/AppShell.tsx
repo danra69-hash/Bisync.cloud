@@ -27,6 +27,7 @@ function showsHomeSideNav(pathname: string): boolean {
   // waitlist/reservations, and other BOH pages including EOD.
   if (pathname.startsWith('/order/register')) return false
   if (pathname.startsWith('/boh/cds')) return false
+  if (pathname.startsWith('/boh/qr-order')) return false
   if (pathname.startsWith('/order/floor')) return true
   if (pathname.startsWith('/order/reservations')) return true
   if (pathname.startsWith('/order/waitlist')) return true

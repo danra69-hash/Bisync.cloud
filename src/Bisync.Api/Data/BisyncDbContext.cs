@@ -77,6 +77,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosDevice> PosDevices => Set<PosDevice>();
     public DbSet<PosFloorPlan> PosFloorPlans => Set<PosFloorPlan>();
     public DbSet<PosWaitlistEntry> PosWaitlistEntries => Set<PosWaitlistEntry>();
+    public DbSet<PosQrOrder> PosQrOrders => Set<PosQrOrder>();
     public DbSet<PosPrinterSdk> PosPrinterSdks => Set<PosPrinterSdk>();
     public DbSet<ProductProductionLog> ProductProductionLogs => Set<ProductProductionLog>();
     public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
@@ -245,6 +246,14 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.Mobile).HasMaxLength(40);
+            e.Property(x => x.Status).HasMaxLength(24);
+        });
+        modelBuilder.Entity<PosQrOrder>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.Status });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.TableLabel).HasMaxLength(64);
+            e.Property(x => x.GuestName).HasMaxLength(120);
             e.Property(x => x.Status).HasMaxLength(24);
         });
         modelBuilder.Entity<SalesModuleCustomer>(e =>

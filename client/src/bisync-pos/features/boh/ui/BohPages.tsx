@@ -10,6 +10,7 @@ import type { QrTableMode } from '../../../core/config/qrTable'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import { StationDisplayPage } from './StationDisplayPage'
 import { CustomerDisplayPage } from './CustomerDisplayPage'
+import { QrOrderPage } from './QrOrderPage'
 import './BohPages.css'
 
 /** Kitchen Display System — food dockets grouped by table. */
@@ -39,6 +40,11 @@ export function BdsPage() {
 /** Customer Display System — pre-payment transaction details only. */
 export function CdsPage() {
   return <CustomerDisplayPage />
+}
+
+/** Guest QR order board — show scan code and incoming e-menu orders. */
+export function QrOrderBoardPage() {
+  return <QrOrderPage />
 }
 
 export function RoutingPage() {

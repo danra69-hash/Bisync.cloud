@@ -17,6 +17,7 @@ import { DpaPage } from './pages/DpaPage';
 import { TeamAppPage } from './pages/TeamAppPage';
 import { BdsAppPage, CdsAppPage, KdsAppPage, PosAppPage } from './pages/PosAppPage';
 import { WaitlistJoinPage } from './pages/WaitlistJoinPage';
+import { QrOrderJoinPage } from './pages/QrOrderJoinPage';
 import {
   clearAwaitingLocation,
   clearAwaitingPayment,
@@ -49,6 +50,7 @@ export function AppRoot() {
   const isBdsApp = /^\/BDS$/i.test(legalPath);
   const isCdsApp = /^\/CDS$/i.test(legalPath);
   const isWaitlistJoin = /^\/WAITLIST$/i.test(legalPath);
+  const isQrOrderJoin = /^\/QR$/i.test(legalPath);
   const { isAuthenticated, loading, currentUser } = useCurrentUser();
   /** Explicit steps so next gate opens even if user sync races. */
   const [forceLocation, setForceLocation] = useState(false);
@@ -91,6 +93,11 @@ export function AppRoot() {
   // Public customer waitlist join — scan QR from POS Waitlist panel.
   if (isWaitlistJoin) {
     return <WaitlistJoinPage />;
+  }
+
+  // Public guest e-menu — scan QR Order from POS top bar.
+  if (isQrOrderJoin) {
+    return <QrOrderJoinPage />;
   }
 
   if (vendorShare) {

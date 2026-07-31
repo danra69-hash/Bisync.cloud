@@ -3864,6 +3864,77 @@ export const api = {
       createdAt: string;
       updatedAt: string;
     }>(`/api/pos/waitlist/${id}`, 'PATCH', { status }),
+  posQrOrderMenu: (companyId: number, locationExternalId: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    return fetchJson<Array<{
+      id: number;
+      productId: string;
+      name: string;
+      category: string;
+      group: string;
+      rrp: number;
+    }>>(`/api/pos/qr-order/menu?${params}`);
+  },
+  posQrOrderList: (companyId: number, locationExternalId: string, includeClosed = false) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+    });
+    if (includeClosed) params.set('includeClosed', 'true');
+    return fetchJson<Array<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      tableLabel: string;
+      guestName: string;
+      status: string;
+      items: unknown;
+      totalValue: number;
+      createdAt: string;
+      updatedAt: string;
+    }>>(`/api/pos/qr-order?${params}`);
+  },
+  posQrOrderPlace: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    tableLabel?: string;
+    guestName?: string;
+    items: Array<{
+      productId: number;
+      name: string;
+      quantity: number;
+      detail?: string;
+      unitPrice: number;
+    }>;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      tableLabel: string;
+      guestName: string;
+      status: string;
+      items: unknown;
+      totalValue: number;
+      createdAt: string;
+      updatedAt: string;
+    }>('/api/pos/qr-order', 'POST', payload),
+  posQrOrderUpdateStatus: (id: number, status: 'open' | 'sent' | 'cancelled') =>
+    fetchJsonWithMethod<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      tableLabel: string;
+      guestName: string;
+      status: string;
+      items: unknown;
+      totalValue: number;
+      createdAt: string;
+      updatedAt: string;
+    }>(`/api/pos/qr-order/${id}`, 'PATCH', { status }),
   posEodSummary: (companyId: number, locationExternalId: string, businessDate?: string) => {
     const params = new URLSearchParams({
       companyId: String(companyId),

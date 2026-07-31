@@ -117,6 +117,10 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
             { href: '/KDS', label: 'KDS' },
             { href: '/BDS', label: 'BDS' },
             { href: '/CDS', label: 'CDS' },
+            {
+              href: `/QR?c=${selectedCompanyId}&l=${encodeURIComponent(activeLocationId)}`,
+              label: 'QR Order',
+            },
           ].map(link => (
             <a
               key={link.href}
