@@ -7,6 +7,33 @@ public static class SuperAdminAccess
     public const string SuperAdminEmail = "dra@cubevalue.com";
 
     /// <summary>
+    /// Historical login aliases for the same platform-owner person.
+    /// Startup merge folds these AppUser/Employee rows into <see cref="SuperAdminEmail"/>.
+    /// </summary>
+    public static readonly string[] AliasEmails = ["dra@test.com"];
+
+    public static string NormalizeLoginEmail(string? email)
+    {
+        var normalized = (email ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) return normalized;
+        foreach (var alias in AliasEmails)
+        {
+            if (string.Equals(normalized, alias, StringComparison.OrdinalIgnoreCase))
+                return SuperAdminEmail.ToLowerInvariant();
+        }
+        return normalized;
+    }
+
+    public static bool IsPlatformOwnerEmail(string? email)
+    {
+        var normalized = (email ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) return false;
+        if (string.Equals(normalized, SuperAdminEmail, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return AliasEmails.Any(a => string.Equals(normalized, a, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Bootstrap password for the seeded DRA Super Admin / Dev Console root.
     /// Prefer <c>BISYNC_SUPER_ADMIN_PASSWORD</c> in production; falls back to the
     /// local/demo default used by Automated QA and fresh installs.

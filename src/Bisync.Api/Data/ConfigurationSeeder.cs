@@ -249,10 +249,16 @@ public static class ConfigurationSeeder
     public static async Task EnsureSuperAdminAsync(BisyncDbContext db)
     {
         var email = SuperAdminAccess.SuperAdminEmail.ToLowerInvariant();
-        var company = await db.Companies.OrderBy(c => c.Id).FirstOrDefaultAsync();
+        var company = await ResolvePlatformOwnerCompanyAsync(db);
         if (company is null) return;
 
-        var allLocationIds = await db.Locations.Select(l => l.Id).ToListAsync();
+        var locationIds = await db.Locations
+            .Where(l => l.CompanyId == company.Id)
+            .Select(l => l.Id)
+            .ToListAsync();
+        if (locationIds.Count == 0)
+            locationIds = await db.Locations.Select(l => l.Id).ToListAsync();
+
         var accessJson = SuperAdminAccess.BuildJson();
         var passwordHash = AppPasswordHasher.Hash(SuperAdminAccess.SuperAdminPassword);
 
@@ -268,7 +274,7 @@ public static class ConfigurationSeeder
                 Active = true,
                 AccessJson = accessJson,
                 CompanyId = company.Id,
-                LocationIdsJson = JsonSerializer.Serialize(allLocationIds),
+                LocationIdsJson = JsonSerializer.Serialize(locationIds),
                 PasswordHash = passwordHash,
             });
         }
@@ -279,12 +285,30 @@ public static class ConfigurationSeeder
             user.Active = true;
             user.AccessJson = accessJson;
             user.CompanyId = company.Id;
-            user.LocationIdsJson = JsonSerializer.Serialize(allLocationIds);
+            user.LocationIdsJson = JsonSerializer.Serialize(locationIds);
             if (string.IsNullOrWhiteSpace(user.PasswordHash))
                 user.PasswordHash = passwordHash;
         }
 
         await db.SaveChangesAsync();
+        await PlatformOwnerIdentityMigrator.ApplyAsync(db);
+    }
+
+    static async Task<Company?> ResolvePlatformOwnerCompanyAsync(BisyncDbContext db)
+    {
+        var weissbrau = await db.Companies
+            .Where(c => c.Name.ToLower().Contains("weissbrau"))
+            .OrderBy(c => c.Id)
+            .FirstOrDefaultAsync();
+        if (weissbrau is not null) return weissbrau;
+
+        var customer = await db.Companies
+            .Where(c => !c.Name.ToLower().StartsWith("bisync") && !c.Name.ToLower().StartsWith("qa "))
+            .OrderBy(c => c.Id)
+            .FirstOrDefaultAsync();
+        if (customer is not null) return customer;
+
+        return await db.Companies.OrderBy(c => c.Id).FirstOrDefaultAsync();
     }
 
     public static async Task PatchUserAssignmentsAsync(BisyncDbContext db)
