@@ -221,6 +221,8 @@ public class LeaveBalanceRequest
     public decimal RphBalance { get; set; }
     [Range(0, 999)]
     public decimal AlBalance { get; set; }
+    [Range(0, 999)]
+    public decimal AlCarryForward { get; set; }
 }
 
 public class ShiftScheduleRequest

@@ -6,10 +6,11 @@ import { InfiniteScrollTableSentinel } from '../../components/shared/infiniteScr
 import { SortableTableHead, ColGroup, tableColWidth } from '../../components/shared/SortableTableHead';
 import { tableHeaderCls, tableHeaderCompactCls } from '../../components/shared/tableHeaderStyles';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
-import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings } from 'lucide-react';
+import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings, UserCheck } from 'lucide-react';
 import { api as bisyncApi, type AppUser } from '../../api';
 import { hrApi as api } from './api';
 import EmployeePortal from './EmployeePortal';
+import TeamPortal from './TeamPortal';
 import { PayrollSection } from '../../components/payroll/PayrollSection';
 import ShiftScheduleGrid, { initialScheduleWeekStart } from './ShiftScheduleGrid';
 import { AttendanceDatePicker } from './AttendanceDatePicker';
@@ -111,7 +112,7 @@ const LEAVE_BALANCE_COLUMNS = [
 type HrModuleProps = { embedded?: boolean; selectedCompanyId?: number | null };
 
 export default function HrModule({ embedded = false, selectedCompanyId = null }: HrModuleProps) {
-  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'hrconfig' | 'portal' | 'payroll'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'leave' | 'schedule' | 'hrconfig' | 'team' | 'portal' | 'payroll'>('employees');
   const [hrConfigTab, setHrConfigTab] = useState<HrConfigTabId>('ph');
 
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -575,6 +576,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               ['leave', FileText, 'Leave Requests'],
               ['schedule', Clock, 'Schedule'],
               ['hrconfig', Settings, 'HR Config'],
+              ['team', UserCheck, 'Team'],
               ['portal', LayoutDashboard, 'Employee Portal'],
               ['payroll', Wallet, 'Payroll'],
             ] as const).map(([tab, Icon, label]) => (
@@ -1076,6 +1078,17 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
           </div>
         )}
 
+
+        {activeTab === 'team' && (
+          <TeamPortal
+            employees={employees}
+            leaveBalances={leaveBalances}
+            leaveRequests={leaveRequests}
+            shiftSchedules={shiftSchedules}
+            publicHolidays={publicHolidays}
+            onSubmitLeave={handlePortalSubmitLeave}
+          />
+        )}
 
         {activeTab === 'portal' && (
           <EmployeePortal

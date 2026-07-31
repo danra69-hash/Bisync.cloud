@@ -140,6 +140,8 @@ export interface LeaveBalanceRow {
   rdoBalance: number;
   rphBalance: number;
   alBalance: number;
+  /** Unused annual leave carried forward from the previous operating year. */
+  alCarryForward?: number;
 }
 
 export type ScheduleType = 'Work' | 'DO' | 'RDO' | 'AL' | 'RPH' | 'UPL';

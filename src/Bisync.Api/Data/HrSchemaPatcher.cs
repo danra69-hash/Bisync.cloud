@@ -77,9 +77,11 @@ public static class HrSchemaPatcher
                 "RdoBalance" REAL NOT NULL DEFAULT 0,
                 "RphBalance" REAL NOT NULL DEFAULT 0,
                 "AlBalance" REAL NOT NULL DEFAULT 0,
+                "AlCarryForward" REAL NOT NULL DEFAULT 0,
                 FOREIGN KEY("EmployeeId") REFERENCES "Employees"("Id") ON DELETE CASCADE
             );
             """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "LeaveBalances", "AlCarryForward", "REAL NOT NULL DEFAULT 0");
 
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS "CompanySettings" (

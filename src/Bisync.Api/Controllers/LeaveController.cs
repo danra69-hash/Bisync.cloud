@@ -147,7 +147,8 @@ public class LeaveBalancesController(BisyncDbContext db) : ControllerBase
                 EmployeeName = b.Employee!.Name,
                 b.RdoBalance,
                 b.RphBalance,
-                b.AlBalance
+                b.AlBalance,
+                b.AlCarryForward
             })
             .OrderBy(b => b.EmployeeName)
             .ToListAsync();
@@ -173,6 +174,7 @@ public class LeaveBalancesController(BisyncDbContext db) : ControllerBase
         balance.RdoBalance = request.RdoBalance;
         balance.RphBalance = request.RphBalance;
         balance.AlBalance = request.AlBalance;
+        balance.AlCarryForward = request.AlCarryForward;
         await db.SaveChangesAsync();
         return balance;
     }

@@ -148,6 +148,7 @@ public static class HrModelConfiguration
             e.Property(x => x.RdoBalance).HasPrecision(5, 1);
             e.Property(x => x.RphBalance).HasPrecision(5, 1);
             e.Property(x => x.AlBalance).HasPrecision(5, 1);
+            e.Property(x => x.AlCarryForward).HasPrecision(5, 1);
             e.HasOne(x => x.Employee)
                 .WithOne(x => x.LeaveBalance)
                 .HasForeignKey<LeaveBalance>(x => x.EmployeeId)

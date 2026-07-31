@@ -618,7 +618,8 @@
       "route": "/hr/module",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
-      "createdAt": "2026-07-15"
+      "createdAt": "2026-07-15",
+      "notes": "HR Management — includes Team tab (TeamPortal) before Employee Portal: today/month schedule, message box, POS QR check-in/out, outstanding leave with carry-forward, leave request"
     },
     {
       "id": "dr.api.auth",
