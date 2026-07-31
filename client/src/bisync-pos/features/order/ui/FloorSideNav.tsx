@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { MODE_META } from '../../../core/modes/types'
 import { usePosMode } from '../../../core/modes/ModeProvider'
@@ -12,6 +12,17 @@ import {
 } from '../../../core/session/posDiningBridge'
 import { CheckInOutModal } from '../../../app/CheckInOutModal'
 import { HistoryModal } from '../../register/ui/HistoryModal'
+import {
+  addReservation,
+  assignReservationToTable,
+  formatReservationWhen,
+  loadReservations,
+  RESERVATIONS_CHANGED_EVENT,
+  upcomingReservations,
+  type PosReservation,
+} from '../domain/reservations'
+import type { FloorTable } from '../domain/tables'
+import { AssignTableModal } from './AssignTableModal'
 import './FloorSideNav.css'
 
 const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'] as const
@@ -23,11 +34,30 @@ type Props = {
   onToggleAdmin: () => void
 }
 
+function emptyNewReservation() {
+  const now = new Date()
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  let hours = now.getHours()
+  let mins = Math.ceil((now.getMinutes() + 1) / 15) * 15
+  if (mins >= 60) {
+    hours = (hours + 1) % 24
+    mins = 0
+  }
+  return {
+    name: '',
+    mobile: '',
+    pax: 2,
+    date,
+    time: `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`,
+  }
+}
+
 export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { setMode } = usePosMode()
   const session = usePosSessionOptional()
+  const companyId = session?.companyId ?? 0
   const locationId = session?.locationId ?? ''
   const locationName =
     session?.locations.find(loc => loc.externalId === locationId)?.name || locationId || 'Outlet'
@@ -37,17 +67,31 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     pathname === '/order/floor'
     || (pathname.startsWith('/order/floor') && !pathname.includes('/edit'))
   const isRegister = pathname.startsWith('/order/register')
-  const isReservation = pathname.startsWith('/order/reservations')
   const isWaitlist = pathname.startsWith('/order/waitlist')
 
   const [checkInOpen, setCheckInOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [reservationsOpen, setReservationsOpen] = useState(
+    () => pathname.startsWith('/order/reservations'),
+  )
+  const [reservations, setReservations] = useState<PosReservation[]>(() =>
+    loadReservations(companyId, locationId),
+  )
+  const [assigning, setAssigning] = useState<PosReservation | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [draft, setDraft] = useState(emptyNewReservation)
+  const [flash, setFlash] = useState<string | null>(null)
   const { setDuty, refreshDuty } = usePosDutySession()
   const [dining, setDining] = useState('')
   const [pin, setPin] = useState('')
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
   const [pinStatus, setPinStatus] = useState<string | null>(null)
+
+  const upcoming = useMemo(
+    () => upcomingReservations(reservations),
+    [reservations],
+  )
 
   useEffect(() => {
     function onDiningChanged(event: Event) {
@@ -57,13 +101,36 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     return () => window.removeEventListener(POS_DINING_CHANGED_EVENT, onDiningChanged)
   }, [])
 
+  useEffect(() => {
+    function refresh() {
+      setReservations(loadReservations(companyId, locationId))
+    }
+    refresh()
+    window.addEventListener(RESERVATIONS_CHANGED_EVENT, refresh)
+    window.addEventListener('storage', refresh)
+    return () => {
+      window.removeEventListener(RESERVATIONS_CHANGED_EVENT, refresh)
+      window.removeEventListener('storage', refresh)
+    }
+  }, [companyId, locationId])
+
+  useEffect(() => {
+    if (pathname.startsWith('/order/reservations')) {
+      setReservationsOpen(true)
+      setMode('order')
+      navigate(homePath, { replace: true })
+    }
+  }, [pathname, homePath, navigate, setMode])
+
   function goHome() {
     setMode('order')
+    setReservationsOpen(false)
     navigate(homePath)
   }
 
   function goTakeOut() {
     setMode('order')
+    setReservationsOpen(false)
     if (!isRegister) {
       navigate('/order/register')
     }
@@ -72,12 +139,57 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
 
   function goReservation() {
     setMode('order')
-    navigate('/order/reservations')
+    navigate(homePath)
+    setReservationsOpen(open => !open)
   }
 
   function goWaitlist() {
     setMode('order')
+    setReservationsOpen(false)
     navigate('/order/waitlist')
+  }
+
+  function notify(message: string) {
+    setFlash(message)
+    window.setTimeout(() => setFlash(null), 2400)
+  }
+
+  function handleAssignPick(table: FloorTable) {
+    if (!assigning) return
+    const result = assignReservationToTable({
+      companyId,
+      locationId,
+      reservationId: assigning.id,
+      table,
+    })
+    setAssigning(null)
+    if (!result) {
+      notify('Could not assign table.')
+      return
+    }
+    setReservations(loadReservations(companyId, locationId))
+    notify(`${result.reservation.name} → ${result.table.label}`)
+  }
+
+  function handleAddReservation(e: FormEvent) {
+    e.preventDefault()
+    const name = draft.name.trim()
+    const mobile = draft.mobile.trim()
+    if (!name || !mobile || !draft.date || !draft.time || draft.pax < 1) {
+      notify('Name, mobile, pax, date and time are required.')
+      return
+    }
+    addReservation(companyId, locationId, {
+      name,
+      mobile,
+      pax: Math.max(1, Math.round(draft.pax)),
+      date: draft.date,
+      time: draft.time,
+    })
+    setReservations(loadReservations(companyId, locationId))
+    setDraft(emptyNewReservation())
+    setShowAdd(false)
+    notify(`Reservation added · ${name}`)
   }
 
   async function submitSidePin(nextPin: string) {
@@ -130,7 +242,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     })
   }
 
-  const items: Array<{
+  const topItems: Array<{
     id: NavId
     label: string
     active: boolean
@@ -140,7 +252,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     {
       id: 'home',
       label: 'Home',
-      active: isHome,
+      active: isHome && !reservationsOpen,
       onClick: goHome,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -148,6 +260,15 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         </svg>
       ),
     },
+  ]
+
+  const bottomItems: Array<{
+    id: NavId
+    label: string
+    active: boolean
+    onClick: () => void
+    icon: ReactNode
+  }> = [
     {
       id: 'takeout',
       label: 'Take Out',
@@ -163,7 +284,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     {
       id: 'reservation',
       label: 'Reservation',
-      active: isReservation,
+      active: reservationsOpen,
       onClick: goReservation,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -210,22 +331,135 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     },
   ]
 
+  function renderNavBtn(item: (typeof topItems)[number]) {
+    return (
+      <button
+        key={item.id}
+        type="button"
+        className={`floor-side-nav__btn${item.active ? ' is-active' : ''}`}
+        onClick={item.onClick}
+        aria-current={item.active && item.id !== 'history' && item.id !== 'checkin' ? 'page' : undefined}
+      >
+        <span className="floor-side-nav__icon">{item.icon}</span>
+        <span className="floor-side-nav__label">{item.label}</span>
+      </button>
+    )
+  }
+
   return (
     <>
       <nav className="floor-side-nav" aria-label="POS home navigation">
         <div className="floor-side-nav__list">
-          {items.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              className={`floor-side-nav__btn${item.active ? ' is-active' : ''}`}
-              onClick={item.onClick}
-              aria-current={item.active && item.id !== 'history' && item.id !== 'checkin' ? 'page' : undefined}
-            >
-              <span className="floor-side-nav__icon">{item.icon}</span>
-              <span className="floor-side-nav__label">{item.label}</span>
-            </button>
-          ))}
+          {topItems.map(renderNavBtn)}
+
+          {reservationsOpen ? (
+            <section className="floor-side-nav__reservations" aria-label="Upcoming reservations">
+              <header className="floor-side-nav__rsv-head">
+                <div>
+                  <strong>Upcoming</strong>
+                  <span>{upcoming.length}</span>
+                </div>
+                <button
+                  type="button"
+                  className="floor-side-nav__rsv-add"
+                  onClick={() => setShowAdd(open => !open)}
+                >
+                  {showAdd ? 'Close' : '+ Add'}
+                </button>
+              </header>
+
+              {showAdd ? (
+                <form className="floor-side-nav__rsv-form" onSubmit={handleAddReservation}>
+                  <label>
+                    Name
+                    <input
+                      value={draft.name}
+                      onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                      placeholder="Guest name"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Mobile
+                    <input
+                      value={draft.mobile}
+                      onChange={e => setDraft(d => ({ ...d, mobile: e.target.value }))}
+                      placeholder="Mobile number"
+                      required
+                    />
+                  </label>
+                  <div className="floor-side-nav__rsv-row">
+                    <label>
+                      Pax
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={draft.pax}
+                        onChange={e => setDraft(d => ({ ...d, pax: Number(e.target.value) || 1 }))}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Date
+                      <input
+                        type="date"
+                        value={draft.date}
+                        onChange={e => setDraft(d => ({ ...d, date: e.target.value }))}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Time
+                      <input
+                        type="time"
+                        value={draft.time}
+                        onChange={e => setDraft(d => ({ ...d, time: e.target.value }))}
+                        required
+                      />
+                    </label>
+                  </div>
+                  <button type="submit" className="floor-side-nav__rsv-save">
+                    Save reservation
+                  </button>
+                </form>
+              ) : null}
+
+              <div className="floor-side-nav__rsv-list">
+                {upcoming.length === 0 ? (
+                  <p className="floor-side-nav__rsv-empty">No upcoming reservations.</p>
+                ) : (
+                  upcoming.map(rsv => (
+                    <article
+                      key={rsv.id}
+                      className={`floor-side-nav__rsv-card${rsv.status === 'assigned' ? ' is-assigned' : ''}`}
+                    >
+                      <div className="floor-side-nav__rsv-main">
+                        <strong>{rsv.name}</strong>
+                        <span>{rsv.mobile}</span>
+                        <span>
+                          {rsv.pax} pax · {formatReservationWhen(rsv)}
+                        </span>
+                        {rsv.tableLabel ? (
+                          <em>Table {rsv.tableLabel}</em>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="floor-side-nav__rsv-assign"
+                        onClick={() => setAssigning(rsv)}
+                      >
+                        {rsv.tableLabel ? 'Reassign' : 'Assign table'}
+                      </button>
+                    </article>
+                  ))
+                )}
+              </div>
+              {flash ? <p className="floor-side-nav__rsv-flash">{flash}</p> : null}
+            </section>
+          ) : null}
+
+          {bottomItems.map(renderNavBtn)}
         </div>
 
         <div className="floor-side-nav__pin" aria-label="Staff check-in PIN pad">
@@ -265,6 +499,17 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
           Admin
         </button>
       </nav>
+
+      {assigning ? (
+        <AssignTableModal
+          companyId={companyId}
+          locationId={locationId}
+          guestName={assigning.name}
+          pax={assigning.pax}
+          onCancel={() => setAssigning(null)}
+          onPick={handleAssignPick}
+        />
+      ) : null}
 
       {checkInOpen && (
         <CheckInOutModal

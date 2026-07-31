@@ -45,27 +45,8 @@ export function BisyncPosApp({ initialEntry = '/order/floor' }: Props) {
           <Route path="/order/floor" element={<FloorPlanPage />} />
           <Route path="/order/floor/edit" element={<FloorPlanPage />} />
           <Route path="/order/register" element={<RegisterPage />} />
-          <Route
-            path="/order/reservations"
-            element={
-              <FeaturePage
-                crumb="Order / Reservations"
-                title="Reservations"
-                subtitle="Assign parties to tables and hand off to seated service."
-              >
-                <div className="panel-grid">
-                  <div className="panel-card">
-                    <h3>Tonight · 7:30</h3>
-                    <p>Chen party of 4 — waiting for T6</p>
-                  </div>
-                  <div className="panel-card">
-                    <h3>Tonight · 8:00</h3>
-                    <p>Patel party of 2 — confirmed</p>
-                  </div>
-                </div>
-              </FeaturePage>
-            }
-          />
+          {/* Reservations list lives in the home side rail below Home. */}
+          <Route path="/order/reservations" element={<Navigate to="/order/floor" replace />} />
           <Route
             path="/order/waitlist"
             element={
