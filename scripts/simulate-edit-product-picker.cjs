@@ -44,7 +44,13 @@ async function shot(page, name) {
   await modal.getByRole('button', { name: /^login$/i }).click();
   await page.waitForTimeout(2800);
 
-  await page.locator('header select').first().selectOption({ label: /Weissbrau/i });
+  const companySelect = page.locator('header select').first();
+  const companyValue = await companySelect.locator('option').evaluateAll(opts => {
+    const match = opts.find(o => /weissbrau/i.test(o.textContent || ''));
+    return match?.value || opts.find(o => o.value)?.value || '';
+  });
+  if (!companyValue) throw new Error('No company option available');
+  await companySelect.selectOption(companyValue);
   await page.waitForTimeout(900);
   const locBtn = page.locator('header button').filter({ hasText: /Select locations|All Locations|location/i }).first();
   if (await locBtn.count()) {
@@ -64,13 +70,29 @@ async function shot(page, name) {
   await page.waitForTimeout(400);
   const menuPanel = page.locator('div.absolute.top-full').filter({ hasText: 'Product Audit' }).first();
   await menuPanel.getByRole('button', { name: /^Products$/i }).click();
-  await page.waitForTimeout(2200);
+  await page.waitForTimeout(1500);
+  // Clear type filters that can hide ordinary products.
+  for (const label of ['Variable Product', 'Sub-Product', 'B2B', 'POS', 'Show deactivated']) {
+    const box = page.getByRole('checkbox', { name: new RegExp(`^${label}$`, 'i') }).first();
+    if (await box.count() && await box.isChecked().catch(() => false)) {
+      await box.uncheck().catch(() => {});
+    }
+  }
+  const productFilter = page.getByRole('checkbox', { name: /^Product$/i }).first();
+  if (await productFilter.count() && !(await productFilter.isChecked().catch(() => false))) {
+    await productFilter.check().catch(() => {});
+  }
+  await page.getByRole('button', { name: /^Refresh$/i }).first().click().catch(() => {});
+  await page.locator('table tbody tr').filter({ hasNotText: /loading/i }).first()
+    .waitFor({ state: 'visible', timeout: 45000 });
   await shot(page, 'sim-product-list');
 
-  await page.locator('table tbody tr').first().waitFor({ state: 'visible' });
-  await page.locator('table tbody tr').first().click();
-  await page.waitForTimeout(1200);
-  await page.getByRole('button', { name: /^edit$/i }).first().click();
+  const dataRow = page.locator('table tbody tr').filter({ hasText: /PRD-|SUB-/i }).first();
+  await dataRow.locator('td').nth(4).click();
+  await page.waitForTimeout(1500);
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Product details|Edit product/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 15000 });
+  await dialog.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.waitForTimeout(1800);
   await shot(page, 'sim-edit-product');
 
