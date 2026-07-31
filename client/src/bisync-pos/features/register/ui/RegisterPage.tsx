@@ -7,9 +7,16 @@ import {
   addWeightToCart,
   cartGrandTotal,
   cartSubtotal,
+  removeLine,
   updateLineSaleDetail,
 } from '../domain/cart'
 import type { CartLine, OrderCharges, Product, ProductDepartment } from '../domain/types'
+import {
+  appendLinesToOpenCheck,
+  clearOpenCheck,
+  loadOpenCheck,
+  saveOpenCheck,
+} from '../domain/openChecks'
 import type {
   PosSaleCombinationSelection,
   PosSaleReplacementSelection,
@@ -23,7 +30,10 @@ import {
   loadFloorPlan,
   markFloorTableOrdered,
   releaseFloorTable,
+  setActiveRegisterSession,
+  transferFloorTable,
   type ActiveRegisterSession,
+  type FloorTable,
 } from '../../order/domain/tables'
 import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
 import { fireCartToStations } from '../../boh/domain/kitchenTickets'
@@ -41,11 +51,12 @@ import {
 } from '../../../core/session/posDiningBridge'
 import { api } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
-import { OrderPanel } from './OrderPanel'
+import { OrderPanel, type TransactionTool } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
 import { TakeawayPickupModal } from './TakeawayPickupModal'
 import { CombinationPickerModal } from './CombinationPickerModal'
 import { ComponentSwapModal } from './ComponentSwapModal'
+import { TablePickModal } from './TablePickModal'
 import {
   formatPickupLabel,
   type TakeawayPickup,
@@ -108,10 +119,12 @@ export function RegisterPage() {
     initialSelections?: PosSaleReplacementSelection[]
   } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
+  const [checkNumber, setCheckNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
+  const [tablePickMode, setTablePickMode] = useState<'change-table' | 'move-product' | null>(null)
+  const [pendingMoveLine, setPendingMoveLine] = useState<CartLine | null>(null)
   const { duty } = usePosDutySession()
 
   useEffect(() => {
@@ -137,8 +150,31 @@ export function RegisterPage() {
     if (active) {
       setDining('dine-in')
       setTable(active.tableId)
+      const open = loadOpenCheck(active.tableId)
+      if (open) {
+        setLines(open.lines)
+        setCharges(open.charges)
+        setCover(open.cover)
+        setCheckNumber(open.checkNumber)
+        if (open.dining) setDining(open.dining)
+      }
     }
   }, [])
+
+  // Park the open check against the active table so Change/Move Table can resume it.
+  useEffect(() => {
+    if (!activeTableSession) return
+    saveOpenCheck({
+      tableId: activeTableSession.tableId,
+      tableLabel: activeTableSession.tableLabel,
+      checkNumber,
+      cover,
+      dining,
+      lines,
+      charges,
+      updatedAt: new Date().toISOString(),
+    })
+  }, [activeTableSession, checkNumber, cover, dining, lines, charges])
 
   useEffect(() => {
     if (!departments.includes(department)) {
@@ -406,14 +442,19 @@ export function RegisterPage() {
     navigate(MODE_META.order.homePath)
   }
 
+  function persistFloorIfNeeded() {
+    if (session?.companyId && session.locationId) {
+      void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+    }
+  }
+
   /** Discard the current check (no kitchen fire) and return to the floor home. */
   function handleCancelOrder() {
     const label = activeTableSession?.tableLabel
     if (activeTableSession) {
+      clearOpenCheck(activeTableSession.tableId)
       releaseFloorTable(activeTableSession.tableId)
-      if (session?.companyId && session.locationId) {
-        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
-      }
+      persistFloorIfNeeded()
     }
     setLines([])
     setCharges(EMPTY_CHARGES)
@@ -422,6 +463,120 @@ export function RegisterPage() {
     setActiveTableSession(null)
     flash(label ? `Order cancelled · ${label} released` : 'Order cancelled')
     goHome()
+  }
+
+  function handleVoid(selectedLine: CartLine | null) {
+    if (!requireDuty()) return
+    if (lines.length === 0) {
+      flash('Nothing to void.')
+      return
+    }
+    if (selectedLine) {
+      const product = catalogForFilter.find(p => p.id === selectedLine.productId)
+      const name = product?.name ?? 'item'
+      if (!window.confirm(`Void ${name}?`)) return
+      setLines(removeLine(lines, selectedLine.productId, selectedLine.lineKey))
+      flash(`Voided · ${name}`)
+      return
+    }
+    if (!window.confirm('Void all items on this check?')) return
+    setLines([])
+    setCharges(EMPTY_CHARGES)
+    flash('Check voided')
+  }
+
+  function handleTool(tool: TransactionTool, selectedLine: CartLine | null) {
+    if (!requireDuty()) return
+    if (tool === 'void') {
+      handleVoid(selectedLine)
+      return
+    }
+    if (tool === 'change-table') {
+      if (!activeTableSession) {
+        flash('Open a table from the Floor Plan first.')
+        return
+      }
+      setPendingMoveLine(null)
+      setTablePickMode('change-table')
+      return
+    }
+    if (tool === 'move-product') {
+      if (!selectedLine) {
+        flash('Select a product line first.')
+        return
+      }
+      if (!activeTableSession) {
+        flash('Open a table from the Floor Plan first.')
+        return
+      }
+      setPendingMoveLine(selectedLine)
+      setTablePickMode('move-product')
+    }
+  }
+
+  function handleTablePicked(target: FloorTable) {
+    if (!activeTableSession) {
+      setTablePickMode(null)
+      return
+    }
+
+    if (tablePickMode === 'change-table') {
+      if (target.id === activeTableSession.tableId) {
+        flash('Pick a different table.')
+        return
+      }
+      const orderId = `chk-${checkNumber}`
+      const { to } = transferFloorTable(activeTableSession.tableId, target.id, orderId)
+      if (!to) {
+        flash('Could not change table.')
+        return
+      }
+      clearOpenCheck(activeTableSession.tableId)
+      const nextSession: ActiveRegisterSession = {
+        tableId: target.id,
+        tableLabel: target.label,
+        openedAt: activeTableSession.openedAt,
+      }
+      setActiveRegisterSession(nextSession)
+      setActiveTableSession(nextSession)
+      setTable(target.id)
+      saveOpenCheck({
+        tableId: target.id,
+        tableLabel: target.label,
+        checkNumber,
+        cover,
+        dining,
+        lines,
+        charges,
+        updatedAt: new Date().toISOString(),
+      })
+      persistFloorIfNeeded()
+      setTablePickMode(null)
+      flash(`Check #${checkNumber} moved to ${target.label}`)
+      return
+    }
+
+    if (tablePickMode === 'move-product' && pendingMoveLine) {
+      if (target.id === activeTableSession.tableId) {
+        flash('Pick a different table.')
+        return
+      }
+      const product = catalogForFilter.find(p => p.id === pendingMoveLine.productId)
+      appendLinesToOpenCheck({
+        tableId: target.id,
+        tableLabel: target.label,
+        lines: [pendingMoveLine],
+        checkNumber,
+        cover: 1,
+        dining,
+      })
+      markFloorTableOrdered(target.id, `chk-${checkNumber}`)
+      setLines(removeLine(lines, pendingMoveLine.productId, pendingMoveLine.lineKey))
+      persistFloorIfNeeded()
+      setPendingMoveLine(null)
+      setTablePickMode(null)
+      flash(`${product?.name ?? 'Item'} moved to ${target.label}`)
+    }
   }
 
   /** Fire items to Bar/Kitchen, keep the table occupied, return home. */
@@ -448,9 +603,8 @@ export function RegisterPage() {
     const orderId = `chk-${checkNumber}`
     if (activeTableSession) {
       markFloorTableOrdered(activeTableSession.tableId, orderId)
-      if (session?.companyId && session.locationId) {
-        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
-      }
+      clearOpenCheck(activeTableSession.tableId)
+      persistFloorIfNeeded()
     }
     const stations = [...new Set(tickets.map(t => t.station))].join(' · ')
     setLines([])
@@ -513,6 +667,11 @@ export function RegisterPage() {
         /* inventory sale already recorded; EOD row is best-effort */
       }
       const count = lines.reduce((n, l) => n + l.quantity, 0)
+      if (activeTableSession) {
+        clearOpenCheck(activeTableSession.tableId)
+        releaseFloorTable(activeTableSession.tableId)
+        persistFloorIfNeeded()
+      }
       setLines([])
       setCharges(EMPTY_CHARGES)
       clearCustomerDisplaySnapshot()
@@ -630,6 +789,7 @@ export function RegisterPage() {
           if (dining === 'takeaway') setPickupModalOpen(true)
         }}
         activeTableLabel={activeTableSession?.tableLabel ?? null}
+        onTool={handleTool}
         onAction={action => {
           if (!requireDuty()) return
           if (action === 'cancel') {
@@ -647,6 +807,24 @@ export function RegisterPage() {
           flash('Printing…')
         }}
       />
+
+      {tablePickMode ? (
+        <TablePickModal
+          title={tablePickMode === 'change-table' ? 'Change Table' : 'Move Product'}
+          subtitle={
+            tablePickMode === 'change-table'
+              ? `Move check #${checkNumber} from ${activeTableSession?.tableLabel ?? 'current table'} to another table.`
+              : 'Select the destination table for the selected product.'
+          }
+          excludeTableId={activeTableSession?.tableId}
+          preferOrdered={tablePickMode === 'move-product'}
+          onCancel={() => {
+            setTablePickMode(null)
+            setPendingMoveLine(null)
+          }}
+          onPick={handleTablePicked}
+        />
+      ) : null}
 
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
       {pickupModalOpen && (

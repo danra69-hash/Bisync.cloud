@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import type { CartLine, OrderCharges, Product } from '../domain/types'
 import { cartGrandTotal, cartSubtotal, removeLine } from '../domain/cart'
 import { saleDetailExtraChargeCents } from '../domain/saleDetail'
 import { formatMoney } from '../../../core/types/money'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './OrderPanel.css'
+
+export type TransactionTool = 'change-table' | 'move-product' | 'void'
 
 type Props = {
   checkNumber: number
@@ -23,8 +26,13 @@ type Props = {
   onOpenHistory: () => void
   onOpenPickup?: () => void
   onAction: (action: 'save' | 'print' | 'payment' | 'cancel') => void
+  onTool?: (tool: TransactionTool, selectedLine: CartLine | null) => void
   /** Opened floor table label shown in Cancel tooltip when discarding. */
   activeTableLabel?: string | null
+}
+
+function lineIdentity(line: CartLine, index: number): string {
+  return line.lineKey ?? `${line.productId}-${index}`
 }
 
 export function OrderPanel({
@@ -45,12 +53,18 @@ export function OrderPanel({
   onOpenHistory,
   onOpenPickup,
   onAction,
+  onTool,
   activeTableLabel = null,
 }: Props) {
   const byId = new Map(products.map((p) => [p.id, p]))
   const subtotal = cartSubtotal(lines, products)
   const grandTotal = cartGrandTotal(lines, products, charges)
   const hasItems = lines.length > 0
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const selectedLine =
+    selectedKey == null
+      ? null
+      : lines.find((line, index) => lineIdentity(line, index) === selectedKey) ?? null
 
   function editCents(
     key: keyof OrderCharges,
@@ -147,6 +161,8 @@ export function OrderPanel({
               {lines.map((line, index) => {
                 const product = byId.get(line.productId)
                 if (!product) return null
+                const key = lineIdentity(line, index)
+                const selected = selectedKey === key
                 const extraCents = saleDetailExtraChargeCents(line.saleDetail)
                 const lineTotal = product.priceCents * line.quantity + extraCents
                 const qtyLabel = product.pricedByWeight && product.weightUom
@@ -161,7 +177,11 @@ export function OrderPanel({
                   && (product.variableComponentSlots?.length ?? 0) > 0,
                 )
                 return (
-                  <tr key={line.lineKey ?? `${line.productId}-${index}`}>
+                  <tr
+                    key={key}
+                    className={selected ? 'is-selected' : undefined}
+                    onClick={() => setSelectedKey(selected ? null : key)}
+                  >
                     <td className="order-lines-table__product">
                       <div>{product.name}</div>
                       {line.note ? (
@@ -182,7 +202,10 @@ export function OrderPanel({
                             type="button"
                             className="order-line__swap"
                             aria-label={`Swap components for ${product.name}`}
-                            onClick={() => onSwapLine?.(line)}
+                            onClick={e => {
+                              e.stopPropagation()
+                              onSwapLine?.(line)
+                            }}
                           >
                             SWAP
                           </button>
@@ -191,9 +214,11 @@ export function OrderPanel({
                           type="button"
                           className="order-line__remove"
                           aria-label={`Remove ${product.name}`}
-                          onClick={() =>
+                          onClick={e => {
+                            e.stopPropagation()
                             onChange(removeLine(lines, line.productId, line.lineKey))
-                          }
+                            if (selectedKey === key) setSelectedKey(null)
+                          }}
                         >
                           <svg
                             viewBox="0 0 24 24"
@@ -244,6 +269,36 @@ export function OrderPanel({
           <span>Grand Total</span>
           <strong>{formatMoney(grandTotal)}</strong>
         </div>
+      </div>
+
+      <div className="order-panel__tools">
+        <button
+          type="button"
+          className="btn btn--tool"
+          disabled={!activeTableLabel}
+          title={activeTableLabel ? 'Move this check to another table' : 'Open a table first'}
+          onClick={() => onTool?.('change-table', selectedLine)}
+        >
+          Change Table
+        </button>
+        <button
+          type="button"
+          className="btn btn--tool"
+          disabled={!selectedLine}
+          title={selectedLine ? 'Move selected product to another table' : 'Select a product line first'}
+          onClick={() => onTool?.('move-product', selectedLine)}
+        >
+          Move Product
+        </button>
+        <button
+          type="button"
+          className="btn btn--tool btn--tool-void"
+          disabled={!hasItems}
+          title={selectedLine ? 'Void selected product' : 'Void all items on this check'}
+          onClick={() => onTool?.('void', selectedLine)}
+        >
+          Void
+        </button>
       </div>
 
       <div className="order-panel__actions">
