@@ -15,6 +15,7 @@ import { EulaPage } from './pages/EulaPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { DpaPage } from './pages/DpaPage';
 import { TeamAppPage } from './pages/TeamAppPage';
+import { PosAppPage } from './pages/PosAppPage';
 import {
   clearAwaitingLocation,
   clearAwaitingPayment,
@@ -42,6 +43,7 @@ export function AppRoot() {
   const isPrivacyPage = /^\/legal\/privacy$/i.test(legalPath);
   const isDpaPage = /^\/legal\/dpa$/i.test(legalPath);
   const isTeamApp = /^\/TEAM$/i.test(legalPath);
+  const isPosApp = /^\/POS$/i.test(legalPath);
   const { isAuthenticated, loading, currentUser } = useCurrentUser();
   /** Explicit steps so next gate opens even if user sync races. */
   const [forceLocation, setForceLocation] = useState(false);
@@ -65,6 +67,11 @@ export function AppRoot() {
   // Mobile Team app — public entry (own employee login), no platform shell.
   if (isTeamApp) {
     return <TeamAppPage />;
+  }
+
+  // Standalone POS register — public entry for phone/tablet testing.
+  if (isPosApp) {
+    return <PosAppPage />;
   }
 
   if (vendorShare) {

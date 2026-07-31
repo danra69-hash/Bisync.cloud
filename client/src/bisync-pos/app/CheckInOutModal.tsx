@@ -83,7 +83,7 @@ export function CheckInOutModal({
       }
 
       if (employeeId == null) {
-        setError('Invalid PIN. Check in with SuperApp, then enter your POS PIN.')
+        setError('Invalid PIN. Use Check in/out PIN 1234 for demo, or set a POS PIN in HR.')
         setPin('')
         return
       }
@@ -152,7 +152,7 @@ export function CheckInOutModal({
           <div>
             <h2 id="checkin-modal-title">Check in / out</h2>
             <p>
-              Scan with Bisync SuperApp, then enter your 4-digit POS PIN to
+              Scan with Bisync Team (/TEAM), then enter your 4-digit POS PIN to
               {duty ? ' check out' : ' activate POS ordering'}.
             </p>
           </div>

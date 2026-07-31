@@ -546,6 +546,17 @@
       "notes": "Standalone mobile Team app (Clock-style login/PIN/biometric) at /TEAM for phone testing without HR shell"
     },
     {
+      "id": "dr.page.pos-app",
+      "kind": "client-page",
+      "path": "client/src/pages/PosAppPage.tsx",
+      "symbol": "PosAppPage",
+      "route": "/POS",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "Standalone POS register at /POS for phone/tablet testing without Bisync shell"
+    },
+    {
       "id": "dr.page.accounting",
       "kind": "client-page",
       "path": "client/src/components/accounting/AccountingPage.tsx",
