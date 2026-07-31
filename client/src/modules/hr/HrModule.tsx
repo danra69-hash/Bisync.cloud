@@ -604,7 +604,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
         </div>
       )}
 
-      <div className={embedded ? 'p-4' : 'p-8'}>
+      <div className={activeTab === 'team' ? 'p-0' : embedded ? 'p-4' : 'p-8'}>
         {/* Employees Tab */}
         {activeTab === 'employees' && (
           <EmployeeTab
