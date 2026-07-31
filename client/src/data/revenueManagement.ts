@@ -167,11 +167,6 @@ export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
   'Inventory Config',
   'Account Mapping',
   'External POS Mapping',
-  'Itemized Sales Summary',
-  'Inventory Summary',
-  'Detailed Purchase Summary',
-  'Production Report',
-  'Wastage Report',
 ]);
 
 /** POS bar items that still route to ModuleContent placeholders. */
