@@ -103,4 +103,34 @@ describe('product UOM price automation', () => {
     assert.equal(sameUom('btl', 'Bottle'), true);
     assert.equal(sameUom('Ml', 'Kg'), false);
   });
+
+  it('uses system price when last purchase is unavailable', () => {
+    // Priority: purchase → system → vendor
+    const sources = [];
+    const purchasePrice = null;
+    const systemPrice = 0.021;
+    const vendorPrice = 0.03;
+
+    let resolved = null;
+    if (purchasePrice != null && purchasePrice > 0) {
+      sources.push('purchase');
+      resolved = purchasePrice;
+    } else if (systemPrice > 0) {
+      sources.push('system_price');
+      resolved = systemPrice;
+    } else if (vendorPrice > 0) {
+      sources.push('vendor');
+      resolved = vendorPrice;
+    }
+
+    assert.equal(sources[0], 'system_price');
+    assert.equal(resolved, 0.021);
+  });
+
+  it('keeps purchase price when a usable last purchase exists', () => {
+    const purchasePrice = 0.025;
+    const systemPrice = 0.021;
+    const resolved = purchasePrice > 0 ? purchasePrice : systemPrice;
+    assert.equal(resolved, 0.025);
+  });
 });

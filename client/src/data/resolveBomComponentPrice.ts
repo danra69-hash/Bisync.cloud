@@ -13,7 +13,13 @@ import {
 } from './vendorProductCatalog';
 import { refreshVendorProductPricesFromApi } from './vendorProductPrices';
 
-export type BomPriceSource = 'purchase' | 'vendor_average' | 'vendor_single' | 'last_price' | 'none';
+export type BomPriceSource =
+  | 'purchase'
+  | 'system_price'
+  | 'vendor_average'
+  | 'vendor_single'
+  | 'last_price'
+  | 'none';
 
 export type BomComponentPriceResult = {
   unitPrice: number;
@@ -41,6 +47,41 @@ export function convertComponentUnitPrice(
   if (to === recipe) return inRecipe;
 
   return recipePriceToSelectedUom(inRecipe, to, component);
+}
+
+/**
+ * Current in-system component unit price for a selected UOM.
+ * Used when no usable last-purchase price exists yet.
+ */
+export function resolveSystemComponentUnitPrice(
+  component: ComponentRow,
+  selectedUom: string,
+): number | null {
+  const recipeUom = fromApiUom(component.recipeUOM);
+  const inventoryUom = fromApiUom(component.inventoryUOM);
+  const target = fromApiUom(selectedUom) || recipeUom;
+  if (!target) return null;
+
+  const lastRecipe = component.lastPriceRecipe ?? 0;
+  if (lastRecipe > 0 && recipeUom) {
+    const converted = convertComponentUnitPrice(lastRecipe, recipeUom, target, component);
+    if (converted !== null && converted > 0) return converted;
+  }
+
+  const lastInventory = component.lastPriceInventory ?? 0;
+  if (lastInventory > 0 && inventoryUom) {
+    const converted = convertComponentUnitPrice(lastInventory, inventoryUom, target, component);
+    if (converted !== null && converted > 0) return converted;
+  }
+
+  const detail = resolveDetailConfigForRow(component);
+  const delivery = parseFloat(detail.deliveryUnitPrice || '') || 0;
+  if (delivery > 0 && inventoryUom) {
+    const converted = convertComponentUnitPrice(delivery, inventoryUom, target, component);
+    if (converted !== null && converted > 0) return converted;
+  }
+
+  return null;
 }
 
 function unitPriceToRecipeUom(
@@ -183,8 +224,8 @@ function resolveTaggedVendorUnitPrices(
 /**
  * Product-page BOM cost estimation:
  * 1) Most recent purchase for the component, converted to selected UOM
- * 2) Else tagged engaged vendor product(s) — average when 2+, single when 1
- * 3) Else Ingredients.lastPriceRecipe converted to selected UOM
+ * 2) Else current in-system component price (until first usable purchase)
+ * 3) Else tagged engaged vendor product(s) — average when 2+, single when 1
  */
 export function resolveBomComponentPrice(options: {
   component: ComponentRow;
@@ -224,6 +265,16 @@ export function resolveBomComponentPrice(options: {
     }
   }
 
+  const systemPrice = resolveSystemComponentUnitPrice(component, uom);
+  if (systemPrice !== null && systemPrice > 0) {
+    return {
+      unitPrice: systemPrice,
+      source: 'system_price',
+      label: 'System price',
+      sampleCount: 1,
+    };
+  }
+
   const vendorPrices = resolveTaggedVendorUnitPrices(
     component,
     uom,
@@ -247,19 +298,6 @@ export function resolveBomComponentPrice(options: {
       label: 'Tagged vendor',
       sampleCount: 1,
     };
-  }
-
-  const last = component.lastPriceRecipe ?? 0;
-  if (last > 0) {
-    const converted = convertComponentUnitPrice(last, component.recipeUOM, uom, component);
-    if (converted !== null && converted > 0) {
-      return {
-        unitPrice: converted,
-        source: 'last_price',
-        label: 'Component last price',
-        sampleCount: 1,
-      };
-    }
   }
 
   return {

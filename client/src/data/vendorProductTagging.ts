@@ -215,34 +215,59 @@ export function resolveAttachedVendorPrincipalPricing(
 
 /**
  * Last UOM Price for My Component table.
- * With purchase history → stored last prices.
- * Without purchases → Principal Component UOM Price from the attached vendor (live from catalog).
+ * With a usable last-purchase price → stored purchase-derived prices.
+ * Otherwise → current in-system component price until the first purchase is made,
+ * then live tagged-vendor principal pricing as a final fallback.
  */
 export function resolveMyComponentLastUomPrice(
   row: ComponentRow,
   uomFilter: 'principal' | 'inventory' | string = 'principal',
   catalog: VendorProductCatalogItem[] = applyVendorProductOverrides(),
 ): number {
+  const recipeUom = fromApiUom(row.recipeUOM);
+
   if (row.hasPurchaseRecord) {
-    if (uomFilter === 'inventory') return row.lastPriceInventory || 0;
-    if (uomFilter === 'principal') return row.lastPriceRecipe || 0;
-    const recipeUom = fromApiUom(row.recipeUOM);
-    return convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+    if (uomFilter === 'inventory' && (row.lastPriceInventory || 0) > 0) {
+      return row.lastPriceInventory || 0;
+    }
+    if (uomFilter === 'principal' && (row.lastPriceRecipe || 0) > 0) {
+      return row.lastPriceRecipe || 0;
+    }
+    if (uomFilter !== 'inventory' && uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
+      const converted = convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+      if (converted > 0) return converted;
+    }
+  }
+
+  // No usable purchase price yet — show the current price stored on the component.
+  if (uomFilter === 'inventory' && (row.lastPriceInventory || 0) > 0) {
+    return row.lastPriceInventory || 0;
+  }
+  if (uomFilter === 'principal' && (row.lastPriceRecipe || 0) > 0) {
+    return row.lastPriceRecipe || 0;
+  }
+  if (uomFilter !== 'inventory' && uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
+    const converted = convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+    if (converted > 0) return converted;
+  }
+  if ((row.lastPriceInventory || 0) > 0 && uomFilter === 'principal') {
+    const inventoryUom = fromApiUom(row.inventoryUOM);
+    const converted = convertUnitPrice(row.lastPriceInventory || 0, inventoryUom, recipeUom, row);
+    if (converted > 0) return converted;
   }
 
   const vendor = resolveAttachedVendorPrincipalPricing(row, catalog);
   if (!vendor) {
-    if (uomFilter === 'inventory') return row.lastPriceInventory || 0;
-    if (uomFilter === 'principal') return row.lastPriceRecipe || 0;
-    const recipeUom = fromApiUom(row.recipeUOM);
-    return convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
+    return uomFilter === 'inventory'
+      ? (row.lastPriceInventory || 0)
+      : (row.lastPriceRecipe || 0);
   }
 
   if (uomFilter === 'inventory') {
     return vendor.deliveryPrice > 0 ? vendor.deliveryPrice : row.lastPriceInventory || 0;
   }
 
-  const targetUom = uomFilter === 'principal' ? fromApiUom(row.recipeUOM) : uomFilter;
+  const targetUom = uomFilter === 'principal' ? recipeUom : uomFilter;
   if (vendor.principalPrice > 0) {
     return convertUnitPrice(vendor.principalPrice, vendor.componentUom, targetUom, row);
   }
