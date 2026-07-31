@@ -7,6 +7,7 @@ import {
   loadPosDutySession,
   type PosDutySession,
 } from '../core/session/posDutySession'
+import { syncPosDutyWithHrAttendance } from '../core/session/posDutySync'
 import './CheckInOutModal.css'
 
 type Props = {
@@ -36,6 +37,21 @@ export function CheckInOutModal({
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 15_000)
     return () => window.clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    // Reconcile with Team/HR when the QR screen opens (mobile may have checked out).
+    let cancelled = false
+    void syncPosDutyWithHrAttendance().then(next => {
+      if (cancelled) return
+      setDuty(next)
+      onDutyChange(next)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Run once when the modal opens — not on every parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only sync
   }, [])
 
   useEffect(() => {

@@ -4,11 +4,7 @@ import { MODE_META } from '../../../core/modes/types'
 import { usePosMode } from '../../../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { applyPosDutyPin } from '../../../core/session/posDutyPin'
-import {
-  loadPosDutySession,
-  POS_DUTY_SESSION_EVENT,
-  type PosDutySession,
-} from '../../../core/session/posDutySession'
+import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import {
   POS_DINING_CHANGED_EVENT,
   readPosDiningFromEvent,
@@ -46,24 +42,12 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
 
   const [checkInOpen, setCheckInOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+  const { duty, setDuty, refreshDuty } = usePosDutySession()
   const [dining, setDining] = useState('')
   const [pin, setPin] = useState('')
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
   const [pinStatus, setPinStatus] = useState<string | null>(null)
-
-  useEffect(() => {
-    function syncDuty() {
-      setDuty(loadPosDutySession())
-    }
-    window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-    window.addEventListener('storage', syncDuty)
-    return () => {
-      window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-      window.removeEventListener('storage', syncDuty)
-    }
-  }, [])
 
   useEffect(() => {
     function onDiningChanged(event: Event) {
@@ -113,6 +97,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         return
       }
       setDuty(result.session)
+      void refreshDuty()
       setPinStatus(
         result.action === 'check-in'
           ? `Signed in · ${result.session?.employeeName ?? 'Staff'}`
@@ -291,8 +276,14 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         <CheckInOutModal
           locationExternalId={locationId || 'outlet'}
           locationName={locationName}
-          onClose={() => setCheckInOpen(false)}
-          onDutyChange={setDuty}
+          onClose={() => {
+            setCheckInOpen(false)
+            void refreshDuty()
+          }}
+          onDutyChange={next => {
+            setDuty(next)
+            void refreshDuty()
+          }}
         />
       )}
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}

@@ -25,11 +25,7 @@ import {
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
 import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
-import {
-  loadPosDutySession,
-  POS_DUTY_SESSION_EVENT,
-  type PosDutySession,
-} from '../../../core/session/posDutySession'
+import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import {
   consumePendingTakeawayRequest,
   POS_TAKEAWAY_REQUEST_EVENT,
@@ -108,19 +104,7 @@ export function RegisterPage() {
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
-  const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
-
-  useEffect(() => {
-    function syncDuty() {
-      setDuty(loadPosDutySession())
-    }
-    window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-    window.addEventListener('storage', syncDuty)
-    return () => {
-      window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-      window.removeEventListener('storage', syncDuty)
-    }
-  }, [])
+  const { duty } = usePosDutySession()
 
   useEffect(() => {
     function openTakeaway() {
