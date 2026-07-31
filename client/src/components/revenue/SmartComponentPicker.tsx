@@ -4,6 +4,7 @@ import { ChevronDown, X } from 'lucide-react';
 import type { ComponentRow } from '../../data/componentForm';
 import { filterComponentsForPicker } from '../../data/productForm';
 import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
+import { eventTargetElement, isEventInsideSelector } from './pickerMenuEvents';
 
 type Props = {
   components: ComponentRow[];
@@ -12,6 +13,8 @@ type Props = {
   disabled?: boolean;
   onChange: (component: ComponentRow | null) => void;
 };
+
+const MENU_SELECTOR = '[data-smart-component-picker-menu]';
 
 export function SmartComponentPicker({
   components,
@@ -70,15 +73,21 @@ export function SmartComponentPicker({
 
   useEffect(() => {
     if (!open) return;
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
-      if ((target as Element).closest?.('[data-smart-component-picker-menu]')) return;
+    function handlePointerDown(event: PointerEvent) {
+      const el = eventTargetElement(event);
+      if (!el) return;
+      if (rootRef.current?.contains(el)) return;
+      if (isEventInsideSelector(event, MENU_SELECTOR)) return;
       setOpen(false);
     }
-    document.addEventListener('click', handlePointerDown);
-    return () => document.removeEventListener('click', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
   }, [open]);
+
+  function selectComponent(component: ComponentRow) {
+    onChange(component);
+    setOpen(false);
+  }
 
   return (
     <div ref={rootRef} className="relative min-w-[12rem]">
@@ -135,10 +144,10 @@ export function SmartComponentPicker({
                   <button
                     key={component.componentId}
                     type="button"
-                    onMouseDown={event => event.preventDefault()}
-                    onClick={() => {
-                      onChange(component);
-                      setOpen(false);
+                    onMouseDown={event => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      selectComponent(component);
                     }}
                     className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 ${
                       component.componentId === value ? 'bg-primary/10 text-primary' : ''

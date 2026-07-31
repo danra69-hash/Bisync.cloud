@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import { isDeletableProductGroup } from '../../data/componentCatalogConfig';
+import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
+import { eventTargetElement, isEventInsideSelector } from './pickerMenuEvents';
 
 type Props = {
   value: string;
@@ -11,6 +13,8 @@ type Props = {
   onChange: (value: string) => void;
   onDeleteRequest: (groupName: string) => void;
 };
+
+const MENU_SELECTOR = '[data-product-group-select-menu]';
 
 export function ProductGroupSelect({
   value,
@@ -53,14 +57,15 @@ export function ProductGroupSelect({
 
   useEffect(() => {
     if (!open) return;
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
-      if ((target as Element).closest?.('[data-product-group-select-menu]')) return;
+    function handlePointerDown(event: PointerEvent) {
+      const el = eventTargetElement(event);
+      if (!el) return;
+      if (rootRef.current?.contains(el)) return;
+      if (isEventInsideSelector(event, MENU_SELECTOR)) return;
       setOpen(false);
     }
-    document.addEventListener('click', handlePointerDown);
-    return () => document.removeEventListener('click', handlePointerDown);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true);
   }, [open]);
 
   return (
@@ -81,7 +86,7 @@ export function ProductGroupSelect({
       {open && menuStyle ? createPortal(
         <div
           data-product-group-select-menu
-          className="fixed z-[130] rounded-md border border-border bg-card shadow-lg max-h-56 overflow-y-auto"
+          className={`fixed ${PICKER_MENU_Z_CLS} rounded-md border border-border bg-card shadow-lg max-h-56 overflow-y-auto`}
           style={{ top: menuStyle.top, left: menuStyle.left, width: menuStyle.width }}
         >
           {options.length === 0 ? (
@@ -99,7 +104,9 @@ export function ProductGroupSelect({
                   <button
                     type="button"
                     className="flex-1 min-w-0 text-left px-1 py-0.5"
-                    onClick={() => {
+                    onMouseDown={event => {
+                      event.preventDefault();
+                      event.stopPropagation();
                       onChange(option);
                       setOpen(false);
                     }}
@@ -109,7 +116,8 @@ export function ProductGroupSelect({
                   {deletable ? (
                     <button
                       type="button"
-                      onClick={e => {
+                      onMouseDown={e => {
+                        e.preventDefault();
                         e.stopPropagation();
                         setOpen(false);
                         onDeleteRequest(option);
