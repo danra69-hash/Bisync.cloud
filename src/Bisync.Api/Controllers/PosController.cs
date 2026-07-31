@@ -116,6 +116,15 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
 
     public record UpsertFloorPlanRequest(int CompanyId, string LocationExternalId, string LayoutJson);
 
+    public record JoinWaitlistRequest(
+        int CompanyId,
+        string LocationExternalId,
+        string Name,
+        string Mobile,
+        int Pax);
+
+    public record UpdateWaitlistStatusRequest(string Status);
+
     [HttpGet("floor-plan")]
     public async Task<ActionResult<object>> GetFloorPlan(
         [FromQuery] int? companyId = null,
@@ -212,6 +221,150 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
             return StatusCode(500, new
             {
                 message = "Could not save floor plan.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    [HttpGet("waitlist")]
+    public async Task<ActionResult<object>> ListWaitlist(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null,
+        [FromQuery] bool includeClosed = false)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        if (cid is null || string.IsNullOrEmpty(loc))
+            return Ok(Array.Empty<object>());
+
+        try
+        {
+            await SchemaPatcher.EnsurePosWaitlistEntriesTableAsync(db);
+            IQueryable<PosWaitlistEntry> q = db.PosWaitlistEntries.AsNoTracking()
+                .Where(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+            if (!includeClosed)
+                q = q.Where(x => x.Status == "waiting");
+
+            var rows = await q.OrderBy(x => x.CreatedAt).Take(200).ToListAsync();
+            return Ok(rows.Select(x => new
+            {
+                id = x.Id,
+                companyId = x.CompanyId,
+                locationExternalId = x.LocationExternalId,
+                name = x.Name,
+                mobile = x.Mobile,
+                pax = x.Pax,
+                status = x.Status,
+                createdAt = x.CreatedAt,
+                updatedAt = x.UpdatedAt,
+            }));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Waitlist storage is not ready.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    /// <summary>Public join from customer QR form — company + location in body.</summary>
+    [HttpPost("waitlist")]
+    public async Task<ActionResult<object>> JoinWaitlist([FromBody] JoinWaitlistRequest body)
+    {
+        var cid = body.CompanyId;
+        var loc = (body.LocationExternalId ?? string.Empty).Trim();
+        var name = (body.Name ?? string.Empty).Trim();
+        var mobile = (body.Mobile ?? string.Empty).Trim();
+        var pax = body.Pax;
+
+        if (cid <= 0 || string.IsNullOrEmpty(loc))
+            return BadRequest(new { message = "companyId and locationExternalId are required." });
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(mobile))
+            return BadRequest(new { message = "Name and mobile number are required." });
+        if (pax < 1 || pax > 99)
+            return BadRequest(new { message = "Pax must be between 1 and 99." });
+        if (name.Length > 120 || mobile.Length > 40)
+            return BadRequest(new { message = "Name or mobile is too long." });
+
+        try
+        {
+            await SchemaPatcher.EnsurePosWaitlistEntriesTableAsync(db);
+            var row = new PosWaitlistEntry
+            {
+                CompanyId = cid,
+                LocationExternalId = loc,
+                Name = name,
+                Mobile = mobile,
+                Pax = pax,
+                Status = "waiting",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            db.PosWaitlistEntries.Add(row);
+            await db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                id = row.Id,
+                companyId = row.CompanyId,
+                locationExternalId = row.LocationExternalId,
+                name = row.Name,
+                mobile = row.Mobile,
+                pax = row.Pax,
+                status = row.Status,
+                createdAt = row.CreatedAt,
+                updatedAt = row.UpdatedAt,
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Could not join waitlist.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    [HttpPatch("waitlist/{id:int}")]
+    public async Task<ActionResult<object>> UpdateWaitlistStatus(
+        int id,
+        [FromBody] UpdateWaitlistStatusRequest body)
+    {
+        var status = (body.Status ?? string.Empty).Trim().ToLowerInvariant();
+        if (status is not ("waiting" or "seated" or "cancelled"))
+            return BadRequest(new { message = "Status must be waiting, seated, or cancelled." });
+
+        try
+        {
+            await SchemaPatcher.EnsurePosWaitlistEntriesTableAsync(db);
+            var row = await db.PosWaitlistEntries.FirstOrDefaultAsync(x => x.Id == id);
+            if (row is null) return NotFound(new { message = "Waitlist entry not found." });
+
+            row.Status = status;
+            row.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                id = row.Id,
+                companyId = row.CompanyId,
+                locationExternalId = row.LocationExternalId,
+                name = row.Name,
+                mobile = row.Mobile,
+                pax = row.Pax,
+                status = row.Status,
+                createdAt = row.CreatedAt,
+                updatedAt = row.UpdatedAt,
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Could not update waitlist entry.",
                 detail = ex.GetBaseException().Message,
             });
         }

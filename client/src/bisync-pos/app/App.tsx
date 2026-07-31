@@ -2,7 +2,6 @@ import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { RegisterPage } from '../features/register/ui/RegisterPage'
 import { FloorPlanPage } from '../features/order/ui/FloorPlanPage'
-import { FeaturePage } from '../features/common/FeaturePage'
 import {
   CashierCheckoutPage,
   DispatchPage,
@@ -45,44 +44,10 @@ export function BisyncPosApp({ initialEntry = '/order/floor' }: Props) {
           <Route path="/order/floor" element={<FloorPlanPage />} />
           <Route path="/order/floor/edit" element={<FloorPlanPage />} />
           <Route path="/order/register" element={<RegisterPage />} />
-          <Route
-            path="/order/reservations"
-            element={
-              <FeaturePage
-                crumb="Order / Reservations"
-                title="Reservations"
-                subtitle="Assign parties to tables and hand off to seated service."
-              >
-                <div className="panel-grid">
-                  <div className="panel-card">
-                    <h3>Tonight · 7:30</h3>
-                    <p>Chen party of 4 — waiting for T6</p>
-                  </div>
-                  <div className="panel-card">
-                    <h3>Tonight · 8:00</h3>
-                    <p>Patel party of 2 — confirmed</p>
-                  </div>
-                </div>
-              </FeaturePage>
-            }
-          />
-          <Route
-            path="/order/waitlist"
-            element={
-              <FeaturePage
-                crumb="Order / Waitlist"
-                title="Waitlist"
-                subtitle="Queue walk-in parties until a table is ready."
-              >
-                <div className="panel-grid">
-                  <div className="panel-card">
-                    <h3>Waitlist</h3>
-                    <p>Build this screen next — parties waiting for a table will appear here.</p>
-                  </div>
-                </div>
-              </FeaturePage>
-            }
-          />
+          {/* Reservations list lives in the home side rail below Home. */}
+          <Route path="/order/reservations" element={<Navigate to="/order/floor" replace />} />
+          {/* Waitlist list + join QR live in the home side rail. */}
+          <Route path="/order/waitlist" element={<Navigate to="/order/floor" replace />} />
 
           <Route path="/cashier" element={<CashierCheckoutPage />} />
           <Route path="/cashier/split" element={<SplitCheckPage />} />

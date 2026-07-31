@@ -20,6 +20,7 @@ import {
   persistFloorPlanRemote,
   syncFloorPlan,
 } from '../domain/floorPlanSync'
+import { FLOOR_PLAN_CHANGED_EVENT } from '../domain/reservations'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import { formatOpenedAt, printTableQr } from '../../../core/config/qrTable'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
@@ -90,6 +91,20 @@ export function FloorPlanPage() {
       cancelled = true
     }
   }, [companyId, locationId, editRoute])
+
+  // Refresh when Reservation → Assign table updates the floor plan.
+  useEffect(() => {
+    function refreshFromAssignment() {
+      if (editing) return
+      const next =
+        companyId > 0 && locationId
+          ? loadFloorPlanLocal(companyId, locationId)
+          : loadFloorPlan()
+      setPlan(next)
+    }
+    window.addEventListener(FLOOR_PLAN_CHANGED_EVENT, refreshFromAssignment)
+    return () => window.removeEventListener(FLOOR_PLAN_CHANGED_EVENT, refreshFromAssignment)
+  }, [companyId, locationId, editing])
 
   useEffect(() => {
     if (!editRoute) {
@@ -524,12 +539,16 @@ export function FloorPlanPage() {
               <span className={`status-pill status-pill--${table.status}`}>
                 {TABLE_STATUS_LABEL[table.status]}
               </span>
-              {table.status === 'reserved' && table.reservedTime && (
+              {table.status === 'reserved' && (table.reservedTime || table.pax) ? (
                 <div className="floor-table__reserved">
-                  {table.reservedTime}
-                  {table.reservedName ? ` · ${table.reservedName}` : ''}
+                  {[
+                    table.reservedTime,
+                    table.pax && table.pax > 0 ? `${table.pax} pax` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </div>
-              )}
+              ) : null}
               {table.serverName && table.status !== 'reserved' && !editing && (
                 <div className="floor-table__server">{table.serverName}</div>
               )}

@@ -1,0 +1,124 @@
+.assign-table-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.assign-table-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(15, 23, 42, 0.45);
+  cursor: pointer;
+}
+
+.assign-table-modal__card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.assign-table-modal__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.assign-table-modal__head h2 {
+  margin: 0;
+  font-size: var(--pos-font-lg);
+}
+
+.assign-table-modal__head p {
+  margin: 0.25rem 0 0;
+  color: var(--color-ink-muted);
+  font-size: var(--pos-font-sm);
+}
+
+.assign-table-modal__close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-ink-muted);
+}
+
+.assign-table-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  overflow: auto;
+}
+
+.assign-table-modal__empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-ink-muted);
+}
+
+.assign-table-modal__table {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.assign-table-modal__table strong {
+  font-size: var(--pos-font-base);
+}
+
+.assign-table-modal__table span,
+.assign-table-modal__table em {
+  font-size: var(--pos-font-xs);
+  font-style: normal;
+  color: var(--color-ink-muted);
+}
+
+.assign-table-modal__table.is-open {
+  border-color: var(--color-success, #16a34a);
+}
+
+.assign-table-modal__table.is-reserved {
+  border-color: #94a3b8;
+}
+
+.assign-table-modal__table:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.assign-table-modal__table:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.assign-table-modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}

@@ -1,0 +1,92 @@
+.waitlist-join {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background:
+    linear-gradient(165deg, #f4f7f9 0%, #e8eef4 50%, #f7f3ec 100%);
+  color: #142033;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.waitlist-join__card {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.5rem 1.35rem;
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(20, 32, 51, 0.08);
+  box-shadow: 0 16px 40px rgba(20, 32, 51, 0.08);
+}
+
+.waitlist-join__card--ok {
+  text-align: center;
+}
+
+.waitlist-join__code {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #2f6f8f;
+}
+
+.waitlist-join h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.waitlist-join__sub {
+  margin: 0;
+  color: #5a6b7d;
+}
+
+.waitlist-join label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #5a6b7d;
+}
+
+.waitlist-join input {
+  height: 2.75rem;
+  padding: 0 0.85rem;
+  border: 1px solid rgba(20, 32, 51, 0.14);
+  border-radius: 0.65rem;
+  background: #fff;
+  font: inherit;
+  font-size: 1rem;
+  color: #142033;
+}
+
+.waitlist-join button[type='submit'] {
+  margin-top: 0.35rem;
+  height: 2.9rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: #142033;
+  color: #f5f7fa;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.waitlist-join button[type='submit']:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.waitlist-join__error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
