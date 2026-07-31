@@ -871,7 +871,7 @@ export default function TeamPortal({
               <p className="team-muted" style={{ margin: '0 0 10px' }}>
                 {pinOn
                   ? `PIN is set for ${loadPinEnrollment()?.username}. Enter a new 4-digit PIN to change it.`
-                  : 'Set a 4-digit PIN to unlock Team on this device without typing your password.'}
+                  : 'Set a 4-digit PIN to unlock Team and the POS register when it locks.'}
               </p>
               <label className="team-field">
                 <span>{pinOn ? 'New PIN' : 'PIN (4 digits)'}</span>
