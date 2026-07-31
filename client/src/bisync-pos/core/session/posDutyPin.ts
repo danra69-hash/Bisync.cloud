@@ -62,7 +62,26 @@ export async function resolvePinEmployee(pin: string): Promise<PosPinEmployee | 
   return null
 }
 
-/** Apply a 4-digit PIN as POS duty check-in or check-out (multiple cycles/day allowed). */
+function buildSession(
+  resolved: PosPinEmployee,
+  locationExternalId: string,
+  locationName: string,
+): PosDutySession {
+  return {
+    employeeId: resolved.employeeId,
+    employeeName: resolved.employeeName,
+    employeeCode: resolved.employeeCode,
+    locationExternalId,
+    outletInitial: outletInitialFromLocation(locationName, locationExternalId),
+    checkedInAt: new Date().toISOString(),
+  }
+}
+
+/**
+ * Shared terminal: each staff PIN punches that employee in/out independently.
+ * Does not require another person to check out first.
+ * Register unlock follows the last check-in; check-out clears unlock only for that holder.
+ */
 export async function applyPosDutyPin(opts: {
   pin: string
   locationExternalId: string
@@ -82,55 +101,41 @@ export async function applyPosDutyPin(opts: {
   }
 
   const current = loadPosDutySession()
-  const outletInitial = outletInitialFromLocation(opts.locationName, opts.locationExternalId)
 
-  if (current && current.employeeId === resolved.employeeId) {
-    clearPosDutySession()
-    if (resolved.employeeId > 0) {
-      try {
-        await punchHrAttendance({
-          employeeId: resolved.employeeId,
-          date: clockDate(),
-          timeHhMm: clockHhMm(),
-        })
-      } catch {
-        /* already out or no open punch */
-      }
+  // Demo PIN: toggle local unlock only (no HR employee).
+  if (resolved.employeeId <= 0) {
+    if (current?.employeeId === 0) {
+      clearPosDutySession()
+      return { ok: true, action: 'check-out', session: null }
     }
-    return { ok: true, action: 'check-out', session: null }
+    const session = buildSession(resolved, opts.locationExternalId, opts.locationName)
+    savePosDutySession(session)
+    return { ok: true, action: 'check-in', session }
   }
 
-  if (current && current.employeeId !== resolved.employeeId) {
+  try {
+    const punch = await punchHrAttendance({
+      employeeId: resolved.employeeId,
+      date: clockDate(),
+      timeHhMm: clockHhMm(),
+    })
+
+    if (punch.action === 'check-in') {
+      const session = buildSession(resolved, opts.locationExternalId, opts.locationName)
+      savePosDutySession(session)
+      return { ok: true, action: 'check-in', session }
+    }
+
+    // This employee checked out — clear register unlock only if they held it.
+    if (current?.employeeId === resolved.employeeId) {
+      clearPosDutySession()
+      return { ok: true, action: 'check-out', session: null }
+    }
+    return { ok: true, action: 'check-out', session: current }
+  } catch (err) {
     return {
       ok: false,
-      error: `${current.employeeName} is on duty. Check out first.`,
+      error: err instanceof Error ? err.message : 'Could not record attendance.',
     }
   }
-
-  const session: PosDutySession = {
-    employeeId: resolved.employeeId,
-    employeeName: resolved.employeeName,
-    employeeCode: resolved.employeeCode,
-    locationExternalId: opts.locationExternalId,
-    outletInitial,
-    checkedInAt: new Date().toISOString(),
-  }
-  savePosDutySession(session)
-
-  let warning: string | undefined
-  if (resolved.employeeId > 0) {
-    try {
-      await punchHrAttendance({
-        employeeId: resolved.employeeId,
-        date: clockDate(),
-        timeHhMm: clockHhMm(),
-      })
-    } catch (err) {
-      if (err instanceof Error) {
-        warning = `On duty — HR attendance: ${err.message}`
-      }
-    }
-  }
-
-  return { ok: true, action: 'check-in', session, warning }
 }

@@ -502,11 +502,11 @@ export function RegisterPage() {
 
         {!onDuty ? (
           <p className="register__duty-banner" role="status">
-            Use Check in/out: scan with Team (/TEAM), then enter your Team PIN to unlock ordering.
+            Use Check in/out: each staff member scans Team (/TEAM) or enters their own PIN.
           </p>
         ) : (
           <p className="register__duty-banner is-on" role="status">
-            On duty: {duty?.employeeName} — POS stays open until check out
+            Ordering unlocked — staff punch in/out with their own PIN
           </p>
         )}
 

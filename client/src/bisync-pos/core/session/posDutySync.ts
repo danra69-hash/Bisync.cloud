@@ -7,12 +7,12 @@ import {
 } from './posDutySession'
 
 /**
- * Keep POS "on duty" aligned with Team/HR attendance.
- * If the employee checked out on Team (mobile QR), clear the POS local duty session
- * so the register does not keep showing On duty.
+ * Keep register unlock aligned with Team/HR for the employee who last unlocked POS.
+ * If that holder checked out on Team (mobile QR), clear the local unlock session.
+ * Other staff check-ins/outs are independent and do not rename the shared Check in/out control.
  *
- * Rule: HR `actualOut` set for today ⇒ not currently on duty at POS.
- * Missing attendance / API errors do not kick a local PIN duty session.
+ * Rule: HR `actualOut` set for today for the unlock holder ⇒ clear unlock.
+ * Missing attendance / API errors do not kick a local PIN session.
  */
 export async function syncPosDutyWithHrAttendance(): Promise<PosDutySession | null> {
   const duty = loadPosDutySession()

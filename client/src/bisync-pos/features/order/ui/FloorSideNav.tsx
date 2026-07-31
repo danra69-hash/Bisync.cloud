@@ -42,7 +42,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
 
   const [checkInOpen, setCheckInOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const { duty, setDuty, refreshDuty } = usePosDutySession()
+  const { setDuty, refreshDuty } = usePosDutySession()
   const [dining, setDining] = useState('')
   const [pin, setPin] = useState('')
   const [pinBusy, setPinBusy] = useState(false)
@@ -98,11 +98,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       }
       setDuty(result.session)
       void refreshDuty()
-      setPinStatus(
-        result.action === 'check-in'
-          ? `Signed in · ${result.session?.employeeName ?? 'Staff'}`
-          : 'Signed out · POS locked',
-      )
+      setPinStatus(result.action === 'check-in' ? 'Checked in' : 'Checked out')
       if (result.warning) setPinError(result.warning)
     } catch (err) {
       setPin('')
@@ -202,8 +198,8 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     },
     {
       id: 'checkin',
-      label: duty ? `On duty · ${duty.employeeName}` : 'Check in/out',
-      active: Boolean(duty) || checkInOpen,
+      label: 'Check in/out',
+      active: checkInOpen,
       onClick: () => setCheckInOpen(true),
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -222,7 +218,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
             <button
               key={item.id}
               type="button"
-              className={`floor-side-nav__btn${item.active ? ' is-active' : ''}${item.id === 'checkin' && duty ? ' is-on-duty' : ''}`}
+              className={`floor-side-nav__btn${item.active ? ' is-active' : ''}`}
               onClick={item.onClick}
               aria-current={item.active && item.id !== 'history' && item.id !== 'checkin' ? 'page' : undefined}
             >
@@ -232,11 +228,9 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
           ))}
         </div>
 
-        <div className="floor-side-nav__pin" aria-label="POS sign-in PIN pad">
+        <div className="floor-side-nav__pin" aria-label="Staff check-in PIN pad">
           <div className="floor-side-nav__pin-head">
-            <span className="floor-side-nav__pin-title">
-              {duty ? 'Sign out / break' : 'Sign in to POS'}
-            </span>
+            <span className="floor-side-nav__pin-title">Staff PIN</span>
             <span className="floor-side-nav__pin-dots" aria-live="polite">
               {Array.from({ length: 4 }, (_, i) => (
                 <span key={i} className={i < pin.length ? 'is-filled' : ''} />

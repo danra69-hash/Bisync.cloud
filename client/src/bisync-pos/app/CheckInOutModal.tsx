@@ -120,9 +120,8 @@ export function CheckInOutModal({
           <div>
             <h2 id="checkin-modal-title">Check in / out</h2>
             <p>
-              {duty
-                ? 'Enter the same Team PIN to check out for a break or end of shift. You can check back in later the same day.'
-                : 'Scan with Bisync Team (/TEAM), or enter your Team / POS PIN below. This screen closes after check-in.'}
+              Shared terminal — each staff member scans Team (/TEAM) or enters their own PIN to punch in or out.
+              Multiple people can check in during the same shift.
             </p>
           </div>
           <button type="button" className="checkin-modal__close" onClick={onClose} aria-label="Close">
@@ -131,20 +130,12 @@ export function CheckInOutModal({
         </header>
 
         <div className="checkin-modal__status">
-          {duty ? (
-            <>
-              <strong>On duty</strong>
-              <span>
-                {duty.employeeName}
-                {duty.employeeCode ? ` · ${duty.employeeCode}` : ''}
-              </span>
-            </>
-          ) : (
-            <>
-              <strong>Not on duty</strong>
-              <span>POS ordering is locked until check-in (breaks allowed anytime)</span>
-            </>
-          )}
+          <strong>Staff attendance</strong>
+          <span>
+            {duty
+              ? 'Ordering unlocked. Use your PIN to punch your own in or out.'
+              : 'Ordering locked until someone checks in. Breaks and re-check-ins are allowed anytime.'}
+          </span>
         </div>
 
         <div className="checkin-modal__qr-block">
