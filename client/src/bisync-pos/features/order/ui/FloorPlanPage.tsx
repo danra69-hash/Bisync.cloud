@@ -381,6 +381,7 @@ export function FloorPlanPage() {
       ) : null}
 
       <div className={`floor-workspace${editing ? ' is-editing' : ''}`}>
+        <div className="floor-canvas-stage">
         <div
           ref={canvasRef}
           className="floor-canvas"
@@ -500,6 +501,7 @@ export function FloorPlanPage() {
               )}
             </button>
           ))}
+        </div>
         </div>
 
         {editing && (
