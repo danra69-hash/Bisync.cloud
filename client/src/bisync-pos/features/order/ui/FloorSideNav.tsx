@@ -3,11 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { MODE_META } from '../../../core/modes/types'
 import { usePosMode } from '../../../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
-import {
-  loadPosDutySession,
-  POS_DUTY_SESSION_EVENT,
-  type PosDutySession,
-} from '../../../core/session/posDutySession'
+import { applyPosDutyPin } from '../../../core/session/posDutyPin'
+import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import {
   POS_DINING_CHANGED_EVENT,
   readPosDiningFromEvent,
@@ -16,6 +13,8 @@ import {
 import { CheckInOutModal } from '../../../app/CheckInOutModal'
 import { HistoryModal } from '../../register/ui/HistoryModal'
 import './FloorSideNav.css'
+
+const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'] as const
 
 type NavId = 'home' | 'takeout' | 'reservation' | 'waitlist' | 'history' | 'checkin'
 
@@ -43,20 +42,12 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
 
   const [checkInOpen, setCheckInOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+  const { setDuty, refreshDuty } = usePosDutySession()
   const [dining, setDining] = useState('')
-
-  useEffect(() => {
-    function syncDuty() {
-      setDuty(loadPosDutySession())
-    }
-    window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-    window.addEventListener('storage', syncDuty)
-    return () => {
-      window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-      window.removeEventListener('storage', syncDuty)
-    }
-  }, [])
+  const [pin, setPin] = useState('')
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinError, setPinError] = useState<string | null>(null)
+  const [pinStatus, setPinStatus] = useState<string | null>(null)
 
   useEffect(() => {
     function onDiningChanged(event: Event) {
@@ -87,6 +78,56 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   function goWaitlist() {
     setMode('order')
     navigate('/order/waitlist')
+  }
+
+  async function submitSidePin(nextPin: string) {
+    if (pinBusy || nextPin.length !== 4) return
+    setPinBusy(true)
+    setPinError(null)
+    setPinStatus(null)
+    try {
+      const result = await applyPosDutyPin({
+        pin: nextPin,
+        locationExternalId: locationId || 'outlet',
+        locationName,
+      })
+      setPin('')
+      if (!result.ok) {
+        setPinError(result.error)
+        return
+      }
+      setDuty(result.session)
+      void refreshDuty()
+      setPinStatus(result.action === 'check-in' ? 'Checked in' : 'Checked out')
+      if (result.warning) setPinError(result.warning)
+    } catch (err) {
+      setPin('')
+      setPinError(err instanceof Error ? err.message : 'Could not verify PIN')
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
+  function onSidePinKey(key: (typeof PIN_KEYS)[number]) {
+    if (pinBusy) return
+    setPinError(null)
+    setPinStatus(null)
+    if (key === 'C') {
+      setPin('')
+      return
+    }
+    if (key === '⌫') {
+      setPin(prev => prev.slice(0, -1))
+      return
+    }
+    setPin(prev => {
+      if (prev.length >= 4) return prev
+      const next = prev + key
+      if (next.length === 4) {
+        window.setTimeout(() => void submitSidePin(next), 0)
+      }
+      return next
+    })
   }
 
   const items: Array<{
@@ -157,8 +198,8 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     },
     {
       id: 'checkin',
-      label: duty ? `On duty · ${duty.employeeName}` : 'Check in/out',
-      active: Boolean(duty) || checkInOpen,
+      label: 'Check in/out',
+      active: checkInOpen,
       onClick: () => setCheckInOpen(true),
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -177,7 +218,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
             <button
               key={item.id}
               type="button"
-              className={`floor-side-nav__btn${item.active ? ' is-active' : ''}${item.id === 'checkin' && duty ? ' is-on-duty' : ''}`}
+              className={`floor-side-nav__btn${item.active ? ' is-active' : ''}`}
               onClick={item.onClick}
               aria-current={item.active && item.id !== 'history' && item.id !== 'checkin' ? 'page' : undefined}
             >
@@ -185,6 +226,33 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
               <span className="floor-side-nav__label">{item.label}</span>
             </button>
           ))}
+        </div>
+
+        <div className="floor-side-nav__pin" aria-label="Staff check-in PIN pad">
+          <div className="floor-side-nav__pin-head">
+            <span className="floor-side-nav__pin-title">Staff PIN</span>
+            <span className="floor-side-nav__pin-dots" aria-live="polite">
+              {Array.from({ length: 4 }, (_, i) => (
+                <span key={i} className={i < pin.length ? 'is-filled' : ''} />
+              ))}
+            </span>
+          </div>
+          <div className="floor-side-nav__keypad" role="group" aria-label="Numeric PIN pad">
+            {PIN_KEYS.map(key => (
+              <button
+                key={key}
+                type="button"
+                className={`floor-side-nav__key${key === 'C' || key === '⌫' ? ' is-action' : ''}`}
+                onClick={() => onSidePinKey(key)}
+                disabled={pinBusy}
+              >
+                {key}
+              </button>
+            ))}
+          </div>
+          {pinStatus ? <p className="floor-side-nav__pin-ok">{pinStatus}</p> : null}
+          {pinError ? <p className="floor-side-nav__pin-error" role="alert">{pinError}</p> : null}
+          {pinBusy ? <p className="floor-side-nav__pin-busy">Verifying…</p> : null}
         </div>
 
         <button
@@ -202,8 +270,14 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         <CheckInOutModal
           locationExternalId={locationId || 'outlet'}
           locationName={locationName}
-          onClose={() => setCheckInOpen(false)}
-          onDutyChange={setDuty}
+          onClose={() => {
+            setCheckInOpen(false)
+            void refreshDuty()
+          }}
+          onDutyChange={next => {
+            setDuty(next)
+            void refreshDuty()
+          }}
         />
       )}
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}

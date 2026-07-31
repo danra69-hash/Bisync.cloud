@@ -21,15 +21,19 @@ import {
   clearActiveRegisterSession,
   loadActiveRegisterSession,
   loadFloorPlan,
+  markFloorTableOrdered,
   releaseFloorTable,
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
 import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
+import { fireCartToStations } from '../../boh/domain/kitchenTickets'
 import {
-  loadPosDutySession,
-  POS_DUTY_SESSION_EVENT,
-  type PosDutySession,
-} from '../../../core/session/posDutySession'
+  clearCustomerDisplaySnapshot,
+  publishCustomerDisplaySnapshot,
+} from '../../boh/domain/customerDisplay'
+import { saleDetailExtraChargeCents } from '../domain/saleDetail'
+import { MODE_META } from '../../../core/modes/types'
+import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import {
   consumePendingTakeawayRequest,
   POS_TAKEAWAY_REQUEST_EVENT,
@@ -108,19 +112,7 @@ export function RegisterPage() {
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
-  const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
-
-  useEffect(() => {
-    function syncDuty() {
-      setDuty(loadPosDutySession())
-    }
-    window.addEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-    window.addEventListener('storage', syncDuty)
-    return () => {
-      window.removeEventListener(POS_DUTY_SESSION_EVENT, syncDuty)
-      window.removeEventListener('storage', syncDuty)
-    }
-  }, [])
+  const { duty } = usePosDutySession()
 
   useEffect(() => {
     function openTakeaway() {
@@ -166,6 +158,51 @@ export function RegisterPage() {
   const onDuty = Boolean(duty)
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
+
+  // Keep CDS in sync with the open register check (pre-payment only).
+  useEffect(() => {
+    if (lines.length === 0) {
+      clearCustomerDisplaySnapshot()
+      return
+    }
+    const byId = new Map(catalogForFilter.map(p => [p.id, p]))
+    const displayLines = lines.flatMap(line => {
+      const product = byId.get(line.productId)
+      if (!product) return []
+      const extraCents = saleDetailExtraChargeCents(line.saleDetail)
+      return [{
+        name: product.name,
+        note: line.note,
+        quantityLabel: product.pricedByWeight && product.weightUom
+          ? `${line.quantity} ${product.weightUom}`
+          : String(line.quantity),
+        unitPriceCents: product.priceCents,
+        lineTotalCents: product.priceCents * line.quantity + extraCents,
+      }]
+    })
+    publishCustomerDisplaySnapshot({
+      checkNumber,
+      dining,
+      tableLabel:
+        activeTableSession?.tableLabel
+        || (dining === 'takeaway' ? 'Takeaway' : table ? `Table ${table}` : ''),
+      cover,
+      lines: displayLines,
+      charges,
+      subtotalCents: cartSubtotal(lines, catalogForFilter),
+      grandTotalCents: cartGrandTotal(lines, catalogForFilter, charges),
+      updatedAt: new Date().toISOString(),
+    })
+  }, [
+    lines,
+    charges,
+    dining,
+    table,
+    cover,
+    checkNumber,
+    activeTableSession,
+    catalogForFilter,
+  ])
 
   const filtered = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
@@ -365,28 +402,64 @@ export function RegisterPage() {
     })
   }
 
-  function handleCancelTable() {
-    if (lines.length > 0) {
-      flash('Remove order items before cancelling the table.')
-      return
+  function goHome() {
+    navigate(MODE_META.order.homePath)
+  }
+
+  /** Discard the current check (no kitchen fire) and return to the floor home. */
+  function handleCancelOrder() {
+    const label = activeTableSession?.tableLabel
+    if (activeTableSession) {
+      releaseFloorTable(activeTableSession.tableId)
+      if (session?.companyId && session.locationId) {
+        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+      }
     }
-    if (!activeTableSession) {
-      flash('No opened table to cancel.')
-      return
-    }
-    const released = releaseFloorTable(activeTableSession.tableId)
-    if (session?.companyId && session.locationId) {
-      void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
-    }
+    setLines([])
+    setCharges(EMPTY_CHARGES)
+    clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
+    flash(label ? `Order cancelled · ${label} released` : 'Order cancelled')
+    goHome()
+  }
+
+  /** Fire items to Bar/Kitchen, keep the table occupied, return home. */
+  function handleSaveOrder() {
+    if (lines.length === 0) {
+      flash('Add items before saving.')
+      return
+    }
+    const products = catalogForFilter
+    const tableLabel =
+      activeTableSession?.tableLabel
+      || (table ? `Table ${table}` : 'Takeaway')
+    const tickets = fireCartToStations({
+      lines,
+      products,
+      checkNumber,
+      tableLabel,
+      dining: dining || 'dine-in',
+    })
+    if (tickets.length === 0) {
+      flash('Nothing to send to Bar or Kitchen.')
+      return
+    }
+    const orderId = `chk-${checkNumber}`
+    if (activeTableSession) {
+      markFloorTableOrdered(activeTableSession.tableId, orderId)
+      if (session?.companyId && session.locationId) {
+        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+      }
+    }
+    const stations = [...new Set(tickets.map(t => t.station))].join(' · ')
+    setLines([])
     setCharges(EMPTY_CHARGES)
-    flash(
-      released
-        ? `Table ${activeTableSession.tableLabel} released`
-        : `Table ${activeTableSession.tableLabel} cancelled`,
-    )
-    navigate('/order/floor')
+    clearCustomerDisplaySnapshot()
+    clearActiveRegisterSession()
+    setActiveTableSession(null)
+    flash(`Order #${checkNumber} sent to ${stations}`)
+    goHome()
   }
 
   async function chargePayment() {
@@ -395,6 +468,7 @@ export function RegisterPage() {
       flash('Opening payment…')
       setLines([])
       setCharges(EMPTY_CHARGES)
+      clearCustomerDisplaySnapshot()
       return
     }
     if (lines.length === 0 || charging) return
@@ -441,6 +515,7 @@ export function RegisterPage() {
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       setLines([])
       setCharges(EMPTY_CHARGES)
+      clearCustomerDisplaySnapshot()
       clearActiveRegisterSession()
       setActiveTableSession(null)
       flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)
@@ -518,11 +593,11 @@ export function RegisterPage() {
 
         {!onDuty ? (
           <p className="register__duty-banner" role="status">
-            Use Check in/out: scan with Team (/TEAM), then enter your Team PIN to unlock ordering.
+            Use Check in/out: each staff member scans Team (/TEAM) or enters their own PIN.
           </p>
         ) : (
           <p className="register__duty-banner is-on" role="status">
-            On duty: {duty?.employeeName} — POS stays open until check out
+            Ordering unlocked — staff punch in/out with their own PIN
           </p>
         )}
 
@@ -558,19 +633,18 @@ export function RegisterPage() {
         onAction={action => {
           if (!requireDuty()) return
           if (action === 'cancel') {
-            handleCancelTable()
+            handleCancelOrder()
+            return
+          }
+          if (action === 'save') {
+            handleSaveOrder()
             return
           }
           if (action === 'payment') {
             void chargePayment()
             return
           }
-          const labels = {
-            save: 'Order saved',
-            print: 'Printing…',
-            payment: 'Opening payment…',
-          } as const
-          flash(labels[action])
+          flash('Printing…')
         }}
       />
 

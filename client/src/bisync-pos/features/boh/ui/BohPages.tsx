@@ -8,42 +8,37 @@ import { FeaturePage } from '../../common/FeaturePage'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import type { QrTableMode } from '../../../core/config/qrTable'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
+import { StationDisplayPage } from './StationDisplayPage'
+import { CustomerDisplayPage } from './CustomerDisplayPage'
 import './BohPages.css'
 
+/** Kitchen Display System — food dockets grouped by table. */
 export function KdsPage() {
-  const tickets = [
-    { id: '18', station: 'Fry', items: ['Onion Rings', 'Pepperoni Slice'], age: '4m' },
-    { id: '20', station: 'Cold', items: ['Fresh Basil Salad ×2', 'Shrimp Basil Salad'], age: '1m' },
-    { id: '21', station: 'Bar', items: ['Iced Latte', 'Green Tea'], age: '0m' },
-  ]
-
   return (
-    <FeaturePage
-      crumb="BOH / Kitchen Display"
-      title="Kitchen Order Routing (KDS)"
-      subtitle="Orders from Order and Cashier modes route to the right prep station in real time."
-    >
-      <div className="kds-board">
-        {tickets.map((ticket) => (
-          <article key={ticket.id} className="kds-ticket">
-            <header>
-              <strong>#{ticket.id}</strong>
-              <span>{ticket.station}</span>
-              <em>{ticket.age}</em>
-            </header>
-            <ul>
-              {ticket.items.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <button type="button" className="chip-btn chip-btn--primary">
-              Bump
-            </button>
-          </article>
-        ))}
-      </div>
-    </FeaturePage>
+    <StationDisplayPage
+      station="Kitchen"
+      code="KDS"
+      title="Kitchen Display System"
+      subtitle="Food orders by table — kitchen docket view."
+    />
   )
+}
+
+/** Bar Display System — drink dockets grouped by table. */
+export function BdsPage() {
+  return (
+    <StationDisplayPage
+      station="Bar"
+      code="BDS"
+      title="Bar Display System"
+      subtitle="Beverage orders by table — bar docket view."
+    />
+  )
+}
+
+/** Customer Display System — pre-payment transaction details only. */
+export function CdsPage() {
+  return <CustomerDisplayPage />
 }
 
 export function RoutingPage() {

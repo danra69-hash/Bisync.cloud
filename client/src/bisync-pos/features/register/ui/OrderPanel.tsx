@@ -23,7 +23,7 @@ type Props = {
   onOpenHistory: () => void
   onOpenPickup?: () => void
   onAction: (action: 'save' | 'print' | 'payment' | 'cancel') => void
-  /** When set, Cancel releases this opened table if the check has no items. */
+  /** Opened floor table label shown in Cancel tooltip when discarding. */
   activeTableLabel?: string | null
 }
 
@@ -51,7 +51,6 @@ export function OrderPanel({
   const subtotal = cartSubtotal(lines, products)
   const grandTotal = cartGrandTotal(lines, products, charges)
   const hasItems = lines.length > 0
-  const canCancelTable = Boolean(activeTableLabel) && !hasItems
 
   function editCents(
     key: keyof OrderCharges,
@@ -251,13 +250,10 @@ export function OrderPanel({
         <button
           type="button"
           className="btn btn--danger"
-          disabled={!canCancelTable}
           title={
-            !activeTableLabel
-              ? 'Open a table from the Floor Plan to cancel'
-              : hasItems
-                ? 'Remove order items before cancelling the table'
-                : `Cancel and release ${activeTableLabel}`
+            activeTableLabel
+              ? `Cancel order and release ${activeTableLabel}`
+              : 'Cancel order and return home'
           }
           onClick={() => onAction('cancel')}
         >

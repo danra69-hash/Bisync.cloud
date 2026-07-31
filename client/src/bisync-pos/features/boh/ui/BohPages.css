@@ -1,3 +1,14 @@
+.kds-empty {
+  color: var(--color-ink-muted);
+  margin: 0;
+}
+
+.kds-ticket__meta {
+  margin: 0 0 var(--space-2);
+  font-size: var(--pos-font-sm);
+  color: var(--color-ink-muted);
+}
+
 .kds-board {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

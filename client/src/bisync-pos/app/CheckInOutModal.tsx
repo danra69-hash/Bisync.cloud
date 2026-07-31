@@ -1,24 +1,13 @@
 import { useEffect, useState } from 'react'
-import { hrApi } from '../../modules/hr/api'
-import {
-  clockDate,
-  clockHhMm,
-  punchHrAttendance,
-} from '../../modules/hr/attendancePunch'
-import {
-  isValidPin,
-  loadPinEnrollment,
-  unlockPinPayload,
-} from '../../modules/hr/teamPin'
 import { qrImageUrl } from '../core/config/qrTable'
 import { outletInitialFromLocation } from '../core/session/outletInitial'
+import { applyPosDutyPin } from '../core/session/posDutyPin'
 import {
   buildCheckInQrPayload,
-  clearPosDutySession,
   loadPosDutySession,
-  savePosDutySession,
   type PosDutySession,
 } from '../core/session/posDutySession'
+import { syncPosDutyWithHrAttendance } from '../core/session/posDutySync'
 import './CheckInOutModal.css'
 
 type Props = {
@@ -29,45 +18,6 @@ type Props = {
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'] as const
-
-async function resolvePinEmployee(pin: string): Promise<{
-  employeeId: number
-  employeeName: string
-  employeeCode: string
-} | null> {
-  // Prefer Team mobile PIN enrollment on this device.
-  if (loadPinEnrollment() && isValidPin(pin)) {
-    try {
-      const payload = await unlockPinPayload(pin)
-      return {
-        employeeId: payload.employeeId,
-        employeeName: payload.name || 'Employee',
-        employeeCode: payload.username || '',
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-
-  try {
-    const result = await hrApi.employees.verifyPosPin(pin)
-    if (result.valid && result.employeeId != null) {
-      return {
-        employeeId: result.employeeId,
-        employeeName: result.employeeName || 'Employee',
-        employeeCode: result.employeeCode || '',
-      }
-    }
-  } catch {
-    /* fall through */
-  }
-
-  // Local smoke fallback when no Team/POS PIN is configured yet.
-  if (pin === '1234') {
-    return { employeeId: 0, employeeName: 'POS Staff', employeeCode: 'DEMO' }
-  }
-  return null
-}
 
 export function CheckInOutModal({
   locationExternalId,
@@ -90,6 +40,21 @@ export function CheckInOutModal({
   }, [])
 
   useEffect(() => {
+    // Reconcile with Team/HR when the QR screen opens (mobile may have checked out).
+    let cancelled = false
+    void syncPosDutyWithHrAttendance().then(next => {
+      if (cancelled) return
+      setDuty(next)
+      onDutyChange(next)
+    })
+    return () => {
+      cancelled = true
+    }
+    // Run once when the modal opens — not on every parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only sync
+  }, [])
+
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
     }
@@ -102,69 +67,22 @@ export function CheckInOutModal({
     setBusy(true)
     setError(null)
     try {
-      const resolved = await resolvePinEmployee(nextPin)
-      if (!resolved) {
-        setError('Invalid PIN. Use your Team mobile PIN, or set one under your name in /TEAM.')
-        setPin('')
-        return
-      }
-
-      const current = loadPosDutySession()
-
-      if (current && current.employeeId === resolved.employeeId) {
-        clearPosDutySession()
-        setDuty(null)
-        onDutyChange(null)
-        setPin('')
-        // Record HR check-out when ending duty (skip demo id 0).
-        if (resolved.employeeId > 0) {
-          try {
-            await punchHrAttendance({
-              employeeId: resolved.employeeId,
-              date: clockDate(),
-              timeHhMm: clockHhMm(),
-            })
-          } catch {
-            /* already out or no open punch */
-          }
-        }
-        return
-      }
-
-      if (current && current.employeeId !== resolved.employeeId) {
-        setError(`${current.employeeName} is on duty. Check out first.`)
-        setPin('')
-        return
-      }
-
-      const session: PosDutySession = {
-        employeeId: resolved.employeeId,
-        employeeName: resolved.employeeName,
-        employeeCode: resolved.employeeCode,
+      const result = await applyPosDutyPin({
+        pin: nextPin,
         locationExternalId,
-        outletInitial,
-        checkedInAt: new Date().toISOString(),
+        locationName,
+      })
+      if (!result.ok) {
+        setError(result.error)
+        setPin('')
+        return
       }
-      savePosDutySession(session)
-      setDuty(session)
-      onDutyChange(session)
-      setPin('')
 
-      // Ensure HR Attendance captures the punch when duty starts on POS.
-      if (resolved.employeeId > 0) {
-        try {
-          await punchHrAttendance({
-            employeeId: resolved.employeeId,
-            date: clockDate(),
-            timeHhMm: clockHhMm(),
-          })
-        } catch (err) {
-          // Duty still activates; surface attendance issue without blocking POS.
-          if (err instanceof Error && !/Already checked in and out/i.test(err.message)) {
-            setError(`On duty — HR attendance: ${err.message}`)
-          }
-        }
-      }
+      setDuty(result.session)
+      onDutyChange(result.session)
+      setPin('')
+      // Close the QR / check-in page once duty starts (or ends).
+      onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not verify PIN')
       setPin('')
@@ -202,9 +120,8 @@ export function CheckInOutModal({
           <div>
             <h2 id="checkin-modal-title">Check in / out</h2>
             <p>
-              {duty
-                ? 'Enter the same Team PIN to check out. POS stays open until then.'
-                : 'Scan with Bisync Team (/TEAM), then enter your Team PIN. POS stays open until check out.'}
+              Shared terminal — each staff member scans Team (/TEAM) or enters their own PIN to punch in or out.
+              Multiple people can check in during the same shift.
             </p>
           </div>
           <button type="button" className="checkin-modal__close" onClick={onClose} aria-label="Close">
@@ -213,20 +130,12 @@ export function CheckInOutModal({
         </header>
 
         <div className="checkin-modal__status">
-          {duty ? (
-            <>
-              <strong>On duty</strong>
-              <span>
-                {duty.employeeName}
-                {duty.employeeCode ? ` · ${duty.employeeCode}` : ''}
-              </span>
-            </>
-          ) : (
-            <>
-              <strong>Not on duty</strong>
-              <span>POS ordering is locked until check-in</span>
-            </>
-          )}
+          <strong>Staff attendance</strong>
+          <span>
+            {duty
+              ? 'Ordering unlocked. Use your PIN to punch your own in or out.'
+              : 'Ordering locked until someone checks in. Breaks and re-check-ins are allowed anytime.'}
+          </span>
         </div>
 
         <div className="checkin-modal__qr-block">

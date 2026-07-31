@@ -23,7 +23,7 @@
 
 .app-shell__body.has-home-nav {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--order-width);
+  grid-template-columns: minmax(0, 1fr) var(--home-nav-width);
   gap: var(--space-3);
   padding: var(--space-3);
   box-sizing: border-box;
@@ -66,7 +66,9 @@
   overflow: hidden;
 }
 
-.app-shell__main > .feature-page {
+.app-shell__main > .feature-page,
+.app-shell__main > .station-display,
+.app-shell__main > .cds-display {
   flex: 1;
   min-height: 0;
   overflow: auto;

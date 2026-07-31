@@ -475,7 +475,8 @@ export default function TeamPortal({
   const todayInfo = teamEmp ? getDayInfo(TODAY, teamEmp) : null;
   const checkedIn = Boolean(todayAttendance?.actualIn);
   const checkedOut = Boolean(todayAttendance?.actualOut);
-  const checkLabel = !checkedIn ? 'Check In' : checkedOut ? 'Checked Out' : 'Check Out';
+  // Multiple in/out cycles allowed (lunch / meetings / coffee): after an out, next action is check-in again.
+  const checkLabel = !checkedIn || checkedOut ? 'Check In' : 'Check Out';
 
   const stopScanner = () => {
     if (scanTimerRef.current != null) {
@@ -502,17 +503,15 @@ export default function TeamPortal({
     setCheckBusy(true);
     setScanError('');
     try {
-      const before = todayAttendance;
-      const record = await punchHrAttendance({
+      const { record, action } = await punchHrAttendance({
         employeeId: teamEmp.id,
         date: TODAY,
         timeHhMm: parsed.time,
         shiftSchedules,
       });
       setTodayAttendance(record);
-      const wasCheckIn = !before?.actualIn;
       showToast(
-        wasCheckIn
+        action === 'check-in'
           ? `Checked in at ${parsed.time} · HR attendance recorded`
           : `Checked out at ${parsed.time} · HR attendance recorded`,
       );
@@ -987,7 +986,7 @@ export default function TeamPortal({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                     <h3 style={{ margin: 0 }}>Clock</h3>
                     <span className={`team-status-pill ${checkedIn && !checkedOut ? 'is-in' : 'is-out'}`}>
-                      {!checkedIn ? 'Not checked in' : checkedOut ? 'Shift complete' : 'On duty'}
+                      {!checkedIn ? 'Not checked in' : checkedOut ? 'Away / on break' : 'On duty'}
                     </span>
                   </div>
                   <div className="team-hero">
@@ -996,14 +995,13 @@ export default function TeamPortal({
                     <button
                       type="button"
                       className="team-punch-btn"
-                      disabled={checkedIn && checkedOut}
                       onClick={() => void startScanner()}
                     >
                       <Camera size={16} style={{ display: 'inline', verticalAlign: '-3px', marginRight: 6 }} />
                       {checkLabel}
                     </button>
                     <p className="team-muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                      Scan the QR on the POS Check In/Out screen
+                      Scan the POS QR anytime — lunch, meetings, coffee, then check in again
                     </p>
                   </div>
                   <dl className="team-kv" style={{ marginTop: 10 }}>
