@@ -29,7 +29,9 @@ static string ResolveOperationalConnection(IServiceProvider sp)
         || path.StartsWith("/api/companies", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/locations", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/api/users", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/api/access-control", StringComparison.OrdinalIgnoreCase))
+        || path.StartsWith("/api/access-control", StringComparison.OrdinalIgnoreCase)
+        // Floor plan layout is control-plane (shared), like locations registry.
+        || path.StartsWith("/api/pos/floor-plan", StringComparison.OrdinalIgnoreCase))
         return resolver.DefaultOperationalConnection;
 
     int? companyId = null;

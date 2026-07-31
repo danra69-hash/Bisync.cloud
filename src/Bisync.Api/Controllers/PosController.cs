@@ -150,13 +150,12 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         }
         catch (Exception ex)
         {
-            return Ok(new
+            return StatusCode(500, new
             {
                 companyId = cid.Value,
                 locationExternalId = loc,
-                layoutJson = """{"tables":[],"zones":[]}""",
-                updatedAt = (DateTime?)null,
-                warning = ex.Message,
+                message = "Floor plan storage is not ready.",
+                detail = ex.GetBaseException().Message,
             });
         }
     }
@@ -175,35 +174,46 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         if (layoutJson.Length > 1_500_000)
             return BadRequest(new { message = "Floor plan payload is too large." });
 
-        await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
-
-        var row = await db.PosFloorPlans
-            .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
-        if (row is null)
+        try
         {
-            row = new PosFloorPlan
+            await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
+
+            var row = await db.PosFloorPlans
+                .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+            if (row is null)
             {
-                CompanyId = cid.Value,
-                LocationExternalId = loc,
-                LayoutJson = layoutJson,
-                UpdatedAt = DateTime.UtcNow,
-            };
-            db.PosFloorPlans.Add(row);
-        }
-        else
-        {
-            row.LayoutJson = layoutJson;
-            row.UpdatedAt = DateTime.UtcNow;
-        }
+                row = new PosFloorPlan
+                {
+                    CompanyId = cid.Value,
+                    LocationExternalId = loc,
+                    LayoutJson = layoutJson,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                db.PosFloorPlans.Add(row);
+            }
+            else
+            {
+                row.LayoutJson = layoutJson;
+                row.UpdatedAt = DateTime.UtcNow;
+            }
 
-        await db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
-        return Ok(new
+            return Ok(new
+            {
+                companyId = row.CompanyId,
+                locationExternalId = row.LocationExternalId,
+                layoutJson = row.LayoutJson,
+                updatedAt = row.UpdatedAt,
+            });
+        }
+        catch (Exception ex)
         {
-            companyId = row.CompanyId,
-            locationExternalId = row.LocationExternalId,
-            layoutJson = row.LayoutJson,
-            updatedAt = row.UpdatedAt,
-        });
+            return StatusCode(500, new
+            {
+                message = "Could not save floor plan.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
     }
 }
