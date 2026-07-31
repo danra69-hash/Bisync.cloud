@@ -291,7 +291,14 @@ public static class ConfigurationSeeder
         }
 
         await db.SaveChangesAsync();
-        await PlatformOwnerIdentityMigrator.ApplyAsync(db);
+        try
+        {
+            await PlatformOwnerIdentityMigrator.ApplyAsync(db);
+        }
+        catch
+        {
+            // Deferred startup retries with logging; do not block seed bootstrap.
+        }
     }
 
     static async Task<Company?> ResolvePlatformOwnerCompanyAsync(BisyncDbContext db)

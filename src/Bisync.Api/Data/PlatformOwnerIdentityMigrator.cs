@@ -13,54 +13,83 @@ public static class PlatformOwnerIdentityMigrator
 {
     public static async Task ApplyAsync(BisyncDbContext db, ILogger? logger = null)
     {
+        try
+        {
+            await ApplyCoreAsync(db, logger);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "PlatformOwnerIdentityMigrator failed");
+            throw;
+        }
+    }
+
+    static async Task ApplyCoreAsync(BisyncDbContext db, ILogger? logger)
+    {
         var canonical = SuperAdminAccess.SuperAdminEmail.Trim().ToLowerInvariant();
         var aliases = SuperAdminAccess.AliasEmails
             .Select(e => e.Trim().ToLowerInvariant())
             .Where(e => e.Length > 0 && e != canonical)
             .Distinct()
-            .ToArray();
-        if (aliases.Length == 0) return;
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (aliases.Count == 0) return;
 
-        var keeper = await db.AppUsers
-            .FirstOrDefaultAsync(u => u.Email.ToLower() == canonical);
+        // Load then filter in-memory — avoids EF translation issues with
+        // array.Contains(email.ToLower()) on PostgreSQL.
+        var allUsers = await db.AppUsers.ToListAsync();
+        var keeper = allUsers.FirstOrDefault(u =>
+            string.Equals(u.Email?.Trim(), canonical, StringComparison.OrdinalIgnoreCase));
         if (keeper is null)
         {
-            // EnsureSuperAdmin should create the keeper first.
+            logger?.LogWarning("Platform owner AppUser {Email} not found; skip identity merge", canonical);
             return;
         }
 
-        var aliasUsers = await db.AppUsers
-            .Where(u => aliases.Contains(u.Email.ToLower()))
-            .ToListAsync();
+        var aliasUsers = allUsers
+            .Where(u => u.Id != keeper.Id && aliases.Contains((u.Email ?? string.Empty).Trim()))
+            .ToList();
 
-        var employees = await db.Employees
-            .Where(e => e.Email.ToLower() == canonical || aliases.Contains(e.Email.ToLower()))
-            .OrderBy(e => e.Id)
-            .ToListAsync();
+        var allEmployees = await db.Employees.OrderBy(e => e.Id).ToListAsync();
+        var employees = allEmployees
+            .Where(e =>
+            {
+                var email = (e.Email ?? string.Empty).Trim();
+                return string.Equals(email, canonical, StringComparison.OrdinalIgnoreCase)
+                    || aliases.Contains(email);
+            })
+            .ToList();
 
-        if (aliasUsers.Count == 0 && employees.Count <= 1 && keeper.EmployeeId is > 0)
+        if (aliasUsers.Count == 0 && employees.Count <= 1)
         {
+            if (keeper.EmployeeId is null or <= 0 && employees.Count == 1)
+            {
+                keeper.EmployeeId = employees[0].Id;
+                employees[0].Email = SuperAdminAccess.SuperAdminEmail;
+                employees[0].BisyncEnabled = true;
+                employees[0].Active = true;
+            }
             await EnsureWeissbrauHomeAsync(db, keeper, logger);
+            await db.SaveChangesAsync();
             return;
         }
 
-        // Prefer HR row already linked to an alias AppUser (CEO / Bisync-enabled),
-        // else oldest employee among the identity set.
         Employee? hrKeeper = null;
         foreach (var aliasUser in aliasUsers.Where(u => u.EmployeeId is > 0))
         {
-            hrKeeper = employees.FirstOrDefault(e => e.Id == aliasUser.EmployeeId)
-                ?? await db.Employees.FirstOrDefaultAsync(e => e.Id == aliasUser.EmployeeId);
+            hrKeeper = allEmployees.FirstOrDefault(e => e.Id == aliasUser.EmployeeId);
             if (hrKeeper is not null) break;
         }
 
-        hrKeeper ??= employees.FirstOrDefault(e => aliases.Contains(e.Email.ToLowerInvariant()))
-            ?? employees.FirstOrDefault();
+        hrKeeper ??= employees.FirstOrDefault(e => aliases.Contains((e.Email ?? string.Empty).Trim()))
+            ?? employees.FirstOrDefault()
+            ?? allEmployees.FirstOrDefault(e =>
+                string.Equals(e.Name, "Daniel Ra", StringComparison.OrdinalIgnoreCase));
 
         if (hrKeeper is null)
         {
             await EnsureWeissbrauHomeAsync(db, keeper, logger);
             await db.SaveChangesAsync();
+            logger?.LogWarning("No HR employee found to link to platform owner {Email}", canonical);
             return;
         }
 
@@ -68,10 +97,8 @@ public static class PlatformOwnerIdentityMigrator
             .Where(e => e.Id != hrKeeper.Id)
             .ToList();
 
-        // Free unique EmployeeId / Email constraints before remounts.
         foreach (var aliasUser in aliasUsers)
         {
-            if (aliasUser.Id == keeper.Id) continue;
             await RemountAppUserReferencesAsync(db, aliasUser.Id, keeper.Id);
             aliasUser.EmployeeId = null;
             aliasUser.Active = false;
@@ -82,8 +109,7 @@ public static class PlatformOwnerIdentityMigrator
         foreach (var absorb in absorbEmployees)
         {
             await RemountEmployeeReferencesAsync(db, absorb.Id, hrKeeper.Id);
-            // Free unique email before delete / reassign.
-            absorb.Email = $"merged+{absorb.Id}.{absorb.Email}";
+            absorb.Email = $"merged+{absorb.Id}.retired@bisync.local";
             absorb.Active = false;
             absorb.BisyncEnabled = false;
         }
@@ -91,21 +117,22 @@ public static class PlatformOwnerIdentityMigrator
         await db.SaveChangesAsync();
 
         foreach (var absorb in absorbEmployees)
-        {
             db.Employees.Remove(absorb);
-        }
 
-        foreach (var aliasUser in aliasUsers.Where(u => u.Id != keeper.Id).ToList())
-        {
+        foreach (var aliasUser in aliasUsers)
             db.AppUsers.Remove(aliasUser);
-        }
 
         hrKeeper.Email = SuperAdminAccess.SuperAdminEmail;
-        hrKeeper.Name = string.IsNullOrWhiteSpace(hrKeeper.Name) ? "Daniel Ra" : hrKeeper.Name;
+        if (string.IsNullOrWhiteSpace(hrKeeper.Name))
+            hrKeeper.Name = "Daniel Ra";
         hrKeeper.Active = true;
         hrKeeper.BisyncEnabled = true;
         if (string.IsNullOrWhiteSpace(hrKeeper.Position))
             hrKeeper.Position = "Chief Executive Officer";
+
+        // Ensure no other AppUser still points at the HR keeper before linking.
+        foreach (var other in allUsers.Where(u => u.Id != keeper.Id && u.EmployeeId == hrKeeper.Id))
+            other.EmployeeId = null;
 
         keeper.EmployeeId = hrKeeper.Id;
         keeper.Email = SuperAdminAccess.SuperAdminEmail;
@@ -118,10 +145,12 @@ public static class PlatformOwnerIdentityMigrator
         await db.SaveChangesAsync();
 
         logger?.LogInformation(
-            "Merged platform-owner identity into {Email} (AppUser {UserId}, Employee {EmployeeId})",
+            "Merged platform-owner identity into {Email} (AppUser {UserId}, Employee {EmployeeId}); removed {AliasCount} alias user(s) and {AbsorbCount} duplicate employee(s)",
             keeper.Email,
             keeper.Id,
-            hrKeeper.Id);
+            hrKeeper.Id,
+            aliasUsers.Count,
+            absorbEmployees.Count);
     }
 
     static async Task EnsureWeissbrauHomeAsync(BisyncDbContext db, AppUser keeper, ILogger? logger)
@@ -205,7 +234,7 @@ public static class PlatformOwnerIdentityMigrator
         foreach (var c in salesCustomers)
         {
             c.EngagedUserId = toUserId;
-            if (string.Equals(c.EngagedUserEmail, "dra@test.com", StringComparison.OrdinalIgnoreCase))
+            if (SuperAdminAccess.IsPlatformOwnerEmail(c.EngagedUserEmail))
                 c.EngagedUserEmail = SuperAdminAccess.SuperAdminEmail;
         }
 
@@ -215,7 +244,7 @@ public static class PlatformOwnerIdentityMigrator
         foreach (var c in appointments)
         {
             c.EngagedUserId = toUserId;
-            if (string.Equals(c.EngagedUserEmail, "dra@test.com", StringComparison.OrdinalIgnoreCase))
+            if (SuperAdminAccess.IsPlatformOwnerEmail(c.EngagedUserEmail))
                 c.EngagedUserEmail = SuperAdminAccess.SuperAdminEmail;
         }
     }
@@ -238,7 +267,6 @@ public static class PlatformOwnerIdentityMigrator
             db.LeaveRequests.Where(r => r.EmployeeId == fromEmployeeId),
             r => r.EmployeeId = toEmployeeId);
 
-        // LeaveBalance uses EmployeeId as PK — merge or drop the absorb row.
         var absorbBalance = await db.LeaveBalances.FirstOrDefaultAsync(r => r.EmployeeId == fromEmployeeId);
         if (absorbBalance is not null)
         {
@@ -302,6 +330,6 @@ public static class PlatformOwnerIdentityMigrator
             .Where(u => u.EmployeeId == fromEmployeeId)
             .ToListAsync();
         foreach (var u in linkedUsers)
-            u.EmployeeId = toEmployeeId;
+            u.EmployeeId = null;
     }
 }
