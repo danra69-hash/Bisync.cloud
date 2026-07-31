@@ -32,14 +32,17 @@ export const NESTED_PANEL_SHELL_WIDE_CLS =
 export const MODAL_OVERLAY_CLS = 'fixed inset-0 bg-black/50 z-[120]';
 export const MODAL_SHELL_CLS = 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[121]';
 
-/** Portaled combobox/picker menus must sit above modal shells (z-121). */
-export const PICKER_MENU_Z_CLS = 'z-[130]';
+/**
+ * Detail panels opened from inside a modal (e.g. New Component from Edit Product).
+ * Must sit above modal shells (z-121) and below picker menus.
+ */
+export const DETAIL_PANEL_OVERLAY_ELEVATED_CLS = 'fixed inset-0 z-[132] bg-foreground/10';
+export const DETAIL_PANEL_SHELL_ELEVATED_CLS =
+  'fixed top-0 right-0 z-[133] h-full w-[min(119vw,96vw)] max-w-[min(119vw,96vw)] bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden';
+
+/** Portaled combobox/picker menus must sit above modal shells and elevated detail panels. */
+export const PICKER_MENU_Z_CLS = 'z-[140]';
 
 /** Photo preview — below engage/tag modals. */
 export const LIGHTBOX_OVERLAY_CLS = 'fixed inset-0 bg-black/50 z-[108]';
 export const LIGHTBOX_SHELL_CLS = 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[109]';
-
-/** Detail panel above vendor product panel and modals. */
-export const DETAIL_PANEL_OVERLAY_ELEVATED_CLS = 'fixed inset-0 z-[104] bg-foreground/10';
-export const DETAIL_PANEL_SHELL_ELEVATED_CLS =
-  'fixed top-0 right-0 z-[105] h-full w-[min(119vw,96vw)] max-w-[min(119vw,96vw)] bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden';
