@@ -205,6 +205,57 @@
   color: var(--team-muted-fg);
 }
 
+.team-login-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: calc(var(--team-radius) + 4px);
+  background: color-mix(in srgb, var(--team-muted) 75%, transparent);
+  border: 1px solid var(--team-border);
+}
+
+.team-login-mode-tab {
+  border: 0;
+  border-radius: var(--team-radius);
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--team-muted-fg);
+  font-weight: 700;
+  font-size: var(--team-text-sm);
+  cursor: pointer;
+}
+
+.team-login-mode-tab.is-active {
+  background: var(--team-card);
+  color: var(--team-fg);
+  box-shadow: 0 1px 4px rgba(44, 26, 10, 0.08);
+}
+
+.team-login-pin-input {
+  letter-spacing: 0.35em;
+  font-weight: 700;
+  text-align: center;
+}
+
+.team-login-pin-hint {
+  margin: -2px 0 2px !important;
+  font-size: 10px !important;
+  line-height: 1.35;
+}
+
+.team-login-biometric-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.team-login-biometric-icon {
+  display: inline-flex;
+  line-height: 0;
+}
+
 .team-field {
   display: grid;
   gap: 3px;
@@ -313,6 +364,28 @@
 .team-topbar-meta {
   flex: 1;
   min-width: 0;
+}
+
+.team-topbar-meta-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.team-topbar-meta-btn:hover strong,
+.team-topbar-meta-btn:focus-visible strong {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.team-topbar-meta-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 2px;
 }
 
 .team-topbar-meta strong {
