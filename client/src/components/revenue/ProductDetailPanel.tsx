@@ -46,6 +46,7 @@ export function ProductDetailPanel({
   onUpdated,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
+  const [editorRequest, setEditorRequest] = useState<{ mode: 'edit'; id: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rrpDraft, setRrpDraft] = useState(product.rrp > 0 ? String(product.rrp) : '');
@@ -60,8 +61,19 @@ export function ProductDetailPanel({
 
   useEffect(() => {
     setIsEditing(false);
+    setEditorRequest(null);
     setError(null);
   }, [product.id]);
+
+  function startEditing() {
+    setEditorRequest({ mode: 'edit', id: product.id });
+    setIsEditing(true);
+  }
+
+  function stopEditing() {
+    setIsEditing(false);
+    setEditorRequest(null);
+  }
 
   useEffect(() => {
     setRrpDraft(product.rrp > 0 ? String(product.rrp) : '');
@@ -259,7 +271,7 @@ export function ProductDetailPanel({
   function handleDialogClose() {
     if (saving) return;
     if (isEditing) {
-      setIsEditing(false);
+      stopEditing();
       return;
     }
     onClose();
@@ -269,7 +281,7 @@ export function ProductDetailPanel({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || saving) return;
       if (isEditing) {
-        setIsEditing(false);
+        stopEditing();
         return;
       }
       onClose();
@@ -320,7 +332,7 @@ export function ProductDetailPanel({
                 {companyId ? (
                   <button
                     type="button"
-                    onClick={() => setIsEditing(true)}
+                    onClick={startEditing}
                     disabled={saving}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/50 disabled:opacity-50"
                   >
@@ -349,11 +361,12 @@ export function ProductDetailPanel({
               popupMode
               selectedCompanyId={companyId}
               selectedLocationIds={selectedLocationIds}
-              editorRequest={{ mode: 'edit', id: product.id }}
-              onClose={() => setIsEditing(false)}
+              editorRequest={editorRequest}
+              onEditorRequestConsumed={() => setEditorRequest(null)}
+              onClose={stopEditing}
               onSaved={saved => {
                 onUpdated?.(saved);
-                setIsEditing(false);
+                stopEditing();
                 onClose();
               }}
             />
