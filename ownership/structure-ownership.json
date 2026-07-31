@@ -570,6 +570,17 @@
       "notes": "RMS Reports \u2014 wastage lines and reason roll-up"
     },
     {
+      "id": "dr.page.bcg-matrix-report",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/reports/BcgMatrixReportPage.tsx",
+      "symbol": "BcgMatrixReportPage",
+      "route": "/revenue/reports/bcg-matrix",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-07-31",
+      "notes": "RMS Reports \u2014 BCG product portfolio matrix (share vs growth)"
+    },
+    {
       "id": "dr.page.system-configuration",
       "kind": "client-page",
       "path": "client/src/components/admin/SystemConfigurationPage.tsx",
@@ -1186,7 +1197,7 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-07-31",
-      "notes": "Common RMS operational reports (sales, inventory, purchase, production, wastage)"
+      "notes": "Common RMS operational reports (sales, inventory, purchase, production, wastage, BCG matrix)"
     },
     {
       "id": "dr.api.system-audit",

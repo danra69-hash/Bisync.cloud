@@ -162,6 +162,7 @@ export const ko = {
       detailedPurchaseSummary: '상세 구매 요약',
       productionReport: '생산 보고서',
       wastageReport: '폐기 보고서',
+      bcgMatrix: 'BCG 매트릭스',
       cogsAudit: 'COGS Audit',
     },
     selectModule: '위 탐색 바에서 모듈을 선택하세요.',

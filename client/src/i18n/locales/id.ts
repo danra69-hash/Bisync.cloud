@@ -162,6 +162,7 @@ export const id = {
       detailedPurchaseSummary: 'Ringkasan Pembelian Rinci',
       productionReport: 'Laporan Produksi',
       wastageReport: 'Laporan Susut',
+      bcgMatrix: 'Matriks BCG',
       cogsAudit: 'COGS Audit',
     },
     selectModule: 'Pilih modul dari bilah navigasi di atas.',

@@ -24,6 +24,7 @@ import { InventorySummaryReportPage } from './reports/InventorySummaryReportPage
 import { DetailedPurchaseSummaryReportPage } from './reports/DetailedPurchaseSummaryReportPage';
 import { ProductionReportPage } from './reports/ProductionReportPage';
 import { WastageReportPage } from './reports/WastageReportPage';
+import { BcgMatrixReportPage } from './reports/BcgMatrixReportPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
@@ -258,6 +259,13 @@ function renderRevMgmtContent(
     case 'Wastage Report':
       return (
         <WastageReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'BCG Matrix':
+      return (
+        <BcgMatrixReportPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

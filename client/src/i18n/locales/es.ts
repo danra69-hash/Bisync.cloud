@@ -162,6 +162,7 @@ export const es = {
       detailedPurchaseSummary: 'Resumen de compras detallado',
       productionReport: 'Informe de producción',
       wastageReport: 'Informe de mermas',
+      bcgMatrix: 'Matriz BCG',
       cogsAudit: 'COGS Audit',
     },
     selectModule: 'Seleccione un módulo en la barra de navegación superior.',
