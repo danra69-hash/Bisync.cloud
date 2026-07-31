@@ -52,7 +52,10 @@ public class TransfersController(
         }
         else
         {
-            var earliest = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddYears(-2));
+            var today = cid is int companyForDate
+                ? await OrgBusinessDate.TodayAsync(db, companyForDate)
+                : OrgClock.TodayLocal("MY");
+            var earliest = today.AddYears(-2);
             query = query.Where(t => t.TransferDate >= earliest);
         }
 
@@ -132,10 +135,12 @@ public class TransfersController(
         if (!DateOnly.TryParse(request.TransferDate, out var transferDate))
             return BadRequest(new { message = "Invalid transfer date." });
 
-        var earliest = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddYears(-2));
+        var today = await OrgBusinessDate.TodayAsync(
+            db, companyId.Value, request.FromLocationExternalId);
+        var earliest = today.AddYears(-2);
         if (transferDate < earliest)
             return BadRequest(new { message = "Transfer date is outside the 2-year live history window." });
-        if (transferDate > DateOnly.FromDateTime(DateTime.UtcNow.Date))
+        if (transferDate > today)
             return BadRequest(new { message = "Transfer date cannot be in the future." });
 
         try

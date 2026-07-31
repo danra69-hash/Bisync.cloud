@@ -340,9 +340,9 @@ public class EmployeesController(BisyncDbContext db) : ControllerBase
         return NoContent();
     }
 
-    private static decimal YearsOfServiceFromJoinDate(DateOnly joinDate)
+    private static decimal YearsOfServiceFromJoinDate(DateOnly joinDate, string? countryCode = "MY")
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = OrgClock.TodayLocal(countryCode);
         if (joinDate >= today) return 0;
         var years = today.Year - joinDate.Year;
         var anniversary = joinDate.AddYears(years);

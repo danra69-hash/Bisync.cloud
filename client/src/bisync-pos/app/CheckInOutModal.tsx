@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useOrgTimeZoneId } from '../../context/OrgCountryContext'
 import { hrApi } from '../../modules/hr/api'
 import {
   clockDate,
@@ -75,6 +76,7 @@ export function CheckInOutModal({
   onClose,
   onDutyChange,
 }: Props) {
+  const timeZoneId = useOrgTimeZoneId()
   const [now, setNow] = useState(() => new Date())
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
@@ -82,7 +84,7 @@ export function CheckInOutModal({
   const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
 
   const outletInitial = outletInitialFromLocation(locationName, locationExternalId)
-  const qrPayload = buildCheckInQrPayload(outletInitial, now)
+  const qrPayload = buildCheckInQrPayload(outletInitial, now, timeZoneId)
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 15_000)
@@ -121,8 +123,8 @@ export function CheckInOutModal({
           try {
             await punchHrAttendance({
               employeeId: resolved.employeeId,
-              date: clockDate(),
-              timeHhMm: clockHhMm(),
+              date: clockDate(new Date(), timeZoneId),
+              timeHhMm: clockHhMm(new Date(), timeZoneId),
             })
           } catch {
             /* already out or no open punch */
@@ -155,8 +157,8 @@ export function CheckInOutModal({
         try {
           await punchHrAttendance({
             employeeId: resolved.employeeId,
-            date: clockDate(),
-            timeHhMm: clockHhMm(),
+            date: clockDate(new Date(), timeZoneId),
+            timeHhMm: clockHhMm(new Date(), timeZoneId),
           })
         } catch (err) {
           // Duty still activates; surface attendance issue without blocking POS.

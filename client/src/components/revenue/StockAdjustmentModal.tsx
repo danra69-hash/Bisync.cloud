@@ -4,6 +4,7 @@ import { Minus, Plus, X } from 'lucide-react';
 import { api, type StockCardAsOfSnapshot } from '../../api';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
@@ -31,28 +32,21 @@ function fmtQty(value: number, countryCode: string) {
   return Number.isInteger(value) && value !== 0 ? String(value) : formatCountryNumber(value, countryCode);
 }
 
-function todayInputValue(): string {
-  const d = new Date();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${month}-${day}`;
-}
-
-function toInputDate(iso: string): string {
+function toInputDate(iso: string, fallbackToday: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return todayInputValue();
+  if (Number.isNaN(d.getTime())) return fallbackToday;
   const month = String(d.getUTCMonth() + 1).padStart(2, '0');
   const day = String(d.getUTCDate()).padStart(2, '0');
   return `${d.getUTCFullYear()}-${month}-${day}`;
 }
 
-function minDateFromIso(iso: string): string {
-  return toInputDate(iso);
+function minDateFromIso(iso: string, fallbackToday: string): string {
+  return toInputDate(iso, fallbackToday);
 }
 
-function maxDateFromIso(iso: string, isCurrentMonth: boolean): string {
-  if (isCurrentMonth) return todayInputValue();
-  return toInputDate(iso);
+function maxDateFromIso(iso: string, isCurrentMonth: boolean, todayYmd: string): string {
+  if (isCurrentMonth) return todayYmd;
+  return toInputDate(iso, todayYmd);
 }
 
 export function StockAdjustmentModal({
@@ -72,6 +66,7 @@ export function StockAdjustmentModal({
   onSaved,
 }: Props) {
   const countryCode = useOrgCountryCode();
+  const { todayYmd } = useOrgDateInput();
   const { rm } = useCountryFormatters();
   const uomOptions = useMemo(
     () => [...new Set([inventoryUom, recipeUom].map(u => u.trim()).filter(Boolean))],
@@ -81,9 +76,8 @@ export function StockAdjustmentModal({
 
   const [locationExternalId, setLocationExternalId] = useState(locationIds[0] ?? '');
   const [adjustmentDate, setAdjustmentDate] = useState(() => {
-    const end = toInputDate(periodEnd);
-    const today = todayInputValue();
-    return end < today ? end : today;
+    const end = toInputDate(periodEnd, todayYmd);
+    return end < todayYmd ? end : todayYmd;
   });
   const [direction, setDirection] = useState<'in' | 'out'>('in');
   const [quantity, setQuantity] = useState('1');
@@ -95,8 +89,8 @@ export function StockAdjustmentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const minDate = minDateFromIso(periodStart);
-  const maxDate = maxDateFromIso(periodEnd, isCurrentMonth);
+  const minDate = minDateFromIso(periodStart, todayYmd);
+  const maxDate = maxDateFromIso(periodEnd, isCurrentMonth, todayYmd);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

@@ -20,6 +20,8 @@ import { TableLoadingRow } from '../shared/MillstoneLoader';
 import { SalesModuleTeamPanel } from '../dev/SalesModuleTeamPanel';
 import { SalesDiaryPanel } from './SalesDiaryPanel';
 import { ClientUpdateFollowupPanel } from './ClientUpdateFollowupPanel';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
+import { toDateInputValueInTz } from '../../utils/countryTimeZones';
 
 type TabId = 'overview' | 'client-update' | 'sales-diary' | 'calendar';
 type OverviewView = 'week' | 'month';
@@ -78,13 +80,6 @@ type Props = {
   sessionName?: string;
 };
 
-function toLocalInputValue(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function startOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
@@ -98,6 +93,7 @@ function sameDay(a: Date, b: Date): boolean {
 }
 
 export function SalesModulePage({ sessionEmail = '' }: Props) {
+  const { todayYmd, timeZoneId, dateTimeLocalToUtcIso } = useOrgDateInput();
   const [tab, setTab] = useState<TabId>('overview');
   const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<number | null>(null);
   const [companies, setCompanies] = useState<SalesModuleCompany[]>([]);
@@ -126,7 +122,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [followupRow, setFollowupRow] = useState<SalesModuleClientUpdate | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const [y, m] = todayYmd.split('-').map(Number);
+    return new Date(y || new Date().getFullYear(), (m || 1) - 1, 1);
+  });
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [apptFormOpen, setApptFormOpen] = useState(false);
   const [apptTitle, setApptTitle] = useState('');
@@ -571,16 +570,18 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     ?? null;
 
   function openNewAppointment(day?: Date) {
-    const base = day ?? selectedDay ?? new Date();
-    const start = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 10, 0);
-    const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 11, 0);
+    const ymd = day
+      ? toDateInputValueInTz(day, timeZoneId)
+      : selectedDay
+        ? toDateInputValueInTz(selectedDay, timeZoneId)
+        : todayYmd;
     setApptTitle('');
     setApptNotes('');
     setApptLocation('');
     setApptCustomerId(customers[0]?.id ?? '');
     setApptTeamMemberId(selectedTeamMemberId ?? teamMembers.find(m => m.active)?.id ?? '');
-    setApptStart(toLocalInputValue(start.toISOString()));
-    setApptEnd(toLocalInputValue(end.toISOString()));
+    setApptStart(`${ymd}T10:00`);
+    setApptEnd(`${ymd}T11:00`);
     setApptFormOpen(true);
   }
 
@@ -601,8 +602,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         title: apptTitle.trim(),
         notes: apptNotes.trim(),
         location: apptLocation.trim(),
-        startsAt: new Date(apptStart).toISOString(),
-        endsAt: new Date(apptEnd).toISOString(),
+        startsAt: dateTimeLocalToUtcIso(apptStart),
+        endsAt: dateTimeLocalToUtcIso(apptEnd),
         engagedUserId: 0,
         engagedUserEmail: member?.email || engagedUserEmail,
         salesTeamMemberId: member?.id ?? null,
@@ -1225,7 +1226,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
                 const dayItems = calendarItemsByDay.get(key) ?? [];
                 const selected = selectedDay ? sameDay(day, selectedDay) : false;
-                const isToday = sameDay(day, new Date());
+                const isToday = toDateInputValueInTz(day, timeZoneId) === todayYmd;
                 return (
                   <button
                     key={key}

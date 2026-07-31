@@ -30,6 +30,8 @@ type Props = {
   viewMode: 'week' | 'month';
   viewMonth: number;
   viewYear: number;
+  /** Org/cloud business today (YYYY-MM-DD). Falls back to browser local if omitted. */
+  todayIso?: string;
   onViewMonthChange: (month: number, year: number) => void;
   onSelect: (iso: string) => void;
   onClose: () => void;
@@ -40,12 +42,13 @@ export function AttendanceDatePicker({
   viewMode,
   viewMonth,
   viewYear,
+  todayIso: todayIsoProp,
   onViewMonthChange,
   onSelect,
   onClose,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const todayIso = toIso(new Date());
+  const todayIso = todayIsoProp ?? toIso(new Date());
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {

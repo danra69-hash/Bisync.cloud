@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 import { filterSelectCls } from '../layout/formControls';
 import { MODAL_OVERLAY_CLS, MODAL_SHELL_CLS } from '../layout/sidePanelShared';
 import { formatStockCardMonthLabel } from './stockCardPeriod';
@@ -12,15 +13,9 @@ type Props = {
   confirming: boolean;
 };
 
-function todayInputValue(): string {
-  const d = new Date();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${month}-${day}`;
-}
-
 export function InventoryConfirmModal({ periodMonth, onClose, onConfirm, confirming }: Props) {
-  const [effectiveDate, setEffectiveDate] = useState(todayInputValue());
+  const { todayYmd } = useOrgDateInput();
+  const [effectiveDate, setEffectiveDate] = useState(todayYmd);
 
   return createPortal(
     <div className={MODAL_OVERLAY_CLS} onClick={onClose}>
@@ -64,7 +59,7 @@ export function InventoryConfirmModal({ periodMonth, onClose, onConfirm, confirm
             type="date"
             value={effectiveDate}
             min={`${periodMonth}-01`}
-            max={todayInputValue()}
+            max={todayYmd}
             onChange={e => {
               if (e.target.value) setEffectiveDate(e.target.value);
             }}

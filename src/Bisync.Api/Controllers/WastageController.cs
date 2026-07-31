@@ -48,8 +48,11 @@ public class WastageController(
         }
         else
         {
-            // Default: last 2 years live window
-            var earliest = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddYears(-2));
+            // Default: last 2 years live window (org/cloud business date)
+            var today = cid is int companyForDate
+                ? await OrgBusinessDate.TodayAsync(db, companyForDate)
+                : OrgClock.TodayLocal("MY");
+            var earliest = today.AddYears(-2);
             query = query.Where(w => w.WastedDate >= earliest);
         }
 
@@ -169,10 +172,12 @@ public class WastageController(
         if (!DateOnly.TryParse(request.WastedDate, out var wastedDate))
             return BadRequest(new { message = "Invalid wasted date." });
 
-        var earliest = DateOnly.FromDateTime(DateTime.UtcNow.Date.AddYears(-2));
+        var today = await OrgBusinessDate.TodayAsync(
+            db, companyId.Value, request.LocationExternalId);
+        var earliest = today.AddYears(-2);
         if (wastedDate < earliest)
             return BadRequest(new { message = "Wasted date is outside the 2-year live history window." });
-        if (wastedDate > DateOnly.FromDateTime(DateTime.UtcNow.Date))
+        if (wastedDate > today)
             return BadRequest(new { message = "Wasted date cannot be in the future." });
 
         try
@@ -211,7 +216,8 @@ public class WastageController(
         if (string.IsNullOrWhiteSpace(request.LocationExternalId))
             return BadRequest(new { message = "Location is required." });
 
-        var wastedDate = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var wastedDate = await OrgBusinessDate.TodayAsync(
+            db, companyId.Value, request.LocationExternalId);
         if (!string.IsNullOrWhiteSpace(request.WastedDate)
             && DateOnly.TryParse(request.WastedDate, out var parsed))
         {

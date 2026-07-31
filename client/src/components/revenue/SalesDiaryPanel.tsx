@@ -12,7 +12,6 @@ import {
   SALES_DIARY_ACTIVITY_TYPES,
   SALES_DIARY_CONTACT_TYPES,
   SALES_DIARY_STATUSES,
-  todayDateInputValue,
   type SalesDiaryActivityType,
   type SalesDiaryContactPerson,
   type SalesDiaryContactType,
@@ -22,6 +21,7 @@ import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { ColGroup } from '../shared/SortableTableHead';
 import { TABLE_COL_ACTION } from '../layout/pageLayout';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   salesTeamMemberId: number;
@@ -525,10 +525,11 @@ function StatusChangePopup({
   onClose: () => void;
   onSaved: (entry: SalesModuleDiaryEntry) => void;
 }) {
+  const { todayYmd } = useOrgDateInput();
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>(initialCompanyId ?? '');
   const [statuses, setStatuses] = useState<SalesDiaryStatus[]>([]);
   const [comment, setComment] = useState('');
-  const [contactDate, setContactDate] = useState(todayDateInputValue);
+  const [contactDate, setContactDate] = useState(todayYmd);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -657,13 +658,14 @@ function SalesCallPopup({
   onClose: () => void;
   onSaved: (entry: SalesModuleDiaryEntry) => void;
 }) {
+  const { todayYmd } = useOrgDateInput();
   const [contactType, setContactType] = useState<SalesDiaryContactType | ''>('');
   const [companyId, setCompanyId] = useState<number | ''>(initialCompanyId ?? '');
   const [companyName, setCompanyName] = useState('');
   const [brandName, setBrandName] = useState('');
   const [locationVisited, setLocationVisited] = useState('');
   const [emailsSent, setEmailsSent] = useState('');
-  const [contactDate, setContactDate] = useState(todayDateInputValue);
+  const [contactDate, setContactDate] = useState(todayYmd);
   const [contacts, setContacts] = useState<SalesDiaryContactPerson[]>([blankDiaryContact()]);
   const [postMeetingNote, setPostMeetingNote] = useState('');
   const [saving, setSaving] = useState(false);

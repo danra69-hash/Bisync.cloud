@@ -1,0 +1,31 @@
+---
+description: Permanent rule — user-entered dates use org/cloud timezone, never browser local or UTC midnight
+alwaysApply: true
+---
+
+# Org / cloud dates (permanent)
+
+All **user-entered calendar dates** and **business-day defaults** must live on the **company/location cloud timezone**, not the browser’s local timezone and not raw UTC midnight.
+
+## Rules
+
+1. `<input type="date">` defaults, `min`/`max` “today”, and “business today” labels use the org IANA timezone (e.g. Malaysia → `Asia/Kuala_Lumpur`).
+2. `<input type="datetime-local">` wall times are interpreted in the org timezone when sent to the API (store as UTC instants).
+3. Never use `new Date().toISOString().slice(0, 10)` or `Date#getFullYear/getMonth/getDate` for business “today”.
+4. Never use browser-local `getHours/getMinutes` for punch clocks, QR duty stamps, or appointment defaults.
+5. API validation of “not in the future” / “today” / production defaults must use `OrgClock` / `OrgBusinessDate` for the company (and location when known).
+6. Instant timestamps persisted in the DB remain UTC; only **calendar dates** and **wall-clock business values** are org-local.
+
+## Implementation anchors
+
+- Client TZ map + helpers: `client/src/utils/countryTimeZones.ts`
+- Hook: `client/src/hooks/useOrgDateInput.ts` (`todayYmd`, `toDateInputValue`, `toDateTimeLocalValue`, `dateTimeLocalToUtcIso`)
+- Context: `client/src/context/OrgCountryContext.tsx` (`timeZoneId` via `OrgCountryProvider`)
+- API: `src/Bisync.Api/Services/OrgClock.cs`, `OrgBusinessDate.cs`
+
+## When adding a new date field
+
+1. Call `useOrgDateInput()` (or pass `timeZoneId` into shared helpers).
+2. Default value = `todayYmd` (or `toDateTimeLocalValue()` for datetime-local).
+3. On submit of datetime-local, convert with `dateTimeLocalToUtcIso` before `toISOString`/API payload.
+4. On the API, compare against `await OrgBusinessDate.TodayAsync(db, companyId, locationExternalId)`.

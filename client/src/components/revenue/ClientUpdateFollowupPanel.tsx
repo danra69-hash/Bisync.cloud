@@ -7,10 +7,10 @@ import {
 } from '../../api';
 import {
   SALES_DIARY_STATUSES,
-  todayDateInputValue,
   type SalesDiaryStatus,
 } from '../../data/salesDiary';
 import { buildWhatsAppHref } from '../../data/shareLinks';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   row: SalesModuleClientUpdate;
@@ -19,36 +19,31 @@ type Props = {
   onSaved: (result: SalesModuleClientUpdateFollowupResult) => void;
 };
 
-function defaultStartLocal(): string {
-  const d = new Date();
-  d.setMinutes(0, 0, 0);
-  d.setHours(d.getHours() + 1);
-  return toLocalInput(d);
-}
-
-function defaultEndLocal(startLocal: string): string {
-  const d = new Date(startLocal);
-  if (Number.isNaN(d.getTime())) return '';
-  d.setHours(d.getHours() + 1);
-  return toLocalInput(d);
-}
-
-function toLocalInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function localInputToIso(value: string): string {
-  const d = new Date(value);
-  return d.toISOString();
-}
-
 export function ClientUpdateFollowupPanel({
   row,
   createdByEmail = '',
   onClose,
   onSaved,
 }: Props) {
+  const { todayYmd, toDateTimeLocalValue, dateTimeLocalToUtcIso, addDays } = useOrgDateInput();
+  const defaultStartLocal = () => {
+    // Next whole hour in org/cloud timezone wall clock.
+    const stamp = toDateTimeLocalValue(new Date());
+    const [ymd, hm = '00:00'] = stamp.split('T');
+    const h = Number(hm.slice(0, 2)) || 0;
+    const nextH = h + 1;
+    if (nextH < 24) return `${ymd}T${String(nextH).padStart(2, '0')}:00`;
+    return `${addDays(ymd, 1)}T00:00`;
+  };
+  const defaultEndLocal = (start: string) => {
+    const [ymd, hm = '10:00'] = start.split('T');
+    if (!ymd) return '';
+    const h = Number(hm.slice(0, 2)) || 0;
+    const m = hm.slice(3, 5) || '00';
+    const endH = h + 1;
+    if (endH < 24) return `${ymd}T${String(endH).padStart(2, '0')}:${m}`;
+    return `${addDays(ymd, 1)}T00:${m}`;
+  };
   const [sendAppointment, setSendAppointment] = useState(true);
   const [changeStatus, setChangeStatus] = useState(false);
   const [title, setTitle] = useState(`Follow-up · ${row.company || row.brand || 'Client'}`);
@@ -59,7 +54,7 @@ export function ClientUpdateFollowupPanel({
   const [openWhatsApp, setOpenWhatsApp] = useState(true);
   const [statuses, setStatuses] = useState<SalesDiaryStatus[]>([]);
   const [comment, setComment] = useState('');
-  const [contactDate, setContactDate] = useState(todayDateInputValue);
+  const [contactDate, setContactDate] = useState(todayYmd);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
@@ -87,7 +82,7 @@ export function ClientUpdateFollowupPanel({
         setError('Appointment start and end are required.');
         return;
       }
-      if (new Date(endLocal) <= new Date(startLocal)) {
+      if (endLocal <= startLocal) {
         setError('End time must be after start time.');
         return;
       }
@@ -110,8 +105,8 @@ export function ClientUpdateFollowupPanel({
       const result = await api.followupSalesModuleClientUpdate(row.id, {
         sendAppointment,
         appointmentTitle: sendAppointment ? title.trim() : undefined,
-        startsAt: sendAppointment ? localInputToIso(startLocal) : undefined,
-        endsAt: sendAppointment ? localInputToIso(endLocal) : undefined,
+        startsAt: sendAppointment ? dateTimeLocalToUtcIso(startLocal) : undefined,
+        endsAt: sendAppointment ? dateTimeLocalToUtcIso(endLocal) : undefined,
         location: sendAppointment ? location.trim() : undefined,
         appointmentNotes: sendAppointment ? notes.trim() : undefined,
         changeStatus,

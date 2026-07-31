@@ -234,7 +234,10 @@ public class ProductManagementController(
         if (request.BatchQty <= 0)
             return BadRequest(new { message = "Enter a quantity greater than zero." });
 
-        var productionDate = ResolveProductionDate(request.ProductionDate);
+        var productionDate = await ResolveProductionDateAsync(
+            product.CompanyId ?? 0,
+            request.ProductionDate,
+            locationIds.FirstOrDefault());
 
         try
         {
@@ -298,7 +301,10 @@ public class ProductManagementController(
         if (request.BatchQty <= 0)
             return BadRequest(new { message = "Enter a quantity greater than zero." });
 
-        var productionDate = ResolveProductionDate(request.ProductionDate);
+        var productionDate = await ResolveProductionDateAsync(
+            product.CompanyId ?? 0,
+            request.ProductionDate,
+            locationIds.FirstOrDefault());
         var expiryDate = ResolveOptionalDate(request.ExpiryDate);
         if (string.IsNullOrEmpty(expiryDate) && product.ExpiryPeriodDays > 0
             && DateOnly.TryParse(productionDate, out var parsedProductionDate))
@@ -539,7 +545,9 @@ public class ProductManagementController(
         if (log is null || !string.Equals(log.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             return NotFound();
 
-        var productionDate = ResolveProductionDate(request.ProductionDate ?? log.ProductionDate);
+        var productionDate = await ResolveProductionDateAsync(
+            log.CompanyId ?? 0,
+            request.ProductionDate ?? log.ProductionDate);
         var expiryDate = ResolveOptionalDate(request.ExpiryDate);
         if (string.IsNullOrEmpty(expiryDate))
             return BadRequest(new { message = "Select an expiry date." });
@@ -634,7 +642,10 @@ public class ProductManagementController(
         return NoContent();
     }
 
-    static string ResolveProductionDate(string? productionDate)
+    async Task<string> ResolveProductionDateAsync(
+        int companyId,
+        string? productionDate,
+        string? locationExternalId = null)
     {
         if (!string.IsNullOrWhiteSpace(productionDate)
             && DateOnly.TryParse(productionDate.Trim(), out _))
@@ -642,7 +653,11 @@ public class ProductManagementController(
             return productionDate.Trim();
         }
 
-        return DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+        if (companyId <= 0)
+            return OrgClock.TodayLocal("MY").ToString("yyyy-MM-dd");
+
+        var today = await OrgBusinessDate.TodayAsync(db, companyId, locationExternalId);
+        return today.ToString("yyyy-MM-dd");
     }
 
     static string? ResolveOptionalDate(string? dateValue)

@@ -26,6 +26,7 @@ import {
   type CompanyVendorPolicyTag,
 } from '../../data/vendorPolicyRules';
 import { SIDE_PANEL_OVERLAY_CLS, SIDE_PANEL_SHELL_CREATE_VENDOR_CLS } from '../layout/sidePanelShared';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   company: Company;
@@ -40,9 +41,6 @@ type Props = {
 
 const CATEGORY_OPTIONS = getSiCategoryFilterOptions().filter(c => c !== 'All');
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -72,9 +70,10 @@ export function SampleRequestPanel({
   onCreated,
   onVendorCreated,
 }: Props) {
+  const { todayYmd } = useOrgDateInput();
   const [companyUsers, setCompanyUsers] = useState<AppUser[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
-  const [dateRequested, setDateRequested] = useState(todayIso);
+  const [dateRequested, setDateRequested] = useState(todayYmd);
   const [contactEmployeeId, setContactEmployeeId] = useState<number | ''>('');
   const [contactPersonName, setContactPersonName] = useState('');
   const [vendorExternalId, setVendorExternalId] = useState('');

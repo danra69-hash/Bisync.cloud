@@ -23,6 +23,7 @@ import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -54,12 +55,6 @@ type RowDraft = {
   rpp: string;
 };
 
-function toDateInputValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 function formatDateLabel(value?: string | null) {
   if (!value) return '—';
@@ -105,6 +100,7 @@ export function PosPromotionSchedulerPage({
   selectedCompanyId,
   selectedLocationIds,
 }: Props) {
+  const { todayYmd } = useOrgDateInput();
   const { currency, cogsPercent } = useCountryFormatters();
   const [tab, setTab] = useState<TabId>('create');
 
@@ -118,7 +114,7 @@ export function PosPromotionSchedulerPage({
   const [catalogLoading, setCatalogLoading] = useState(false);
 
   const [name, setName] = useState('');
-  const [startDate, setStartDate] = useState(toDateInputValue(new Date()));
+  const [startDate, setStartDate] = useState(todayYmd);
   const [endDate, setEndDate] = useState('');
   const [endDateOpen, setEndDateOpen] = useState(false);
   const [startTime, setStartTime] = useState('00:00');
@@ -281,7 +277,7 @@ export function PosPromotionSchedulerPage({
 
   const resetCreateForm = () => {
     setName('');
-    setStartDate(toDateInputValue(new Date()));
+    setStartDate(todayYmd);
     setEndDate('');
     setEndDateOpen(false);
     setStartTime('00:00');

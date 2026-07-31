@@ -14,6 +14,7 @@ import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 import {
   DETAIL_PANEL_OVERLAY_ELEVATED_CLS,
   DETAIL_PANEL_SHELL_ELEVATED_CLS,
@@ -23,18 +24,13 @@ type Props = {
   selectedCompanyId: number | null;
 };
 
-function toDateInputValue(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 function emptyOverview(): ReturnableGoodsOverview {
   return { ledger: [], summary: [], returns: [] };
 }
 
 export function ReturnableGoodsPage({ selectedCompanyId }: Props) {
+  const { todayYmd, toDateInputValue } = useOrgDateInput();
   const { rm, number: formatNumber } = useCountryFormatters();
   const [overview, setOverview] = useState<ReturnableGoodsOverview>(emptyOverview());
   const [loading, setLoading] = useState(false);
@@ -320,7 +316,7 @@ export function ReturnableGoodsPage({ selectedCompanyId }: Props) {
                       type="date"
                       className={filterSelectCls}
                       value={returnDate}
-                      max={toDateInputValue()}
+                      max={todayYmd}
                       onChange={e => setReturnDate(e.target.value)}
                     />
                   </label>

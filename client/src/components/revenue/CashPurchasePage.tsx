@@ -14,23 +14,17 @@ import { pageShellClass } from '../layout/pageLayout';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollDivSentinel } from '../shared/infiniteScroll';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   selectedCompanyId: number | null;
   selectedLocationIds: string[];
 };
 
-function toDateInputValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function isCurrentMonth(datePurchased: string) {
+function isCurrentMonth(datePurchased: string, todayYmd: string) {
   const [year, month] = datePurchased.split('-').map(Number);
-  const now = new Date();
-  return year === now.getFullYear() && month === now.getMonth() + 1;
+  const [ty, tm] = todayYmd.split('-').map(Number);
+  return year === ty && month === tm;
 }
 
 function formatPurchaseDate(datePurchased: string) {
@@ -124,6 +118,7 @@ const fieldCls =
 const labelCls = 'text-xs font-medium text-foreground';
 
 export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const { todayYmd } = useOrgDateInput();
   const { rm } = useCountryFormatters();
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
 
@@ -132,7 +127,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [datePurchased, setDatePurchased] = useState(() => toDateInputValue(new Date()));
+  const [datePurchased, setDatePurchased] = useState(todayYmd);
   const [storeName, setStoreName] = useState('');
   const [componentId, setComponentId] = useState('');
   const [storeProductName, setStoreProductName] = useState('');
@@ -174,7 +169,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
 
   const monthHistory = useMemo(() => {
     const scoped = filterCashPurchasesByOrg(cashPurchases, selectedCompanyId, selectedLocationIds)
-      .filter(purchase => isCurrentMonth(purchase.datePurchased))
+      .filter(purchase => isCurrentMonth(purchase.datePurchased, todayYmd))
       .sort((a, b) => b.datePurchased.localeCompare(a.datePurchased) || b.id - a.id);
     const monthTotal = scoped.reduce((sum, purchase) => sum + purchase.deliveryPrice, 0);
     return { rows: scoped, monthTotal };
@@ -295,7 +290,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
   }, [deliveryPrice]);
 
   function resetForm() {
-    setDatePurchased(toDateInputValue(new Date()));
+    setDatePurchased(todayYmd);
     setStoreName('');
     setComponentId('');
     setStoreProductName('');

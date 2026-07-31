@@ -48,6 +48,7 @@ import {
   formatStockCardMonthLabel,
 } from './stockCardPeriod';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 const TABLE_COL_COUNT = 12;
 const HISTORY_TABLE_COL_COUNT = 13;
@@ -123,9 +124,6 @@ const HISTORY_TABLE_COLUMNS: SortableColumnDef<string>[] = [
   { key: 'actions', label: 'Actions', align: 'right', sortable: false, ...tableColWidth(100) },
 ];
 
-function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 type Props = {
   selectedCompanyId: number | null;
@@ -260,6 +258,7 @@ function sessionStatusLabel(session: InventoryCountSession, inventoryMode: Inven
 }
 
 export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const { todayYmd } = useOrgDateInput();
   const countryCode = useOrgCountryCode();
   const { currentUser } = useCurrentUser();
   const access = useMemo(
@@ -278,7 +277,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [itemTypeFilter, setItemTypeFilter] = useState<(typeof ITEM_TYPES)[number]>('All');
   const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
-  const [countDate, setCountDate] = useState(todayIsoDate);
+  const [countDate, setCountDate] = useState(todayYmd);
   const [inventoryMode, setInventoryMode] = useState<InventoryCountSessionType>('spot');
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CountSortColumn>();
   const {
@@ -645,7 +644,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
         uomMode,
         itemTypeFilter: itemTypeFilterParam(itemTypeFilter),
         groupFilter: 'All',
-        countDate: inventoryMode === 'spot' ? countDate : new Date().toISOString().slice(0, 10),
+        countDate: inventoryMode === 'spot' ? countDate : todayYmd,
         savedBy: currentUser?.fullName ?? 'Unknown user',
         lines,
       });
@@ -755,7 +754,7 @@ export function InventoryPage({ selectedCompanyId, selectedLocationIds }: Props)
                     <input
                       type="date"
                       value={countDate}
-                      max={todayIsoDate()}
+                      max={todayYmd}
                       onChange={e => {
                         if (e.target.value) setCountDate(e.target.value);
                       }}

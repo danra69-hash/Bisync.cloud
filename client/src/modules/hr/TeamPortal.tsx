@@ -24,6 +24,7 @@ import {
   unlockPinPayload,
 } from './teamPin';
 import { punchHrAttendance } from './attendancePunch';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 import './TeamPortal.css';
 
 interface TeamPortalProps {
@@ -144,13 +145,10 @@ function parsePosQr(payload: string): { outletInitial: string; date: string; tim
   return { outletInitial: m[1], date: m[2], time: m[3] };
 }
 
-function clockNowLabel(d = new Date()) {
-  return d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
 export default function TeamPortal({
   employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, onSubmitLeave,
 }: TeamPortalProps) {
+  const { todayYmd, clockHhMm } = useOrgDateInput();
   const enrolledPin = loadPinEnrollment();
   const [step, setStep] = useState<PortalStep>('login');
   const [teamEmp, setTeamEmp] = useState<Employee | null>(null);
@@ -170,17 +168,17 @@ export default function TeamPortal({
   const [settingsBusy, setSettingsBusy] = useState(false);
 
   const [appTab, setAppTab] = useState<AppTab>('home');
-  const [calYear, setCalYear] = useState(new Date().getFullYear());
-  const [calMonth, setCalMonth] = useState(new Date().getMonth());
+  const [calYear, setCalYear] = useState(() => Number(todayYmd.slice(0, 4)) || new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => (Number(todayYmd.slice(5, 7)) || 1) - 1);
   const [toast, setToast] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [nowLabel, setNowLabel] = useState(() => clockNowLabel());
+  const [nowLabel, setNowLabel] = useState(() => clockHhMm());
 
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [leaveType, setLeaveType] = useState<LeaveType>('AL');
   const [leaveReason, setLeaveReason] = useState('');
-  const [leaveStart, setLeaveStart] = useState(fmt(new Date()));
-  const [leaveEnd, setLeaveEnd] = useState(fmt(new Date()));
+  const [leaveStart, setLeaveStart] = useState(todayYmd);
+  const [leaveEnd, setLeaveEnd] = useState(todayYmd);
 
   const [todos, setTodos] = useState<TeamTodo[]>([]);
   const [newTodo, setNewTodo] = useState('');
@@ -196,7 +194,7 @@ export default function TeamPortal({
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
 
-  const TODAY = fmt(new Date());
+  const TODAY = todayYmd;
   const balance = teamEmp ? leaveBalances.find(b => b.employeeId === teamEmp.id) : undefined;
   const carryForward = balance?.alCarryForward ?? 0;
 
@@ -206,7 +204,7 @@ export default function TeamPortal({
   };
 
   useEffect(() => {
-    const id = window.setInterval(() => setNowLabel(clockNowLabel()), 15_000);
+    const id = window.setInterval(() => setNowLabel(clockHhMm()), 15_000);
     return () => window.clearInterval(id);
   }, []);
 

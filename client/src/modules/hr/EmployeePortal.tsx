@@ -4,6 +4,7 @@ import {
   Lock, Eye, EyeOff, LayoutDashboard, Send,
 } from 'lucide-react';
 import type { Employee, LeaveBalanceRow, LeaveRequest, PublicHoliday, ShiftSchedule, LeaveType } from './types';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 interface EmployeePortalProps {
   employees: Employee[];
@@ -23,6 +24,7 @@ const STANDARD_PW = 'Pass@123';
 export default function EmployeePortal({
   employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, onSubmitLeave,
 }: EmployeePortalProps) {
+  const { todayYmd } = useOrgDateInput();
   const [step, setStep] = useState<'select' | 'login' | 'change-password' | 'dashboard'>('select');
   const [portalEmp, setPortalEmp] = useState<Employee | null>(null);
   const [pwChanged, setPwChanged] = useState<Set<number>>(new Set());
@@ -221,7 +223,7 @@ export default function EmployeePortal({
     return lo === hi ? fmtD(lo) : `${fmtD(lo)} → ${fmtD(hi)}`;
   };
 
-  const TODAY = fmt(new Date());
+  const TODAY = todayYmd;
   const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // ── SELECT EMPLOYEE ──

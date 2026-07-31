@@ -78,6 +78,8 @@ const REGION_TIMEZONES: Record<string, Record<string, string>> = {
   },
 };
 
+export const DEFAULT_ORG_TIME_ZONE_ID = 'Asia/Kuala_Lumpur';
+
 export function resolveOrgTimeZoneId(
   countryCode?: string | null,
   stateProvince?: string | null,
@@ -94,6 +96,165 @@ export function resolveOrgTimeZoneId(
     }
   }
   return COUNTRY_TIMEZONES[code] ?? 'UTC';
+}
+
+/** Resolve IANA TZ for the selected company + primary selected location (cloud org clock). */
+export function resolveSessionTimeZoneId(opts: {
+  countryCode?: string | null;
+  stateProvince?: string | null;
+  companyTimeZoneId?: string | null;
+  locationTimeZoneId?: string | null;
+  locationCountryCode?: string | null;
+  locationStateProvince?: string | null;
+}): string {
+  return resolveOrgTimeZoneId(
+    opts.locationCountryCode || opts.countryCode || 'MY',
+    opts.locationStateProvince || opts.stateProvince || '',
+    opts.locationTimeZoneId || opts.companyTimeZoneId,
+  );
+}
+
+/**
+ * Calendar date (YYYY-MM-DD) for an instant in the org/cloud timezone.
+ * Prefer this over `Date#getFullYear/getMonth/getDate` (browser local) or
+ * `toISOString().slice(0, 10)` (UTC).
+ */
+export function toDateInputValueInTz(date: Date = new Date(), timeZoneId?: string | null): string {
+  const tz = timeZoneId?.trim() || DEFAULT_ORG_TIME_ZONE_ID;
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
+}
+
+/** Today's business date in the org/cloud timezone (YYYY-MM-DD). */
+export function orgTodayYmd(timeZoneId?: string | null, date: Date = new Date()): string {
+  return toDateInputValueInTz(date, timeZoneId);
+}
+
+type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number; second: number };
+
+function zonedParts(date: Date, timeZoneId: string): ZonedParts {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZoneId,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const num = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find(p => p.type === type)?.value ?? '0');
+  let hour = num('hour');
+  // Some engines emit hour 24 at midnight.
+  if (hour === 24) hour = 0;
+  return {
+    year: num('year'),
+    month: num('month'),
+    day: num('day'),
+    hour,
+    minute: num('minute'),
+    second: num('second'),
+  };
+}
+
+/** Wall-clock HH:mm in the org/cloud timezone. */
+export function orgClockHhMm(date: Date = new Date(), timeZoneId?: string | null): string {
+  const tz = timeZoneId?.trim() || DEFAULT_ORG_TIME_ZONE_ID;
+  try {
+    const p = zonedParts(date, tz);
+    return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+  } catch {
+    const h = String(date.getUTCHours()).padStart(2, '0');
+    const m = String(date.getUTCMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  }
+}
+
+/** `<input type="datetime-local">` value (YYYY-MM-DDTHH:mm) in org/cloud timezone. */
+export function toDateTimeLocalValueInTz(date: Date = new Date(), timeZoneId?: string | null): string {
+  const ymd = toDateInputValueInTz(date, timeZoneId);
+  const hm = orgClockHhMm(date, timeZoneId);
+  return `${ymd}T${hm}`;
+}
+
+/**
+ * Interpret a datetime-local string as wall time in the org/cloud timezone
+ * and return a UTC ISO instant for API persistence.
+ */
+export function dateTimeLocalInTzToUtcIso(
+  localValue: string,
+  timeZoneId?: string | null,
+): string {
+  const m = localValue.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) {
+    const fallback = new Date(localValue);
+    return Number.isNaN(fallback.getTime()) ? new Date().toISOString() : fallback.toISOString();
+  }
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = Number(m[6] ?? '0');
+  const tz = timeZoneId?.trim() || DEFAULT_ORG_TIME_ZONE_ID;
+  const desiredAsUtcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  let utcMs = desiredAsUtcMs;
+  try {
+    for (let i = 0; i < 3; i++) {
+      const wall = zonedParts(new Date(utcMs), tz);
+      const wallAsUtcMs = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
+      const diff = desiredAsUtcMs - wallAsUtcMs;
+      utcMs += diff;
+      if (diff === 0) break;
+    }
+  } catch {
+    utcMs = desiredAsUtcMs;
+  }
+  return new Date(utcMs).toISOString();
+}
+
+/** Add whole calendar years to a YYYY-MM-DD string (clamps Feb 29). */
+export function addCalendarYearsToYmd(ymd: string, years: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd;
+  const targetYear = y + years;
+  const lastDay = new Date(Date.UTC(targetYear, m, 0)).getUTCDate();
+  const day = Math.min(d, lastDay);
+  return `${targetYear}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Add whole calendar days to a YYYY-MM-DD string. */
+export function addCalendarDaysToYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd;
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** Add whole calendar months to a YYYY-MM-DD string (clamps day-of-month). */
+export function addCalendarMonthsToYmd(ymd: string, months: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd;
+  const idx = y * 12 + (m - 1) + months;
+  const targetYear = Math.floor(idx / 12);
+  const targetMonth = (idx % 12) + 1;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+  const day = Math.min(d, lastDay);
+  return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 export function formatOrgDateTime(

@@ -1,3 +1,4 @@
+import { orgClockHhMm, orgTodayYmd } from '../../utils/countryTimeZones';
 import { hrApi } from './api';
 import type { AttendanceRecord, ShiftSchedule } from './types';
 
@@ -69,10 +70,12 @@ export async function punchHrAttendance(opts: {
   throw new Error('Already checked in and out for today.');
 }
 
-export function clockHhMm(d = new Date()) {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+/** Wall-clock HH:mm in org/cloud timezone (defaults to Asia/Kuala_Lumpur). */
+export function clockHhMm(d = new Date(), timeZoneId?: string | null) {
+  return orgClockHhMm(d, timeZoneId);
 }
 
-export function clockDate(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** Business date YYYY-MM-DD in org/cloud timezone (not browser local). */
+export function clockDate(d = new Date(), timeZoneId?: string | null) {
+  return orgTodayYmd(timeZoneId, d);
 }

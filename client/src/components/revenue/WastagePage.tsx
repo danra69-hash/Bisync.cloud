@@ -18,6 +18,7 @@ import { MillstoneLoader, TableLoadingRow } from '../shared/MillstoneLoader';
 import { componentMatchesLocations } from '../../data/createOrder';
 import { ingredientToRow } from './smartIngredientShared';
 import { fromApiUom } from '../../data/componentForm';
+import { useOrgDateInput } from '../../hooks/useOrgDateInput';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -37,18 +38,6 @@ type CatalogItem = {
   searchText: string;
 };
 
-function toDateInputValue(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function earliestLiveDate(): string {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 2);
-  return toDateInputValue(d);
-}
 
 function parseAltUnits(json?: string): string[] {
   if (!json) return [];
@@ -149,11 +138,13 @@ const fieldCls =
 const labelCls = 'block text-[11px] font-sans uppercase tracking-wide text-muted-foreground mb-1';
 
 export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
+  const { todayYmd, earliestLiveYmd } = useOrgDateInput();
+  const earliestLiveDate = earliestLiveYmd;
   const orgReady = !!selectedCompanyId && selectedLocationIds.length > 0;
   const primaryLocation = selectedLocationIds[0] ?? '';
   const { rm } = useCountryFormatters();
 
-  const [filterDate, setFilterDate] = useState(() => toDateInputValue(new Date()));
+  const [filterDate, setFilterDate] = useState(todayYmd);
   const [wasteTypeFilter, setWasteTypeFilter] = useState<WasteTypeFilter>('All');
   const [rows, setRows] = useState<WastageEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -171,7 +162,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
   const [onHandLoading, setOnHandLoading] = useState(false);
   const [wastageValue, setWastageValue] = useState<number | null>(null);
   const [wastageValueLoading, setWastageValueLoading] = useState(false);
-  const [wastedDate, setWastedDate] = useState(() => toDateInputValue(new Date()));
+  const [wastedDate, setWastedDate] = useState(todayYmd);
   const [reason, setReason] = useState('');
   const [reasonSuggestions, setReasonSuggestions] = useState<string[]>([]);
   const [showReasonMenu, setShowReasonMenu] = useState(false);
@@ -449,7 +440,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
                 className={`${filterSelectCls} min-w-[11rem]`}
                 value={filterDate}
                 min={earliestLiveDate()}
-                max={toDateInputValue(new Date())}
+                max={todayYmd}
                 onChange={e => e.target.value && setFilterDate(e.target.value)}
               />
             </div>
@@ -585,7 +576,7 @@ export function WastagePage({ selectedCompanyId, selectedLocationIds }: Props) {
             className={fieldCls}
             value={wastedDate}
             min={earliestLiveDate()}
-            max={toDateInputValue(new Date())}
+            max={todayYmd}
             onChange={e => setWastedDate(e.target.value)}
           />
         </div>

@@ -116,6 +116,24 @@ public static class CountryTimeZones
     public static string ResolveId(string? countryCode, string? stateProvince = null) =>
         Resolve(countryCode, stateProvince).Id;
 
+    public static TimeZoneInfo? TryFind(string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId)) return null;
+        var id = timeZoneId.Trim();
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(id);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return null;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return null;
+        }
+    }
+
     public static DateTime ToLocal(DateTime utc, string? countryCode, string? stateProvince = null)
     {
         var tz = Resolve(countryCode, stateProvince);

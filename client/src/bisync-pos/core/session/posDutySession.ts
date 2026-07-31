@@ -1,3 +1,5 @@
+import { orgClockHhMm, orgTodayYmd } from '../../../utils/countryTimeZones'
+
 export type PosDutySession = {
   employeeId: number
   employeeName: string
@@ -50,11 +52,13 @@ export function clearPosDutySession() {
   window.dispatchEvent(new CustomEvent(POS_DUTY_SESSION_EVENT))
 }
 
-export function buildCheckInQrPayload(outletInitial: string, at = new Date()): string {
-  const y = at.getFullYear()
-  const m = String(at.getMonth() + 1).padStart(2, '0')
-  const d = String(at.getDate()).padStart(2, '0')
-  const hh = String(at.getHours()).padStart(2, '0')
-  const mm = String(at.getMinutes()).padStart(2, '0')
-  return `${outletInitial}/${y}-${m}-${d}/${hh}:${mm}`
+/** QR payload uses org/cloud business date + wall clock (not browser local). */
+export function buildCheckInQrPayload(
+  outletInitial: string,
+  at = new Date(),
+  timeZoneId?: string | null,
+): string {
+  const ymd = orgTodayYmd(timeZoneId, at)
+  const hm = orgClockHhMm(at, timeZoneId)
+  return `${outletInitial}/${ymd}/${hm}`
 }
