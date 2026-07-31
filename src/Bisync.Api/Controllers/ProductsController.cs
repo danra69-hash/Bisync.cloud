@@ -540,6 +540,8 @@ public class ProductsController(
             return "Group is required.";
         if (request.IsSubProduct && request.IsVariableProduct)
             return "A product cannot be both a Sub-product and a Variable Product.";
+        if (request.IsSubProduct && request.IsVariableComponent)
+            return "A product cannot be both a Sub-product and a Variable Component.";
         if (request.IsSubProduct)
         {
             if (request.YieldQuantity is null or <= 0)
@@ -566,9 +568,8 @@ public class ProductsController(
         {
             var mode = (request.VariableMode ?? string.Empty).Trim();
             if (!string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(mode, "replacement", StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(mode, "weight", StringComparison.OrdinalIgnoreCase))
-                return "Variable Product mode must be Combination, Replacement, or Weight based.";
+                return "Variable Product mode must be Combination or Weight based.";
             if (string.Equals(mode, "combination", StringComparison.OrdinalIgnoreCase))
             {
                 if (request.VariableChoiceQty is null or <= 0)
@@ -588,12 +589,23 @@ public class ProductsController(
                     return "Enter an RRP for the weight QTY (POS uses weight × unit RRP).";
                 // Recipe components optional — COGS can be filled later.
             }
-            else if (request.Items is null || request.Items.Count == 0)
-            {
-                return "Add base Product Components for replacement Variable Products.";
-            }
         }
-        else if (request.Items is null || request.Items.Count == 0)
+
+        if (request.IsVariableComponent)
+        {
+            if (string.IsNullOrWhiteSpace(request.VariableComponentOptionsJson)
+                || request.VariableComponentOptionsJson.Trim() is "{}" or "[]")
+                return "Add at least one Variable Component substitute.";
+            if (request.Items is null || request.Items.Count == 0)
+                return "Add base Product Components for Variable Component products.";
+        }
+
+        var allowsEmptyRecipe = request.IsVariableProduct
+            && (
+                string.Equals(request.VariableMode, "combination", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(request.VariableMode, "weight", StringComparison.OrdinalIgnoreCase)
+            );
+        if (!allowsEmptyRecipe && (request.Items is null || request.Items.Count == 0))
         {
             return "Add at least one smart component to the product.";
         }
@@ -631,25 +643,37 @@ public class ProductsController(
             product.VariableOptionsJson = "{}";
             product.VariableMinCost = 0;
             product.VariableMaxCost = 0;
-            return;
         }
-
-        var modeRaw = (request.VariableMode ?? string.Empty).Trim();
-        var mode = string.Equals(modeRaw, "replacement", StringComparison.OrdinalIgnoreCase)
-            ? "replacement"
-            : string.Equals(modeRaw, "weight", StringComparison.OrdinalIgnoreCase)
+        else
+        {
+            var modeRaw = (request.VariableMode ?? string.Empty).Trim();
+            var mode = string.Equals(modeRaw, "weight", StringComparison.OrdinalIgnoreCase)
                 ? "weight"
                 : "combination";
-        product.IsVariableProduct = true;
-        product.VariableMode = mode;
-        product.VariableChoiceQty = mode is "combination" or "weight"
-            ? Math.Max(0, request.VariableChoiceQty ?? 0)
-            : 0;
-        product.VariableOptionsJson = string.IsNullOrWhiteSpace(request.VariableOptionsJson)
-            ? "{}"
-            : request.VariableOptionsJson.Trim();
-        product.VariableMinCost = Math.Max(0, request.VariableMinCost ?? 0);
-        product.VariableMaxCost = Math.Max(0, request.VariableMaxCost ?? 0);
+            product.IsVariableProduct = true;
+            product.VariableMode = mode;
+            product.VariableChoiceQty = mode is "combination" or "weight"
+                ? Math.Max(0, request.VariableChoiceQty ?? 0)
+                : 0;
+            product.VariableOptionsJson = string.IsNullOrWhiteSpace(request.VariableOptionsJson)
+                ? "{}"
+                : request.VariableOptionsJson.Trim();
+            product.VariableMinCost = Math.Max(0, request.VariableMinCost ?? 0);
+            product.VariableMaxCost = Math.Max(0, request.VariableMaxCost ?? 0);
+        }
+
+        if (request.IsSubProduct || !request.IsVariableComponent)
+        {
+            product.IsVariableComponent = false;
+            product.VariableComponentOptionsJson = "{}";
+        }
+        else
+        {
+            product.IsVariableComponent = true;
+            product.VariableComponentOptionsJson = string.IsNullOrWhiteSpace(request.VariableComponentOptionsJson)
+                ? "{}"
+                : request.VariableComponentOptionsJson.Trim();
+        }
     }
 
     static int ResolveExpiryPeriodDays(UpsertProductRequest request)
@@ -736,6 +760,8 @@ public class ProductsController(
         variableOptionsJson = product.VariableOptionsJson,
         variableMinCost = product.VariableMinCost,
         variableMaxCost = product.VariableMaxCost,
+        isVariableComponent = product.IsVariableComponent,
+        variableComponentOptionsJson = product.VariableComponentOptionsJson,
         b2cEnabled = product.B2cEnabled,
         b2bEnabled = product.B2bEnabled,
         b2bPackageUnit = product.B2bPackageUnit,

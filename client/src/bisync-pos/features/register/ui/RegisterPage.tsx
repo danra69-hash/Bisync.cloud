@@ -7,6 +7,7 @@ import {
   addWeightToCart,
   cartGrandTotal,
   cartSubtotal,
+  updateLineSaleDetail,
 } from '../domain/cart'
 import type { CartLine, OrderCharges, Product, ProductDepartment } from '../domain/types'
 import type {
@@ -38,6 +39,7 @@ import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
 import { TakeawayPickupModal } from './TakeawayPickupModal'
 import { CombinationPickerModal } from './CombinationPickerModal'
+import { ComponentSwapModal } from './ComponentSwapModal'
 import {
   formatPickupLabel,
   type TakeawayPickup,
@@ -88,6 +90,17 @@ export function RegisterPage() {
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [comboProduct, setComboProduct] = useState<Product | null>(null)
+  const [swapTarget, setSwapTarget] = useState<{
+    product: Product
+    lineKey?: string
+    quantity?: number
+    pendingWeight?: {
+      weight: number
+      weightUom: string
+      referenceWeightQty: number
+    }
+    initialSelections?: PosSaleReplacementSelection[]
+  } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
@@ -204,9 +217,12 @@ export function RegisterPage() {
 
   function promptWeightAndAdd(product: Product) {
     const uom = product.weightUom || 'kg'
-    const existing = lines.find(
-      l => l.productId === product.id && l.saleDetail?.variableMode === 'weight',
-    )
+    const existing = lines.find((l) => {
+      if (l.productId !== product.id) return false
+      const mode = l.saleDetail?.variableMode
+      return mode === 'weight'
+        || (mode === 'variableComponent' && (l.saleDetail?.enteredWeight ?? 0) > 0)
+    })
     const raw = window.prompt(
       `Enter weight (${uom}) for ${product.name}`,
       existing ? String(existing.quantity) : '',
@@ -217,11 +233,20 @@ export function RegisterPage() {
       flash(`Enter a weight greater than zero (${uom}).`)
       return
     }
+    const referenceWeightQty = product.weightQty && product.weightQty > 0 ? product.weightQty : 1
+    const slots = product.variableComponentSlots ?? []
+    if (product.isVariableComponent && slots.length > 0) {
+      setSwapTarget({
+        product,
+        pendingWeight: { weight, weightUom: uom, referenceWeightQty },
+      })
+      return
+    }
     const detail: PosSaleVariableDetail = {
       variableMode: 'weight',
       enteredWeight: weight,
       weightUom: uom,
-      referenceWeightQty: product.weightQty && product.weightQty > 0 ? product.weightQty : 1,
+      referenceWeightQty,
     }
     setLines(prev => addWeightToCart(prev, product.id, weight, detail))
     const totalCents = Math.round(product.priceCents * weight)
@@ -251,69 +276,48 @@ export function RegisterPage() {
     setComboProduct(null)
   }
 
-  function promptReplacementAndAdd(product: Product) {
-    const slots = product.replacementSlots ?? []
+  function promptVariableComponentAndAdd(product: Product) {
+    const slots = product.variableComponentSlots ?? []
     if (slots.length === 0) {
-      flash(`${product.name}: no replacement slots configured.`)
+      flash(`${product.name}: no Variable Component substitutes configured.`)
       return
     }
+    setSwapTarget({ product })
+  }
 
-    const selections: PosSaleReplacementSelection[] = []
-    for (const slot of slots) {
-      const alts = slot.alternatives ?? []
-      const linesText = [
-        `0. Keep ${slot.baseComponentName || slot.baseComponentId} (base)`,
-        ...alts.map(
-          (a, idx) =>
-            `${idx + 1}. ${a.componentName || a.componentId}`,
-        ),
-      ].join('\n')
-      const raw = window.prompt(
-        `${product.name} — ${slot.slotLabel || slot.baseComponentName}:\n${linesText}\nEnter number:`,
-        '0',
-      )
-      if (raw == null) return
-      const idx = Number(raw)
-      if (!Number.isFinite(idx) || idx < 0 || idx > alts.length) {
-        flash('Invalid replacement pick.')
-        return
-      }
-      if (idx === 0) {
-        selections.push({
-          baseComponentId: slot.baseComponentId,
-          baseComponentName: slot.baseComponentName,
-          chosenComponentId: slot.baseComponentId,
-          chosenComponentName: slot.baseComponentName,
-          componentUom: slot.baseComponentUom,
-          quantity: slot.quantity > 0 ? slot.quantity : 1,
-        })
-      } else {
-        const alt = alts[idx - 1]!
-        selections.push({
-          baseComponentId: slot.baseComponentId,
-          baseComponentName: slot.baseComponentName,
-          chosenComponentId: alt.componentId,
-          chosenComponentName: alt.componentName,
-          componentUom: alt.componentUom || slot.baseComponentUom,
-          quantity: alt.quantity > 0 ? alt.quantity : (slot.quantity > 0 ? slot.quantity : 1),
-        })
-      }
-    }
-
+  function confirmComponentSwap(selections: PosSaleReplacementSelection[]) {
+    if (!swapTarget) return
+    const { product, lineKey, quantity, pendingWeight } = swapTarget
     const detail: PosSaleVariableDetail = {
-      variableMode: 'replacement',
+      variableMode: 'variableComponent',
       replacementSelections: selections,
+      ...(pendingWeight
+        ? {
+            enteredWeight: pendingWeight.weight,
+            weightUom: pendingWeight.weightUom,
+            referenceWeightQty: pendingWeight.referenceWeightQty,
+          }
+        : {}),
     }
-    setLines(prev => addVariableToCart(prev, product.id, detail, 1))
+    if (lineKey) {
+      setLines(prev => updateLineSaleDetail(prev, lineKey, product.id, detail))
+    } else if (pendingWeight) {
+      setLines(prev => addWeightToCart(prev, product.id, pendingWeight.weight, detail))
+    } else {
+      setLines(prev => addVariableToCart(prev, product.id, detail, quantity && quantity > 0 ? quantity : 1))
+    }
     flash(
       `${product.name}: ${selections
         .map(s =>
           s.chosenComponentId === s.baseComponentId
             ? s.baseComponentName
-            : `${s.baseComponentName} → ${s.chosenComponentName}`,
+            : `${s.baseComponentName} → ${s.chosenComponentName}${
+              s.extraCharge && s.extraCharge > 0 ? ` (+${s.extraCharge.toFixed(2)})` : ''
+            }`,
         )
         .join(', ')}`,
     )
+    setSwapTarget(null)
   }
 
   function addProduct(product: Product) {
@@ -326,11 +330,37 @@ export function RegisterPage() {
       promptCombinationAndAdd(product)
       return
     }
-    if (product.variableMode === 'replacement') {
-      promptReplacementAndAdd(product)
+    if (product.isVariableComponent && (product.variableComponentSlots?.length ?? 0) > 0) {
+      promptVariableComponentAndAdd(product)
       return
     }
     setLines(prev => addToCart(prev, product.id))
+  }
+
+  function handleSwapLine(line: CartLine) {
+    const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+    const product = products.find(p => p.id === line.productId)
+    if (!product?.isVariableComponent || !(product.variableComponentSlots?.length)) {
+      flash('This line has no Variable Component swaps.')
+      return
+    }
+    const pendingWeight = line.saleDetail?.enteredWeight && line.saleDetail.enteredWeight > 0
+      ? {
+          weight: line.saleDetail.enteredWeight,
+          weightUom: line.saleDetail.weightUom || product.weightUom || 'kg',
+          referenceWeightQty: line.saleDetail.referenceWeightQty
+            && line.saleDetail.referenceWeightQty > 0
+            ? line.saleDetail.referenceWeightQty
+            : (product.weightQty && product.weightQty > 0 ? product.weightQty : 1),
+        }
+      : undefined
+    setSwapTarget({
+      product,
+      lineKey: line.lineKey,
+      quantity: line.quantity,
+      pendingWeight,
+      initialSelections: line.saleDetail?.replacementSelections,
+    })
   }
 
   function handleCancelTable() {
@@ -513,6 +543,7 @@ export function RegisterPage() {
         onCoverChange={setCover}
         onChange={setLines}
         onChargesChange={setCharges}
+        onSwapLine={handleSwapLine}
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenPickup={() => {
           if (dining === 'takeaway') setPickupModalOpen(true)
@@ -552,6 +583,15 @@ export function RegisterPage() {
           options={comboProduct.combinationOptions ?? []}
           onCancel={() => setComboProduct(null)}
           onConfirm={confirmCombinationPicks}
+        />
+      )}
+      {swapTarget && (
+        <ComponentSwapModal
+          productName={swapTarget.product.name}
+          slots={swapTarget.product.variableComponentSlots ?? []}
+          initialSelections={swapTarget.initialSelections}
+          onCancel={() => setSwapTarget(null)}
+          onConfirm={confirmComponentSwap}
         />
       )}
 

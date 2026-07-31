@@ -2342,11 +2342,13 @@ export interface Product {
   group: string;
   isSubProduct: boolean;
   isVariableProduct?: boolean;
-  variableMode?: 'combination' | 'replacement' | 'weight' | string;
+  variableMode?: 'combination' | 'weight' | string;
   variableChoiceQty?: number;
   variableOptionsJson?: string;
   variableMinCost?: number;
   variableMaxCost?: number;
+  isVariableComponent?: boolean;
+  variableComponentOptionsJson?: string;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
   b2bPackageUnit?: string;
@@ -2391,11 +2393,13 @@ export interface UpsertProductPayload {
   group: string;
   isSubProduct: boolean;
   isVariableProduct?: boolean;
-  variableMode?: 'combination' | 'replacement' | 'weight';
+  variableMode?: 'combination' | 'weight';
   variableChoiceQty?: number;
   variableOptionsJson?: string;
   variableMinCost?: number;
   variableMaxCost?: number;
+  isVariableComponent?: boolean;
+  variableComponentOptionsJson?: string;
   b2cEnabled: boolean;
   b2bEnabled: boolean;
   b2bPackageUnit?: string;
@@ -3748,7 +3752,7 @@ export const api = {
       quantitySold: number;
       salesChannel?: 'pos' | 'online' | 'offline';
       variableDetail?: {
-        variableMode?: 'combination' | 'replacement' | 'weight' | string;
+        variableMode?: 'combination' | 'replacement' | 'weight' | 'variableComponent' | string;
         enteredWeight?: number;
         weightUom?: string;
         referenceWeightQty?: number;
@@ -3765,6 +3769,7 @@ export const api = {
           chosenComponentName?: string;
           componentUom?: string;
           quantity: number;
+          extraCharge?: number;
         }>;
       };
     },

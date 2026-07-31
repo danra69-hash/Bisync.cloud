@@ -78,6 +78,14 @@ import { formatDeliveryUnitPath } from '../../data/vendorProductCatalog';
 import { B2bSalesBox } from './B2bSalesBox';
 import { ProductAliasB2bSalesModal } from './ProductAliasB2bSalesModal';
 import { VariableProductSection } from './VariableProductSection';
+import { VariableComponentSection } from './VariableComponentSection';
+import {
+  blankVariableComponentConfig,
+  hasConfiguredVariableComponentSlots,
+  parseVariableComponentOptionsJson,
+  serializeVariableComponentOptionsJson,
+  type VariableComponentConfig,
+} from '../../data/productVariableComponent';
 import {
   blankVariableConfig,
   calcVariableMinMaxCost,
@@ -506,6 +514,10 @@ export function ProductsPage({
   const [isSubProduct, setIsSubProduct] = useState(false);
   const [isVariableProduct, setIsVariableProduct] = useState(false);
   const [variableConfig, setVariableConfig] = useState<VariableProductConfig>(blankVariableConfig());
+  const [isVariableComponent, setIsVariableComponent] = useState(false);
+  const [variableComponentConfig, setVariableComponentConfig] = useState<VariableComponentConfig>(
+    blankVariableComponentConfig(),
+  );
   const [productId, setProductId] = useState('');
   const [category, setCategory] = useState('');
   const [group, setGroup] = useState('');
@@ -853,6 +865,8 @@ export function ProductsPage({
       setRrp('');
       setAliases([]);
       setVariableConfig(blankVariableConfig());
+      setIsVariableComponent(false);
+      setVariableComponentConfig(blankVariableComponentConfig());
     } else {
       setB2cEnabled(true);
       setB2bEnabled(false);
@@ -874,6 +888,8 @@ export function ProductsPage({
     setIsSubProduct(false);
     setIsVariableProduct(false);
     setVariableConfig(blankVariableConfig());
+    setIsVariableComponent(false);
+    setVariableComponentConfig(blankVariableComponentConfig());
     setProductId('');
     setCategory('');
     setGroup('');
@@ -900,8 +916,13 @@ export function ProductsPage({
     setSelectedProductId(String(product.id));
     setName(product.name);
     setIsSubProduct(product.isSubProduct);
-    setIsVariableProduct(Boolean(product.isVariableProduct) && !product.isSubProduct);
-    if (product.isVariableProduct && !product.isSubProduct) {
+
+    const legacyReplacement = Boolean(product.isVariableProduct)
+      && !product.isSubProduct
+      && String(product.variableMode || '').toLowerCase() === 'replacement';
+    const asVariableProduct = Boolean(product.isVariableProduct) && !product.isSubProduct && !legacyReplacement;
+    setIsVariableProduct(asVariableProduct);
+    if (asVariableProduct) {
       const mode = parseVariableMode(product.variableMode);
       const parsed = parseVariableOptionsJson(product.variableOptionsJson, mode);
       setVariableConfig({
@@ -915,6 +936,20 @@ export function ProductsPage({
     } else {
       setVariableConfig(blankVariableConfig());
     }
+
+    const variableComponentEnabled = !product.isSubProduct && (
+      Boolean(product.isVariableComponent) || legacyReplacement
+    );
+    setIsVariableComponent(variableComponentEnabled);
+    if (variableComponentEnabled) {
+      const raw = product.isVariableComponent
+        ? product.variableComponentOptionsJson
+        : product.variableOptionsJson;
+      setVariableComponentConfig(parseVariableComponentOptionsJson(raw));
+    } else {
+      setVariableComponentConfig(blankVariableComponentConfig());
+    }
+
     setProductId(product.productId);
     setCategory(product.category);
     setGroup(product.group);
@@ -1364,6 +1399,11 @@ export function ProductsPage({
       }
     }
 
+    if (isVariableComponent && !hasConfiguredVariableComponentSlots(variableComponentConfig)) {
+      showSaveError('Add at least one Variable Component substitute.');
+      return;
+    }
+
     const payloadItems = lines
       .filter(line => line.componentId)
       .map(line => ({
@@ -1444,6 +1484,10 @@ export function ProductsPage({
         : undefined,
       variableMinCost: !isSubProduct && isVariableProduct ? variableCosts.minCost : undefined,
       variableMaxCost: !isSubProduct && isVariableProduct ? variableCosts.maxCost : undefined,
+      isVariableComponent: !isSubProduct && isVariableComponent,
+      variableComponentOptionsJson: !isSubProduct && isVariableComponent
+        ? serializeVariableComponentOptionsJson(variableComponentConfig)
+        : undefined,
       b2cEnabled: isSubProduct ? false : b2cEnabled,
       b2bEnabled: isSubProduct ? false : b2bEnabled,
       b2bPackageUnit: isSubProduct || !b2bEnabled
@@ -1634,6 +1678,25 @@ export function ProductsPage({
                     />
                     Variable Product
                   </label>
+                  <label
+                    className={`inline-flex items-center gap-2 text-xs ${
+                      isSubProduct ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                    }`}
+                    title={isSubProduct ? 'Sub-products cannot use Variable Component swaps.' : undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isVariableComponent}
+                      disabled={isSubProduct}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        setIsVariableComponent(on);
+                        if (!on) setVariableComponentConfig(blankVariableComponentConfig());
+                      }}
+                      className="rounded border-border disabled:cursor-not-allowed"
+                    />
+                    Variable Component
+                  </label>
                 </div>
               </div>
 
@@ -1684,6 +1747,13 @@ export function ProductsPage({
                 ) : isVariableProduct ? (
                   <p className="text-[10px] text-muted-foreground">
                     Variable products sell on B2C or B2B with combination or weight-based pricing.
+                    {isVariableComponent
+                      ? ' Variable Component adds POS SWAP substitutes on recipe components.'
+                      : ''}
+                  </p>
+                ) : isVariableComponent ? (
+                  <p className="text-[10px] text-muted-foreground">
+                    Variable Component lets POS staff SWAP recipe components (free or with an extra charge).
                   </p>
                 ) : !hasB2bProductCapability ? (
                   <p className="text-[10px] text-muted-foreground">
@@ -2146,11 +2216,23 @@ export function ProductsPage({
             />
           ) : null}
 
+          {isVariableComponent && !(isVariableProduct && variableConfig.mode === 'combination') ? (
+            <VariableComponentSection
+              config={variableComponentConfig}
+              onChange={setVariableComponentConfig}
+              recipeLines={lines}
+              ingredients={availableComponents}
+              disabled={!isEditing || saving}
+            />
+          ) : null}
+
           {!(isVariableProduct && variableConfig.mode === 'combination') ? (
             <ComponentLinesSection
               title="Product Component"
               description={!isSubProduct && b2bEnabled
                 ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
+                : isVariableComponent
+                  ? 'Base recipe components. Sync Variable Component slots from these lines.'
                 : isVariableProduct
                   ? 'Base recipe components for this variable product.'
                   : 'Add smart components or sub-products from batch produce into this product recipe mix'}

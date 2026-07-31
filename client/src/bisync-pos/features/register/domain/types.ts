@@ -1,8 +1,6 @@
 import type { MoneyCents } from '../../../core/types/money'
-import type {
-  VariableCombinationOption,
-  VariableReplacementSlot,
-} from '../../../../data/productVariable'
+import type { VariableCombinationOption } from '../../../../data/productVariable'
+import type { VariableComponentSlot } from '../../../../data/productVariableComponent'
 import type { PosSaleVariableDetail } from './saleDetail'
 
 export type ProductId = string
@@ -32,11 +30,13 @@ export type Product = {
   /** Quoted package weight that the original product RRP applied to. */
   weightQty?: number
   /** Variable product mode when applicable. */
-  variableMode?: 'combination' | 'replacement' | 'weight'
+  variableMode?: 'combination' | 'weight'
   /** Combination: total choice units the customer must pick. */
   choiceQty?: number
   combinationOptions?: VariableCombinationOption[]
-  replacementSlots?: VariableReplacementSlot[]
+  /** Variable Component substitution slots (POS SWAP). */
+  isVariableComponent?: boolean
+  variableComponentSlots?: VariableComponentSlot[]
 }
 
 export type CartLine = {

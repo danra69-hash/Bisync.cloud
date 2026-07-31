@@ -1,5 +1,6 @@
 import type { CartLine, OrderCharges, Product } from '../domain/types'
 import { cartGrandTotal, cartSubtotal, removeLine } from '../domain/cart'
+import { saleDetailExtraChargeCents } from '../domain/saleDetail'
 import { formatMoney } from '../../../core/types/money'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './OrderPanel.css'
@@ -18,6 +19,7 @@ type Props = {
   onCoverChange: (cover: number) => void
   onChange: (lines: CartLine[]) => void
   onChargesChange: (charges: OrderCharges) => void
+  onSwapLine?: (line: CartLine) => void
   onOpenHistory: () => void
   onOpenPickup?: () => void
   onAction: (action: 'save' | 'print' | 'payment' | 'cancel') => void
@@ -39,6 +41,7 @@ export function OrderPanel({
   onCoverChange,
   onChange,
   onChargesChange,
+  onSwapLine,
   onOpenHistory,
   onOpenPickup,
   onAction,
@@ -129,7 +132,7 @@ export function OrderPanel({
           <p className="order-panel__empty">Add products to start this order.</p>
         ) : (
           <table className="order-lines-table">
-            <ColGroup widths={['36%', '12%', '18%', '18%', 88]} />
+            <ColGroup widths={['36%', '12%', '18%', '18%', 120]} />
             <thead>
               <tr>
                 <th scope="col">Product</th>
@@ -137,7 +140,7 @@ export function OrderPanel({
                 <th scope="col">Unit Price</th>
                 <th scope="col">Total</th>
                 <th scope="col">
-                  <span className="sr-only">Remove</span>
+                  <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
@@ -145,13 +148,19 @@ export function OrderPanel({
               {lines.map((line, index) => {
                 const product = byId.get(line.productId)
                 if (!product) return null
-                const lineTotal = product.priceCents * line.quantity
+                const extraCents = saleDetailExtraChargeCents(line.saleDetail)
+                const lineTotal = product.priceCents * line.quantity + extraCents
                 const qtyLabel = product.pricedByWeight && product.weightUom
                   ? `${line.quantity} ${product.weightUom}`
                   : String(line.quantity)
                 const unitLabel = product.pricedByWeight && product.weightUom
                   ? `${formatMoney(product.priceCents)}/${product.weightUom}`
                   : formatMoney(product.priceCents)
+                const canSwap = Boolean(
+                  onSwapLine
+                  && product.isVariableComponent
+                  && (product.variableComponentSlots?.length ?? 0) > 0,
+                )
                 return (
                   <tr key={line.lineKey ?? `${line.productId}-${index}`}>
                     <td className="order-lines-table__product">
@@ -168,23 +177,35 @@ export function OrderPanel({
                       {formatMoney(lineTotal)}
                     </td>
                     <td className="order-lines-table__remove">
-                      <button
-                        type="button"
-                        className="order-line__remove"
-                        aria-label={`Remove ${product.name}`}
-                        onClick={() =>
-                          onChange(removeLine(lines, line.productId, line.lineKey))
-                        }
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.75"
+                      <div className="order-line__actions">
+                        {canSwap ? (
+                          <button
+                            type="button"
+                            className="order-line__swap"
+                            aria-label={`Swap components for ${product.name}`}
+                            onClick={() => onSwapLine?.(line)}
+                          >
+                            SWAP
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="order-line__remove"
+                          aria-label={`Remove ${product.name}`}
+                          onClick={() =>
+                            onChange(removeLine(lines, line.productId, line.lineKey))
+                          }
                         >
-                          <path d="M4 7h16M9 7V5h6v2M8 7l1 12h6l1-12" />
-                        </svg>
-                      </button>
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                          >
+                            <path d="M4 7h16M9 7V5h6v2M8 7l1 12h6l1-12" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )

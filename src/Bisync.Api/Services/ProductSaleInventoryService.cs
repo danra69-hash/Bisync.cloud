@@ -83,13 +83,16 @@ public class ProductSaleInventoryService(
         if (string.IsNullOrEmpty(weightUom) && mode == "weight")
             weightUom = ParseWeightUomFromOptions(product.VariableOptionsJson);
 
-        // Weight: scale BOM by exact weight / reference package weight.
+        // Weight (and Variable Component + weight): scale BOM by exact weight / reference package weight.
         // Other modes: multiply by units sold.
-        var bomMultiplier = mode == "weight" && enteredWeight is > 0 && referenceWeightQty is > 0
-            ? enteredWeight.Value / referenceWeightQty.Value
+        var scaleByWeight = enteredWeight is > 0
+            && referenceWeightQty is > 0
+            && (mode == "weight" || mode == "variablecomponent");
+        var bomMultiplier = scaleByWeight
+            ? enteredWeight!.Value / referenceWeightQty!.Value
             : quantitySold;
 
-        var finishedQty = mode == "weight" ? bomMultiplier : quantitySold;
+        var finishedQty = scaleByWeight ? bomMultiplier : quantitySold;
 
         var subProductsByCode = await db.Products
             .AsNoTracking()
@@ -226,7 +229,7 @@ public class ProductSaleInventoryService(
                         cancellationToken);
                 }
             }
-            else if (mode == "replacement")
+            else if (mode == "replacement" || mode == "variablecomponent")
             {
                 var replacedBases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -344,24 +347,28 @@ public class ProductSaleInventoryService(
             return false;
         if (mode == "combination" && combo.Count > 0)
             return true;
-        if (mode == "replacement" && replacements.Count > 0)
+        if (mode == "replacement" || mode == "variablecomponent")
             return true;
         if (mode == "weight" && enteredWeight is > 0)
             return true;
-        return product.IsVariableProduct;
+        return product.IsVariableProduct || product.IsVariableComponent;
     }
 
     static string ResolveVariableMode(Product product, PosSaleVariableDetailRequest? detail)
     {
         var fromDetail = (detail?.VariableMode ?? string.Empty).Trim().ToLowerInvariant();
-        if (fromDetail is "combination" or "replacement" or "weight")
+        if (fromDetail is "combination" or "replacement" or "weight" or "variablecomponent")
             return fromDetail;
 
+        if (product.IsVariableComponent
+            && (detail?.ReplacementSelections?.Count ?? 0) > 0)
+            return "variablecomponent";
+
         if (!product.IsVariableProduct)
-            return string.Empty;
+            return product.IsVariableComponent ? "variablecomponent" : string.Empty;
 
         var fromProduct = (product.VariableMode ?? string.Empty).Trim().ToLowerInvariant();
-        return fromProduct is "combination" or "replacement" or "weight"
+        return fromProduct is "combination" or "weight"
             ? fromProduct
             : "combination";
     }
@@ -403,6 +410,7 @@ public class ProductSaleInventoryService(
                 ChosenComponentName = (s.ChosenComponentName ?? string.Empty).Trim(),
                 ComponentUom = (s.ComponentUom ?? string.Empty).Trim(),
                 Quantity = s.Quantity,
+                ExtraCharge = s.ExtraCharge is > 0 ? s.ExtraCharge.Value : 0m,
             })
             .ToList();
     }
@@ -427,7 +435,7 @@ public class ProductSaleInventoryService(
             }), JsonOpts);
         }
 
-        if (mode == "replacement")
+        if (mode == "replacement" || mode == "variablecomponent")
         {
             return JsonSerializer.Serialize(replacements.Select(s => new
             {
@@ -438,6 +446,7 @@ public class ProductSaleInventoryService(
                 chosenComponentName = s.ChosenComponentName,
                 componentUom = s.ComponentUom,
                 quantity = s.Quantity,
+                extraCharge = s.ExtraCharge,
             }), JsonOpts);
         }
 

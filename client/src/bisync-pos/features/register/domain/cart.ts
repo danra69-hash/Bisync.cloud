@@ -1,7 +1,7 @@
 import type { CartLine, OrderCharges, Product, ProductId } from './types'
 import type { MoneyCents } from '../../../core/types/money'
 import type { PosSaleVariableDetail } from './saleDetail'
-import { summarizeSaleDetail } from './saleDetail'
+import { saleDetailExtraChargeCents, summarizeSaleDetail } from './saleDetail'
 
 function newLineKey() {
   return `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -26,7 +26,12 @@ export function addWeightToCart(
 ): CartLine[] {
   if (!(weight > 0)) return lines
   const note = summarizeSaleDetail(detail)
-  const existing = lines.find((l) => l.productId === productId && l.saleDetail?.variableMode === 'weight')
+  const existing = lines.find((l) => {
+    if (l.productId !== productId) return false
+    const mode = l.saleDetail?.variableMode
+    return mode === 'weight'
+      || (mode === 'variableComponent' && (l.saleDetail?.enteredWeight ?? 0) > 0)
+  })
   if (existing) {
     return lines.map((l) =>
       l === existing
@@ -116,8 +121,23 @@ export function cartSubtotal(
   return lines.reduce((sum, line) => {
     const product = byId.get(line.productId)
     if (!product) return sum
-    return sum + product.priceCents * line.quantity
+    return sum + product.priceCents * line.quantity + saleDetailExtraChargeCents(line.saleDetail)
   }, 0)
+}
+
+export function updateLineSaleDetail(
+  lines: CartLine[],
+  lineKey: string | undefined,
+  productId: ProductId,
+  saleDetail: PosSaleVariableDetail,
+): CartLine[] {
+  const note = summarizeSaleDetail(saleDetail)
+  return lines.map((l) => {
+    if (lineKey) {
+      return l.lineKey === lineKey ? { ...l, saleDetail, note } : l
+    }
+    return l.productId === productId ? { ...l, saleDetail, note } : l
+  })
 }
 
 export function cartGrandTotal(

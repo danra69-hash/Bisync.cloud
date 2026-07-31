@@ -21,13 +21,15 @@ export function productToUpsertPayload(
     group: product.group,
     isSubProduct: product.isSubProduct,
     isVariableProduct: product.isVariableProduct,
-    variableMode: product.variableMode === 'replacement' || product.variableMode === 'combination' || product.variableMode === 'weight'
+    variableMode: product.variableMode === 'combination' || product.variableMode === 'weight'
       ? product.variableMode
       : undefined,
     variableChoiceQty: product.variableChoiceQty,
     variableOptionsJson: product.variableOptionsJson,
     variableMinCost: product.variableMinCost,
     variableMaxCost: product.variableMaxCost,
+    isVariableComponent: product.isVariableComponent,
+    variableComponentOptionsJson: product.variableComponentOptionsJson,
     b2cEnabled: product.b2cEnabled,
     b2bEnabled: product.b2bEnabled,
     b2bPackageUnit: product.b2bPackageUnit,

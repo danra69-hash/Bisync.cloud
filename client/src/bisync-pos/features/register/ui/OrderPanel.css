@@ -208,9 +208,34 @@
 }
 
 .order-lines-table__remove {
-  width: 1.75rem;
+  width: 5.5rem;
   padding-right: 0 !important;
   text-align: right;
+}
+
+.order-line__actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.order-line__swap {
+  border: 1px solid var(--color-border, #d8dee8);
+  background: var(--color-surface, #fff);
+  color: var(--color-primary-text, #1d4ed8);
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  padding: 0.35rem 0.45rem;
+  border-radius: 4px;
+}
+
+.order-line__swap:hover {
+  border-color: var(--color-primary, #2563eb);
+  background: rgba(37, 99, 235, 0.06);
 }
 
 .order-line__remove {
