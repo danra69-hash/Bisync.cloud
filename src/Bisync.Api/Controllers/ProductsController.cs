@@ -595,15 +595,18 @@ public class ProductsController(
         {
             if (string.IsNullOrWhiteSpace(request.VariableComponentOptionsJson)
                 || request.VariableComponentOptionsJson.Trim() is "{}" or "[]")
-                return "Add at least one Variable Component substitute.";
-            if (request.Items is null || request.Items.Count == 0)
-                return "Add base Product Components for Variable Component products.";
+                return "Configure the original component and at least one alternate for Variable Component.";
+            if (!HasConfiguredVariableComponentSlot(request.VariableComponentOptionsJson))
+                return "Variable Component requires an original component (UOM, QTY) and at least one alternate with Addon RRP fields.";
         }
 
-        var allowsEmptyRecipe = request.IsVariableProduct
-            && (
-                string.Equals(request.VariableMode, "combination", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(request.VariableMode, "weight", StringComparison.OrdinalIgnoreCase)
+        var allowsEmptyRecipe = request.IsVariableComponent
+            || (
+                request.IsVariableProduct
+                && (
+                    string.Equals(request.VariableMode, "combination", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(request.VariableMode, "weight", StringComparison.OrdinalIgnoreCase)
+                )
             );
         if (!allowsEmptyRecipe && (request.Items is null || request.Items.Count == 0))
         {
@@ -673,6 +676,43 @@ public class ProductsController(
             product.VariableComponentOptionsJson = string.IsNullOrWhiteSpace(request.VariableComponentOptionsJson)
                 ? "{}"
                 : request.VariableComponentOptionsJson.Trim();
+        }
+    }
+
+    static bool HasConfiguredVariableComponentSlot(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("slots", out var slots) || slots.ValueKind != JsonValueKind.Array)
+                return false;
+            foreach (var slot in slots.EnumerateArray())
+            {
+                var baseId = slot.TryGetProperty("baseComponentId", out var baseEl)
+                    ? baseEl.GetString()
+                    : null;
+                var qty = slot.TryGetProperty("quantity", out var qtyEl) && qtyEl.TryGetDecimal(out var q)
+                    ? q
+                    : 0m;
+                if (string.IsNullOrWhiteSpace(baseId) || qty <= 0) continue;
+                if (!slot.TryGetProperty("alternatives", out var alts) || alts.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var alt in alts.EnumerateArray())
+                {
+                    var altId = alt.TryGetProperty("componentId", out var altEl) ? altEl.GetString() : null;
+                    var altQty = alt.TryGetProperty("quantity", out var altQtyEl) && altQtyEl.TryGetDecimal(out var aq)
+                        ? aq
+                        : 0m;
+                    if (!string.IsNullOrWhiteSpace(altId) && altQty > 0)
+                        return true;
+                }
+            }
+            return false;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 

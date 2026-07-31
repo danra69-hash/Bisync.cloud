@@ -88,7 +88,7 @@ export function ComponentSwapModal({
             <p className="combo-picker-modal__eyebrow">Variable Component · SWAP</p>
             <h2>{productName}</h2>
             <p className="combo-picker-modal__hint">
-              Choose what the customer ordered for each swappable component.
+              Choose the alternate component for this SWAP. Addon RRP is added when charged.
             </p>
           </div>
           <button type="button" className="combo-picker-modal__close" onClick={onCancel} aria-label="Cancel">
@@ -126,7 +126,7 @@ export function ComponentSwapModal({
                     />
                     <span>
                       {slot.baseComponentName}
-                      <span style={{ color: 'var(--color-ink-muted, #667085)' }}> · base · no extra</span>
+                      <span style={{ color: 'var(--color-ink-muted, #667085)' }}> · original · no Addon RRP</span>
                     </span>
                   </label>
                   {slot.alternatives.map((alt, idx) => (
@@ -154,8 +154,8 @@ export function ComponentSwapModal({
                         {alt.componentName}
                         <span style={{ color: 'var(--color-ink-muted, #667085)' }}>
                           {alt.extraCharge > 0
-                            ? ` · +${alt.extraCharge.toFixed(2)}`
-                            : ' · no extra'}
+                            ? ` · Addon RRP +${alt.extraCharge.toFixed(2)}`
+                            : ' · no Addon RRP'}
                         </span>
                       </span>
                     </label>
@@ -168,7 +168,7 @@ export function ComponentSwapModal({
 
         <div className="combo-picker-modal__footer">
           <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-ink-muted, #667085)' }}>
-            Extra charge total: <strong>{extraTotal > 0 ? `+${extraTotal.toFixed(2)}` : 'none'}</strong>
+            Addon RRP total: <strong>{extraTotal > 0 ? `+${extraTotal.toFixed(2)}` : 'none'}</strong>
           </p>
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
             <button type="button" className="combo-picker-modal__secondary" onClick={onCancel}>
