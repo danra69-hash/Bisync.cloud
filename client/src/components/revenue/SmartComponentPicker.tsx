@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import type { ComponentRow } from '../../data/componentForm';
 import { filterComponentsForPicker } from '../../data/productForm';
+import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
 
 type Props = {
   components: ComponentRow[];
@@ -94,9 +95,11 @@ export function SmartComponentPicker({
             setQuery('');
           }}
           onChange={e => {
-            setQuery(e.target.value);
+            const next = e.target.value;
+            setQuery(next);
             setOpen(true);
-            if (!e.target.value.trim()) onChange(null);
+            // Clear selection when the search box is emptied, but keep the menu open.
+            if (!next.trim()) onChange(null);
           }}
           className="w-full rounded-md border border-border bg-background pl-2.5 pr-7 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
         />
@@ -106,7 +109,8 @@ export function SmartComponentPicker({
             onClick={() => {
               onChange(null);
               setQuery('');
-              setOpen(false);
+              setOpen(true);
+              requestAnimationFrame(() => inputRef.current?.focus());
             }}
             className="absolute right-6 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground"
             aria-label="Clear component"
@@ -121,7 +125,7 @@ export function SmartComponentPicker({
         ? createPortal(
             <div
               data-smart-component-picker-menu
-              className="fixed z-[120] max-h-48 overflow-y-auto rounded-md border border-border bg-card shadow-lg"
+              className={`fixed ${PICKER_MENU_Z_CLS} max-h-48 overflow-y-auto rounded-md border border-border bg-card shadow-lg`}
               style={{ top: menuStyle.top, left: menuStyle.left, width: menuStyle.width }}
             >
               {filtered.length === 0 ? (

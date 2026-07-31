@@ -4,6 +4,7 @@ import { ChevronDown, X } from 'lucide-react';
 import type { Product } from '../../api';
 import type { ComponentRow } from '../../data/componentForm';
 import { filterComponentsForPicker, filterSubProductsForPicker, formatSubProductBatchPackageUnit } from '../../data/productForm';
+import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
 
 type Props = {
   components: ComponentRow[];
@@ -100,13 +101,18 @@ export function ProductComponentPicker({
     return () => document.removeEventListener('click', handlePointerDown);
   }, [open]);
 
-  function clearSelection() {
+  function clearSelection(options?: { keepOpen?: boolean }) {
     if (selectedSubProduct) {
       onSubProductSelect?.(null);
     } else {
       onComponentSelect(null);
     }
     setQuery('');
+    if (options?.keepOpen) {
+      setOpen(true);
+      requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
     setOpen(false);
   }
 
@@ -127,16 +133,18 @@ export function ProductComponentPicker({
             setQuery('');
           }}
           onChange={e => {
-            setQuery(e.target.value);
+            const next = e.target.value;
+            setQuery(next);
             setOpen(true);
-            if (!e.target.value.trim()) clearSelection();
+            // Clear selection when emptied, but keep the filter menu open for typing.
+            if (!next.trim()) clearSelection({ keepOpen: true });
           }}
           className="w-full rounded-md border border-border bg-background pl-2.5 pr-7 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
         />
         {value && !disabled ? (
           <button
             type="button"
-            onClick={clearSelection}
+            onClick={() => clearSelection({ keepOpen: true })}
             className="absolute right-6 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground"
             aria-label="Clear selection"
           >
@@ -150,7 +158,7 @@ export function ProductComponentPicker({
         ? createPortal(
             <div
               data-product-component-picker-menu
-              className="fixed z-[120] max-h-56 overflow-y-auto rounded-md border border-border bg-card shadow-lg"
+              className={`fixed ${PICKER_MENU_Z_CLS} max-h-56 overflow-y-auto rounded-md border border-border bg-card shadow-lg`}
               style={{ top: menuStyle.top, left: menuStyle.left, width: menuStyle.width }}
             >
               {!hasResults ? (
