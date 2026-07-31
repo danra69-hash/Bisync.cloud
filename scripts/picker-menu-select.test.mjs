@@ -17,6 +17,12 @@ function isEventInsideSelector(event, selector) {
   return Boolean(el?.closest?.(selector));
 }
 
+function bindPickerOptionActivate(event, activate) {
+  event.preventDefault();
+  event.stopPropagation();
+  activate();
+}
+
 describe('picker menu selection helpers', () => {
   it('resolves text-node click targets via parentElement', () => {
     const parent = {
@@ -36,5 +42,27 @@ describe('picker menu selection helpers', () => {
       },
     };
     assert.equal(isEventInsideSelector({ target: outside }, '[data-menu]'), false);
+  });
+
+  it('activates option on pointerdown with preventDefault/stopPropagation', () => {
+    let activated = 0;
+    let prevented = false;
+    let stopped = false;
+    bindPickerOptionActivate(
+      {
+        preventDefault() {
+          prevented = true;
+        },
+        stopPropagation() {
+          stopped = true;
+        },
+      },
+      () => {
+        activated += 1;
+      },
+    );
+    assert.equal(activated, 1);
+    assert.equal(prevented, true);
+    assert.equal(stopped, true);
   });
 });

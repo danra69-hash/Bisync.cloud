@@ -3,7 +3,11 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import { isDeletableProductGroup } from '../../data/componentCatalogConfig';
 import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
-import { eventTargetElement, isEventInsideSelector } from './pickerMenuEvents';
+import {
+  bindPickerOptionActivate,
+  eventTargetElement,
+  isEventInsideSelector,
+} from './pickerMenuEvents';
 
 type Props = {
   value: string;
@@ -104,11 +108,11 @@ export function ProductGroupSelect({
                   <button
                     type="button"
                     className="flex-1 min-w-0 text-left px-1 py-0.5"
-                    onMouseDown={event => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onChange(option);
-                      setOpen(false);
+                    onPointerDown={event => {
+                      bindPickerOptionActivate(event, () => {
+                        onChange(option);
+                        setOpen(false);
+                      });
                     }}
                   >
                     {option}
@@ -116,11 +120,11 @@ export function ProductGroupSelect({
                   {deletable ? (
                     <button
                       type="button"
-                      onMouseDown={e => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setOpen(false);
-                        onDeleteRequest(option);
+                      onPointerDown={e => {
+                        bindPickerOptionActivate(e, () => {
+                          setOpen(false);
+                          onDeleteRequest(option);
+                        });
                       }}
                       className="shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                       title={`Delete ${option}`}

@@ -4,11 +4,17 @@ import { ChevronDown, X } from 'lucide-react';
 import type { ComponentRow } from '../../data/componentForm';
 import { filterComponentsForPicker } from '../../data/productForm';
 import { PICKER_MENU_Z_CLS } from '../layout/sidePanelShared';
-import { eventTargetElement, isEventInsideSelector } from './pickerMenuEvents';
+import {
+  bindPickerOptionActivate,
+  eventTargetElement,
+  isEventInsideSelector,
+} from './pickerMenuEvents';
 
 type Props = {
   components: ComponentRow[];
   value: string;
+  /** Shown when value is set but the component is missing from `components` (inactive/unscoped). */
+  fallbackLabel?: string;
   placeholder?: string;
   disabled?: boolean;
   onChange: (component: ComponentRow | null) => void;
@@ -19,6 +25,7 @@ const MENU_SELECTOR = '[data-smart-component-picker-menu]';
 export function SmartComponentPicker({
   components,
   value,
+  fallbackLabel = '',
   placeholder = 'Search component…',
   disabled = false,
   onChange,
@@ -34,16 +41,32 @@ export function SmartComponentPicker({
     [components, value],
   );
 
-  const filtered = useMemo(
-    () => filterComponentsForPicker(components, query),
-    [components, query],
-  );
+  const selectedLabel = selected
+    ? `${selected.name} (${selected.componentId})`
+    : value && fallbackLabel
+      ? `${fallbackLabel} (${value})`
+      : value
+        ? value
+        : '';
+
+  const filtered = useMemo(() => {
+    const rows = filterComponentsForPicker(components, query);
+    // Keep the current BOM component visible when the menu is unfiltered / it still matches.
+    if (
+      selected
+      && !rows.some(c => c.componentId === selected.componentId)
+      && !query.trim()
+    ) {
+      return [selected, ...rows];
+    }
+    return rows;
+  }, [components, query, selected]);
 
   useEffect(() => {
     if (!open) {
-      setQuery(selected ? `${selected.name} (${selected.componentId})` : '');
+      setQuery(selectedLabel);
     }
-  }, [open, selected]);
+  }, [open, selectedLabel]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -95,7 +118,7 @@ export function SmartComponentPicker({
         <input
           ref={inputRef}
           type="text"
-          value={open ? query : (selected ? `${selected.name} (${selected.componentId})` : '')}
+          value={open ? query : selectedLabel}
           placeholder={placeholder}
           disabled={disabled}
           onFocus={() => {
@@ -112,7 +135,7 @@ export function SmartComponentPicker({
           }}
           className="w-full rounded-md border border-border bg-background pl-2.5 pr-7 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
         />
-        {selected && !disabled ? (
+        {(selected || value) && !disabled ? (
           <button
             type="button"
             onClick={() => {
@@ -144,10 +167,8 @@ export function SmartComponentPicker({
                   <button
                     key={component.componentId}
                     type="button"
-                    onMouseDown={event => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      selectComponent(component);
+                    onPointerDown={event => {
+                      bindPickerOptionActivate(event, () => selectComponent(component));
                     }}
                     className={`w-full text-left px-3 py-2 text-xs hover:bg-muted/50 ${
                       component.componentId === value ? 'bg-primary/10 text-primary' : ''

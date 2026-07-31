@@ -327,6 +327,7 @@ function ComponentLinesSection({
                             components={availableComponents}
                             subProducts={availableSubProducts}
                             value={line.componentId}
+                            fallbackLabel={line.componentName}
                             onComponentSelect={component => onComponentSelect(line.key, component)}
                             onSubProductSelect={product => onSubProductSelect?.(line.key, product)}
                           />
@@ -334,6 +335,7 @@ function ComponentLinesSection({
                           <SmartComponentPicker
                             components={availableComponents}
                             value={line.componentId}
+                            fallbackLabel={line.componentName}
                             onChange={component => onComponentSelect(line.key, component)}
                           />
                         )}
@@ -699,10 +701,31 @@ export function ProductsPage({
     onEditorRequestConsumed?.();
   }, [editorRequest, savedProducts, onEditorRequestConsumed]);
 
-  const availableComponents = useMemo(
-    () => components.filter(c => c.active && componentMatchesLocations(c, selectedLocationIds)),
-    [components, selectedLocationIds],
-  );
+  const availableComponents = useMemo(() => {
+    const activeScoped = components.filter(
+      c => c.active && componentMatchesLocations(c, selectedLocationIds),
+    );
+    const byId = new Map(activeScoped.map(c => [c.componentId, c]));
+    // Keep components already on the BOM selectable/visible even if inactive or unscoped.
+    for (const line of [...lines, ...packagingLines]) {
+      const id = line.componentId.trim();
+      if (!id || byId.has(id)) continue;
+      const raw = components.find(c => c.componentId === id);
+      if (raw) {
+        byId.set(id, raw);
+        continue;
+      }
+      byId.set(id, {
+        ...blankComponentRow,
+        componentId: id,
+        name: line.componentName || id,
+        recipeUOM: line.componentUom || 'g',
+        active: false,
+        locations: selectedLocationIds.length > 0 ? [...selectedLocationIds] : ['all'],
+      });
+    }
+    return [...byId.values()];
+  }, [components, selectedLocationIds, lines, packagingLines]);
 
   const availableSubProducts = useMemo(
     () => savedProducts.filter(product =>
