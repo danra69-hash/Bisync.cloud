@@ -19,6 +19,11 @@ import { InventoryPage } from './InventoryPage';
 import { WastagePage } from './WastagePage';
 import { TransferPage } from './TransferPage';
 import { CogsAuditPage } from './CogsAuditPage';
+import { ItemizedSalesSummaryReportPage } from './reports/ItemizedSalesSummaryReportPage';
+import { InventorySummaryReportPage } from './reports/InventorySummaryReportPage';
+import { DetailedPurchaseSummaryReportPage } from './reports/DetailedPurchaseSummaryReportPage';
+import { ProductionReportPage } from './reports/ProductionReportPage';
+import { WastageReportPage } from './reports/WastageReportPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
@@ -218,6 +223,41 @@ function renderRevMgmtContent(
     case 'Transfer':
       return (
         <TransferPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Itemized Sales Summary':
+      return (
+        <ItemizedSalesSummaryReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Inventory Summary':
+      return (
+        <InventorySummaryReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Detailed Purchase Summary':
+      return (
+        <DetailedPurchaseSummaryReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Production Report':
+      return (
+        <ProductionReportPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Wastage Report':
+      return (
+        <WastageReportPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

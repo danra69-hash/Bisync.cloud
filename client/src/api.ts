@@ -2490,6 +2490,15 @@ export interface SalesDataResult {
   rows: SalesDataRow[];
 }
 
+/** Shared payload for RMS common reports (`/api/reports/*`). */
+export interface ReportPayload {
+  title: string;
+  period: string;
+  summary: Record<string, unknown>;
+  rows: Record<string, unknown>[];
+  extra?: Record<string, Record<string, unknown>[]>;
+}
+
 export interface ProduceBatchPayload {
   locationExternalIds: string[];
   batchQty: number;
@@ -4092,6 +4101,52 @@ export const api = {
     fetchJson<SystemCogsAuditHistoryEntry[]>(`/api/cogs-audit/system/history?take=${take}`),
   cogsAuditSystemHistoryOpen: (runId: string) =>
     fetchJson<SystemCogsAuditHistoryFile>(`/api/cogs-audit/system/history/${encodeURIComponent(runId)}`),
+  reportItemizedSalesSummary: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/itemized-sales-summary?${params}`);
+  },
+  reportInventorySummary: (
+    companyId: number,
+    locationIds: string[],
+    period: string,
+    itemType = 'component',
+  ) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      period,
+      itemType,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/inventory-summary?${params}`);
+  },
+  reportDetailedPurchaseSummary: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/detailed-purchase-summary?${params}`);
+  },
+  reportProduction: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/production?${params}`);
+  },
+  reportWastage: (companyId: number, locationIds: string[], month: string) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      month,
+    });
+    return fetchJson<ReportPayload>(`/api/reports/wastage?${params}`);
+  },
   systemAuditMonths: (params: { companyId?: number; locationId?: number } = {}) => {
     const q = new URLSearchParams();
     if (params.companyId != null) q.set('companyId', String(params.companyId));
