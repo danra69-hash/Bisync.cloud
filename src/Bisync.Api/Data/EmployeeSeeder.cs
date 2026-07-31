@@ -95,7 +95,7 @@ public static class EmployeeSeeder
             {
                 EmployeeCode = await EmployeeCodeGenerator.NextCodeAsync(db),
                 Email = seed.Email,
-                LeaveBalance = new LeaveBalance { AlBalance = 16 },
+                LeaveBalance = new LeaveBalance { AlBalance = 16, AlCarryForward = seed.PosEnabled ? 3 : 0 },
             };
             db.Employees.Add(employee);
 
@@ -152,7 +152,12 @@ public static class EmployeeSeeder
     {
         if (employee.LeaveBalance is null)
         {
-            employee.LeaveBalance = new LeaveBalance { AlBalance = 16 };
+            employee.LeaveBalance = new LeaveBalance { AlBalance = 16, AlCarryForward = seed.PosEnabled ? 3 : 0 };
+            await db.SaveChangesAsync();
+        }
+        else if (seed.PosEnabled && employee.LeaveBalance.AlCarryForward <= 0)
+        {
+            employee.LeaveBalance.AlCarryForward = 3;
             await db.SaveChangesAsync();
         }
 

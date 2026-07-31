@@ -1,6 +1,6 @@
 import { HR_API_BASE } from '../../config/hrBackend';
 import type {
-  AttendanceRecord, CompanySetting, CompanySettingUpdate, CountryOption, Department, Division, DivisionTreeNode,
+  AttendanceRecord, AttendanceStatus, CompanySetting, CompanySettingUpdate, CountryOption, Department, Division, DivisionTreeNode,
   Employee, EmployeeCreateRequest, EmployeeLevel, EmployeeRequest,
   IncomeTaxYear, IncomeTaxYearPreview, IncomeTaxYearRequest,
   LeaveBalanceRow, LeaveRequest, LeaveType, PayStructure, PayStructureRequest, PayrollPreview, PayrollRunDetail, PayrollRunSummary, PublicHoliday, PublicHolidayRequest, ScheduleType, ShiftSchedule,
@@ -165,7 +165,29 @@ export const hrApi = {
     resetPayrollPin: (id: number) => http<Employee>(`/employees/${id}/reset-payroll-pin`, { method: 'POST' }),
   },
   attendance: {
-    list: (from: string, to: string) => http<AttendanceRecord[]>(`/attendance?from=${from}&to=${to}`),
+    list: (from: string, to: string, employeeId?: number) => {
+      const params = new URLSearchParams({ from, to });
+      if (employeeId != null) params.set('employeeId', String(employeeId));
+      return http<AttendanceRecord[]>(`/attendance?${params}`);
+    },
+    create: (body: {
+      employeeId: number;
+      date: string;
+      status: AttendanceStatus;
+      scheduledIn?: string | null;
+      scheduledOut?: string | null;
+      actualIn?: string | null;
+      actualOut?: string | null;
+    }) => http<AttendanceRecord>('/attendance', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: number, body: {
+      employeeId: number;
+      date: string;
+      status: AttendanceStatus;
+      scheduledIn?: string | null;
+      scheduledOut?: string | null;
+      actualIn?: string | null;
+      actualOut?: string | null;
+    }) => http<AttendanceRecord>(`/attendance/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   },
   leaveRequests: {
     list: () => http<LeaveRequest[]>('/leave-requests'),

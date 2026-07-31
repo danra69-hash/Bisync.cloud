@@ -27,4 +27,6 @@ public class LeaveBalance
     public decimal RdoBalance { get; set; }
     public decimal RphBalance { get; set; }
     public decimal AlBalance { get; set; }
+    /// <summary>Unused annual leave carried forward from the previous operating year.</summary>
+    public decimal AlCarryForward { get; set; }
 }
