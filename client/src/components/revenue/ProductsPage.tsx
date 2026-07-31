@@ -81,9 +81,11 @@ import { VariableProductSection } from './VariableProductSection';
 import { VariableComponentSection } from './VariableComponentSection';
 import {
   blankVariableComponentConfig,
-  hasConfiguredVariableComponentSlots,
   parseVariableComponentOptionsJson,
   serializeVariableComponentOptionsJson,
+  validateVariableComponentConfig,
+  variableComponentRecipeCost,
+  variableComponentToRecipeItems,
   type VariableComponentConfig,
 } from '../../data/productVariableComponent';
 import {
@@ -788,13 +790,19 @@ export function ProductsPage({
 
   const totalCost = useMemo(() => calcTotalCost(lines), [lines]);
   const totalPackagingCost = useMemo(() => calcTotalCost(packagingLines), [packagingLines]);
+  const variableComponentCost = useMemo(
+    () => variableComponentRecipeCost(variableComponentConfig),
+    [variableComponentConfig],
+  );
+  const recipeCostForCogs = isVariableComponent ? variableComponentCost : totalCost;
+  const packagingCostForCogs = isVariableComponent ? 0 : totalPackagingCost;
   const effectiveProductCogs = useMemo(
-    () => calcProductCogs(totalCost, totalPackagingCost, {
+    () => calcProductCogs(recipeCostForCogs, packagingCostForCogs, {
       isSubProduct,
       b2bEnabled,
       b2cEnabled,
     }),
-    [totalCost, totalPackagingCost, isSubProduct, b2bEnabled, b2cEnabled],
+    [recipeCostForCogs, packagingCostForCogs, isSubProduct, b2bEnabled, b2cEnabled],
   );
   const rrpValue = useMemo(() => {
     const parsed = parseFloat(rrp);
@@ -1302,7 +1310,9 @@ export function ProductsPage({
     if (!name.trim()) {
       showSaveError(isSubProduct
         ? 'Enter a sub-product name to generate the product ID.'
-        : 'Enter a principal product name to generate the product ID.');
+        : isVariableComponent
+          ? 'Enter a SWAP Name to generate the product ID.'
+          : 'Enter a principal product name to generate the product ID.');
       return;
     }
     if (hasExactCatalogNameMatch(similarProductNameMatches)) {
@@ -1367,7 +1377,7 @@ export function ProductsPage({
       }
       const isComboVariable = isVariableProduct && variableConfig.mode === 'combination';
       const linked = resolveLinkedSubProduct(lines, savedProducts);
-      if (!linked && !isComboVariable) {
+      if (!linked && !isComboVariable && !isVariableComponent) {
         showSaveError('Select a sub-product in Product Component for B2B sales COGS.');
         return;
       }
@@ -1422,23 +1432,29 @@ export function ProductsPage({
       }
     }
 
-    if (isVariableComponent && !hasConfiguredVariableComponentSlots(variableComponentConfig)) {
-      showSaveError('Add at least one Variable Component substitute.');
-      return;
+    if (isVariableComponent) {
+      const vcError = validateVariableComponentConfig(variableComponentConfig);
+      if (vcError) {
+        showSaveError(vcError);
+        return;
+      }
     }
 
-    const payloadItems = lines
-      .filter(line => line.componentId)
-      .map(line => ({
-        componentId: line.componentId,
-        componentName: line.componentName,
-        componentUom: line.componentUom,
-        componentUomPrice: parseFloat(line.componentUomPrice) || 0,
-        quantity: parseFloat(line.quantity) || 0,
-      }));
+    const payloadItems = isVariableComponent
+      ? variableComponentToRecipeItems(variableComponentConfig)
+      : lines
+        .filter(line => line.componentId)
+        .map(line => ({
+          componentId: line.componentId,
+          componentName: line.componentName,
+          componentUom: line.componentUom,
+          componentUomPrice: parseFloat(line.componentUomPrice) || 0,
+          quantity: parseFloat(line.quantity) || 0,
+        }));
 
-    const allowsEmptyRecipe = isVariableProduct
-      && (variableConfig.mode === 'combination' || variableConfig.mode === 'weight');
+    const allowsEmptyRecipe = (isVariableProduct
+      && (variableConfig.mode === 'combination' || variableConfig.mode === 'weight'))
+      || isVariableComponent;
     if (payloadItems.length === 0 && !allowsEmptyRecipe) {
       showSaveError(b2bEnabled && !isSubProduct
         ? 'Add at least one component or sub-product line.'
@@ -1450,38 +1466,42 @@ export function ProductsPage({
       return;
     }
 
-    const payloadPackagingItems = packagingLines
-      .filter(line => line.componentId)
-      .map(line => ({
-        componentId: line.componentId,
-        componentName: line.componentName,
-        componentUom: line.componentUom,
-        componentUomPrice: parseFloat(line.componentUomPrice) || 0,
-        quantity: parseFloat(line.quantity) || 0,
-      }));
+    const payloadPackagingItems = isVariableComponent
+      ? []
+      : packagingLines
+        .filter(line => line.componentId)
+        .map(line => ({
+          componentId: line.componentId,
+          componentName: line.componentName,
+          componentUom: line.componentUom,
+          componentUomPrice: parseFloat(line.componentUomPrice) || 0,
+          quantity: parseFloat(line.quantity) || 0,
+        }));
 
     if (payloadPackagingItems.some(item => item.quantity <= 0)) {
       showSaveError('Each packaging line requires a quantity greater than zero.');
       return;
     }
 
-    const payloadAliases = aliases
-      .filter(alias => alias.name.trim())
-      .map(alias => {
-        const aliasConfig = buildB2bConfigForSave(
-          alias.b2bSalesConfig,
-          parseFloat(alias.rrp) || 0,
-        );
-        const aliasRrp = b2bEnabled
-          ? resolvePrincipalB2bRrp(aliasConfig, parseFloat(alias.rrp) || 0)
-          : parseFloat(alias.rrp) || 0;
-        return {
-          id: alias.id,
-          name: alias.name.trim(),
-          rrp: aliasRrp,
-          b2bSalesConfigJson: b2bEnabled ? serializeB2bSalesConfig(aliasConfig) : undefined,
-        };
-      });
+    const payloadAliases = isVariableComponent
+      ? []
+      : aliases
+        .filter(alias => alias.name.trim())
+        .map(alias => {
+          const aliasConfig = buildB2bConfigForSave(
+            alias.b2bSalesConfig,
+            parseFloat(alias.rrp) || 0,
+          );
+          const aliasRrp = b2bEnabled
+            ? resolvePrincipalB2bRrp(aliasConfig, parseFloat(alias.rrp) || 0)
+            : parseFloat(alias.rrp) || 0;
+          return {
+            id: alias.id,
+            name: alias.name.trim(),
+            rrp: aliasRrp,
+            b2bSalesConfigJson: b2bEnabled ? serializeB2bSalesConfig(aliasConfig) : undefined,
+          };
+        });
 
     const effectiveRrp = isSubProduct
       ? 0
@@ -1529,17 +1549,19 @@ export function ProductsPage({
       activationPeriodHours: supportsBatchAdditionalUom
         ? parseOptionalActivationPeriodHours(activationPeriodHours).hours
         : undefined,
-      parStock: parseFloat(parStock) || 0,
-      parStockUom: (parseFloat(parStock) || 0) > 0
-        ? serializeProductParStockUom(isSubProduct
-          ? (yieldUom || parStockUom)
-          : (parStockUom || resolveDefaultProductParStockUom({
-            isSubProduct,
-            yieldUom,
-            b2bEnabled,
-            b2bSalesConfig,
-          })))
-        : undefined,
+      parStock: isVariableComponent ? 0 : (parseFloat(parStock) || 0),
+      parStockUom: isVariableComponent
+        ? undefined
+        : (parseFloat(parStock) || 0) > 0
+          ? serializeProductParStockUom(isSubProduct
+            ? (yieldUom || parStockUom)
+            : (parStockUom || resolveDefaultProductParStockUom({
+              isSubProduct,
+              yieldUom,
+              b2bEnabled,
+              b2bSalesConfig,
+            })))
+          : undefined,
       active: true,
       posEnabled: !isSubProduct && b2cEnabled && effectiveRrp > 0,
       companyId: selectedCompanyId,
@@ -1714,7 +1736,16 @@ export function ProductsPage({
                       onChange={e => {
                         const on = e.target.checked;
                         setIsVariableComponent(on);
-                        if (!on) setVariableComponentConfig(blankVariableComponentConfig());
+                        if (on) {
+                          setVariableComponentConfig(prev => (
+                            prev.slots.length > 0 ? prev : blankVariableComponentConfig()
+                          ));
+                          setAliases([]);
+                          setParStock('');
+                          setPackagingLines([blankProductLine()]);
+                        } else {
+                          setVariableComponentConfig(blankVariableComponentConfig());
+                        }
                       }}
                       className="rounded border-border disabled:cursor-not-allowed"
                     />
@@ -1776,7 +1807,7 @@ export function ProductsPage({
                   </p>
                 ) : isVariableComponent ? (
                   <p className="text-[10px] text-muted-foreground">
-                    Variable Component lets POS staff SWAP recipe components (free or with an extra charge).
+                    Variable Component sells under a SWAP Name. Staff pick an alternate component at POS; Addon RRP applies when charged.
                   </p>
                 ) : !hasB2bProductCapability ? (
                   <p className="text-[10px] text-muted-foreground">
@@ -1849,12 +1880,18 @@ export function ProductsPage({
 
           <section className="rounded-lg border border-border bg-card p-4 space-y-4">
             <h3 className="text-sm font-semibold">
-              {isSubProduct ? 'Batch produce & Location' : 'Pricing, Par Stock & Location'}
+              {isSubProduct
+                ? 'Batch produce & Location'
+                : isVariableComponent
+                  ? 'Pricing & Location'
+                  : 'Pricing, Par Stock & Location'}
             </h3>
             <p className="text-[11px] text-muted-foreground -mt-2">
               {isSubProduct
                 ? 'Sub-products are made in batches for use as components inside a Product recipe. Set batch yield quantity and UOM so unit COGS is measurable.'
-                : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
+                : isVariableComponent
+                  ? 'SWAP Name appears on POS. Original and alternate components are configured in Variable Component below — no product aliases, par stock, or packaging.'
+                  : 'Principal product name and aliases share the same smart components; aliases can be sold at different prices for different clients.'}
             </p>
 
             {isSubProduct ? (
@@ -1893,30 +1930,36 @@ export function ProductsPage({
                   <div className="space-y-1.5">
                     <div className="flex gap-1.5 items-end">
                       <div className="flex-1 min-w-0 space-y-1.5">
-                        <label className={labelCls} htmlFor="principal-product-name">Principal Product Name</label>
+                        <label className={labelCls} htmlFor="principal-product-name">
+                          {isVariableComponent ? 'SWAP Name' : 'Principal Product Name'}
+                        </label>
                         <input
                           id="principal-product-name"
                           type="text"
                           value={name}
                           onChange={e => setName(e.target.value)}
-                          placeholder="e.g. Wagyu Burger, Espresso Latte"
+                          placeholder={isVariableComponent
+                            ? 'e.g. Milk Swap, Protein Choice'
+                            : 'e.g. Wagyu Burger, Espresso Latte'}
                           className={`${fieldCls}${hasExactCatalogNameMatch(similarProductNameMatches) ? ' border-destructive focus:ring-destructive' : ''}`}
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={addAlias}
-                        className={addBtnCls}
-                        title="Add product alias"
-                        aria-label="Add product alias"
-                      >
-                        <Plus size={14} />
-                      </button>
+                      {!isVariableComponent ? (
+                        <button
+                          type="button"
+                          onClick={addAlias}
+                          className={addBtnCls}
+                          title="Add product alias"
+                          aria-label="Add product alias"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      ) : null}
                     </div>
                     <SimilarNameMatchesNotice matches={similarProductNameMatches} entityLabel="product" />
                   </div>
 
-                  {aliases.length > 0 ? (
+                  {!isVariableComponent && aliases.length > 0 ? (
                     <div className="space-y-2 pl-3 border-l-2 border-primary/20">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1995,7 +2038,7 @@ export function ProductsPage({
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product COGS</p>
                     <p className="text-sm font-semibold mt-1">{rm(effectiveProductCogs)}</p>
-                    {!isSubProduct && b2cEnabled && !b2bEnabled && totalPackagingCost > 0 ? (
+                    {!isSubProduct && !isVariableComponent && b2cEnabled && !b2bEnabled && totalPackagingCost > 0 ? (
                       <p className="text-[10px] text-muted-foreground mt-0.5">
                         B2C dine-in excludes packaging; takeaway adds {rm(totalPackagingCost)} at POS.
                       </p>
@@ -2068,7 +2111,7 @@ export function ProductsPage({
               </div>
             ) : null}
 
-            {isSubProduct ? (
+            {isVariableComponent ? null : isSubProduct ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
                 <div className="space-y-1.5">
                   <label className={labelCls} htmlFor="par-stock-qty">Par Stock</label>
@@ -2243,19 +2286,16 @@ export function ProductsPage({
             <VariableComponentSection
               config={variableComponentConfig}
               onChange={setVariableComponentConfig}
-              recipeLines={lines}
               ingredients={availableComponents}
               disabled={!isEditing || saving}
             />
           ) : null}
 
-          {!(isVariableProduct && variableConfig.mode === 'combination') ? (
+          {!isVariableComponent && !(isVariableProduct && variableConfig.mode === 'combination') ? (
             <ComponentLinesSection
               title="Product Component"
               description={!isSubProduct && b2bEnabled
                 ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
-                : isVariableComponent
-                  ? 'Base recipe components. Sync Variable Component slots from these lines.'
                 : isVariableProduct
                   ? 'Base recipe components for this variable product.'
                   : 'Add smart components or sub-products from batch produce into this product recipe mix'}
@@ -2278,21 +2318,23 @@ export function ProductsPage({
             />
           ) : null}
 
-          <ComponentLinesSection
-            title="Packaging Cost"
-            description="Add packaging smart components and quantities to calculate packaging cost"
-            lines={packagingLines}
-            totalCost={totalPackagingCost}
-            totalLabel="Total packaging cost"
-            availableComponents={availableComponents}
-            uomComponents={components}
-            onUpdateLine={updatePackagingLine}
-            onComponentSelect={handlePackagingComponentSelect}
-            onRemoveLine={removePackagingLine}
-            onAddLine={addPackagingLine}
-            onOpenAddComponent={lineKey => openAddComponent(lineKey, 'packaging')}
-            estimateComponentPrice={estimateComponentPrice}
-          />
+          {!isVariableComponent ? (
+            <ComponentLinesSection
+              title="Packaging Cost"
+              description="Add packaging smart components and quantities to calculate packaging cost"
+              lines={packagingLines}
+              totalCost={totalPackagingCost}
+              totalLabel="Total packaging cost"
+              availableComponents={availableComponents}
+              uomComponents={components}
+              onUpdateLine={updatePackagingLine}
+              onComponentSelect={handlePackagingComponentSelect}
+              onRemoveLine={removePackagingLine}
+              onAddLine={addPackagingLine}
+              onOpenAddComponent={lineKey => openAddComponent(lineKey, 'packaging')}
+              estimateComponentPrice={estimateComponentPrice}
+            />
+          ) : null}
           </fieldset>
 
           {error ? (
