@@ -105,7 +105,6 @@ export function mapApiProductsToPosCatalog(
           : cfg?.choiceQty)
         : cfg?.choiceQty,
       combinationOptions: mode === 'combination' ? cfg?.combinationOptions : undefined,
-      replacementSlots: mode === 'replacement' ? cfg?.replacementSlots : undefined,
     })
   }
   return rows.sort((a, b) => a.name.localeCompare(b.name))

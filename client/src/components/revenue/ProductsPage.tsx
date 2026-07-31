@@ -1361,9 +1361,6 @@ export function ProductsPage({
           showSaveError('Enter an RRP for the weight QTY (POS multiplies by entered weight).');
           return;
         }
-      } else if (!variableConfig.replacementSlots.some(s => s.alternatives.length > 0)) {
-        showSaveError('Add at least one replacement alternative for a component slot.');
-        return;
       }
     }
 
@@ -1686,7 +1683,7 @@ export function ProductsPage({
                   </p>
                 ) : isVariableProduct ? (
                   <p className="text-[10px] text-muted-foreground">
-                    Variable products sell on B2C or B2B with combination, replacement, or weight-based pricing.
+                    Variable products sell on B2C or B2B with combination or weight-based pricing.
                   </p>
                 ) : !hasB2bProductCapability ? (
                   <p className="text-[10px] text-muted-foreground">
@@ -2155,7 +2152,7 @@ export function ProductsPage({
               description={!isSubProduct && b2bEnabled
                 ? 'Add smart components or sub-products (batch produce). Include at least one sub-product for B2B sales COGS.'
                 : isVariableProduct
-                  ? 'Base recipe components. Sync these into replacement slots above.'
+                  ? 'Base recipe components for this variable product.'
                   : 'Add smart components or sub-products from batch produce into this product recipe mix'}
               lines={lines}
               totalCost={totalCost}
