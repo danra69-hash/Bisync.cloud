@@ -21,11 +21,37 @@
 .pos-test-tap__meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
   padding: 0.2rem 0.5rem;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border, #e6e8ec);
+}
+
+.pos-test-tap__links {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pos-test-tap__links a {
+  display: inline-flex;
+  align-items: center;
+  height: 1.4rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  color: var(--foreground, #101828);
+  background: var(--background, #fff);
+}
+
+.pos-test-tap__links a:hover {
+  border-color: var(--primary, #2563eb);
+  color: var(--primary, #2563eb);
 }
 
 .pos-test-tap__title {

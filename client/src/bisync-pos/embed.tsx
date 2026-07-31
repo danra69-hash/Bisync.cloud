@@ -43,6 +43,8 @@ type Props = {
   locationId: string
   locations?: PosLocationOption[]
   onLocationChange?: (locationId: string) => void
+  /** Open a specific POS screen for standalone links (/POS, /KDS, /BDS, /CDS). */
+  initialEntry?: string
 }
 
 /** Mountable Bisync POS UI for POS Test — live company catalog + demo POS shell. */
@@ -51,6 +53,7 @@ export function BisyncPosEmbed({
   locationId,
   locations = [],
   onLocationChange,
+  initialEntry = '/order/floor',
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   usePosViewportScale(rootRef)
@@ -186,7 +189,10 @@ export function BisyncPosEmbed({
 
   // Keep one POS app instance so MemoryRouter navigation (POS Setup, Home, etc.)
   // is not reset when catalog/session props refresh.
-  const posApp = useMemo(() => <BisyncPosApp />, [])
+  const posApp = useMemo(
+    () => <BisyncPosApp initialEntry={initialEntry} />,
+    [initialEntry],
+  )
 
   return (
     <div ref={rootRef} className="bisync-pos-root" data-bisync-pos-embed>
