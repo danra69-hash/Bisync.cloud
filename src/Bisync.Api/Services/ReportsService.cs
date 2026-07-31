@@ -239,119 +239,118 @@ public sealed class ReportsService(
         string month,
         CancellationToken ct = default)
     {
-        if (!TryParseMonth(month, out var monthStart, out _))
+        if (!TryParseMonth(month, out _, out _))
             return Empty("BCG Matrix", month);
 
-        var previousMonth = monthStart.AddMonths(-1).ToString("yyyy-MM", CultureInfo.InvariantCulture);
-        const decimal shareThreshold = 0.5m;
-        const decimal growthThreshold = 0.10m;
+        var sales = await salesData.GetAsync(companyId, locationIds, month, "product", ct);
 
-        var currentSales = await salesData.GetAsync(companyId, locationIds, month, "product", ct);
-        var previousSales = await salesData.GetAsync(companyId, locationIds, previousMonth, "product", ct);
+        IQueryable<Product> productQuery = db.Products.AsNoTracking();
+        if (companyId is int cid)
+            productQuery = productQuery.Where(p => p.CompanyId == null || p.CompanyId == cid);
+        var products = await productQuery.ToListAsync(ct);
+        var productById = products.ToDictionary(p => p.Id);
+        var productByName = products
+            .GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.UpdatedAt).First(), StringComparer.OrdinalIgnoreCase);
 
-        static Dictionary<string, (decimal Value, decimal Qty, string Category, string Group, string ProductType)> Aggregate(
-            IEnumerable<SalesDataRow> rows)
+        var aggregates = new Dictionary<string, BcgProductAgg>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in sales.Rows)
         {
-            var map = new Dictionary<string, (decimal Value, decimal Qty, string Category, string Group, string ProductType)>(
-                StringComparer.OrdinalIgnoreCase);
-            foreach (var row in rows)
+            var name = (row.ProductName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name)) continue;
+
+            Product? product = null;
+            if (row.ProductId is int pid)
+                productById.TryGetValue(pid, out product);
+            if (product is null)
+                productByName.TryGetValue(name, out product);
+
+            if (!aggregates.TryGetValue(name, out var agg))
             {
-                var name = (row.ProductName ?? string.Empty).Trim();
-                if (string.IsNullOrWhiteSpace(name)) continue;
-                if (!map.TryGetValue(name, out var existing))
+                agg = new BcgProductAgg
                 {
-                    map[name] = (
-                        row.TotalValue,
-                        row.QtySold,
-                        (row.Category ?? string.Empty).Trim(),
-                        (row.Group ?? string.Empty).Trim(),
-                        (row.ProductType ?? string.Empty).Trim());
-                    continue;
-                }
-
-                map[name] = (
-                    existing.Value + row.TotalValue,
-                    existing.Qty + row.QtySold,
-                    string.IsNullOrWhiteSpace(existing.Category) ? (row.Category ?? string.Empty).Trim() : existing.Category,
-                    string.IsNullOrWhiteSpace(existing.Group) ? (row.Group ?? string.Empty).Trim() : existing.Group,
-                    string.IsNullOrWhiteSpace(existing.ProductType) ? (row.ProductType ?? string.Empty).Trim() : existing.ProductType);
+                    ProductName = name,
+                    Category = FirstNonEmpty(row.Category, product?.Category),
+                    Group = FirstNonEmpty(row.Group, product?.Group),
+                    ProductType = FirstNonEmpty(row.ProductType, product is null ? "" : ResolveProductType(product)),
+                    ProductId = product?.Id,
+                    UnitCost = product is null ? 0m : product.TotalCost + product.PackagingCost,
+                };
+                aggregates[name] = agg;
             }
 
-            return map;
+            agg.Sales += row.TotalValue;
+            agg.QtySold += row.QtySold;
+            if (string.IsNullOrWhiteSpace(agg.Category))
+                agg.Category = FirstNonEmpty(row.Category, product?.Category);
+            if (string.IsNullOrWhiteSpace(agg.Group))
+                agg.Group = FirstNonEmpty(row.Group, product?.Group);
+            if (agg.ProductId is null && product is not null)
+            {
+                agg.ProductId = product.Id;
+                agg.UnitCost = product.TotalCost + product.PackagingCost;
+            }
         }
 
-        var current = Aggregate(currentSales.Rows);
-        var previous = Aggregate(previousSales.Rows);
-        var names = current.Keys.Union(previous.Keys, StringComparer.OrdinalIgnoreCase).ToList();
-        var maxValue = current.Values.Select(v => v.Value).DefaultIfEmpty(0m).Max();
-        if (maxValue <= 0m)
-            maxValue = previous.Values.Select(v => v.Value).DefaultIfEmpty(0m).Max();
-
-        var totalCurrent = current.Values.Sum(v => v.Value);
-        var rows = new List<Dictionary<string, object?>>();
-
-        foreach (var name in names)
-        {
-            current.TryGetValue(name, out var cur);
-            previous.TryGetValue(name, out var prev);
-            var currentValue = cur.Value;
-            var previousValue = prev.Value;
-            var qtySold = cur.Qty;
-            var category = !string.IsNullOrWhiteSpace(cur.Category) ? cur.Category : prev.Category;
-            var group = !string.IsNullOrWhiteSpace(cur.Group) ? cur.Group : prev.Group;
-            var productType = !string.IsNullOrWhiteSpace(cur.ProductType) ? cur.ProductType : prev.ProductType;
-
-            var relativeShare = maxValue > 0m ? currentValue / maxValue : 0m;
-            decimal growthRate;
-            string growthLabel;
-            if (previousValue > 0m)
+        var working = aggregates.Values
+            .Where(a => a.Sales > 0m || a.QtySold > 0m)
+            .Select(a =>
             {
-                growthRate = (currentValue - previousValue) / previousValue;
-                growthLabel = $"{growthRate * 100m:0.#}%";
-            }
-            else if (currentValue > 0m)
-            {
-                growthRate = 1m;
-                growthLabel = "New";
-            }
-            else
-            {
-                growthRate = 0m;
-                growthLabel = "0%";
-            }
+                var cost = a.UnitCost * a.QtySold;
+                var marginAmount = a.Sales - cost;
+                var marginPercent = a.Sales > 0m ? marginAmount / a.Sales : 0m;
+                return new
+                {
+                    a.ProductName,
+                    a.Category,
+                    a.Group,
+                    a.ProductType,
+                    a.ProductId,
+                    a.QtySold,
+                    a.Sales,
+                    a.UnitCost,
+                    Cost = cost,
+                    MarginAmount = marginAmount,
+                    MarginPercent = marginPercent,
+                };
+            })
+            .ToList();
 
-            var highShare = relativeShare >= shareThreshold;
-            var highGrowth = growthRate >= growthThreshold;
-            var quadrant = (highGrowth, highShare) switch
-            {
-                (true, true) => "Star",
-                (false, true) => "Cash Cow",
-                (true, false) => "Question Mark",
-                _ => "Dog",
-            };
+        var marginThreshold = Median(working.Select(x => x.MarginPercent).ToList());
+        var salesThreshold = Median(working.Select(x => x.Sales).ToList());
 
-            rows.Add(new Dictionary<string, object?>
+        var rows = working
+            .Select(item =>
             {
-                ["productName"] = name,
-                ["category"] = category,
-                ["group"] = group,
-                ["productType"] = productType,
-                ["qtySold"] = qtySold,
-                ["currentValue"] = currentValue,
-                ["previousValue"] = previousValue,
-                ["valueDelta"] = currentValue - previousValue,
-                ["relativeShare"] = Math.Round(relativeShare, 4),
-                ["portfolioShare"] = totalCurrent > 0m ? Math.Round(currentValue / totalCurrent, 4) : 0m,
-                ["growthRate"] = Math.Round(growthRate, 4),
-                ["growthLabel"] = growthLabel,
-                ["quadrant"] = quadrant,
-                ["x"] = Math.Round(relativeShare, 4),
-                ["y"] = Math.Round(growthRate, 4),
-            });
-        }
+                var highMargin = item.MarginPercent >= marginThreshold;
+                var highSales = item.Sales >= salesThreshold;
+                var quadrant = (highSales, highMargin) switch
+                {
+                    (true, true) => "Star",
+                    (true, false) => "Cash Cow",
+                    (false, true) => "Question Mark",
+                    _ => "Dog",
+                };
 
-        rows = rows
-            .OrderByDescending(r => Convert.ToDecimal(r["currentValue"], CultureInfo.InvariantCulture))
+                return new Dictionary<string, object?>
+                {
+                    ["productName"] = item.ProductName,
+                    ["category"] = item.Category,
+                    ["group"] = item.Group,
+                    ["productType"] = item.ProductType,
+                    ["productId"] = item.ProductId,
+                    ["qtySold"] = item.QtySold,
+                    ["sales"] = Math.Round(item.Sales, 4),
+                    ["unitCost"] = Math.Round(item.UnitCost, 4),
+                    ["cost"] = Math.Round(item.Cost, 4),
+                    ["marginAmount"] = Math.Round(item.MarginAmount, 4),
+                    ["marginPercent"] = Math.Round(item.MarginPercent, 4),
+                    ["quadrant"] = quadrant,
+                    ["x"] = Math.Round(item.MarginPercent, 4),
+                    ["y"] = Math.Round(item.Sales, 4),
+                };
+            })
+            .OrderByDescending(r => Convert.ToDecimal(r["sales"], CultureInfo.InvariantCulture))
             .ThenBy(r => (string?)r["productName"], StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -359,23 +358,81 @@ public sealed class ReportsService(
             .GroupBy(r => (string)r["quadrant"]!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => (object?)g.Count(), StringComparer.OrdinalIgnoreCase);
 
+        var categories = rows
+            .Select(r => (string?)r["category"] ?? "")
+            .Where(s => !string.IsNullOrWhiteSpace(s) && s != "—")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var groups = rows
+            .Select(r => (string?)r["group"] ?? "")
+            .Where(s => !string.IsNullOrWhiteSpace(s) && s != "—")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var totalSales = working.Sum(x => x.Sales);
+        var totalMargin = working.Sum(x => x.MarginAmount);
+
         return new ReportPayload(
             "BCG Matrix",
             month,
             new Dictionary<string, object?>
             {
                 ["productCount"] = rows.Count,
-                ["totalValue"] = totalCurrent,
-                ["previousTotalValue"] = previous.Values.Sum(v => v.Value),
-                ["previousMonth"] = previousMonth,
-                ["shareThreshold"] = shareThreshold,
-                ["growthThreshold"] = growthThreshold,
+                ["totalSales"] = totalSales,
+                ["totalMargin"] = totalMargin,
+                ["marginThreshold"] = Math.Round(marginThreshold, 4),
+                ["salesThreshold"] = Math.Round(salesThreshold, 4),
                 ["stars"] = quadrantCounts.GetValueOrDefault("Star", 0),
                 ["cashCows"] = quadrantCounts.GetValueOrDefault("Cash Cow", 0),
                 ["questionMarks"] = quadrantCounts.GetValueOrDefault("Question Mark", 0),
                 ["dogs"] = quadrantCounts.GetValueOrDefault("Dog", 0),
+                ["categories"] = categories,
+                ["groups"] = groups,
             },
             rows);
+    }
+
+    sealed class BcgProductAgg
+    {
+        public string ProductName { get; set; } = "";
+        public string Category { get; set; } = "";
+        public string Group { get; set; } = "";
+        public string ProductType { get; set; } = "";
+        public int? ProductId { get; set; }
+        public decimal UnitCost { get; set; }
+        public decimal Sales { get; set; }
+        public decimal QtySold { get; set; }
+    }
+
+    static string FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            var trimmed = (value ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed) && trimmed != "—")
+                return trimmed;
+        }
+        return "";
+    }
+
+    static string ResolveProductType(Product product)
+    {
+        if (product.IsSubProduct) return "Sub-product";
+        if (product.B2bEnabled && !product.PosEnabled) return "B2B";
+        if (product.PosEnabled) return "POS";
+        return "Product";
+    }
+
+    static decimal Median(IReadOnlyList<decimal> values)
+    {
+        if (values.Count == 0) return 0m;
+        var sorted = values.OrderBy(v => v).ToList();
+        var mid = sorted.Count / 2;
+        return sorted.Count % 2 == 0
+            ? (sorted[mid - 1] + sorted[mid]) / 2m
+            : sorted[mid];
     }
 
     public async Task<ReportPayload> WastageReportAsync(

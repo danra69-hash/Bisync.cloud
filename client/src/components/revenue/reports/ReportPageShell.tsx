@@ -45,6 +45,8 @@ type Props = {
   csvFilename: string;
   extraFilters?: ReactNode;
   visual?: ReactNode;
+  /** When true, render the chart/visual before metric cards. */
+  visualFirst?: boolean;
   secondaryTable?: {
     title: string;
     columns: ReportColumn[];
@@ -89,6 +91,7 @@ export function ReportPageShell({
   csvFilename,
   extraFilters,
   visual,
+  visualFirst = false,
   secondaryTable,
 }: Props) {
   const orgReady = Boolean(selectedCompanyId) && selectedLocationIds.length > 0;
@@ -176,6 +179,8 @@ export function ReportPageShell({
             </p>
           ) : null}
 
+          {visualFirst ? visual : null}
+
           {metrics.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {metrics.map(metric => (
@@ -192,7 +197,7 @@ export function ReportPageShell({
             </div>
           ) : null}
 
-          {visual}
+          {!visualFirst ? visual : null}
 
           <TableScrollContainer
             ref={scrollRootRef}
