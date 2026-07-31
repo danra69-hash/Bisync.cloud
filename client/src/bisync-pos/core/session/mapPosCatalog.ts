@@ -50,6 +50,26 @@ function mapDepartment(category: string, group: string): ProductDepartment {
   return 'Food'
 }
 
+/** Collapse synonym product groups so POS tabs do not split the same menu. */
+export function normalizePosGroupLabel(group: string): string {
+  const trimmed = group.trim()
+  if (!trimmed) return 'General'
+  const key = trimmed.toLowerCase().replace(/\s+/g, ' ')
+  if (
+    key === 'beer draft'
+    || key === 'draft beer'
+    || key === 'draught beer'
+    || key === 'draft'
+    || key === 'draught'
+  ) {
+    return 'Draught Beer'
+  }
+  if (key === 'bottle beer' || key === 'bottled beer' || key === 'beer bottle') {
+    return 'Bottled Beer'
+  }
+  return trimmed
+}
+
 /** Map Bisync.cloud POS menu products into Bisync POS register catalog rows. */
 export function mapApiProductsToPosCatalog(
   apiProducts: ApiProduct[],
@@ -62,7 +82,7 @@ export function mapApiProductsToPosCatalog(
     if (baseRrp <= 0) continue
     const sellPrice = resolvePosMenuSellPrice(product, catalogProducts, promoRppByProductId)
     if (!(sellPrice >= 0)) continue
-    const group = (product.group || product.category || 'General').trim() || 'General'
+    const group = normalizePosGroupLabel(product.group || product.category || 'General')
     const department = mapDepartment(product.category || '', group)
 
     const isVariable = Boolean(product.isVariableProduct)
@@ -136,11 +156,21 @@ export function buildDepartmentGroups(catalog: PosProduct[]): {
   const departments = (['Food', 'Beverage', 'Retail'] as ProductDepartment[]).filter(
     d => (byDept.get(d)?.size ?? 0) > 0,
   )
+  const countByDeptGroup = new Map<string, number>()
+  for (const product of catalog) {
+    const key = `${product.department}\0${product.group}`
+    countByDeptGroup.set(key, (countByDeptGroup.get(key) ?? 0) + 1)
+  }
+
   const groupsByDepartment = {} as Record<ProductDepartment, string[]>
   for (const dept of departments) {
-    groupsByDepartment[dept] = [...(byDept.get(dept) ?? [])].sort((a, b) =>
-      a.localeCompare(b),
-    )
+    groupsByDepartment[dept] = [...(byDept.get(dept) ?? [])].sort((a, b) => {
+      const countDiff =
+        (countByDeptGroup.get(`${dept}\0${b}`) ?? 0)
+        - (countByDeptGroup.get(`${dept}\0${a}`) ?? 0)
+      if (countDiff !== 0) return countDiff
+      return a.localeCompare(b)
+    })
   }
   return { departments, groupsByDepartment }
 }
