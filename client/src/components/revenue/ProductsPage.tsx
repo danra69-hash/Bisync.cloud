@@ -689,17 +689,38 @@ export function ProductsPage({
     setB2bSalesConfig(blankB2bSalesConfig());
   }, [hasB2bProductCapability, b2bEnabled]);
 
+  const appliedEditorRequestKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!editorRequest) return;
+    if (!editorRequest) {
+      appliedEditorRequestKeyRef.current = null;
+      return;
+    }
+
     if (editorRequest.mode === 'new') {
+      const key = 'new';
+      if (appliedEditorRequestKeyRef.current === key) {
+        onEditorRequestConsumed?.();
+        return;
+      }
       resetEditor();
+      appliedEditorRequestKeyRef.current = key;
       onEditorRequestConsumed?.();
       return;
     }
+
+    const key = `edit:${editorRequest.id}`;
     const product = savedProducts.find(p => p.id === editorRequest.id);
     if (!product) return;
+
+    if (appliedEditorRequestKeyRef.current === key) {
+      onEditorRequestConsumed?.();
+      return;
+    }
+
     loadProduct(product);
-    setIsEditing(editorRequest.mode === 'edit');
+    setIsEditing(true);
+    appliedEditorRequestKeyRef.current = key;
     onEditorRequestConsumed?.();
   }, [editorRequest, savedProducts, onEditorRequestConsumed]);
 
