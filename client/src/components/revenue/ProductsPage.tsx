@@ -2287,6 +2287,7 @@ export function ProductsPage({
               config={variableComponentConfig}
               onChange={setVariableComponentConfig}
               ingredients={availableComponents}
+              subProducts={productComponentSubProducts}
               disabled={!isEditing || saving}
             />
           ) : null}

@@ -1,6 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react';
+import type { Product } from '../../api';
 import type { ComponentRow } from '../../data/componentForm';
 import { inputCls } from '../../data/countries';
+import { productLineFromSubProduct } from '../../data/productForm';
 import {
   blankVariableComponentAlternative,
   getPrimaryVariableComponentSlot,
@@ -8,12 +10,13 @@ import {
   type VariableComponentConfig,
 } from '../../data/productVariableComponent';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
-import { SmartComponentPicker } from './SmartComponentPicker';
+import { ProductComponentPicker } from './ProductComponentPicker';
 
 type Props = {
   config: VariableComponentConfig;
   onChange: (next: VariableComponentConfig) => void;
   ingredients: ComponentRow[];
+  subProducts?: Product[];
   disabled?: boolean;
 };
 
@@ -23,6 +26,7 @@ export function VariableComponentSection({
   config,
   onChange,
   ingredients,
+  subProducts = [],
   disabled,
 }: Props) {
   const { symbol } = useCountryFormatters();
@@ -56,6 +60,23 @@ export function VariableComponentSection({
       baseComponentName: component.name,
       baseComponentUom: component.recipeUOM || slot.baseComponentUom,
       baseUnitPrice: component.lastPriceRecipe ?? 0,
+      quantity: slot.quantity > 0 ? slot.quantity : 1,
+    });
+  };
+
+  const setOriginalSubProduct = (product: Product | null) => {
+    if (!product) {
+      setOriginalComponent(null);
+      return;
+    }
+    const line = productLineFromSubProduct(product);
+    commit({
+      ...slot,
+      slotLabel: line.componentName,
+      baseComponentId: line.componentId,
+      baseComponentName: line.componentName,
+      baseComponentUom: line.componentUom,
+      baseUnitPrice: parseFloat(line.componentUomPrice) || 0,
       quantity: slot.quantity > 0 ? slot.quantity : 1,
     });
   };
@@ -97,6 +118,22 @@ export function VariableComponentSection({
     });
   };
 
+  const setAlternateSubProduct = (altKey: string, product: Product | null) => {
+    if (!product) {
+      setAlternateComponent(altKey, null);
+      return;
+    }
+    const line = productLineFromSubProduct(product);
+    const current = slot.alternatives.find(a => a.key === altKey);
+    updateAlternate(altKey, {
+      componentId: line.componentId,
+      componentName: line.componentName,
+      componentUom: line.componentUom || current?.componentUom || slot.baseComponentUom,
+      unitPrice: parseFloat(line.componentUomPrice) || 0,
+      quantity: current && current.quantity > 0 ? current.quantity : (slot.quantity > 0 ? slot.quantity : 1),
+    });
+  };
+
   const removeAlternate = (altKey: string) => {
     commit({
       ...slot,
@@ -104,12 +141,18 @@ export function VariableComponentSection({
     });
   };
 
+  const filterUnusedComponents = (keepId?: string) =>
+    ingredients.filter(i => i.componentId && (!usedIds.has(i.componentId) || i.componentId === keepId));
+
+  const filterUnusedSubProducts = (keepId?: string) =>
+    subProducts.filter(p => p.productId && (!usedIds.has(p.productId) || p.productId === keepId));
+
   return (
     <section className="rounded-lg border border-border bg-card p-4 space-y-4">
       <div>
         <h3 className="text-sm font-semibold">Variable Component</h3>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          Set the original component and the alternates that can replace it at POS (SWAP). Addon RRP is charged when an alternate is chosen.
+          Set the original component or sub-product and the alternates that can replace it at POS (SWAP). Addon RRP is charged when an alternate is chosen.
         </p>
       </div>
 
@@ -118,14 +161,16 @@ export function VariableComponentSection({
         <p className="text-xs font-semibold text-foreground">Original component</p>
         <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_7rem_7rem] gap-3 items-end">
           <div className="space-y-1.5 min-w-0">
-            <label className={labelCls}>Component</label>
-            <SmartComponentPicker
-              components={ingredients}
+            <label className={labelCls}>Component / Sub-Product</label>
+            <ProductComponentPicker
+              components={filterUnusedComponents(slot.baseComponentId)}
+              subProducts={filterUnusedSubProducts(slot.baseComponentId)}
               value={slot.baseComponentId}
               fallbackLabel={slot.baseComponentName}
-              placeholder="Search original component…"
+              placeholder="Search component or sub-product…"
               disabled={disabled}
-              onChange={setOriginalComponent}
+              onComponentSelect={setOriginalComponent}
+              onSubProductSelect={setOriginalSubProduct}
             />
           </div>
           <div className="space-y-1.5">
@@ -174,93 +219,89 @@ export function VariableComponentSection({
 
         {slot.alternatives.length === 0 ? (
           <p className="text-xs text-muted-foreground border border-dashed border-border rounded-md px-3 py-4">
-            Add an alternate component that can replace the original at POS.
+            Add an alternate component or sub-product that can replace the original at POS.
           </p>
         ) : (
-          slot.alternatives.map((alt, index) => {
-            const altOptions = ingredients.filter(
-              i => i.componentId
-                && (!usedIds.has(i.componentId) || i.componentId === alt.componentId),
-            );
-            return (
-              <div
-                key={alt.key}
-                className="rounded-lg border border-border bg-muted/10 p-4 space-y-3"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-foreground">
-                    Alternate {index + 1}
-                  </p>
-                  <button
-                    type="button"
+          slot.alternatives.map((alt, index) => (
+            <div
+              key={alt.key}
+              className="rounded-lg border border-border bg-muted/10 p-4 space-y-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-foreground">
+                  Alternate {index + 1}
+                </p>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => removeAlternate(alt.key)}
+                  className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+                  aria-label={`Remove alternate ${index + 1}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_7rem_7rem_8rem] gap-3 items-end">
+                <div className="space-y-1.5 min-w-0">
+                  <label className={labelCls}>Component / Sub-Product</label>
+                  <ProductComponentPicker
+                    components={filterUnusedComponents(alt.componentId)}
+                    subProducts={filterUnusedSubProducts(alt.componentId)}
+                    value={alt.componentId}
+                    fallbackLabel={alt.componentName}
+                    placeholder="Search replacement…"
                     disabled={disabled}
-                    onClick={() => removeAlternate(alt.key)}
-                    className="text-muted-foreground hover:text-destructive disabled:opacity-40"
-                    aria-label={`Remove alternate ${index + 1}`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    onComponentSelect={component => setAlternateComponent(alt.key, component)}
+                    onSubProductSelect={product => setAlternateSubProduct(alt.key, product)}
+                  />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_7rem_7rem_8rem] gap-3 items-end">
-                  <div className="space-y-1.5 min-w-0">
-                    <label className={labelCls}>Component</label>
-                    <SmartComponentPicker
-                      components={altOptions}
-                      value={alt.componentId}
-                      fallbackLabel={alt.componentName}
-                      placeholder="Search replacement component…"
-                      disabled={disabled}
-                      onChange={component => setAlternateComponent(alt.key, component)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={labelCls}>UOM</label>
-                    <input
-                      type="text"
-                      disabled={disabled}
-                      className={inputCls}
-                      value={alt.componentUom}
-                      placeholder="e.g. ml"
-                      onChange={e => updateAlternate(alt.key, { componentUom: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={labelCls}>QTY</label>
+                <div className="space-y-1.5">
+                  <label className={labelCls}>UOM</label>
+                  <input
+                    type="text"
+                    disabled={disabled}
+                    className={inputCls}
+                    value={alt.componentUom}
+                    placeholder="e.g. ml"
+                    onChange={e => updateAlternate(alt.key, { componentUom: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={labelCls}>QTY</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    disabled={disabled}
+                    className={inputCls}
+                    value={alt.quantity > 0 ? alt.quantity : ''}
+                    placeholder="0"
+                    onChange={e => updateAlternate(alt.key, {
+                      quantity: Math.max(0, parseFloat(e.target.value) || 0),
+                    })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={labelCls}>Addon RRP</label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">{symbol}</span>
                     <input
                       type="number"
                       min={0}
                       step="any"
                       disabled={disabled}
                       className={inputCls}
-                      value={alt.quantity > 0 ? alt.quantity : ''}
+                      value={alt.extraCharge > 0 ? alt.extraCharge : ''}
                       placeholder="0"
                       onChange={e => updateAlternate(alt.key, {
-                        quantity: Math.max(0, parseFloat(e.target.value) || 0),
+                        extraCharge: Math.max(0, parseFloat(e.target.value) || 0),
                       })}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className={labelCls}>Addon RRP</label>
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground">{symbol}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        disabled={disabled}
-                        className={inputCls}
-                        value={alt.extraCharge > 0 ? alt.extraCharge : ''}
-                        placeholder="0"
-                        onChange={e => updateAlternate(alt.key, {
-                          extraCharge: Math.max(0, parseFloat(e.target.value) || 0),
-                        })}
-                      />
-                    </div>
-                  </div>
                 </div>
               </div>
-            );
-          })
+            </div>
+          ))
         )}
 
         {slot.alternatives.length > 0 ? (
