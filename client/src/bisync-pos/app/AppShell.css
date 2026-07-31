@@ -21,6 +21,28 @@
   overflow: hidden;
 }
 
+.app-shell__body.has-home-nav {
+  display: grid;
+  grid-template-columns: var(--order-width) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3);
+  box-sizing: border-box;
+  align-items: stretch;
+}
+
+.app-shell__body.has-home-nav > .floor-side-nav {
+  height: 100%;
+  min-height: 0;
+}
+
+.app-shell__body.has-home-nav > .app-shell__main {
+  overflow: hidden;
+}
+
+.app-shell__body.has-home-nav > .app-shell__main > .floor-page {
+  padding: 0;
+}
+
 .app-shell__main {
   flex: 1;
   min-width: 0;
@@ -28,6 +50,13 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
+}
+
+@media (max-width: 900px) {
+  .app-shell__body.has-home-nav {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
 }
 
 .app-shell__main > .register,

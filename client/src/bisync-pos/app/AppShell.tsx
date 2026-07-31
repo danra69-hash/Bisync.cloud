@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { ModeProvider, usePosMode } from '../core/modes/ModeProvider'
 import { ConfigProvider } from '../core/config/ConfigProvider'
 import type { PosMode } from '../core/modes/types'
+import { FloorSideNav } from '../features/order/ui/FloorSideNav'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import './AppShell.css'
@@ -21,10 +22,19 @@ export function AppShell({ children }: Props) {
   )
 }
 
+function showsHomeSideNav(pathname: string): boolean {
+  if (pathname.startsWith('/order/register')) return false
+  if (pathname.startsWith('/order/floor')) return true
+  if (pathname.startsWith('/order/reservations')) return true
+  if (pathname.startsWith('/order/waitlist')) return true
+  return pathname === '/order' || pathname === '/'
+}
+
 function AppShellInner({ children }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { pathname } = useLocation()
   useModeFromPath()
+  const homeNav = showsHomeSideNav(pathname)
 
   useEffect(() => {
     setMenuOpen(false)
@@ -45,7 +55,8 @@ function AppShellInner({ children }: Props) {
         menuOpen={menuOpen}
         onToggleMenu={() => setMenuOpen((open) => !open)}
       />
-      <div className="app-shell__body">
+      <div className={`app-shell__body${homeNav ? ' has-home-nav' : ''}`}>
+        {homeNav ? <FloorSideNav /> : null}
         <div className="app-shell__main">{children}</div>
       </div>
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />

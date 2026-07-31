@@ -59,6 +59,23 @@ export function BisyncPosApp() {
               </FeaturePage>
             }
           />
+          <Route
+            path="/order/waitlist"
+            element={
+              <FeaturePage
+                crumb="Order / Waitlist"
+                title="Waitlist"
+                subtitle="Queue walk-in parties until a table is ready."
+              >
+                <div className="panel-grid">
+                  <div className="panel-card">
+                    <h3>Waitlist</h3>
+                    <p>Build this screen next — parties waiting for a table will appear here.</p>
+                  </div>
+                </div>
+              </FeaturePage>
+            }
+          />
 
           <Route path="/cashier" element={<CashierCheckoutPage />} />
           <Route path="/cashier/split" element={<SplitCheckPage />} />
