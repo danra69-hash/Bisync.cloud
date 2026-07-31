@@ -12,6 +12,7 @@ import {
   VoidsPage,
 } from '../features/cashier/ui/CashierPages'
 import {
+  BdsPage,
   BohSettingsPage,
   EodPage,
   KdsPage,
@@ -89,6 +90,7 @@ export function BisyncPosApp() {
           <Route path="/kiosk/pay" element={<KioskPayPage />} />
 
           <Route path="/boh/kds" element={<KdsPage />} />
+          <Route path="/boh/bds" element={<BdsPage />} />
           <Route path="/boh/routing" element={<RoutingPage />} />
           <Route path="/boh/time-clock" element={<TimeClockPage />} />
           <Route path="/boh/reports" element={<ReportsPage />} />

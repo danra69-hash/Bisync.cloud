@@ -140,6 +140,8 @@ function renderIcon(key: NavIconKey | undefined) {
       return <IconCard />
     case 'kds':
       return <IconKds />
+    case 'bds':
+      return <IconBds />
     case 'routing':
       return <IconRoute />
     case 'clock':
@@ -277,6 +279,15 @@ function IconKds() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <rect x="3" y="4" width="18" height="12" rx="2" />
       <path d="M8 20h8M12 16v4" />
+    </svg>
+  )
+}
+
+function IconBds() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M6 8h12v10a2 2 0 01-2 2H8a2 2 0 01-2-2V8z" />
+      <path d="M9 8V6a3 3 0 016 0v2M9 13h6M9 16h4" />
     </svg>
   )
 }

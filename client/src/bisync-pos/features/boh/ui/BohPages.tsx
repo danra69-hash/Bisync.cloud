@@ -1,87 +1,37 @@
-import { useEffect, useState } from 'react'
 import {
   PERMISSION_LABEL,
   ROLE_PERMISSIONS,
   type PermissionAction,
   type StaffRole,
 } from '../domain/permissions'
-import {
-  bumpKitchenTicket,
-  KDS_TICKETS_EVENT,
-  loadKitchenTickets,
-  ticketAgeLabel,
-  type KitchenTicket,
-} from '../domain/kitchenTickets'
 import { FeaturePage } from '../../common/FeaturePage'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import type { QrTableMode } from '../../../core/config/qrTable'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
+import { StationDisplayPage } from './StationDisplayPage'
 import './BohPages.css'
 
+/** Kitchen Display System — food dockets grouped by table. */
 export function KdsPage() {
-  const [tickets, setTickets] = useState<KitchenTicket[]>(() => loadKitchenTickets())
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    function refresh() {
-      setTickets(loadKitchenTickets())
-    }
-    window.addEventListener(KDS_TICKETS_EVENT, refresh)
-    window.addEventListener('storage', refresh)
-    const ageId = window.setInterval(() => setNow(Date.now()), 30_000)
-    return () => {
-      window.removeEventListener(KDS_TICKETS_EVENT, refresh)
-      window.removeEventListener('storage', refresh)
-      window.clearInterval(ageId)
-    }
-  }, [])
-
-  const openTickets = tickets.filter(t => t.status === 'open')
-
   return (
-    <FeaturePage
-      crumb="BOH / Kitchen Display"
-      title="Kitchen Order Routing (KDS)"
-      subtitle="Saved register orders route here — Beverage to Bar, Food to Kitchen."
-    >
-      {openTickets.length === 0 ? (
-        <p className="kds-empty">No open tickets. Save an order on the register to fire Bar / Kitchen.</p>
-      ) : (
-        <div className="kds-board">
-          {openTickets.map(ticket => (
-            <article key={ticket.id} className="kds-ticket">
-              <header>
-                <strong>#{ticket.checkNumber}</strong>
-                <span>{ticket.station}</span>
-                <em>{ticketAgeLabel(ticket.createdAt, now)}</em>
-              </header>
-              <p className="kds-ticket__meta">
-                {ticket.tableLabel}
-                {ticket.dining ? ` · ${ticket.dining}` : ''}
-              </p>
-              <ul>
-                {ticket.items.map(item => (
-                  <li key={`${ticket.id}-${item.name}`}>
-                    {item.name}
-                    {item.quantity > 1 ? ` ×${item.quantity}` : ''}
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                className="chip-btn chip-btn--primary"
-                onClick={() => {
-                  bumpKitchenTicket(ticket.id)
-                  setTickets(loadKitchenTickets())
-                }}
-              >
-                Bump
-              </button>
-            </article>
-          ))}
-        </div>
-      )}
-    </FeaturePage>
+    <StationDisplayPage
+      station="Kitchen"
+      code="KDS"
+      title="Kitchen Display System"
+      subtitle="Food orders by table — kitchen docket view."
+    />
+  )
+}
+
+/** Bar Display System — drink dockets grouped by table. */
+export function BdsPage() {
+  return (
+    <StationDisplayPage
+      station="Bar"
+      code="BDS"
+      title="Bar Display System"
+      subtitle="Beverage orders by table — bar docket view."
+    />
   )
 }
 

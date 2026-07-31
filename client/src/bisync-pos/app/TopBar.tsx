@@ -13,6 +13,8 @@ export function TopBar() {
   const locationId = session?.locationId ?? ''
   const homePath = MODE_META.order.homePath
   const isSetup = pathname.startsWith('/boh/settings')
+  const isKds = pathname.startsWith('/boh/kds')
+  const isBds = pathname.startsWith('/boh/bds')
 
   function goHome() {
     setMode('order')
@@ -22,6 +24,16 @@ export function TopBar() {
   function goSetup() {
     setMode('boh')
     navigate('/boh/settings')
+  }
+
+  function goKds() {
+    setMode('boh')
+    navigate('/boh/kds')
+  }
+
+  function goBds() {
+    setMode('boh')
+    navigate('/boh/bds')
   }
 
   return (
@@ -68,6 +80,24 @@ export function TopBar() {
           aria-current={isSetup ? 'page' : undefined}
         >
           POS Setup
+        </button>
+        <button
+          type="button"
+          className={`topbar__setup${isKds ? ' is-active' : ''}`}
+          onClick={goKds}
+          aria-current={isKds ? 'page' : undefined}
+          title="Kitchen Display System"
+        >
+          KDS
+        </button>
+        <button
+          type="button"
+          className={`topbar__setup${isBds ? ' is-active' : ''}`}
+          onClick={goBds}
+          aria-current={isBds ? 'page' : undefined}
+          title="Bar Display System"
+        >
+          BDS
         </button>
       </div>
 
