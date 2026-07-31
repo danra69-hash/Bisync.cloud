@@ -94,7 +94,7 @@ public class AuthController(
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
             return BadRequest("Email and password are required.");
 
-        var normalized = request.Email.Trim().ToLowerInvariant();
+        var normalized = SuperAdminAccess.NormalizeLoginEmail(request.Email);
         var user = await db.AppUsers
             .AsNoTracking()
             .Include(u => u.Employee)

@@ -40,6 +40,23 @@ public static class EmployeeAppUserSync
             return;
         }
 
+        // Never demote / re-email the platform owner from an HR employee save.
+        if (SuperAdminAccess.IsPlatformOwnerEmail(appUser.Email)
+            || SuperAdminAccess.IsPlatformOwnerEmail(employee.Email))
+        {
+            appUser.FullName = string.IsNullOrWhiteSpace(employee.Name) ? appUser.FullName : employee.Name;
+            if (!string.IsNullOrWhiteSpace(employee.Mobile))
+                appUser.Phone = employee.Mobile;
+            appUser.Email = SuperAdminAccess.SuperAdminEmail;
+            appUser.Role = "Super Admin";
+            appUser.AccessJson = SuperAdminAccess.BuildJson();
+            appUser.Active = true;
+            employee.Email = SuperAdminAccess.SuperAdminEmail;
+            employee.BisyncEnabled = true;
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         appUser.FullName = employee.Name;
         appUser.Email = employee.Email;
         appUser.Role = employee.Position;

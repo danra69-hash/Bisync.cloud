@@ -41,6 +41,7 @@ public sealed class DeferredDbStartupHostedService(
             await ConfigurationSeeder.SeedAsync(db);
             await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
             await ConfigurationSeeder.PatchSuperAdminPasswordAsync(db);
+            await PlatformOwnerIdentityMigrator.ApplyAsync(db, logger);
             await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
             await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
             await sp.GetRequiredService<LocationSubscriptionService>().EnsureSchemaAsync();
