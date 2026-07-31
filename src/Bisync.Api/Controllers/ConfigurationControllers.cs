@@ -416,6 +416,8 @@ public class UsersController(BisyncDbContext db) : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll()
     {
+        await PlatformOwnerIdentityMigrator.EnsureMergedAsync(db);
+
         var users = await db.AppUsers
             .AsNoTracking()
             .Include(u => u.Employee)

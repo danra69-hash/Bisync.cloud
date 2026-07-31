@@ -24,14 +24,26 @@ public sealed class DeferredDbStartupHostedService(
 
     async Task RunAsync(CancellationToken cancellationToken)
     {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        var resolver = sp.GetRequiredService<ITenantConnectionResolver>();
+        var controlOptions = new DbContextOptionsBuilder<BisyncDbContext>()
+            .UseNpgsql(resolver.DefaultOperationalConnection)
+            .Options;
+
+        // Identity merge must not depend on other seeders succeeding.
         try
         {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var sp = scope.ServiceProvider;
-            var resolver = sp.GetRequiredService<ITenantConnectionResolver>();
-            var controlOptions = new DbContextOptionsBuilder<BisyncDbContext>()
-                .UseNpgsql(resolver.DefaultOperationalConnection)
-                .Options;
+            await using var mergeDb = new BisyncDbContext(controlOptions);
+            await PlatformOwnerIdentityMigrator.ApplyAsync(mergeDb, logger);
+        }
+        catch (Exception mergeEx)
+        {
+            logger.LogError(mergeEx, "Platform owner identity merge failed; continuing startup");
+        }
+
+        try
+        {
             await using var db = new BisyncDbContext(controlOptions);
 
             logger.LogInformation("Deferred DB startup: seeders begin");
@@ -47,7 +59,7 @@ public sealed class DeferredDbStartupHostedService(
             }
             catch (Exception mergeEx)
             {
-                logger.LogError(mergeEx, "Platform owner identity merge failed; continuing startup");
+                logger.LogError(mergeEx, "Platform owner identity merge (post-seed) failed; continuing startup");
             }
             await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
             await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);

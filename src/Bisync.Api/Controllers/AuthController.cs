@@ -95,6 +95,9 @@ public class AuthController(
             return BadRequest("Email and password are required.");
 
         var normalized = SuperAdminAccess.NormalizeLoginEmail(request.Email);
+        if (SuperAdminAccess.IsPlatformOwnerEmail(request.Email))
+            await PlatformOwnerIdentityMigrator.EnsureMergedAsync(db);
+
         var user = await db.AppUsers
             .AsNoTracking()
             .Include(u => u.Employee)
