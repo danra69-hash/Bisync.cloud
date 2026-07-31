@@ -49,25 +49,11 @@ export function ProductGrid({ products, onAdd, disabled = false }: Props) {
           </div>
           <div className="product-card__body">
             <h3 className="product-card__name">{product.name}</h3>
-            <div className="product-card__row">
-              <span className="product-card__price">
-                {product.pricedByWeight && product.weightUom
-                  ? `${formatMoney(product.priceCents)}/${product.weightUom}`
-                  : formatMoney(product.priceCents)}
-              </span>
-              <button
-                type="button"
-                className="product-card__add"
-                aria-label={`Add ${product.name}`}
-                disabled={disabled}
-                onClick={e => {
-                  e.stopPropagation()
-                  if (!disabled) onAdd(product)
-                }}
-              >
-                +
-              </button>
-            </div>
+            <span className="product-card__price">
+              {product.pricedByWeight && product.weightUom
+                ? `${formatMoney(product.priceCents)}/${product.weightUom}`
+                : formatMoney(product.priceCents)}
+            </span>
           </div>
         </article>
       ))}
