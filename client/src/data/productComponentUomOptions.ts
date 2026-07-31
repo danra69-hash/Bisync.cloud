@@ -13,7 +13,11 @@ import {
   resolveSubProductRecipeUnit,
   type ProductLine,
 } from './productForm';
-import { convertComponentUnitPrice, formatBomUnitPrice } from './resolveBomComponentPrice';
+import {
+  convertComponentUnitPrice,
+  formatBomUnitPrice,
+  resolveSystemComponentUnitPrice,
+} from './resolveBomComponentPrice';
 
 export type ProductComponentUomOption = {
   label: string;
@@ -99,12 +103,12 @@ function priceForComponentUom(
 }
 
 function priceForComponentOption(component: ComponentRow, selectedUnit: string): number {
+  const systemPrice = resolveSystemComponentUnitPrice(component, selectedUnit);
+  if (systemPrice !== null && systemPrice > 0) return systemPrice;
+
   const recipeUnit = fromApiUom(component.recipeUOM);
   const basePrice = component.lastPriceRecipe ?? 0;
   if (!(basePrice > 0) || !recipeUnit) return 0;
-
-  const converted = convertComponentUnitPrice(basePrice, recipeUnit, selectedUnit, component);
-  if (converted !== null && converted > 0) return converted;
 
   const detail = resolveDetailConfigForRow(component);
   return priceForComponentUom(selectedUnit, recipeUnit, basePrice, detail.altRecipeUnits);
