@@ -41,7 +41,14 @@ public sealed class DeferredDbStartupHostedService(
             await ConfigurationSeeder.SeedAsync(db);
             await ConfigurationSeeder.PatchUserAssignmentsAsync(db);
             await ConfigurationSeeder.PatchSuperAdminPasswordAsync(db);
-            await PlatformOwnerIdentityMigrator.ApplyAsync(db, logger);
+            try
+            {
+                await PlatformOwnerIdentityMigrator.ApplyAsync(db, logger);
+            }
+            catch (Exception mergeEx)
+            {
+                logger.LogError(mergeEx, "Platform owner identity merge failed; continuing startup");
+            }
             await VendorCatalogSeeder.EnsureCatalogVendorsAsync(db);
             await IngredientCatalogSeeder.EnsureCatalogIngredientsAsync(db);
             await sp.GetRequiredService<LocationSubscriptionService>().EnsureSchemaAsync();
