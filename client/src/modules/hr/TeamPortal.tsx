@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  CalendarDays, Camera, CheckSquare, ChevronLeft, ChevronRight,
+  CalendarDays, CheckSquare, ChevronLeft, ChevronRight,
   Home, LogOut, MessageSquare, Send, Square, Umbrella, X,
 } from 'lucide-react';
 import { hrApi } from './api';
@@ -24,6 +24,7 @@ import {
   unlockPinPayload,
 } from './teamPin';
 import { punchHrAttendance } from './attendancePunch';
+import { TeamHomeLanding, type TeamHomePanel } from './TeamHomeLanding';
 import './TeamPortal.css';
 
 interface TeamPortalProps {
@@ -170,6 +171,7 @@ export default function TeamPortal({
   const [settingsBusy, setSettingsBusy] = useState(false);
 
   const [appTab, setAppTab] = useState<AppTab>('home');
+  const [homePanel, setHomePanel] = useState<TeamHomePanel>('landing');
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [toast, setToast] = useState('');
@@ -980,56 +982,39 @@ export default function TeamPortal({
           </header>
 
           <main className="team-main">
-            {appTab === 'home' ? (
-              <>
-                <section className="team-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                    <h3 style={{ margin: 0 }}>Clock</h3>
-                    <span className={`team-status-pill ${checkedIn && !checkedOut ? 'is-in' : 'is-out'}`}>
-                      {!checkedIn ? 'Not checked in' : checkedOut ? 'Away / on break' : 'On duty'}
-                    </span>
-                  </div>
-                  <div className="team-hero">
-                    <p className="team-hero-label">Local time</p>
-                    <p className="team-hero-time">{nowLabel}</p>
-                    <button
-                      type="button"
-                      className="team-punch-btn"
-                      onClick={() => void startScanner()}
-                    >
-                      <Camera size={16} style={{ display: 'inline', verticalAlign: '-3px', marginRight: 6 }} />
-                      {checkLabel}
-                    </button>
-                    <p className="team-muted" style={{ margin: '8px 0 0', fontSize: 11 }}>
-                      Scan the POS QR anytime — lunch, meetings, coffee, then check in again
-                    </p>
-                  </div>
-                  <dl className="team-kv" style={{ marginTop: 10 }}>
-                    <div>
-                      <dt>Actual in</dt>
-                      <dd>{todayAttendance?.actualIn?.slice(0, 5) || '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>Actual out</dt>
-                      <dd>{todayAttendance?.actualOut?.slice(0, 5) || '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>Today</dt>
-                      <dd style={{ fontSize: 11 }}>{todayInfo.label}</dd>
-                    </div>
-                  </dl>
-                </section>
-
-                <section className="team-card">
-                  <h3>Today&apos;s schedule</h3>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13 }}>
-                    {new Date(TODAY + 'T00:00:00').toLocaleDateString('en-MY', {
-                      weekday: 'long', day: 'numeric', month: 'short',
-                    })}
-                  </p>
-                  <span className="team-today-label">{todayInfo.label}</span>
-                </section>
-              </>
+            {appTab === 'home' && todayInfo ? (
+              <TeamHomeLanding
+                employee={teamEmp}
+                todayLabel={new Date(`${TODAY}T00:00:00`).toLocaleDateString('en-MY', {
+                  weekday: 'long', day: 'numeric', month: 'short',
+                })}
+                todayInfo={todayInfo}
+                todayAttendance={todayAttendance}
+                nowLabel={nowLabel}
+                checkLabel={checkLabel}
+                checkBusy={checkBusy}
+                onStartScanner={() => void startScanner()}
+                leaveBalance={balance}
+                carryForward={carryForward}
+                leaveRequests={leaveRequests}
+                announcements={messages}
+                onOpenSchedule={() => {
+                  setHomePanel('landing');
+                  setAppTab('schedule');
+                }}
+                onOpenMessages={() => {
+                  setHomePanel('landing');
+                  setMessageTab('inbox');
+                  setAppTab('messages');
+                }}
+                onOpenLeave={() => {
+                  setHomePanel('landing');
+                  setAppTab('leave');
+                }}
+                onMarkAnnouncementRead={markMessageRead}
+                panel={homePanel}
+                onPanelChange={setHomePanel}
+              />
             ) : null}
 
             {appTab === 'schedule' ? (
@@ -1177,19 +1162,47 @@ export default function TeamPortal({
           </main>
 
           <nav className="team-bottom-nav" aria-label="Team">
-            <button type="button" className={appTab === 'home' ? 'is-active' : ''} onClick={() => setAppTab('home')}>
+            <button
+              type="button"
+              className={appTab === 'home' ? 'is-active' : ''}
+              onClick={() => {
+                setHomePanel('landing');
+                setAppTab('home');
+              }}
+            >
               <Home />
               <span>Home</span>
             </button>
-            <button type="button" className={appTab === 'schedule' ? 'is-active' : ''} onClick={() => setAppTab('schedule')}>
+            <button
+              type="button"
+              className={appTab === 'schedule' ? 'is-active' : ''}
+              onClick={() => {
+                setHomePanel('landing');
+                setAppTab('schedule');
+              }}
+            >
               <CalendarDays />
               <span>Schedule</span>
             </button>
-            <button type="button" className={appTab === 'messages' ? 'is-active' : ''} onClick={() => setAppTab('messages')}>
+            <button
+              type="button"
+              className={appTab === 'messages' ? 'is-active' : ''}
+              onClick={() => {
+                setHomePanel('landing');
+                setAppTab('messages');
+              }}
+            >
               <MessageSquare />
               <span>Messages</span>
             </button>
-            <button type="button" className={appTab === 'leave' ? 'is-active' : ''} onClick={() => setAppTab('leave')}>
+            <button
+              type="button"
+              className={appTab === 'leave' ? 'is-active' : ''}
+              onClick={() => {
+                setHomePanel('landing');
+                setAppTab('leave');
+              }}
+            >
               <Umbrella />
               <span>Leave</span>
             </button>
