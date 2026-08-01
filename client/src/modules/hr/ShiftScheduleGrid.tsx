@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { ChevronLeft, ChevronRight, GripVertical, Trash2 } from 'lucide-react';
 import type { Employee, EmployeeLevel, LeaveRequest, ScheduleType, ShiftSchedule } from './types';
 
-import ShiftScheduleType2View from './ShiftScheduleType2View';
+import ShiftScheduleType2View, { type ShiftScheduleType2Handle } from './ShiftScheduleType2View';
+import { colorsForLevel, levelColors, resolveEmployeeLevel } from './scheduleLevelColors';
 
 const SCHEDULE_LAYOUT_STORAGE_KEY = 'bisync.hr.scheduleLayout';
 
@@ -32,28 +33,6 @@ const LEAVE_TYPES: { value: ScheduleType; label: string }[] = [
   { value: 'RPH', label: 'RPH — Replacement Public Holiday' },
   { value: 'UPL', label: 'UPL — Unpaid Leave' },
 ];
-
-const LEVEL_COLORS: Record<number, { bar: string; tag: string; dot: string }> = {
-  1: { bar: 'bg-blue-600 border-blue-700', tag: 'border-blue-300 bg-blue-50 text-blue-900', dot: 'bg-blue-600' },
-  2: { bar: 'bg-orange-600 border-orange-700', tag: 'border-orange-300 bg-orange-50 text-orange-900', dot: 'bg-orange-600' },
-  3: { bar: 'bg-indigo-600 border-indigo-700', tag: 'border-indigo-300 bg-indigo-50 text-indigo-900', dot: 'bg-indigo-600' },
-};
-
-const DEFAULT_LEVEL_COLORS = {
-  bar: 'bg-gray-600 border-gray-700',
-  tag: 'border-gray-300 bg-gray-50 text-gray-900',
-  dot: 'bg-gray-500',
-};
-
-function resolveEmployeeLevel(employee: Employee, levels: EmployeeLevel[]) {
-  return employee.employeeLevel ?? levels.find((l) => l.id === employee.employeeLevelId);
-}
-
-function levelColors(employee: Employee, levels: EmployeeLevel[]) {
-  const level = resolveEmployeeLevel(employee, levels);
-  if (level && LEVEL_COLORS[level.id]) return LEVEL_COLORS[level.id];
-  return DEFAULT_LEVEL_COLORS;
-}
 
 const LEAVE_BADGE: Record<string, string> = {
   DO: 'bg-gray-200 text-gray-800',
@@ -216,7 +195,22 @@ export default function ShiftScheduleGrid({
   const [dragEmployeeId, setDragEmployeeId] = useState<number | null>(null);
   const [dragPreview, setDragPreview] = useState<{ employeeId: number; date: string; top: number } | null>(null);
   const [layoutType, setLayoutType] = useState<ScheduleLayoutType>(readScheduleLayout);
+  const [layoutSwitching, setLayoutSwitching] = useState(false);
+  const type2Ref = useRef<ShiftScheduleType2Handle>(null);
   const barDragRef = useRef<BarDragState | null>(null);
+
+  const selectLayout = useCallback(async (next: ScheduleLayoutType) => {
+    if (next === layoutType || layoutSwitching) return;
+    if (layoutType === 'type2' && next === 'type1') {
+      setLayoutSwitching(true);
+      try {
+        await type2Ref.current?.flushPending();
+      } finally {
+        setLayoutSwitching(false);
+      }
+    }
+    setLayoutType(next);
+  }, [layoutType, layoutSwitching]);
   const slots = useMemo(() => timeSlots(), []);
   const weekDates = useMemo(() => weekDatesFrom(weekStart), [weekStart]);
   const [rowHeight, setRowHeight] = useState(16);
@@ -399,9 +393,10 @@ export default function ShiftScheduleGrid({
         >
           <button
             type="button"
-            onClick={() => setLayoutType('type1')}
+            onClick={() => void selectLayout('type1')}
             aria-pressed={layoutType === 'type1'}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            disabled={layoutSwitching}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
               layoutType === 'type1'
                 ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
                 : 'text-gray-600 hover:text-gray-900'
@@ -411,9 +406,10 @@ export default function ShiftScheduleGrid({
           </button>
           <button
             type="button"
-            onClick={() => setLayoutType('type2')}
+            onClick={() => void selectLayout('type2')}
             aria-pressed={layoutType === 'type2'}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            disabled={layoutSwitching}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
               layoutType === 'type2'
                 ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
                 : 'text-gray-600 hover:text-gray-900'
@@ -491,7 +487,7 @@ export default function ShiftScheduleGrid({
           <div className="flex flex-wrap items-center gap-3 mt-1.5 pt-1.5 border-t border-gray-100">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Level</span>
             {levelsInView.map((level) => {
-              const colors = LEVEL_COLORS[level.id] ?? DEFAULT_LEVEL_COLORS;
+              const colors = colorsForLevel(level);
               return (
                 <span key={level.id} className="inline-flex items-center gap-1 text-xs text-gray-600">
                   <span className={`w-2.5 h-2.5 rounded-sm ${colors.dot}`} aria-hidden />
@@ -506,6 +502,7 @@ export default function ShiftScheduleGrid({
 
       {layoutType === 'type2' ? (
         <ShiftScheduleType2View
+          ref={type2Ref}
           shiftEmployees={shiftEmployees}
           employeeLevels={employeeLevels}
           shiftSchedules={shiftSchedules}
