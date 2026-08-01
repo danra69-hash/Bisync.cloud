@@ -101,11 +101,16 @@
   z-index: 1;
 }
 
-.topbar__setup:hover,
-.topbar__setup.is-active {
+.topbar__setup:hover:not(:disabled),
+.topbar__setup.is-active:not(:disabled) {
   border-color: var(--color-primary);
   color: var(--color-primary-text);
   background: var(--color-primary-soft);
+}
+
+.topbar__setup:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .topbar__spacer {

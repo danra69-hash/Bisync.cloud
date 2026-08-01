@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { MODE_META } from '../core/modes/types'
 import { usePosMode } from '../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../core/session/PosSessionContext'
+import { usePosDutySession } from '../core/session/usePosDutySession'
 import './TopBar.css'
 
 export function TopBar() {
@@ -9,6 +10,8 @@ export function TopBar() {
   const { pathname } = useLocation()
   const { setMode } = usePosMode()
   const session = usePosSessionOptional()
+  const { duty } = usePosDutySession()
+  const locked = !duty
   const locations = session?.locations ?? []
   const locationId = session?.locationId ?? ''
   const homePath = MODE_META.order.homePath
@@ -24,26 +27,31 @@ export function TopBar() {
   }
 
   function goSetup() {
+    if (locked) return
     setMode('boh')
     navigate('/boh/settings')
   }
 
   function goKds() {
+    if (locked) return
     setMode('boh')
     navigate('/boh/kds')
   }
 
   function goBds() {
+    if (locked) return
     setMode('boh')
     navigate('/boh/bds')
   }
 
   function goCds() {
+    if (locked) return
     setMode('boh')
     navigate('/boh/cds')
   }
 
   function goQrOrder() {
+    if (locked) return
     setMode('boh')
     navigate('/boh/qr-order')
   }
@@ -89,7 +97,9 @@ export function TopBar() {
           type="button"
           className={`topbar__setup${isSetup ? ' is-active' : ''}`}
           onClick={goSetup}
+          disabled={locked}
           aria-current={isSetup ? 'page' : undefined}
+          title={locked ? 'Check in with Staff PIN to unlock' : undefined}
         >
           POS Setup
         </button>
@@ -97,8 +107,9 @@ export function TopBar() {
           type="button"
           className={`topbar__setup${isKds ? ' is-active' : ''}`}
           onClick={goKds}
+          disabled={locked}
           aria-current={isKds ? 'page' : undefined}
-          title="Kitchen Display System"
+          title={locked ? 'Check in with Staff PIN to unlock' : 'Kitchen Display System'}
         >
           KDS
         </button>
@@ -106,8 +117,9 @@ export function TopBar() {
           type="button"
           className={`topbar__setup${isBds ? ' is-active' : ''}`}
           onClick={goBds}
+          disabled={locked}
           aria-current={isBds ? 'page' : undefined}
-          title="Bar Display System"
+          title={locked ? 'Check in with Staff PIN to unlock' : 'Bar Display System'}
         >
           BDS
         </button>
@@ -115,8 +127,9 @@ export function TopBar() {
           type="button"
           className={`topbar__setup${isCds ? ' is-active' : ''}`}
           onClick={goCds}
+          disabled={locked}
           aria-current={isCds ? 'page' : undefined}
-          title="Customer Display System"
+          title={locked ? 'Check in with Staff PIN to unlock' : 'Customer Display System'}
         >
           CDS
         </button>
@@ -124,8 +137,9 @@ export function TopBar() {
           type="button"
           className={`topbar__setup${isQrOrder ? ' is-active' : ''}`}
           onClick={goQrOrder}
+          disabled={locked}
           aria-current={isQrOrder ? 'page' : undefined}
-          title="Guest QR Order"
+          title={locked ? 'Check in with Staff PIN to unlock' : 'Guest QR Order'}
         >
           QR Order
         </button>
