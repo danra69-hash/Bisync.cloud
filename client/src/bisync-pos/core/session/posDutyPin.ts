@@ -1,9 +1,5 @@
 import { hrApi } from '../../../modules/hr/api'
-import {
-  clockDate,
-  clockHhMm,
-  punchHrAttendance,
-} from '../../../modules/hr/attendancePunch'
+import { clockDate } from '../../../modules/hr/attendancePunch'
 import {
   isValidPin,
   loadPinEnrollment,
@@ -11,7 +7,6 @@ import {
 } from '../../../modules/hr/teamPin'
 import { outletInitialFromLocation } from './outletInitial'
 import {
-  clearPosDutySession,
   loadPosDutySession,
   savePosDutySession,
   type PosDutySession,
@@ -24,11 +19,11 @@ export type PosPinEmployee = {
 }
 
 export type PosDutyPinResult =
-  | { ok: true; action: 'check-in' | 'check-out'; session: PosDutySession | null; warning?: string }
+  | { ok: true; action: 'unlock'; session: PosDutySession; warning?: string }
   | { ok: false; error: string }
 
 const QR_REQUIRED_ERROR =
-  'Scan the POS QR in Team (/TEAM) to check in first, then enter your PIN.'
+  'Scan the POS QR in Team (/TEAM) to check in first, then enter your PIN to unlock POS.'
 
 export async function resolvePinEmployee(pin: string): Promise<PosPinEmployee | null> {
   // Prefer Team mobile PIN enrollment on this device.
@@ -70,13 +65,18 @@ function buildSession(
   locationExternalId: string,
   locationName: string,
 ): PosDutySession {
+  const current = loadPosDutySession()
   return {
     employeeId: resolved.employeeId,
     employeeName: resolved.employeeName,
     employeeCode: resolved.employeeCode,
     locationExternalId,
     outletInitial: outletInitialFromLocation(locationName, locationExternalId),
-    checkedInAt: new Date().toISOString(),
+    // Keep original unlock time when the same person re-enters PIN.
+    checkedInAt:
+      current?.employeeId === resolved.employeeId && current.checkedInAt
+        ? current.checkedInAt
+        : new Date().toISOString(),
   }
 }
 
@@ -88,9 +88,11 @@ async function hasOpenQrAttendance(employeeId: number): Promise<boolean> {
 }
 
 /**
- * Shared terminal PIN after Team QR attendance.
- * PIN alone cannot create a check-in — staff must scan the POS QR in Team first.
- * With an open QR attendance: PIN unlocks POS, or checks out when that holder already unlocked.
+ * POS PIN unlock only — never records HR attendance.
+ *
+ * Attendance check-in/out is QR-only via Team. While that employee has an open
+ * QR check-in, PIN may unlock (or keep unlocked) POS ordering freely.
+ * QR check-out clears unlock via syncPosDutyWithHrAttendance.
  */
 export async function applyPosDutyPin(opts: {
   pin: string
@@ -115,29 +117,15 @@ export async function applyPosDutyPin(opts: {
     return { ok: false, error: QR_REQUIRED_ERROR }
   }
 
-  const current = loadPosDutySession()
-
   try {
     const qrCheckedIn = await hasOpenQrAttendance(resolved.employeeId)
     if (!qrCheckedIn) {
       return { ok: false, error: QR_REQUIRED_ERROR }
     }
 
-    // Already unlocked as this employee → PIN checks them out (HR + clear unlock).
-    if (current?.employeeId === resolved.employeeId) {
-      await punchHrAttendance({
-        employeeId: resolved.employeeId,
-        date: clockDate(),
-        timeHhMm: clockHhMm(),
-      })
-      clearPosDutySession()
-      return { ok: true, action: 'check-out', session: null }
-    }
-
-    // Open QR attendance: unlock POS without punching again (QR already recorded actualIn).
     const session = buildSession(resolved, opts.locationExternalId, opts.locationName)
     savePosDutySession(session)
-    return { ok: true, action: 'check-in', session }
+    return { ok: true, action: 'unlock', session }
   } catch (err) {
     return {
       ok: false,

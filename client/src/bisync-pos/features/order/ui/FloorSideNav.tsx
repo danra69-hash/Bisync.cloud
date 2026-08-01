@@ -313,7 +313,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       }
       setDuty(result.session)
       void refreshDuty()
-      setPinStatus(result.action === 'check-in' ? 'Checked in' : 'Checked out')
+      setPinStatus('POS unlocked')
       if (result.warning) setPinError(result.warning)
     } catch (err) {
       setPin('')
@@ -451,7 +451,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         onClick={item.onClick}
         disabled={item.disabled}
         aria-disabled={item.disabled || undefined}
-        title={item.disabled ? 'Scan POS QR in Team, then enter Staff PIN' : undefined}
+        title={item.disabled ? 'Team QR check-in, then Staff PIN to unlock POS' : undefined}
         aria-current={item.active && item.id !== 'history' && item.id !== 'checkin' ? 'page' : undefined}
       >
         <span className="floor-side-nav__icon">{item.icon}</span>
@@ -468,7 +468,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       >
         {locked ? (
           <p className="floor-side-nav__lock-banner" role="status">
-            Home locked — QR in Team, then PIN
+            Home locked — Team QR check-in, then PIN
           </p>
         ) : null}
         <div className="floor-side-nav__list">
@@ -701,7 +701,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
           disabled={locked}
           aria-expanded={adminOpen}
           aria-controls="app-side-menu"
-          title={locked ? 'Scan POS QR in Team, then enter Staff PIN' : undefined}
+          title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : undefined}
         >
           Admin
         </button>
