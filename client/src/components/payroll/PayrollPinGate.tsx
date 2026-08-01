@@ -1,17 +1,56 @@
-import { useState } from 'react';
-import { Eye, EyeOff, Lock, LogOut } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Eye, EyeOff, Lock, LogOut, ShieldOff } from 'lucide-react';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
+import { useAccessControlMatrix } from '../../hooks/useAccessControlMatrix';
+import {
+  canAccessHrAdminPage,
+  PAYROLL_ACCESS_ROW_KEYS,
+} from '../../data/hrAdminAccess';
 import { verifyPayrollAccessPin } from './payrollPin';
 
 type GateProps = {
   embedded?: boolean;
   children: React.ReactNode;
+  /** Heading shown on the PIN prompt and lock control. */
+  title?: string;
+  /** Access Control matrix row keys required to open this page. */
+  requiredRowKeys?: readonly string[];
 };
+
+function InaccessibleMessage({
+  embedded,
+  title,
+}: {
+  embedded?: boolean;
+  title: string;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-center ${
+        embedded ? 'min-h-[420px] py-8' : 'min-h-[calc(100vh-220px)] py-12'
+      }`}
+    >
+      <div className="bg-card border border-border rounded-2xl shadow-sm w-full max-w-sm p-8 text-center space-y-3">
+        <div className="inline-flex items-center justify-center w-12 h-12 bg-muted rounded-xl">
+          <ShieldOff className="w-6 h-6 text-muted-foreground" />
+        </div>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <p className="text-sm text-muted-foreground">This page is not accessible</p>
+        <p className="text-xs text-muted-foreground">
+          Your account does not have access and permission for this page. Contact a System Admin if you need access.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function PayrollPinPrompt({
   embedded,
+  title,
   onUnlock,
 }: {
   embedded?: boolean;
+  title: string;
   onUnlock: () => void;
 }) {
   const [pin, setPin] = useState('');
@@ -48,8 +87,8 @@ function PayrollPinPrompt({
           <div className="inline-flex items-center justify-center w-12 h-12 bg-primary rounded-xl mb-4">
             <Lock className="w-6 h-6 text-primary-foreground" />
           </div>
-          <h2 className="text-lg font-semibold">Payroll</h2>
-          <p className="text-xs text-muted-foreground mt-1">Enter your 6-digit PIN to continue</p>
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="text-xs text-muted-foreground mt-1">Enter your 6-digit admin PIN to continue</p>
         </div>
         <div className="relative mb-4">
           <input
@@ -83,18 +122,52 @@ function PayrollPinPrompt({
           disabled={pin.length !== 6 || verifying}
           className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-semibold rounded-xl py-3 text-sm transition-colors"
         >
-          {verifying ? 'Verifying…' : 'Unlock Payroll'}
+          {verifying ? 'Verifying…' : `Unlock ${title}`}
         </button>
       </div>
     </div>
   );
 }
 
-export function PayrollPinGate({ embedded = false, children }: GateProps) {
+export function PayrollPinGate({
+  embedded = false,
+  children,
+  title = 'Payroll',
+  requiredRowKeys = PAYROLL_ACCESS_ROW_KEYS,
+}: GateProps) {
+  const { currentUser } = useCurrentUser();
+  const { matrix, loading } = useAccessControlMatrix();
   const [unlocked, setUnlocked] = useState(false);
 
+  const allowed = useMemo(
+    () => canAccessHrAdminPage(currentUser, matrix, requiredRowKeys),
+    [currentUser, matrix, requiredRowKeys],
+  );
+
+  if (loading) {
+    return (
+      <div
+        className={`flex items-center justify-center text-sm text-muted-foreground ${
+          embedded ? 'min-h-[240px]' : 'min-h-[calc(100vh-220px)]'
+        }`}
+      >
+        Checking access…
+      </div>
+    );
+  }
+
+  if (!allowed) {
+    return <InaccessibleMessage embedded={embedded} title={title} />;
+  }
+
   if (!unlocked) {
-    return <PayrollPinPrompt embedded={embedded} onUnlock={() => setUnlocked(true)} />;
+    return (
+      <PayrollPinPrompt
+        embedded={embedded}
+        title={title}
+        onUnlock={() => setUnlocked(true)}
+      />
+    );
   }
 
   return (
@@ -105,7 +178,7 @@ export function PayrollPinGate({ embedded = false, children }: GateProps) {
           onClick={() => setUnlocked(false)}
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-3 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
         >
-          <LogOut className="w-3.5 h-3.5" /> Lock Payroll
+          <LogOut className="w-3.5 h-3.5" /> Lock {title}
         </button>
       </div>
       {children}

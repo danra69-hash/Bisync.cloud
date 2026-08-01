@@ -12,6 +12,8 @@ import { hrApi as api } from './api';
 import EmployeePortal from './EmployeePortal';
 import TeamPortal from './TeamPortal';
 import { PayrollSection } from '../../components/payroll/PayrollSection';
+import { PayrollPinGate } from '../../components/payroll/PayrollPinGate';
+import { HR_CONFIG_ACCESS_ROW_KEYS } from '../../data/hrAdminAccess';
 import ShiftScheduleGrid, { initialScheduleWeekStart } from './ShiftScheduleGrid';
 import { AttendanceDatePicker } from './AttendanceDatePicker';
 import { EmployeeTab } from '../../components/admin/EmployeeTab';
@@ -579,9 +581,9 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
               ['attendance', Calendar, 'Attendance'],
               ['leave', FileText, 'Leave Requests'],
               ['schedule', Clock, 'Schedule'],
-              ['hrconfig', Settings, 'HR Config'],
               ['team', UserCheck, 'Team'],
               ['portal', LayoutDashboard, 'Employee Portal'],
+              ['hrconfig', Settings, 'HR Config'],
               ['payroll', Wallet, 'Payroll'],
             ] as const).map(([tab, Icon, label]) => (
               <button
@@ -622,16 +624,22 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
         )}
 
         {activeTab === 'hrconfig' && (
-          <HrEmployeeConfigSection
-            tab={hrConfigTab}
-            onTabChange={setHrConfigTab}
-            selectedCompanyId={selectedCompanyId}
-            onDataChanged={() => {
-              void refreshHrConfigData();
-              void refreshEmployees();
-              void refreshLeave();
-            }}
-          />
+          <PayrollPinGate
+            embedded={embedded}
+            title="HR Config"
+            requiredRowKeys={HR_CONFIG_ACCESS_ROW_KEYS}
+          >
+            <HrEmployeeConfigSection
+              tab={hrConfigTab}
+              onTabChange={setHrConfigTab}
+              selectedCompanyId={selectedCompanyId}
+              onDataChanged={() => {
+                void refreshHrConfigData();
+                void refreshEmployees();
+                void refreshLeave();
+              }}
+            />
+          </PayrollPinGate>
         )}
 
         {/* Attendance Tab */}
