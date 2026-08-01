@@ -467,7 +467,7 @@
   bottom: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   padding: 6px 4px max(8px, env(safe-area-inset-bottom, 0px));
   background: #fff;
