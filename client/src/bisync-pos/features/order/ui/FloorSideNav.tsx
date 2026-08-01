@@ -99,6 +99,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   const { duty, setDuty, refreshDuty } = usePosDutySession()
   const locked = !duty
   const [dining, setDining] = useState('')
+  const [pinPadOpen, setPinPadOpen] = useState(false)
   const [pin, setPin] = useState('')
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
@@ -301,6 +302,28 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     }
   }
 
+  function closePinPad() {
+    setPinPadOpen(false)
+    setPin('')
+    setPinError(null)
+    setPinStatus(null)
+  }
+
+  function togglePinPad() {
+    setPinPadOpen(open => {
+      if (open) {
+        setPin('')
+        setPinError(null)
+        setPinStatus(null)
+        return false
+      }
+      setPin('')
+      setPinError(null)
+      setPinStatus(null)
+      return true
+    })
+  }
+
   async function submitSidePin(nextPin: string) {
     if (pinBusy || nextPin.length !== 4) return
     setPinBusy(true)
@@ -319,8 +342,9 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       }
       setDuty(result.session)
       void refreshDuty()
-      setPinStatus('POS unlocked')
-      if (result.warning) setPinError(result.warning)
+      closePinPad()
+      if (result.warning) notify(result.warning)
+      else notify('POS unlocked')
     } catch (err) {
       setPin('')
       setPinError(err instanceof Error ? err.message : 'Could not verify PIN')
@@ -434,19 +458,28 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         </svg>
       ),
     },
-    {
-      id: 'checkin',
-      label: 'Check in/out',
-      active: checkInOpen,
-      onClick: () => setCheckInOpen(true),
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-          <rect x="4" y="4" width="16" height="16" rx="2" />
-          <path d="M8 12h8M12 8v8" />
-        </svg>
-      ),
-    },
   ]
+
+  const checkInItem = {
+    id: 'checkin' as const,
+    label: 'Check in/out',
+    active: checkInOpen,
+    onClick: () => setCheckInOpen(true),
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <path d="M8 12h8M12 8v8" />
+      </svg>
+    ),
+  }
+
+  const staffPinIcon = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="10" rx="2" />
+      <path d="M7 11V8a5 5 0 0110 0v3" />
+      <circle cx="12" cy="16" r="1.25" fill="currentColor" stroke="none" />
+    </svg>
+  )
 
   function renderNavBtn(item: (typeof topItems)[number]) {
     return (
@@ -682,32 +715,60 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
 
         {!reservationsOpen ? (
           <>
-            <div className="floor-side-nav__pin" aria-label="Staff check-in PIN pad">
-              <div className="floor-side-nav__pin-head">
-                <span className="floor-side-nav__pin-title">Staff PIN</span>
-                <span className="floor-side-nav__pin-dots" aria-live="polite">
-                  {Array.from({ length: 4 }, (_, i) => (
-                    <span key={i} className={i < pin.length ? 'is-filled' : ''} />
-                  ))}
-                </span>
-              </div>
-              <div className="floor-side-nav__keypad" role="group" aria-label="Numeric PIN pad">
-                {PIN_KEYS.map(key => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`floor-side-nav__key${key === 'C' || key === '⌫' ? ' is-action' : ''}`}
-                    onClick={() => onSidePinKey(key)}
-                    disabled={pinBusy}
-                  >
-                    {key}
-                  </button>
-                ))}
-              </div>
-              {pinStatus ? <p className="floor-side-nav__pin-ok">{pinStatus}</p> : null}
-              {pinError ? <p className="floor-side-nav__pin-error" role="alert">{pinError}</p> : null}
-              {pinBusy ? <p className="floor-side-nav__pin-busy">Verifying…</p> : null}
+            <div className="floor-side-nav__duty-row">
+              {renderNavBtn(checkInItem)}
+              <button
+                type="button"
+                className={`floor-side-nav__btn${pinPadOpen ? ' is-active' : ''}`}
+                onClick={togglePinPad}
+                aria-expanded={pinPadOpen}
+                aria-controls="floor-side-nav-pin-pad"
+              >
+                <span className="floor-side-nav__icon">{staffPinIcon}</span>
+                <span className="floor-side-nav__label">Staff PIN</span>
+              </button>
             </div>
+
+            {pinPadOpen ? (
+              <div
+                id="floor-side-nav-pin-pad"
+                className="floor-side-nav__pin"
+                aria-label="Staff PIN pad"
+              >
+                <div className="floor-side-nav__pin-head">
+                  <span className="floor-side-nav__pin-title">Enter PIN</span>
+                  <span className="floor-side-nav__pin-dots" aria-live="polite">
+                    {Array.from({ length: 4 }, (_, i) => (
+                      <span key={i} className={i < pin.length ? 'is-filled' : ''} />
+                    ))}
+                  </span>
+                  <button
+                    type="button"
+                    className="floor-side-nav__pin-dismiss"
+                    onClick={closePinPad}
+                    aria-label="Close PIN pad"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="floor-side-nav__keypad" role="group" aria-label="Numeric PIN pad">
+                  {PIN_KEYS.map(key => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`floor-side-nav__key${key === 'C' || key === '⌫' ? ' is-action' : ''}`}
+                      onClick={() => onSidePinKey(key)}
+                      disabled={pinBusy}
+                    >
+                      {key}
+                    </button>
+                  ))}
+                </div>
+                {pinStatus ? <p className="floor-side-nav__pin-ok">{pinStatus}</p> : null}
+                {pinError ? <p className="floor-side-nav__pin-error" role="alert">{pinError}</p> : null}
+                {pinBusy ? <p className="floor-side-nav__pin-busy">Verifying…</p> : null}
+              </div>
+            ) : null}
 
             <button
               type="button"
