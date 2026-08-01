@@ -722,7 +722,12 @@ export function RegisterPage() {
           />
         </div>
 
-        <div className="register__order-tools" role="group" aria-label="Order modifiers">
+        <div
+          className="register__order-tools"
+          role="group"
+          aria-label="Order modifiers"
+          style={{ gridTemplateColumns: `repeat(${groupColumns}, minmax(0, 1fr))` }}
+        >
           <button
             type="button"
             className="register__order-tool"
