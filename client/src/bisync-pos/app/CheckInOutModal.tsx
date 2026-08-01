@@ -120,8 +120,8 @@ export function CheckInOutModal({
           <div>
             <h2 id="checkin-modal-title">Check in / out</h2>
             <p>
-              Shared terminal — each staff member scans Team (/TEAM) or enters their own PIN to punch in or out.
-              Multiple people can check in during the same shift.
+              Scan the POS QR in Team (/TEAM) to record attendance first, then enter your PIN to unlock ordering.
+              PIN alone cannot check in.
             </p>
           </div>
           <button type="button" className="checkin-modal__close" onClick={onClose} aria-label="Close">
@@ -133,19 +133,19 @@ export function CheckInOutModal({
           <strong>Staff attendance</strong>
           <span>
             {duty
-              ? 'Ordering unlocked. Use your PIN to punch your own in or out.'
-              : 'Ordering locked until someone checks in. Breaks and re-check-ins are allowed anytime.'}
+              ? 'Ordering unlocked. Enter your PIN again to check out after your QR attendance.'
+              : 'Ordering locked. Scan QR in Team, then enter PIN to unlock.'}
           </span>
         </div>
 
         <div className="checkin-modal__qr-block">
           <img src={qrImageUrl(qrPayload, 220)} alt={`Check-in QR ${qrPayload}`} />
           <code className="checkin-modal__qr-code">{qrPayload}</code>
-          <span className="checkin-modal__qr-hint">Outlet · Date · Time — scan in Team to record HR attendance</span>
+          <span className="checkin-modal__qr-hint">Step 1 — scan in Team (/TEAM) to check in</span>
         </div>
 
         <div className="checkin-modal__pin-block">
-          <label htmlFor="checkin-pin-display">Team / POS PIN</label>
+          <label htmlFor="checkin-pin-display">Step 2 — Team / POS PIN</label>
           <div id="checkin-pin-display" className="checkin-modal__pin-dots" aria-live="polite">
             {Array.from({ length: 4 }, (_, i) => (
               <span key={i} className={i < pin.length ? 'is-filled' : ''}>

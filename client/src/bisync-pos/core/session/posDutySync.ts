@@ -8,8 +8,8 @@ import {
 
 /**
  * Keep register unlock aligned with Team/HR for the employee who last unlocked POS.
- * If that holder checked out on Team (mobile QR), clear the local unlock session.
- * Other staff check-ins/outs are independent and do not rename the shared Check in/out control.
+ * Unlock requires prior QR check-in (open `actualIn`); if that holder checks out on Team
+ * (sets `actualOut`), clear the local unlock session.
  *
  * Rule: HR `actualOut` set for today for the unlock holder ⇒ clear unlock.
  * Missing attendance / API errors do not kick a local PIN session.

@@ -250,7 +250,7 @@ export function RegisterPage() {
 
   function requireDuty(): boolean {
     if (onDuty) return true
-    flash('Check in and enter your Team PIN to activate POS ordering.')
+    flash('Scan POS QR in Team, then enter your PIN to activate ordering.')
     return false
   }
 
@@ -593,11 +593,11 @@ export function RegisterPage() {
 
         {!onDuty ? (
           <p className="register__duty-banner" role="status">
-            Use Check in/out: each staff member scans Team (/TEAM) or enters their own PIN.
+            Use Check in/out: scan POS QR in Team (/TEAM) first, then enter your PIN.
           </p>
         ) : (
           <p className="register__duty-banner is-on" role="status">
-            Ordering unlocked — staff punch in/out with their own PIN
+            Ordering unlocked — QR attendance first, then PIN to unlock or check out
           </p>
         )}
 

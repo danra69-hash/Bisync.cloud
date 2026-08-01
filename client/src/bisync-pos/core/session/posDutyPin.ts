@@ -27,6 +27,9 @@ export type PosDutyPinResult =
   | { ok: true; action: 'check-in' | 'check-out'; session: PosDutySession | null; warning?: string }
   | { ok: false; error: string }
 
+const QR_REQUIRED_ERROR =
+  'Scan the POS QR in Team (/TEAM) to check in first, then enter your PIN.'
+
 export async function resolvePinEmployee(pin: string): Promise<PosPinEmployee | null> {
   // Prefer Team mobile PIN enrollment on this device.
   if (loadPinEnrollment() && isValidPin(pin)) {
@@ -77,10 +80,17 @@ function buildSession(
   }
 }
 
+async function hasOpenQrAttendance(employeeId: number): Promise<boolean> {
+  const today = clockDate()
+  const rows = await hrApi.attendance.list(today, today, employeeId)
+  const record = rows[0]
+  return Boolean(record?.actualIn) && !record?.actualOut
+}
+
 /**
- * Shared terminal: each staff PIN punches that employee in/out independently.
- * Does not require another person to check out first.
- * Register unlock follows the last check-in; check-out clears unlock only for that holder.
+ * Shared terminal PIN after Team QR attendance.
+ * PIN alone cannot create a check-in — staff must scan the POS QR in Team first.
+ * With an open QR attendance: PIN unlocks POS, or checks out when that holder already unlocked.
  */
 export async function applyPosDutyPin(opts: {
   pin: string
@@ -100,42 +110,38 @@ export async function applyPosDutyPin(opts: {
     }
   }
 
+  // Demo / non-HR PIN cannot satisfy QR attendance.
+  if (resolved.employeeId <= 0) {
+    return { ok: false, error: QR_REQUIRED_ERROR }
+  }
+
   const current = loadPosDutySession()
 
-  // Demo PIN: toggle local unlock only (no HR employee).
-  if (resolved.employeeId <= 0) {
-    if (current?.employeeId === 0) {
+  try {
+    const qrCheckedIn = await hasOpenQrAttendance(resolved.employeeId)
+    if (!qrCheckedIn) {
+      return { ok: false, error: QR_REQUIRED_ERROR }
+    }
+
+    // Already unlocked as this employee → PIN checks them out (HR + clear unlock).
+    if (current?.employeeId === resolved.employeeId) {
+      await punchHrAttendance({
+        employeeId: resolved.employeeId,
+        date: clockDate(),
+        timeHhMm: clockHhMm(),
+      })
       clearPosDutySession()
       return { ok: true, action: 'check-out', session: null }
     }
+
+    // Open QR attendance: unlock POS without punching again (QR already recorded actualIn).
     const session = buildSession(resolved, opts.locationExternalId, opts.locationName)
     savePosDutySession(session)
     return { ok: true, action: 'check-in', session }
-  }
-
-  try {
-    const punch = await punchHrAttendance({
-      employeeId: resolved.employeeId,
-      date: clockDate(),
-      timeHhMm: clockHhMm(),
-    })
-
-    if (punch.action === 'check-in') {
-      const session = buildSession(resolved, opts.locationExternalId, opts.locationName)
-      savePosDutySession(session)
-      return { ok: true, action: 'check-in', session }
-    }
-
-    // This employee checked out — clear register unlock only if they held it.
-    if (current?.employeeId === resolved.employeeId) {
-      clearPosDutySession()
-      return { ok: true, action: 'check-out', session: null }
-    }
-    return { ok: true, action: 'check-out', session: current }
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : 'Could not record attendance.',
+      error: err instanceof Error ? err.message : 'Could not verify attendance.',
     }
   }
 }
