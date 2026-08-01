@@ -451,7 +451,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         onClick={item.onClick}
         disabled={item.disabled}
         aria-disabled={item.disabled || undefined}
-        title={item.disabled ? 'Check in with Staff PIN to unlock' : undefined}
+        title={item.disabled ? 'Scan POS QR in Team, then enter Staff PIN' : undefined}
         aria-current={item.active && item.id !== 'history' && item.id !== 'checkin' ? 'page' : undefined}
       >
         <span className="floor-side-nav__icon">{item.icon}</span>
@@ -468,7 +468,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       >
         {locked ? (
           <p className="floor-side-nav__lock-banner" role="status">
-            Home locked — use Staff PIN
+            Home locked — QR in Team, then PIN
           </p>
         ) : null}
         <div className="floor-side-nav__list">
@@ -701,7 +701,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
           disabled={locked}
           aria-expanded={adminOpen}
           aria-controls="app-side-menu"
-          title={locked ? 'Check in with Staff PIN to unlock' : undefined}
+          title={locked ? 'Scan POS QR in Team, then enter Staff PIN' : undefined}
         >
           Admin
         </button>
