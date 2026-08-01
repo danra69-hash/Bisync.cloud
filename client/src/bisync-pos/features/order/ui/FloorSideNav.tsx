@@ -191,8 +191,14 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   function goHome() {
     setMode('order')
     setReservationsOpen(false)
+    setShowAdd(false)
     setWaitlistOpen(false)
     navigate(homePath)
+  }
+
+  function closeReservations() {
+    setReservationsOpen(false)
+    setShowAdd(false)
   }
 
   function goTakeOut() {
@@ -463,7 +469,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   return (
     <>
       <nav
-        className={`floor-side-nav${locked ? ' is-locked' : ''}`}
+        className={`floor-side-nav${locked ? ' is-locked' : ''}${reservationsOpen ? ' is-reservations-focus' : ''}`}
         aria-label="POS home navigation"
       >
         {locked ? (
@@ -481,13 +487,22 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
                   <strong>Upcoming</strong>
                   <span>{upcoming.length}</span>
                 </div>
-                <button
-                  type="button"
-                  className="floor-side-nav__rsv-add"
-                  onClick={() => setShowAdd(open => !open)}
-                >
-                  {showAdd ? 'Close' : '+ Add'}
-                </button>
+                <div className="floor-side-nav__rsv-actions">
+                  <button
+                    type="button"
+                    className="floor-side-nav__rsv-add"
+                    onClick={() => setShowAdd(open => !open)}
+                  >
+                    {showAdd ? 'Cancel' : '+ Add'}
+                  </button>
+                  <button
+                    type="button"
+                    className="floor-side-nav__rsv-close"
+                    onClick={closeReservations}
+                  >
+                    Close
+                  </button>
+                </div>
               </header>
 
               {showAdd ? (
@@ -583,7 +598,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
             </section>
           ) : null}
 
-          {waitlistOpen ? (
+          {!reservationsOpen && waitlistOpen ? (
             <section className="floor-side-nav__waitlist" aria-label="Customer waitlist">
               <header className="floor-side-nav__rsv-head">
                 <div>
@@ -662,49 +677,53 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
             </section>
           ) : null}
 
-          {bottomItems.map(renderNavBtn)}
+          {!reservationsOpen ? bottomItems.map(renderNavBtn) : null}
         </div>
 
-        <div className="floor-side-nav__pin" aria-label="Staff check-in PIN pad">
-          <div className="floor-side-nav__pin-head">
-            <span className="floor-side-nav__pin-title">Staff PIN</span>
-            <span className="floor-side-nav__pin-dots" aria-live="polite">
-              {Array.from({ length: 4 }, (_, i) => (
-                <span key={i} className={i < pin.length ? 'is-filled' : ''} />
-              ))}
-            </span>
-          </div>
-          <div className="floor-side-nav__keypad" role="group" aria-label="Numeric PIN pad">
-            {PIN_KEYS.map(key => (
-              <button
-                key={key}
-                type="button"
-                className={`floor-side-nav__key${key === 'C' || key === '⌫' ? ' is-action' : ''}`}
-                onClick={() => onSidePinKey(key)}
-                disabled={pinBusy}
-              >
-                {key}
-              </button>
-            ))}
-          </div>
-          {pinStatus ? <p className="floor-side-nav__pin-ok">{pinStatus}</p> : null}
-          {pinError ? <p className="floor-side-nav__pin-error" role="alert">{pinError}</p> : null}
-          {pinBusy ? <p className="floor-side-nav__pin-busy">Verifying…</p> : null}
-        </div>
+        {!reservationsOpen ? (
+          <>
+            <div className="floor-side-nav__pin" aria-label="Staff check-in PIN pad">
+              <div className="floor-side-nav__pin-head">
+                <span className="floor-side-nav__pin-title">Staff PIN</span>
+                <span className="floor-side-nav__pin-dots" aria-live="polite">
+                  {Array.from({ length: 4 }, (_, i) => (
+                    <span key={i} className={i < pin.length ? 'is-filled' : ''} />
+                  ))}
+                </span>
+              </div>
+              <div className="floor-side-nav__keypad" role="group" aria-label="Numeric PIN pad">
+                {PIN_KEYS.map(key => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`floor-side-nav__key${key === 'C' || key === '⌫' ? ' is-action' : ''}`}
+                    onClick={() => onSidePinKey(key)}
+                    disabled={pinBusy}
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+              {pinStatus ? <p className="floor-side-nav__pin-ok">{pinStatus}</p> : null}
+              {pinError ? <p className="floor-side-nav__pin-error" role="alert">{pinError}</p> : null}
+              {pinBusy ? <p className="floor-side-nav__pin-busy">Verifying…</p> : null}
+            </div>
 
-        <button
-          type="button"
-          className={`floor-side-nav__admin${adminOpen ? ' is-open' : ''}`}
-          onClick={() => {
-            if (!locked) onToggleAdmin()
-          }}
-          disabled={locked}
-          aria-expanded={adminOpen}
-          aria-controls="app-side-menu"
-          title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : undefined}
-        >
-          Admin
-        </button>
+            <button
+              type="button"
+              className={`floor-side-nav__admin${adminOpen ? ' is-open' : ''}`}
+              onClick={() => {
+                if (!locked) onToggleAdmin()
+              }}
+              disabled={locked}
+              aria-expanded={adminOpen}
+              aria-controls="app-side-menu"
+              title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : undefined}
+            >
+              Admin
+            </button>
+          </>
+        ) : null}
       </nav>
 
       {assigning ? (

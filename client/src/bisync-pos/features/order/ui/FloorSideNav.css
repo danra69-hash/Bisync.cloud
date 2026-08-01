@@ -41,6 +41,20 @@
   max-height: min(52vh, 420px);
 }
 
+.floor-side-nav.is-reservations-focus {
+  overflow: hidden;
+}
+
+.floor-side-nav.is-reservations-focus .floor-side-nav__list {
+  overflow: hidden;
+}
+
+.floor-side-nav.is-reservations-focus .floor-side-nav__reservations {
+  flex: 1 1 auto;
+  max-height: none;
+  overflow: hidden;
+}
+
 .floor-side-nav__wl-qr {
   display: flex;
   align-items: flex-start;
@@ -121,7 +135,15 @@
   color: var(--color-ink-muted);
 }
 
-.floor-side-nav__rsv-add {
+.floor-side-nav__rsv-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.floor-side-nav__rsv-add,
+.floor-side-nav__rsv-close {
   height: calc(26px * var(--pos-ui-scale));
   padding: 0 var(--space-2);
   border: 1px solid var(--color-border-strong);
@@ -131,6 +153,13 @@
   font-size: var(--pos-font-xs);
   font-weight: 750;
   cursor: pointer;
+}
+
+.floor-side-nav__rsv-close:hover,
+.floor-side-nav__rsv-add:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
 }
 
 .floor-side-nav__rsv-form {
@@ -467,10 +496,22 @@
     flex: none;
   }
 
+  .floor-side-nav.is-reservations-focus .floor-side-nav__list {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
   .floor-side-nav__reservations,
   .floor-side-nav__waitlist {
     grid-column: 1 / -1;
     max-height: min(50vh, 360px);
+  }
+
+  .floor-side-nav.is-reservations-focus .floor-side-nav__reservations {
+    max-height: none;
+    flex: 1 1 auto;
   }
 
   .floor-side-nav__waitlist {
