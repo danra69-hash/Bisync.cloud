@@ -41,7 +41,7 @@
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
   --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.06);
   --sidebar-width: calc(220px * var(--pos-ui-scale));
-  --order-width: calc(280px * var(--pos-ui-scale));
+  --order-width: calc(420px * var(--pos-ui-scale));
   /* Floor home rail (nav + PIN + Admin): 50% wider than order column. */
   --home-nav-width: calc(420px * var(--pos-ui-scale));
   --topbar-height: calc(38px * var(--pos-ui-scale));
