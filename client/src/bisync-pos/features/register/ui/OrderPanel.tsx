@@ -20,6 +20,8 @@ type Props = {
   onChange: (lines: CartLine[]) => void
   onChargesChange: (charges: OrderCharges) => void
   onSwapLine?: (line: CartLine) => void
+  selectedLineKey?: string | null
+  onSelectLine?: (line: CartLine) => void
   onOpenHistory: () => void
   onOpenPickup?: () => void
   onAction: (action: 'save' | 'print' | 'payment' | 'cancel') => void
@@ -42,6 +44,8 @@ export function OrderPanel({
   onChange,
   onChargesChange,
   onSwapLine,
+  selectedLineKey = null,
+  onSelectLine,
   onOpenHistory,
   onOpenPickup,
   onAction,
@@ -160,8 +164,17 @@ export function OrderPanel({
                   && product.isVariableComponent
                   && (product.variableComponentSlots?.length ?? 0) > 0,
                 )
+                const rowKey = line.lineKey ?? `${line.productId}-${index}`
+                const isSelected = selectedLineKey != null
+                  && (line.lineKey
+                    ? line.lineKey === selectedLineKey
+                    : selectedLineKey === `pid:${line.productId}`)
                 return (
-                  <tr key={line.lineKey ?? `${line.productId}-${index}`}>
+                  <tr
+                    key={rowKey}
+                    className={isSelected ? 'is-selected' : undefined}
+                    onClick={() => onSelectLine?.(line)}
+                  >
                     <td className="order-lines-table__product">
                       <div>{product.name}</div>
                       {line.note ? (
@@ -182,7 +195,10 @@ export function OrderPanel({
                             type="button"
                             className="order-line__swap"
                             aria-label={`Swap components for ${product.name}`}
-                            onClick={() => onSwapLine?.(line)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onSwapLine?.(line)
+                            }}
                           >
                             SWAP
                           </button>
@@ -191,9 +207,10 @@ export function OrderPanel({
                           type="button"
                           className="order-line__remove"
                           aria-label={`Remove ${product.name}`}
-                          onClick={() =>
+                          onClick={(e) => {
+                            e.stopPropagation()
                             onChange(removeLine(lines, line.productId, line.lineKey))
-                          }
+                          }}
                         >
                           <svg
                             viewBox="0 0 24 24"

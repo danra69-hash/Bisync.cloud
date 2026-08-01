@@ -7,6 +7,7 @@ import {
   addWeightToCart,
   cartGrandTotal,
   cartSubtotal,
+  setLineNote,
   updateLineSaleDetail,
 } from '../domain/cart'
 import type { CartLine, OrderCharges, Product, ProductDepartment } from '../domain/types'
@@ -46,6 +47,11 @@ import { HistoryModal } from './HistoryModal'
 import { TakeawayPickupModal } from './TakeawayPickupModal'
 import { CombinationPickerModal } from './CombinationPickerModal'
 import { ComponentSwapModal } from './ComponentSwapModal'
+import { ModifierPickerModal } from './ModifierPickerModal'
+import {
+  FOOD_MODIFIER_GROUPS,
+  BEVERAGE_MODIFIER_GROUPS,
+} from '../../order/domain/ordering'
 import {
   formatPickupLabel,
   type TakeawayPickup,
@@ -108,6 +114,12 @@ export function RegisterPage() {
     initialSelections?: PosSaleReplacementSelection[]
   } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null)
+  const [modifierTarget, setModifierTarget] = useState<{
+    kind: 'food' | 'beverage'
+    line: CartLine
+    product: Product
+  } | null>(null)
   const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -374,6 +386,107 @@ export function RegisterPage() {
       return
     }
     setLines(prev => addToCart(prev, product.id))
+    setSelectedLineKey(`pid:${product.id}`)
+  }
+
+
+  function lineSelectionKey(line: CartLine) {
+    return line.lineKey ?? `pid:${line.productId}`
+  }
+
+  function resolveTargetLine(department?: ProductDepartment) {
+    const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+    const byId = new Map(products.map(p => [p.id, p]))
+    if (selectedLineKey) {
+      const selected = lines.find(l => lineSelectionKey(l) === selectedLineKey)
+      if (selected) {
+        const product = byId.get(selected.productId)
+        if (product && (!department || product.department === department)) {
+          return { line: selected, product }
+        }
+      }
+    }
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const line = lines[i]
+      const product = byId.get(line.productId)
+      if (!product) continue
+      if (!department || product.department === department) {
+        return { line, product }
+      }
+    }
+    return null
+  }
+
+  function openFoodModifier() {
+    if (!requireDuty()) return
+    const target = resolveTargetLine('Food')
+    if (!target) {
+      flash('Add a Food item first, or select a Food line on the order.')
+      return
+    }
+    setSelectedLineKey(lineSelectionKey(target.line))
+    setModifierTarget({ kind: 'food', ...target })
+  }
+
+  function openBeverageModifier() {
+    if (!requireDuty()) return
+    const target = resolveTargetLine('Beverage')
+    if (!target) {
+      flash('Add a Beverage item first, or select a Beverage line on the order.')
+      return
+    }
+    setSelectedLineKey(lineSelectionKey(target.line))
+    setModifierTarget({ kind: 'beverage', ...target })
+  }
+
+  function openComponentSwap() {
+    if (!requireDuty()) return
+    const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+    const byId = new Map(products.map(p => [p.id, p]))
+    let target = resolveTargetLine()
+    if (target) {
+      const canSwap = Boolean(
+        target.product.isVariableComponent
+        && (target.product.variableComponentSlots?.length ?? 0) > 0,
+      )
+      if (!canSwap) target = null
+    }
+    if (!target) {
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const line = lines[i]
+        const product = byId.get(line.productId)
+        if (product?.isVariableComponent && (product.variableComponentSlots?.length ?? 0) > 0) {
+          target = { line, product }
+          break
+        }
+      }
+    }
+    if (!target) {
+      flash('Select or add a Variable Component item to SWAP.')
+      return
+    }
+    setSelectedLineKey(lineSelectionKey(target.line))
+    handleSwapLine(target.line)
+  }
+
+  function applyModifiers(labels: string[]) {
+    if (!modifierTarget) return
+    const { line, product } = modifierTarget
+    const existing = (line.note ?? '').trim()
+    // Keep non-modifier detail notes (weight/swap summary) when present.
+    const detailNote = line.saleDetail ? (existing.split(' · ')[0] ?? existing) : ''
+    const modifierNote = labels.join(', ')
+    const nextNote = [detailNote && line.saleDetail ? detailNote : '', modifierNote]
+      .map(s => s.trim())
+      .filter(Boolean)
+      .join(' · ')
+    setLines(prev => setLineNote(prev, product.id, nextNote, line.lineKey))
+    flash(
+      labels.length > 0
+        ? `${product.name}: ${labels.join(', ')}`
+        : `${product.name}: modifiers cleared`,
+    )
+    setModifierTarget(null)
   }
 
   function handleSwapLine(line: CartLine) {
@@ -608,6 +721,33 @@ export function RegisterPage() {
             disabled={!onDuty}
           />
         </div>
+
+        <div className="register__order-tools" role="group" aria-label="Order modifiers">
+          <button
+            type="button"
+            className="register__order-tool"
+            disabled={!onDuty}
+            onClick={openFoodModifier}
+          >
+            Food Modifier
+          </button>
+          <button
+            type="button"
+            className="register__order-tool"
+            disabled={!onDuty}
+            onClick={openBeverageModifier}
+          >
+            Beverage Modifier
+          </button>
+          <button
+            type="button"
+            className="register__order-tool register__order-tool--swap"
+            disabled={!onDuty}
+            onClick={openComponentSwap}
+          >
+            Component SWAP
+          </button>
+        </div>
       </div>
 
       <OrderPanel
@@ -625,6 +765,8 @@ export function RegisterPage() {
         onChange={setLines}
         onChargesChange={setCharges}
         onSwapLine={handleSwapLine}
+        selectedLineKey={selectedLineKey}
+        onSelectLine={(line) => setSelectedLineKey(line.lineKey ?? `pid:${line.productId}`)}
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenPickup={() => {
           if (dining === 'takeaway') setPickupModalOpen(true)
@@ -673,6 +815,15 @@ export function RegisterPage() {
           initialSelections={swapTarget.initialSelections}
           onCancel={() => setSwapTarget(null)}
           onConfirm={confirmComponentSwap}
+        />
+      )}
+      {modifierTarget && (
+        <ModifierPickerModal
+          title={modifierTarget.kind === 'food' ? 'Food Modifier' : 'Beverage Modifier'}
+          productName={modifierTarget.product.name}
+          groups={modifierTarget.kind === 'food' ? FOOD_MODIFIER_GROUPS : BEVERAGE_MODIFIER_GROUPS}
+          onCancel={() => setModifierTarget(null)}
+          onConfirm={applyModifiers}
         />
       )}
 

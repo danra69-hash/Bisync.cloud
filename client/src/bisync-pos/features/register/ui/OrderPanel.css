@@ -167,6 +167,22 @@
   vertical-align: middle;
 }
 
+.order-lines-table tbody tr {
+  cursor: pointer;
+}
+
+.order-lines-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--color-primary-soft) 55%, transparent);
+}
+
+.order-lines-table tbody tr.is-selected td {
+  background: var(--color-primary-soft);
+}
+
+.order-lines-table tbody tr.is-selected .order-lines-table__product {
+  color: var(--color-primary-text);
+}
+
 .order-lines-table__product {
   font-weight: 700;
   color: var(--color-ink);
