@@ -1,43 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import {
   cancelQrOrder,
   fetchOpenQrOrders,
   formatQrOrderTime,
-  markQrOrderSent,
   notifyQrOrderChanged,
   buildQrOrderUrl,
   qrOrderImageUrl,
   QR_ORDER_CHANGED_EVENT,
   type PosQrOrder,
 } from '../../order/domain/qrOrder'
-import { fireCartToStations } from '../domain/kitchenTickets'
-import type { CartLine, Product } from '../../register/domain/types'
+import { acceptQrOrderToStations } from '../../order/domain/qrOrderStations'
 import './QrOrderPage.css'
-
-function orderToStationPayload(order: PosQrOrder): { products: Product[]; lines: CartLine[] } {
-  const products: Product[] = order.items.map(item => {
-    const deptHint = `${item.name} ${item.detail || ''}`
-    const department = /(beer|wine|drink|beverage|cocktail|coffee|juice|soft)/i.test(deptHint)
-      ? 'Beverage'
-      : 'Food'
-    return {
-      id: String(item.productId),
-      sku: String(item.productId),
-      name: item.name,
-      priceCents: Math.round(item.unitPrice * 100),
-      department,
-      group: 'QR Order',
-      emoji: '🍽️',
-      accent: '#e0f2fe',
-    }
-  })
-  const lines: CartLine[] = order.items.map(item => ({
-    productId: String(item.productId),
-    quantity: item.quantity,
-  }))
-  return { products, lines }
-}
 
 export function QrOrderPage() {
   const session = usePosSessionOptional()
@@ -51,8 +25,6 @@ export function QrOrderPage() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [demoTable, setDemoTable] = useState('T5')
-  const [autoSentIds, setAutoSentIds] = useState<Set<number>>(() => new Set())
-  const autoSentRef = useRef<Set<number>>(new Set())
 
   const joinUrl = useMemo(
     () => (companyId > 0 && locationId ? buildQrOrderUrl(companyId, locationId, demoTable) : ''),
@@ -90,54 +62,23 @@ export function QrOrderPage() {
     }
   }, [refresh])
 
-  const sendToStations = useCallback(async (order: PosQrOrder, opts?: { silent?: boolean }) => {
-    if (busyId != null && !opts?.silent) return
-    if (!opts?.silent) setBusyId(order.id)
+  async function acceptOrder(order: PosQrOrder) {
+    if (busyId != null) return
+    setBusyId(order.id)
     try {
-      const { products, lines } = orderToStationPayload(order)
-      const tickets = fireCartToStations({
-        lines,
-        products,
-        checkNumber: 9000 + (order.id % 900),
-        tableLabel: order.tableLabel || 'QR',
-        dining: 'dine-in',
-      })
-      if (tickets.length === 0) {
-        if (!opts?.silent) setError('Nothing to send to Bar or Kitchen for this order.')
-        return false
+      const result = await acceptQrOrderToStations(order)
+      if (!result.ok) {
+        setError(result.error || 'Could not accept order.')
+        return
       }
-      await markQrOrderSent(order.id)
       notifyQrOrderChanged()
       await refresh()
-      return true
     } catch (e) {
-      if (!opts?.silent) setError(e instanceof Error ? e.message : 'Could not send order.')
-      return false
+      setError(e instanceof Error ? e.message : 'Could not accept order.')
     } finally {
-      if (!opts?.silent) setBusyId(null)
+      setBusyId(null)
     }
-  }, [busyId, refresh])
-
-  // Auto-route new guest orders to Bar/Kitchen while this board is open.
-  useEffect(() => {
-    let cancelled = false
-    async function autoSend() {
-      for (const order of orders) {
-        if (autoSentRef.current.has(order.id)) continue
-        autoSentRef.current.add(order.id)
-        setAutoSentIds(new Set(autoSentRef.current))
-        const ok = await sendToStations(order, { silent: true })
-        if (!ok && !cancelled) {
-          autoSentRef.current.delete(order.id)
-          setAutoSentIds(new Set(autoSentRef.current))
-        }
-      }
-    }
-    void autoSend()
-    return () => {
-      cancelled = true
-    }
-  }, [orders, sendToStations])
+  }
 
   async function copyLink() {
     if (!joinUrl) return
@@ -172,7 +113,7 @@ export function QrOrderPage() {
           <h1>Customer mobile menu</h1>
           <p className="qr-order-board__sub">
             Guests scan the table QR and order on their phone at <strong>{locationName}</strong>.
-            New orders auto-send to Bar / Kitchen while this board is open.
+            New orders pop up on the main POS screen for Accept before Bar / Kitchen.
           </p>
         </div>
         <div className="qr-order-board__count" aria-live="polite">
@@ -199,7 +140,7 @@ export function QrOrderPage() {
           )}
           <div className="qr-order-board__qr-copy">
             <strong>Table QR → mobile menu</strong>
-            <p>Print or place this code on the table. Guests browse, order, and send to kitchen.</p>
+            <p>Print or place this code on the table. Guests browse and place orders for staff review.</p>
             {joinUrl ? (
               <div className="qr-order-board__actions">
                 <button type="button" className="qr-order-board__btn" onClick={() => void copyLink()}>
@@ -242,8 +183,8 @@ export function QrOrderPage() {
           {error ? <p className="qr-order-board__error">{error}</p> : null}
           {orders.length === 0 ? (
             <p className="qr-order-board__empty">
-              No open guest orders. Scan the preview QR on a phone, add items, tap
-              <strong> Send to kitchen</strong>.
+              No open guest orders. When a guest submits, the order appears here and as a popup
+              on the main screen for Accept before kitchen / bar.
             </p>
           ) : (
             <ul className="qr-order-board__list">
@@ -254,9 +195,6 @@ export function QrOrderPage() {
                     <span>{formatQrOrderTime(order.createdAt)}</span>
                   </header>
                   {order.guestName ? <p className="qr-order-board__guest">{order.guestName}</p> : null}
-                  {autoSentIds.has(order.id) ? (
-                    <p className="qr-order-board__guest">Sending to Bar / Kitchen…</p>
-                  ) : null}
                   <ul>
                     {order.items.map((item, idx) => (
                       <li key={`${order.id}-${item.productId}-${idx}`}>
@@ -270,9 +208,9 @@ export function QrOrderPage() {
                       type="button"
                       className="qr-order-board__btn qr-order-board__btn--primary"
                       disabled={busyId === order.id}
-                      onClick={() => void sendToStations(order)}
+                      onClick={() => void acceptOrder(order)}
                     >
-                      Send to Bar / Kitchen
+                      Accept → Bar / Kitchen
                     </button>
                     <button
                       type="button"
@@ -280,7 +218,7 @@ export function QrOrderPage() {
                       disabled={busyId === order.id}
                       onClick={() => void dismissOrder(order)}
                     >
-                      Dismiss
+                      Reject
                     </button>
                   </div>
                 </li>

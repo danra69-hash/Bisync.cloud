@@ -144,7 +144,7 @@ export function QrOrderJoinPage() {
       setCart([])
       setScreen('done')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send order to kitchen.')
+      setError(err instanceof Error ? err.message : 'Could not place order.')
     } finally {
       setBusy(false)
     }
@@ -174,12 +174,12 @@ export function QrOrderJoinPage() {
             <span>●●●</span>
           </div>
           <div className="qr-mobile__card qr-mobile__card--ok">
-            <p className="qr-mobile__eyebrow">Sent to kitchen</p>
+            <p className="qr-mobile__eyebrow">Order received</p>
             <h1>Order #{doneId}</h1>
             <p>
               {tableLabel ? <strong>{tableLabel}</strong> : null}
               {tableLabel ? ' · ' : null}
-              Your order is with the kitchen
+              Staff will review and confirm your order
               {guestName.trim() ? `, ${guestName.trim()}` : ''}.
             </p>
             <button
@@ -211,7 +211,7 @@ export function QrOrderJoinPage() {
           <div>
             <p className="qr-mobile__eyebrow">Table menu</p>
             <h1>{tableLabel || 'Your table'}</h1>
-            <p>Browse, add items, then send your order to the kitchen.</p>
+            <p>Browse, add items, then place your order for staff to confirm.</p>
           </div>
           <label className="qr-mobile__name">
             Name
@@ -341,7 +341,7 @@ export function QrOrderJoinPage() {
               <strong>{total.toFixed(2)}</strong>
             </div>
             <button type="submit" className="qr-mobile__primary" disabled={busy || cart.length === 0}>
-              {busy ? 'Sending…' : 'Send to kitchen'}
+              {busy ? 'Placing…' : 'Place order'}
             </button>
           </form>
         )}

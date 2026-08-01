@@ -5,6 +5,7 @@ import { ConfigProvider } from '../core/config/ConfigProvider'
 import type { PosMode } from '../core/modes/types'
 import { usePosDutySession } from '../core/session/usePosDutySession'
 import { FloorSideNav } from '../features/order/ui/FloorSideNav'
+import { IncomingQrOrderHost } from '../features/order/ui/IncomingQrOrderHost'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import './AppShell.css'
@@ -73,6 +74,7 @@ function AppShellInner({ children }: Props) {
         ) : null}
       </div>
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <IncomingQrOrderHost />
     </div>
   )
 }
