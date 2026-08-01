@@ -178,8 +178,6 @@ export function FloorPlanPage() {
     setPlan(next)
     if (companyId > 0 && locationId) {
       void persistFloorPlanRemote(next, companyId, locationId)
-    } else {
-      // Unscoped fallback when session is not ready.
     }
   }
 
