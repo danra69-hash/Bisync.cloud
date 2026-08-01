@@ -99,7 +99,7 @@ export function TopBar() {
           onClick={goSetup}
           disabled={locked}
           aria-current={isSetup ? 'page' : undefined}
-          title={locked ? 'Scan POS QR in Team, then enter Staff PIN' : undefined}
+          title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : undefined}
         >
           POS Setup
         </button>
@@ -109,7 +109,7 @@ export function TopBar() {
           onClick={goKds}
           disabled={locked}
           aria-current={isKds ? 'page' : undefined}
-          title={locked ? 'Scan POS QR in Team, then enter Staff PIN' : 'Kitchen Display System'}
+          title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : 'Kitchen Display System'}
         >
           KDS
         </button>
@@ -119,7 +119,7 @@ export function TopBar() {
           onClick={goBds}
           disabled={locked}
           aria-current={isBds ? 'page' : undefined}
-          title={locked ? 'Scan POS QR in Team, then enter Staff PIN' : 'Bar Display System'}
+          title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : 'Bar Display System'}
         >
           BDS
         </button>
@@ -129,7 +129,7 @@ export function TopBar() {
           onClick={goCds}
           disabled={locked}
           aria-current={isCds ? 'page' : undefined}
-          title={locked ? 'Scan POS QR in Team, then enter Staff PIN' : 'Customer Display System'}
+          title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : 'Customer Display System'}
         >
           CDS
         </button>
@@ -139,7 +139,7 @@ export function TopBar() {
           onClick={goQrOrder}
           disabled={locked}
           aria-current={isQrOrder ? 'page' : undefined}
-          title={locked ? 'Scan POS QR in Team, then enter Staff PIN' : 'Guest QR Order'}
+          title={locked ? 'Team QR check-in, then Staff PIN to unlock POS' : 'Guest QR Order'}
         >
           QR Order
         </button>

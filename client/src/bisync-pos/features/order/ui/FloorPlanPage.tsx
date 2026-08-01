@@ -435,7 +435,7 @@ export function FloorPlanPage() {
       {locked ? (
         <div className="floor-toolbar">
           <span className="floor-edit-hint" role="status">
-            Ordering locked — scan POS QR in Team, then enter Staff PIN
+            Ordering locked — Team QR check-in, then Staff PIN to unlock POS
           </span>
         </div>
       ) : editing ? (
@@ -472,7 +472,7 @@ export function FloorPlanPage() {
           {locked ? (
             <div className="floor-lock-overlay" role="status" aria-live="polite">
               <strong>Home deactivated</strong>
-              <span>Scan POS QR in Team, then enter Staff PIN to unlock</span>
+              <span>Check in with Team QR, then enter Staff PIN to unlock POS</span>
             </div>
           ) : null}
 

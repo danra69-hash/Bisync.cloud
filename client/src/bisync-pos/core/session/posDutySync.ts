@@ -7,9 +7,8 @@ import {
 } from './posDutySession'
 
 /**
- * Keep register unlock aligned with Team/HR for the employee who last unlocked POS.
- * Unlock requires prior QR check-in (open `actualIn`); if that holder checks out on Team
- * (sets `actualOut`), clear the local unlock session.
+ * Keep POS unlock aligned with Team QR attendance for the unlock holder.
+ * PIN never punches attendance — only QR check-out (actualOut) clears unlock.
  *
  * Rule: HR `actualOut` set for today for the unlock holder ⇒ clear unlock.
  * Missing attendance / API errors do not kick a local PIN session.
