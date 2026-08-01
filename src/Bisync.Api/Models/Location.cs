@@ -57,6 +57,13 @@ public class Location
     /// Times are HH:mm (24h).
     /// </summary>
     public string OpeningHoursJson { get; set; } = "{}";
+    /// <summary>When true, deliveries are only accepted during DeliveryAllowPeriodsJson windows.</summary>
+    public bool DeliveryAllowTimeEnabled { get; set; }
+    /// <summary>
+    /// JSON array of allowed delivery periods: [{ "from": "09:00", "to": "12:00" }, …].
+    /// Used when DeliveryAllowTimeEnabled is true.
+    /// </summary>
+    public string DeliveryAllowPeriodsJson { get; set; } = "[]";
     /// <summary>
     /// IANA/Windows timezone for this location (from company country + state/province).
     /// Business calendar dates follow this zone; instant timestamps stay UTC.

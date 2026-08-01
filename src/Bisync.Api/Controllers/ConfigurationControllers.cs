@@ -606,6 +606,8 @@ public record LocationConfigUpdate(
     string VendorPolicyTagsJson,
     string ModulesJson,
     string? OpeningHoursJson = null,
+    bool DeliveryAllowTimeEnabled = false,
+    string? DeliveryAllowPeriodsJson = null,
     int? SecondaryContactUserId = null,
     bool Active = true
 );
@@ -623,6 +625,8 @@ public record LocationConfigCreate(
     string? VendorPolicyTagsJson,
     string? ModulesJson,
     string? OpeningHoursJson = null,
+    bool DeliveryAllowTimeEnabled = false,
+    string? DeliveryAllowPeriodsJson = null,
     int? SecondaryContactUserId = null,
     bool Active = true
 );

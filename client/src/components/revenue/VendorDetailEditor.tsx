@@ -16,6 +16,11 @@ import {
   VENDOR_PRODUCT_POLICY_OPTIONS,
   resolveVendorProductPolicyTag,
 } from '../../data/vendorPolicyRules';
+import {
+  LOCATION_WEEKDAYS,
+  LOCATION_WEEKDAY_LABELS,
+  type LocationWeekday,
+} from '../../data/locationOpeningHours';
 import { CountryLocalityFields } from '../shared/CountryLocalityFields';
 import { CountryPhoneInput } from '../shared/CountryPhoneInput';
 
@@ -42,6 +47,25 @@ function parseEngagedLocationIds(vendor: Vendor): string[] {
   }
 }
 
+function parseDeliveryDays(vendor: Vendor): LocationWeekday[] {
+  const raw = vendor.deliveryDaysJson?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const selected = new Set(
+      parsed
+        .map(day => String(day ?? '').trim().toLowerCase())
+        .filter((day): day is LocationWeekday =>
+          (LOCATION_WEEKDAYS as readonly string[]).includes(day),
+        ),
+    );
+    return LOCATION_WEEKDAYS.filter(day => selected.has(day));
+  } catch {
+    return [];
+  }
+}
+
 function vendorToForm(vendor: Vendor): VendorUpdatePayload {
   return {
     name: vendor.name,
@@ -59,6 +83,8 @@ function vendorToForm(vendor: Vendor): VendorUpdatePayload {
     productPolicyTag: resolveVendorProductPolicyTag(vendor),
     allowPartialDelivery: Boolean(vendor.allowPartialDelivery),
     engagedLocationIds: parseEngagedLocationIds(vendor),
+    minOrderAmount: vendor.minOrderAmount ?? null,
+    deliveryDays: parseDeliveryDays(vendor),
   };
 }
 
@@ -266,6 +292,14 @@ export function VendorDetailEditor({
     );
   }
 
+  function toggleDeliveryDay(day: LocationWeekday) {
+    const current = form.deliveryDays ?? [];
+    const next = current.includes(day)
+      ? current.filter(d => d !== day)
+      : LOCATION_WEEKDAYS.filter(d => d === day || current.includes(d));
+    setField('deliveryDays', next);
+  }
+
   async function handleSave() {
     if (!form.name.trim()) {
       setError('Vendor name is required.');
@@ -273,6 +307,11 @@ export function VendorDetailEditor({
     }
     if (!form.productPolicyTag) {
       setError('Product policy is required.');
+      return;
+    }
+    const minOrder = form.minOrderAmount;
+    if (minOrder != null && (Number.isNaN(Number(minOrder)) || Number(minOrder) < 0)) {
+      setError('Min order amount cannot be negative.');
       return;
     }
 
@@ -294,6 +333,8 @@ export function VendorDetailEditor({
         mobile: form.mobile.trim(),
         email: form.email.trim(),
         engagedLocationIds,
+        minOrderAmount: minOrder == null ? null : Number(minOrder),
+        deliveryDays: form.deliveryDays ?? [],
       });
       onVendorUpdated(updated);
       setSuccess('Vendor details saved.');
@@ -439,6 +480,54 @@ export function VendorDetailEditor({
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-1">
+                Min Order Amount
+              </p>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.minOrderAmount ?? ''}
+                onChange={e => {
+                  const raw = e.target.value;
+                  setField('minOrderAmount', raw === '' ? null : Number(raw));
+                }}
+                placeholder="Optional"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <p className="text-xs font-sans text-muted-foreground uppercase tracking-wider mb-2">
+                Delivery days
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {LOCATION_WEEKDAYS.map(day => {
+                  const checked = (form.deliveryDays ?? []).includes(day);
+                  return (
+                    <label
+                      key={day}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs cursor-pointer transition-colors ${
+                        checked
+                          ? 'border-primary bg-primary/5 text-foreground font-semibold'
+                          : 'border-border text-muted-foreground hover:border-primary/40'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleDeliveryDay(day)}
+                        className="rounded border-border"
+                      />
+                      {LOCATION_WEEKDAY_LABELS[day]}
+                    </label>
+                  );
+                })}
               </div>
             </div>
           </div>

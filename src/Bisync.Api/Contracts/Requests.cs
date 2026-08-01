@@ -651,6 +651,9 @@ public class CreateVendorRequest
     public string ProductPolicyTag { get; set; } = string.Empty;
     public bool AllowPartialDelivery { get; set; }
     public List<string>? EngagedLocationIds { get; set; }
+    public decimal? MinOrderAmount { get; set; }
+    /// <summary>Weekday keys: monday…sunday.</summary>
+    public List<string>? DeliveryDays { get; set; }
 }
 
 public class UpdateVendorRequest
@@ -683,6 +686,9 @@ public class UpdateVendorRequest
     public string ProductPolicyTag { get; set; } = string.Empty;
     public bool AllowPartialDelivery { get; set; }
     public List<string>? EngagedLocationIds { get; set; }
+    public decimal? MinOrderAmount { get; set; }
+    /// <summary>Weekday keys: monday…sunday.</summary>
+    public List<string>? DeliveryDays { get; set; }
 }
 
 public class SetVendorActiveRequest

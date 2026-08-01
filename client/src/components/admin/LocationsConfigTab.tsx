@@ -51,6 +51,13 @@ import {
   type LocationOpeningHours,
   type LocationWeekday,
 } from '../../data/locationOpeningHours';
+import {
+  blankDeliveryPeriod,
+  parseDeliveryAllowPeriodsJson,
+  serializeDeliveryAllowPeriods,
+  validateDeliveryAllowPeriods,
+  type DeliveryAllowPeriod,
+} from '../../data/locationDeliveryAllowTime';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { ToggleSwitch } from './ToggleSwitch';
 
@@ -150,6 +157,8 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     vendorPolicyTagsJson: '[]',
     modulesJson: '[]',
     openingHoursJson: '{}',
+    deliveryAllowTimeEnabled: false,
+    deliveryAllowPeriodsJson: '[]',
   };
 }
 
@@ -192,6 +201,12 @@ function LocationPanel({
   });
   const [openingHours, setOpeningHours] = useState<LocationOpeningHours>(() =>
     parseOpeningHoursJson(location.openingHoursJson),
+  );
+  const [deliveryAllowTimeEnabled, setDeliveryAllowTimeEnabled] = useState(
+    () => Boolean(location.deliveryAllowTimeEnabled),
+  );
+  const [deliveryPeriods, setDeliveryPeriods] = useState<DeliveryAllowPeriod[]>(() =>
+    parseDeliveryAllowPeriodsJson(location.deliveryAllowPeriodsJson),
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -238,6 +253,8 @@ function LocationPanel({
       setModules(initial ? locationModulesFromCompany(initial) : []);
     }
     setOpeningHours(parseOpeningHoursJson(location.openingHoursJson));
+    setDeliveryAllowTimeEnabled(Boolean(location.deliveryAllowTimeEnabled));
+    setDeliveryPeriods(parseDeliveryAllowPeriodsJson(location.deliveryAllowPeriodsJson));
     setError(null);
     // Only re-hydrate when the edited location (or create/edit mode) changes — not when
     // the companies list is refreshed, which would wipe in-progress edits and clear errors.
@@ -331,6 +348,29 @@ function LocationPanel({
     setError(null);
   }
 
+  function updateDeliveryPeriod(index: number, patch: Partial<DeliveryAllowPeriod>) {
+    setDeliveryPeriods(prev =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        return {
+          from: patch.from !== undefined ? normalizeTime(patch.from) : row.from,
+          to: patch.to !== undefined ? normalizeTime(patch.to) : row.to,
+        };
+      }),
+    );
+    setError(null);
+  }
+
+  function addDeliveryPeriod() {
+    setDeliveryPeriods(prev => [...prev, blankDeliveryPeriod()]);
+    setError(null);
+  }
+
+  function removeDeliveryPeriod(index: number) {
+    setDeliveryPeriods(prev => prev.filter((_, i) => i !== index));
+    setError(null);
+  }
+
   async function toggleActive() {
     if (isNew || !form.id || !form.companyId) return;
 
@@ -358,6 +398,7 @@ function LocationPanel({
         inheritsCompanyProfile,
       );
       const openingHoursJson = serializeOpeningHours(openingHours);
+      const deliveryAllowPeriodsJson = serializeDeliveryAllowPeriods(deliveryPeriods);
       const saved = await api.updateLocationConfig(form.id, {
         companyId: form.companyId,
         name: form.name.trim() || form.name,
@@ -372,6 +413,8 @@ function LocationPanel({
         vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
         modulesJson: modulesPayload.modulesJson,
         openingHoursJson,
+        deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson,
         active: nextActive,
       });
       const next: LocationConfig = {
@@ -384,6 +427,8 @@ function LocationPanel({
         vendorPolicyTagsJson: saved.vendorPolicyTagsJson ?? profilePayload.effectiveVendorPolicyTagsJson,
         modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
+        deliveryAllowTimeEnabled: saved.deliveryAllowTimeEnabled ?? deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson: saved.deliveryAllowPeriodsJson ?? deliveryAllowPeriodsJson,
       };
       setForm({ ...next, active: nextActive });
       onSave(next);
@@ -450,6 +495,11 @@ function LocationPanel({
         showError(hoursError);
         return;
       }
+      const deliveryError = validateDeliveryAllowPeriods(deliveryAllowTimeEnabled, deliveryPeriods);
+      if (deliveryError) {
+        showError(deliveryError);
+        return;
+      }
 
       const profilePayload = buildLocationProfilePayload(
         company,
@@ -459,6 +509,7 @@ function LocationPanel({
       );
       const modulesPayload = buildLocationModulesPayload(company, modules, inheritsCompanyProfile);
       const openingHoursJson = serializeOpeningHours(openingHours);
+      const deliveryAllowPeriodsJson = serializeDeliveryAllowPeriods(deliveryPeriods);
 
       const payload = {
         companyId: form.companyId,
@@ -474,6 +525,8 @@ function LocationPanel({
         vendorPolicyTagsJson: profilePayload.vendorPolicyTagsJson,
         modulesJson: modulesPayload.modulesJson,
         openingHoursJson,
+        deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson,
         active: locationActive,
       };
 
@@ -496,6 +549,8 @@ function LocationPanel({
         modulesOverridden: saved.modulesOverridden,
         profileOverridden: saved.profileOverridden ?? (profilePayload.profileOverridden || modulesPayload.modulesJson !== '[]'),
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
+        deliveryAllowTimeEnabled: saved.deliveryAllowTimeEnabled ?? deliveryAllowTimeEnabled,
+        deliveryAllowPeriodsJson: saved.deliveryAllowPeriodsJson ?? deliveryAllowPeriodsJson,
         secondaryContactUserId: saved.secondaryContactUserId ?? form.secondaryContactUserId ?? null,
       });
       onClose();
@@ -724,6 +779,80 @@ function LocationPanel({
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deliveryAllowTimeEnabled}
+                onChange={e => {
+                  const enabled = e.target.checked;
+                  setDeliveryAllowTimeEnabled(enabled);
+                  if (enabled && deliveryPeriods.length === 0) {
+                    setDeliveryPeriods([blankDeliveryPeriod()]);
+                  }
+                  setError(null);
+                }}
+                className="mt-0.5 rounded border-border"
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold text-foreground">Delivery allow time</span>
+                <span className="block text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                  When ticked, define one or more From / To windows when deliveries are allowed at this location.
+                </span>
+              </span>
+            </label>
+
+            {deliveryAllowTimeEnabled ? (
+              <div className="space-y-2 pl-7">
+                {deliveryPeriods.map((period, index) => (
+                  <div key={`delivery-period-${index}`} className="flex flex-wrap items-center gap-2">
+                    <label className="text-[11px] text-muted-foreground shrink-0">From</label>
+                    <select
+                      className={`${selectCls} min-w-[6.5rem]`}
+                      value={period.from}
+                      onChange={e => updateDeliveryPeriod(index, { from: e.target.value })}
+                      aria-label={`Delivery period ${index + 1} from`}
+                    >
+                      <option value="">—</option>
+                      {HALF_HOUR_TIMES.map(t => (
+                        <option key={`dfrom-${index}-${t}`} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <label className="text-[11px] text-muted-foreground shrink-0">To</label>
+                    <select
+                      className={`${selectCls} min-w-[6.5rem]`}
+                      value={period.to}
+                      onChange={e => updateDeliveryPeriod(index, { to: e.target.value })}
+                      aria-label={`Delivery period ${index + 1} to`}
+                    >
+                      <option value="">—</option>
+                      {HALF_HOUR_TIMES.map(t => (
+                        <option key={`dto-${index}-${t}`} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => removeDeliveryPeriod(index)}
+                      className="p-1.5 rounded-md border border-border hover:bg-muted"
+                      aria-label={`Remove delivery period ${index + 1}`}
+                      title="Remove period"
+                    >
+                      <X size={12} className="text-muted-foreground" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addDeliveryPeriod}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-bold border border-border hover:bg-muted"
+                >
+                  <Plus size={12} />
+                  Add period
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
