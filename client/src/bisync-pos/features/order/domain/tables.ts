@@ -431,3 +431,51 @@ export function markFloorTableOrdered(tableId: string, orderId: string): FloorTa
   saveFloorPlan({ ...plan, tables })
   return updated
 }
+
+/** Move an occupied check from one table to another on the floor plan. */
+export function transferFloorTable(
+  fromTableId: string,
+  toTableId: string,
+  orderId?: string,
+): { from: FloorTable | null; to: FloorTable | null } {
+  const plan = loadFloorPlan()
+  const fromTable = plan.tables.find(t => t.id === fromTableId) ?? null
+  const toTable = plan.tables.find(t => t.id === toTableId) ?? null
+  if (!fromTable || !toTable) return { from: null, to: null }
+
+  const openedAt = fromTable.openedAt || new Date().toISOString()
+  const nextOrderId = orderId ?? fromTable.orderId
+  let fromUpdated: FloorTable | null = null
+  let toUpdated: FloorTable | null = null
+
+  const tables = plan.tables.map((table) => {
+    if (table.id === fromTableId) {
+      fromUpdated = normalizeTable({
+        ...table,
+        status: 'open',
+        pax: undefined,
+        openedAt: undefined,
+        orderId: undefined,
+        serverName: undefined,
+      })
+      return fromUpdated
+    }
+    if (table.id === toTableId) {
+      toUpdated = normalizeTable({
+        ...table,
+        status: 'ordered',
+        pax: fromTable.pax ?? table.pax,
+        openedAt,
+        orderId: nextOrderId,
+        serverName: fromTable.serverName ?? table.serverName,
+        reservedTime: undefined,
+        reservedName: undefined,
+      })
+      return toUpdated
+    }
+    return table
+  })
+
+  saveFloorPlan({ ...plan, tables })
+  return { from: fromUpdated, to: toUpdated }
+}
