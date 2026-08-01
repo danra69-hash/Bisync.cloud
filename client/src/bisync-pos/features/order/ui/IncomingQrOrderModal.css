@@ -1,0 +1,122 @@
+.incoming-qr-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.incoming-qr-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.5);
+}
+
+.incoming-qr-modal__card {
+  position: relative;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.incoming-qr-modal__head h2 {
+  margin: 4px 0 0;
+  font-size: 1.2rem;
+}
+
+.incoming-qr-modal__head p {
+  margin: 4px 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.85rem;
+}
+
+.incoming-qr-modal__eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-primary-text);
+}
+
+.incoming-qr-modal__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.incoming-qr-modal__lines li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9rem;
+}
+
+.incoming-qr-modal__lines li:last-child {
+  border-bottom: none;
+}
+
+.incoming-qr-modal__qty {
+  font-weight: 750;
+  color: var(--color-ink-muted);
+}
+
+.incoming-qr-modal__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 650;
+}
+
+.incoming-qr-modal__name em {
+  font-style: normal;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+}
+
+.incoming-qr-modal__price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.incoming-qr-modal__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+}
+
+.incoming-qr-modal__total strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1rem;
+}
+
+.incoming-qr-modal__error {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: #b42318;
+}
+
+.incoming-qr-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
