@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { ModeProvider, usePosMode } from '../core/modes/ModeProvider'
 import { ConfigProvider } from '../core/config/ConfigProvider'
 import type { PosMode } from '../core/modes/types'
+import { usePosDutySession } from '../core/session/usePosDutySession'
 import { FloorSideNav } from '../features/order/ui/FloorSideNav'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
@@ -38,12 +39,17 @@ function showsHomeSideNav(pathname: string): boolean {
 function AppShellInner({ children }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { pathname } = useLocation()
+  const { duty } = usePosDutySession()
   useModeFromPath()
   const homeNav = showsHomeSideNav(pathname)
 
   useEffect(() => {
     setMenuOpen(false)
   }, [pathname])
+
+  useEffect(() => {
+    if (!duty) setMenuOpen(false)
+  }, [duty])
 
   useEffect(() => {
     if (!menuOpen) return

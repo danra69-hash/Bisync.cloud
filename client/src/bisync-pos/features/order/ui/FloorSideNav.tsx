@@ -96,12 +96,22 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [draft, setDraft] = useState(emptyNewReservation)
   const [flash, setFlash] = useState<string | null>(null)
-  const { setDuty, refreshDuty } = usePosDutySession()
+  const { duty, setDuty, refreshDuty } = usePosDutySession()
+  const locked = !duty
   const [dining, setDining] = useState('')
   const [pin, setPin] = useState('')
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
   const [pinStatus, setPinStatus] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!locked) return
+    setReservationsOpen(false)
+    setWaitlistOpen(false)
+    setHistoryOpen(false)
+    setAssigning(null)
+    setShowAdd(false)
+  }, [locked])
 
   const upcoming = useMemo(
     () => upcomingReservations(reservations),
@@ -154,6 +164,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   }, [waitlistOpen, companyId, locationId])
 
   useEffect(() => {
+    if (locked) return
     if (pathname.startsWith('/order/reservations')) {
       setReservationsOpen(true)
       setWaitlistOpen(false)
@@ -166,7 +177,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       setMode('order')
       navigate(homePath, { replace: true })
     }
-  }, [pathname, homePath, navigate, setMode])
+  }, [pathname, homePath, navigate, setMode, locked])
 
   const waitlistJoinUrl = useMemo(
     () => (companyId > 0 && locationId ? buildWaitlistJoinUrl(companyId, locationId) : ''),
@@ -185,6 +196,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   }
 
   function goTakeOut() {
+    if (locked) return
     setMode('order')
     setReservationsOpen(false)
     setWaitlistOpen(false)
@@ -195,6 +207,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   }
 
   function goReservation() {
+    if (locked) return
     setMode('order')
     navigate(homePath)
     setWaitlistOpen(false)
@@ -202,6 +215,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   }
 
   function goWaitlist() {
+    if (locked) return
     setMode('order')
     navigate(homePath)
     setReservationsOpen(false)
@@ -336,6 +350,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     label: string
     active: boolean
     onClick: () => void
+    disabled?: boolean
     icon: ReactNode
   }> = [
     {
@@ -356,6 +371,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     label: string
     active: boolean
     onClick: () => void
+    disabled?: boolean
     icon: ReactNode
   }> = [
     {
@@ -363,6 +379,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       label: 'Take Out',
       active: dining === 'takeaway',
       onClick: goTakeOut,
+      disabled: locked,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
           <path d="M4 8h16l-1.2 11.2a2 2 0 01-2 1.8H7.2a2 2 0 01-2-1.8L4 8z" />
@@ -375,6 +392,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       label: 'Reservation',
       active: reservationsOpen,
       onClick: goReservation,
+      disabled: locked,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
           <rect x="3" y="5" width="18" height="16" rx="2" />
@@ -387,6 +405,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       label: 'Waitlist',
       active: waitlistOpen,
       onClick: goWaitlist,
+      disabled: locked,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
           <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
@@ -397,7 +416,10 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       id: 'history',
       label: 'History',
       active: historyOpen,
-      onClick: () => setHistoryOpen(true),
+      onClick: () => {
+        if (!locked) setHistoryOpen(true)
+      },
+      disabled: locked,
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
           <path d="M3 12a9 9 0 109-9" />
@@ -425,8 +447,11 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       <button
         key={item.id}
         type="button"
-        className={`floor-side-nav__btn${item.active ? ' is-active' : ''}`}
+        className={`floor-side-nav__btn${item.active ? ' is-active' : ''}${item.disabled ? ' is-disabled' : ''}`}
         onClick={item.onClick}
+        disabled={item.disabled}
+        aria-disabled={item.disabled || undefined}
+        title={item.disabled ? 'Check in with Staff PIN to unlock' : undefined}
         aria-current={item.active && item.id !== 'history' && item.id !== 'checkin' ? 'page' : undefined}
       >
         <span className="floor-side-nav__icon">{item.icon}</span>
@@ -437,7 +462,15 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
 
   return (
     <>
-      <nav className="floor-side-nav" aria-label="POS home navigation">
+      <nav
+        className={`floor-side-nav${locked ? ' is-locked' : ''}`}
+        aria-label="POS home navigation"
+      >
+        {locked ? (
+          <p className="floor-side-nav__lock-banner" role="status">
+            Home locked — use Staff PIN
+          </p>
+        ) : null}
         <div className="floor-side-nav__list">
           {topItems.map(renderNavBtn)}
 
@@ -662,9 +695,13 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         <button
           type="button"
           className={`floor-side-nav__admin${adminOpen ? ' is-open' : ''}`}
-          onClick={onToggleAdmin}
+          onClick={() => {
+            if (!locked) onToggleAdmin()
+          }}
+          disabled={locked}
           aria-expanded={adminOpen}
           aria-controls="app-side-menu"
+          title={locked ? 'Check in with Staff PIN to unlock' : undefined}
         >
           Admin
         </button>

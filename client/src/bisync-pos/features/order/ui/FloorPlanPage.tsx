@@ -24,6 +24,7 @@ import { FLOOR_PLAN_CHANGED_EVENT } from '../domain/reservations'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import { formatOpenedAt, printTableQr } from '../../../core/config/qrTable'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
+import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import { OpenTableModal } from './OpenTableModal'
 import './FloorPlanPage.css'
 import '../../common/FeaturePage.css'
@@ -48,6 +49,8 @@ export function FloorPlanPage() {
   const editRoute = pathname.endsWith('/floor/edit')
   const { qrTableMode } = useConfig()
   const session = usePosSessionOptional()
+  const { duty } = usePosDutySession()
+  const locked = !duty
   const locationLabel =
     session?.locations.find(loc => loc.externalId === session.locationId)?.name
     || session?.locationId
@@ -75,6 +78,14 @@ export function FloorPlanPage() {
   const [resize, setResize] = useState<ResizeState | null>(null)
   const [openingTableId, setOpeningTableId] = useState<string | null>(null)
   const [syncNote, setSyncNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!locked) return
+    setOpeningTableId(null)
+    if (editRoute) {
+      navigate('/order/floor', { replace: true })
+    }
+  }, [locked, editRoute, navigate])
 
   useEffect(() => {
     if (!companyId || !locationId) return
@@ -176,6 +187,7 @@ export function FloorPlanPage() {
   }
 
   function handleTableActivate(table: FloorTable) {
+    if (locked) return
     setSelected({ type: 'table', id: table.id })
     if (editing) return
 
@@ -419,8 +431,14 @@ export function FloorPlanPage() {
   }
 
   return (
-    <div className="floor-page">
-      {editing ? (
+    <div className={`floor-page${locked ? ' is-locked' : ''}`}>
+      {locked ? (
+        <div className="floor-toolbar">
+          <span className="floor-edit-hint" role="status">
+            Ordering locked — check in with Staff PIN to activate Home
+          </span>
+        </div>
+      ) : editing ? (
         <div className="floor-toolbar">
           <span className="floor-edit-hint">Edit mode — drag tables & zones</span>
           <button type="button" className="chip-btn" onClick={cancelEdit}>
@@ -440,16 +458,23 @@ export function FloorPlanPage() {
         </div>
       ) : null}
 
-      <div className={`floor-workspace${editing ? ' is-editing' : ''}`}>
+      <div className={`floor-workspace${editing && !locked ? ' is-editing' : ''}`}>
         <div className="floor-canvas-stage">
         <div
           ref={canvasRef}
-          className="floor-canvas"
+          className={`floor-canvas${locked ? ' is-locked' : ''}`}
           onPointerDown={() => {
+            if (locked) return
             if (editing) setSelected(null)
           }}
         >
           <div className="floor-canvas__grid" aria-hidden />
+          {locked ? (
+            <div className="floor-lock-overlay" role="status" aria-live="polite">
+              <strong>Home deactivated</strong>
+              <span>Enter Staff PIN or use Check in/out to unlock</span>
+            </div>
+          ) : null}
 
           {visible.zones.map((zone) => (
             <div
@@ -475,11 +500,13 @@ export function FloorPlanPage() {
                 width: `${zone.w}%`,
                 height: `${zone.h}%`,
               }}
-              onPointerDown={(e) =>
+              onPointerDown={(e) => {
+                if (locked) return
                 beginDrag(e, { type: 'zone', id: zone.id }, zone)
-              }
+              }}
               onClick={(e) => {
                 e.stopPropagation()
+                if (locked) return
                 if (editing) setSelected({ type: 'zone', id: zone.id })
               }}
             >
@@ -522,11 +549,15 @@ export function FloorPlanPage() {
                   ? {}
                   : { height: `${table.h}%` }),
               }}
-              onPointerDown={(e) =>
+              disabled={locked && !editing}
+              aria-disabled={locked}
+              onPointerDown={(e) => {
+                if (locked) return
                 beginDrag(e, { type: 'table', id: table.id }, table)
-              }
+              }}
               onClick={(e) => {
                 e.stopPropagation()
+                if (locked) return
                 if (editing) {
                   setSelected({ type: 'table', id: table.id })
                   return
@@ -568,7 +599,7 @@ export function FloorPlanPage() {
         </div>
         </div>
 
-        {editing && (
+        {editing && !locked && (
           <aside className="floor-inspector">
             <h3>Layout tools</h3>
             <div className="floor-inspector__actions">
@@ -827,7 +858,7 @@ export function FloorPlanPage() {
         )}
       </div>
 
-      {openingTable && (
+      {openingTable && !locked && (
         <OpenTableModal
           tableLabel={openingTable.label}
           onCancel={() => setOpeningTableId(null)}
