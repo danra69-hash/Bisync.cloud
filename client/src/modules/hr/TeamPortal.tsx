@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  CalendarDays, CheckSquare, ChevronLeft, ChevronRight,
-  Home, LogOut, MessageSquare, Send, Square, Umbrella, X,
+  CalendarDays,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  LogOut,
+  MessageSquare,
+  Package,
+  Send,
+  ShoppingCart,
+  Square,
+  Umbrella,
+  X,
 } from 'lucide-react';
 import { hrApi } from './api';
 import type {
@@ -24,7 +35,7 @@ import {
   unlockPinPayload,
 } from './teamPin';
 import { punchHrAttendance } from './attendancePunch';
-import { TeamHomeLanding, type TeamHomePanel } from './TeamHomeLanding';
+import { TeamHomeLanding, type TeamAppMode, type HrTab, type RmsTab } from './TeamHomeLanding';
 import './TeamPortal.css';
 
 interface TeamPortalProps {
@@ -45,7 +56,7 @@ interface TeamPortalProps {
 type DayInfo = { type: string; label: string };
 type TeamTodo = { id: string; text: string; done: boolean };
 type TeamMessage = { id: string; from: string; body: string; at: string; read: boolean };
-type AppTab = 'home' | 'schedule' | 'messages' | 'leave';
+
 type LoginMode = 'password' | 'pin';
 type PortalStep = 'login' | 'change-password' | 'app' | 'settings';
 
@@ -170,8 +181,9 @@ export default function TeamPortal({
   const [settingsError, setSettingsError] = useState('');
   const [settingsBusy, setSettingsBusy] = useState(false);
 
-  const [appTab, setAppTab] = useState<AppTab>('home');
-  const [homePanel, setHomePanel] = useState<TeamHomePanel>('landing');
+  const [appMode, setAppMode] = useState<TeamAppMode>('landing');
+  const [hrTab, setHrTab] = useState<HrTab>('home');
+  const [rmsTab, setRmsTab] = useState<RmsTab>('home');
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [toast, setToast] = useState('');
@@ -224,7 +236,9 @@ export default function TeamPortal({
     setLoginPin('');
     setAuthError('');
     setStep('app');
-    setAppTab('home');
+    setAppMode('landing');
+    setHrTab('home');
+    setRmsTab('home');
   };
 
   const doLogin = async (e?: FormEvent) => {
@@ -422,6 +436,9 @@ export default function TeamPortal({
     setAuthError('');
     setLoginMode(loadPinEnrollment() ? 'pin' : 'password');
     setBiometricReady(canShowBiometricLogin());
+    setAppMode('landing');
+    setHrTab('home');
+    setRmsTab('home');
   };
 
   useEffect(() => {
@@ -982,8 +999,18 @@ export default function TeamPortal({
           </header>
 
           <main className="team-main">
-            {appTab === 'home' && todayInfo ? (
+            {todayInfo ? (
               <TeamHomeLanding
+                mode={appMode}
+                onModeChange={(mode) => {
+                  setAppMode(mode);
+                  if (mode === 'hr') setHrTab('home');
+                  if (mode === 'rms') setRmsTab('home');
+                }}
+                hrTab={hrTab}
+                onHrTabChange={setHrTab}
+                rmsTab={rmsTab}
+                onRmsTabChange={setRmsTab}
                 employee={teamEmp}
                 todayLabel={new Date(`${TODAY}T00:00:00`).toLocaleDateString('en-MY', {
                   weekday: 'long', day: 'numeric', month: 'short',
@@ -999,214 +1026,252 @@ export default function TeamPortal({
                 leaveRequests={leaveRequests}
                 announcements={messages}
                 onOpenSchedule={() => {
-                  setHomePanel('landing');
-                  setAppTab('schedule');
+                  setAppMode('hr');
+                  setHrTab('schedule');
                 }}
                 onOpenMessages={() => {
-                  setHomePanel('landing');
+                  setAppMode('hr');
                   setMessageTab('inbox');
-                  setAppTab('messages');
+                  setHrTab('messages');
                 }}
                 onOpenLeave={() => {
-                  setHomePanel('landing');
-                  setAppTab('leave');
+                  setAppMode('hr');
+                  setHrTab('leave');
                 }}
                 onMarkAnnouncementRead={markMessageRead}
-                panel={homePanel}
-                onPanelChange={setHomePanel}
-              />
-            ) : null}
-
-            {appTab === 'schedule' ? (
-              <section className="team-card">
-                <div className="team-month-head">
-                  <h3>Month schedule</h3>
-                  <div className="team-month-nav">
-                    <button
-                      type="button"
-                      aria-label="Previous month"
-                      onClick={() => {
-                        if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
-                        else setCalMonth(m => m - 1);
-                      }}
-                    >
-                      <ChevronLeft size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Next month"
-                      onClick={() => {
-                        if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
-                        else setCalMonth(m => m + 1);
-                      }}
-                    >
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-                </div>
-                <p className="team-muted" style={{ margin: '0 0 8px', fontWeight: 700 }}>{monthLabel}</p>
-                <div className="team-month-dows">
-                  {DOW_LABELS.map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
-                </div>
-                <div className="team-month-grid">
-                  {monthCells.map((cell, idx) => {
-                    if (!cell) return <div key={idx} className="team-month-cell is-empty" />;
-                    const dateStr = fmt(cell);
-                    const info = getDayInfo(dateStr, teamEmp);
-                    const isToday = dateStr === TODAY;
-                    return (
-                      <div key={idx} className={`team-month-cell${isToday ? ' is-today' : ''}`}>
-                        <span className="day">{cell.getDate()}</span>
-                        <span className="shift">{info.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ) : null}
-
-            {appTab === 'messages' ? (
-              <section className="team-card">
-                <h3>Message box</h3>
-                <div className="team-msg-tabs">
-                  <button type="button" className={messageTab === 'todo' ? 'is-active' : ''} onClick={() => setMessageTab('todo')}>
-                    To Do{openTodos > 0 ? ` (${openTodos})` : ''}
-                  </button>
-                  <button type="button" className={messageTab === 'inbox' ? 'is-active' : ''} onClick={() => setMessageTab('inbox')}>
-                    Messages{unread > 0 ? ` (${unread})` : ''}
-                  </button>
-                </div>
-                {messageTab === 'todo' ? (
-                  <>
-                    <div className="team-add-row">
-                      <input
-                        value={newTodo}
-                        onChange={e => setNewTodo(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && addTodo()}
-                        placeholder="Add a to-do for today…"
-                      />
-                      <button type="button" className="team-btn team-btn-primary" style={{ width: 'auto' }} onClick={addTodo}>Add</button>
+                scheduleSlot={(
+                  <section className="team-card">
+                    <div className="team-panel-head">
+                      <button
+                        type="button"
+                        className="team-back-btn"
+                        onClick={() => setAppMode('landing')}
+                      >
+                        <ChevronLeft size={16} />
+                        Team home
+                      </button>
                     </div>
-                    {todos.length === 0 ? (
-                      <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No to-dos yet.</p>
-                    ) : todos.map(t => (
-                      <div key={t.id} className={`team-todo-row${t.done ? ' is-done' : ''}`}>
-                        <button type="button" className="team-btn-ghost" onClick={() => toggleTodo(t.id)} aria-label="Toggle">
-                          {t.done ? <CheckSquare size={16} /> : <Square size={16} />}
+                    <div className="team-month-head">
+                      <h3>Month schedule</h3>
+                      <div className="team-month-nav">
+                        <button
+                          type="button"
+                          aria-label="Previous month"
+                          onClick={() => {
+                            if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); }
+                            else setCalMonth(m => m - 1);
+                          }}
+                        >
+                          <ChevronLeft size={14} />
                         </button>
-                        <span style={{ flex: 1 }}>{t.text}</span>
-                        <button type="button" className="team-btn-ghost" onClick={() => removeTodo(t.id)} aria-label="Remove">
-                          <X size={14} />
+                        <button
+                          type="button"
+                          aria-label="Next month"
+                          onClick={() => {
+                            if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); }
+                            else setCalMonth(m => m + 1);
+                          }}
+                        >
+                          <ChevronRight size={14} />
                         </button>
                       </div>
-                    ))}
-                  </>
-                ) : (
-                  messages.length === 0 ? (
-                    <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No messages.</p>
-                  ) : messages.map(m => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className="team-inbox-row"
-                      style={{ width: '100%', background: m.read ? 'transparent' : 'color-mix(in srgb, var(--team-primary-soft) 55%, transparent)', border: 0, textAlign: 'left', cursor: 'pointer' }}
-                      onClick={() => markMessageRead(m.id)}
-                    >
-                      <MessageSquare size={14} style={{ marginTop: 2, color: 'var(--team-primary)' }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                          <strong style={{ fontSize: 12 }}>{m.from}</strong>
-                          <span className="team-muted" style={{ fontSize: 10 }}>
-                            {new Date(m.at).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--team-muted-fg)' }}>{m.body}</p>
-                      </div>
-                    </button>
-                  ))
+                    </div>
+                    <p className="team-muted" style={{ margin: '0 0 8px', fontWeight: 700 }}>{monthLabel}</p>
+                    <div className="team-month-dows">
+                      {DOW_LABELS.map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
+                    </div>
+                    <div className="team-month-grid">
+                      {monthCells.map((cell, idx) => {
+                        if (!cell) return <div key={idx} className="team-month-cell is-empty" />;
+                        const dateStr = fmt(cell);
+                        const info = getDayInfo(dateStr, teamEmp);
+                        const isToday = dateStr === TODAY;
+                        return (
+                          <div key={idx} className={`team-month-cell${isToday ? ' is-today' : ''}`}>
+                            <span className="day">{cell.getDate()}</span>
+                            <span className="shift">{info.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
                 )}
-              </section>
-            ) : null}
-
-            {appTab === 'leave' ? (
-              <section className="team-card">
-                <h3>Outstanding leave — {new Date().getFullYear()}</h3>
-                <div className="team-leave-row">
-                  <span>Annual leave</span>
-                  <strong>
-                    {balance?.alBalance ?? 0}
-                    {carryForward > 0 ? <em> ({carryForward})</em> : null}
-                  </strong>
-                </div>
-                {carryForward > 0 ? (
-                  <p className="team-muted" style={{ margin: '0 0 6px', fontSize: 10 }}>Bracket = carry-forward from previous year</p>
-                ) : null}
-                <div className="team-leave-row">
-                  <span>RDO</span>
-                  <strong style={{ fontSize: 15 }}>{balance?.rdoBalance ?? 0}</strong>
-                </div>
-                <div className="team-leave-row">
-                  <span>RPH</span>
-                  <strong style={{ fontSize: 15 }}>{balance?.rphBalance ?? 0}</strong>
-                </div>
-                <button
-                  type="button"
-                  className="team-btn team-btn-primary"
-                  style={{ marginTop: 12 }}
-                  onClick={() => setShowLeaveModal(true)}
-                >
-                  Leave request
-                </button>
-              </section>
+                leaveSlot={(
+                  <section className="team-card">
+                    <div className="team-panel-head">
+                      <button
+                        type="button"
+                        className="team-back-btn"
+                        onClick={() => setAppMode('landing')}
+                      >
+                        <ChevronLeft size={16} />
+                        Team home
+                      </button>
+                    </div>
+                    <h3>Outstanding leave — {new Date().getFullYear()}</h3>
+                    <div className="team-leave-row">
+                      <span>Annual leave</span>
+                      <strong>
+                        {balance?.alBalance ?? 0}
+                        {carryForward > 0 ? <em> ({carryForward})</em> : null}
+                      </strong>
+                    </div>
+                    {carryForward > 0 ? (
+                      <p className="team-muted" style={{ margin: '0 0 6px', fontSize: 10 }}>Bracket = carry-forward from previous year</p>
+                    ) : null}
+                    <div className="team-leave-row">
+                      <span>RDO</span>
+                      <strong style={{ fontSize: 15 }}>{balance?.rdoBalance ?? 0}</strong>
+                    </div>
+                    <div className="team-leave-row">
+                      <span>RPH</span>
+                      <strong style={{ fontSize: 15 }}>{balance?.rphBalance ?? 0}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="team-btn team-btn-primary"
+                      style={{ marginTop: 12 }}
+                      onClick={() => setShowLeaveModal(true)}
+                    >
+                      Leave request
+                    </button>
+                  </section>
+                )}
+                messagesSlot={(
+                  <section className="team-card">
+                    <div className="team-panel-head">
+                      <button
+                        type="button"
+                        className="team-back-btn"
+                        onClick={() => {
+                          setHrTab('home');
+                        }}
+                      >
+                        <ChevronLeft size={16} />
+                        HR home
+                      </button>
+                    </div>
+                    <h3>Message box</h3>
+                    <div className="team-msg-tabs">
+                      <button type="button" className={messageTab === 'todo' ? 'is-active' : ''} onClick={() => setMessageTab('todo')}>
+                        To Do{openTodos > 0 ? ` (${openTodos})` : ''}
+                      </button>
+                      <button type="button" className={messageTab === 'inbox' ? 'is-active' : ''} onClick={() => setMessageTab('inbox')}>
+                        Messages{unread > 0 ? ` (${unread})` : ''}
+                      </button>
+                    </div>
+                    {messageTab === 'todo' ? (
+                      <>
+                        <div className="team-add-row">
+                          <input
+                            value={newTodo}
+                            onChange={e => setNewTodo(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && addTodo()}
+                            placeholder="Add a to-do for today…"
+                          />
+                          <button type="button" className="team-btn team-btn-primary" style={{ width: 'auto' }} onClick={addTodo}>Add</button>
+                        </div>
+                        {todos.length === 0 ? (
+                          <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No to-dos yet.</p>
+                        ) : todos.map(t => (
+                          <div key={t.id} className={`team-todo-row${t.done ? ' is-done' : ''}`}>
+                            <button type="button" className="team-btn-ghost" onClick={() => toggleTodo(t.id)} aria-label="Toggle">
+                              {t.done ? <CheckSquare size={16} /> : <Square size={16} />}
+                            </button>
+                            <span style={{ flex: 1 }}>{t.text}</span>
+                            <button type="button" className="team-btn-ghost" onClick={() => removeTodo(t.id)} aria-label="Remove">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      messages.length === 0 ? (
+                        <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>No messages.</p>
+                      ) : messages.map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className="team-inbox-row"
+                          style={{ width: '100%', background: m.read ? 'transparent' : 'color-mix(in srgb, var(--team-primary-soft) 55%, transparent)', border: 0, textAlign: 'left', cursor: 'pointer' }}
+                          onClick={() => markMessageRead(m.id)}
+                        >
+                          <MessageSquare size={14} style={{ marginTop: 2, color: 'var(--team-primary)' }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                              <strong style={{ fontSize: 12 }}>{m.from}</strong>
+                              <span className="team-muted" style={{ fontSize: 10 }}>
+                                {new Date(m.at).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--team-muted-fg)' }}>{m.body}</p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </section>
+                )}
+              />
             ) : null}
           </main>
 
-          <nav className="team-bottom-nav" aria-label="Team">
-            <button
-              type="button"
-              className={appTab === 'home' ? 'is-active' : ''}
-              onClick={() => {
-                setHomePanel('landing');
-                setAppTab('home');
-              }}
-            >
-              <Home />
-              <span>Home</span>
-            </button>
-            <button
-              type="button"
-              className={appTab === 'schedule' ? 'is-active' : ''}
-              onClick={() => {
-                setHomePanel('landing');
-                setAppTab('schedule');
-              }}
-            >
-              <CalendarDays />
-              <span>Schedule</span>
-            </button>
-            <button
-              type="button"
-              className={appTab === 'messages' ? 'is-active' : ''}
-              onClick={() => {
-                setHomePanel('landing');
-                setAppTab('messages');
-              }}
-            >
-              <MessageSquare />
-              <span>Messages</span>
-            </button>
-            <button
-              type="button"
-              className={appTab === 'leave' ? 'is-active' : ''}
-              onClick={() => {
-                setHomePanel('landing');
-                setAppTab('leave');
-              }}
-            >
-              <Umbrella />
-              <span>Leave</span>
-            </button>
-          </nav>
+          {appMode === 'hr' ? (
+            <nav className="team-bottom-nav" aria-label="HR">
+              <button
+                type="button"
+                className={hrTab === 'home' ? 'is-active' : ''}
+                onClick={() => setHrTab('home')}
+              >
+                <Home />
+                <span>Home</span>
+              </button>
+              <button
+                type="button"
+                className={hrTab === 'schedule' ? 'is-active' : ''}
+                onClick={() => setHrTab('schedule')}
+              >
+                <CalendarDays />
+                <span>Schedule</span>
+              </button>
+              <button
+                type="button"
+                className={hrTab === 'leave' ? 'is-active' : ''}
+                onClick={() => setHrTab('leave')}
+              >
+                <Umbrella />
+                <span>Leave Request</span>
+              </button>
+            </nav>
+          ) : null}
+
+          {appMode === 'rms' ? (
+            <nav className="team-bottom-nav" aria-label="Revenue Management">
+              <button
+                type="button"
+                className={rmsTab === 'home' ? 'is-active' : ''}
+                onClick={() => setRmsTab('home')}
+              >
+                <Home />
+                <span>New Home</span>
+              </button>
+              <button
+                type="button"
+                className={rmsTab === 'order' ? 'is-active' : ''}
+                onClick={() => setRmsTab('order')}
+              >
+                <ShoppingCart />
+                <span>Order</span>
+              </button>
+              <button
+                type="button"
+                className={rmsTab === 'stock' ? 'is-active' : ''}
+                onClick={() => setRmsTab('stock')}
+              >
+                <Package />
+                <span>STOCK</span>
+              </button>
+            </nav>
+          ) : null}
         </div>
 
         {showLeaveModal ? (

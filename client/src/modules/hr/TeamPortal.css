@@ -874,6 +874,65 @@
 
 /* ── Home landing boxes ── */
 
+.team-app-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 14px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  border: 1px solid var(--team-border);
+  background: #fff;
+}
+
+.team-app-box:hover {
+  border-color: var(--team-primary-muted);
+  background: var(--team-primary-soft);
+}
+
+.team-app-box-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--team-primary-soft);
+  color: var(--team-primary);
+  flex-shrink: 0;
+}
+
+.team-app-box-copy {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.team-app-box-copy strong {
+  font-size: var(--team-text-md);
+  font-weight: 800;
+}
+
+.team-app-box-copy em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--team-muted-fg);
+}
+
+.team-landing-tiles-stack {
+  grid-template-columns: 1fr;
+}
+
+.team-landing-tiles-stack button {
+  grid-template-columns: 20px 1fr;
+  justify-items: start;
+  align-items: center;
+  text-align: left;
+  padding: 12px 10px;
+}
+
 .team-landing-box {
   display: grid;
   gap: 8px;
