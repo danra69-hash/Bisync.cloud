@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api';
 import {
+  ACCESS_CONTROL_MODULE_ORDER,
   ACCESS_CONTROL_ROWS,
   defaultAccessControlTypes,
   isAccessControlRestrictionRow,
@@ -37,10 +38,14 @@ export function AccessControlTab() {
   const [message, setMessage] = useState<string | null>(null);
   const scrollRootRef = useRef<HTMLDivElement>(null);
 
-  const moduleOptions = useMemo(
-    () => [...new Set(ACCESS_CONTROL_ROWS.map(row => row.module))],
-    [],
-  );
+  const moduleOptions = useMemo(() => {
+    const present = new Set(ACCESS_CONTROL_ROWS.map(row => row.module));
+    const ordered: string[] = ACCESS_CONTROL_MODULE_ORDER.filter(module => present.has(module));
+    for (const module of present) {
+      if (!ordered.includes(module)) ordered.push(module);
+    }
+    return ordered;
+  }, []);
 
   const filteredRows = useMemo(
     () => (moduleFilter
@@ -130,8 +135,10 @@ export function AccessControlTab() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs text-muted-foreground max-w-2xl">
-            Define eight access control types (AC 1–AC 8) and tick which module tasks each type may perform.
+          <p className="text-xs text-muted-foreground max-w-3xl">
+            Define eight access control types (AC 1–AC 8) and tick which module functions and tasks each type may perform —
+            covering Home &amp; Reports, Platform Config, Revenue Management, Point of Sales, Human Resource Management,
+            Accounting, and <span className="font-medium text-foreground">Web App Access</span> (Bisync RMS Web / mobile).
             Column headers can be renamed to match your organisation roles.
             Under Revenue Management → Policies, <span className="font-medium text-foreground">Price Hide Policy</span> means
             users on that level see quantities only (no unit prices or amounts). Column “tick all” does not enable Policies.
