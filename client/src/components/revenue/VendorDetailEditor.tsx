@@ -24,6 +24,8 @@ type Props = {
   vendor: Vendor;
   selectedCompanyId: number | null;
   onVendorUpdated: (vendor: Vendor) => void;
+  /** Called after a successful save (e.g. close the vendor side panel). */
+  onSaved?: () => void;
 };
 
 function parseEngagedLocationIds(vendor: Vendor): string[] {
@@ -180,7 +182,13 @@ function VendorEngagedLocationsModal({
   );
 }
 
-export function VendorDetailEditor({ countryCode, vendor, selectedCompanyId, onVendorUpdated }: Props) {
+export function VendorDetailEditor({
+  countryCode,
+  vendor,
+  selectedCompanyId,
+  onVendorUpdated,
+  onSaved,
+}: Props) {
   const [form, setForm] = useState(() => vendorToForm(vendor));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -289,6 +297,7 @@ export function VendorDetailEditor({ countryCode, vendor, selectedCompanyId, onV
       });
       onVendorUpdated(updated);
       setSuccess('Vendor details saved.');
+      onSaved?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save vendor details.');
     } finally {
