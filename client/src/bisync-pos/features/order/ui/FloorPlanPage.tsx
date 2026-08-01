@@ -78,14 +78,24 @@ export function FloorPlanPage() {
   const [resize, setResize] = useState<ResizeState | null>(null)
   const [openingTableId, setOpeningTableId] = useState<string | null>(null)
   const [syncNote, setSyncNote] = useState<string | null>(null)
+  const [savingLayout, setSavingLayout] = useState(false)
+  const draftRef = useRef<FloorPlanState | null>(null)
+  draftRef.current = draft
 
   useEffect(() => {
     if (!locked) return
     setOpeningTableId(null)
-    if (editRoute) {
-      navigate('/order/floor', { replace: true })
+    if (!editRoute) return
+
+    // Autosave in-progress layout before leaving edit mode on lockout.
+    const pending = draftRef.current
+    if (pending && companyId > 0 && locationId) {
+      void persistFloorPlanRemote(pending, companyId, locationId).then(ok => {
+        if (ok) setPlan(pending)
+      })
     }
-  }, [locked, editRoute, navigate])
+    navigate('/order/floor', { replace: true })
+  }, [locked, editRoute, navigate, companyId, locationId])
 
   useEffect(() => {
     if (!companyId || !locationId) return
@@ -93,15 +103,27 @@ export function FloorPlanPage() {
     void (async () => {
       const synced = await syncFloorPlan(companyId, locationId)
       if (cancelled) return
-      setPlan(synced)
-      if (editRoute) setDraft(structuredClone(synced))
-      setSyncNote('Floor layout saved for this location')
-      window.setTimeout(() => setSyncNote(null), 2800)
+      setPlan(prev => {
+        // Refresh edit draft from DB unless the user already changed the layout.
+        if (editRoute) {
+          const currentDraft = draftRef.current
+          const dirty = Boolean(
+            currentDraft
+            && JSON.stringify(currentDraft) !== JSON.stringify(prev),
+          )
+          if (!dirty) {
+            setDraft(structuredClone(synced))
+          }
+        }
+        return synced
+      })
     })()
     return () => {
       cancelled = true
     }
-  }, [companyId, locationId, editRoute])
+    // Re-sync when company/location changes — not when toggling edit route
+    // (save navigates away and must not race a stale GET over the just-saved layout).
+  }, [companyId, locationId]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional
 
   // Refresh when Reservation → Assign table updates the floor plan.
   useEffect(() => {
@@ -157,6 +179,22 @@ export function FloorPlanPage() {
     if (companyId > 0 && locationId) {
       void persistFloorPlanRemote(next, companyId, locationId)
     }
+  }
+
+  async function persistLayoutToDb(next: FloorPlanState): Promise<boolean> {
+    setPlan(next)
+    if (!(companyId > 0 && locationId)) {
+      setSyncNote('Select a company and location before saving the floor layout.')
+      window.setTimeout(() => setSyncNote(null), 3200)
+      return false
+    }
+    const ok = await persistFloorPlanRemote(next, companyId, locationId)
+    if (!ok) {
+      setSyncNote('Saved on this device — could not reach the server. Will retry on next sync.')
+      window.setTimeout(() => setSyncNote(null), 4200)
+      return false
+    }
+    return true
   }
 
   function beginRegisterForTable(table: FloorTable, openedAt?: string) {
@@ -333,15 +371,22 @@ export function FloorPlanPage() {
     if (editRoute) navigate('/order/floor', { replace: true })
   }
 
-  function saveEdit() {
-    if (!draft) return
-    persistPlan(draft)
-    setEditing(false)
-    setDraft(null)
-    setSelected(null)
-    setSyncNote('Floor layout saved for this location')
-    window.setTimeout(() => setSyncNote(null), 2800)
-    if (editRoute) navigate('/order/floor', { replace: true })
+  async function saveEdit() {
+    if (!draft || savingLayout) return
+    setSavingLayout(true)
+    try {
+      const ok = await persistLayoutToDb(draft)
+      setEditing(false)
+      setDraft(null)
+      setSelected(null)
+      if (ok) {
+        setSyncNote('Floor layout saved to database for this location')
+        window.setTimeout(() => setSyncNote(null), 2800)
+      }
+      if (editRoute) navigate('/order/floor', { replace: true })
+    } finally {
+      setSavingLayout(false)
+    }
   }
 
   function updateSelectedTable(patch: Partial<FloorTable>) {
@@ -441,15 +486,21 @@ export function FloorPlanPage() {
       ) : editing ? (
         <div className="floor-toolbar">
           <span className="floor-edit-hint">Edit mode — drag tables & zones</span>
-          <button type="button" className="chip-btn" onClick={cancelEdit}>
+          <button
+            type="button"
+            className="chip-btn"
+            onClick={cancelEdit}
+            disabled={savingLayout}
+          >
             Cancel
           </button>
           <button
             type="button"
             className="chip-btn chip-btn--primary"
-            onClick={saveEdit}
+            onClick={() => void saveEdit()}
+            disabled={savingLayout}
           >
-            Save layout
+            {savingLayout ? 'Saving…' : 'Save layout'}
           </button>
         </div>
       ) : syncNote ? (
