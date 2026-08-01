@@ -625,7 +625,7 @@ export function VendorListPage({
                     if (row.kind === 'header') {
                       return (
                         <tr key={row.id} className="bg-muted/20">
-                          <td colSpan={9} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
+                          <td colSpan={10} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
                             {row.label}
                           </td>
                         </tr>
@@ -634,7 +634,7 @@ export function VendorListPage({
                     return renderRow(row.vendor);
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={10} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>
