@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MOCK_PRODUCTS } from '../domain/catalog'
 import {
@@ -56,6 +56,15 @@ import {
   formatPickupLabel,
   type TakeawayPickup,
 } from '../domain/pickupTime'
+import {
+  EMPTY_OPEN_CHARGES,
+  loadOpenCheckForTable,
+  recoverOpenCheckFromKitchen,
+  removeOpenCheckForTable,
+  takeUnfiredLines,
+  upsertOpenCheck,
+  type OpenCheck,
+} from '../domain/openChecks'
 import './RegisterPage.css'
 
 const EMPTY_CHARGES: OrderCharges = {
@@ -120,10 +129,12 @@ export function RegisterPage() {
     line: CartLine
     product: Product
   } | null>(null)
-  const [checkNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
+  const [checkNumber, setCheckNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
+  const [firedQtyByLine, setFiredQtyByLine] = useState<Record<string, number>>({})
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
+  const hydratedTableIdRef = useRef<string | null>(null)
   const { duty } = usePosDutySession()
 
   useEffect(() => {
@@ -146,11 +157,39 @@ export function RegisterPage() {
   useEffect(() => {
     const active = loadActiveRegisterSession()
     setActiveTableSession(active)
-    if (active) {
-      setDining('dine-in')
-      setTable(active.tableId)
+    if (!active) return
+
+    setDining('dine-in')
+    setTable(active.tableId)
+    if (hydratedTableIdRef.current === active.tableId) return
+
+    let check = loadOpenCheckForTable(active.tableId)
+    if (!check) {
+      const floorTable = loadFloorPlan().tables.find(t => t.id === active.tableId)
+      if (floorTable?.orderId) {
+        // Wait for live catalog so KDS name matching can resolve real products.
+        if (session && liveCatalog.length === 0) return
+        const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+        check = recoverOpenCheckFromKitchen(
+          active.tableId,
+          active.tableLabel,
+          floorTable.orderId,
+          products,
+        )
+      }
     }
-  }, [])
+
+    hydratedTableIdRef.current = active.tableId
+    if (!check) return
+
+    setLines(check.lines)
+    setCharges(check.charges ?? EMPTY_OPEN_CHARGES)
+    setCheckNumber(check.checkNumber)
+    setCover(check.cover > 0 ? check.cover : 2)
+    setDining(check.dining || 'dine-in')
+    setFiredQtyByLine(check.firedQtyByLine ?? {})
+    setSelectedLineKey(null)
+  }, [liveCatalog, session])
 
   useEffect(() => {
     if (!departments.includes(department)) {
@@ -523,6 +562,7 @@ export function RegisterPage() {
   function handleCancelOrder() {
     const label = activeTableSession?.tableLabel
     if (activeTableSession) {
+      removeOpenCheckForTable(activeTableSession.tableId)
       releaseFloorTable(activeTableSession.tableId)
       if (session?.companyId && session.locationId) {
         void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
@@ -530,6 +570,7 @@ export function RegisterPage() {
     }
     setLines([])
     setCharges(EMPTY_CHARGES)
+    setFiredQtyByLine({})
     clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
@@ -537,7 +578,7 @@ export function RegisterPage() {
     goHome()
   }
 
-  /** Fire items to Bar/Kitchen, keep the table occupied, return home. */
+  /** Fire new items to Bar/Kitchen, persist the open check, keep the table occupied. */
   function handleSaveOrder() {
     if (lines.length === 0) {
       flash('Add items before saving.')
@@ -547,31 +588,53 @@ export function RegisterPage() {
     const tableLabel =
       activeTableSession?.tableLabel
       || (table ? `Table ${table}` : 'Takeaway')
-    const tickets = fireCartToStations({
-      lines,
-      products,
-      checkNumber,
-      tableLabel,
-      dining: dining || 'dine-in',
-    })
-    if (tickets.length === 0) {
-      flash('Nothing to send to Bar or Kitchen.')
-      return
-    }
     const orderId = `chk-${checkNumber}`
+    const { toFire, nextFiredQtyByLine } = takeUnfiredLines(lines, firedQtyByLine)
+    const tickets = toFire.length > 0
+      ? fireCartToStations({
+          lines: toFire,
+          products,
+          checkNumber,
+          tableLabel,
+          dining: dining || 'dine-in',
+        })
+      : []
+
     if (activeTableSession) {
+      const openCheck: OpenCheck = {
+        tableId: activeTableSession.tableId,
+        tableLabel: activeTableSession.tableLabel,
+        orderId,
+        checkNumber,
+        lines,
+        charges,
+        dining: dining || 'dine-in',
+        cover,
+        firedQtyByLine: nextFiredQtyByLine,
+        updatedAt: new Date().toISOString(),
+      }
+      upsertOpenCheck(openCheck)
       markFloorTableOrdered(activeTableSession.tableId, orderId)
       if (session?.companyId && session.locationId) {
         void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
       }
+    } else if (toFire.length === 0) {
+      flash('Nothing new to send to Bar or Kitchen.')
+      return
     }
+
     const stations = [...new Set(tickets.map(t => t.station))].join(' · ')
     setLines([])
     setCharges(EMPTY_CHARGES)
+    setFiredQtyByLine({})
     clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
-    flash(`Order #${checkNumber} sent to ${stations}`)
+    if (tickets.length > 0) {
+      flash(`Order #${checkNumber} sent to ${stations}`)
+    } else {
+      flash(`Order #${checkNumber} saved · ${tableLabel}`)
+    }
     goHome()
   }
 
@@ -626,8 +689,16 @@ export function RegisterPage() {
         /* inventory sale already recorded; EOD row is best-effort */
       }
       const count = lines.reduce((n, l) => n + l.quantity, 0)
+      if (activeTableSession) {
+        removeOpenCheckForTable(activeTableSession.tableId)
+        releaseFloorTable(activeTableSession.tableId)
+        if (session.companyId && session.locationId) {
+          void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+        }
+      }
       setLines([])
       setCharges(EMPTY_CHARGES)
+      setFiredQtyByLine({})
       clearCustomerDisplaySnapshot()
       clearActiveRegisterSession()
       setActiveTableSession(null)
