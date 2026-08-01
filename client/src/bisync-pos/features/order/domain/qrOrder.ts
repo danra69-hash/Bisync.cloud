@@ -29,6 +29,13 @@ export type PosQrMenuItem = {
   category: string
   group: string
   rrp: number
+  imageUrl?: string | null
+}
+
+export type PosQrMenuResponse = {
+  locationName: string
+  locationExternalId: string
+  items: PosQrMenuItem[]
 }
 
 export const QR_ORDER_CHANGED_EVENT = 'bisync-pos-qr-order-changed'
@@ -70,7 +77,7 @@ function normalizeItems(raw: unknown): PosQrOrderItem[] {
 export async function fetchQrOrderMenu(
   companyId: number,
   locationExternalId: string,
-): Promise<PosQrMenuItem[]> {
+): Promise<PosQrMenuResponse> {
   return api.posQrOrderMenu(companyId, locationExternalId)
 }
 

@@ -3879,14 +3879,19 @@ export const api = {
       companyId: String(companyId),
       locationExternalId,
     });
-    return fetchJson<Array<{
-      id: number;
-      productId: string;
-      name: string;
-      category: string;
-      group: string;
-      rrp: number;
-    }>>(`/api/pos/qr-order/menu?${params}`);
+    return fetchJson<{
+      locationName: string;
+      locationExternalId: string;
+      items: Array<{
+        id: number;
+        productId: string;
+        name: string;
+        category: string;
+        group: string;
+        rrp: number;
+        imageUrl?: string | null;
+      }>;
+    }>(`/api/pos/qr-order/menu?${params}`);
   },
   posQrOrderList: (companyId: number, locationExternalId: string, includeClosed = false) => {
     const params = new URLSearchParams({

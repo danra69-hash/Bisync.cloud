@@ -411,15 +411,31 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
             }).ToList();
         }
 
-        return Ok(rows.Select(p => new
+        var locationName = string.Empty;
+        if (!string.IsNullOrEmpty(loc))
         {
-            id = p.Id,
-            productId = p.ProductId,
-            name = p.Name,
-            category = p.Category,
-            group = p.Group,
-            rrp = p.Rrp,
-        }));
+            locationName = await db.Locations.AsNoTracking()
+                .Where(l => l.ExternalId == loc && (l.CompanyId == null || l.CompanyId == cid.Value))
+                .Select(l => l.Name)
+                .FirstOrDefaultAsync() ?? string.Empty;
+        }
+
+        return Ok(new
+        {
+            locationName = string.IsNullOrWhiteSpace(locationName) ? loc : locationName,
+            locationExternalId = loc,
+            items = rows.Select(p => new
+            {
+                id = p.Id,
+                productId = p.ProductId,
+                name = p.Name,
+                category = p.Category,
+                group = p.Group,
+                rrp = p.Rrp,
+                // Reserved for product photos when catalog images are available.
+                imageUrl = (string?)null,
+            }),
+        });
     }
 
     [HttpGet("qr-order")]
