@@ -98,6 +98,10 @@ export interface LocationConfig {
   profileOverridden?: boolean;
   /** Weekly opening hours + last-order times (JSON). */
   openingHoursJson?: string;
+  /** When true, deliveries only during deliveryAllowPeriodsJson windows. */
+  deliveryAllowTimeEnabled?: boolean;
+  /** JSON array of { from, to } HH:mm periods. */
+  deliveryAllowPeriodsJson?: string;
 }
 
 export interface Company {
@@ -442,6 +446,8 @@ export interface Vendor {
   allowPartialDelivery?: boolean;
   /** JSON array of location external IDs where this vendor is engaged. */
   engagedLocationIdsJson?: string;
+  /** JSON array of weekday keys (monday…sunday) for delivery days. */
+  deliveryDaysJson?: string;
   active?: boolean;
 }
 
@@ -552,6 +558,8 @@ export interface VendorCreatePayload {
   productPolicyTag: VendorProductPolicyTag;
   allowPartialDelivery?: boolean;
   engagedLocationIds?: string[];
+  minOrderAmount?: number | null;
+  deliveryDays?: string[];
 }
 
 export interface VendorUpdatePayload {
@@ -570,6 +578,8 @@ export interface VendorUpdatePayload {
   productPolicyTag: VendorProductPolicyTag;
   allowPartialDelivery?: boolean;
   engagedLocationIds?: string[];
+  minOrderAmount?: number | null;
+  deliveryDays?: string[];
 }
 
 export interface B2bCustomerContact {

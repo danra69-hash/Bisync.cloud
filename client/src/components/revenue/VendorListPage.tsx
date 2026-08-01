@@ -51,15 +51,26 @@ import {
 } from '../../data/vendorRating';
 import { ToggleSwitch } from '../admin/ToggleSwitch';
 
-type VendorSortColumn = 'name' | 'products' | 'policy' | 'address' | 'phone' | 'email' | 'active' | 'rating' | 'action';
+type VendorSortColumn =
+  | 'name'
+  | 'products'
+  | 'policy'
+  | 'minOrder'
+  | 'address'
+  | 'phone'
+  | 'email'
+  | 'active'
+  | 'rating'
+  | 'action';
 
 const VENDOR_TABLE_COLUMNS: SortableColumnDef<VendorSortColumn>[] = [
-  { key: 'name', label: 'Vendor Name', ...tableColWidth('16%') },
-  { key: 'products', label: 'Type of Product Supplied', ...tableColWidth('14%') },
-  { key: 'policy', label: 'Product Policy', ...tableColWidth('10%') },
-  { key: 'address', label: 'Address', ...tableColWidth('16%') },
-  { key: 'phone', label: 'Phone Number', ...tableColWidth('10%') },
-  { key: 'email', label: 'Email', ...tableColWidth('12%') },
+  { key: 'name', label: 'Vendor Name', ...tableColWidth('14%') },
+  { key: 'products', label: 'Type of Product Supplied', ...tableColWidth('12%') },
+  { key: 'policy', label: 'Product Policy', ...tableColWidth('9%') },
+  { key: 'minOrder', label: 'Min Order Amount', align: 'right', ...tableColWidth('9%') },
+  { key: 'address', label: 'Address', ...tableColWidth('14%') },
+  { key: 'phone', label: 'Phone Number', ...tableColWidth('9%') },
+  { key: 'email', label: 'Email', ...tableColWidth('11%') },
   { key: 'active', label: 'Active', align: 'center', sortable: false, ...tableColWidth(72) },
   { key: 'rating', label: 'Vendor Rating', align: 'center', ...tableColWidth('8%') },
   { key: 'action', label: 'Action', align: 'right', sortable: false, ...tableColWidth(100) },
@@ -206,6 +217,7 @@ export function VendorListPage({
       name: (v: Vendor) => v.name,
       products: (v: Vendor) => v.products || '',
       policy: (v: Vendor) => formatVendorPolicyLabel(inferVendorPolicyTag(v)),
+      minOrder: (v: Vendor) => v.minOrderAmount ?? -1,
       rating: (v: Vendor) => ratingSummaries[v.externalId]?.overallRating ?? -1,
       address: (v: Vendor) => v.address || [v.city, v.state].filter(Boolean).join(', '),
       phone: (v: Vendor) => getDefaultVendorContact(v)?.mobile || v.mobile || '',
@@ -406,6 +418,14 @@ export function VendorListPage({
             ) : null}
           </div>
         </td>
+        <td className="px-4 py-3 text-right font-sans tabular-nums text-foreground whitespace-nowrap">
+          {v.minOrderAmount != null && Number.isFinite(Number(v.minOrderAmount))
+            ? Number(v.minOrderAmount).toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2,
+              })
+            : '—'}
+        </td>
         <td className="px-4 py-3 text-muted-foreground">
           {v.address || [v.city, v.state].filter(Boolean).join(', ') || '—'}
         </td>
@@ -596,7 +616,7 @@ export function VendorListPage({
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
+                    <td colSpan={10} className="px-4 py-10 text-center text-xs text-muted-foreground font-sans">
                       No vendors match your filters.
                     </td>
                   </tr>
@@ -605,7 +625,7 @@ export function VendorListPage({
                     if (row.kind === 'header') {
                       return (
                         <tr key={row.id} className="bg-muted/20">
-                          <td colSpan={9} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
+                          <td colSpan={10} className="px-4 py-2 text-xs font-sans uppercase tracking-widest text-muted-foreground">
                             {row.label}
                           </td>
                         </tr>
@@ -614,7 +634,7 @@ export function VendorListPage({
                     return renderRow(row.vendor);
                   })
                 )}
-                <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
+                <InfiniteScrollTableSentinel colSpan={10} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} totalCount={totalCount} visibleCount={visibleCount} />
               </tbody>
             </table>
           </TableScrollContainer>

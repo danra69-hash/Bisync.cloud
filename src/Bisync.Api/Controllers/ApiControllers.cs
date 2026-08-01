@@ -45,6 +45,8 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             modulesOverridden = CompanyModuleRules.LocationModulesOverridden(l.ModulesJson),
             profileOverridden = CompanyModuleRules.LocationProfileIsOverridden(l.BusinessTypesJson, l.VendorPolicyTagsJson, l.ModulesJson),
             openingHoursJson = string.IsNullOrWhiteSpace(l.OpeningHoursJson) ? "{}" : l.OpeningHoursJson,
+            deliveryAllowTimeEnabled = l.DeliveryAllowTimeEnabled,
+            deliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(l.DeliveryAllowPeriodsJson) ? "[]" : l.DeliveryAllowPeriodsJson,
         };
     }
 
@@ -153,6 +155,8 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             VendorPolicyTagsJson = vendorPolicyTagsJson,
             ModulesJson = modulesJson,
             OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim(),
+            DeliveryAllowTimeEnabled = body.DeliveryAllowTimeEnabled,
+            DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(body.DeliveryAllowPeriodsJson) ? "[]" : body.DeliveryAllowPeriodsJson.Trim(),
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
         };
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
@@ -217,6 +221,9 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         loc.ModulesJson = modulesJson;
         if (body.OpeningHoursJson is not null)
             loc.OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim();
+        loc.DeliveryAllowTimeEnabled = body.DeliveryAllowTimeEnabled;
+        if (body.DeliveryAllowPeriodsJson is not null)
+            loc.DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(body.DeliveryAllowPeriodsJson) ? "[]" : body.DeliveryAllowPeriodsJson.Trim();
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
         await db.SaveChangesAsync();
@@ -279,6 +286,11 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    static readonly HashSet<string> AllowedDeliveryDays = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    };
+
     static string SerializeEngagedLocationIds(IEnumerable<string>? locationIds)
     {
         var normalized = (locationIds ?? Enumerable.Empty<string>())
@@ -287,6 +299,24 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return JsonSerializer.Serialize(normalized);
+    }
+
+    static string SerializeDeliveryDays(IEnumerable<string>? days)
+    {
+        var order = new[] { "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday" };
+        var selected = new HashSet<string>(
+            (days ?? Enumerable.Empty<string>())
+                .Select(d => d?.Trim().ToLowerInvariant() ?? string.Empty)
+                .Where(d => AllowedDeliveryDays.Contains(d)),
+            StringComparer.OrdinalIgnoreCase);
+        return JsonSerializer.Serialize(order.Where(selected.Contains).ToList());
+    }
+
+    static string? ValidateMinOrderAmount(decimal? amount)
+    {
+        if (amount is null) return null;
+        if (amount < 0) return "Min order amount cannot be negative.";
+        return null;
     }
 
     [HttpGet]
@@ -320,6 +350,10 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         if (policyError is not null)
             return BadRequest(new { message = policyError });
 
+        var minOrderError = ValidateMinOrderAmount(request.MinOrderAmount);
+        if (minOrderError is not null)
+            return BadRequest(new { message = minOrderError });
+
         int? companyId = null;
         if (request.CompanyId is int requestedCompanyId && requestedCompanyId > 0)
         {
@@ -349,6 +383,8 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
             ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant(),
             AllowPartialDelivery = request.AllowPartialDelivery,
             EngagedLocationIdsJson = SerializeEngagedLocationIds(request.EngagedLocationIds),
+            MinOrderAmount = request.MinOrderAmount,
+            DeliveryDaysJson = SerializeDeliveryDays(request.DeliveryDays),
             ContactsJson = JsonSerializer.Serialize(new[]
             {
                 new VendorContactRequest
@@ -387,6 +423,10 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         if (policyError is not null)
             return BadRequest(new { message = policyError });
 
+        var minOrderError = ValidateMinOrderAmount(request.MinOrderAmount);
+        if (minOrderError is not null)
+            return BadRequest(new { message = minOrderError });
+
         vendor.Name = name;
         vendor.Type = string.IsNullOrWhiteSpace(request.Type) ? "offline" : request.Type.Trim().ToLowerInvariant();
         vendor.Brn = request.Brn.Trim();
@@ -401,8 +441,11 @@ public class VendorsController(BisyncDbContext db) : ControllerBase
         vendor.Email = request.Email.Trim();
         vendor.ProductPolicyTag = request.ProductPolicyTag.Trim().ToLowerInvariant();
         vendor.AllowPartialDelivery = request.AllowPartialDelivery;
+        vendor.MinOrderAmount = request.MinOrderAmount;
         if (request.EngagedLocationIds is not null)
             vendor.EngagedLocationIdsJson = SerializeEngagedLocationIds(request.EngagedLocationIds);
+        if (request.DeliveryDays is not null)
+            vendor.DeliveryDaysJson = SerializeDeliveryDays(request.DeliveryDays);
         vendor.ContactsJson = JsonSerializer.Serialize(
             SyncDefaultContact(vendor),
             ContactJsonOptions);

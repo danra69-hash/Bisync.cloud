@@ -335,6 +335,8 @@ public class CompanyOperationalDbProvisioner(
         VendorPolicyTagsJson = loc.VendorPolicyTagsJson ?? "[]",
         ModulesJson = loc.ModulesJson ?? "[]",
         OpeningHoursJson = string.IsNullOrWhiteSpace(loc.OpeningHoursJson) ? "{}" : loc.OpeningHoursJson,
+        DeliveryAllowTimeEnabled = loc.DeliveryAllowTimeEnabled,
+        DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(loc.DeliveryAllowPeriodsJson) ? "[]" : loc.DeliveryAllowPeriodsJson,
         TimeZoneId = string.IsNullOrWhiteSpace(loc.TimeZoneId)
             ? OrgClock.ResolveTimeZoneId(companyCountryCode, loc.StateProvince)
             : loc.TimeZoneId,
