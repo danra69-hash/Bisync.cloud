@@ -1184,6 +1184,9 @@ export interface PosModifierOption {
   linkedProductName?: string;
   linkedComponentId?: string;
   linkedComponentName?: string;
+  /** Original / base component for Component SWAP (e.g. Garlic Mash). */
+  baseComponentId?: string;
+  baseComponentName?: string;
   active: boolean;
 }
 
@@ -1230,6 +1233,8 @@ export interface UpsertPosModifierGroupPayload {
     linkedProductName?: string;
     linkedComponentId?: string;
     linkedComponentName?: string;
+    baseComponentId?: string;
+    baseComponentName?: string;
     active?: boolean;
   }>;
   attachments?: Array<{
@@ -1250,9 +1255,23 @@ export interface PosModifierStockCatalogProduct {
   variableComponentOptionsJson?: string;
 }
 
+export interface PosModifierSwapPair {
+  key: string;
+  label: string;
+  linkedProductId: number;
+  linkedProductName: string;
+  baseComponentId: string;
+  baseComponentName: string;
+  linkedComponentId: string;
+  linkedComponentName: string;
+  extraChargeCents: number;
+}
+
 export interface PosModifierStockCatalog {
   productGroup: string;
   products: PosModifierStockCatalogProduct[];
+  /** Base → alternate pairs from RMS Variable Component (Component SWAP only). */
+  swapPairs?: PosModifierSwapPair[];
 }
 
 export interface PosPrinterSdk {

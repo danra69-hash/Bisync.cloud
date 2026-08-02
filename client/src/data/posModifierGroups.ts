@@ -28,7 +28,7 @@ export const POS_MODIFIER_KINDS: Array<{
   {
     id: 'component-swap',
     label: 'Component SWAP',
-    hint: 'Inherited from RMS products in the Component SWAP group (or Variable Component products).',
+    hint: 'Swappable pairs from RMS Variable Component (e.g. Base Garlic Mash → Fries). Use Inherit Component SWAP to refresh.',
   },
 ]
 

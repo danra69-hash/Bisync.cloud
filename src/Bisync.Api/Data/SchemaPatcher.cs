@@ -1964,11 +1964,15 @@ public static class SchemaPatcher
                 "LinkedProductName" TEXT NOT NULL DEFAULT '',
                 "LinkedComponentId" TEXT NOT NULL DEFAULT '',
                 "LinkedComponentName" TEXT NOT NULL DEFAULT '',
+                "BaseComponentId" TEXT NOT NULL DEFAULT '',
+                "BaseComponentName" TEXT NOT NULL DEFAULT '',
                 "Active" BOOLEAN NOT NULL DEFAULT TRUE,
                 CONSTRAINT "FK_PosModifierOptions_PosModifierGroups_PosModifierGroupId"
                     FOREIGN KEY ("PosModifierGroupId") REFERENCES "PosModifierGroups" ("Id") ON DELETE CASCADE
             );
             """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosModifierOptions", "BaseComponentId", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosModifierOptions", "BaseComponentName", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE INDEX IF NOT EXISTS "IX_PosModifierOptions_PosModifierGroupId"
             ON "PosModifierOptions" ("PosModifierGroupId");

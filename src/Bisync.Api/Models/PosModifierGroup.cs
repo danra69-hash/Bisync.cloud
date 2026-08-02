@@ -39,9 +39,12 @@ public class PosModifierOption
     /// <summary>Optional linked B2C product for stock-influencing modifiers.</summary>
     public int? LinkedProductId { get; set; }
     public string LinkedProductName { get; set; } = string.Empty;
-    /// <summary>Optional linked component id for Component SWAP inheritance.</summary>
+    /// <summary>Chosen / alternate component id for Component SWAP.</summary>
     public string LinkedComponentId { get; set; } = string.Empty;
     public string LinkedComponentName { get; set; } = string.Empty;
+    /// <summary>Base / original component id for Component SWAP (e.g. Garlic Mash).</summary>
+    public string BaseComponentId { get; set; } = string.Empty;
+    public string BaseComponentName { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
 }
 
