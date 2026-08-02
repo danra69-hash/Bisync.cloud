@@ -15,6 +15,7 @@ import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { SortableTableHeaderRow, TableColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { StockCardDetailPanel } from './StockCardDetailPanel';
+import { StockCardCardView } from './StockCardCardView';
 import {
   currentStockCardMonth,
   earliestStockCardMonth,
@@ -22,6 +23,8 @@ import {
   STOCK_CARD_HISTORY_YEARS,
 } from './stockCardPeriod';
 import { TableLoadingRow } from '../shared/MillstoneLoader';
+
+type StockCardViewMode = 'list' | 'card';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -120,6 +123,7 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [selectedMonth, setSelectedMonth] = useState(currentStockCardMonth);
   const [selectedRow, setSelectedRow] = useState<StockCardListRow | null>(null);
   const [listVersion, setListVersion] = useState(0);
+  const [viewMode, setViewMode] = useState<StockCardViewMode>('list');
   const scrollRootRef = useRef<HTMLDivElement>(null);
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<StockCardSortColumn>();
 
@@ -240,6 +244,27 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
               />
             </div>
           </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-sans text-muted-foreground uppercase tracking-wider">View</span>
+            <div className="flex items-center gap-3 h-9">
+              <label className="inline-flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={viewMode === 'list'}
+                  onChange={() => setViewMode('list')}
+                />
+                List View
+              </label>
+              <label className="inline-flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={viewMode === 'card'}
+                  onChange={() => setViewMode('card')}
+                />
+                Card View
+              </label>
+            </div>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">
           {formatStockCardMonthLabel(selectedMonth, selectedMonth === currentStockCardMonth())}
@@ -252,53 +277,68 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
 
       {error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 
-      <TableScrollContainer ref={scrollRootRef} tableId="revenue.stock-card">
-        <table className="w-full text-sm font-sans">
-          <TableColGroup columns={STOCK_CARD_TABLE_COLUMNS} />
-          <thead>
-            <SortableTableHeaderRow
-              columns={STOCK_CARD_TABLE_COLUMNS}
-              sortColumn={sortColumn}
-              sortDirection={sortDirection}
-              onSort={toggleSort}
-            />
-          </thead>
-          <tbody>
-            {loading ? (
-              <TableLoadingRow colSpan={9} label="Loading stock cards…" />
-            ) : visibleItems.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
-                  No stock card items found.
-                </td>
-              </tr>
-            ) : (
-              visibleItems.map(row => (
-                <tr
-                  key={`${row.itemType}-${row.itemKey}`}
-                  className="border-b border-border/60 hover:bg-muted/40 cursor-pointer"
-                  onClick={() => setSelectedRow(row)}
-                >
-                  <td className="px-3 py-2.5 text-muted-foreground">{itemTypeLabel(row.itemType)}</td>
-                  <td className="px-3 py-2.5">{row.group || '—'}</td>
-                  <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
-                  <td className="px-3 py-2.5">{row.uom}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.inboundQty, countryCode)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.outboundQty, countryCode)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    {row.averageCogs > 0 ? rm(row.averageCogs) : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty, countryCode)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    <AvgCogsWithTrend onHand={row.onHandAverageCogs} outbound={row.averageCogs} />
+      {viewMode === 'card' ? (
+        loading ? (
+          <p className="text-sm text-muted-foreground py-8 text-center">Loading stock cards…</p>
+        ) : (
+          <StockCardCardView
+            rows={sortedRows}
+            companyId={selectedCompanyId}
+            locationIds={selectedLocationIds}
+            uomMode={uomMode}
+            selectedMonth={selectedMonth}
+            onOpenDetail={setSelectedRow}
+          />
+        )
+      ) : (
+        <TableScrollContainer ref={scrollRootRef} tableId="revenue.stock-card">
+          <table className="w-full text-sm font-sans">
+            <TableColGroup columns={STOCK_CARD_TABLE_COLUMNS} />
+            <thead>
+              <SortableTableHeaderRow
+                columns={STOCK_CARD_TABLE_COLUMNS}
+                sortColumn={sortColumn}
+                sortDirection={sortDirection}
+                onSort={toggleSort}
+              />
+            </thead>
+            <tbody>
+              {loading ? (
+                <TableLoadingRow colSpan={9} label="Loading stock cards…" />
+              ) : visibleItems.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                    No stock card items found.
                   </td>
                 </tr>
-              ))
-            )}
-            <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
-          </tbody>
-        </table>
-      </TableScrollContainer>
+              ) : (
+                visibleItems.map(row => (
+                  <tr
+                    key={`${row.itemType}-${row.itemKey}`}
+                    className="border-b border-border/60 hover:bg-muted/40 cursor-pointer"
+                    onClick={() => setSelectedRow(row)}
+                  >
+                    <td className="px-3 py-2.5 text-muted-foreground">{itemTypeLabel(row.itemType)}</td>
+                    <td className="px-3 py-2.5">{row.group || '—'}</td>
+                    <td className="px-3 py-2.5 font-medium text-foreground">{row.name}</td>
+                    <td className="px-3 py-2.5">{row.uom}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.inboundQty, countryCode)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{fmtQty(row.outboundQty, countryCode)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {row.averageCogs > 0 ? rm(row.averageCogs) : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">{fmtQty(row.onHandQty, countryCode)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      <AvgCogsWithTrend onHand={row.onHandAverageCogs} outbound={row.averageCogs} />
+                    </td>
+                  </tr>
+                ))
+              )}
+              <InfiniteScrollTableSentinel colSpan={9} hasMore={hasMore} onLoadMore={loadMore} nextPageSize={nextPageSize} sentinelRef={sentinelRef} />
+            </tbody>
+          </table>
+        </TableScrollContainer>
+      )}
 
       {selectedRow ? (
         <StockCardDetailPanel

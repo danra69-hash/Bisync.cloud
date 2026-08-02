@@ -2802,6 +2802,14 @@ export interface StockCardLedgerEntry {
   isShortage?: boolean;
   isCogsBackfilled?: boolean;
   isNegativeBalance?: boolean;
+  /** Inbound receipt sequence (IN#n). 0 = opening B/F. */
+  inboundSequenceNo?: number;
+  /** Original inbound quantity when received. */
+  originalQuantity?: number;
+  /** Quantity depleted from this inbound by period end. */
+  depletedQuantity?: number;
+  /** Inbound sequence this outbound slice depleted from. */
+  sourceInboundSequenceNo?: number;
 }
 
 export interface StockCardOnHandLayer {
