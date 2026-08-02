@@ -7,6 +7,7 @@ import {
   type SalesModuleCompany,
   type SalesModuleCustomer,
   type SalesModuleOverview,
+  type SalesModuleOverviewHunterRow,
   type SalesModuleOverviewPeriods,
   type SalesModuleTeamCalendarEvent,
   type SalesModuleTeamMember,
@@ -72,6 +73,23 @@ function isBlankText(value?: string | null): boolean {
   return !value || !value.trim();
 }
 
+/** Sort key for Overview hunter detail — interaction date, else created date. */
+function overviewDetailSortMs(row: Pick<SalesModuleClientUpdate, 'lastContactDate' | 'dateCreated'>): number {
+  const raw = row.lastContactDate || row.dateCreated;
+  if (!raw) return 0;
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function sortOverviewClientDetails(rows: SalesModuleClientUpdate[]): SalesModuleClientUpdate[] {
+  return [...rows].sort((a, b) => overviewDetailSortMs(b) - overviewDetailSortMs(a));
+}
+
+type OverviewHunterDetail = {
+  hunter: string;
+  salesTeamMemberId?: number | null;
+};
+
 type Props = {
   /** Dev Console session identity used when creating engaged records. */
   sessionEmail?: string;
@@ -116,6 +134,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [overviewCompanyId, setOverviewCompanyId] = useState<number | ''>('');
   const [overviewCompanies, setOverviewCompanies] = useState<SalesModuleCompany[]>([]);
   const [overviewHasSearched, setOverviewHasSearched] = useState(false);
+  const [overviewDetailHunter, setOverviewDetailHunter] = useState<OverviewHunterDetail | null>(null);
+  const [overviewDetailRows, setOverviewDetailRows] = useState<SalesModuleClientUpdate[]>([]);
+  const [overviewDetailLoading, setOverviewDetailLoading] = useState(false);
   const [clientUpdateView, setClientUpdateView] = useState<OverviewView>('week');
   const [clientUpdateWeekStart, setClientUpdateWeekStart] = useState('');
   const [clientUpdateMonthValue, setClientUpdateMonthValue] = useState('');
@@ -310,6 +331,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     setOverviewLoading(true);
     setError(null);
     setOverviewHasSearched(true);
+    setOverviewDetailHunter(null);
+    setOverviewDetailRows([]);
     try {
       const scope = {
         salesTeamMemberId: overviewSalesTeamId || undefined,
@@ -349,6 +372,49 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     overviewPeriods,
     overviewSalesTeamId,
     overviewCompanyId,
+  ]);
+
+  const openOverviewHunterDetail = useCallback(async (row: SalesModuleOverviewHunterRow) => {
+    const memberId = row.salesTeamMemberId
+      || activeHunters.find(m => m.name.trim().toLowerCase() === row.hunter.trim().toLowerCase())?.id
+      || undefined;
+    setOverviewDetailHunter({ hunter: row.hunter, salesTeamMemberId: memberId ?? null });
+    setOverviewDetailLoading(true);
+    setError(null);
+    try {
+      const periodOpts =
+        overviewView === 'week'
+          ? { view: 'week' as const, weekStart: overviewWeekStart }
+          : (() => {
+              const month = overviewPeriods?.months.find(m => m.value === overviewMonthValue);
+              return month
+                ? { view: 'month' as const, year: month.year, month: month.month }
+                : {};
+            })();
+      const rows = await api.salesModuleClientUpdates({
+        ...(memberId ? { salesTeamMemberId: memberId } : { hunter: row.hunter }),
+        ...periodOpts,
+      });
+      const companyName = overview?.companyName?.trim().toLowerCase() ?? '';
+      const scoped = companyName
+        ? rows.filter(r =>
+            r.company.trim().toLowerCase() === companyName
+            || r.brand.trim().toLowerCase() === companyName)
+        : rows;
+      setOverviewDetailRows(sortOverviewClientDetails(scoped));
+    } catch (err) {
+      setOverviewDetailRows([]);
+      setError(err instanceof Error ? err.message : 'Failed to load hunter clients');
+    } finally {
+      setOverviewDetailLoading(false);
+    }
+  }, [
+    activeHunters,
+    overviewView,
+    overviewWeekStart,
+    overviewMonthValue,
+    overviewPeriods,
+    overview?.companyName,
   ]);
 
   const loadAppointments = useCallback(async () => {
@@ -962,6 +1028,10 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           active={tab}
           onChange={next => {
             setTab(next);
+            if (next !== 'overview') {
+              setOverviewDetailHunter(null);
+              setOverviewDetailRows([]);
+            }
             if (next !== 'client-update' && next !== 'overview' && !selectedTeamMemberId) {
               setSelectedTeamMemberId(activeTeamMembers[0]?.id ?? null);
             }
@@ -1036,61 +1106,154 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       ) : null}
 
       {tab === 'overview' ? (
-        <TableScrollContainer ref={scrollRootRef}>
-          <table className="w-full text-xs">
-            <ColGroup widths={['22%', '26%', '30%', '22%']} />
-            <thead>
-              <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                <th className="px-2 py-1.5 text-left">Hunter</th>
-                <th className="px-2 py-1.5 text-right">Client status change</th>
-                <th className="px-2 py-1.5 text-right">Client interaction (contact)</th>
-                <th className="px-2 py-1.5 text-right">New Lead</th>
-              </tr>
-            </thead>
-            <tbody>
-              {overviewLoading ? (
-                <TableLoadingRow colSpan={4} label="Loading overview…" />
-              ) : !overviewHasSearched ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    Select a week or month to view Sales Team activity.
-                  </td>
+        <div className="space-y-4">
+          <TableScrollContainer ref={scrollRootRef}>
+            <table className="w-full text-xs">
+              <ColGroup widths={['18%', '12%', '22%', '28%', '20%']} />
+              <thead>
+                <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-2 py-1.5 text-left">Hunter</th>
+                  <th className="px-2 py-1.5 text-right">Total Client</th>
+                  <th className="px-2 py-1.5 text-right">Client status change</th>
+                  <th className="px-2 py-1.5 text-right">Client interaction (contact)</th>
+                  <th className="px-2 py-1.5 text-right">New Lead</th>
                 </tr>
-              ) : (overviewView === 'week' && !overviewWeekStart) || (overviewView === 'month' && !overviewMonthValue) ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    {overviewView === 'week'
-                      ? 'Select a week to view Sales Team activity.'
-                      : 'Select a month to view Sales Team activity.'}
-                  </td>
-                </tr>
-              ) : !overview || overview.hunters.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    No Sales Team hunters yet. Add hunters in Sales Team first.
-                  </td>
-                </tr>
-              ) : (
-                <>
-                  {overview.hunters.map(row => (
-                    <tr key={row.hunter} className="border-b border-border/60 hover:bg-muted/30">
-                      <td className="px-2 py-1.5 font-medium whitespace-nowrap">{row.hunter}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{row.statusChanges}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{row.interactions}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">{row.newLeads}</td>
-                    </tr>
-                  ))}
-                  <tr className="border-t border-border bg-muted/20 font-semibold">
-                    <td className="px-2 py-1.5">Total</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.statusChanges}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.interactions}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.newLeads}</td>
+              </thead>
+              <tbody>
+                {overviewLoading ? (
+                  <TableLoadingRow colSpan={5} label="Loading overview…" />
+                ) : !overviewHasSearched ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                      Select a week or month to view Sales Team activity.
+                    </td>
                   </tr>
-                </>
-              )}
-            </tbody>
-          </table>
-        </TableScrollContainer>
+                ) : (overviewView === 'week' && !overviewWeekStart) || (overviewView === 'month' && !overviewMonthValue) ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                      {overviewView === 'week'
+                        ? 'Select a week to view Sales Team activity.'
+                        : 'Select a month to view Sales Team activity.'}
+                    </td>
+                  </tr>
+                ) : !overview || overview.hunters.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                      No Sales Team hunters yet. Add hunters in Sales Team first.
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {overview.hunters.map(row => {
+                      const selected = overviewDetailHunter?.hunter === row.hunter;
+                      return (
+                        <tr
+                          key={row.hunter}
+                          className={`border-b border-border/60 hover:bg-muted/30${selected ? ' bg-muted/40' : ''}`}
+                        >
+                          <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="text-left font-medium text-primary underline-offset-2 hover:underline"
+                              onClick={() => void openOverviewHunterDetail(row)}
+                            >
+                              {row.hunter}
+                            </button>
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.totalClients ?? 0}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.statusChanges}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.interactions}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{row.newLeads}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t border-border bg-muted/20 font-semibold">
+                      <td className="px-2 py-1.5">Total</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.totalClients ?? 0}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.statusChanges}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.interactions}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{overview.totals.newLeads}</td>
+                    </tr>
+                  </>
+                )}
+              </tbody>
+            </table>
+          </TableScrollContainer>
+
+          {overviewDetailHunter ? (
+            <div className="rounded-md border border-border overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/20">
+                <div>
+                  <p className="text-sm font-semibold">{overviewDetailHunter.hunter}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Client activity
+                    {overview?.periodLabel ? ` · ${overview.periodLabel}` : ''}
+                    {overview?.companyName ? ` · ${overview.companyName}` : ''}
+                    {' · '}latest interaction first
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border border-border hover:bg-muted"
+                  onClick={() => {
+                    setOverviewDetailHunter(null);
+                    setOverviewDetailRows([]);
+                  }}
+                >
+                  <X size={12} />
+                  Close
+                </button>
+              </div>
+              <TableScrollContainer>
+                <table className="w-full text-xs">
+                  <ColGroup widths={['14%', '10%', '12%', '8%', '10%', '10%', '12%', '24%']} />
+                  <thead>
+                    <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-2 py-1.5 text-left">Client name</th>
+                      <th className="px-2 py-1.5 text-left">Created Date</th>
+                      <th className="px-2 py-1.5 text-left">Brand</th>
+                      <th className="px-2 py-1.5 text-right">Number of Location</th>
+                      <th className="px-2 py-1.5 text-left">Current Status</th>
+                      <th className="px-2 py-1.5 text-left">Interaction Date</th>
+                      <th className="px-2 py-1.5 text-left">Interaction Type</th>
+                      <th className="px-2 py-1.5 text-left">Interaction Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overviewDetailLoading ? (
+                      <TableLoadingRow colSpan={8} label="Loading clients…" />
+                    ) : overviewDetailRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
+                          No client activity for this hunter in the selected period.
+                        </td>
+                      </tr>
+                    ) : (
+                      overviewDetailRows.map(row => (
+                        <tr key={row.id} className="border-b border-border/60 hover:bg-muted/30">
+                          <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                            {row.company?.trim() || row.brand?.trim() || '—'}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.dateCreated)}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.brand?.trim() || '—'}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {row.locationCount != null ? row.locationCount : '—'}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.status?.trim() || '—'}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{formatOptionalDate(row.lastContactDate)}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.contactType?.trim() || '—'}</td>
+                          <td className="px-2 py-1.5 max-w-[18rem] truncate" title={row.note || undefined}>
+                            {row.note?.trim() || '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </TableScrollContainer>
+            </div>
+          ) : null}
+        </div>
       ) : tab === 'client-update' ? (
         <TableScrollContainer ref={scrollRootRef}>
           <table className="w-full text-xs">

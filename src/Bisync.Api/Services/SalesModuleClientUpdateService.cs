@@ -632,7 +632,13 @@ public class SalesModuleClientUpdateService(
             var name = string.IsNullOrWhiteSpace(member.Name) ? member.Email : member.Name.Trim();
             if (string.IsNullOrWhiteSpace(name)) continue;
             if (!byHunter.ContainsKey(name))
-                byHunter[name] = new HunterTotals { Hunter = name };
+            {
+                byHunter[name] = new HunterTotals
+                {
+                    Hunter = name,
+                    SalesTeamMemberId = member.Id,
+                };
+            }
         }
 
         var rows = await GetCachedRowsAsync(ct);
@@ -669,9 +675,17 @@ public class SalesModuleClientUpdateService(
             {
                 // Keep unmatched Client Update hunters visible when not filtering to one team member.
                 if (salesTeamMemberId is > 0) continue;
-                totals = new HunterTotals { Hunter = hunter };
+                totals = new HunterTotals
+                {
+                    Hunter = hunter,
+                    SalesTeamMemberId = row.SalesTeamMemberId,
+                };
                 byHunter[hunter] = totals;
             }
+
+            var clientKey = ClientKey(row);
+            if (clientKey is not null)
+                totals.ClientKeys.Add(clientKey);
 
             if (IsStatusChange(row)) totals.StatusChanges++;
             if (IsInteraction(row)) totals.Interactions++;
@@ -694,6 +708,8 @@ public class SalesModuleClientUpdateService(
             .Select(h => new
             {
                 hunter = h.Hunter,
+                salesTeamMemberId = h.SalesTeamMemberId is > 0 ? h.SalesTeamMemberId : (int?)null,
+                totalClients = h.ClientKeys.Count,
                 statusChanges = h.StatusChanges,
                 interactions = h.Interactions,
                 newLeads = h.NewLeads,
@@ -702,6 +718,7 @@ public class SalesModuleClientUpdateService(
 
         var totalsOut = new
         {
+            totalClients = hunters.Sum(h => h.totalClients),
             statusChanges = hunters.Sum(h => h.statusChanges),
             interactions = hunters.Sum(h => h.interactions),
             newLeads = hunters.Sum(h => h.newLeads),
@@ -725,9 +742,18 @@ public class SalesModuleClientUpdateService(
     sealed class HunterTotals
     {
         public string Hunter { get; set; } = string.Empty;
+        public int? SalesTeamMemberId { get; set; }
+        public HashSet<string> ClientKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
         public int StatusChanges { get; set; }
         public int Interactions { get; set; }
         public int NewLeads { get; set; }
+    }
+
+    static string? ClientKey(SalesModuleClientUpdate r)
+    {
+        if (!string.IsNullOrWhiteSpace(r.Company)) return r.Company.Trim();
+        if (!string.IsNullOrWhiteSpace(r.Brand)) return r.Brand.Trim();
+        return null;
     }
 
     static DateTime? ActivityDate(SalesModuleClientUpdate r) =>
