@@ -14,6 +14,7 @@ import {
   STOCK_PRODUCT_GROUP_BY_KIND,
 } from '../../data/posModifierGroups'
 import { inputCls, selectCls } from '../../data/countries'
+import { useCountryFormatters } from '../../hooks/useCountryFormatters'
 import { pageShellClass } from '../layout/pageLayout'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
 import { TableScrollContainer } from '../shared/TableScrollContainer'
@@ -109,6 +110,7 @@ function uniqueGroups(products: Product[]): string[] {
 }
 
 export function PosModifierGroupPage({ selectedCompanyId }: Props) {
+  const { symbol } = useCountryFormatters()
   const [kindTab, setKindTab] = useState<PosModifierKind | 'all'>('all')
   const [rows, setRows] = useState<PosModifierGroup[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -600,7 +602,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
               {form.kind === 'component-swap' ? (
                 <p className="text-xs text-muted-foreground">
                   {swapPairs.length > 0
-                    ? `${swapPairs.length} swappable pair(s) from RMS Variable Component.`
+                    ? `${swapPairs.length} swappable pair(s) from RMS Variable Component. Addon RRP uses the same currency as product RRP (not cents).`
                     : 'No swappable pairs found. Configure Variable Component (base → alternate) on RMS products, then click Inherit Component SWAP.'}
                 </p>
               ) : form.affectsStock && stockGroupName ? (
@@ -668,12 +670,15 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                                   <option value={keptValue}>{currentLabel}</option>
                                 ) : null}
                                 <option value="">— Select swap —</option>
-                                {swapPairs.map(p => (
-                                  <option key={p.key} value={p.key}>
-                                    {p.label}
-                                    {p.linkedProductName ? ` (${p.linkedProductName})` : ''}
-                                  </option>
-                                ))}
+                          {swapPairs.map(p => (
+                            <option key={p.key} value={p.key}>
+                              {p.label}
+                              {p.linkedProductName ? ` (${p.linkedProductName})` : ''}
+                              {p.extraChargeCents > 0
+                                ? ` · Addon ${symbol}${(p.extraChargeCents / 100).toFixed(2)}`
+                                : ''}
+                            </option>
+                          ))}
                               </select>
                               {currentLabel ? (
                                 <span className="block text-[11px] text-muted-foreground">
@@ -686,18 +691,22 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                         })()}
                       </label>
                       <label className="text-xs space-y-1">
-                        <span className="text-muted-foreground">Extra ¢</span>
+                        <span className="text-muted-foreground">Addon RRP ({symbol})</span>
                         <input
                           type="number"
+                          min={0}
+                          step="0.01"
                           className={inputCls}
-                          value={opt.extraChargeCents}
+                          value={Number(((opt.extraChargeCents || 0) / 100).toFixed(2))}
                           onChange={e => {
-                            const extraChargeCents = Number(e.target.value) || 0
+                            const major = Math.max(0, Number(e.target.value) || 0)
+                            const extraChargeCents = Math.round(major * 100)
                             setForm(f => ({
                               ...f,
                               options: f.options.map((o, i) => (i === idx ? { ...o, extraChargeCents } : o)),
                             }))
                           }}
+                          title="Same as RMS Variable Component Addon RRP (not cents)"
                         />
                       </label>
                       <button
