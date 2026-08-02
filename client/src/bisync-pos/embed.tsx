@@ -8,7 +8,27 @@ import {
 import { usePosViewportScale } from './core/session/usePosViewportScale'
 import { mapApiProductsToPosCatalog } from './core/session/mapPosCatalog'
 import { api, type Product as ApiProduct } from '../api'
-import { productMatchesPosMenu } from '../data/posCatalog'
+import {
+  productMatchesPosMenu,
+  productMatchesPosOrgScope,
+} from '../data/posCatalog'
+import {
+  hasConfiguredVariableComponentSlots,
+  parseVariableComponentOptionsJson,
+} from '../data/productVariableComponent'
+
+function includeInPosEmbedCatalog(
+  product: ApiProduct,
+  companyId: number,
+  locationId: string,
+): boolean {
+  if (productMatchesPosMenu(product, companyId, [locationId])) return true
+  if (!productMatchesPosOrgScope(product, companyId, [locationId])) return false
+  if (product.active === false || product.isSubProduct) return false
+  if (!product.isVariableComponent) return false
+  const cfg = parseVariableComponentOptionsJson(product.variableComponentOptionsJson)
+  return hasConfiguredVariableComponentSlots(cfg)
+}
 import './core/styles/tokens.css'
 import './index.css'
 
@@ -78,7 +98,7 @@ export function BisyncPosEmbed({
       try {
         const rows = await api.products(companyId)
         if (cancelled) return
-        const menu = rows.filter(p => productMatchesPosMenu(p, companyId, [locationId]))
+        const menu = rows.filter(p => includeInPosEmbedCatalog(p, companyId, locationId))
         setApiProducts(menu)
 
         const productIds = menu.map(p => p.id)

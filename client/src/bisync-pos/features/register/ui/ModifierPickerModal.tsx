@@ -25,8 +25,8 @@ export function ModifierPickerModal({
 
   const selectedLabels = useMemo(() => {
     const labels: string[] = []
-    for (const group of groups) {
-      for (const opt of group.options) {
+    for (const group of groups ?? []) {
+      for (const opt of group.options ?? []) {
         if (selected.has(opt.id)) labels.push(opt.label)
       }
     }
@@ -62,11 +62,11 @@ export function ModifierPickerModal({
         </header>
 
         <div className="combo-picker-modal__body">
-          {groups.map(group => (
+          {(groups ?? []).map(group => (
             <section key={group.id} className="combo-picker-modal__group">
               <h3>{group.name}</h3>
               <div className="combo-picker-modal__grid">
-                {group.options.map(opt => {
+                {(group.options ?? []).map(opt => {
                   const checked = selected.has(opt.id)
                   return (
                     <button

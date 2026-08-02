@@ -332,7 +332,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
 
   if (!selectedCompanyId) {
     return (
-      <div className={`${pageShellClass} p-4`}>
+      <div className={`${pageShellClass()} p-4`}>
         <p className="text-sm text-muted-foreground">Select a company to manage POS Modifier Groups.</p>
       </div>
     )
@@ -341,7 +341,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
   const stockGroupName = STOCK_PRODUCT_GROUP_BY_KIND[form.kind]
 
   return (
-    <div className={`${pageShellClass} p-3 sm:p-4 space-y-4`}>
+    <div className={`${pageShellClass()} p-3 sm:p-4 space-y-4`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">POS Modifier Group</h2>
@@ -426,12 +426,16 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
                     <td className="py-2 pr-3">{row.sequence}</td>
                     <td className="py-2 pr-3 text-xs max-w-[260px]">
                       {row.kind === 'component-swap' && (row.options?.length ?? 0) > 0 ? (
-                        <span className="text-foreground" title={row.options.map(o => o.label).join(' · ')}>
-                          {row.options
+                        <span
+                          className="text-foreground"
+                          title={(row.options ?? []).map(o => o.label).filter(Boolean).join(' · ')}
+                        >
+                          {(row.options ?? [])
                             .slice(0, 3)
                             .map(o => o.label)
+                            .filter(Boolean)
                             .join(' · ')}
-                          {row.options.length > 3 ? ` +${row.options.length - 3}` : ''}
+                          {(row.options?.length ?? 0) > 3 ? ` +${(row.options?.length ?? 0) - 3}` : ''}
                         </span>
                       ) : (
                         row.options?.length ?? 0
