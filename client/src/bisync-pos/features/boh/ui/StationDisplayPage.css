@@ -270,3 +270,37 @@
   background: transparent;
   color: #16324f;
 }
+
+.station-display__notice-count {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b91c1c;
+}
+
+.kitchen-docket--notice.is-voided {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+.kitchen-docket--notice.is-canceled {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.kitchen-docket--notice .kitchen-docket__label {
+  opacity: 1;
+  font-weight: 800;
+}
+
+.kitchen-docket__notice-banner {
+  margin: 0 0 var(--space-2);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

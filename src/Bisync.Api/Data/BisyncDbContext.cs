@@ -41,6 +41,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosClosedCheck> PosClosedChecks => Set<PosClosedCheck>();
     public DbSet<PosPayment> PosPayments => Set<PosPayment>();
     public DbSet<PosVoid> PosVoids => Set<PosVoid>();
+    public DbSet<PosCancel> PosCancels => Set<PosCancel>();
     public DbSet<PosEodSession> PosEodSessions => Set<PosEodSession>();
     public DbSet<PosSaleDetail> PosSaleDetails => Set<PosSaleDetail>();
     public DbSet<SalesModuleCustomer> SalesModuleCustomers => Set<SalesModuleCustomer>();
@@ -210,6 +211,17 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
             e.Property(x => x.ProductName).HasMaxLength(200);
             e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.AuthorizedBy).HasMaxLength(120);
+        });
+        modelBuilder.Entity<PosCancel>(e =>
+        {
+            e.HasIndex(x => x.ExternalId).IsUnique();
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.CanceledAt });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.Reason).HasMaxLength(500);
+            e.Property(x => x.CanceledBy).HasMaxLength(120);
         });
         modelBuilder.Entity<PosSaleDetail>(e =>
         {

@@ -3997,6 +3997,44 @@ export const api = {
       'POST',
       payload,
     ),
+  posRecordVoid: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    checkNumber: number;
+    productName: string;
+    amountCents: number;
+    reason: string;
+    authorizedBy?: string;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      externalId: string;
+      checkNumber: number;
+      productName: string;
+      amountCents: number;
+      reason: string;
+      authorizedBy: string;
+      voidedAt: string;
+    }>('/api/pos/voids', 'POST', payload),
+  posRecordCancel: (payload: {
+    companyId: number;
+    locationExternalId: string;
+    checkNumber: number;
+    productName: string;
+    amountCents: number;
+    reason?: string;
+    canceledBy?: string;
+  }) =>
+    fetchJsonWithMethod<{
+      id: number;
+      externalId: string;
+      checkNumber: number;
+      productName: string;
+      amountCents: number;
+      reason: string;
+      canceledBy: string;
+      canceledAt: string;
+    }>('/api/pos/cancels', 'POST', payload),
   salesData: (
     companyId: number | undefined,
     locationIds: string[],

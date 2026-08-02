@@ -1,5 +1,6 @@
 export type PermissionAction =
   | 'refund'
+  | 'void'
   | 'void-large'
   | 'comp'
   | 'open-drawer'
@@ -14,6 +15,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, PermissionAction[]> = {
   cook: [],
   manager: [
     'refund',
+    'void',
     'void-large',
     'comp',
     'open-drawer',
@@ -24,6 +26,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, PermissionAction[]> = {
 
 export const PERMISSION_LABEL: Record<PermissionAction, string> = {
   refund: 'Issue refunds',
+  void: 'Void fired order lines',
   'void-large': 'Void large checks',
   comp: 'Issue comps',
   'open-drawer': 'Open cash drawer',

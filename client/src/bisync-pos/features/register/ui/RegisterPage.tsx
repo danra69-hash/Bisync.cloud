@@ -7,6 +7,7 @@ import {
   addWeightToCart,
   cartGrandTotal,
   cartSubtotal,
+  removeLine,
   setLineNote,
   updateLineSaleDetail,
 } from '../domain/cart'
@@ -27,7 +28,7 @@ import {
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
 import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
-import { fireCartToStations } from '../../boh/domain/kitchenTickets'
+import { fireCartToStations, notifyStationsLineRemoved } from '../../boh/domain/kitchenTickets'
 import {
   clearCustomerDisplaySnapshot,
   publishCustomerDisplaySnapshot,
@@ -48,6 +49,7 @@ import { TakeawayPickupModal } from './TakeawayPickupModal'
 import { CombinationPickerModal } from './CombinationPickerModal'
 import { ComponentSwapModal } from './ComponentSwapModal'
 import { ModifierPickerModal } from './ModifierPickerModal'
+import { VoidCancelModal } from './VoidCancelModal'
 import {
   FOOD_MODIFIER_GROUPS,
   BEVERAGE_MODIFIER_GROUPS,
@@ -58,13 +60,19 @@ import {
 } from '../domain/pickupTime'
 import {
   EMPTY_OPEN_CHARGES,
+  lineIdentity,
   loadOpenCheckForTable,
+  mergeFiredAtByLine,
+  minutesSinceFire,
   recoverOpenCheckFromKitchen,
+  removalModeForFireAge,
   removeOpenCheckForTable,
   takeUnfiredLines,
   upsertOpenCheck,
   type OpenCheck,
 } from '../domain/openChecks'
+import { appendPosLineAudit } from '../domain/posLineAudit'
+import { authorizeVoidPin } from '../domain/voidPermission'
 import './RegisterPage.css'
 
 const EMPTY_CHARGES: OrderCharges = {
@@ -131,6 +139,15 @@ export function RegisterPage() {
   } | null>(null)
   const [checkNumber, setCheckNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
   const [firedQtyByLine, setFiredQtyByLine] = useState<Record<string, number>>({})
+  const [firedAtByLine, setFiredAtByLine] = useState<Record<string, string>>({})
+  const [removalTarget, setRemovalTarget] = useState<{
+    line: CartLine
+    product: Product
+    mode: 'cancel' | 'void'
+    minutesSinceFire: number
+  } | null>(null)
+  const [removalBusy, setRemovalBusy] = useState(false)
+  const [removalError, setRemovalError] = useState<string | null>(null)
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
@@ -188,6 +205,7 @@ export function RegisterPage() {
     setCover(check.cover > 0 ? check.cover : 2)
     setDining(check.dining || 'dine-in')
     setFiredQtyByLine(check.firedQtyByLine ?? {})
+    setFiredAtByLine(check.firedAtByLine ?? {})
     setSelectedLineKey(null)
   }, [liveCatalog, session])
 
@@ -558,6 +576,143 @@ export function RegisterPage() {
     navigate(MODE_META.order.homePath)
   }
 
+  function handleRemoveLine(line: CartLine) {
+    if (!requireDuty()) return
+    const products = catalogForFilter
+    const product = products.find(p => p.id === line.productId)
+    if (!product) {
+      setLines(prev => removeLine(prev, line.productId, line.lineKey))
+      return
+    }
+    const id = lineIdentity(line)
+    const firedQty = firedQtyByLine[id] ?? 0
+    if (firedQty <= 0) {
+      setLines(prev => removeLine(prev, line.productId, line.lineKey))
+      return
+    }
+    const firedAt = firedAtByLine[id]
+    const mode = removalModeForFireAge(firedAt)
+    if (mode === 'unfired') {
+      setLines(prev => removeLine(prev, line.productId, line.lineKey))
+      return
+    }
+    setRemovalError(null)
+    setRemovalTarget({
+      line,
+      product,
+      mode,
+      minutesSinceFire: minutesSinceFire(firedAt) ?? 0,
+    })
+  }
+
+  async function confirmRemoval(payload: { reason: string; authorizerPin?: string }) {
+    if (!removalTarget) return
+    const { line, product, mode } = removalTarget
+    const tableLabel =
+      activeTableSession?.tableLabel
+      || (table ? `Table ${table}` : 'Takeaway')
+    const qty = line.quantity
+    const amountCents = Math.round(
+      (product.priceCents + saleDetailExtraChargeCents(line.saleDetail)) * qty,
+    )
+    const id = lineIdentity(line)
+
+    setRemovalBusy(true)
+    setRemovalError(null)
+    try {
+      let authorizedBy = duty?.employeeName || 'POS Staff'
+      if (mode === 'void') {
+        const auth = await authorizeVoidPin(payload.authorizerPin || '')
+        if (!auth.ok) {
+          setRemovalError(auth.error)
+          return
+        }
+        authorizedBy = auth.employeeName
+        if (session?.companyId && session.locationId) {
+          const productIdNum = Number(line.productId)
+          if (Number.isFinite(productIdNum) && productIdNum > 0) {
+            await api.createPosWastage({
+              companyId: session.companyId,
+              locationExternalId: session.locationId,
+              productId: productIdNum,
+              quantity: qty,
+              checkNo: String(checkNumber),
+              reason: payload.reason || 'POS void',
+            })
+          }
+          await api.posRecordVoid({
+            companyId: session.companyId,
+            locationExternalId: session.locationId,
+            checkNumber,
+            productName: product.name,
+            amountCents,
+            reason: payload.reason,
+            authorizedBy,
+          })
+        }
+      } else if (session?.companyId && session.locationId) {
+        await api.posRecordCancel({
+          companyId: session.companyId,
+          locationExternalId: session.locationId,
+          checkNumber,
+          productName: product.name,
+          amountCents,
+          reason: payload.reason || undefined,
+          canceledBy: authorizedBy,
+        }).catch(() => { /* best-effort reference log */ })
+      }
+
+      notifyStationsLineRemoved({
+        mode: mode === 'void' ? 'voided' : 'canceled',
+        checkNumber,
+        tableLabel,
+        dining: dining || 'dine-in',
+        product,
+        quantity: qty,
+        detail: line.note,
+        reason: payload.reason || undefined,
+      })
+
+      appendPosLineAudit({
+        kind: mode === 'void' ? 'voided' : 'canceled',
+        checkNumber,
+        tableLabel,
+        productId: line.productId,
+        productName: product.name,
+        quantity: qty,
+        amountCents,
+        reason: payload.reason || '',
+        authorizedBy,
+        station: product.department === 'Beverage' ? 'Bar' : 'Kitchen',
+      })
+
+      setLines(prev => removeLine(prev, line.productId, line.lineKey))
+      setFiredQtyByLine(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      setFiredAtByLine(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      if (selectedLineKey === id || selectedLineKey === line.lineKey) {
+        setSelectedLineKey(null)
+      }
+      setRemovalTarget(null)
+      flash(
+        mode === 'void'
+          ? `Voided ${product.name} · stock depleted · stations notified`
+          : `Canceled ${product.name} · stations notified`,
+      )
+    } catch (err) {
+      setRemovalError(err instanceof Error ? err.message : 'Unable to complete removal.')
+    } finally {
+      setRemovalBusy(false)
+    }
+  }
+
   /** Discard the current check (no kitchen fire) and return to the floor home. */
   function handleCancelOrder() {
     const label = activeTableSession?.tableLabel
@@ -571,6 +726,7 @@ export function RegisterPage() {
     setLines([])
     setCharges(EMPTY_CHARGES)
     setFiredQtyByLine({})
+    setFiredAtByLine({})
     clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
@@ -590,6 +746,13 @@ export function RegisterPage() {
       || (table ? `Table ${table}` : 'Takeaway')
     const orderId = `chk-${checkNumber}`
     const { toFire, nextFiredQtyByLine } = takeUnfiredLines(lines, firedQtyByLine)
+    const firedAtIso = new Date().toISOString()
+    const nextFiredAtByLine = mergeFiredAtByLine(
+      firedAtByLine,
+      firedQtyByLine,
+      nextFiredQtyByLine,
+      firedAtIso,
+    )
     const tickets = toFire.length > 0
       ? fireCartToStations({
           lines: toFire,
@@ -611,6 +774,7 @@ export function RegisterPage() {
         dining: dining || 'dine-in',
         cover,
         firedQtyByLine: nextFiredQtyByLine,
+        firedAtByLine: nextFiredAtByLine,
         updatedAt: new Date().toISOString(),
       }
       upsertOpenCheck(openCheck)
@@ -627,6 +791,7 @@ export function RegisterPage() {
     setLines([])
     setCharges(EMPTY_CHARGES)
     setFiredQtyByLine({})
+    setFiredAtByLine({})
     clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
@@ -841,6 +1006,7 @@ export function RegisterPage() {
         onChange={setLines}
         onChargesChange={setCharges}
         onSwapLine={handleSwapLine}
+        onRemoveLine={handleRemoveLine}
         selectedLineKey={selectedLineKey}
         onSelectLine={(line) => setSelectedLineKey(line.lineKey ?? `pid:${line.productId}`)}
         onOpenHistory={() => setHistoryOpen(true)}
@@ -900,6 +1066,23 @@ export function RegisterPage() {
           groups={modifierTarget.kind === 'food' ? FOOD_MODIFIER_GROUPS : BEVERAGE_MODIFIER_GROUPS}
           onCancel={() => setModifierTarget(null)}
           onConfirm={applyModifiers}
+        />
+      )}
+
+      {removalTarget && (
+        <VoidCancelModal
+          mode={removalTarget.mode}
+          productName={removalTarget.product.name}
+          quantity={removalTarget.line.quantity}
+          minutesSinceFire={removalTarget.minutesSinceFire}
+          busy={removalBusy}
+          error={removalError}
+          onCancel={() => {
+            if (removalBusy) return
+            setRemovalTarget(null)
+            setRemovalError(null)
+          }}
+          onConfirm={(payload) => { void confirmRemoval(payload) }}
         />
       )}
 

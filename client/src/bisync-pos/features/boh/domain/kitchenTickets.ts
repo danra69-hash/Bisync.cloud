@@ -10,6 +10,8 @@ export type KitchenTicketItem = {
   detail?: string
 }
 
+export type KitchenTicketStatus = 'open' | 'bumped' | 'canceled' | 'voided'
+
 export type KitchenTicket = {
   id: string
   checkNumber: number
@@ -18,7 +20,9 @@ export type KitchenTicket = {
   dining: string
   items: KitchenTicketItem[]
   createdAt: string
-  status: 'open' | 'bumped'
+  status: KitchenTicketStatus
+  /** Present on cancel/void dockets for station awareness. */
+  notice?: string
 }
 
 export const KDS_TICKETS_KEY = 'bisync-pos-kds-tickets-v1'
@@ -135,4 +139,86 @@ export function ticketTimestampLabel(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(ms))
+}
+
+/**
+ * Push a cancel/void notice to Bar and/or Kitchen boards (and attempt a print docket).
+ * Uses the same local ticket store as fire, so KDS + BDS both refresh.
+ */
+export function notifyStationsLineRemoved(opts: {
+  mode: 'canceled' | 'voided'
+  checkNumber: number
+  tableLabel: string
+  dining: string
+  product: Product
+  quantity: number
+  detail?: string
+  reason?: string
+}): KitchenTicket[] {
+  const station = stationForDepartment(opts.product.department)
+  const label = opts.mode === 'voided' ? 'VOID' : 'CANCEL'
+  const detailParts = [
+    opts.detail?.trim(),
+    opts.reason?.trim() ? `Reason: ${opts.reason.trim()}` : '',
+  ].filter(Boolean)
+  const createdAt = new Date().toISOString()
+  const ticket: KitchenTicket = {
+    id: `kds-${opts.mode}-${opts.checkNumber}-${station.toLowerCase()}-${Date.now()}`,
+    checkNumber: opts.checkNumber,
+    station,
+    tableLabel: opts.tableLabel || '—',
+    dining: opts.dining || 'dine-in',
+    items: [
+      {
+        name: `${label} · ${opts.product.name}`,
+        quantity: opts.quantity,
+        ...(detailParts.length ? { detail: detailParts.join(' · ') } : {}),
+      },
+    ],
+    createdAt,
+    status: opts.mode,
+    notice: `${label} on #${opts.checkNumber}`,
+  }
+  persist([ticket, ...loadKitchenTickets()].slice(0, 80))
+  tryPrintStationDocket(ticket)
+  return [ticket]
+}
+
+function tryPrintStationDocket(ticket: KitchenTicket) {
+  try {
+    const w = window.open('', '_blank', 'noopener,noreferrer,width=420,height=640')
+    if (!w) return
+    const items = ticket.items
+      .map(i => `<li><strong>${i.quantity}×</strong> ${escapeHtml(i.name)}${i.detail ? `<div>${escapeHtml(i.detail)}</div>` : ''}</li>`)
+      .join('')
+    w.document.write(`<!doctype html><html><head><title>${ticket.notice || 'Station docket'}</title>
+<style>
+  body{font:14px/1.35 ui-sans-serif,system-ui,sans-serif;padding:16px;color:#111}
+  h1{font-size:18px;margin:0 0 8px}
+  .meta{color:#444;font-size:12px;margin-bottom:12px}
+  ul{padding-left:18px;margin:0}
+  li{margin:0 0 8px}
+  @media print{button{display:none}}
+</style></head><body>
+  <h1>${escapeHtml(ticket.notice || ticket.status.toUpperCase())}</h1>
+  <div class="meta">
+    ${escapeHtml(ticket.station)} · Table ${escapeHtml(ticket.tableLabel)} · #${ticket.checkNumber}<br/>
+    ${escapeHtml(ticketTimestampLabel(ticket.createdAt))} · ${escapeHtml(ticket.dining)}
+  </div>
+  <ul>${items}</ul>
+  <button onclick="window.print()">Print docket</button>
+  <script>window.onload=function(){setTimeout(function(){window.print()},250)}</script>
+</body></html>`)
+    w.document.close()
+  } catch {
+    /* print is best-effort */
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
