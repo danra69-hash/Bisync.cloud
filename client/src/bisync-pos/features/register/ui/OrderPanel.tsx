@@ -20,6 +20,8 @@ type Props = {
   onChange: (lines: CartLine[]) => void
   onChargesChange: (charges: OrderCharges) => void
   onSwapLine?: (line: CartLine) => void
+  /** When set, intercepts trash instead of silently removing the line. */
+  onRemoveLine?: (line: CartLine) => void
   selectedLineKey?: string | null
   onSelectLine?: (line: CartLine) => void
   onOpenHistory: () => void
@@ -44,6 +46,7 @@ export function OrderPanel({
   onChange,
   onChargesChange,
   onSwapLine,
+  onRemoveLine,
   selectedLineKey = null,
   onSelectLine,
   onOpenHistory,
@@ -209,7 +212,8 @@ export function OrderPanel({
                           aria-label={`Remove ${product.name}`}
                           onClick={(e) => {
                             e.stopPropagation()
-                            onChange(removeLine(lines, line.productId, line.lineKey))
+                            if (onRemoveLine) onRemoveLine(line)
+                            else onChange(removeLine(lines, line.productId, line.lineKey))
                           }}
                         >
                           <svg

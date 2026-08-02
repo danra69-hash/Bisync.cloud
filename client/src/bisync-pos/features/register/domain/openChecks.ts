@@ -21,7 +21,52 @@ export type OpenCheck = {
   cover: number
   /** Quantity already sent to KDS, keyed by stable line identity. */
   firedQtyByLine: Record<string, number>
+  /** ISO timestamp of first fire for each line identity. */
+  firedAtByLine?: Record<string, string>
   updatedAt: string
+}
+
+/** Fired lines older than this require Void (reason + permission + stock depletion). */
+export const VOID_AFTER_MS = 5 * 60 * 1000
+
+export function mergeFiredAtByLine(
+  previous: Record<string, string> | undefined,
+  firedQtyBefore: Record<string, number>,
+  nextFiredQty: Record<string, number>,
+  firedAtIso = new Date().toISOString(),
+): Record<string, string> {
+  const next: Record<string, string> = { ...(previous ?? {}) }
+  for (const [id, qty] of Object.entries(nextFiredQty)) {
+    if (qty <= 0) {
+      delete next[id]
+      continue
+    }
+    const was = firedQtyBefore[id] ?? 0
+    if (was <= 0 && !next[id]) {
+      next[id] = firedAtIso
+    }
+  }
+  for (const id of Object.keys(next)) {
+    if ((nextFiredQty[id] ?? 0) <= 0) delete next[id]
+  }
+  return next
+}
+
+export function minutesSinceFire(firedAtIso: string | undefined, now = Date.now()): number | null {
+  if (!firedAtIso) return null
+  const ms = now - Date.parse(firedAtIso)
+  if (!Number.isFinite(ms) || ms < 0) return 0
+  return ms / 60_000
+}
+
+export function removalModeForFireAge(
+  firedAtIso: string | undefined,
+  now = Date.now(),
+): 'unfired' | 'cancel' | 'void' {
+  if (!firedAtIso) return 'unfired'
+  const ms = now - Date.parse(firedAtIso)
+  if (!Number.isFinite(ms) || ms < 0) return 'cancel'
+  return ms >= VOID_AFTER_MS ? 'void' : 'cancel'
 }
 
 function readAll(): OpenCheck[] {
@@ -126,6 +171,7 @@ export function recoverOpenCheckFromKitchen(
   const byName = new Map(products.map(p => [p.name.trim().toLowerCase(), p]))
   const lines: CartLine[] = []
   const firedQtyByLine: Record<string, number> = {}
+  const firedAtByLine: Record<string, string> = {}
 
   for (const ticket of tickets) {
     for (const item of ticket.items) {
@@ -144,14 +190,19 @@ export function recoverOpenCheckFromKitchen(
           ...(note ? { note } : {}),
         })
       }
+      const id = lineIdentity({
+        productId: product.id,
+        quantity: item.quantity,
+        ...(note ? { note } : {}),
+      })
+      firedQtyByLine[id] = (firedQtyByLine[id] ?? 0) + item.quantity
+      if (!firedAtByLine[id] || ticket.createdAt < firedAtByLine[id]) {
+        firedAtByLine[id] = ticket.createdAt
+      }
     }
   }
 
   if (lines.length === 0) return null
-
-  for (const line of lines) {
-    firedQtyByLine[lineIdentity(line)] = line.quantity
-  }
 
   return upsertOpenCheck({
     tableId,
@@ -163,6 +214,7 @@ export function recoverOpenCheckFromKitchen(
     dining: 'dine-in',
     cover: 2,
     firedQtyByLine,
+    firedAtByLine,
     updatedAt: new Date().toISOString(),
   })
 }

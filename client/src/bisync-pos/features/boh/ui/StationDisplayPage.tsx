@@ -72,12 +72,31 @@ export function StationDisplayPage({ station, code, title, subtitle }: Props) {
     [tickets, station],
   )
 
+  const notices = useMemo(
+    () =>
+      tickets
+        .filter(
+          t =>
+            t.station === station
+            && (t.status === 'canceled' || t.status === 'voided'),
+        )
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    [tickets, station],
+  )
+
   function bumpTable(docket: TableDocket) {
     for (const ticket of docket.tickets) {
       bumpKitchenTicket(ticket.id)
     }
     setTickets(loadKitchenTickets())
   }
+
+  function acknowledgeNotice(ticket: KitchenTicket) {
+    bumpKitchenTicket(ticket.id)
+    setTickets(loadKitchenTickets())
+  }
+
+  const boardEmpty = dockets.length === 0 && notices.length === 0
 
   return (
     <div className={`station-display station-display--${code.toLowerCase()}`}>
@@ -90,15 +109,71 @@ export function StationDisplayPage({ station, code, title, subtitle }: Props) {
         <div className="station-display__clock" aria-live="polite">
           <strong>{dockets.length}</strong>
           <span>{dockets.length === 1 ? 'table' : 'tables'}</span>
+          {notices.length > 0 ? (
+            <span className="station-display__notice-count">{notices.length} alert</span>
+          ) : null}
         </div>
       </header>
 
-      {dockets.length === 0 ? (
+      {boardEmpty ? (
         <p className="station-display__empty">
           No open {station.toLowerCase()} tickets. Save an order on the register to fire here.
         </p>
       ) : (
         <div className="station-display__board">
+          {notices.map(ticket => (
+            <article
+              key={ticket.id}
+              className={`kitchen-docket kitchen-docket--notice is-${ticket.status}`}
+            >
+              <header className="kitchen-docket__head">
+                <div className="kitchen-docket__table">
+                  <span className="kitchen-docket__label">
+                    {ticket.status === 'voided' ? 'VOID' : 'CANCEL'}
+                  </span>
+                  <strong>{ticket.tableLabel}</strong>
+                </div>
+                <div className="kitchen-docket__meta">
+                  <time dateTime={ticket.createdAt} className="kitchen-docket__time">
+                    {ticketTimestampLabel(ticket.createdAt)}
+                  </time>
+                  <span className="kitchen-docket__age">{ticketAgeLabel(ticket.createdAt, now)}</span>
+                  <span>#{ticket.checkNumber}</span>
+                </div>
+              </header>
+
+              <div className="kitchen-docket__rule" aria-hidden />
+
+              {ticket.notice ? (
+                <p className="kitchen-docket__notice-banner">{ticket.notice}</p>
+              ) : null}
+
+              <ul className="kitchen-docket__items">
+                {ticket.items.map((item, itemIndex) => (
+                  <li key={`${ticket.id}-${item.name}-${item.detail ?? ''}-${itemIndex}`}>
+                    <span className="kitchen-docket__qty">{item.quantity}</span>
+                    <span className="kitchen-docket__item-body">
+                      <span className="kitchen-docket__name">{item.name}</span>
+                      {item.detail ? (
+                        <span className="kitchen-docket__detail">{item.detail}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="kitchen-docket__rule" aria-hidden />
+
+              <button
+                type="button"
+                className="kitchen-docket__bump"
+                onClick={() => acknowledgeNotice(ticket)}
+              >
+                Acknowledge
+              </button>
+            </article>
+          ))}
+
           {dockets.map(docket => (
             <article key={docket.tableLabel} className="kitchen-docket">
               <header className="kitchen-docket__head">

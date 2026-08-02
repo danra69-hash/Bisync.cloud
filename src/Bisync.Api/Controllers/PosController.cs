@@ -557,6 +557,103 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         }
     }
 
+    public record RecordPosVoidRequest(
+        int CompanyId,
+        string LocationExternalId,
+        int CheckNumber,
+        string ProductName,
+        long AmountCents,
+        string Reason,
+        string? AuthorizedBy = null);
+
+    public record RecordPosCancelRequest(
+        int CompanyId,
+        string LocationExternalId,
+        int CheckNumber,
+        string ProductName,
+        long AmountCents,
+        string? Reason = null,
+        string? CanceledBy = null);
+
+    /// <summary>Record a voided fired line (≥5 minutes) for EOD / audit.</summary>
+    [HttpPost("voids")]
+    public async Task<ActionResult<object>> RecordVoid([FromBody] RecordPosVoidRequest body)
+    {
+        var loc = (body.LocationExternalId ?? string.Empty).Trim();
+        var productName = (body.ProductName ?? string.Empty).Trim();
+        var reason = (body.Reason ?? string.Empty).Trim();
+        if (body.CompanyId <= 0 || string.IsNullOrEmpty(loc))
+            return BadRequest(new { message = "companyId and locationExternalId are required." });
+        if (string.IsNullOrEmpty(productName))
+            return BadRequest(new { message = "productName is required." });
+        if (string.IsNullOrEmpty(reason))
+            return BadRequest(new { message = "reason is required for void." });
+
+        var row = new PosVoid
+        {
+            CompanyId = body.CompanyId,
+            LocationExternalId = loc,
+            ExternalId = $"void-{body.CompanyId}-{body.CheckNumber}-{Guid.NewGuid():N}"[..48],
+            CheckNumber = body.CheckNumber,
+            ProductName = productName,
+            AmountCents = Math.Max(0, body.AmountCents),
+            Reason = reason,
+            AuthorizedBy = (body.AuthorizedBy ?? string.Empty).Trim(),
+            VoidedAt = DateTimeOffset.UtcNow,
+        };
+        db.PosVoids.Add(row);
+        await db.SaveChangesAsync();
+        return Ok(new
+        {
+            id = row.Id,
+            externalId = row.ExternalId,
+            checkNumber = row.CheckNumber,
+            productName = row.ProductName,
+            amountCents = row.AmountCents,
+            reason = row.Reason,
+            authorizedBy = row.AuthorizedBy,
+            voidedAt = row.VoidedAt,
+        });
+    }
+
+    /// <summary>Record a canceled fired line (&lt;5 minutes) — reference only, no stock impact.</summary>
+    [HttpPost("cancels")]
+    public async Task<ActionResult<object>> RecordCancel([FromBody] RecordPosCancelRequest body)
+    {
+        var loc = (body.LocationExternalId ?? string.Empty).Trim();
+        var productName = (body.ProductName ?? string.Empty).Trim();
+        if (body.CompanyId <= 0 || string.IsNullOrEmpty(loc))
+            return BadRequest(new { message = "companyId and locationExternalId are required." });
+        if (string.IsNullOrEmpty(productName))
+            return BadRequest(new { message = "productName is required." });
+
+        var row = new PosCancel
+        {
+            CompanyId = body.CompanyId,
+            LocationExternalId = loc,
+            ExternalId = $"cancel-{body.CompanyId}-{body.CheckNumber}-{Guid.NewGuid():N}"[..48],
+            CheckNumber = body.CheckNumber,
+            ProductName = productName,
+            AmountCents = Math.Max(0, body.AmountCents),
+            Reason = (body.Reason ?? string.Empty).Trim(),
+            CanceledBy = (body.CanceledBy ?? string.Empty).Trim(),
+            CanceledAt = DateTimeOffset.UtcNow,
+        };
+        db.PosCancels.Add(row);
+        await db.SaveChangesAsync();
+        return Ok(new
+        {
+            id = row.Id,
+            externalId = row.ExternalId,
+            checkNumber = row.CheckNumber,
+            productName = row.ProductName,
+            amountCents = row.AmountCents,
+            reason = row.Reason,
+            canceledBy = row.CanceledBy,
+            canceledAt = row.CanceledAt,
+        });
+    }
+
     static object MapQrOrder(PosQrOrder row)
     {
         object items;
