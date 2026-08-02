@@ -1144,6 +1144,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 </>
               )}
               {' · '}use Followup on each row to send appointments or change status
+              {' · '}Import Excel wires Instant Sales Update (Weekly Update + Client DB) to Sales Team members
             </p>
             {clientUpdateMessage ? (
               <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{clientUpdateMessage}</p>
