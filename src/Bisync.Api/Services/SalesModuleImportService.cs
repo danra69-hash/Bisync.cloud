@@ -351,15 +351,8 @@ public class SalesModuleImportService(
         return JsonSerializer.Serialize(new[] { new { name, count = 1 } }, JsonOpts);
     }
 
-    static SalesModuleTeamMember? ResolveMember(List<SalesModuleTeamMember> team, string name)
-    {
-        var key = (name ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(key)) return null;
-        return team.FirstOrDefault(m =>
-            m.Name.Equals(key, StringComparison.OrdinalIgnoreCase)
-            || m.Email.Equals(key, StringComparison.OrdinalIgnoreCase)
-            || m.Email.StartsWith(key + "@", StringComparison.OrdinalIgnoreCase));
-    }
+    static SalesModuleTeamMember? ResolveMember(List<SalesModuleTeamMember> team, string name) =>
+        SalesModuleClientUpdateService.ResolveTeamMember(team, name, null);
 
     async Task<(int Id, bool Created)> FindOrCreateCompanyAsync(string name, int memberId, CancellationToken ct)
     {

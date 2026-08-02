@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search, Trash2, Upload, Users, X } from 'lucide-react';
 import {
   api,
   type SalesModuleAppointment,
@@ -144,6 +144,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   const [clientUpdates, setClientUpdates] = useState<SalesModuleClientUpdate[]>([]);
   const [clientUpdatesLoading, setClientUpdatesLoading] = useState(false);
   const [clientUpdateMessage, setClientUpdateMessage] = useState<string | null>(null);
+  const [clientUpdateImporting, setClientUpdateImporting] = useState(false);
+  const clientUpdateFileRef = useRef<HTMLInputElement>(null);
   const [followupRow, setFollowupRow] = useState<SalesModuleClientUpdate | null>(null);
   const [appointments, setAppointments] = useState<SalesModuleAppointment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -258,6 +260,8 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       setClientUpdatesLoading(true);
       try {
         await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
+        // Sync company tags from rematched Client Update rows before listing attached clients.
+        await api.salesModuleCompanies({ salesTeamMemberId: selectedTeamMemberId }).catch(() => undefined);
         const rows = await api.salesModuleClientUpdates({
           salesTeamMemberId: selectedTeamMemberId,
         });
@@ -551,6 +555,35 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     clientUpdateMonthValue,
     clientUpdatePeriods,
   ]);
+
+  async function handleImportClientUpdates(file: File | null) {
+    if (!file) return;
+    setClientUpdateImporting(true);
+    setClientUpdateMessage(null);
+    setError(null);
+    try {
+      const result = await api.importSalesModuleClientUpdates(file);
+      const lines = [
+        ...(result.messages ?? []),
+        result.clientDbWired != null
+          ? `Client DB wired: ${result.clientDbWired}`
+          : null,
+        result.hunterRematch
+          ? `Hunter rematch tagged ${result.hunterRematch.matched ?? 0} / unmatched ${result.hunterRematch.unmatched ?? 0}`
+          : null,
+      ].filter(Boolean);
+      setClientUpdateMessage(lines.join('\n'));
+      await loadClientUpdates();
+      if (selectedTeamMemberId) {
+        await loadSalesCompanies(selectedTeamMemberId).catch(() => undefined);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import Instant Sales Update workbook');
+    } finally {
+      setClientUpdateImporting(false);
+      if (clientUpdateFileRef.current) clientUpdateFileRef.current.value = '';
+    }
+  }
 
   async function handleCreateCompany() {
     if (!selectedTeamMemberId || !companyDraft.trim()) return;
@@ -989,6 +1022,23 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                   >
                     <Search size={12} />
                     {clientUpdatesLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                  <input
+                    ref={clientUpdateFileRef}
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={e => void handleImportClientUpdates(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    disabled={clientUpdateImporting}
+                    onClick={() => clientUpdateFileRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border border-border hover:bg-muted disabled:opacity-50"
+                    title="Import Instant Sales Update.xlsx (Weekly Update + Client DB)"
+                  >
+                    <Upload size={12} />
+                    {clientUpdateImporting ? 'Importing…' : 'Import Excel'}
                   </button>
                 </>
               ) : null}

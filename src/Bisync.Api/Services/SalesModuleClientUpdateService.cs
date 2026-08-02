@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Bisync.Api.Services;
 
 /// <summary>
-/// Imports the "Weekly Update" sheet from Instant Sales Update.xlsx into Sales Module Client Update rows.
+/// Imports Instant Sales Update.xlsx into Sales Module Client Update rows:
+/// Weekly Update (activity) + Client DB (customers attached to Sales Team hunters).
 /// </summary>
 public class SalesModuleClientUpdateService(
     BisyncDbContext db,
@@ -15,6 +16,7 @@ public class SalesModuleClientUpdateService(
     ILogger<SalesModuleClientUpdateService> logger)
 {
     public const string WeeklyUpdateSheetName = "Weekly Update";
+    public const string ClientDbSheetName = "Client DB";
 
     static int _schemaReady;
     static readonly object CacheLock = new();
@@ -347,7 +349,11 @@ public class SalesModuleClientUpdateService(
         };
     }
 
-    static SalesModuleTeamMember? ResolveTeamMember(
+    /// <summary>
+    /// Match Excel Hunter / SALES text to a Sales Team member.
+    /// Accepts full name, email, email local-part, or first-name token (e.g. MANFRED → Manfred Wong).
+    /// </summary>
+    internal static SalesModuleTeamMember? ResolveTeamMember(
         List<SalesModuleTeamMember> team,
         string? hunter,
         int? existingMemberId)
@@ -360,11 +366,50 @@ public class SalesModuleClientUpdateService(
 
         var key = (hunter ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(key)) return null;
+        // Placeholder / header leftovers in Client DB.
+        if (key.Equals("SALES", StringComparison.OrdinalIgnoreCase)
+            || key.Equals("HUNTER", StringComparison.OrdinalIgnoreCase))
+            return null;
 
-        return team.FirstOrDefault(m =>
+        var exact = team.FirstOrDefault(m =>
             m.Name.Equals(key, StringComparison.OrdinalIgnoreCase)
             || m.Email.Equals(key, StringComparison.OrdinalIgnoreCase)
             || m.Email.StartsWith(key + "@", StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) return exact;
+
+        var token = NormalizePersonToken(key);
+        if (token.Length < 2) return null;
+
+        var matches = team.Where(m =>
+        {
+            if (NormalizePersonToken(FirstNameToken(m.Name)) == token) return true;
+            if (NormalizePersonToken(m.Name) == token) return true;
+            var at = m.Email.IndexOf('@');
+            var local = at > 0 ? m.Email[..at] : m.Email;
+            return NormalizePersonToken(local) == token;
+        }).ToList();
+
+        if (matches.Count == 1) return matches[0];
+        if (matches.Count > 1)
+        {
+            var huntersOnly = matches.Where(m => m.IsHunter).ToList();
+            if (huntersOnly.Count == 1) return huntersOnly[0];
+        }
+
+        return null;
+    }
+
+    static string FirstNameToken(string name)
+    {
+        var parts = name.Trim().Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 0 ? string.Empty : parts[0];
+    }
+
+    static string NormalizePersonToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var chars = value.Trim().ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray();
+        return new string(chars);
     }
 
     /// <summary>
@@ -944,62 +989,427 @@ public class SalesModuleClientUpdateService(
     public async Task<object> ImportWeeklyUpdateAsync(Stream stream, string? fileName, CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);
-        var rows = ParseWeeklyUpdateSheet(stream);
-        if (rows.Count == 0)
-            throw new InvalidOperationException(
-                $"No data rows found on sheet \"{WeeklyUpdateSheetName}\". Check the workbook has that sheet.");
+        await EnsureSalesCompanySchemaAsync(ct);
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        db.SalesModuleClientUpdates.RemoveRange(db.SalesModuleClientUpdates);
-        await db.SaveChangesAsync(ct);
+        await using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms, ct);
+        ms.Position = 0;
+
+        var weeklyRows = ParseWeeklyUpdateSheet(ms);
+        ms.Position = 0;
+        var clientDbRows = ParseClientDbSheet(ms);
+
+        if (weeklyRows.Count == 0 && clientDbRows.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No data rows found on \"{WeeklyUpdateSheetName}\" or \"{ClientDbSheetName}\".");
+        }
+
+        EnrichWeeklyRowsFromClientDb(weeklyRows, clientDbRows);
 
         var importedAt = DateTime.UtcNow;
-        foreach (var row in rows)
-            row.ImportedAt = importedAt;
-        db.SalesModuleClientUpdates.AddRange(rows);
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
-        InvalidateListCache();
+        if (weeklyRows.Count > 0)
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            db.SalesModuleClientUpdates.RemoveRange(db.SalesModuleClientUpdates);
+            await db.SaveChangesAsync(ct);
+
+            foreach (var row in weeklyRows)
+                row.ImportedAt = importedAt;
+            db.SalesModuleClientUpdates.AddRange(weeklyRows);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            InvalidateListCache();
+        }
 
         var rematch = await RematchHuntersAsync(ct);
+        var clientDbWire = await WireClientDbRowsAsync(clientDbRows, importedAt, ct);
+        // Rematch again after Client DB rows are inserted with free-text SALES values.
+        if (clientDbWire.RowsUpserted > 0)
+            rematch = await RematchHuntersAsync(ct);
+
+        var companiesSynced = await SyncCompaniesFromClientUpdatesAsync(ct);
 
         logger.LogInformation(
-            "Sales Module Client Update import: {Count} rows from {File}",
-            rows.Count,
+            "Sales Module Instant Sales import: weekly={Weekly}, clientDb={ClientDb}, wired={Wired}, companies={Companies}, file={File}",
+            weeklyRows.Count,
+            clientDbRows.Count,
+            clientDbWire.RowsUpserted,
+            companiesSynced,
             fileName ?? "stream");
+
+        var messages = new List<string>
+        {
+            weeklyRows.Count > 0
+                ? $"Imported {weeklyRows.Count} row(s) from \"{WeeklyUpdateSheetName}\"."
+                : $"No rows on \"{WeeklyUpdateSheetName}\" — kept existing Client Update activity where present.",
+            clientDbRows.Count > 0
+                ? $"Wired {clientDbWire.RowsUpserted} client(s) from \"{ClientDbSheetName}\" "
+                  + $"({clientDbWire.CompaniesCreated} compan{(clientDbWire.CompaniesCreated == 1 ? "y" : "ies")} created, "
+                  + $"{clientDbWire.UnmatchedSales} SALES value(s) unmatched to Sales Team)."
+                : $"No \"{ClientDbSheetName}\" sheet (or empty) — skipped customer attachment import.",
+            $"Hunter rematch: {GetRematchMatched(rematch)} tagged, {GetRematchUnmatched(rematch)} unmatched.",
+            $"Company tags synced: {companiesSynced} new link(s).",
+        };
 
         return new
         {
-            imported = rows.Count,
-            sheet = WeeklyUpdateSheetName,
+            imported = weeklyRows.Count,
+            clientDbRows = clientDbRows.Count,
+            clientDbWired = clientDbWire.RowsUpserted,
+            companiesCreated = clientDbWire.CompaniesCreated,
+            unmatchedSales = clientDbWire.UnmatchedSales,
+            companiesSynced,
+            sheet = weeklyRows.Count > 0 ? WeeklyUpdateSheetName : ClientDbSheetName,
             fileName = fileName ?? string.Empty,
             importedAt,
             hunterRematch = rematch,
-            messages = new[]
-            {
-                $"Imported {rows.Count} row(s) from \"{WeeklyUpdateSheetName}\".",
-                "Hunter names rematched to Sales Team members where possible.",
-            },
+            messages,
         };
+    }
+
+    sealed class ClientDbParseRow
+    {
+        public string Brand { get; set; } = string.Empty;
+        public string Company { get; set; } = string.Empty;
+        public int? LocationCount { get; set; }
+        public string Sales { get; set; } = string.Empty;
+        public DateTime? CreatedOn { get; set; }
+        public string ContactPerson { get; set; } = string.Empty;
+    }
+
+    sealed class ClientDbWireResult
+    {
+        public int RowsUpserted { get; set; }
+        public int CompaniesCreated { get; set; }
+        public int UnmatchedSales { get; set; }
+    }
+
+    static int GetRematchMatched(object rematch) =>
+        rematch.GetType().GetProperty("matched")?.GetValue(rematch) as int? ?? 0;
+
+    static int GetRematchUnmatched(object rematch) =>
+        rematch.GetType().GetProperty("unmatched")?.GetValue(rematch) as int? ?? 0;
+
+    static void EnrichWeeklyRowsFromClientDb(
+        List<SalesModuleClientUpdate> weeklyRows,
+        List<ClientDbParseRow> clientDbRows)
+    {
+        if (weeklyRows.Count == 0) return;
+
+        var byBrand = clientDbRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Brand) && !string.IsNullOrWhiteSpace(r.Company))
+            .GroupBy(r => r.Brand.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in weeklyRows)
+        {
+            if (!string.IsNullOrWhiteSpace(row.Company)) continue;
+            if (string.IsNullOrWhiteSpace(row.Brand)) continue;
+
+            if (byBrand.TryGetValue(row.Brand.Trim(), out var dbRow))
+                row.Company = dbRow.Company.Trim();
+            else
+                row.Company = row.Brand.Trim();
+        }
+    }
+
+    /// <summary>
+    /// Attach Client DB customers to Sales Team members: create/tag companies and upsert Client Update rows.
+    /// </summary>
+    async Task<ClientDbWireResult> WireClientDbRowsAsync(
+        List<ClientDbParseRow> clientDbRows,
+        DateTime importedAt,
+        CancellationToken ct)
+    {
+        var result = new ClientDbWireResult();
+        if (clientDbRows.Count == 0) return result;
+
+        var team = await db.SalesModuleTeamMembers.AsNoTracking()
+            .Where(m => m.Active)
+            .OrderBy(m => m.Name)
+            .ToListAsync(ct);
+        if (team.Count == 0)
+        {
+            result.UnmatchedSales = clientDbRows.Count;
+            return result;
+        }
+
+        var existing = await db.SalesModuleClientUpdates.ToListAsync(ct);
+        var changed = false;
+
+        foreach (var src in clientDbRows)
+        {
+            var member = ResolveTeamMember(team, src.Sales, null);
+            if (member is null)
+            {
+                result.UnmatchedSales++;
+                continue;
+            }
+
+            var companyName = !string.IsNullOrWhiteSpace(src.Company)
+                ? src.Company.Trim()
+                : src.Brand.Trim();
+            if (string.IsNullOrWhiteSpace(companyName)) continue;
+
+            var (_, companyCreated) = await FindOrCreateCompanyForMemberAsync(companyName, member.Id, ct);
+            if (companyCreated) result.CompaniesCreated++;
+
+            var brand = src.Brand.Trim();
+
+            var row = existing.FirstOrDefault(r =>
+                r.SalesTeamMemberId == member.Id
+                && (
+                    (!string.IsNullOrWhiteSpace(r.Company)
+                        && r.Company.Trim().Equals(companyName, StringComparison.OrdinalIgnoreCase))
+                    || (!string.IsNullOrWhiteSpace(brand)
+                        && !string.IsNullOrWhiteSpace(r.Brand)
+                        && r.Brand.Trim().Equals(brand, StringComparison.OrdinalIgnoreCase))
+                    || (!string.IsNullOrWhiteSpace(brand)
+                        && !string.IsNullOrWhiteSpace(r.Company)
+                        && r.Company.Trim().Equals(brand, StringComparison.OrdinalIgnoreCase))
+                ));
+
+            // Also match weekly rows that used Brand as Company before Client DB enrich.
+            row ??= existing.FirstOrDefault(r =>
+                (r.SalesTeamMemberId == member.Id
+                    || r.Hunter.Equals(member.Name, StringComparison.OrdinalIgnoreCase)
+                    || NormalizePersonToken(r.Hunter) == NormalizePersonToken(src.Sales))
+                && !string.IsNullOrWhiteSpace(brand)
+                && (
+                    r.Brand.Trim().Equals(brand, StringComparison.OrdinalIgnoreCase)
+                    || r.Company.Trim().Equals(brand, StringComparison.OrdinalIgnoreCase)
+                ));
+
+            if (row is null)
+            {
+                row = new SalesModuleClientUpdate
+                {
+                    DateCreated = src.CreatedOn ?? importedAt.Date,
+                    Hunter = member.Name,
+                    SalesTeamMemberId = member.Id,
+                    Company = companyName,
+                    Brand = brand,
+                    LocationCount = src.LocationCount,
+                    ContactPerson = src.ContactPerson,
+                    ImportedAt = importedAt,
+                };
+                db.SalesModuleClientUpdates.Add(row);
+                existing.Add(row);
+                result.RowsUpserted++;
+                changed = true;
+                continue;
+            }
+
+            var touched = false;
+            if (row.SalesTeamMemberId != member.Id)
+            {
+                row.SalesTeamMemberId = member.Id;
+                touched = true;
+            }
+            if (!string.Equals(row.Hunter, member.Name, StringComparison.Ordinal))
+            {
+                row.Hunter = member.Name;
+                touched = true;
+            }
+            if (string.IsNullOrWhiteSpace(row.Company)
+                || row.Company.Trim().Equals(brand, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!row.Company.Trim().Equals(companyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    row.Company = companyName;
+                    touched = true;
+                }
+            }
+            if (string.IsNullOrWhiteSpace(row.Brand) && !string.IsNullOrWhiteSpace(brand))
+            {
+                row.Brand = brand;
+                touched = true;
+            }
+            if (row.LocationCount is null && src.LocationCount is not null)
+            {
+                row.LocationCount = src.LocationCount;
+                touched = true;
+            }
+            if (string.IsNullOrWhiteSpace(row.ContactPerson) && !string.IsNullOrWhiteSpace(src.ContactPerson))
+            {
+                row.ContactPerson = src.ContactPerson;
+                touched = true;
+            }
+            if (!row.DateCreated.HasValue && src.CreatedOn.HasValue)
+            {
+                row.DateCreated = src.CreatedOn;
+                touched = true;
+            }
+
+            // Count every Client DB customer that is present on this member's book.
+            result.RowsUpserted++;
+            if (touched) changed = true;
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(ct);
+            InvalidateListCache();
+        }
+
+        return result;
+    }
+
+    async Task EnsureSalesCompanySchemaAsync(CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SalesModuleCompanies" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_SalesModuleCompanies" PRIMARY KEY,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "Active" boolean NOT NULL DEFAULT true,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "CreatedByEmail" TEXT NOT NULL DEFAULT ''
+            );
+            """, ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SalesModuleCompanyMembers" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_SalesModuleCompanyMembers" PRIMARY KEY,
+                "SalesModuleCompanyId" integer NOT NULL,
+                "SalesTeamMemberId" integer NOT NULL
+            );
+            """, ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_SalesModuleCompanyMembers_Pair"
+            ON "SalesModuleCompanyMembers" ("SalesModuleCompanyId", "SalesTeamMemberId");
+            """, ct);
+    }
+
+    async Task<(SalesModuleCompany Company, bool Created)> FindOrCreateCompanyForMemberAsync(
+        string name,
+        int memberId,
+        CancellationToken ct)
+    {
+        var trimmed = name.Trim();
+        var existing = await db.SalesModuleCompanies
+            .FirstOrDefaultAsync(c => c.Name.ToLower() == trimmed.ToLower(), ct);
+        var created = false;
+        if (existing is null)
+        {
+            existing = new SalesModuleCompany
+            {
+                Name = trimmed,
+                Active = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            db.SalesModuleCompanies.Add(existing);
+            await db.SaveChangesAsync(ct);
+            created = true;
+        }
+
+        var tagged = await db.SalesModuleCompanyMembers.AnyAsync(
+            t => t.SalesModuleCompanyId == existing.Id && t.SalesTeamMemberId == memberId, ct);
+        if (!tagged)
+        {
+            db.SalesModuleCompanyMembers.Add(new SalesModuleCompanyMember
+            {
+                SalesModuleCompanyId = existing.Id,
+                SalesTeamMemberId = memberId,
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        return (existing, created);
+    }
+
+    /// <summary>
+    /// Create/tag Sales Module companies from Client Update rows that already have a SalesTeamMemberId.
+    /// Returns number of company↔member pairs ensured (created or already present).
+    /// </summary>
+    public async Task<int> SyncCompaniesFromClientUpdatesAsync(CancellationToken ct = default)
+    {
+        await EnsureSalesCompanySchemaAsync(ct);
+        var pairs = await db.SalesModuleClientUpdates.AsNoTracking()
+            .Where(r => r.SalesTeamMemberId != null && r.SalesTeamMemberId > 0)
+            .Select(r => new
+            {
+                MemberId = r.SalesTeamMemberId!.Value,
+                Company = r.Company,
+                Brand = r.Brand,
+            })
+            .ToListAsync(ct);
+
+        var neededPairs = new Dictionary<string, (int MemberId, string Name)>(StringComparer.Ordinal);
+        foreach (var row in pairs)
+        {
+            var name = !string.IsNullOrWhiteSpace(row.Company)
+                ? row.Company.Trim()
+                : (row.Brand ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            neededPairs.TryAdd($"{row.MemberId}\0{name.ToLowerInvariant()}", (row.MemberId, name));
+        }
+
+        if (neededPairs.Count == 0) return 0;
+
+        foreach (var (memberId, name) in neededPairs.Values)
+            await FindOrCreateCompanyForMemberAsync(name, memberId, ct);
+
+        return neededPairs.Count;
     }
 
     /// <summary>Seeds Client Update from bundled Instant Sales Update.xlsx when the table is empty.</summary>
     public async Task SeedBundledIfEmptyAsync(CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);
-        if (await db.SalesModuleClientUpdates.AnyAsync(ct))
-            return;
-
-        var path = ResolveSeedPath();
-        if (path is null)
+        if (!await db.SalesModuleClientUpdates.AnyAsync(ct))
         {
-            logger.LogWarning("Sales Module Client Update seed file not found; skipping seed.");
+            var path = ResolveSeedPath();
+            if (path is null)
+            {
+                logger.LogWarning("Sales Module Client Update seed file not found; skipping seed.");
+                return;
+            }
+
+            await using var fs = File.OpenRead(path);
+            await ImportWeeklyUpdateAsync(fs, Path.GetFileName(path), ct);
+            logger.LogInformation("Seeded Sales Module Client Updates from {Path}", path);
             return;
         }
 
+        // Existing Weekly Update rows but customers never wired from Client DB / company tags missing.
+        await WireBundledClientDbIfUnattachedAsync(ct);
+    }
+
+    /// <summary>
+    /// When Client Update activity exists but Sales Team company tags are missing, wire the bundled
+    /// Client DB sheet (and rematch hunters) without wiping Weekly Update rows.
+    /// </summary>
+    public async Task WireBundledClientDbIfUnattachedAsync(CancellationToken ct = default)
+    {
+        await EnsureSchemaAsync(ct);
+        await EnsureSalesCompanySchemaAsync(ct);
+
+        var hasTags = await db.SalesModuleCompanyMembers.AsNoTracking().AnyAsync(ct);
+        var hasUntagged = await db.SalesModuleClientUpdates.AsNoTracking()
+            .AnyAsync(r => r.SalesTeamMemberId == null && r.Hunter != "", ct);
+        if (hasTags && !hasUntagged) return;
+
+        var path = ResolveSeedPath();
+        if (path is null) return;
+
         await using var fs = File.OpenRead(path);
-        await ImportWeeklyUpdateAsync(fs, Path.GetFileName(path), ct);
-        logger.LogInformation("Seeded Sales Module Client Updates from {Path}", path);
+        await using var ms = new MemoryStream();
+        await fs.CopyToAsync(ms, ct);
+        ms.Position = 0;
+        var clientDbRows = ParseClientDbSheet(ms);
+        if (clientDbRows.Count == 0) return;
+
+        await RematchHuntersAsync(ct);
+        var wire = await WireClientDbRowsAsync(clientDbRows, DateTime.UtcNow, ct);
+        await RematchHuntersAsync(ct);
+        var synced = await SyncCompaniesFromClientUpdatesAsync(ct);
+        logger.LogInformation(
+            "Wired bundled Client DB onto existing Client Updates: upserted={Upserted}, companiesSynced={Synced}, unmatchedSales={Unmatched}",
+            wire.RowsUpserted,
+            synced,
+            wire.UnmatchedSales);
     }
 
     string? ResolveSeedPath()
@@ -1019,8 +1429,7 @@ public class SalesModuleClientUpdateService(
             w.Name.Equals(WeeklyUpdateSheetName, StringComparison.OrdinalIgnoreCase)
             || w.Name.Equals("WeeklyUpdate", StringComparison.OrdinalIgnoreCase));
         if (ws is null)
-            throw new InvalidOperationException(
-                $"Workbook must contain a sheet named \"{WeeklyUpdateSheetName}\".");
+            return [];
 
         var used = ws.RangeUsed();
         if (used is null) return [];
@@ -1058,6 +1467,48 @@ public class SalesModuleClientUpdateService(
                 Note = CellText(ws, r, map, "note"),
                 FollowUpReminder = CellDate(ws, r, map, "followup"),
                 Appointment = CellAppointment(ws, r, map),
+            });
+        }
+
+        return rows;
+    }
+
+    static List<ClientDbParseRow> ParseClientDbSheet(Stream stream)
+    {
+        using var wb = new XLWorkbook(stream);
+        var ws = wb.Worksheets.FirstOrDefault(w =>
+            w.Name.Equals(ClientDbSheetName, StringComparison.OrdinalIgnoreCase)
+            || w.Name.Equals("ClientDB", StringComparison.OrdinalIgnoreCase)
+            || w.Name.Equals("Client Database", StringComparison.OrdinalIgnoreCase));
+        if (ws is null) return [];
+
+        var used = ws.RangeUsed();
+        if (used is null) return [];
+
+        var headerRow = 1;
+        var map = MapHeaders(ws, headerRow, used.ColumnCount());
+        if (!map.ContainsKey("hunter") && !map.ContainsKey("company") && !map.ContainsKey("brand"))
+            return [];
+
+        var rows = new List<ClientDbParseRow>();
+        for (var r = headerRow + 1; r <= used.RowCount(); r++)
+        {
+            var brand = CellText(ws, r, map, "brand");
+            var company = CellText(ws, r, map, "company");
+            var sales = CellText(ws, r, map, "hunter");
+            if (string.IsNullOrWhiteSpace(brand)
+                && string.IsNullOrWhiteSpace(company)
+                && string.IsNullOrWhiteSpace(sales))
+                continue;
+
+            rows.Add(new ClientDbParseRow
+            {
+                Brand = brand,
+                Company = company,
+                LocationCount = CellInt(ws, r, map, "locationcount"),
+                Sales = sales,
+                CreatedOn = CellDate(ws, r, map, "datecreated"),
+                ContactPerson = CellText(ws, r, map, "contactperson"),
             });
         }
 
