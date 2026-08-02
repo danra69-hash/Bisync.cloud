@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
-import { api, type Product } from '../../api';
+import { api, type PosModifierGroup, type Product } from '../../api';
 import {
   productMatchesPosMenu,
   resolvePosMenuRrp,
   resolvePosMenuSellPrice,
 } from '../../data/posCatalog';
+import { formatCompulsorySummary } from '../../data/posModifierGroups';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls } from '../layout/formControls';
 import { pageShellClass } from '../layout/pageLayout';
@@ -21,11 +22,6 @@ type Props = {
 
 const filterCls = filterSelectCls;
 
-/** Compulsory modifiers / forced choices — not modeled on Product yet. */
-function formatCompulsoryOption(_product: Product): string {
-  return '—';
-}
-
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.map(v => v.trim()).filter(Boolean))].sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: 'base' }),
@@ -35,6 +31,7 @@ function uniqueSorted(values: string[]): string[] {
 export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const { currency } = useCountryFormatters();
   const [products, setProducts] = useState<Product[]>([]);
+  const [modifierGroups, setModifierGroups] = useState<PosModifierGroup[]>([]);
   const [promoRppByProductId, setPromoRppByProductId] = useState<Map<number, number>>(
     () => new Map(),
   );
@@ -48,13 +45,18 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const loadProducts = useCallback(async () => {
     if (!selectedCompanyId) {
       setProducts([]);
+      setModifierGroups([]);
       setPromoRppByProductId(new Map());
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const rows = await api.products(selectedCompanyId);
+      const [rows, modifiers] = await Promise.all([
+        api.products(selectedCompanyId),
+        api.posModifierGroups(selectedCompanyId).catch(() => [] as PosModifierGroup[]),
+      ]);
+      setModifierGroups(modifiers);
       const menu = rows
         .filter(p => productMatchesPosMenu(p, selectedCompanyId, selectedLocationIds))
         .sort((a, b) => {
@@ -156,10 +158,10 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
           rrp,
           sellPrice,
           onPromo: promoRppByProductId.has(product.id),
-          compulsoryOption: formatCompulsoryOption(product),
+          compulsoryOption: formatCompulsorySummary(modifierGroups, product),
         };
       });
-  }, [products, categoryFilter, groupFilter, appliedSearch, promoRppByProductId]);
+  }, [products, categoryFilter, groupFilter, appliedSearch, promoRppByProductId, modifierGroups]);
 
   const filtersActive =
     categoryFilter !== 'All' || groupFilter !== 'All' || appliedSearch.length > 0;

@@ -51,12 +51,14 @@ import { ComponentSwapModal } from './ComponentSwapModal'
 import { ModifierPickerModal } from './ModifierPickerModal'
 import { VoidCancelModal } from './VoidCancelModal'
 import { PaymentModal } from './PaymentModal'
+import { CompulsoryModifierModal } from './CompulsoryModifierModal'
 import type { TenderType } from '../../cashier/domain/payments'
 import { TENDER_LABEL } from '../../cashier/domain/payments'
+import type { PosModifierGroup } from '../../../../api'
 import {
-  FOOD_MODIFIER_GROUPS,
-  BEVERAGE_MODIFIER_GROUPS,
-} from '../../order/domain/ordering'
+  resolveAttachedModifierGroups,
+  resolveToolbarModifierGroups,
+} from '../../../../data/posModifierGroups'
 import {
   formatPickupLabel,
   type TakeawayPickup,
@@ -153,11 +155,37 @@ export function RegisterPage() {
   const [removalError, setRemovalError] = useState<string | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [modifierGroups, setModifierGroups] = useState<PosModifierGroup[]>([])
+  const [compulsoryFlow, setCompulsoryFlow] = useState<{
+    product: Product
+    groups: PosModifierGroup[]
+    index: number
+    selectedLabels: string[]
+  } | null>(null)
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
   const hydratedTableIdRef = useRef<string | null>(null)
+  const pendingCompulsoryLabelsRef = useRef<string[]>([])
   const { duty } = usePosDutySession()
+
+  useEffect(() => {
+    if (!session?.companyId) {
+      setModifierGroups([])
+      return
+    }
+    let cancelled = false
+    api.posModifierGroups(session.companyId)
+      .then(rows => {
+        if (!cancelled) setModifierGroups(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setModifierGroups([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session?.companyId])
 
   useEffect(() => {
     function openTakeaway() {
@@ -340,9 +368,13 @@ export function RegisterPage() {
       `Enter weight (${uom}) for ${product.name}`,
       existing ? String(existing.quantity) : '',
     )
-    if (raw == null) return
+    if (raw == null) {
+      pendingCompulsoryLabelsRef.current = []
+      return
+    }
     const weight = Number(raw)
     if (!Number.isFinite(weight) || weight <= 0) {
+      pendingCompulsoryLabelsRef.current = []
       flash(`Enter a weight greater than zero (${uom}).`)
       return
     }
@@ -361,7 +393,12 @@ export function RegisterPage() {
       weightUom: uom,
       referenceWeightQty,
     }
-    setLines(prev => addWeightToCart(prev, product.id, weight, detail))
+    const labels = pendingCompulsoryLabelsRef.current
+    pendingCompulsoryLabelsRef.current = []
+    setLines(prev => {
+      const next = addWeightToCart(prev, product.id, weight, detail)
+      return applyCompulsoryNote(next, product.id, undefined, labels)
+    })
     const totalCents = Math.round(product.priceCents * weight)
     flash(
       `${product.name}: ${weight} ${uom} → ${(totalCents / 100).toFixed(2)}`,
@@ -384,7 +421,13 @@ export function RegisterPage() {
       variableMode: 'combination',
       combinationSelections: picks,
     }
-    setLines(prev => addVariableToCart(prev, comboProduct.id, detail, 1))
+    const labels = pendingCompulsoryLabelsRef.current
+    pendingCompulsoryLabelsRef.current = []
+    setLines(prev => {
+      const next = addVariableToCart(prev, comboProduct.id, detail, 1)
+      const added = next[next.length - 1]
+      return applyCompulsoryNote(next, comboProduct.id, added?.lineKey, labels)
+    })
     flash(`${comboProduct.name}: ${picks.map(p => `${p.quantity}× ${p.productName}`).join(', ')}`)
     setComboProduct(null)
   }
@@ -412,12 +455,24 @@ export function RegisterPage() {
           }
         : {}),
     }
+    const labels = pendingCompulsoryLabelsRef.current
+    pendingCompulsoryLabelsRef.current = []
     if (lineKey) {
-      setLines(prev => updateLineSaleDetail(prev, lineKey, product.id, detail))
+      setLines(prev => {
+        const next = updateLineSaleDetail(prev, lineKey, product.id, detail)
+        return applyCompulsoryNote(next, product.id, lineKey, labels)
+      })
     } else if (pendingWeight) {
-      setLines(prev => addWeightToCart(prev, product.id, pendingWeight.weight, detail))
+      setLines(prev => {
+        const next = addWeightToCart(prev, product.id, pendingWeight.weight, detail)
+        return applyCompulsoryNote(next, product.id, undefined, labels)
+      })
     } else {
-      setLines(prev => addVariableToCart(prev, product.id, detail, quantity && quantity > 0 ? quantity : 1))
+      setLines(prev => {
+        const next = addVariableToCart(prev, product.id, detail, quantity && quantity > 0 ? quantity : 1)
+        const added = next[next.length - 1]
+        return applyCompulsoryNote(next, product.id, added?.lineKey, labels)
+      })
     }
     flash(
       `${product.name}: ${selections
@@ -433,8 +488,37 @@ export function RegisterPage() {
     setSwapTarget(null)
   }
 
-  function addProduct(product: Product) {
-    if (!requireDuty()) return
+  function applyCompulsoryNote(
+    lines: CartLine[],
+    productId: string,
+    lineKey: string | undefined,
+    labels: string[],
+  ): CartLine[] {
+    if (labels.length === 0) return lines
+    const line = lineKey
+      ? lines.find(l => l.lineKey === lineKey)
+      : lines.filter(l => l.productId === productId).at(-1)
+    if (!line) return lines
+    const existing = (line.note ?? '').trim()
+    const nextNote = [existing, labels.join(', ')].filter(Boolean).join(' · ')
+    return setLineNote(lines, productId, nextNote, line.lineKey)
+  }
+
+  function continueAddProduct(product: Product, compulsoryLabels: string[] = []) {
+    pendingCompulsoryLabelsRef.current = compulsoryLabels
+    const finishPlainAdd = () => {
+      setLines(prev => {
+        const next = addToCart(prev, product.id)
+        const labels = pendingCompulsoryLabelsRef.current
+        pendingCompulsoryLabelsRef.current = []
+        if (labels.length === 0) return next
+        const added = next[next.length - 1]
+        if (!added || added.productId !== product.id) return next
+        return setLineNote(next, product.id, labels.join(', '), added.lineKey)
+      })
+      setSelectedLineKey(`pid:${product.id}`)
+    }
+
     if (product.pricedByWeight || product.variableMode === 'weight') {
       promptWeightAndAdd(product)
       return
@@ -447,8 +531,44 @@ export function RegisterPage() {
       promptVariableComponentAndAdd(product)
       return
     }
-    setLines(prev => addToCart(prev, product.id))
-    setSelectedLineKey(`pid:${product.id}`)
+    finishPlainAdd()
+  }
+
+  function addProduct(product: Product) {
+    if (!requireDuty()) return
+    const compulsory = resolveAttachedModifierGroups(modifierGroups, product, 'compulsory')
+    if (compulsory.length > 0) {
+      setCompulsoryFlow({
+        product,
+        groups: compulsory,
+        index: 0,
+        selectedLabels: [],
+      })
+      return
+    }
+    continueAddProduct(product)
+  }
+
+  function confirmCompulsoryStep(optionIds: number[]) {
+    if (!compulsoryFlow) return
+    const group = compulsoryFlow.groups[compulsoryFlow.index]
+    if (!group) return
+    const labels = (group.options ?? [])
+      .filter(o => optionIds.includes(o.id))
+      .map(o => o.label)
+    const selectedLabels = [...compulsoryFlow.selectedLabels, ...labels]
+    const nextIndex = compulsoryFlow.index + 1
+    if (nextIndex < compulsoryFlow.groups.length) {
+      setCompulsoryFlow({
+        ...compulsoryFlow,
+        index: nextIndex,
+        selectedLabels,
+      })
+      return
+    }
+    const product = compulsoryFlow.product
+    setCompulsoryFlow(null)
+    continueAddProduct(product, selectedLabels)
   }
 
 
@@ -500,6 +620,17 @@ export function RegisterPage() {
     setSelectedLineKey(lineSelectionKey(target.line))
     setModifierTarget({ kind: 'beverage', ...target })
   }
+
+  const foodModifierPickerGroups = resolveToolbarModifierGroups(
+    modifierGroups,
+    'food',
+    modifierTarget?.kind === 'food' ? modifierTarget.product : null,
+  )
+  const beverageModifierPickerGroups = resolveToolbarModifierGroups(
+    modifierGroups,
+    'beverage',
+    modifierTarget?.kind === 'beverage' ? modifierTarget.product : null,
+  )
 
   function openComponentSwap() {
     if (!requireDuty()) return
@@ -1122,11 +1253,26 @@ export function RegisterPage() {
         <ModifierPickerModal
           title={modifierTarget.kind === 'food' ? 'Food Modifier' : 'Beverage Modifier'}
           productName={modifierTarget.product.name}
-          groups={modifierTarget.kind === 'food' ? FOOD_MODIFIER_GROUPS : BEVERAGE_MODIFIER_GROUPS}
+          groups={
+            modifierTarget.kind === 'food'
+              ? foodModifierPickerGroups
+              : beverageModifierPickerGroups
+          }
           onCancel={() => setModifierTarget(null)}
           onConfirm={applyModifiers}
         />
       )}
+
+      {compulsoryFlow && compulsoryFlow.groups[compulsoryFlow.index] ? (
+        <CompulsoryModifierModal
+          productName={compulsoryFlow.product.name}
+          group={compulsoryFlow.groups[compulsoryFlow.index]}
+          stepIndex={compulsoryFlow.index}
+          stepTotal={compulsoryFlow.groups.length}
+          onCancel={() => setCompulsoryFlow(null)}
+          onConfirm={confirmCompulsoryStep}
+        />
+      ) : null}
 
       {removalTarget && (
         <VoidCancelModal

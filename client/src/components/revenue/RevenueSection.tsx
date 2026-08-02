@@ -30,6 +30,7 @@ import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
 import { PosPromotionSchedulerPage } from './PosPromotionSchedulerPage';
 import { PosDeviceManagementPage } from './PosDeviceManagementPage';
+import { PosModifierGroupPage } from './PosModifierGroupPage';
 import { ProductAuditPage } from './ProductAuditPage';
 import { RevMgmtLandingPage } from './RevMgmtLandingPage';
 import { RevMgmtPageHeader } from './RevMgmtPageHeader';
@@ -339,6 +340,11 @@ export function RevenueSection({
         <POSBar selectedItem={posItem} onSelectItem={setPosItem} />
         {posItem === 'POS Menu' ? (
           <PosMenuPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'POS Modifier Group' ? (
+          <PosModifierGroupPage
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}
           />

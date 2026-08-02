@@ -172,7 +172,6 @@ export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
 
 /** POS bar items that still route to ModuleContent placeholders. */
 export const COMING_SOON_POS_ITEMS = new Set<string>([
-  'POS Modifier Group',
   'E-Invoice',
 ]);
 
