@@ -50,6 +50,9 @@ import { CombinationPickerModal } from './CombinationPickerModal'
 import { ComponentSwapModal } from './ComponentSwapModal'
 import { ModifierPickerModal } from './ModifierPickerModal'
 import { VoidCancelModal } from './VoidCancelModal'
+import { PaymentModal } from './PaymentModal'
+import type { TenderType } from '../../cashier/domain/payments'
+import { TENDER_LABEL } from '../../cashier/domain/payments'
 import {
   FOOD_MODIFIER_GROUPS,
   BEVERAGE_MODIFIER_GROUPS,
@@ -148,6 +151,8 @@ export function RegisterPage() {
   } | null>(null)
   const [removalBusy, setRemovalBusy] = useState(false)
   const [removalError, setRemovalError] = useState<string | null>(null)
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
   const [cover, setCover] = useState(2)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [charging, setCharging] = useState(false)
@@ -713,24 +718,42 @@ export function RegisterPage() {
     }
   }
 
-  /** Discard the current check (no kitchen fire) and return to the floor home. */
-  function handleCancelOrder() {
+  /**
+   * Discard unsaved register edits and leave.
+   * Never cancels/voids a bill or deletes a persisted open check that has items.
+   * Empty newly-opened tables (no saved order) are released so the seat returns to free.
+   */
+  function handleCancelEdits() {
     const label = activeTableSession?.tableLabel
-    if (activeTableSession) {
+    const saved = activeTableSession
+      ? loadOpenCheckForTable(activeTableSession.tableId)
+      : null
+    const hasSavedOrder = Boolean(saved && saved.lines.length > 0)
+
+    if (activeTableSession && !hasSavedOrder) {
       removeOpenCheckForTable(activeTableSession.tableId)
       releaseFloorTable(activeTableSession.tableId)
       if (session?.companyId && session.locationId) {
         void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
       }
     }
+
     setLines([])
     setCharges(EMPTY_CHARGES)
     setFiredQtyByLine({})
     setFiredAtByLine({})
+    setPaymentOpen(false)
+    setPaymentError(null)
     clearCustomerDisplaySnapshot()
     clearActiveRegisterSession()
     setActiveTableSession(null)
-    flash(label ? `Order cancelled · ${label} released` : 'Order cancelled')
+    flash(
+      hasSavedOrder
+        ? `Edits discarded · ${label ?? 'order'} unchanged`
+        : label
+          ? `Left ${label} without changes`
+          : 'Left without changes',
+    )
     goHome()
   }
 
@@ -803,24 +826,48 @@ export function RegisterPage() {
     goHome()
   }
 
-  async function chargePayment() {
+  function openPayment() {
     if (!requireDuty()) return
+    if (lines.length === 0) {
+      flash('Add items before taking payment.')
+      return
+    }
     if (!session) {
-      flash('Opening payment…')
-      setLines([])
-      setCharges(EMPTY_CHARGES)
-      clearCustomerDisplaySnapshot()
+      flash('POS session is not ready. Re-open the register from the floor.')
+      return
+    }
+    if (charging) return
+    setPaymentError(null)
+    setPaymentOpen(true)
+  }
+
+  async function confirmPayment(payload: {
+    tender: TenderType
+    cashReceivedCents?: number
+  }) {
+    if (!session) {
+      setPaymentError('POS session is not ready.')
       return
     }
     if (lines.length === 0 || charging) return
     setCharging(true)
+    setPaymentError(null)
     try {
+      const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
+      const grossCents = cartSubtotal(lines, products)
+      const grandCents = cartGrandTotal(lines, products, charges)
+      const locationId = session.locationId
+      if (!locationId) {
+        throw new Error('No location selected for this POS session.')
+      }
+
+      let recordedSales = 0
       for (const line of lines) {
         const productId = Number(line.productId)
         if (!Number.isFinite(productId) || productId <= 0) continue
         const detail = line.saleDetail
         await api.recordProductSale(productId, {
-          locationExternalIds: [session.locationId],
+          locationExternalIds: [locationId],
           quantitySold: line.quantity,
           salesChannel: 'pos',
           variableDetail: detail
@@ -834,25 +881,31 @@ export function RegisterPage() {
               }
             : undefined,
         })
+        recordedSales += 1
       }
-      const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
-      const grossCents = cartSubtotal(lines, products)
-      const grandCents = cartGrandTotal(lines, products, charges)
+      if (recordedSales === 0) {
+        throw new Error('No sellable products on this check. Check product IDs / catalog.')
+      }
+
+      const methodLabel = TENDER_LABEL[payload.tender] || payload.tender
       try {
         await api.posRecordClosedCheck({
           companyId: session.companyId,
-          locationExternalId: session.locationId,
-          covers: 1,
+          locationExternalId: locationId,
+          checkNumber,
+          checkLabel: activeTableSession?.tableLabel || 'POS Register',
+          covers: cover > 0 ? cover : 1,
           discountCents: charges.discountCents,
           taxCents: charges.taxRegularCents + charges.taxAlcoholCents,
           grossCents,
-          paymentMethod: 'cash',
+          paymentMethod: payload.tender,
           paymentAmountCents: grandCents,
-          checkLabel: 'POS Register',
+          paymentPurpose: methodLabel,
         })
       } catch {
         /* inventory sale already recorded; EOD row is best-effort */
       }
+
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       if (activeTableSession) {
         removeOpenCheckForTable(activeTableSession.tableId)
@@ -864,13 +917,18 @@ export function RegisterPage() {
       setLines([])
       setCharges(EMPTY_CHARGES)
       setFiredQtyByLine({})
+      setFiredAtByLine({})
+      setPaymentOpen(false)
       clearCustomerDisplaySnapshot()
       clearActiveRegisterSession()
       setActiveTableSession(null)
-      flash(`POS sale recorded · ${count} item${count === 1 ? '' : 's'}`)
+      flash(`Paid via ${methodLabel} · ${count} item${count === 1 ? '' : 's'}`)
       session.refreshCatalog()
+      goHome()
     } catch (e) {
-      flash(e instanceof Error ? e.message : 'Payment failed')
+      const message = e instanceof Error ? e.message : 'Payment failed'
+      setPaymentError(message)
+      flash(message)
     } finally {
       setCharging(false)
     }
@@ -1014,10 +1072,11 @@ export function RegisterPage() {
           if (dining === 'takeaway') setPickupModalOpen(true)
         }}
         activeTableLabel={activeTableSession?.tableLabel ?? null}
+        paymentBusy={charging}
         onAction={action => {
           if (!requireDuty()) return
           if (action === 'cancel') {
-            handleCancelOrder()
+            handleCancelEdits()
             return
           }
           if (action === 'save') {
@@ -1025,7 +1084,7 @@ export function RegisterPage() {
             return
           }
           if (action === 'payment') {
-            void chargePayment()
+            openPayment()
             return
           }
           flash('Printing…')
@@ -1083,6 +1142,29 @@ export function RegisterPage() {
             setRemovalError(null)
           }}
           onConfirm={(payload) => { void confirmRemoval(payload) }}
+        />
+      )}
+
+      {paymentOpen && (
+        <PaymentModal
+          checkNumber={checkNumber}
+          tableLabel={
+            activeTableSession?.tableLabel
+            || (table ? `Table ${table}` : 'Takeaway')
+          }
+          amountCents={cartGrandTotal(
+            lines,
+            liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS,
+            charges,
+          )}
+          busy={charging}
+          error={paymentError}
+          onCancel={() => {
+            if (charging) return
+            setPaymentOpen(false)
+            setPaymentError(null)
+          }}
+          onConfirm={(payload) => { void confirmPayment(payload) }}
         />
       )}
 
