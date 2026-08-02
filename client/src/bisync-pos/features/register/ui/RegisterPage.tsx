@@ -56,7 +56,7 @@ import type { TenderType } from '../../cashier/domain/payments'
 import { TENDER_LABEL } from '../../cashier/domain/payments'
 import type { PosModifierGroup } from '../../../../api'
 import {
-  resolveAttachedModifierGroups,
+  resolveRequiredModifierGroups,
   resolveToolbarModifierGroups,
 } from '../../../../data/posModifierGroups'
 import {
@@ -536,7 +536,7 @@ export function RegisterPage() {
 
   function addProduct(product: Product) {
     if (!requireDuty()) return
-    const compulsory = resolveAttachedModifierGroups(modifierGroups, product, 'compulsory')
+    const compulsory = resolveRequiredModifierGroups(modifierGroups, product)
     if (compulsory.length > 0) {
       setCompulsoryFlow({
         product,

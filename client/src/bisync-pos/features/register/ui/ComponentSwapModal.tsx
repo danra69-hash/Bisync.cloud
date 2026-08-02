@@ -17,7 +17,8 @@ function initialChoices(
   initial?: PosSaleReplacementSelection[],
 ): Record<string, number> {
   const map: Record<string, number> = {}
-  for (const slot of slots) {
+  for (const slot of slots ?? []) {
+    if (!slot?.baseComponentId) continue
     map[slot.baseComponentId] = -1
     const prior = initial?.find(s => s.baseComponentId === slot.baseComponentId)
     if (!prior) continue
@@ -25,7 +26,7 @@ function initialChoices(
       map[slot.baseComponentId] = -1
       continue
     }
-    const idx = slot.alternatives.findIndex(a => a.componentId === prior.chosenComponentId)
+    const idx = (slot.alternatives ?? []).findIndex(a => a.componentId === prior.chosenComponentId)
     map[slot.baseComponentId] = idx >= 0 ? idx : -1
   }
   return map
@@ -97,7 +98,7 @@ export function ComponentSwapModal({
         </div>
 
         <div className="combo-picker-modal__body" style={{ overflowY: 'auto', maxHeight: '55vh' }}>
-          {slots.map(slot => {
+          {(slots ?? []).filter(s => s?.baseComponentId).map(slot => {
             const selected = choices[slot.baseComponentId] ?? -1
             return (
               <div key={slot.baseComponentId} style={{ marginBottom: 16 }}>
@@ -129,7 +130,7 @@ export function ComponentSwapModal({
                       <span style={{ color: 'var(--color-ink-muted, #667085)' }}> · original · no Addon RRP</span>
                     </span>
                   </label>
-                  {slot.alternatives.map((alt, idx) => (
+                  {(slot.alternatives ?? []).map((alt, idx) => (
                     <label
                       key={alt.componentId}
                       style={{

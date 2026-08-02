@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { api, type PosTestTapStatus } from '../../api'
 import { configLocationToDropdown } from '../../utils/orgFilters'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
+import { PosEmbedErrorBoundary } from '../shared/PosEmbedErrorBoundary'
 import './PosTestTapPage.css'
 
 const BisyncPosEmbed = lazy(() =>
@@ -136,20 +137,22 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
       </div>
 
       <div className="pos-test-tap__frame">
-        <Suspense
-          fallback={
-            <div className="pos-test-tap__loading">
-              <MillstoneLoader label="Loading Bisync POS…" />
-            </div>
-          }
-        >
-          <BisyncPosEmbed
-            companyId={selectedCompanyId}
-            locationId={activeLocationId}
-            locations={locationOptions}
-            onLocationChange={setActiveLocationId}
-          />
-        </Suspense>
+        <PosEmbedErrorBoundary title="POS Test crashed">
+          <Suspense
+            fallback={
+              <div className="pos-test-tap__loading">
+                <MillstoneLoader label="Loading Bisync POS…" />
+              </div>
+            }
+          >
+            <BisyncPosEmbed
+              companyId={selectedCompanyId}
+              locationId={activeLocationId}
+              locations={locationOptions}
+              onLocationChange={setActiveLocationId}
+            />
+          </Suspense>
+        </PosEmbedErrorBoundary>
       </div>
     </div>
   )

@@ -22,10 +22,10 @@ export function CompulsoryModifierModal({
 }: Props) {
   const options = useMemo(
     () =>
-      (group.options ?? [])
-        .filter(o => o.active !== false)
-        .sort((a, b) => a.sequence - b.sequence),
-    [group.options],
+      (group?.options ?? [])
+        .filter(o => o && o.active !== false)
+        .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)),
+    [group?.options],
   )
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const minSelect = Math.max(1, group.minSelect || 1)

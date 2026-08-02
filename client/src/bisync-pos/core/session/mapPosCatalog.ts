@@ -78,10 +78,20 @@ export function mapApiProductsToPosCatalog(
 ): PosProduct[] {
   const rows: PosProduct[] = []
   for (const product of apiProducts) {
+    const vcConfig = product.isVariableComponent
+      ? parseVariableComponentOptionsJson(product.variableComponentOptionsJson)
+      : null
+    const variableComponentSlots = vcConfig && hasConfiguredVariableComponentSlots(vcConfig)
+      ? vcConfig.slots.filter(s => s.alternatives.length > 0)
+      : undefined
+    const isVariableComponent = Boolean(variableComponentSlots?.length)
+
     const baseRrp = resolvePosMenuRrp(product, catalogProducts)
-    if (baseRrp <= 0) continue
+    // Component SWAP templates may be RRP 0 in RMS; still expose them for POS SWAP.
+    if (baseRrp <= 0 && !isVariableComponent) continue
     const sellPrice = resolvePosMenuSellPrice(product, catalogProducts, promoRppByProductId)
-    if (!(sellPrice >= 0)) continue
+    if (!(sellPrice >= 0) && !isVariableComponent) continue
+    const safeSell = sellPrice >= 0 ? sellPrice : 0
     const group = normalizePosGroupLabel(product.group || product.category || 'General')
     const department = mapDepartment(product.category || '', group)
 
@@ -91,7 +101,7 @@ export function mapApiProductsToPosCatalog(
       ? parseVariableOptionsJson(product.variableOptionsJson, mode)
       : null
 
-    let priceCents = Math.round(sellPrice * 100)
+    let priceCents = Math.round(safeSell * 100)
     let pricedByWeight = false
     let weightUom: string | undefined
     let weightQty: number | undefined
@@ -101,7 +111,7 @@ export function mapApiProductsToPosCatalog(
         ? product.variableChoiceQty
         : cfg.choiceQty
       if (!(qty > 0) || !cfg.weightUom) continue
-      const unitPrice = calcWeightUnitRrp(sellPrice, qty)
+      const unitPrice = calcWeightUnitRrp(safeSell, qty)
       if (!(unitPrice > 0)) continue
       pricedByWeight = true
       weightUom = cfg.weightUom
@@ -109,13 +119,6 @@ export function mapApiProductsToPosCatalog(
       // Cart uses quantity = entered weight; price is per 1 weight UOM.
       priceCents = Math.round(unitPrice * 100)
     }
-
-    const vcConfig = product.isVariableComponent
-      ? parseVariableComponentOptionsJson(product.variableComponentOptionsJson)
-      : null
-    const variableComponentSlots = vcConfig && hasConfiguredVariableComponentSlots(vcConfig)
-      ? vcConfig.slots.filter(s => s.alternatives.length > 0)
-      : undefined
 
     rows.push({
       id: String(product.id),
@@ -136,7 +139,7 @@ export function mapApiProductsToPosCatalog(
           : cfg?.choiceQty)
         : cfg?.choiceQty,
       combinationOptions: mode === 'combination' ? cfg?.combinationOptions : undefined,
-      isVariableComponent: Boolean(variableComponentSlots?.length),
+      isVariableComponent,
       variableComponentSlots,
     })
   }

@@ -3,6 +3,7 @@ import { api, type Company, type LocationConfig } from '../api';
 import { parseCompanyModules } from '../data/companyModules';
 import { configLocationToDropdown } from '../utils/orgFilters';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
+import { PosEmbedErrorBoundary } from '../components/shared/PosEmbedErrorBoundary';
 import './PosAppPage.css';
 
 const BisyncPosEmbed = lazy(() =>
@@ -228,21 +229,23 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
       ) : null}
 
       <div className="pos-standalone-frame">
-        <Suspense
-          fallback={
-            <div className="pos-standalone-loading">
-              <MillstoneLoader label="Loading Bisync POS…" />
-            </div>
-          }
-        >
-          <BisyncPosEmbed
-            companyId={companyId}
-            locationId={locationId}
-            locations={locationOptions}
-            onLocationChange={setLocationId}
-            initialEntry={initialEntry}
-          />
-        </Suspense>
+        <PosEmbedErrorBoundary title={`${entryLabel} crashed`}>
+          <Suspense
+            fallback={
+              <div className="pos-standalone-loading">
+                <MillstoneLoader label="Loading Bisync POS…" />
+              </div>
+            }
+          >
+            <BisyncPosEmbed
+              companyId={companyId}
+              locationId={locationId}
+              locations={locationOptions}
+              onLocationChange={setLocationId}
+              initialEntry={initialEntry}
+            />
+          </Suspense>
+        </PosEmbedErrorBoundary>
       </div>
     </div>
   );

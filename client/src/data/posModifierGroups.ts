@@ -71,23 +71,48 @@ export function resolveAttachedModifierGroups(
     .sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name))
 }
 
+/**
+ * Groups that must be answered when a product is added on register:
+ * Compulsory kind, plus any attached Food/Beverage group marked required
+ * (e.g. Glass for Tower).
+ */
+export function resolveRequiredModifierGroups(
+  all: PosModifierGroup[],
+  product: { id: string | number; group?: string | null },
+): PosModifierGroup[] {
+  const byId = new Map<number, PosModifierGroup>()
+  for (const g of resolveAttachedModifierGroups(all, product, 'compulsory')) {
+    byId.set(g.id, g)
+  }
+  for (const kind of ['food', 'beverage'] as const) {
+    for (const g of resolveAttachedModifierGroups(all, product, kind)) {
+      if (g.required) byId.set(g.id, g)
+    }
+  }
+  return [...byId.values()].sort(
+    (a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name),
+  )
+}
+
 export function toPickerGroups(groups: PosModifierGroup[]): ModifierGroup[] {
   return groups.map(g => ({
     id: `pmg-${g.id}`,
     name: g.name,
     required: g.required || g.kind === 'compulsory',
     options: (g.options ?? [])
-      .filter(o => o.active !== false)
-      .sort((a, b) => a.sequence - b.sequence)
-      .map(toPickerOption),
+      .filter(o => o && o.active !== false)
+      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+      .map(toPickerOption)
+      .filter(o => o.label),
   }))
 }
 
 function toPickerOption(o: PosModifierOption): ModifierOption {
+  const cents = Number(o.extraChargeCents) || 0
   return {
     id: `pmo-${o.id}`,
-    label: o.label,
-    priceCents: o.extraChargeCents > 0 ? o.extraChargeCents : undefined,
+    label: (o.label || '').trim(),
+    priceCents: cents > 0 ? cents : undefined,
   }
 }
 
