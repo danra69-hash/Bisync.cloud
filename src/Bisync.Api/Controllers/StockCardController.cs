@@ -112,6 +112,10 @@ public class StockCardController(StockCardService stockCardService) : Controller
                 isShortage = e.IsShortage,
                 isCogsBackfilled = e.IsCogsBackfilled,
                 isNegativeBalance = e.IsNegativeBalance,
+                inboundSequenceNo = e.InboundSequenceNo,
+                originalQuantity = e.OriginalQuantity,
+                depletedQuantity = e.DepletedQuantity,
+                sourceInboundSequenceNo = e.SourceInboundSequenceNo,
             }),
         });
     }

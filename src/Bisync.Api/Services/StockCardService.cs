@@ -678,6 +678,9 @@ public class StockCardService(
             AverageCogsAfter = balanceForwardAvgCogs,
             FifoPolicy = "FIFO",
             IsNegativeBalance = balanceForward < 0,
+            InboundSequenceNo = balanceForward > 0 ? 0 : 0,
+            OriginalQuantity = Math.Abs(balanceForward),
+            DepletedQuantity = 0,
         });
 
         foreach (var entry in inPeriod)
@@ -808,6 +811,10 @@ public class StockCardService(
             IsShortage = enriched.IsShortage,
             IsCogsBackfilled = enriched.IsCogsBackfilled,
             IsNegativeBalance = enriched.IsNegativeBalance,
+            InboundSequenceNo = enriched.InboundSequenceNo,
+            OriginalQuantity = enriched.OriginalQuantity > 0 ? enriched.OriginalQuantity : quantity,
+            DepletedQuantity = enriched.DepletedQuantity,
+            SourceInboundSequenceNo = enriched.SourceInboundSequenceNo,
         };
     }
 
@@ -1809,6 +1816,10 @@ public sealed record StockCardLedgerEntry
     public bool IsShortage { get; init; }
     public bool IsCogsBackfilled { get; init; }
     public bool IsNegativeBalance { get; init; }
+    public int InboundSequenceNo { get; init; }
+    public decimal OriginalQuantity { get; init; }
+    public decimal DepletedQuantity { get; init; }
+    public int SourceInboundSequenceNo { get; init; }
 }
 
 public sealed record StockCardOnHandLayer
