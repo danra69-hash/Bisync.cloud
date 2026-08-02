@@ -1173,6 +1173,88 @@ export interface PosDevice {
   updatedAt?: string;
 }
 
+export type PosModifierKind = 'compulsory' | 'food' | 'beverage' | 'component-swap';
+
+export interface PosModifierOption {
+  id: number;
+  label: string;
+  sequence: number;
+  extraChargeCents: number;
+  linkedProductId?: number | null;
+  linkedProductName?: string;
+  linkedComponentId?: string;
+  linkedComponentName?: string;
+  active: boolean;
+}
+
+export interface PosModifierAttachment {
+  id: number;
+  targetType: 'product-group' | 'product' | string;
+  targetProductGroup: string;
+  targetProductId?: number | null;
+  targetProductName?: string;
+}
+
+export interface PosModifierGroup {
+  id: number;
+  companyId: number;
+  kind: PosModifierKind | string;
+  name: string;
+  sequence: number;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  affectsStock: boolean;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  options: PosModifierOption[];
+  attachments: PosModifierAttachment[];
+}
+
+export interface UpsertPosModifierGroupPayload {
+  companyId: number;
+  kind: PosModifierKind | string;
+  name: string;
+  sequence?: number;
+  required?: boolean;
+  minSelect?: number;
+  maxSelect?: number;
+  affectsStock?: boolean;
+  active?: boolean;
+  options?: Array<{
+    label: string;
+    sequence?: number;
+    extraChargeCents?: number;
+    linkedProductId?: number | null;
+    linkedProductName?: string;
+    linkedComponentId?: string;
+    linkedComponentName?: string;
+    active?: boolean;
+  }>;
+  attachments?: Array<{
+    targetType: 'product-group' | 'product' | string;
+    targetProductGroup?: string;
+    targetProductId?: number | null;
+    targetProductName?: string;
+  }>;
+}
+
+export interface PosModifierStockCatalogProduct {
+  id: number;
+  productId: string;
+  name: string;
+  group: string;
+  rrp: number;
+  isVariableComponent: boolean;
+  variableComponentOptionsJson?: string;
+}
+
+export interface PosModifierStockCatalog {
+  productGroup: string;
+  products: PosModifierStockCatalogProduct[];
+}
+
 export interface PosPrinterSdk {
   id: number;
   sdkCode: string;
@@ -3429,6 +3511,30 @@ export const api = {
     fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}`, 'PUT', data),
   setPosDeviceActive: (id: number, active: boolean) =>
     fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}/active`, 'PATCH', { active }),
+  posModifierGroups: (companyId: number, opts?: { kind?: string; includeInactive?: boolean }) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.kind) params.set('kind', opts.kind);
+    if (opts?.includeInactive) params.set('includeInactive', 'true');
+    return fetchJson<PosModifierGroup[]>(`/api/pos-modifier-groups?${params}`);
+  },
+  posModifierGroup: (id: number) =>
+    fetchJson<PosModifierGroup>(`/api/pos-modifier-groups/${id}`),
+  posModifierStockCatalog: (companyId: number, kind: string) => {
+    const params = new URLSearchParams({ companyId: String(companyId), kind });
+    return fetchJson<PosModifierStockCatalog>(`/api/pos-modifier-groups/stock-catalog?${params}`);
+  },
+  createPosModifierGroup: (data: UpsertPosModifierGroupPayload) =>
+    fetchJsonWithMethod<PosModifierGroup>('/api/pos-modifier-groups', 'POST', data),
+  updatePosModifierGroup: (id: number, data: UpsertPosModifierGroupPayload) =>
+    fetchJsonWithMethod<PosModifierGroup>(`/api/pos-modifier-groups/${id}`, 'PUT', data),
+  setPosModifierGroupActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosModifierGroup>(`/api/pos-modifier-groups/${id}/active`, 'PATCH', { active }),
+  deletePosModifierGroup: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-modifier-groups/${id}`, 'DELETE'),
+  inheritPosComponentSwapModifiers: (companyId: number) =>
+    fetchJsonWithMethod<PosModifierGroup>('/api/pos-modifier-groups/inherit-component-swap', 'POST', {
+      companyId,
+    }),
   posPrinterSdks: () => fetchJson<PosPrinterSdk[]>('/api/pos-devices/printer-sdks'),
   posDeviceNetworkSuggestions: (deviceType?: string) => {
     const params = new URLSearchParams();

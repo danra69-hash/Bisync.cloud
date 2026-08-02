@@ -76,6 +76,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();
     public DbSet<PosPromotionProduct> PosPromotionProducts => Set<PosPromotionProduct>();
     public DbSet<PosDevice> PosDevices => Set<PosDevice>();
+    public DbSet<PosModifierGroup> PosModifierGroups => Set<PosModifierGroup>();
+    public DbSet<PosModifierOption> PosModifierOptions => Set<PosModifierOption>();
+    public DbSet<PosModifierAttachment> PosModifierAttachments => Set<PosModifierAttachment>();
     public DbSet<PosFloorPlan> PosFloorPlans => Set<PosFloorPlan>();
     public DbSet<PosWaitlistEntry> PosWaitlistEntries => Set<PosWaitlistEntry>();
     public DbSet<PosQrOrder> PosQrOrders => Set<PosQrOrder>();
@@ -574,6 +577,36 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.PrinterModel).HasMaxLength(120);
             e.Property(x => x.PrintAlignment).HasMaxLength(20);
             e.Property(x => x.CreatedBy).HasMaxLength(256);
+        });
+        modelBuilder.Entity<PosModifierGroup>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Kind, x.Active });
+            e.Property(x => x.Kind).HasMaxLength(40);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.HasMany(x => x.Options)
+                .WithOne(x => x.PosModifierGroup)
+                .HasForeignKey(x => x.PosModifierGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Attachments)
+                .WithOne(x => x.PosModifierGroup)
+                .HasForeignKey(x => x.PosModifierGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PosModifierOption>(e =>
+        {
+            e.HasIndex(x => x.PosModifierGroupId);
+            e.Property(x => x.Label).HasMaxLength(200);
+            e.Property(x => x.LinkedProductName).HasMaxLength(200);
+            e.Property(x => x.LinkedComponentId).HasMaxLength(80);
+            e.Property(x => x.LinkedComponentName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosModifierAttachment>(e =>
+        {
+            e.HasIndex(x => x.PosModifierGroupId);
+            e.HasIndex(x => x.TargetProductId);
+            e.Property(x => x.TargetType).HasMaxLength(40);
+            e.Property(x => x.TargetProductGroup).HasMaxLength(120);
+            e.Property(x => x.TargetProductName).HasMaxLength(200);
         });
         modelBuilder.Entity<PosPrinterSdk>(e =>
         {
