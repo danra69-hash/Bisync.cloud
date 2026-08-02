@@ -96,8 +96,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [draft, setDraft] = useState(emptyNewReservation)
   const [flash, setFlash] = useState<string | null>(null)
-  const { duty, setDuty, refreshDuty } = usePosDutySession()
-  const locked = !duty
+  const { setDuty, refreshDuty, orderingLocked: locked } = usePosDutySession()
   const [dining, setDining] = useState('')
   const [pinPadOpen, setPinPadOpen] = useState(false)
   const [pin, setPin] = useState('')

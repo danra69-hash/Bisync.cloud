@@ -3,6 +3,7 @@
  * Run via: npx vite-node --config vite.config.ts scripts/sim-pos-functions.mts
  */
 import assert from 'node:assert/strict'
+import { isPosDutyCheckInExempt } from '../src/bisync-pos/core/session/posDutyCheckInExempt'
 import { mapApiProductsToPosCatalog } from '../src/bisync-pos/core/session/mapPosCatalog'
 import {
   resolveRequiredModifierGroups,
@@ -130,5 +131,11 @@ const summary = summarizeSaleDetail({
 })
 assert.match(summary, /Garlic Mashed Potato/)
 assert.match(summary, /FRENCH FRIES/)
+
+// 6) Platform account exemption from Team QR Home lock
+assert.equal(isPosDutyCheckInExempt('dra@cubevalue.com'), true)
+assert.equal(isPosDutyCheckInExempt('DRA@CubeValue.com'), true)
+assert.equal(isPosDutyCheckInExempt('ms@cubevalue.com'), false)
+assert.equal(isPosDutyCheckInExempt(null), false)
 
 console.log('sim-pos-functions: ok')

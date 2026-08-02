@@ -167,7 +167,7 @@ export function RegisterPage() {
   const [charging, setCharging] = useState(false)
   const hydratedTableIdRef = useRef<string | null>(null)
   const pendingCompulsoryLabelsRef = useRef<string[]>([])
-  const { duty } = usePosDutySession()
+  const { duty, orderingLocked } = usePosDutySession()
 
   useEffect(() => {
     if (!session?.companyId) {
@@ -257,7 +257,7 @@ export function RegisterPage() {
 
   const groups = groupsByDepartment[department] ?? []
   const groupColumns = Math.max(1, Math.ceil(groups.length / 2))
-  const onDuty = Boolean(duty)
+  const onDuty = !orderingLocked
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
 
