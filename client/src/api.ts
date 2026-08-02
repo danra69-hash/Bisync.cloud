@@ -779,9 +779,20 @@ export interface SalesModuleClientUpdate {
 
 export interface SalesModuleClientUpdateImportResult {
   imported: number;
+  clientDbRows?: number;
+  clientDbWired?: number;
+  companiesCreated?: number;
+  unmatchedSales?: number;
+  companiesSynced?: number;
   sheet: string;
   fileName: string;
   importedAt?: string;
+  hunterRematch?: {
+    matched?: number;
+    unmatched?: number;
+    changed?: number;
+    total?: number;
+  };
   messages: string[];
 }
 
