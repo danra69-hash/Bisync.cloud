@@ -50,6 +50,12 @@ function Step([string]$Number, [string]$Message) {
 $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 
+Step "0" "Pre-deploy simulation (related functions must pass)"
+node scripts/run-deploy-simulation.mjs --phase=pre --base=origin/master
+if ($LASTEXITCODE -ne 0) {
+    throw "Pre-deploy simulation failed. Fix suites under scripts/deploy-simulation/ before deploying."
+}
+
 Step "1" "Checking Google Cloud login"
 $Auth = & $Gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>$null
 if (-not $Auth) {
@@ -172,8 +178,15 @@ $DevConsoleEnabled = if ($DevConsolePath) { "true" } else { "false" }
     --set-env-vars "DEV_CONSOLE_ENABLED=$DevConsoleEnabled"
 if ($LASTEXITCODE -ne 0) { throw "Cloud Run deploy failed." }
 
-Step "9" "Deployment complete"
+Step "9" "Post-deploy simulation (related functions on live URL)"
 $Url = & $Gcloud run services describe $ServiceName --region $Region --format="value(status.url)"
+$env:DEPLOY_SIM_BASE_URL = "$Url"
+node scripts/run-deploy-simulation.mjs --phase=post --base=origin/master
+if ($LASTEXITCODE -ne 0) {
+    throw "Post-deploy simulation failed against $Url"
+}
+
+Step "10" "Deployment complete"
 Write-Host ""
 Write-Host "  Live URL:  $Url" -ForegroundColor Green
 Write-Host "  Health:    $Url/api/health" -ForegroundColor Green
@@ -186,4 +199,5 @@ Write-Host "Notes:" -ForegroundColor Yellow
 Write-Host "  - Backed by Cloud SQL PostgreSQL instance '$SqlInstance' ($InstanceConnectionName)."
 Write-Host "  - DB password is stored in Secret Manager secret 'bisync-db-password'."
 Write-Host "  - Redeploy: .\scripts\deploy-gcp.ps1 -ProjectId $ProjectId [-DevConsolePath '/dev/ops-secret']"
+Write-Host "  - Deploy is gated by scripts/run-deploy-simulation.mjs (pre + post)."
 Write-Host ""
