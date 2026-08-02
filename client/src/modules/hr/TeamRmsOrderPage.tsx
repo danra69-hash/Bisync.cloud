@@ -5,8 +5,10 @@ import { ingredientToRow } from '../../components/revenue/smartIngredientShared'
 import {
   buildCreateOrderLines,
   formatRm,
+  groupCartByVendor,
   resolveVendorsForSelectedLocations,
   type CreateOrderLine,
+  type OrderCartItem,
 } from '../../data/createOrder';
 import { refreshVendorProductCatalog } from '../../data/vendorProductCatalog';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
@@ -16,11 +18,81 @@ type Props = {
 };
 
 type CartQty = Record<string, number>;
+type CartPrice = Record<string, number>;
 
 function formatInv(value: number | null | undefined, uom: string): string {
   if (value == null || !Number.isFinite(value)) return `— ${uom}`.trim();
   const n = Math.round(value * 1000) / 1000;
   return `${n} ${uom}`.trim();
+}
+
+function toDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function defaultDeliveryDateValue(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 3);
+  return toDateInputValue(date);
+}
+
+function buildCartItemsFromEntries(
+  entries: { line: CreateOrderLine; qty: number; price: number }[],
+): OrderCartItem[] {
+  return entries.flatMap(({ line, qty, price }) => {
+    if (qty <= 0) return [];
+    const productLine: OrderCartItem = {
+      lineKey: line.key,
+      componentId: line.component.componentId,
+      componentName: line.component.name,
+      componentUom: line.component.inventoryUOM,
+      vendorProductId: line.vendorProduct.id,
+      vendorExternalId: line.vendorProduct.vendorExternalId,
+      vendorName: line.vendorProduct.vendorName,
+      productName: line.vendorProduct.productName,
+      deliveryUnitLabel: line.deliveryUnitLabel,
+      deliveryPrice: price,
+      quantity: qty,
+      lineTotal: qty * price,
+    };
+
+    const vp = line.vendorProduct;
+    const depositName = (vp.returnableItemName ?? '').trim();
+    const depositUom = (vp.returnableUom ?? '').trim();
+    const depositAmount = Number(vp.returnableDepositAmount ?? 0);
+    if (
+      vp.returnableDeposit
+      && depositName
+      && depositUom
+      && Number.isFinite(depositAmount)
+      && depositAmount >= 0
+    ) {
+      return [
+        productLine,
+        {
+          lineKey: `${line.key}::returnable`,
+          componentId: '',
+          componentName: depositName,
+          componentUom: depositUom,
+          vendorProductId: vp.id,
+          vendorExternalId: vp.vendorExternalId,
+          vendorName: vp.vendorName,
+          productName: depositName,
+          deliveryUnitLabel: depositUom,
+          deliveryPrice: depositAmount,
+          quantity: qty,
+          lineTotal: qty * depositAmount,
+          isReturnableDeposit: true,
+          returnableItemName: depositName,
+        },
+      ];
+    }
+
+    return [productLine];
+  });
 }
 
 export function TeamRmsOrderPage({ employeeName }: Props) {
@@ -40,8 +112,13 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
   const [vendorPickerOpen, setVendorPickerOpen] = useState(false);
   const [vendorSearch, setVendorSearch] = useState('');
   const [cartQty, setCartQty] = useState<CartQty>({});
+  const [cartPrice, setCartPrice] = useState<CartPrice>({});
   const [cartLinesByKey, setCartLinesByKey] = useState<Record<string, CreateOrderLine>>({});
   const [cartOpen, setCartOpen] = useState(false);
+  const [deliveryDate, setDeliveryDate] = useState(defaultDeliveryDateValue);
+  const [creating, setCreating] = useState(false);
+  const [cartError, setCartError] = useState<string | null>(null);
+  const [createdPoNumbers, setCreatedPoNumbers] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,10 +264,28 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
       .filter(([, qty]) => qty > 0)
       .map(([key, qty]) => {
         const line = cartLinesByKey[key] ?? lines.find(l => l.key === key);
-        return line ? { line, qty } : null;
+        if (!line) return null;
+        const price = cartPrice[key] ?? line.deliveryPrice;
+        return { line, qty, price };
       })
-      .filter((row): row is { line: CreateOrderLine; qty: number } => Boolean(row));
-  }, [cartQty, cartLinesByKey, lines]);
+      .filter((row): row is { line: CreateOrderLine; qty: number; price: number } => Boolean(row));
+  }, [cartQty, cartPrice, cartLinesByKey, lines]);
+
+  const cartGroups = useMemo(
+    () => groupCartByVendor(buildCartItemsFromEntries(cartEntries)),
+    [cartEntries],
+  );
+
+  const cartGrandTotal = useMemo(
+    () => cartGroups.reduce((sum, g) => sum + g.subtotal, 0),
+    [cartGroups],
+  );
+
+  function clearCart() {
+    setCartQty({});
+    setCartPrice({});
+    setCartLinesByKey({});
+  }
 
   function setQty(line: CreateOrderLine, next: number) {
     const qty = Math.max(0, Math.round(next));
@@ -213,6 +308,113 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
       }
       return { ...prev, [key]: line };
     });
+    setCartPrice(prev => {
+      if (qty <= 0) {
+        if (!(key in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      }
+      if (key in prev) return prev;
+      return { ...prev, [key]: line.deliveryPrice };
+    });
+  }
+
+  function setReviewQty(key: string, next: number) {
+    const line = cartLinesByKey[key];
+    if (!line) return;
+    setQty(line, next);
+  }
+
+  function setReviewPrice(key: string, raw: string) {
+    const cleaned = raw.replace(/[^\d.]/g, '');
+    const value = Number(cleaned);
+    if (!Number.isFinite(value) || value < 0) {
+      setCartPrice(prev => ({ ...prev, [key]: 0 }));
+      return;
+    }
+    setCartPrice(prev => ({ ...prev, [key]: value }));
+  }
+
+  async function handleCreatePo() {
+    if (!companyId) {
+      setCartError('Select a company before creating a PO.');
+      return;
+    }
+    if (locationIds.length === 0) {
+      setCartError('Select at least one location before creating a PO.');
+      return;
+    }
+    if (cartEntries.length === 0) {
+      setCartError('Add vendor products to the cart first.');
+      return;
+    }
+    if (!deliveryDate) {
+      setCartError('Choose a preferred delivery date.');
+      return;
+    }
+    const delivery = new Date(`${deliveryDate}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(delivery.getTime()) || delivery < today) {
+      setCartError('Preferred delivery date cannot be in the past.');
+      return;
+    }
+
+    const items = buildCartItemsFromEntries(cartEntries);
+    const groups = groupCartByVendor(items);
+    if (groups.length === 0) {
+      setCartError('Nothing to submit.');
+      return;
+    }
+
+    const initiatedBy = (employeeName || 'Team').trim() || 'Team';
+    const orderDateStr = toDateInputValue(new Date());
+
+    setCreating(true);
+    setCartError(null);
+    try {
+      const created = await api.createPurchaseOrders({
+        companyId,
+        locationExternalIds: locationIds,
+        initiatedBy,
+        approvedBy: '',
+        orders: groups.map(group => ({
+          vendorName: group.vendorName,
+          vendorExternalId: group.vendorExternalId,
+          documentType: 'PR',
+          orderDate: orderDateStr,
+          deliveryDate,
+          status: 'Pending Approval',
+          items: group.items.map(item => ({
+            componentId: item.componentId,
+            componentName: item.componentName,
+            vendorProductId: item.vendorProductId,
+            name: item.productName,
+            quantity: item.quantity,
+            unitPrice: item.deliveryPrice,
+            unit: item.deliveryUnitLabel,
+            componentUom: item.componentUom,
+            deliveryPackage: item.deliveryUnitLabel,
+            isReturnableDeposit: item.isReturnableDeposit || undefined,
+            returnableItemName: item.isReturnableDeposit
+              ? (item.returnableItemName || item.productName)
+              : undefined,
+          })),
+        })),
+      });
+
+      if (!Array.isArray(created) || created.length === 0) {
+        throw new Error('Failed to create purchase order.');
+      }
+
+      setCreatedPoNumbers(created.map(po => po.poNumber || `PO-${po.id}`));
+      clearCart();
+    } catch (err) {
+      setCartError(err instanceof Error ? err.message : 'Failed to create purchase order.');
+    } finally {
+      setCreating(false);
+    }
   }
 
   const selectedVendorName = vendorOptions.find(v => v.externalId === vendorFilter)?.name ?? '';
@@ -234,7 +436,11 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
         <button
           type="button"
           className="team-rms-cart-btn"
-          onClick={() => setCartOpen(true)}
+          onClick={() => {
+            setCartError(null);
+            setCreatedPoNumbers([]);
+            setCartOpen(true);
+          }}
           aria-label={`Cart · ${cartCount} products`}
         >
           <ShoppingCart size={18} />
@@ -253,8 +459,7 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
               if (id) setApiTenantCompanyId(id);
               const locForCo = locations.filter(l => l.companyId == null || l.companyId === id);
               setLocationIds(locForCo.map(l => l.externalId).filter(Boolean));
-              setCartQty({});
-              setCartLinesByKey({});
+              clearCart();
             }}
           >
             {companies.map(c => (
@@ -272,8 +477,7 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
             onChange={e => {
               const id = e.target.value;
               setLocationIds(id ? [id] : companyLocations.map(l => l.externalId));
-              setCartQty({});
-              setCartLinesByKey({});
+              clearCart();
             }}
           >
             <option value="">All locations</option>
@@ -476,45 +680,187 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
       ) : null}
 
       {cartOpen ? (
-        <div className="team-modal-backdrop" role="presentation" onClick={() => setCartOpen(false)}>
-          <div className="team-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+        <div
+          className="team-modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!creating) setCartOpen(false);
+          }}
+        >
+          <div
+            className="team-modal team-rms-cart-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={e => e.stopPropagation()}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <h3 style={{ margin: 0 }}>Cart · {cartCount}</h3>
-              <button type="button" className="team-btn-ghost" onClick={() => setCartOpen(false)} aria-label="Close">
+              <h3 style={{ margin: 0 }}>
+                {createdPoNumbers.length > 0 ? 'PO created' : `Review order · ${cartCount}`}
+              </h3>
+              <button
+                type="button"
+                className="team-btn-ghost"
+                disabled={creating}
+                onClick={() => setCartOpen(false)}
+                aria-label="Close"
+              >
                 <X size={16} />
               </button>
             </div>
-            {cartCount === 0 ? (
+
+            {createdPoNumbers.length > 0 ? (
+              <>
+                <p className="team-muted" style={{ margin: '10px 0 0' }}>
+                  Purchase request{createdPoNumbers.length === 1 ? '' : 's'} submitted for approval,
+                  split by vendor.
+                </p>
+                <ul className="team-rm-list" style={{ marginTop: 10 }}>
+                  {createdPoNumbers.map(num => (
+                    <li key={num} className="team-rm-list-item">
+                      <div>
+                        <strong>{num}</strong>
+                        <span className="team-muted">Pending Approval</span>
+                      </div>
+                      <span className="team-rm-status is-warn">PR</span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="team-btn team-btn-primary"
+                  style={{ marginTop: 12 }}
+                  onClick={() => {
+                    setCreatedPoNumbers([]);
+                    setCartOpen(false);
+                  }}
+                >
+                  Done
+                </button>
+              </>
+            ) : cartCount === 0 ? (
               <p className="team-muted" style={{ margin: '12px 0 0', textAlign: 'center' }}>
                 No vendor products added yet. Adjust QTY on a product to add it.
               </p>
             ) : (
-              <ul className="team-rm-list" style={{ marginTop: 10 }}>
-                {cartEntries.map(({ line, qty }) => (
-                  <li key={line.key} className="team-rm-list-item">
-                    <div>
-                      <strong>{line.vendorProduct.productName}</strong>
-                      <span className="team-muted">
-                        {line.vendorProduct.vendorName}
-                        {' · '}
-                        {line.deliveryUnitLabel}
-                      </span>
+              <>
+                <label className="team-field" style={{ marginTop: 10 }}>
+                  <span>Preferred delivery date</span>
+                  <input
+                    type="date"
+                    value={deliveryDate}
+                    min={toDateInputValue(new Date())}
+                    onChange={e => setDeliveryDate(e.target.value)}
+                  />
+                </label>
+
+                <div className="team-rms-cart-groups">
+                  {cartGroups.map(group => (
+                    <div key={group.vendorExternalId || group.vendorName} className="team-rms-cart-group">
+                      <header>
+                        <strong>{group.vendorName}</strong>
+                        <span>{formatRm(group.subtotal)}</span>
+                      </header>
+                      <ul>
+                        {group.items.filter(item => !item.isReturnableDeposit).map(item => {
+                          const key = item.lineKey;
+                          const qty = cartQty[key] ?? item.quantity;
+                          const price = cartPrice[key] ?? item.deliveryPrice;
+                          return (
+                            <li key={key}>
+                              <div className="team-rms-cart-line-head">
+                                <strong>{item.productName}</strong>
+                                <span className="team-muted">
+                                  {item.vendorProductId}
+                                  {' · '}
+                                  {item.deliveryUnitLabel}
+                                </span>
+                              </div>
+                              <div className="team-rms-cart-edit">
+                                <label>
+                                  <span>QTY</span>
+                                  <div className="team-rms-qty">
+                                    <button
+                                      type="button"
+                                      aria-label="Decrease quantity"
+                                      onClick={() => setReviewQty(key, qty - 1)}
+                                      disabled={qty <= 0 || creating}
+                                    >
+                                      <Minus size={14} />
+                                    </button>
+                                    <input
+                                      inputMode="numeric"
+                                      value={String(qty)}
+                                      disabled={creating}
+                                      onChange={e => {
+                                        const raw = e.target.value.replace(/[^\d]/g, '');
+                                        setReviewQty(key, raw ? Number(raw) : 0);
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      aria-label="Increase quantity"
+                                      disabled={creating}
+                                      onClick={() => setReviewQty(key, qty + 1)}
+                                    >
+                                      <Plus size={14} />
+                                    </button>
+                                  </div>
+                                </label>
+                                <label>
+                                  <span>Price</span>
+                                  <input
+                                    className="team-rms-price-input"
+                                    inputMode="decimal"
+                                    value={String(price)}
+                                    disabled={creating}
+                                    onChange={e => setReviewPrice(key, e.target.value)}
+                                  />
+                                </label>
+                                <div className="team-rms-cart-line-total">
+                                  <span>Line</span>
+                                  <strong>{formatRm(qty * price)}</strong>
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     </div>
-                    <span className="team-rm-status">
-                      ×{qty} · {formatRm(qty * line.deliveryPrice)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                  ))}
+                </div>
+
+                <div className="team-rms-cart-footer">
+                  <div>
+                    <span className="team-muted">Grand total</span>
+                    <strong>{formatRm(cartGrandTotal)}</strong>
+                  </div>
+                  <p className="team-muted" style={{ margin: 0, fontSize: 10 }}>
+                    Creates one PR per vendor from the products in this cart.
+                  </p>
+                </div>
+
+                {cartError ? <p className="team-inline-error">{cartError}</p> : null}
+
+                <div className="team-modal-actions" style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="team-btn team-btn-secondary"
+                    disabled={creating}
+                    onClick={() => setCartOpen(false)}
+                  >
+                    Keep shopping
+                  </button>
+                  <button
+                    type="button"
+                    className="team-btn team-btn-primary"
+                    disabled={creating || cartCount === 0}
+                    onClick={() => void handleCreatePo()}
+                  >
+                    {creating ? 'Creating…' : 'Create PO'}
+                  </button>
+                </div>
+              </>
             )}
-            <button
-              type="button"
-              className="team-btn team-btn-primary"
-              style={{ marginTop: 12 }}
-              onClick={() => setCartOpen(false)}
-            >
-              Continue ordering
-            </button>
           </div>
         </div>
       ) : null}
