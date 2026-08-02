@@ -3318,6 +3318,11 @@ export const api = {
     }
     return fetchJson<SalesModuleOverview>(`/api/sales-module/overview?${params}`);
   },
+  /**
+   * Client Update rows.
+   * salesTeamMemberId without view → all clients attached to that member.
+   * view=week|month → period rows with changes (optionally scoped by member/hunter).
+   */
   salesModuleClientUpdates: (opts?: {
     hunter?: string;
     salesTeamMemberId?: number;
