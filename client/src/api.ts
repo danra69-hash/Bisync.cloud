@@ -871,6 +871,8 @@ export interface SalesModuleOverviewPeriods {
 
 export interface SalesModuleOverviewHunterRow {
   hunter: string;
+  salesTeamMemberId?: number | null;
+  totalClients: number;
   statusChanges: number;
   interactions: number;
   newLeads: number;
@@ -887,6 +889,7 @@ export interface SalesModuleOverview {
   companyName?: string | null;
   hunters: SalesModuleOverviewHunterRow[];
   totals: {
+    totalClients: number;
     statusChanges: number;
     interactions: number;
     newLeads: number;
