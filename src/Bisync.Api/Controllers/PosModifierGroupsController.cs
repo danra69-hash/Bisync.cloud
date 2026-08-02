@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,8 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
         string? LinkedProductName = null,
         string? LinkedComponentId = null,
         string? LinkedComponentName = null,
+        string? BaseComponentId = null,
+        string? BaseComponentName = null,
         bool Active = true);
 
     public record AttachmentInput(
@@ -123,8 +126,8 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
             : products.Where(p =>
                 string.Equals(p.Group?.Trim(), groupName, StringComparison.OrdinalIgnoreCase));
 
-        var rows = filtered
-            .OrderBy(p => p.Name)
+        var productList = filtered.OrderBy(p => p.Name).ToList();
+        var rows = productList
             .Select(p => new
             {
                 id = p.Id,
@@ -137,7 +140,27 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
             })
             .ToList();
 
-        return Ok(new { productGroup = groupName, products = rows });
+        var swapPairs = k == "component-swap"
+            ? productList
+                .SelectMany(p => EnumerateSwapPairs(p))
+                .OrderBy(s => s.ProductName)
+                .ThenBy(s => s.Label)
+                .Select(s => new
+                {
+                    key = s.Key,
+                    label = s.Label,
+                    linkedProductId = s.ProductId,
+                    linkedProductName = s.ProductName,
+                    baseComponentId = s.BaseComponentId,
+                    baseComponentName = s.BaseComponentName,
+                    linkedComponentId = s.ChosenComponentId,
+                    linkedComponentName = s.ChosenComponentName,
+                    extraChargeCents = s.ExtraChargeCents,
+                })
+                .ToList<object>()
+            : [];
+
+        return Ok(new { productGroup = groupName, products = rows, swapPairs });
     }
 
     [HttpPost]
@@ -308,18 +331,35 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
         }
 
         var seq = 0;
+        var anySwap = false;
         foreach (var p in sources)
         {
-            existing.Options.Add(new PosModifierOption
+            var pairs = EnumerateSwapPairs(p).ToList();
+            if (pairs.Count == 0) continue;
+            anySwap = true;
+            foreach (var pair in pairs)
             {
-                Label = p.Name,
-                Sequence = seq++,
-                ExtraChargeCents = 0,
-                LinkedProductId = p.Id,
-                LinkedProductName = p.Name,
-                Active = true,
-            });
+                existing.Options.Add(new PosModifierOption
+                {
+                    Label = pair.Label,
+                    Sequence = seq++,
+                    ExtraChargeCents = pair.ExtraChargeCents,
+                    LinkedProductId = pair.ProductId,
+                    LinkedProductName = pair.ProductName,
+                    BaseComponentId = pair.BaseComponentId,
+                    BaseComponentName = pair.BaseComponentName,
+                    LinkedComponentId = pair.ChosenComponentId,
+                    LinkedComponentName = pair.ChosenComponentName,
+                    Active = true,
+                });
+            }
         }
+
+        if (!anySwap)
+            return BadRequest(new
+            {
+                message = "No swappable component pairs found. Configure Variable Component (base → alternate) on RMS products first.",
+            });
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -384,6 +424,8 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
                 LinkedProductName = (o.LinkedProductName ?? string.Empty).Trim(),
                 LinkedComponentId = (o.LinkedComponentId ?? string.Empty).Trim(),
                 LinkedComponentName = (o.LinkedComponentName ?? string.Empty).Trim(),
+                BaseComponentId = (o.BaseComponentId ?? string.Empty).Trim(),
+                BaseComponentName = (o.BaseComponentName ?? string.Empty).Trim(),
                 Active = o.Active,
             });
         }
@@ -399,6 +441,102 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
                 TargetProductName = (a.TargetProductName ?? string.Empty).Trim(),
             });
         }
+    }
+
+    sealed record SwapPair(
+        string Key,
+        string Label,
+        int ProductId,
+        string ProductName,
+        string BaseComponentId,
+        string BaseComponentName,
+        string ChosenComponentId,
+        string ChosenComponentName,
+        long ExtraChargeCents);
+
+    static IEnumerable<SwapPair> EnumerateSwapPairs(Product product)
+    {
+        foreach (var slot in ParseVariableComponentSlots(product.VariableComponentOptionsJson))
+        {
+            var baseId = slot.BaseComponentId;
+            var baseName = string.IsNullOrWhiteSpace(slot.BaseComponentName) ? baseId : slot.BaseComponentName;
+            foreach (var alt in slot.Alternatives)
+            {
+                var altId = alt.ComponentId;
+                var altName = string.IsNullOrWhiteSpace(alt.ComponentName) ? altId : alt.ComponentName;
+                if (string.IsNullOrWhiteSpace(baseId) || string.IsNullOrWhiteSpace(altId))
+                    continue;
+                if (string.Equals(baseId, altId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var label = $"{baseName} → {altName}";
+                var extraCents = alt.ExtraCharge > 0
+                    ? (long)Math.Round(alt.ExtraCharge * 100m, MidpointRounding.AwayFromZero)
+                    : 0L;
+                yield return new SwapPair(
+                    Key: $"{product.Id}:{baseId}:{altId}",
+                    Label: label,
+                    ProductId: product.Id,
+                    ProductName: product.Name,
+                    BaseComponentId: baseId,
+                    BaseComponentName: baseName,
+                    ChosenComponentId: altId,
+                    ChosenComponentName: altName,
+                    ExtraChargeCents: extraCents);
+            }
+        }
+    }
+
+    sealed record ParsedAlt(string ComponentId, string ComponentName, decimal ExtraCharge);
+    sealed record ParsedSlot(string BaseComponentId, string BaseComponentName, List<ParsedAlt> Alternatives);
+
+    static List<ParsedSlot> ParseVariableComponentSlots(string? json)
+    {
+        var result = new List<ParsedSlot>();
+        if (string.IsNullOrWhiteSpace(json) || json.Trim() is "{}" or "[]")
+            return result;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("slots", out var slots) || slots.ValueKind != JsonValueKind.Array)
+                return result;
+            foreach (var slot in slots.EnumerateArray())
+            {
+                var baseId = slot.TryGetProperty("baseComponentId", out var baseEl)
+                    ? (baseEl.GetString() ?? string.Empty).Trim()
+                    : string.Empty;
+                var baseName = slot.TryGetProperty("baseComponentName", out var baseNameEl)
+                    ? (baseNameEl.GetString() ?? string.Empty).Trim()
+                    : string.Empty;
+                if (string.IsNullOrWhiteSpace(baseId)) continue;
+                var alts = new List<ParsedAlt>();
+                if (slot.TryGetProperty("alternatives", out var altArr) && altArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var alt in altArr.EnumerateArray())
+                    {
+                        var altId = alt.TryGetProperty("componentId", out var altIdEl)
+                            ? (altIdEl.GetString() ?? string.Empty).Trim()
+                            : string.Empty;
+                        if (string.IsNullOrWhiteSpace(altId)) continue;
+                        var altName = alt.TryGetProperty("componentName", out var altNameEl)
+                            ? (altNameEl.GetString() ?? string.Empty).Trim()
+                            : string.Empty;
+                        decimal extra = 0;
+                        if (alt.TryGetProperty("addonRrp", out var addonEl) && addonEl.TryGetDecimal(out var addon))
+                            extra = addon;
+                        else if (alt.TryGetProperty("extraCharge", out var chargeEl) && chargeEl.TryGetDecimal(out var charge))
+                            extra = charge;
+                        alts.Add(new ParsedAlt(altId, altName, Math.Max(0, extra)));
+                    }
+                }
+                if (alts.Count > 0)
+                    result.Add(new ParsedSlot(baseId, baseName, alts));
+            }
+        }
+        catch (JsonException)
+        {
+            /* ignore malformed VC JSON */
+        }
+        return result;
     }
 
     static object MapGroup(PosModifierGroup g) => new
@@ -428,6 +566,8 @@ public class PosModifierGroupsController(BisyncDbContext db) : ControllerBase
                 linkedProductName = o.LinkedProductName,
                 linkedComponentId = o.LinkedComponentId,
                 linkedComponentName = o.LinkedComponentName,
+                baseComponentId = o.BaseComponentId,
+                baseComponentName = o.BaseComponentName,
                 active = o.Active,
             }),
         attachments = g.Attachments.Select(a => new

@@ -599,6 +599,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.LinkedProductName).HasMaxLength(200);
             e.Property(x => x.LinkedComponentId).HasMaxLength(80);
             e.Property(x => x.LinkedComponentName).HasMaxLength(200);
+            e.Property(x => x.BaseComponentId).HasMaxLength(80);
+            e.Property(x => x.BaseComponentName).HasMaxLength(200);
         });
         modelBuilder.Entity<PosModifierAttachment>(e =>
         {
