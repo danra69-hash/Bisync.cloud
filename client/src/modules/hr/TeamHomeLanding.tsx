@@ -6,20 +6,19 @@ import {
   Camera,
   ChevronRight,
   ClipboardList,
-  Package,
-  ShoppingCart,
   Trash2,
   ArrowLeftRight,
   Boxes,
   Store,
 } from 'lucide-react';
-import { api, type PurchaseOrder, type TransferEntry, type WastageEntry } from '../../api';
+import { api, type TransferEntry, type WastageEntry } from '../../api';
 import type { AttendanceRecord, Employee, LeaveBalanceRow, LeaveRequest } from './types';
+import { TeamRmsLanding } from './TeamRmsLanding';
+import { TeamRmsOrderPage } from './TeamRmsOrderPage';
 
 export type TeamAppMode = 'landing' | 'hr' | 'rms';
 export type HrTab = 'home' | 'schedule' | 'leave' | 'messages';
 export type RmsTab = 'home' | 'order' | 'stock';
-export type RmsOrderView = 'menu' | 'active' | 'order' | 'receive' | 'consolidate';
 export type RmsStockView = 'menu' | 'transfer' | 'wastage' | 'inventory';
 
 type DayInfo = { type: string; label: string };
@@ -76,45 +75,6 @@ function BackHome({ label, onBack }: { label: string; onBack: () => void }) {
         {label}
       </button>
     </div>
-  );
-}
-
-function PoList({
-  title,
-  empty,
-  orders,
-  loading,
-  error,
-  onBack,
-}: {
-  title: string;
-  empty: string;
-  orders: PurchaseOrder[];
-  loading: boolean;
-  error: string | null;
-  onBack: () => void;
-}) {
-  return (
-    <section className="team-card">
-      <BackHome label="Order" onBack={onBack} />
-      <h3 style={{ margin: '0 0 8px' }}>{title}</h3>
-      {loading ? <p className="team-muted">Loading…</p> : null}
-      {error ? <p className="team-inline-error">{error}</p> : null}
-      {!loading && !error && orders.length === 0 ? (
-        <p className="team-muted" style={{ textAlign: 'center', margin: '12px 0 0' }}>{empty}</p>
-      ) : null}
-      <ul className="team-rm-list">
-        {orders.map(order => (
-          <li key={order.id} className="team-rm-list-item">
-            <div>
-              <strong>{order.poNumber || `PO-${order.id}`}</strong>
-              <span className="team-muted">{order.vendorName || 'Vendor'}</span>
-            </div>
-            <span className={`team-rm-status ${statusTone(order.status)}`}>{order.status}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -228,7 +188,7 @@ export function TeamHomeLanding({
   onModeChange,
   hrTab,
   rmsTab,
-  onRmsTabChange,
+  onRmsTabChange: _onRmsTabChange,
   employee,
   todayLabel,
   todayInfo,
@@ -249,12 +209,10 @@ export function TeamHomeLanding({
   leaveSlot,
   messagesSlot,
 }: Props) {
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [wastage, setWastage] = useState<WastageEntry[]>([]);
   const [transfers, setTransfers] = useState<TransferEntry[]>([]);
   const [rmLoading, setRmLoading] = useState(false);
   const [rmError, setRmError] = useState<string | null>(null);
-  const [orderView, setOrderView] = useState<RmsOrderView>('menu');
   const [stockView, setStockView] = useState<RmsStockView>('menu');
 
   const myPendingLeave = useMemo(
@@ -273,16 +231,14 @@ export function TeamHomeLanding({
 
   useEffect(() => {
     if (mode !== 'rms') return;
-    setOrderView('menu');
     setStockView('menu');
   }, [mode, rmsTab]);
 
   useEffect(() => {
-    if (mode !== 'rms') return;
-    const needOrders = rmsTab === 'home' || rmsTab === 'order';
-    const needWastage = rmsTab === 'stock' && stockView === 'wastage';
-    const needTransfers = rmsTab === 'stock' && stockView === 'transfer';
-    if (!needOrders && !needWastage && !needTransfers) return;
+    if (mode !== 'rms' || rmsTab !== 'stock') return;
+    const needWastage = stockView === 'wastage';
+    const needTransfers = stockView === 'transfer';
+    if (!needWastage && !needTransfers) return;
 
     let cancelled = false;
     setRmLoading(true);
@@ -290,10 +246,7 @@ export function TeamHomeLanding({
 
     void (async () => {
       try {
-        if (needOrders) {
-          const list = await api.activePurchaseOrders();
-          if (!cancelled) setOrders(Array.isArray(list) ? list : []);
-        } else if (needWastage) {
+        if (needWastage) {
           const list = await api.wastageEntries(undefined, []);
           if (!cancelled) setWastage(Array.isArray(list) ? list : []);
         } else if (needTransfers) {
@@ -303,7 +256,6 @@ export function TeamHomeLanding({
       } catch (err) {
         if (!cancelled) {
           setRmError(err instanceof Error ? err.message : 'Unable to load data.');
-          setOrders([]);
           setWastage([]);
           setTransfers([]);
         }
@@ -315,24 +267,7 @@ export function TeamHomeLanding({
     return () => {
       cancelled = true;
     };
-  }, [mode, rmsTab, stockView, orderView]);
-
-  const filteredOrders = useMemo(() => {
-    if (orderView === 'order') {
-      return orders.filter(o =>
-        o.documentType === 'PR'
-        || o.status === 'Pending Approval'
-        || o.canApprove === true,
-      );
-    }
-    if (orderView === 'receive') {
-      return orders.filter(o => o.canReceive === true || /receiv|partial/i.test(o.status));
-    }
-    if (orderView === 'consolidate') {
-      return orders.filter(o => o.canReconcile === true || /reconcil|consolidat/i.test(o.status));
-    }
-    return orders;
-  }, [orders, orderView]);
+  }, [mode, rmsTab, stockView]);
 
   if (mode === 'hr') {
     if (hrTab === 'schedule') return <>{scheduleSlot}</>;
@@ -357,90 +292,7 @@ export function TeamHomeLanding({
 
   if (mode === 'rms') {
     if (rmsTab === 'order') {
-      if (orderView === 'active') {
-        return (
-          <PoList
-            title="Active Purchase"
-            empty="No active purchase orders."
-            orders={filteredOrders}
-            loading={rmLoading}
-            error={rmError}
-            onBack={() => setOrderView('menu')}
-          />
-        );
-      }
-      if (orderView === 'order') {
-        return (
-          <PoList
-            title="My Order · Order"
-            empty="No orders waiting for approval."
-            orders={filteredOrders}
-            loading={rmLoading}
-            error={rmError}
-            onBack={() => setOrderView('menu')}
-          />
-        );
-      }
-      if (orderView === 'receive') {
-        return (
-          <PoList
-            title="My Order · Receive"
-            empty="No orders ready to receive."
-            orders={filteredOrders}
-            loading={rmLoading}
-            error={rmError}
-            onBack={() => setOrderView('menu')}
-          />
-        );
-      }
-      if (orderView === 'consolidate') {
-        return (
-          <PoList
-            title="My Order · Consolidate"
-            empty="No orders ready to consolidate."
-            orders={filteredOrders}
-            loading={rmLoading}
-            error={rmError}
-            onBack={() => setOrderView('menu')}
-          />
-        );
-      }
-
-      return (
-        <section className="team-card team-landing-box">
-          <header className="team-landing-box-head">
-            <h3>Order</h3>
-          </header>
-          <button type="button" className="team-landing-row" onClick={() => setOrderView('active')}>
-            <span className="team-landing-icon"><ShoppingCart size={16} /></span>
-            <span className="team-landing-copy">
-              <strong>Active Purchase</strong>
-              <em>Open purchase orders in progress</em>
-            </span>
-            <ChevronRight size={16} className="team-landing-chevron" />
-          </button>
-          <div className="team-landing-block">
-            <div className="team-landing-block-title">
-              <Package size={14} />
-              <span>My Order</span>
-            </div>
-            <div className="team-landing-tiles">
-              <button type="button" onClick={() => setOrderView('order')}>
-                <ClipboardList size={15} />
-                Order
-              </button>
-              <button type="button" onClick={() => setOrderView('receive')}>
-                <Package size={15} />
-                Receive
-              </button>
-              <button type="button" onClick={() => setOrderView('consolidate')}>
-                <Boxes size={15} />
-                Consolidate
-              </button>
-            </div>
-          </div>
-        </section>
-      );
+      return <TeamRmsOrderPage employeeName={employee.name} />;
     }
 
     if (rmsTab === 'stock') {
@@ -536,42 +388,7 @@ export function TeamHomeLanding({
       );
     }
 
-    // RMS New Home
-    return (
-      <section className="team-card team-landing-box">
-        <BackHome label="Team home" onBack={() => onModeChange('landing')} />
-        <header className="team-landing-box-head">
-          <h3>Revenue Management</h3>
-        </header>
-        <p className="team-muted" style={{ margin: 0 }}>
-          Orders, receiving, and stock tools for this location.
-        </p>
-        <button
-          type="button"
-          className="team-landing-row"
-          onClick={() => onRmsTabChange('order')}
-        >
-          <span className="team-landing-icon"><ShoppingCart size={16} /></span>
-          <span className="team-landing-copy">
-            <strong>Go to Order</strong>
-            <em>Active purchase, receive, consolidate</em>
-          </span>
-          <ChevronRight size={16} className="team-landing-chevron" />
-        </button>
-        <button
-          type="button"
-          className="team-landing-row"
-          onClick={() => onRmsTabChange('stock')}
-        >
-          <span className="team-landing-icon"><Boxes size={16} /></span>
-          <span className="team-landing-copy">
-            <strong>Go to Stock</strong>
-            <em>Transfer, wastage, inventory</em>
-          </span>
-          <ChevronRight size={16} className="team-landing-chevron" />
-        </button>
-      </section>
-    );
+    return <TeamRmsLanding onBackToTeam={() => onModeChange('landing')} />;
   }
 
   // Landing
