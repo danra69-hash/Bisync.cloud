@@ -43,6 +43,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node (deploy simulation)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Setup .NET (deploy simulation)
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Pre-deploy simulation (related functions)
+        run: |
+          set -euo pipefail
+          # Compare this commit to its parent so only related suites run.
+          node scripts/run-deploy-simulation.mjs --phase=pre --base=HEAD~1
 
       - name: Verify brand assets before image build
         run: node scripts/verify-brand-assets.mjs
@@ -228,3 +248,16 @@ jobs:
             test "${CODE}" = "404"
           done
           echo "Deploy verification OK"
+
+      - name: Post-deploy simulation (related functions)
+        env:
+          DEPLOY_SIM_BASE_URL: https://bisync-cloud-389272498937.asia-southeast1.run.app
+          CHROME_PATH: /usr/bin/google-chrome-stable
+          PLAYWRIGHT_CORE_PATH: /tmp/deploy-sim-pw/node_modules/playwright-core/index.js
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/deploy-sim-pw
+          npm install --prefix /tmp/deploy-sim-pw playwright-core@1.49.0 >/dev/null
+          # Best-effort Chrome for /POS pageerror check (suite soft-skips if missing).
+          sudo apt-get update -qq && sudo apt-get install -y -qq google-chrome-stable >/dev/null 2>&1 || true
+          node scripts/run-deploy-simulation.mjs --phase=post --base=HEAD~1
