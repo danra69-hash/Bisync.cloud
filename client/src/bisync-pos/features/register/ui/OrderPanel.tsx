@@ -27,8 +27,10 @@ type Props = {
   onOpenHistory: () => void
   onOpenPickup?: () => void
   onAction: (action: 'save' | 'print' | 'payment' | 'cancel') => void
-  /** Opened floor table label shown in Cancel tooltip when discarding. */
+  /** Opened floor table label (Cancel discards unsaved edits only). */
   activeTableLabel?: string | null
+  /** True while a payment charge is in flight. */
+  paymentBusy?: boolean
 }
 
 export function OrderPanel({
@@ -53,6 +55,7 @@ export function OrderPanel({
   onOpenPickup,
   onAction,
   activeTableLabel = null,
+  paymentBusy = false,
 }: Props) {
   const byId = new Map(products.map((p) => [p.id, p]))
   const subtotal = cartSubtotal(lines, products)
@@ -273,8 +276,8 @@ export function OrderPanel({
           className="btn btn--danger"
           title={
             activeTableLabel
-              ? `Cancel order and release ${activeTableLabel}`
-              : 'Cancel order and return home'
+              ? `Discard unsaved edits and leave ${activeTableLabel}`
+              : 'Discard unsaved edits and return home'
           }
           onClick={() => onAction('cancel')}
         >
@@ -283,7 +286,7 @@ export function OrderPanel({
         <button
           type="button"
           className="btn btn--ghost"
-          disabled={!hasItems}
+          disabled={!hasItems || paymentBusy}
           onClick={() => onAction('save')}
         >
           Save
@@ -291,7 +294,7 @@ export function OrderPanel({
         <button
           type="button"
           className="btn btn--navy"
-          disabled={!hasItems}
+          disabled={!hasItems || paymentBusy}
           onClick={() => onAction('print')}
         >
           Print
@@ -299,10 +302,10 @@ export function OrderPanel({
         <button
           type="button"
           className="btn btn--primary"
-          disabled={!hasItems}
+          disabled={!hasItems || paymentBusy}
           onClick={() => onAction('payment')}
         >
-          Payment
+          {paymentBusy ? 'Paying…' : 'Payment'}
         </button>
       </div>
     </aside>
