@@ -1212,18 +1212,20 @@ public class SalesModuleController(
     }
 
     /// <summary>
-    /// Import only the "Weekly Update" sheet from Instant Sales Update.xlsx (replaces existing Client Update rows).
+    /// Import Instant Sales Update.xlsx — Client DB (company tags by SALES) and/or Weekly Update.
     /// </summary>
     [HttpPost("client-updates/import")]
     [RequestSizeLimit(20_000_000)]
     public async Task<ActionResult<object>> ImportClientUpdates(IFormFile file, CancellationToken ct = default)
     {
         if (file is null || file.Length == 0)
-            return BadRequest(new { message = "Upload Instant Sales Update.xlsx (Weekly Update sheet)." });
+            return BadRequest(new { message = "Upload Instant Sales Update.xlsx (Client DB and/or Weekly Update)." });
         try
         {
             await using var stream = file.OpenReadStream();
-            var result = await clientUpdateService.ImportWeeklyUpdateAsync(stream, file.FileName, ct);
+            var result = await clientUpdateService.ImportInstantSalesWorkbookAsync(stream, file.FileName, ct);
+            // Refresh company tags from Weekly Update hunters as well.
+            await SyncCompaniesFromClientUpdatesAsync(ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)
@@ -1232,7 +1234,7 @@ public class SalesModuleController(
         }
         catch (Exception ex)
         {
-            return BadRequest(new { message = $"Client Update import failed: {ex.Message}" });
+            return BadRequest(new { message = $"Client file import failed: {ex.Message}" });
         }
     }
 

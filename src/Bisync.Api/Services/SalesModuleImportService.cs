@@ -353,12 +353,22 @@ public class SalesModuleImportService(
 
     static SalesModuleTeamMember? ResolveMember(List<SalesModuleTeamMember> team, string name)
     {
-        var key = (name ?? string.Empty).Trim();
+        var key = string.Join(' ', (name ?? string.Empty).Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         if (string.IsNullOrWhiteSpace(key)) return null;
-        return team.FirstOrDefault(m =>
+        var exact = team.FirstOrDefault(m =>
             m.Name.Equals(key, StringComparison.OrdinalIgnoreCase)
             || m.Email.Equals(key, StringComparison.OrdinalIgnoreCase)
             || m.Email.StartsWith(key + "@", StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) return exact;
+
+        var firstTokenHits = team
+            .Where(m =>
+            {
+                var first = m.Name.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                return first.Length > 0 && first[0].Equals(key, StringComparison.OrdinalIgnoreCase);
+            })
+            .ToList();
+        return firstTokenHits.Count == 1 ? firstTokenHits[0] : null;
     }
 
     async Task<(int Id, bool Created)> FindOrCreateCompanyAsync(string name, int memberId, CancellationToken ct)

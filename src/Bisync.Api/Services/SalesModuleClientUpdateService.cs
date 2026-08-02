@@ -7,7 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Bisync.Api.Services;
 
 /// <summary>
-/// Imports the "Weekly Update" sheet from Instant Sales Update.xlsx into Sales Module Client Update rows.
+/// Imports Instant Sales Update.xlsx into Sales Module:
+/// - "Client DB" sheet → companies tagged to Sales Team (SALES column)
+/// - "Weekly Update" sheet → Client Update activity rows (HUNTER column)
 /// </summary>
 public class SalesModuleClientUpdateService(
     BisyncDbContext db,
@@ -15,6 +17,8 @@ public class SalesModuleClientUpdateService(
     ILogger<SalesModuleClientUpdateService> logger)
 {
     public const string WeeklyUpdateSheetName = "Weekly Update";
+    public const string ClientDbSheetName = "Client DB";
+    const string ClientDbCreatedBy = "client-db-import";
 
     static int _schemaReady;
     static readonly object CacheLock = new();
@@ -263,14 +267,28 @@ public class SalesModuleClientUpdateService(
             if (byId is not null) return byId;
         }
 
-        var key = (hunter ?? string.Empty).Trim();
+        var key = NormalizeHunterToken(hunter);
         if (string.IsNullOrWhiteSpace(key)) return null;
 
-        return team.FirstOrDefault(m =>
-            m.Name.Equals(key, StringComparison.OrdinalIgnoreCase)
+        var exact = team.FirstOrDefault(m =>
+            NormalizeHunterToken(m.Name).Equals(key, StringComparison.OrdinalIgnoreCase)
             || m.Email.Equals(key, StringComparison.OrdinalIgnoreCase)
             || m.Email.StartsWith(key + "@", StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) return exact;
+
+        // "TERRENCE" → "Terrence Ng"; first-token unique match only.
+        var firstTokenHits = team
+            .Where(m =>
+            {
+                var first = NormalizeHunterToken(m.Name).Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                return first.Length > 0 && first[0].Equals(key, StringComparison.OrdinalIgnoreCase);
+            })
+            .ToList();
+        return firstTokenHits.Count == 1 ? firstTokenHits[0] : null;
     }
+
+    static string NormalizeHunterToken(string? raw) =>
+        string.Join(' ', (raw ?? string.Empty).Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     /// <summary>
     /// Fill blank identity fields only: DateCreated, Hunter, Company, Brand, LocationCount.
@@ -862,12 +880,234 @@ public class SalesModuleClientUpdateService(
         };
     }
 
-    /// <summary>Seeds Client Update from bundled Instant Sales Update.xlsx when the table is empty.</summary>
+    /// <summary>
+    /// Import Instant Sales Update.xlsx: Client DB (company ↔ sales team tags) and/or Weekly Update.
+    /// Either sheet may be present; at least one is required.
+    /// </summary>
+    public async Task<object> ImportInstantSalesWorkbookAsync(
+        Stream stream,
+        string? fileName,
+        CancellationToken ct = default)
+    {
+        await using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, ct);
+        var bytes = buffer.ToArray();
+
+        bool hasClientDb;
+        bool hasWeekly;
+        using (var probe = new XLWorkbook(new MemoryStream(bytes)))
+        {
+            hasClientDb = probe.Worksheets.Any(w =>
+                w.Name.Equals(ClientDbSheetName, StringComparison.OrdinalIgnoreCase)
+                || w.Name.Equals("ClientDB", StringComparison.OrdinalIgnoreCase));
+            hasWeekly = probe.Worksheets.Any(w =>
+                w.Name.Equals(WeeklyUpdateSheetName, StringComparison.OrdinalIgnoreCase)
+                || w.Name.Equals("WeeklyUpdate", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!hasClientDb && !hasWeekly)
+        {
+            throw new InvalidOperationException(
+                $"Workbook must contain \"{ClientDbSheetName}\" and/or \"{WeeklyUpdateSheetName}\".");
+        }
+
+        object? clientDb = null;
+        object? weekly = null;
+        var messages = new List<string>();
+        var weeklyImported = 0;
+
+        if (hasClientDb)
+            clientDb = await ImportClientDbAsync(new MemoryStream(bytes), ct);
+
+        if (hasWeekly)
+            weekly = await ImportWeeklyUpdateAsync(new MemoryStream(bytes), fileName, ct);
+
+        messages.AddRange(ExtractMessages(clientDb));
+        messages.AddRange(ExtractMessages(weekly));
+        weeklyImported = ExtractImported(weekly);
+
+        return new
+        {
+            fileName = fileName ?? string.Empty,
+            clientDb,
+            weeklyUpdate = weekly,
+            imported = weeklyImported,
+            sheet = hasClientDb && hasWeekly
+                ? $"{ClientDbSheetName} + {WeeklyUpdateSheetName}"
+                : hasClientDb ? ClientDbSheetName : WeeklyUpdateSheetName,
+            messages,
+        };
+    }
+
+    static IEnumerable<string> ExtractMessages(object? result)
+    {
+        if (result is null) yield break;
+        var prop = result.GetType().GetProperty("messages");
+        if (prop?.GetValue(result) is IEnumerable<string> list)
+        {
+            foreach (var m in list)
+                yield return m;
+        }
+        else if (prop?.GetValue(result) is IEnumerable<object> objs)
+        {
+            foreach (var m in objs)
+            {
+                if (m is string s) yield return s;
+            }
+        }
+    }
+
+    static int ExtractImported(object? result)
+    {
+        if (result is null) return 0;
+        var prop = result.GetType().GetProperty("imported");
+        if (prop?.GetValue(result) is int n) return n;
+        return 0;
+    }
+
+    /// <summary>
+    /// Import Client DB sheet: create companies from COMPANY (fallback BRAND) and tag to SALES hunter.
+    /// </summary>
+    public async Task<object> ImportClientDbAsync(Stream stream, CancellationToken ct = default)
+    {
+        await EnsureSchemaAsync(ct);
+        await EnsureCompanySchemaAsync(ct);
+
+        var parsed = ParseClientDbSheet(stream);
+        if (parsed.Count == 0)
+            throw new InvalidOperationException(
+                $"No data rows found on sheet \"{ClientDbSheetName}\".");
+
+        var team = await db.SalesModuleTeamMembers.AsNoTracking()
+            .Where(m => m.Active)
+            .OrderBy(m => m.Name)
+            .ToListAsync(ct);
+        if (team.Count == 0)
+            throw new InvalidOperationException(
+                "Add Sales Team members before importing Client DB (SALES column must match a hunter).");
+
+        var companies = await db.SalesModuleCompanies.ToListAsync(ct);
+        var byName = companies
+            .GroupBy(c => NormalizeCompanyName(c.Name), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var tags = await db.SalesModuleCompanyMembers.ToListAsync(ct);
+        var tagSet = tags
+            .Select(t => (t.SalesModuleCompanyId, t.SalesTeamMemberId))
+            .ToHashSet();
+
+        var createdCompanies = 0;
+        var tagged = 0;
+        var skippedNoSales = 0;
+        var unmatchedSales = 0;
+        var unmatchedTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var byHunter = new Dictionary<int, int>();
+
+        foreach (var row in parsed)
+        {
+            var member = ResolveTeamMember(team, row.Sales, existingMemberId: null);
+            if (member is null)
+            {
+                if (string.IsNullOrWhiteSpace(row.Sales))
+                    skippedNoSales++;
+                else
+                {
+                    unmatchedSales++;
+                    unmatchedTokens.Add(row.Sales.Trim());
+                }
+                continue;
+            }
+
+            var companyName = !string.IsNullOrWhiteSpace(row.Company) ? row.Company : row.Brand;
+            companyName = NormalizeCompanyName(companyName);
+            if (string.IsNullOrWhiteSpace(companyName))
+                continue;
+
+            if (!byName.TryGetValue(companyName, out var company))
+            {
+                company = new SalesModuleCompany
+                {
+                    Name = companyName,
+                    Active = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    CreatedByEmail = ClientDbCreatedBy,
+                };
+                db.SalesModuleCompanies.Add(company);
+                await db.SaveChangesAsync(ct);
+                byName[companyName] = company;
+                createdCompanies++;
+            }
+            else if (!company.Active)
+            {
+                company.Active = true;
+                company.UpdatedAt = DateTime.UtcNow;
+            }
+
+            var key = (company.Id, member.Id);
+            if (!tagSet.Contains(key))
+            {
+                db.SalesModuleCompanyMembers.Add(new SalesModuleCompanyMember
+                {
+                    SalesModuleCompanyId = company.Id,
+                    SalesTeamMemberId = member.Id,
+                });
+                tagSet.Add(key);
+                tagged++;
+            }
+
+            byHunter[member.Id] = byHunter.GetValueOrDefault(member.Id) + 1;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var hunterSummary = team
+            .Select(m => new
+            {
+                m.Id,
+                m.Name,
+                rows = byHunter.GetValueOrDefault(m.Id),
+            })
+            .Where(x => x.rows > 0)
+            .ToList();
+
+        var messages = new List<string>
+        {
+            $"Client DB: {parsed.Count} row(s) · {createdCompanies} company(ies) created · {tagged} new hunter tag(s).",
+        };
+        if (skippedNoSales > 0)
+            messages.Add($"Skipped {skippedNoSales} row(s) with empty SALES.");
+        if (unmatchedSales > 0)
+        {
+            messages.Add(
+                $"Could not match SALES on {unmatchedSales} row(s): {string.Join(", ", unmatchedTokens.OrderBy(t => t))}.");
+        }
+
+        logger.LogInformation(
+            "Client DB import: {Rows} rows, {Created} companies, {Tagged} tags, {Unmatched} unmatched sales",
+            parsed.Count,
+            createdCompanies,
+            tagged,
+            unmatchedSales);
+
+        return new
+        {
+            sheet = ClientDbSheetName,
+            rows = parsed.Count,
+            companiesCreated = createdCompanies,
+            tagsCreated = tagged,
+            skippedNoSales,
+            unmatchedSales,
+            unmatchedSalesTokens = unmatchedTokens.OrderBy(t => t).ToList(),
+            hunters = hunterSummary,
+            messages,
+        };
+    }
+
+    /// <summary>Seeds Client Update (+ Client DB tags) from bundled Instant Sales Update.xlsx when empty.</summary>
     public async Task SeedBundledIfEmptyAsync(CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct);
-        if (await db.SalesModuleClientUpdates.AnyAsync(ct))
-            return;
+        await EnsureCompanySchemaAsync(ct);
 
         var path = ResolveSeedPath();
         if (path is null)
@@ -876,9 +1116,24 @@ public class SalesModuleClientUpdateService(
             return;
         }
 
-        await using var fs = File.OpenRead(path);
-        await ImportWeeklyUpdateAsync(fs, Path.GetFileName(path), ct);
-        logger.LogInformation("Seeded Sales Module Client Updates from {Path}", path);
+        var hasUpdates = await db.SalesModuleClientUpdates.AnyAsync(ct);
+        var hasClientDbCompanies = await db.SalesModuleCompanies.AsNoTracking()
+            .AnyAsync(c => c.CreatedByEmail == ClientDbCreatedBy, ct);
+
+        if (!hasUpdates)
+        {
+            await using var fs = File.OpenRead(path);
+            await ImportInstantSalesWorkbookAsync(fs, Path.GetFileName(path), ct);
+            logger.LogInformation("Seeded Sales Module Instant Sales Update from {Path}", path);
+            return;
+        }
+
+        if (!hasClientDbCompanies)
+        {
+            await using var fs = File.OpenRead(path);
+            await ImportClientDbAsync(fs, ct);
+            logger.LogInformation("Seeded Sales Module Client DB tags from {Path}", path);
+        }
     }
 
     string? ResolveSeedPath()
@@ -889,6 +1144,90 @@ public class SalesModuleClientUpdateService(
             Path.Combine(AppContext.BaseDirectory, "Data", "Seeds", "instant-sales-update.xlsx"),
         };
         return candidates.FirstOrDefault(File.Exists);
+    }
+
+    async Task EnsureCompanySchemaAsync(CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SalesModuleCompanies" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_SalesModuleCompanies" PRIMARY KEY,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "Active" boolean NOT NULL DEFAULT true,
+                "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
+                "CreatedByEmail" TEXT NOT NULL DEFAULT ''
+            );
+            """, ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "SalesModuleCompanyMembers" (
+                "Id" integer GENERATED BY DEFAULT AS IDENTITY NOT NULL CONSTRAINT "PK_SalesModuleCompanyMembers" PRIMARY KEY,
+                "SalesModuleCompanyId" integer NOT NULL,
+                "SalesTeamMemberId" integer NOT NULL
+            );
+            """, ct);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "SalesModuleCompanies", "CreatedByEmail", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    static string NormalizeCompanyName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        var parts = raw.Replace('\r', ' ').Replace('\n', ' ')
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(' ', parts).Trim();
+    }
+
+    public static List<(string Brand, string Company, string Sales, int? LocationCount)> ParseClientDbSheet(Stream stream)
+    {
+        using var wb = new XLWorkbook(stream);
+        var ws = wb.Worksheets.FirstOrDefault(w =>
+            w.Name.Equals(ClientDbSheetName, StringComparison.OrdinalIgnoreCase)
+            || w.Name.Equals("ClientDB", StringComparison.OrdinalIgnoreCase));
+        if (ws is null)
+            throw new InvalidOperationException(
+                $"Workbook must contain a sheet named \"{ClientDbSheetName}\".");
+
+        var used = ws.RangeUsed();
+        if (used is null) return [];
+
+        var headerRow = 1;
+        var map = MapHeaders(ws, headerRow, used.ColumnCount());
+        if (map.Count == 0 || (!map.ContainsKey("company") && !map.ContainsKey("brand")))
+        {
+            // Fixed Instant Sales Update Client DB order.
+            map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["brand"] = 1,
+                ["locationcount"] = 2,
+                ["company"] = 3,
+                ["contactperson"] = 4,
+                ["hunter"] = 13,
+            };
+        }
+
+        // Client DB uses SALES header — NormalizeHeader maps it to "hunter".
+        if (!map.ContainsKey("hunter") && map.ContainsKey("sales"))
+            map["hunter"] = map["sales"];
+
+        var rows = new List<(string Brand, string Company, string Sales, int? LocationCount)>();
+        for (var r = headerRow + 1; r <= used.RowCount(); r++)
+        {
+            var brand = CellText(ws, r, map, "brand");
+            var company = CellText(ws, r, map, "company");
+            var sales = CellText(ws, r, map, "hunter");
+            if (string.IsNullOrWhiteSpace(brand)
+                && string.IsNullOrWhiteSpace(company)
+                && string.IsNullOrWhiteSpace(sales))
+                continue;
+
+            // Skip accidental re-header rows.
+            if (sales.Equals("SALES", StringComparison.OrdinalIgnoreCase)
+                && brand.Equals("BRAND", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            rows.Add((brand, company, sales, CellInt(ws, r, map, "locationcount")));
+        }
+
+        return rows;
     }
 
     public static List<SalesModuleClientUpdate> ParseWeeklyUpdateSheet(Stream stream)
