@@ -104,11 +104,12 @@ public class SalesModuleClientUpdateService(
     }
 
     /// <summary>
-    /// Lists Client Update rows for a week or month period, only including rows that have
-    /// any change signal in that period (status change, interaction, new lead, or last contact).
+    /// Lists Client Update rows.
+    /// When <paramref name="salesTeamMemberId"/> is set and view is omitted: all clients attached
+    /// to that member (tagged companies + existing rows).
+    /// When view is week/month: period rows with a change signal, optionally scoped to a member/hunter.
     /// Activity date = LastContactDate ?? DateCreated.
-    /// When view is omitted, falls back to last week (Mon–Sun) plus week-to-date (Mon–today).
-    /// Prefer salesTeamMemberId (tagged hunter); hunter string is a fallback / legacy filter.
+    /// When view is omitted (and no member), falls back to last week (Mon–Sun) plus week-to-date.
     /// </summary>
     public async Task<List<object>> ListAsync(
         string? hunter = null,
@@ -120,11 +121,17 @@ public class SalesModuleClientUpdateService(
         CancellationToken ct = default)
     {
         await EnsureHuntersTaggedAsync(ct);
+
+        var mode = (view ?? string.Empty).Trim().ToLowerInvariant();
+
+        // Member selected without a period → full attached client book for that hunter.
+        if (salesTeamMemberId is > 0 && mode is not ("week" or "month"))
+            return await ListAttachedClientsForMemberAsync(salesTeamMemberId.Value, ct);
+
         var rows = await GetCachedRowsAsync(ct);
 
         DateTime fromInclusive;
         DateTime toExclusive;
-        var mode = (view ?? string.Empty).Trim().ToLowerInvariant();
         if (mode is "week" or "month")
         {
             var period = ResolvePeriod(mode, weekStart, year, month);
@@ -172,6 +179,94 @@ public class SalesModuleClientUpdateService(
         }
 
         return rows.ConvertAll(Map);
+    }
+
+    /// <summary>
+    /// All clients attached to a Sales Team member: ensure a Client Update row exists for each
+    /// tagged company, then return every Client Update row tagged to that member.
+    /// </summary>
+    async Task<List<object>> ListAttachedClientsForMemberAsync(int memberId, CancellationToken ct)
+    {
+        var member = await db.SalesModuleTeamMembers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == memberId && m.Active, ct)
+            ?? throw new InvalidOperationException("Sales Team member not found.");
+
+        var memberName = string.IsNullOrWhiteSpace(member.Name) ? member.Email.Trim() : member.Name.Trim();
+        await EnsureAttachedCompanyClientUpdateRowsAsync(memberId, memberName, ct);
+
+        var rows = await GetCachedRowsAsync(ct);
+        return rows
+            .Where(r =>
+                r.SalesTeamMemberId == memberId
+                || (!string.IsNullOrWhiteSpace(memberName)
+                    && r.Hunter.Equals(memberName, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(r => r.Company, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Brand, StringComparer.OrdinalIgnoreCase)
+            .ThenByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
+            .ThenByDescending(r => r.Id)
+            .Select(Map)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Create placeholder Client Update rows for Sales Module companies tagged to the member
+    /// that do not already have a matching company row for that hunter.
+    /// </summary>
+    async Task EnsureAttachedCompanyClientUpdateRowsAsync(
+        int memberId,
+        string memberName,
+        CancellationToken ct)
+    {
+        var companyIds = await db.SalesModuleCompanyMembers.AsNoTracking()
+            .Where(t => t.SalesTeamMemberId == memberId)
+            .Select(t => t.SalesModuleCompanyId)
+            .ToListAsync(ct);
+        if (companyIds.Count == 0) return;
+
+        var companies = await db.SalesModuleCompanies.AsNoTracking()
+            .Where(c => c.Active && companyIds.Contains(c.Id))
+            .OrderBy(c => c.Name)
+            .ToListAsync(ct);
+        if (companies.Count == 0) return;
+
+        var existing = await db.SalesModuleClientUpdates
+            .Where(r => r.SalesTeamMemberId == memberId)
+            .Select(r => r.Company)
+            .ToListAsync(ct);
+        var existingKeys = existing
+            .Select(c => (c ?? string.Empty).Trim().ToLowerInvariant())
+            .Where(c => c.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var added = 0;
+        foreach (var company in companies)
+        {
+            var name = company.Name.Trim();
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            var key = name.ToLowerInvariant();
+            if (!existingKeys.Add(key)) continue;
+
+            db.SalesModuleClientUpdates.Add(new SalesModuleClientUpdate
+            {
+                DateCreated = DateTime.SpecifyKind(company.CreatedAt.Date, DateTimeKind.Utc),
+                Hunter = memberName,
+                SalesTeamMemberId = memberId,
+                Company = name,
+                Brand = string.Empty,
+                Status = string.Empty,
+                ImportedAt = DateTime.UtcNow,
+            });
+            added++;
+        }
+
+        if (added == 0) return;
+
+        await db.SaveChangesAsync(ct);
+        InvalidateListCache();
+        logger.LogInformation(
+            "Client Update: seeded {Count} attached company row(s) for Sales Team member {MemberId}",
+            added,
+            memberId);
     }
 
     /// <summary>Rematch when any Client Update hunter text is not yet tagged to Sales Team.</summary>

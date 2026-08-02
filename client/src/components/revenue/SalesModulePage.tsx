@@ -242,6 +242,32 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   }, []);
 
   const loadClientUpdates = useCallback(async () => {
+    const companyName = selectedCompanyId
+      ? companies.find(c => c.id === selectedCompanyId)?.name.trim().toLowerCase() ?? ''
+      : '';
+
+    function applyCompanyFilter(rows: SalesModuleClientUpdate[]) {
+      if (!companyName) return rows;
+      return rows.filter(r =>
+        r.company.trim().toLowerCase() === companyName
+        || r.brand.trim().toLowerCase() === companyName);
+    }
+
+    // Member selected → all attached clients (no week/month filter).
+    if (selectedTeamMemberId) {
+      setClientUpdatesLoading(true);
+      try {
+        await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
+        const rows = await api.salesModuleClientUpdates({
+          salesTeamMemberId: selectedTeamMemberId,
+        });
+        setClientUpdates(applyCompanyFilter(rows));
+      } finally {
+        setClientUpdatesLoading(false);
+      }
+      return;
+    }
+
     if (clientUpdateView === 'week' && !clientUpdateWeekStart) return;
     if (clientUpdateView === 'month' && !clientUpdateMonthValue) return;
 
@@ -249,16 +275,12 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     try {
       // Rematch uploaded Hunter free-text to Sales Team list, then load period rows with changes.
       await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
-      const base = selectedTeamMemberId
-        ? { salesTeamMemberId: selectedTeamMemberId }
-        : {};
       if (clientUpdateView === 'week') {
         const rows = await api.salesModuleClientUpdates({
-          ...base,
           view: 'week',
           weekStart: clientUpdateWeekStart,
         });
-        setClientUpdates(rows);
+        setClientUpdates(applyCompanyFilter(rows));
         return;
       }
       const month = clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue);
@@ -267,17 +289,18 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
         return;
       }
       const rows = await api.salesModuleClientUpdates({
-        ...base,
         view: 'month',
         year: month.year,
         month: month.month,
       });
-      setClientUpdates(rows);
+      setClientUpdates(applyCompanyFilter(rows));
     } finally {
       setClientUpdatesLoading(false);
     }
   }, [
     selectedTeamMemberId,
+    selectedCompanyId,
+    companies,
     clientUpdateView,
     clientUpdateWeekStart,
     clientUpdateMonthValue,
@@ -508,9 +531,12 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   // Lazy-load Client Update when tab, hunter, or week/month selection changes.
   useEffect(() => {
     if (tab !== 'client-update') return;
-    if (clientUpdateView === 'week' && !clientUpdateWeekStart) return;
-    if (clientUpdateView === 'month' && !clientUpdateMonthValue) return;
-    if (clientUpdateView === 'month' && !clientUpdatePeriods) return;
+    // Member scope lists all attached clients — period selectors are not required.
+    if (!selectedTeamMemberId) {
+      if (clientUpdateView === 'week' && !clientUpdateWeekStart) return;
+      if (clientUpdateView === 'month' && !clientUpdateMonthValue) return;
+      if (clientUpdateView === 'month' && !clientUpdatePeriods) return;
+    }
     let cancelled = false;
     void loadClientUpdates().catch(err => {
       if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load Client Update');
@@ -519,6 +545,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
   }, [
     tab,
     loadClientUpdates,
+    selectedTeamMemberId,
     clientUpdateView,
     clientUpdateWeekStart,
     clientUpdateMonthValue,
@@ -537,6 +564,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
       setCompanyDraft('');
       setCompanies(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedCompanyId(created.id);
+      if (tab === 'client-update') {
+        await loadClientUpdates().catch(() => undefined);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create company');
     } finally {
@@ -896,57 +926,61 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
             <div className="flex flex-wrap items-end gap-2">
               {tab === 'client-update' ? (
                 <>
-                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs self-end">
-                    <button
-                      type="button"
-                      onClick={() => setClientUpdateView('week')}
-                      className={`px-3 py-1.5 font-semibold ${clientUpdateView === 'week' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                    >
-                      Week
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setClientUpdateView('month')}
-                      className={`px-3 py-1.5 font-semibold border-l border-border ${clientUpdateView === 'month' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                    >
-                      Month
-                    </button>
-                  </div>
-                  {clientUpdateView === 'week' ? (
-                    <label className="inline-flex flex-col gap-1 text-xs min-w-[14rem]">
-                      <span className="text-muted-foreground uppercase tracking-wide">Week</span>
-                      <select
-                        required
-                        value={clientUpdateWeekStart}
-                        onChange={e => setClientUpdateWeekStart(e.target.value)}
-                        className="rounded-md border border-border bg-background px-2 py-1.5"
-                      >
-                        <option value="" disabled>
-                          Select week…
-                        </option>
-                        {(clientUpdatePeriods?.weeks ?? []).map(w => (
-                          <option key={w.value} value={w.value}>{w.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : (
-                    <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem]">
-                      <span className="text-muted-foreground uppercase tracking-wide">Month</span>
-                      <select
-                        required
-                        value={clientUpdateMonthValue}
-                        onChange={e => setClientUpdateMonthValue(e.target.value)}
-                        className="rounded-md border border-border bg-background px-2 py-1.5"
-                      >
-                        <option value="" disabled>
-                          Select month…
-                        </option>
-                        {(clientUpdatePeriods?.months ?? []).map(m => (
-                          <option key={m.value} value={m.value}>{m.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
+                  {!selectedTeamMemberId ? (
+                    <>
+                      <div className="inline-flex rounded-md border border-border overflow-hidden text-xs self-end">
+                        <button
+                          type="button"
+                          onClick={() => setClientUpdateView('week')}
+                          className={`px-3 py-1.5 font-semibold ${clientUpdateView === 'week' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                        >
+                          Week
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setClientUpdateView('month')}
+                          className={`px-3 py-1.5 font-semibold border-l border-border ${clientUpdateView === 'month' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                        >
+                          Month
+                        </button>
+                      </div>
+                      {clientUpdateView === 'week' ? (
+                        <label className="inline-flex flex-col gap-1 text-xs min-w-[14rem]">
+                          <span className="text-muted-foreground uppercase tracking-wide">Week</span>
+                          <select
+                            required
+                            value={clientUpdateWeekStart}
+                            onChange={e => setClientUpdateWeekStart(e.target.value)}
+                            className="rounded-md border border-border bg-background px-2 py-1.5"
+                          >
+                            <option value="" disabled>
+                              Select week…
+                            </option>
+                            {(clientUpdatePeriods?.weeks ?? []).map(w => (
+                              <option key={w.value} value={w.value}>{w.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <label className="inline-flex flex-col gap-1 text-xs min-w-[12rem]">
+                          <span className="text-muted-foreground uppercase tracking-wide">Month</span>
+                          <select
+                            required
+                            value={clientUpdateMonthValue}
+                            onChange={e => setClientUpdateMonthValue(e.target.value)}
+                            className="rounded-md border border-border bg-background px-2 py-1.5"
+                          >
+                            <option value="" disabled>
+                              Select month…
+                            </option>
+                            {(clientUpdatePeriods?.months ?? []).map(m => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     disabled={clientUpdatesLoading}
@@ -1041,16 +1075,24 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">
               Client Update ·{' '}
-              {clientUpdateView === 'week'
-                ? (clientUpdatePeriods?.weeks.find(w => w.value === clientUpdateWeekStart)?.label
-                  ?? 'select week')
-                : (clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue)?.label
-                  ?? 'select month')}
-              {' · changes only · '}
-              {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
-              {selectedTeamMember
-                ? ` · hunter ${selectedTeamMember.name}`
-                : ' · all hunters'}
+              {selectedTeamMember ? (
+                <>
+                  all clients attached to {selectedTeamMember.name}
+                  {' · '}
+                  {clientUpdatesLoading ? '…' : `${clientUpdates.length} client${clientUpdates.length === 1 ? '' : 's'}`}
+                </>
+              ) : (
+                <>
+                  {clientUpdateView === 'week'
+                    ? (clientUpdatePeriods?.weeks.find(w => w.value === clientUpdateWeekStart)?.label
+                      ?? 'select week')
+                    : (clientUpdatePeriods?.months.find(m => m.value === clientUpdateMonthValue)?.label
+                      ?? 'select month')}
+                  {' · changes only · '}
+                  {clientUpdatesLoading ? '…' : `${clientUpdates.length} record${clientUpdates.length === 1 ? '' : 's'}`}
+                  {' · all hunters'}
+                </>
+              )}
               {' · '}use Followup on each row to send appointments or change status
             </p>
             {clientUpdateMessage ? (
@@ -1281,8 +1323,9 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
               ) : clientUpdates.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="px-3 py-8 text-center text-muted-foreground">
-                    No Client Update rows with changes for the selected{' '}
-                    {clientUpdateView === 'week' ? 'week' : 'month'}.
+                    {selectedTeamMemberId
+                      ? 'No clients attached to this Sales Team member yet. Add a company above or import Client Update rows.'
+                      : `No Client Update rows with changes for the selected ${clientUpdateView === 'week' ? 'week' : 'month'}.`}
                   </td>
                 </tr>
               ) : (

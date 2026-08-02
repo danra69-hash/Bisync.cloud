@@ -569,9 +569,9 @@ public class SalesModuleController(
     }
 
     /// <summary>
-    /// List Client Update rows for a week/month period (rows with changes only),
-    /// or last week + week-to-date when view is omitted.
-    /// Prefer salesTeamMemberId to scope by Sales Team Hunter.
+    /// List Client Update rows.
+    /// salesTeamMemberId without view → all clients attached to that member.
+    /// view=week|month → period rows with changes (optionally scoped by salesTeamMemberId/hunter).
     /// </summary>
     [HttpGet("client-updates")]
     public async Task<ActionResult<IEnumerable<object>>> GetClientUpdates(
