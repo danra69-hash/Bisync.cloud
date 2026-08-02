@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
+import { CurrentUserContext } from '../../../context/currentUserContext'
+import { isPosDutyCheckInExempt } from './posDutyCheckInExempt'
 import {
   loadPosDutySession,
   POS_DUTY_SESSION_EVENT,
@@ -9,6 +11,12 @@ import { syncPosDutyWithHrAttendance } from './posDutySync'
 /** Local POS duty session, refreshed from storage and reconciled with HR attendance. */
 export function usePosDutySession() {
   const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+  const platformUser = useContext(CurrentUserContext)
+  const signedInEmail =
+    platformUser?.isAuthenticated ? platformUser.currentUser?.email : null
+  const checkInExempt = isPosDutyCheckInExempt(signedInEmail)
+  /** Home / ordering lock — Team QR check-in required unless platform account is exempt. */
+  const orderingLocked = !duty && !checkInExempt
 
   const refresh = useCallback(async () => {
     const next = await syncPosDutyWithHrAttendance()
@@ -48,5 +56,5 @@ export function usePosDutySession() {
     }
   }, [refresh])
 
-  return { duty, setDuty, refreshDuty: refresh }
+  return { duty, setDuty, refreshDuty: refresh, checkInExempt, orderingLocked }
 }

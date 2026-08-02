@@ -10,8 +10,7 @@ export function TopBar() {
   const { pathname } = useLocation()
   const { setMode } = usePosMode()
   const session = usePosSessionOptional()
-  const { duty } = usePosDutySession()
-  const locked = !duty
+  const { orderingLocked: locked } = usePosDutySession()
   const locations = session?.locations ?? []
   const locationId = session?.locationId ?? ''
   const homePath = MODE_META.order.homePath

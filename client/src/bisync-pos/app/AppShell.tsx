@@ -40,7 +40,7 @@ function showsHomeSideNav(pathname: string): boolean {
 function AppShellInner({ children }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { pathname } = useLocation()
-  const { duty } = usePosDutySession()
+  const { orderingLocked } = usePosDutySession()
   useModeFromPath()
   const homeNav = showsHomeSideNav(pathname)
 
@@ -49,8 +49,8 @@ function AppShellInner({ children }: Props) {
   }, [pathname])
 
   useEffect(() => {
-    if (!duty) setMenuOpen(false)
-  }, [duty])
+    if (orderingLocked) setMenuOpen(false)
+  }, [orderingLocked])
 
   useEffect(() => {
     if (!menuOpen) return

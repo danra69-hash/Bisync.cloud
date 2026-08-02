@@ -49,8 +49,7 @@ export function FloorPlanPage() {
   const editRoute = pathname.endsWith('/floor/edit')
   const { qrTableMode } = useConfig()
   const session = usePosSessionOptional()
-  const { duty } = usePosDutySession()
-  const locked = !duty
+  const { orderingLocked: locked } = usePosDutySession()
   const locationLabel =
     session?.locations.find(loc => loc.externalId === session.locationId)?.name
     || session?.locationId

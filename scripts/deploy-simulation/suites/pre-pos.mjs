@@ -19,4 +19,10 @@ if (existsSync(vcTest)) {
   run('node', ['--test', 'scripts/variable-component-form.test.mjs'], { cwd: REPO_ROOT })
 }
 
+const dutyExemptTest = path.join(REPO_ROOT, 'scripts/pos-duty-checkin-exempt.test.mjs')
+if (existsSync(dutyExemptTest)) {
+  run('node', ['--test', 'scripts/pos-duty-checkin-exempt.test.mjs'], { cwd: REPO_ROOT })
+}
+
 console.log('pre-pos: ok')
+
