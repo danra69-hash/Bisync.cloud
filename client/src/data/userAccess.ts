@@ -49,7 +49,6 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
       { id: 'creditNote', label: 'Credit Note' },
       { id: 'wastage', label: 'Wastage' },
       { id: 'transfer', label: 'Transfer' },
-      { id: 'inventoryConfiguration', label: 'Inventory Config' },
     ],
   },
   {

@@ -141,7 +141,6 @@ export const es = {
       inventory: 'Inventario',
       wastage: 'Mermas',
       transfer: 'Transferencia',
-      inventoryConfig: 'Configuración de inventario',
       smartComponent: 'Componente inteligente',
       componentConfig: 'Configuración de componentes',
       accountMapping: 'Asignación de cuentas',

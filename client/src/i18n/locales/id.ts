@@ -141,7 +141,6 @@ export const id = {
       inventory: 'Inventaris',
       wastage: 'Susut',
       transfer: 'Transfer',
-      inventoryConfig: 'Konfigurasi Inventaris',
       smartComponent: 'Komponen Pintar',
       componentConfig: 'Konfigurasi Komponen',
       accountMapping: 'Pemetaan Akun',

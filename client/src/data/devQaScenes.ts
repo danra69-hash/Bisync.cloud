@@ -280,13 +280,6 @@ const SCENES: Record<string, Omit<QaSceneMeta, 'taskId'>> = {
     activity: "Automated QA \u00b7 Stock Card inventory adjustment",
     panels: ["Operation \u00b7 Inventory", 'Status', 'Facts'],
   },
-  'inventory-config': {
-    screenTitle: "Inventory Config",
-    routeHint: "/rms/inventory",
-    actor: 'admin',
-    activity: "Automated QA \u00b7 Inventory Config",
-    panels: ["Operation \u00b7 Inventory", 'Status', 'Facts'],
-  },
   'produce-and-pos-sales': {
     screenTitle: "Produce product (2 batches) + offline sales for FIFO",
     routeHint: "/rms/production",

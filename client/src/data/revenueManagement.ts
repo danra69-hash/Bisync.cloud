@@ -42,7 +42,6 @@ export const revMgmtNav: RevMgmtSection[] = [
           { label: 'Inventory' },
           { label: 'Wastage' },
           { label: 'Transfer' },
-          { label: 'Inventory Config' },
         ],
       },
     ],
@@ -165,7 +164,6 @@ export const COMING_SOON_NAV_ITEMS = new Set<string>(['Report']);
 
 /** Rev Mgmt submenu labels that still route to ModuleContent placeholders. */
 export const COMING_SOON_REV_MGMT_LABELS = new Set<string>([
-  'Inventory Config',
   'Account Mapping',
   'External POS Mapping',
 ]);

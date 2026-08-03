@@ -141,7 +141,6 @@ export const fr = {
       inventory: 'Stocks',
       wastage: 'Pertes',
       transfer: 'Transfert',
-      inventoryConfig: 'Configuration des stocks',
       smartComponent: 'Composant intelligent',
       componentConfig: 'Configuration des composants',
       accountMapping: 'Correspondance des comptes',

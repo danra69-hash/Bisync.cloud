@@ -141,7 +141,6 @@ export const it = {
       inventory: 'Magazzino',
       wastage: 'Sprechi',
       transfer: 'Trasferimento',
-      inventoryConfig: 'Configurazione magazzino',
       smartComponent: 'Componente smart',
       componentConfig: 'Configurazione componenti',
       accountMapping: 'Mappatura conti',
