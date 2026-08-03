@@ -42,12 +42,19 @@ import {
   publishPosDiningMode,
 } from '../../../core/session/posDiningBridge'
 import { api } from '../../../../api'
+import type { PosPrepaidPurchase, PosPromotion } from '../../../../api'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
 import { TakeawayPickupModal } from './TakeawayPickupModal'
 import { CombinationPickerModal } from './CombinationPickerModal'
 import { ComponentSwapModal } from './ComponentSwapModal'
+import { PrepaidCustomerModal, PrepaidDepleteModal } from './PrepaidModals'
+import {
+  encodePrepaidNote,
+  findActivePrepaidPromotionForProduct,
+  parsePrepaidNote,
+} from '../domain/prepaidNotes'
 import { ModifierPickerModal } from './ModifierPickerModal'
 import { VoidCancelModal } from './VoidCancelModal'
 import { PaymentModal } from './PaymentModal'
@@ -156,6 +163,15 @@ export function RegisterPage() {
   const [removalError, setRemovalError] = useState<string | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [prepaidPromotions, setPrepaidPromotions] = useState<PosPromotion[]>([])
+  const [prepaidCustomerTarget, setPrepaidCustomerTarget] = useState<{
+    product: Product
+    promotion: PosPromotion
+  } | null>(null)
+  const [prepaidDepleteOpen, setPrepaidDepleteOpen] = useState(false)
+  const [prepaidPurchases, setPrepaidPurchases] = useState<PosPrepaidPurchase[]>([])
+  const [prepaidDepleteBusy, setPrepaidDepleteBusy] = useState(false)
+  const [prepaidDepleteError, setPrepaidDepleteError] = useState<string | null>(null)
   const [modifierGroups, setModifierGroups] = useState<PosModifierGroup[]>([])
   const [compulsoryFlow, setCompulsoryFlow] = useState<{
     product: Product
@@ -182,6 +198,26 @@ export function RegisterPage() {
       })
       .catch(() => {
         if (!cancelled) setModifierGroups([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session?.companyId])
+
+  useEffect(() => {
+    if (!session?.companyId) {
+      setPrepaidPromotions([])
+      return
+    }
+    let cancelled = false
+    api.posPromotions(session.companyId)
+      .then(rows => {
+        if (cancelled) return
+        setPrepaidPromotions(rows.filter(p =>
+          p.promotionKind === 'prepaid' && p.active && p.status !== 'Inactive'))
+      })
+      .catch(() => {
+        if (!cancelled) setPrepaidPromotions([])
       })
     return () => {
       cancelled = true
@@ -537,6 +573,11 @@ export function RegisterPage() {
 
   function addProduct(product: Product) {
     if (!requireDuty()) return
+    const prepaid = findActivePrepaidPromotionForProduct(prepaidPromotions, product.id)
+    if (prepaid) {
+      setPrepaidCustomerTarget({ product, promotion: prepaid })
+      return
+    }
     const compulsory = resolveRequiredModifierGroups(modifierGroups, product)
     if (compulsory.length > 0) {
       setCompulsoryFlow({
@@ -548,6 +589,31 @@ export function RegisterPage() {
       return
     }
     continueAddProduct(product)
+  }
+
+  function confirmPrepaidCustomer(payload: { customerName: string; customerMobile: string }) {
+    const target = prepaidCustomerTarget
+    setPrepaidCustomerTarget(null)
+    if (!target) return
+    const packageRpp = Number(target.promotion.packageRpp ?? target.promotion.products[0]?.rpp ?? 0)
+    const priceCents = Math.max(0, Math.round(packageRpp * 100))
+    const note = encodePrepaidNote(
+      target.promotion.id,
+      payload.customerMobile,
+      payload.customerName,
+    )
+    setLines(prev => [
+      ...prev,
+      {
+        productId: target.product.id,
+        quantity: 1,
+        lineKey: `prepaid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        note,
+        unitPriceCents: priceCents,
+      },
+    ])
+    setSelectedLineKey(null)
+    flash(`Pre-paid · ${payload.customerName} · ${target.promotion.name}`)
   }
 
   function confirmCompulsoryStep(optionIds: number[]) {
@@ -990,6 +1056,65 @@ export function RegisterPage() {
     setPaymentOpen(true)
   }
 
+  async function openPrepaidDeplete() {
+    if (!session?.companyId || !session.locationId) {
+      flash('POS session is not ready.')
+      return
+    }
+    setPrepaidDepleteError(null)
+    setPrepaidDepleteBusy(true)
+    try {
+      const rows = await api.posPrepaidPurchases(session.companyId, {
+        status: 'active',
+        locationExternalId: session.locationId,
+      })
+      const withUnits = rows.map(row => {
+        const promo = prepaidPromotions.find(p => p.id === row.posPromotionId)
+        return {
+          ...row,
+          depletionMethod: promo?.depletionMethod,
+          depletionUnits: promo?.depletionUnits,
+        }
+      })
+      setPrepaidPurchases(withUnits)
+      setPrepaidDepleteOpen(true)
+      if (withUnits.length === 0) flash('No active prepaid packages at this location.')
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Could not load prepaid packages.')
+    } finally {
+      setPrepaidDepleteBusy(false)
+    }
+  }
+
+  async function confirmPrepaidDeplete(payload: {
+    purchaseId: number
+    unitCode?: string
+    qty: number
+  }) {
+    if (!session?.companyId || !session.locationId) return
+    setPrepaidDepleteBusy(true)
+    setPrepaidDepleteError(null)
+    try {
+      const updated = await api.depletePosPrepaid({
+        purchaseId: payload.purchaseId,
+        companyId: session.companyId,
+        locationExternalId: session.locationId,
+        unitCode: payload.unitCode,
+        qty: payload.qty,
+        checkNumber,
+        createdBy: duty?.employeeName || 'POS Staff',
+      })
+      setPrepaidDepleteOpen(false)
+      flash(
+        `Pre-paid redeemed · ${updated.customerName} · left ${updated.balanceRemaining} ${updated.packageUom}`,
+      )
+    } catch (e) {
+      setPrepaidDepleteError(e instanceof Error ? e.message : 'Redeem failed.')
+    } finally {
+      setPrepaidDepleteBusy(false)
+    }
+  }
+
   async function confirmPayment(payload: {
     tender: TenderType
     cashReceivedCents?: number
@@ -1011,7 +1136,13 @@ export function RegisterPage() {
       }
 
       let recordedSales = 0
+      let prepaidPackageLines = 0
       for (const line of lines) {
+        // Prepaid package purchase is paid now; inventory depletes later on Pre-paid redeem.
+        if (parsePrepaidNote(line.note)) {
+          prepaidPackageLines += 1
+          continue
+        }
         const productId = Number(line.productId)
         if (!Number.isFinite(productId) || productId <= 0) continue
         const detail = line.saleDetail
@@ -1032,7 +1163,7 @@ export function RegisterPage() {
         })
         recordedSales += 1
       }
-      if (recordedSales === 0) {
+      if (recordedSales === 0 && prepaidPackageLines === 0) {
         throw new Error('No sellable products on this check. Check product IDs / catalog.')
       }
 
@@ -1053,6 +1184,26 @@ export function RegisterPage() {
         })
       } catch {
         /* inventory sale already recorded; EOD row is best-effort */
+      }
+
+      // Activate prepaid package accounts for prepaid package lines.
+      for (const line of lines) {
+        const prepaidMeta = parsePrepaidNote(line.note)
+        if (!prepaidMeta) continue
+        try {
+          await api.createPosPrepaidPurchase({
+            companyId: session.companyId,
+            locationExternalId: locationId,
+            promotionId: prepaidMeta.promotionId,
+            productId: Number(line.productId),
+            customerName: prepaidMeta.customerName,
+            customerMobile: prepaidMeta.customerMobile,
+            checkNumber,
+            createdBy: duty?.employeeName || 'POS Staff',
+          })
+        } catch (err) {
+          flash(err instanceof Error ? err.message : 'Prepaid package save failed.')
+        }
       }
 
       const count = lines.reduce((n, l) => n + l.quantity, 0)
@@ -1229,6 +1380,7 @@ export function RegisterPage() {
         }}
         activeTableLabel={activeTableSession?.tableLabel ?? null}
         paymentBusy={charging}
+        prepaidAvailable={prepaidPromotions.length > 0}
         onAction={action => {
           if (!requireDuty()) return
           if (action === 'cancel') {
@@ -1241,6 +1393,10 @@ export function RegisterPage() {
           }
           if (action === 'payment') {
             openPayment()
+            return
+          }
+          if (action === 'prepaid') {
+            void openPrepaidDeplete()
             return
           }
           flash('Printing…')
@@ -1338,6 +1494,44 @@ export function RegisterPage() {
           onConfirm={(payload) => { void confirmPayment(payload) }}
         />
       )}
+
+      {prepaidCustomerTarget ? (
+        <PrepaidCustomerModal
+          productName={prepaidCustomerTarget.product.name}
+          promotionName={prepaidCustomerTarget.promotion.name}
+          packageLabel={`${prepaidCustomerTarget.promotion.packageQty ?? 1} ${prepaidCustomerTarget.promotion.packageUom || 'unit'} · RPP ${(prepaidCustomerTarget.promotion.packageRpp ?? 0).toFixed(2)}`}
+          onCancel={() => setPrepaidCustomerTarget(null)}
+          onConfirm={confirmPrepaidCustomer}
+        />
+      ) : null}
+
+      {prepaidDepleteOpen ? (
+        <PrepaidDepleteModal
+          purchases={prepaidPurchases.map(p => {
+            const promo = prepaidPromotions.find(pr => pr.id === p.posPromotionId)
+            return {
+              id: p.id,
+              customerName: p.customerName,
+              customerMobile: p.customerMobile,
+              promotionName: p.promotionName,
+              productName: p.productName,
+              balanceRemaining: p.balanceRemaining,
+              packageUom: p.packageUom,
+              packageQty: p.packageQty,
+              depletionMethod: promo?.depletionMethod,
+              depletionUnits: promo?.depletionUnits,
+            }
+          })}
+          busy={prepaidDepleteBusy}
+          error={prepaidDepleteError}
+          onCancel={() => {
+            if (prepaidDepleteBusy) return
+            setPrepaidDepleteOpen(false)
+            setPrepaidDepleteError(null)
+          }}
+          onConfirm={(payload) => { void confirmPrepaidDeplete(payload) }}
+        />
+      ) : null}
 
       {toast && (
         <div className="register__toast" role="status">

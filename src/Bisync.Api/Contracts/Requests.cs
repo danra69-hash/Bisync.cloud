@@ -1805,9 +1805,73 @@ public class CreatePosPromotionRequest
     /// <summary>discountPercent | discountPrice</summary>
     [MaxLength(40)]
     public string PromoType { get; set; } = "discountPercent";
+    /// <summary>timeBase | prepaid</summary>
+    [MaxLength(40)]
+    public string? PromotionKind { get; set; }
+    public int ValidityPeriodValue { get; set; }
+    /// <summary>days | months</summary>
+    [MaxLength(20)]
+    public string? ValidityPeriodUnit { get; set; }
+    public decimal PackageQty { get; set; }
+    [MaxLength(40)]
+    public string? PackageUom { get; set; }
+    public decimal PackageRrp { get; set; }
+    public decimal PackageTotalValue { get; set; }
+    public decimal PackageRpp { get; set; }
+    public decimal DiscountAmount { get; set; }
+    /// <summary>weight | salesUnit</summary>
+    [MaxLength(40)]
+    public string? DepletionMethod { get; set; }
+    public List<PosPromotionDepletionUnitRequest>? DepletionUnits { get; set; }
     [MaxLength(256)]
     public string? CreatedBy { get; set; }
     public List<CreatePosPromotionProductRequest> Products { get; set; } = [];
+}
+
+public class PosPromotionDepletionUnitRequest
+{
+    [MaxLength(40)]
+    public string Code { get; set; } = string.Empty;
+    [MaxLength(80)]
+    public string Label { get; set; } = string.Empty;
+    public decimal QtyPerUnit { get; set; } = 1m;
+}
+
+public class CreatePosPrepaidPurchaseRequest
+{
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [Range(1, int.MaxValue)]
+    public int PromotionId { get; set; }
+    [Range(1, int.MaxValue)]
+    public int ProductId { get; set; }
+    [MaxLength(200)]
+    public string CustomerName { get; set; } = string.Empty;
+    [MaxLength(40)]
+    public string CustomerMobile { get; set; } = string.Empty;
+    public int? CheckNumber { get; set; }
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
+}
+
+public class DepletePosPrepaidRequest
+{
+    [Range(1, int.MaxValue)]
+    public int PurchaseId { get; set; }
+    [Range(1, int.MaxValue)]
+    public int CompanyId { get; set; }
+    [Required, MaxLength(120)]
+    public string LocationExternalId { get; set; } = string.Empty;
+    [MaxLength(40)]
+    public string? UnitCode { get; set; }
+    [Range(0.0001, 999999999)]
+    public decimal Qty { get; set; }
+    public int? ProductId { get; set; }
+    public int? CheckNumber { get; set; }
+    [MaxLength(256)]
+    public string? CreatedBy { get; set; }
 }
 
 public class CreatePosPromotionProductRequest

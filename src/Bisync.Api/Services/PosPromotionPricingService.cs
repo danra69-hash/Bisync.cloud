@@ -106,6 +106,10 @@ public static class PosPromotionPricingService
 
         foreach (var promotion in promotions)
         {
+            // Prepaid packages are sold/redeemed via PosPrepaidController — not live RPP overlays.
+            if (string.Equals(promotion.PromotionKind, "prepaid", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             if (!IsInEffect(promotion, localNow))
                 continue;
 

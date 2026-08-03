@@ -27,11 +27,13 @@ type Props = {
   onSelectLine?: (line: CartLine) => void
   onOpenHistory: () => void
   onOpenPickup?: () => void
-  onAction: (action: 'save' | 'print' | 'payment' | 'cancel') => void
+  onAction: (action: 'save' | 'print' | 'payment' | 'cancel' | 'prepaid') => void
   /** Opened floor table label (Cancel discards unsaved edits only). */
   activeTableLabel?: string | null
   /** True while a payment charge is in flight. */
   paymentBusy?: boolean
+  /** Show Pre-paid redeem action when prepaid packages exist for the location. */
+  prepaidAvailable?: boolean
 }
 
 export function OrderPanel({
@@ -57,6 +59,7 @@ export function OrderPanel({
   onAction,
   activeTableLabel = null,
   paymentBusy = false,
+  prepaidAvailable = false,
 }: Props) {
   const byId = new Map(products.map((p) => [p.id, p]))
   const subtotal = cartSubtotal(lines, products)
@@ -299,6 +302,15 @@ export function OrderPanel({
           onClick={() => onAction('print')}
         >
           Print
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!prepaidAvailable || paymentBusy}
+          title="Redeem a customer's pre-paid package"
+          onClick={() => onAction('prepaid')}
+        >
+          Pre-paid
         </button>
         <button
           type="button"

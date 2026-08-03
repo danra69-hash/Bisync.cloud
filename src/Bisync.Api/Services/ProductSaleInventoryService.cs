@@ -39,6 +39,23 @@ public class ProductSaleInventoryService(
             quantitySold,
             salesChannel,
             variableDetail: null,
+            reasonOverride: null,
+            cancellationToken);
+
+    public Task RecordProductSaleAsync(
+        int productId,
+        IReadOnlyList<string> locationExternalIds,
+        decimal quantitySold,
+        string salesChannel,
+        PosSaleVariableDetailRequest? variableDetail,
+        CancellationToken cancellationToken = default) =>
+        RecordProductSaleAsync(
+            productId,
+            locationExternalIds,
+            quantitySold,
+            salesChannel,
+            variableDetail,
+            reasonOverride: null,
             cancellationToken);
 
     public async Task RecordProductSaleAsync(
@@ -47,6 +64,7 @@ public class ProductSaleInventoryService(
         decimal quantitySold,
         string salesChannel,
         PosSaleVariableDetailRequest? variableDetail,
+        string? reasonOverride,
         CancellationToken cancellationToken = default)
     {
         if (quantitySold <= 0)
@@ -54,7 +72,12 @@ public class ProductSaleInventoryService(
 
         var channel = NormalizeChannel(salesChannel);
         var referenceType = ChannelToReferenceType(channel);
-        var reasonLabel = ChannelToReasonLabel(channel);
+        var reasonLabel = string.IsNullOrWhiteSpace(reasonOverride)
+            ? ChannelToReasonLabel(channel)
+            : reasonOverride.Trim();
+        var batchNote = string.IsNullOrWhiteSpace(reasonOverride)
+            ? string.Empty
+            : reasonOverride.Trim();
 
         var product = await db.Products
             .Include(p => p.Items)
@@ -112,6 +135,7 @@ public class ProductSaleInventoryService(
                 locationId,
                 finishedQty,
                 referenceType,
+                batchNote,
                 cancellationToken);
             usageAudit.Add(new
             {
@@ -226,6 +250,7 @@ public class ProductSaleInventoryService(
                         childQty,
                         channel,
                         variableDetail: null,
+                        reasonOverride: batchNote,
                         cancellationToken);
                 }
             }
@@ -490,6 +515,7 @@ public class ProductSaleInventoryService(
         string locationId,
         decimal quantitySold,
         string referenceType,
+        string batchNote,
         CancellationToken cancellationToken)
     {
         var stockRow = await db.ProductB2bLocationStocks
@@ -510,6 +536,7 @@ public class ProductSaleInventoryService(
             Quantity = quantitySold,
             ProductionDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
             LocationIdsJson = JsonSerializer.Serialize(new[] { locationId }),
+            BatchNumber = batchNote ?? string.Empty,
             CompanyId = product.CompanyId,
             CreatedAt = DateTime.UtcNow,
         });
@@ -558,6 +585,9 @@ public class ProductSaleInventoryService(
                 Quantity = fromProducedStock,
                 ProductionDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
                 LocationIdsJson = JsonSerializer.Serialize(new[] { locationId }),
+                BatchNumber = reasonLabel.Contains("prepaid", StringComparison.OrdinalIgnoreCase)
+                    ? reasonLabel
+                    : string.Empty,
                 CompanyId = subProduct.CompanyId,
                 CreatedAt = DateTime.UtcNow,
             });

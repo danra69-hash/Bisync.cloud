@@ -86,33 +86,20 @@ function fmtDateTime(iso: string) {
 
 
 
-function entryTypeLabel(entryType: StockCardLedgerEntry['entryType']) {
-
+function entryTypeLabel(entryType: StockCardLedgerEntry['entryType'], reason?: string) {
   switch (entryType) {
-
     case 'balance_forward':
-
-      return 'B/F';
-
+      return 'B/F'
     case 'purchase':
-
-      return 'Purchase';
-
+      return 'Purchase'
     case 'cash_purchase':
-
-      return 'Cash purchase';
-
+      return 'Cash purchase'
     case 'transfer_in':
-
-      return 'Transfer in';
-
+      return 'Transfer in'
     case 'transfer_out':
-
-      return 'Transfer out';
-
+      return 'Transfer out'
     case 'pos_sale':
-
-      return 'POS sales';
+      return reason && /prepaid/i.test(reason) ? 'Pre-paid consumption' : 'POS sales';
 
     case 'online_order':
 
@@ -246,7 +233,7 @@ function LedgerEntryRow({
         {fmtDateTime(entry.occurredAt)}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
-        {entryTypeLabel(entry.entryType)}
+        {entryTypeLabel(entry.entryType, entry.reason)}
         {entry.isShortage ? (
           <span className="ml-1 text-[10px] uppercase tracking-wide text-destructive">Neg / short</span>
         ) : null}

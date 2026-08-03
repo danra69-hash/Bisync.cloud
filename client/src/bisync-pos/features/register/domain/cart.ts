@@ -121,7 +121,8 @@ export function cartSubtotal(
   return lines.reduce((sum, line) => {
     const product = byId.get(line.productId)
     if (!product) return sum
-    return sum + product.priceCents * line.quantity + saleDetailExtraChargeCents(line.saleDetail)
+    const unit = line.unitPriceCents ?? product.priceCents
+    return sum + unit * line.quantity + saleDetailExtraChargeCents(line.saleDetail)
   }, 0)
 }
 
