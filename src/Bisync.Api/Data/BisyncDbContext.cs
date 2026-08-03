@@ -659,6 +659,11 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Code).HasMaxLength(40);
         });
+        modelBuilder.Entity<PosTaxServiceConfig>(e =>
+        {
+            e.HasIndex(x => x.CompanyId).IsUnique();
+            e.Property(x => x.ConfigJson).HasColumnType("text");
+        });
         modelBuilder.Entity<PosPrinterSdk>(e =>
         {
             e.HasIndex(x => x.SdkCode).IsUnique();
