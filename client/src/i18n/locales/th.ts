@@ -141,7 +141,6 @@ export const th = {
       inventory: 'สินค้าคงคลัง',
       wastage: 'ของเสีย',
       transfer: 'โอนย้าย',
-      inventoryConfig: 'ตั้งค่าสินค้าคงคลัง',
       smartComponent: 'ส่วนประกอบอัจฉริยะ',
       componentConfig: 'ตั้งค่าส่วนประกอบ',
       accountMapping: 'การแมปบัญชี',

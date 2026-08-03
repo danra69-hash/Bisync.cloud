@@ -653,14 +653,6 @@ export const QA_EXTENDED_INSERTS: Record<string, ExtendedTaskDef[]> = {
         });
       },
     },
-    {
-      id: 'inventory-config',
-      label: 'Inventory Config',
-      group: 'operation-inventory',
-      run: async () => {
-        skipInactive('Inventory Config');
-      },
-    },
   ],
 
   'final-stock-card-audit': [

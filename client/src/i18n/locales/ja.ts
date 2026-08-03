@@ -141,7 +141,6 @@ export const ja = {
       inventory: '在庫',
       wastage: '廃棄',
       transfer: '振替',
-      inventoryConfig: '在庫設定',
       smartComponent: 'スマートコンポーネント',
       componentConfig: 'コンポーネント設定',
       accountMapping: '勘定マッピング',

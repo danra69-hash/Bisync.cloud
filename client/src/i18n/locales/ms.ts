@@ -141,7 +141,6 @@ export const ms = {
       inventory: 'Inventori',
       wastage: 'Pembaziran',
       transfer: 'Pemindahan',
-      inventoryConfig: 'Konfigurasi Inventori',
       smartComponent: 'Komponen Pintar',
       componentConfig: 'Konfigurasi Komponen',
       accountMapping: 'Pemetaan Akaun',

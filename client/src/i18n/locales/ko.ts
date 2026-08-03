@@ -141,7 +141,6 @@ export const ko = {
       inventory: '재고',
       wastage: '폐기',
       transfer: '이동',
-      inventoryConfig: '재고 설정',
       smartComponent: '스마트 구성요소',
       componentConfig: '구성요소 설정',
       accountMapping: '계정 매핑',

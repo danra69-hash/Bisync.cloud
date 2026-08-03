@@ -663,7 +663,7 @@ public class AuthController(
             {
                 "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder", "cashPurchase", "orderTemplate",
                 "productManagement", "subProductManagement", "offlineSales",
-                "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage", "transfer", "inventoryConfiguration",
+                "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage", "transfer",
                 "createEdit", "componentConfig", "activateDeactivateVendorProducts", "createEditComponentGroup", "createEditStorageAssignment",
                 "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",
                 "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",

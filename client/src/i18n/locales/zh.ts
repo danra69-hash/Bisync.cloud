@@ -141,7 +141,6 @@ export const zh = {
       inventory: '库存',
       wastage: '损耗',
       transfer: '调拨',
-      inventoryConfig: '库存配置',
       smartComponent: '智能组件',
       componentConfig: '组件配置',
       accountMapping: '科目映射',

@@ -59,7 +59,7 @@ public static class SuperAdminAccess
         "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder",
         "cashPurchase", "orderTemplate", "productManagement", "subProductManagement", "offlineSales",
         "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage",
-        "transfer", "inventoryConfiguration", "createEdit", "componentConfig", "activateDeactivateVendorProducts",
+        "transfer", "createEdit", "componentConfig", "activateDeactivateVendorProducts",
         "createEditComponentGroup", "createEditStorageAssignment", "accountMapping",
         "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",
         "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",

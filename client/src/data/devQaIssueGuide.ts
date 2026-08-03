@@ -388,16 +388,6 @@ const GUIDES: Record<string, QaIssueGuide> = {
     ],
     checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
   },
-  'inventory-config': {
-    area: "Operation \u00b7 Inventory",
-    expected: "Inventory Config completes without error and records verification facts.",
-    whereToFix: [
-      'Open Dev Console → Automated QA → this step detail.',
-      'Retry the step or re-run full QA after fixing the underlying API/data issue.',
-      'Purge leftover QA Power companies if tenancy is stuck from a prior failed run.',
-    ],
-    checks: ['Step status pass or intentional warn (coming soon)', 'Facts populated', 'No unexpected irregularities'],
-  },
   'produce-and-pos-sales': {
     area: "Operation \u00b7 Production",
     expected: "Produce product (2 batches) + offline sales for FIFO completes without error and records verification facts.",
