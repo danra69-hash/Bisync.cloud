@@ -48,3 +48,27 @@ for (const locationExternalId of locations) {
   const saved = JSON.parse(body.layoutJson)
   console.log(`OK  ${locationExternalId}: ${saved.tables.length} tables @ ${body.updatedAt}`)
 }
+
+if (process.exitCode) process.exit(process.exitCode)
+
+// Verify nested layoutJson (do not grep the outer API envelope).
+const primary = locations[0]
+const check = await fetch(
+  `${base}/api/pos/floor-plan?companyId=${companyId}&locationExternalId=${encodeURIComponent(primary)}`,
+)
+if (!check.ok) {
+  console.error(`VERIFY FAIL: GET floor-plan HTTP ${check.status}`)
+  process.exit(1)
+}
+const checked = await check.json()
+const verified = JSON.parse(checked.layoutJson || '{}')
+const ids = (verified.tables || []).map((t) => t.id)
+if (!ids.includes('p01') || !(verified.tables || []).some((t) => t.label === 'P1')) {
+  console.error('VERIFY FAIL: Pavilion tables missing (expected p01 / P1)')
+  process.exit(1)
+}
+if (ids.includes('t1') && verified.tables.length === 8) {
+  console.error('VERIFY FAIL: stock T1–T8 demo detected')
+  process.exit(1)
+}
+console.log(`Verified ${primary}: ${verified.tables.length} tables (Pavilion)`)
