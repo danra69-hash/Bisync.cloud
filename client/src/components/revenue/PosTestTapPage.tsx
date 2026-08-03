@@ -9,7 +9,6 @@ import {
 } from '../../data/posStationLinks'
 import { configLocationToDropdown } from '../../utils/orgFilters'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
-import { PosDesktopInstall } from '../shared/PosDesktopInstall'
 import { PosEmbedErrorBoundary } from '../shared/PosEmbedErrorBoundary'
 import './PosTestTapPage.css'
 
