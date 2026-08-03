@@ -43,6 +43,8 @@ public class Product
     public string ParStockUom { get; set; } = string.Empty;
     public bool PosEnabled { get; set; }
     public string PosDeliveryUnitsJson { get; set; } = "[]";
+    /// <summary>POS Menu sales unit label (from company UOM catalog / product units).</summary>
+    public string PosSalesUom { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
     public int? CompanyId { get; set; }
     public string LocationIdsJson { get; set; } = "[]";

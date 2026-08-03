@@ -2,10 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { api, type PosModifierGroup, type Product } from '../../api';
 import {
+  listPosSalesUomOptions,
   productMatchesPosMenu,
   resolvePosMenuRrp,
   resolvePosMenuSellPrice,
+  resolvePosSalesUom,
 } from '../../data/posCatalog';
+import {
+  collectProductPosUnitRows,
+  parsePosDeliveryUnits,
+} from '../../data/productPosUnits';
+import {
+  getKnownRecipeUnits,
+  getMyRecipeUnits,
+  loadComponentCatalogForCompany,
+} from '../../data/componentCatalogConfig';
 import { formatCompulsorySummary } from '../../data/posModifierGroups';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { filterSelectCls } from '../layout/formControls';
@@ -35,8 +46,10 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
   const [promoRppByProductId, setPromoRppByProductId] = useState<Map<number, number>>(
     () => new Map(),
   );
+  const [systemUoms, setSystemUoms] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [groupFilter, setGroupFilter] = useState('All');
   const [searchDraft, setSearchDraft] = useState('');
@@ -47,11 +60,17 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
       setProducts([]);
       setModifierGroups([]);
       setPromoRppByProductId(new Map());
+      setSystemUoms([]);
       return;
     }
     setLoading(true);
     setError(null);
     try {
+      await loadComponentCatalogForCompany(selectedCompanyId).catch(() => undefined);
+      const my = getMyRecipeUnits();
+      const known = getKnownRecipeUnits();
+      setSystemUoms(my.length > 0 ? my : known);
+
       const [rows, modifiers] = await Promise.all([
         api.products(selectedCompanyId),
         api.posModifierGroups(selectedCompanyId).catch(() => [] as PosModifierGroup[]),
@@ -132,6 +151,36 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
     setAppliedSearch(searchDraft.trim());
   }, [searchDraft]);
 
+  const saveSalesUom = useCallback(async (product: Product, nextUom: string) => {
+    const uom = nextUom.trim();
+    if (!uom) return;
+    if (resolvePosSalesUom(product, products) === uom) return;
+    setSavingId(product.id);
+    setError(null);
+    try {
+      const posUnits = collectProductPosUnitRows(product, products);
+      const matched = posUnits.find(
+        row =>
+          row.unitTitle.trim().toLowerCase() === uom.toLowerCase()
+          || row.unitKey.toLowerCase() === uom.toLowerCase(),
+      );
+      const payload: Parameters<typeof api.patchProduct>[1] = { posSalesUom: uom };
+      if (matched) {
+        const rest = parsePosDeliveryUnits(product)
+          .map(u => u.unitKey)
+          .filter(key => key !== matched.unitKey)
+          .map(unitKey => ({ unitKey }));
+        payload.posDeliveryUnits = [{ unitKey: matched.unitKey }, ...rest];
+      }
+      const updated = await api.patchProduct(product.id, payload);
+      setProducts(prev => prev.map(p => (p.id === product.id ? { ...p, ...updated } : p)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save sales unit.');
+    } finally {
+      setSavingId(null);
+    }
+  }, [products]);
+
   const menuRows = useMemo(() => {
     const q = appliedSearch.toLowerCase();
     return products
@@ -144,6 +193,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
           product.productId,
           product.category,
           product.group,
+          resolvePosSalesUom(product, products),
         ]
           .filter(Boolean)
           .join(' ')
@@ -153,15 +203,27 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
       .map(product => {
         const rrp = resolvePosMenuRrp(product, products);
         const sellPrice = resolvePosMenuSellPrice(product, products, promoRppByProductId);
+        const salesUom = resolvePosSalesUom(product, products);
+        const salesUomOptions = listPosSalesUomOptions(product, products, systemUoms);
         return {
           product,
           rrp,
           sellPrice,
+          salesUom,
+          salesUomOptions,
           onPromo: promoRppByProductId.has(product.id),
           compulsoryOption: formatCompulsorySummary(modifierGroups, product),
         };
       });
-  }, [products, categoryFilter, groupFilter, appliedSearch, promoRppByProductId, modifierGroups]);
+  }, [
+    products,
+    categoryFilter,
+    groupFilter,
+    appliedSearch,
+    promoRppByProductId,
+    modifierGroups,
+    systemUoms,
+  ]);
 
   const filtersActive =
     categoryFilter !== 'All' || groupFilter !== 'All' || appliedSearch.length > 0;
@@ -181,6 +243,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
           <h2 className="text-sm font-semibold text-foreground">POS Menu</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Products enabled for POS with a retail price (RRP) for this company.
+            Sales Unit can be changed from system UOMs / product units.
           </p>
         </div>
         <button
@@ -255,7 +318,7 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
                     runSearch();
                   }
                 }}
-                placeholder="Search by name, code, category, or group…"
+                placeholder="Search by name, code, category, group, or sales unit…"
                 className={`${filterCls} w-full`}
               />
               <button
@@ -318,13 +381,14 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
           <TableScrollContainer className="max-h-[calc(100dvh-16rem)] overflow-y-auto">
             <table className="w-full text-xs">
               <colgroup>
-                <col className="w-[12%]" />
+                <col className="w-[11%]" />
+                <col className="w-[11%]" />
+                <col className="w-[10%]" />
+                <col className="w-[20%]" />
+                <col className="w-[14%]" />
                 <col className="w-[12%]" />
                 <col className="w-[11%]" />
-                <col className="w-[24%]" />
-                <col className="w-[15%]" />
-                <col className="w-[13%]" />
-                <col className="w-[13%]" />
+                <col className="w-[11%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-muted/30">
@@ -333,12 +397,13 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
                   <TableHeaderCell>Product Code</TableHeaderCell>
                   <TableHeaderCell>Product</TableHeaderCell>
                   <TableHeaderCell>Compulsory Option</TableHeaderCell>
+                  <TableHeaderCell>Sales Unit</TableHeaderCell>
                   <TableHeaderCell headerAlign="right">RRP</TableHeaderCell>
                   <TableHeaderCell headerAlign="right">Sell</TableHeaderCell>
                 </tr>
               </thead>
               <tbody>
-                {menuRows.map(({ product, rrp, sellPrice, onPromo, compulsoryOption }) => (
+                {menuRows.map(({ product, rrp, sellPrice, salesUom, salesUomOptions, onPromo, compulsoryOption }) => (
                   <tr key={product.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2.5 text-muted-foreground min-w-0">
                       <span className="line-clamp-2">{product.category?.trim() || '—'}</span>
@@ -354,6 +419,23 @@ export function PosMenuPage({ selectedCompanyId, selectedLocationIds }: Props) {
                     </td>
                     <td className="px-3 py-2.5 text-muted-foreground min-w-0">
                       <span className="line-clamp-2">{compulsoryOption}</span>
+                    </td>
+                    <td className="px-3 py-2.5 min-w-0">
+                      <select
+                        className={`${filterCls} w-full max-w-[9rem]`}
+                        value={salesUom}
+                        disabled={savingId === product.id}
+                        aria-label={`Sales unit for ${product.name}`}
+                        onChange={e => void saveSalesUom(product, e.target.value)}
+                      >
+                        {!salesUom ? <option value="">Select…</option> : null}
+                        {salesUom && !salesUomOptions.includes(salesUom) ? (
+                          <option value={salesUom}>{salesUom}</option>
+                        ) : null}
+                        {salesUomOptions.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-muted-foreground">
                       {rrp > 0 ? currency(rrp) : '—'}

@@ -500,6 +500,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsVariableComponent", "BOOLEAN NOT NULL DEFAULT FALSE");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableComponentOptionsJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosDeliveryUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosSalesUom", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Active", "INTEGER NOT NULL DEFAULT 1");
 
         // Migrate legacy Variable Product "replacement" mode → Variable Component.

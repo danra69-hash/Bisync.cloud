@@ -942,6 +942,8 @@ public class PatchProductRequest
 {
     public bool? PosEnabled { get; set; }
     public List<PosDeliveryUnitRequest>? PosDeliveryUnits { get; set; }
+    [MaxLength(40)]
+    public string? PosSalesUom { get; set; }
     public bool? Active { get; set; }
     [Range(0, 999999999)]
     public decimal? Rrp { get; set; }
