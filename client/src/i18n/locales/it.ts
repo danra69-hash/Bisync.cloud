@@ -176,6 +176,7 @@ export const it = {
       menu: 'Menu POS',
       modifierGroup: 'Gruppo modificatori POS',
       promotionScheduler: 'Pianificatore promozioni',
+      config: 'Config POS',
       testTap: 'POS Test',
       deviceManagement: 'Gestione dispositivi',
       eInvoice: 'Fattura elettronica',

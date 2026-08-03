@@ -29,6 +29,7 @@ import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
 import { PosPromotionSchedulerPage } from './PosPromotionSchedulerPage';
+import { PosConfigPage } from './PosConfigPage';
 import { PosDeviceManagementPage } from './PosDeviceManagementPage';
 import { PosModifierGroupPage } from './PosModifierGroupPage';
 import { ProductAuditPage } from './ProductAuditPage';
@@ -350,6 +351,11 @@ export function RevenueSection({
           />
         ) : posItem === 'Promotion Scheduler' ? (
           <PosPromotionSchedulerPage
+            selectedCompanyId={selectedCompanyId}
+            selectedLocationIds={selectedLocationIds}
+          />
+        ) : posItem === 'POS Config' ? (
+          <PosConfigPage
             selectedCompanyId={selectedCompanyId}
             selectedLocationIds={selectedLocationIds}
           />

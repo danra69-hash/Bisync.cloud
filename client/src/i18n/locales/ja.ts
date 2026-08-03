@@ -176,6 +176,7 @@ export const ja = {
       menu: 'POSメニュー',
       modifierGroup: 'POSモディファイアグループ',
       promotionScheduler: 'プロモーションスケジューラ',
+      config: 'POS設定',
       testTap: 'POSテスト',
       deviceManagement: 'デバイス管理',
       eInvoice: '電子インボイス',

@@ -176,6 +176,7 @@ export const zh = {
       menu: 'POS 菜单',
       modifierGroup: 'POS 加料组',
       promotionScheduler: '促销排期',
+      config: 'POS 配置',
       testTap: 'POS 测试',
       deviceManagement: '设备管理',
       eInvoice: '电子发票',

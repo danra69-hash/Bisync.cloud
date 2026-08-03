@@ -176,6 +176,7 @@ export const ko = {
       menu: 'POS 메뉴',
       modifierGroup: 'POS 옵션 그룹',
       promotionScheduler: '프로모션 일정',
+      config: 'POS 설정',
       testTap: 'POS 테스트',
       deviceManagement: '기기 관리',
       eInvoice: '전자 세금계산서',

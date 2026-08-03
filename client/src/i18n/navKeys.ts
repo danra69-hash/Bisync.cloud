@@ -66,6 +66,7 @@ export const POS_ITEM_I18N: Record<string, string> = {
   'POS Menu': 'pos.items.menu',
   'POS Modifier Group': 'pos.items.modifierGroup',
   'Promotion Scheduler': 'pos.items.promotionScheduler',
+  'POS Config': 'pos.items.config',
   'POS Test': 'pos.items.testTap',
   'Device Management': 'pos.items.deviceManagement',
   'E-Invoice': 'pos.items.eInvoice',

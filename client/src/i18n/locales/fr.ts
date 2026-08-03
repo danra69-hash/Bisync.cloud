@@ -176,6 +176,7 @@ export const fr = {
       menu: 'Menu PDV',
       modifierGroup: 'Groupe de modificateurs PDV',
       promotionScheduler: 'Planificateur de promotions',
+      config: 'Config POS',
       testTap: 'POS Test',
       deviceManagement: 'Gestion des appareils',
       eInvoice: 'Facture électronique',
