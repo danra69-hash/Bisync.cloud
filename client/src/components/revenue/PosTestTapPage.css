@@ -54,6 +54,154 @@
   color: var(--primary, #2563eb);
 }
 
+.pos-test-tap__device-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 1.4rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: var(--foreground, #101828);
+  background: var(--background, #fff);
+  cursor: pointer;
+}
+
+.pos-test-tap__device-btn:hover,
+.pos-test-tap__device-btn.is-active {
+  border-color: var(--primary, #2563eb);
+  color: var(--primary, #2563eb);
+}
+
+.pos-test-tap__device-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border, #e6e8ec);
+  background: var(--muted, #f8fafc);
+  flex-shrink: 0;
+}
+
+.pos-test-tap__device-copy {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.pos-test-tap__device-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--foreground, #101828);
+}
+
+.pos-test-tap__device-hint {
+  margin: 0.2rem 0 0.55rem;
+  font-size: 0.65rem;
+  color: var(--muted-foreground, #667085);
+  line-height: 1.35;
+}
+
+.pos-test-tap__device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pos-test-tap__device-list li {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto auto auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.pos-test-tap__device-label {
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.pos-test-tap__device-url {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6rem;
+  color: var(--muted-foreground, #667085);
+  background: var(--background, #fff);
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.35rem;
+}
+
+.pos-test-tap__device-list button,
+.pos-test-tap__device-list a {
+  height: 1.35rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.25rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  background: var(--background, #fff);
+  color: var(--foreground, #101828);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.pos-test-tap__device-list button.is-active,
+.pos-test-tap__device-list button:hover,
+.pos-test-tap__device-list a:hover {
+  border-color: var(--primary, #2563eb);
+  color: var(--primary, #2563eb);
+}
+
+.pos-test-tap__device-flash {
+  margin: 0.4rem 0 0;
+  font-size: 0.65rem;
+  color: var(--primary, #2563eb);
+  font-weight: 600;
+}
+
+.pos-test-tap__device-qr {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+
+.pos-test-tap__device-qr img {
+  display: block;
+  width: 200px;
+  height: 200px;
+  border: 1px solid var(--border, #e6e8ec);
+  border-radius: 0.4rem;
+  background: #fff;
+}
+
+.pos-test-tap__device-qr figcaption {
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--muted-foreground, #667085);
+  max-width: 220px;
+  line-height: 1.35;
+}
+
+.pos-test-tap__device-qr-url {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.55rem;
+  word-break: break-all;
+}
+
 .pos-test-tap__title {
   font-size: 0.7rem;
   font-weight: 700;

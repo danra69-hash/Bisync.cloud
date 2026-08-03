@@ -48,6 +48,22 @@ function readStoredString(key: string): string {
   }
 }
 
+/** Deep-link query: /POS?c=12&l=location-external-id */
+function readQueryBootstrap(): { companyId: number | null; locationId: string } {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const cRaw = params.get('c') || params.get('companyId') || params.get('company');
+    const lRaw = params.get('l') || params.get('locationId') || params.get('location');
+    const companyId = cRaw ? Number(cRaw) : null;
+    return {
+      companyId: Number.isFinite(companyId) && (companyId as number) > 0 ? companyId : null,
+      locationId: (lRaw ?? '').trim(),
+    };
+  } catch {
+    return { companyId: null, locationId: '' };
+  }
+}
+
 function companyHasPos(company: Company) {
   return parseCompanyModules(company.modulesJson).includes('POS');
 }
@@ -74,6 +90,7 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
     setError(null);
     void (async () => {
       try {
+        const query = readQueryBootstrap();
         const [companyRows, locationRows] = await Promise.all([
           api.companies(),
           api.locationsConfig(),
@@ -87,7 +104,8 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
 
         const storedCompany = readStoredInt(STORAGE_COMPANY);
         const preferredCompany =
-          pool.find(c => c.id === storedCompany)
+          (query.companyId != null ? pool.find(c => c.id === query.companyId) : null)
+          ?? pool.find(c => c.id === storedCompany)
           ?? pool.find(c => /weissbrau/i.test(c.name))
           ?? pool[0]
           ?? null;
@@ -106,7 +124,10 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
 
         const storedLoc = readStoredString(STORAGE_LOCATION);
         const preferredLoc =
-          activeLocs.find(l => l.externalId === storedLoc)?.externalId
+          (query.locationId
+            ? activeLocs.find(l => l.externalId === query.locationId)?.externalId
+            : null)
+          ?? activeLocs.find(l => l.externalId === storedLoc)?.externalId
           ?? activeLocs[0]?.externalId
           ?? '';
 

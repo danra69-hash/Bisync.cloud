@@ -34,5 +34,10 @@ if (existsSync(checkNumberTest)) {
   run('node', ['--test', 'scripts/pos-check-number.test.mjs'], { cwd: REPO_ROOT })
 }
 
+const stationLinksTest = path.join(REPO_ROOT, 'scripts/pos-station-links.test.mjs')
+if (existsSync(stationLinksTest)) {
+  run('node', ['--test', 'scripts/pos-station-links.test.mjs'], { cwd: REPO_ROOT })
+}
+
 console.log('pre-pos: ok')
 

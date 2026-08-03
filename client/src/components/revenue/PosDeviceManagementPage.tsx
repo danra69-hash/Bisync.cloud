@@ -22,6 +22,12 @@ import { pageShellClass } from '../layout/pageLayout'
 import { ColGroup } from '../shared/SortableTableHead'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
 import { TableScrollContainer } from '../shared/TableScrollContainer'
+import {
+  buildPosStationUrl,
+  copyTextToClipboard,
+  posStationQrImageUrl,
+  stationEntryForDeviceType,
+} from '../../data/posStationLinks'
 
 type Props = {
   selectedCompanyId: number | null
@@ -93,10 +99,28 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
   const [probeResult, setProbeResult] = useState<PosNetworkProbeResult | null>(null)
   const [probing, setProbing] = useState(false)
   const [alignmentPreview, setAlignmentPreview] = useState('')
+  const [launchQrDevice, setLaunchQrDevice] = useState<PosDevice | null>(null)
 
   const flash = (msg: string) => {
     setToast(msg)
     window.setTimeout(() => setToast(null), 3200)
+  }
+
+  function stationUrlForDevice(device: PosDevice): string | null {
+    if (!selectedCompanyId) return null
+    const entry = stationEntryForDeviceType(device.deviceType)
+    if (!entry || !device.locationExternalId) return null
+    return buildPosStationUrl(entry, selectedCompanyId, device.locationExternalId)
+  }
+
+  async function copyDeviceLink(device: PosDevice) {
+    const url = stationUrlForDevice(device)
+    if (!url) {
+      flash('This device type has no webapp launch URL.')
+      return
+    }
+    const ok = await copyTextToClipboard(url)
+    flash(ok ? 'Webapp link copied — open it on the external device.' : 'Could not copy link.')
   }
 
   const loadLocations = useCallback(async () => {
@@ -424,7 +448,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
         ) : (
           <TableScrollContainer>
             <table className="w-full text-xs">
-              <ColGroup widths={['22%', '12%', '18%', '18%', '12%', 112]} />
+              <ColGroup widths={['20%', '12%', '16%', '16%', '10%', 200]} />
               <thead>
                 <tr className="text-left text-muted-foreground border-b border-border">
                   <th className="py-2 pr-2 font-semibold">Name</th>
@@ -466,6 +490,32 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
                         </span>
                       </td>
                       <td className="py-2 text-right space-x-2 whitespace-nowrap">
+                        {stationUrlForDevice(device) ? (
+                          <>
+                            <a
+                              className="text-primary hover:underline"
+                              href={stationUrlForDevice(device)!}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open
+                            </a>
+                            <button
+                              type="button"
+                              className="text-primary hover:underline"
+                              onClick={() => void copyDeviceLink(device)}
+                            >
+                              Copy
+                            </button>
+                            <button
+                              type="button"
+                              className="text-primary hover:underline"
+                              onClick={() => setLaunchQrDevice(device)}
+                            >
+                              QR
+                            </button>
+                          </>
+                        ) : null}
                         <button type="button" className="text-primary hover:underline" onClick={() => openEdit(device)}>
                           Edit
                         </button>
@@ -486,6 +536,71 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
             </table>
           </TableScrollContainer>
         )
+      ) : null}
+
+      {launchQrDevice && selectedCompanyId && stationEntryForDeviceType(launchQrDevice.deviceType) ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Device webapp QR"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Close"
+            onClick={() => setLaunchQrDevice(null)}
+          />
+          <div className="relative z-10 w-full max-w-sm rounded-lg border border-border bg-background p-4 shadow-lg space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">{launchQrDevice.name}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Scan on a phone or tablet to open the POS webapp for this station.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setLaunchQrDevice(null)}
+              >
+                Close
+              </button>
+            </div>
+            <img
+              src={posStationQrImageUrl(
+                stationEntryForDeviceType(launchQrDevice.deviceType)!,
+                selectedCompanyId,
+                launchQrDevice.locationExternalId,
+                240,
+              )}
+              alt={`QR for ${launchQrDevice.name}`}
+              width={240}
+              height={240}
+              className="mx-auto rounded-md border border-border bg-white"
+            />
+            <code className="block text-[10px] break-all text-muted-foreground bg-muted/40 rounded-md px-2 py-1.5">
+              {stationUrlForDevice(launchQrDevice)}
+            </code>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="text-xs font-semibold border border-border rounded-md px-3 py-1.5"
+                onClick={() => void copyDeviceLink(launchQrDevice)}
+              >
+                Copy link
+              </button>
+              <a
+                href={stationUrlForDevice(launchQrDevice) ?? '#'}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-semibold border border-border rounded-md px-3 py-1.5 bg-primary text-primary-foreground"
+              >
+                Open
+              </a>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {mode === 'add' ? (
