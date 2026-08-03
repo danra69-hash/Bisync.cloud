@@ -8,7 +8,6 @@ import {
   wantsPosFullscreen,
 } from '../data/posKiosk';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
-import { PosDesktopInstall } from '../components/shared/PosDesktopInstall';
 import { PosEmbedErrorBoundary } from '../components/shared/PosEmbedErrorBoundary';
 import {
   loadStationActivation,
@@ -71,10 +70,6 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
   );
   const entryLabel = ENTRY_LABEL[entry];
   const initialEntry = ENTRY_PATH[entry];
-
-  const onKioskChange = useCallback((active: boolean) => {
-    setKioskActive(active || wantsPosFullscreen() || isStandaloneDisplay());
-  }, []);
 
   useEffect(() => {
     setPosViewportLock(true);
@@ -145,16 +140,6 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
         hideOrgChrome ? 'pos-standalone--immersive' : '',
       ].filter(Boolean).join(' ')}
     >
-      {entry === 'pos' ? (
-        <PosDesktopInstall
-          variant="card"
-          companyId={companyId}
-          locationId={locationId}
-          kioskMode
-          onKioskChange={onKioskChange}
-        />
-      ) : null}
-
       <div className="pos-standalone-frame">
         <PosEmbedErrorBoundary title={`${entryLabel} crashed`}>
           <Suspense

@@ -12,18 +12,33 @@ function shouldRegisterPosServiceWorker() {
   return /^\/(POS|KDS|BDS|CDS)$/i.test(path)
 }
 
+async function clearStalePosCaches() {
+  if (!('caches' in window)) return
+  try {
+    const keys = await caches.keys()
+    await Promise.all(
+      keys
+        .filter(k => /workbox|bisync|pwa|precache/i.test(k))
+        .map(k => caches.delete(k)),
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
 if (shouldRegisterPosServiceWorker()) {
   registerSW({ immediate: true })
 } else if ('serviceWorker' in navigator) {
   // Portal / HR / RMS: drop a root-scoped POS SW that may still be controlling this origin
   // from an earlier deploy (broken chunk loads look like "Human Resources not working").
-  void navigator.serviceWorker.getRegistrations().then(regs => {
+  void navigator.serviceWorker.getRegistrations().then(async regs => {
     for (const reg of regs) {
       const script = reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || ''
       if (script.includes('/sw.js') || script.endsWith('sw.js')) {
-        void reg.unregister()
+        await reg.unregister()
       }
     }
+    await clearStalePosCaches()
   })
 }
 
