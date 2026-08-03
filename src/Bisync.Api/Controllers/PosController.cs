@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
+using Bisync.Api.Services;
 using Bisync.Api.Tenancy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -115,7 +116,11 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         return Ok(await q.OrderByDescending(x => x.BusinessDate).Take(60).ToListAsync());
     }
 
-    public record UpsertFloorPlanRequest(int CompanyId, string LocationExternalId, string LayoutJson);
+    public record UpsertFloorPlanRequest(
+        int CompanyId,
+        string LocationExternalId,
+        string LayoutJson,
+        bool Force = false);
 
     public record JoinWaitlistRequest(
         int CompanyId,
@@ -198,9 +203,27 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         try
         {
             await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
+            await SchemaPatcher.EnsurePosFloorPlanVersionsTableAsync(db);
 
             var row = await db.PosFloorPlans
                 .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+
+            // Never let the stock demo layout silently replace a custom venue design.
+            if (row is not null
+                && !body.Force
+                && PosFloorPlanGuard.IsCustomLayout(row.LayoutJson)
+                && (PosFloorPlanGuard.IsStockDefaultLayout(layoutJson)
+                    || PosFloorPlanGuard.IsEmptyLayout(layoutJson)))
+            {
+                return Conflict(new
+                {
+                    message = "Refused to overwrite a custom floor plan with the stock/empty demo layout. Pass force=true to override.",
+                    companyId = row.CompanyId,
+                    locationExternalId = row.LocationExternalId,
+                    updatedAt = row.UpdatedAt,
+                });
+            }
+
             if (row is null)
             {
                 row = new PosFloorPlan
@@ -214,6 +237,18 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
             }
             else
             {
+                if (!string.Equals(row.LayoutJson, layoutJson, StringComparison.Ordinal))
+                {
+                    db.PosFloorPlanVersions.Add(new PosFloorPlanVersion
+                    {
+                        CompanyId = row.CompanyId,
+                        LocationExternalId = row.LocationExternalId,
+                        LayoutJson = row.LayoutJson,
+                        CapturedAt = DateTime.UtcNow,
+                        Source = body.Force ? "force-overwrite" : "overwrite",
+                    });
+                }
+
                 row.LayoutJson = layoutJson;
                 row.UpdatedAt = DateTime.UtcNow;
             }
