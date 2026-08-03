@@ -1,5 +1,11 @@
 import type { Product as ApiProduct } from '../../../api'
-import { resolvePosMenuRrp, resolvePosMenuSellPrice } from '../../../data/posCatalog'
+import {
+  normalizePosGroupLabel,
+  resolvePosMenuRrp,
+  resolvePosMenuSellPrice,
+} from '../../../data/posCatalog'
+
+export { normalizePosGroupLabel } from '../../../data/posCatalog'
 import {
   calcWeightUnitRrp,
   parseVariableMode,
@@ -48,26 +54,6 @@ function mapDepartment(category: string, group: string): ProductDepartment {
   if (/(drink|beverage|beer|wine|coffee|juice|soft)/.test(raw)) return 'Beverage'
   if (/(retail|merch|gift)/.test(raw)) return 'Retail'
   return 'Food'
-}
-
-/** Collapse synonym product groups so POS tabs do not split the same menu. */
-export function normalizePosGroupLabel(group: string): string {
-  const trimmed = group.trim()
-  if (!trimmed) return 'General'
-  const key = trimmed.toLowerCase().replace(/\s+/g, ' ')
-  if (
-    key === 'beer draft'
-    || key === 'draft beer'
-    || key === 'draught beer'
-    || key === 'draft'
-    || key === 'draught'
-  ) {
-    return 'Draught Beer'
-  }
-  if (key === 'bottle beer' || key === 'bottled beer' || key === 'beer bottle') {
-    return 'Bottled Beer'
-  }
-  return trimmed
 }
 
 /** Map Bisync.cloud POS menu products into Bisync POS register catalog rows. */
