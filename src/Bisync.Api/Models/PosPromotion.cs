@@ -22,6 +22,21 @@ public class PosPromotion
     public string? FilterGroup { get; set; }
     /// <summary>discountPercent | discountPrice</summary>
     public string PromoType { get; set; } = "discountPercent";
+    /// <summary>timeBase | prepaid</summary>
+    public string PromotionKind { get; set; } = "timeBase";
+    public int ValidityPeriodValue { get; set; }
+    /// <summary>days | months</summary>
+    public string ValidityPeriodUnit { get; set; } = "days";
+    public decimal PackageQty { get; set; }
+    public string PackageUom { get; set; } = string.Empty;
+    public decimal PackageRrp { get; set; }
+    public decimal PackageTotalValue { get; set; }
+    public decimal PackageRpp { get; set; }
+    public decimal DiscountAmount { get; set; }
+    /// <summary>weight | salesUnit</summary>
+    public string DepletionMethod { get; set; } = "salesUnit";
+    /// <summary>JSON array of { code, label, qtyPerUnit }.</summary>
+    public string DepletionUnitsJson { get; set; } = "[]";
     public bool Active { get; set; } = true;
     public string CreatedBy { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }

@@ -75,6 +75,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
     public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();
     public DbSet<PosPromotionProduct> PosPromotionProducts => Set<PosPromotionProduct>();
+    public DbSet<PosPrepaidPurchase> PosPrepaidPurchases => Set<PosPrepaidPurchase>();
+    public DbSet<PosPrepaidLedger> PosPrepaidLedgers => Set<PosPrepaidLedger>();
     public DbSet<PosDevice> PosDevices => Set<PosDevice>();
     public DbSet<PosModifierGroup> PosModifierGroups => Set<PosModifierGroup>();
     public DbSet<PosModifierOption> PosModifierOptions => Set<PosModifierOption>();
@@ -548,6 +550,10 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.RepeatMode).HasMaxLength(20);
             e.Property(x => x.PromoType).HasMaxLength(40);
+            e.Property(x => x.PromotionKind).HasMaxLength(40);
+            e.Property(x => x.ValidityPeriodUnit).HasMaxLength(20);
+            e.Property(x => x.PackageUom).HasMaxLength(40);
+            e.Property(x => x.DepletionMethod).HasMaxLength(40);
             e.Property(x => x.CreatedBy).HasMaxLength(256);
             e.Property(x => x.FilterCategory).HasMaxLength(100);
             e.Property(x => x.FilterGroup).HasMaxLength(100);
@@ -562,6 +568,32 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => x.ProductId);
             e.Property(x => x.ProductCode).HasMaxLength(80);
             e.Property(x => x.ProductName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosPrepaidPurchase>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.CustomerMobile });
+            e.HasIndex(x => x.PosPromotionId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => new { x.CompanyId, x.Status });
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.CustomerName).HasMaxLength(200);
+            e.Property(x => x.CustomerMobile).HasMaxLength(40);
+            e.Property(x => x.PackageUom).HasMaxLength(40);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.HasMany(x => x.LedgerEntries)
+                .WithOne(x => x.PosPrepaidPurchase)
+                .HasForeignKey(x => x.PosPrepaidPurchaseId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PosPrepaidLedger>(e =>
+        {
+            e.HasIndex(x => x.PosPrepaidPurchaseId);
+            e.Property(x => x.EntryType).HasMaxLength(20);
+            e.Property(x => x.UnitCode).HasMaxLength(40);
+            e.Property(x => x.UnitLabel).HasMaxLength(80);
+            e.Property(x => x.LocationExternalId).HasMaxLength(120);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
         });
         modelBuilder.Entity<PosDevice>(e =>
         {

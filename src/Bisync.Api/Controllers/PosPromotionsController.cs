@@ -18,6 +18,11 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
         "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
     };
 
+    static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List(
         [FromQuery] int companyId,
@@ -126,6 +131,10 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest(new { message = "Promotion name is required." });
 
+        var kindRaw = (request.PromotionKind ?? string.Empty).Trim();
+        var isPrepaid = string.Equals(kindRaw, "prepaid", StringComparison.OrdinalIgnoreCase);
+        var promotionKind = isPrepaid ? "prepaid" : "timeBase";
+
         if (!DateOnly.TryParse(request.StartDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var startDate))
             return BadRequest(new { message = "Start date is required (yyyy-MM-dd)." });
 
@@ -139,28 +148,65 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
             endDate = parsedEnd;
         }
 
-        if (!TimeOnly.TryParse(request.StartTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime))
-            return BadRequest(new { message = "Start time is required (HH:mm)." });
-        if (!TimeOnly.TryParse(request.EndTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out var endTime))
-            return BadRequest(new { message = "End time is required (HH:mm)." });
+        TimeOnly startTime;
+        TimeOnly endTime;
+        string repeatMode;
+        List<string> days;
 
-        var repeatMode = (request.RepeatMode ?? string.Empty).Trim();
-        if (!string.Equals(repeatMode, "daily", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(repeatMode, "daysOfWeek", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { message = "Repeat must be Daily or choose specific days." });
+        if (isPrepaid)
+        {
+            startTime = new TimeOnly(0, 0);
+            endTime = new TimeOnly(23, 59);
+            repeatMode = "daily";
+            days = [];
 
-        repeatMode = string.Equals(repeatMode, "daysOfWeek", StringComparison.OrdinalIgnoreCase)
-            ? "daysOfWeek"
-            : "daily";
+            if (request.ValidityPeriodValue <= 0)
+                return BadRequest(new { message = "Validity period must be greater than zero." });
 
-        var days = NormalizeDays(request.DaysOfWeek);
-        if (repeatMode == "daysOfWeek" && days.Count == 0)
-            return BadRequest(new { message = "Select at least one weekday, or choose Repeat Daily." });
+            var validityUnit = (request.ValidityPeriodUnit ?? "days").Trim();
+            if (!string.Equals(validityUnit, "days", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(validityUnit, "months", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Validity period unit must be days or months." });
+
+            if (request.PackageQty <= 0)
+                return BadRequest(new { message = "Package quantity must be greater than zero." });
+
+            if (string.IsNullOrWhiteSpace(request.PackageUom))
+                return BadRequest(new { message = "Package UOM is required." });
+
+            if (request.PackageRpp < 0)
+                return BadRequest(new { message = "Package RPP must be zero or greater." });
+        }
+        else
+        {
+            if (!TimeOnly.TryParse(request.StartTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out startTime))
+                return BadRequest(new { message = "Start time is required (HH:mm)." });
+            if (!TimeOnly.TryParse(request.EndTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out endTime))
+                return BadRequest(new { message = "End time is required (HH:mm)." });
+
+            repeatMode = (request.RepeatMode ?? string.Empty).Trim();
+            if (!string.Equals(repeatMode, "daily", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(repeatMode, "daysOfWeek", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "Repeat must be Daily or choose specific days." });
+
+            repeatMode = string.Equals(repeatMode, "daysOfWeek", StringComparison.OrdinalIgnoreCase)
+                ? "daysOfWeek"
+                : "daily";
+
+            days = NormalizeDays(request.DaysOfWeek);
+            if (repeatMode == "daysOfWeek" && days.Count == 0)
+                return BadRequest(new { message = "Select at least one weekday, or choose Repeat Daily." });
+        }
 
         var promoType = (request.PromoType ?? string.Empty).Trim();
         if (!string.Equals(promoType, "discountPercent", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(promoType, "discountPrice", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { message = "Promo type must be Discount by % or Discount by Price." });
+        {
+            if (isPrepaid)
+                promoType = "discountPrice";
+            else
+                return BadRequest(new { message = "Promo type must be Discount by % or Discount by Price." });
+        }
 
         promoType = string.Equals(promoType, "discountPrice", StringComparison.OrdinalIgnoreCase)
             ? "discountPrice"
@@ -181,18 +227,41 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
             return BadRequest(new { message = "One or more products were not found for this company." });
 
         var byId = catalog.ToDictionary(p => p.Id);
+        var packageRpp = RoundMoney(request.PackageRpp);
         foreach (var line in request.Products)
         {
             var product = byId[line.ProductId];
             if (product.IsSubProduct || !product.B2cEnabled || !product.PosEnabled || product.Active == false)
                 return BadRequest(new { message = $"Product '{product.Name}' is not eligible for POS promotions." });
-            if (line.Rrp <= 0)
+
+            var effectiveRrp = RoundMoney(line.Rrp);
+            var effectiveRpp = isPrepaid && line == request.Products[0]
+                ? packageRpp
+                : RoundMoney(line.Rpp);
+
+            if (!isPrepaid && effectiveRrp <= 0)
                 return BadRequest(new { message = $"Product '{product.Name}' needs a positive RRP." });
-            if (line.Rpp < 0 || line.Rpp > line.Rrp)
+            if (effectiveRpp < 0 || (effectiveRrp > 0 && effectiveRpp > effectiveRrp))
                 return BadRequest(new { message = $"RPP for '{product.Name}' must be between 0 and RRP." });
             if (line.DiscountPercent < 0 || line.DiscountPercent > 100)
                 return BadRequest(new { message = $"Discount % for '{product.Name}' must be between 0 and 100." });
         }
+
+        var validityUnitCanonical = string.Equals(
+            (request.ValidityPeriodUnit ?? "days").Trim(),
+            "months",
+            StringComparison.OrdinalIgnoreCase)
+            ? "months"
+            : "days";
+
+        var depletionMethod = string.Equals(
+            (request.DepletionMethod ?? "salesUnit").Trim(),
+            "weight",
+            StringComparison.OrdinalIgnoreCase)
+            ? "weight"
+            : "salesUnit";
+
+        var depletionUnitsJson = SerializeDepletionUnits(request.DepletionUnits);
 
         var now = DateTime.UtcNow;
         var entity = new PosPromotion
@@ -209,13 +278,25 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
             FilterCategory = NormalizeFilter(request.FilterCategory),
             FilterGroup = NormalizeFilter(request.FilterGroup),
             PromoType = promoType,
+            PromotionKind = promotionKind,
+            ValidityPeriodValue = isPrepaid ? request.ValidityPeriodValue : 0,
+            ValidityPeriodUnit = isPrepaid ? validityUnitCanonical : "days",
+            PackageQty = isPrepaid ? RoundMoney(request.PackageQty) : 0,
+            PackageUom = isPrepaid ? (request.PackageUom?.Trim() ?? string.Empty) : string.Empty,
+            PackageRrp = isPrepaid ? RoundMoney(request.PackageRrp) : 0,
+            PackageTotalValue = isPrepaid ? RoundMoney(request.PackageTotalValue) : 0,
+            PackageRpp = isPrepaid ? packageRpp : 0,
+            DiscountAmount = isPrepaid ? RoundMoney(request.DiscountAmount) : 0,
+            DepletionMethod = isPrepaid ? depletionMethod : "salesUnit",
+            DepletionUnitsJson = isPrepaid ? depletionUnitsJson : "[]",
             Active = true,
             CreatedBy = request.CreatedBy?.Trim() ?? string.Empty,
             CreatedAt = now,
             UpdatedAt = now,
-            Products = request.Products.Select(line =>
+            Products = request.Products.Select((line, index) =>
             {
                 var product = byId[line.ProductId];
+                var rpp = isPrepaid && index == 0 ? packageRpp : RoundMoney(line.Rpp);
                 return new PosPromotionProduct
                 {
                     ProductId = product.Id,
@@ -223,7 +304,7 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
                     ProductName = product.Name,
                     Rrp = RoundMoney(line.Rrp),
                     Cogs = RoundMoney(line.Cogs),
-                    Rpp = RoundMoney(line.Rpp),
+                    Rpp = rpp,
                     DiscountPercent = RoundPercent(line.DiscountPercent),
                 };
             }).ToList(),
@@ -281,19 +362,63 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
         return result;
     }
 
+    static string SerializeDepletionUnits(IEnumerable<PosPromotionDepletionUnitRequest>? units)
+    {
+        if (units is null) return "[]";
+        var cleaned = units
+            .Where(u => !string.IsNullOrWhiteSpace(u.Code) || !string.IsNullOrWhiteSpace(u.Label))
+            .Select(u => new
+            {
+                code = (u.Code ?? string.Empty).Trim(),
+                label = (u.Label ?? string.Empty).Trim(),
+                qtyPerUnit = u.QtyPerUnit > 0 ? u.QtyPerUnit : 1m,
+            })
+            .ToList();
+        return JsonSerializer.Serialize(cleaned, JsonOpts);
+    }
+
+    static List<object> ReadDepletionUnits(string? json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "[]" : json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return [];
+            var list = new List<object>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var code = el.TryGetProperty("code", out var c) ? c.GetString() ?? string.Empty : string.Empty;
+                var label = el.TryGetProperty("label", out var l) ? l.GetString() ?? string.Empty : string.Empty;
+                var qty = 1m;
+                if (el.TryGetProperty("qtyPerUnit", out var q) && q.TryGetDecimal(out var parsed))
+                    qty = parsed > 0 ? parsed : 1m;
+                list.Add(new { code, label, qtyPerUnit = qty });
+            }
+            return list;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     static decimal RoundMoney(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
     static decimal RoundPercent(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    static bool IsPrepaidKind(PosPromotion promotion) =>
+        string.Equals(promotion.PromotionKind, "prepaid", StringComparison.OrdinalIgnoreCase);
 
     static object MapPromotion(PosPromotion promotion, DateTime localNow)
     {
         var days = PosPromotionPricingService.ReadDays(promotion.DaysOfWeekJson);
-        var inEffect = PosPromotionPricingService.IsInEffect(promotion, localNow);
+        var isPrepaid = IsPrepaidKind(promotion);
+        var inEffect = !isPrepaid && PosPromotionPricingService.IsInEffect(promotion, localNow);
 
         return new
         {
             id = promotion.Id,
             companyId = promotion.CompanyId,
             name = promotion.Name,
+            promotionKind = string.IsNullOrWhiteSpace(promotion.PromotionKind) ? "timeBase" : promotion.PromotionKind,
             startDate = promotion.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             endDate = promotion.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             endDateOpen = promotion.EndDateOpen,
@@ -304,6 +429,16 @@ public class PosPromotionsController(BisyncDbContext db) : ControllerBase
             filterCategory = promotion.FilterCategory,
             filterGroup = promotion.FilterGroup,
             promoType = promotion.PromoType,
+            validityPeriodValue = promotion.ValidityPeriodValue,
+            validityPeriodUnit = promotion.ValidityPeriodUnit,
+            packageQty = promotion.PackageQty,
+            packageUom = promotion.PackageUom,
+            packageRrp = promotion.PackageRrp,
+            packageTotalValue = promotion.PackageTotalValue,
+            packageRpp = promotion.PackageRpp,
+            discountAmount = promotion.DiscountAmount,
+            depletionMethod = promotion.DepletionMethod,
+            depletionUnits = ReadDepletionUnits(promotion.DepletionUnitsJson),
             active = promotion.Active,
             status = PosPromotionPricingService.ResolveStatusLabel(promotion, localNow),
             inEffectNow = inEffect,
