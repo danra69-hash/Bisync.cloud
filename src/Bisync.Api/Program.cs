@@ -218,11 +218,17 @@ else
         OnPrepareResponse = ctx =>
         {
             var path = ctx.File.Name;
+            // Service workers / web manifests must revalidate or browsers keep a year-old SW
+            // (immutable) and portal modules like Human Resources fail to load new chunks.
             if (path.Equals("index.html", StringComparison.OrdinalIgnoreCase)
                 || path.Equals("favicon.svg", StringComparison.OrdinalIgnoreCase)
-                || path.Equals("favicon.ico", StringComparison.OrdinalIgnoreCase))
+                || path.Equals("favicon.ico", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("sw.js", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("manifest.webmanifest", StringComparison.OrdinalIgnoreCase)
+                || path.Equals("manifest.json", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("workbox-", StringComparison.OrdinalIgnoreCase))
             {
-                // Shell + favicon must not stick after a mark change or stale image rollback.
+                // Shell + favicon + SW must not stick after a mark change or stale image rollback.
                 ctx.Context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
                 ctx.Context.Response.Headers.Pragma = "no-cache";
                 ctx.Context.Response.Headers.Expires = "0";

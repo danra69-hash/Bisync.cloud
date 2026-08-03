@@ -41,6 +41,18 @@ import {
   getGhostSupportSession,
   type GhostSupportSession,
 } from './data/ghostSupportSession';
+import { navItemFromPath, pathFromNavItem } from './data/appNavRoutes';
+import { useCurrentUser } from './hooks/useCurrentUser';
+
+function readStoredCompanyId(): number | null {
+  try {
+    const raw = localStorage.getItem('bisync.selectedCompanyId');
+    const id = raw ? Number(raw) : NaN;
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
 
 function PlaceholderModule({ title }: { title: NavItem | string }) {
   const { t, navLabel } = useAppTranslation();
@@ -62,12 +74,26 @@ function PlaceholderModule({ title }: { title: NavItem | string }) {
 }
 
 export default function App() {
+  const { currentUser } = useCurrentUser();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [editLayout, setEditLayout] = useState(false);
-  const [activeNav, setActiveNav] = useState<NavItem>('Home');
+  const [activeNav, setActiveNavState] = useState<NavItem>(
+    () => navItemFromPath(window.location.pathname) ?? 'Home',
+  );
+  const setActiveNav = useCallback((item: NavItem) => {
+    setActiveNavState(item);
+    const nextPath = pathFromNavItem(item);
+    const current = window.location.pathname.replace(/\/+$/, '') || '/';
+    const next = nextPath.replace(/\/+$/, '') || '/';
+    if (current !== next) {
+      window.history.pushState({}, '', nextPath);
+    }
+  }, []);
   const [ghostSession, setGhostSession] = useState<GhostSupportSession | null>(() => getGhostSupportSession());
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(() => getGhostSupportSession()?.companyId ?? null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(
+    () => getGhostSupportSession()?.companyId ?? readStoredCompanyId(),
+  );
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>(() => {
     const ghost = getGhostSupportSession();
     return ghost?.locationExternalId ? [ghost.locationExternalId] : [];
@@ -96,6 +122,29 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
   }, [darkMode]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const nav = navItemFromPath(window.location.pathname);
+      if (nav) setActiveNavState(nav);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Keep shell company selection aligned with the API tenant header / user home company.
+  useEffect(() => {
+    if (ghostSession) return;
+    if (selectedCompanyId != null) {
+      setApiTenantCompanyId(selectedCompanyId);
+      return;
+    }
+    const fromUser = currentUser?.companyId;
+    if (fromUser != null && fromUser > 0) {
+      setSelectedCompanyId(fromUser);
+      setApiTenantCompanyId(fromUser);
+    }
+  }, [currentUser?.companyId, ghostSession, selectedCompanyId]);
 
   useEffect(() => {
     async function load() {
@@ -240,10 +289,13 @@ export default function App() {
       setActiveNav('Home');
       return;
     }
+    // Wait for org/company before enforcing module access — otherwise HR/RMS
+    // deep links bounce to Home while companies are still loading.
+    if (orgLoading || !selectedCompanyId) return;
     if (moduleForNavItem(activeNav) && !isNavItemEnabled(activeNav, enabledModules)) {
       setActiveNav('Home');
     }
-  }, [activeNav, enabledModules, modulesGoLive]);
+  }, [activeNav, enabledModules, modulesGoLive, orgLoading, selectedCompanyId]);
   const headerLocations = companyScopedConfigLocations.map(configLocationToDropdown);
   const activeLocations = selectedCompanyId
     ? filterMetricsByOrg(metricsLocations, configLocations, selectedCompanyId, selectedLocationIds)
