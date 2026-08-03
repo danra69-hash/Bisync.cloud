@@ -1,5 +1,6 @@
 import type { CartLine, OrderCharges, Product } from './types'
 import { loadKitchenTickets } from '../../boh/domain/kitchenTickets'
+import { publishStationLan } from '../../../core/lan/stationLanBus'
 
 export const OPEN_CHECKS_KEY = 'bisync-pos-open-checks-v1'
 
@@ -82,6 +83,11 @@ function readAll(): OpenCheck[] {
 
 function writeAll(checks: OpenCheck[]) {
   localStorage.setItem(OPEN_CHECKS_KEY, JSON.stringify(checks))
+  try {
+    publishStationLan('open-checks', checks)
+  } catch {
+    window.dispatchEvent(new CustomEvent('bisync-pos-open-checks', { detail: checks }))
+  }
 }
 
 export function lineIdentity(line: CartLine): string {

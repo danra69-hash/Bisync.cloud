@@ -5,6 +5,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { Product as PosProduct } from '../../features/register/domain/types'
+import type { PosPromotion } from '../../../api'
+import type { PosModifierGroupSnapshot } from '../offline/posCatalogStore'
 
 export type PosLocationOption = {
   externalId: string
@@ -20,7 +22,15 @@ export type PosSessionValue = {
   catalog: PosProduct[]
   catalogLoading: boolean
   catalogError: string | null
+  /** Soft refresh from device cache (or network when Reload runs). */
   refreshCatalog: () => void
+  /** Admin Reload: re-download catalog/floor from server (requires internet). */
+  reloadStationData: () => Promise<void>
+  reloading: boolean
+  offlineFirst: boolean
+  catalogDownloadedAt: string | null
+  modifierGroups: PosModifierGroupSnapshot[]
+  promotions: PosPromotion[]
 }
 
 const PosSessionContext = createContext<PosSessionValue | null>(null)
