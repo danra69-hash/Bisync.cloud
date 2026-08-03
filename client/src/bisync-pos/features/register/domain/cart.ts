@@ -7,14 +7,32 @@ function newLineKey() {
   return `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
+/** Ensure every cart line has a stable key for selection / modifier / SWAP. */
+export function ensureCartLineKeys(lines: CartLine[]): CartLine[] {
+  let changed = false
+  const next = lines.map((line) => {
+    if (line.lineKey) return line
+    changed = true
+    return { ...line, lineKey: newLineKey() }
+  })
+  return changed ? next : lines
+}
+
 export function addToCart(lines: CartLine[], productId: ProductId): CartLine[] {
   const existing = lines.find((l) => l.productId === productId && !l.saleDetail)
   if (existing) {
     return lines.map((l) =>
-      l === existing ? { ...l, quantity: l.quantity + 1 } : l,
+      l === existing
+        ? {
+            ...l,
+            quantity: l.quantity + 1,
+            // Ensure every selectable order line has a stable identity.
+            lineKey: l.lineKey ?? newLineKey(),
+          }
+        : l,
     )
   }
-  return [...lines, { productId, quantity: 1 }]
+  return [...lines, { productId, quantity: 1, lineKey: newLineKey() }]
 }
 
 /** Add or replace a weight-based line. Quantity is the entered weight in the product UOM. */
@@ -35,7 +53,13 @@ export function addWeightToCart(
   if (existing) {
     return lines.map((l) =>
       l === existing
-        ? { ...l, quantity: weight, saleDetail: detail, note }
+        ? {
+            ...l,
+            quantity: weight,
+            lineKey: l.lineKey ?? newLineKey(),
+            saleDetail: detail,
+            note,
+          }
         : l,
     )
   }

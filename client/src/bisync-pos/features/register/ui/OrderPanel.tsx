@@ -185,15 +185,20 @@ export function OrderPanel({
                   && (product.variableComponentSlots?.length ?? 0) > 0,
                 )
                 const rowKey = line.lineKey ?? `${line.productId}-${index}`
-                const isSelected = selectedLineKey != null
-                  && (line.lineKey
-                    ? line.lineKey === selectedLineKey
-                    : selectedLineKey === `pid:${line.productId}`)
+                const selectionKey = line.lineKey ?? `pid:${line.productId}`
+                const isSelected = selectedLineKey != null && selectedLineKey === selectionKey
                 return (
                   <tr
                     key={rowKey}
                     className={isSelected ? 'is-selected' : undefined}
+                    tabIndex={0}
+                    aria-selected={isSelected}
                     onClick={() => onSelectLine?.(line)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return
+                      e.preventDefault()
+                      onSelectLine?.(line)
+                    }}
                   >
                     <td className="order-lines-table__product">
                       <div>{product.name}</div>
@@ -217,6 +222,7 @@ export function OrderPanel({
                             aria-label={`Swap components for ${product.name}`}
                             onClick={(e) => {
                               e.stopPropagation()
+                              onSelectLine?.(line)
                               onSwapLine?.(line)
                             }}
                           >

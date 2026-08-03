@@ -169,18 +169,31 @@
 
 .order-lines-table tbody tr {
   cursor: pointer;
+  transition: background-color 0.12s ease;
 }
 
 .order-lines-table tbody tr:hover td {
-  background: color-mix(in srgb, var(--color-primary-soft) 55%, transparent);
+  background: color-mix(in srgb, var(--color-primary-soft) 70%, var(--color-surface));
 }
 
 .order-lines-table tbody tr.is-selected td {
-  background: var(--color-primary-soft);
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .order-lines-table tbody tr.is-selected .order-lines-table__product {
   color: var(--color-primary-text);
+  font-weight: 800;
+}
+
+.order-lines-table tbody tr.is-selected .order-lines-table__note {
+  color: var(--color-primary-text);
+  opacity: 0.85;
+}
+
+.order-lines-table tbody tr:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .order-lines-table__product {
