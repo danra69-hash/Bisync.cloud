@@ -63,6 +63,9 @@
   -moz-osx-font-smoothing: grayscale;
   isolation: isolate;
   height: 100%;
+  width: 100%;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
+  box-sizing: border-box;
 }

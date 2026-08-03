@@ -1,14 +1,54 @@
-/* Standalone /POS — full viewport POS Test embed (phone / tablet). */
+/* Standalone /POS — fill the live device viewport (Windows / Android / iOS Chrome). */
+
+html.pos-kiosk-lock,
+html.pos-kiosk-lock body,
+html.pos-kiosk-lock #root {
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  background: #0f172a;
+}
 
 .pos-standalone {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100vw;
   min-height: 100vh;
   min-height: 100dvh;
   height: 100dvh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: #0f172a;
   color: #f8fafc;
   overflow: hidden;
+  padding:
+    env(safe-area-inset-top, 0px)
+    env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+}
+
+.pos-standalone--kiosk {
+  /* Prefer small viewport units when the mobile URL bar collapses/expands. */
+  height: 100svh;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.pos-standalone--immersive {
+  padding: 0;
+  height: 100%;
+  max-height: none;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  z-index: 1;
 }
 
 .pos-standalone-chrome {
@@ -47,14 +87,19 @@
 .pos-standalone-frame {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: 100%;
 }
 
 .pos-standalone-frame > * {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   height: 100%;
+  width: 100%;
 }
 
 .pos-standalone-loading {

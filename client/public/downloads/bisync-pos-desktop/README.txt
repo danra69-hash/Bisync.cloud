@@ -1,14 +1,17 @@
 Bisync POS — Desktop fullscreen launcher
 ========================================
 
-These launchers open Bisync POS in an app window and request fullscreen.
+These launchers open Bisync POS in Google Chrome (preferred) as an app
+window that fills the device screen and stays on top of the desktop.
 
 1) Edit the POS_URL in your launcher if needed (company/location deep link).
    Default: https://bisync-cloud-389272498937.asia-southeast1.run.app/POS?fs=1
+   Example with org: .../POS?c=12&l=your-location-id&fs=1
 
-2) Windows
+2) Windows (Chrome recommended)
    - Double-click windows\Bisync-POS.bat
-   - Uses Microsoft Edge or Google Chrome in app mode + fullscreen
+   - Uses Google Chrome first, then Microsoft Edge
+   - Flags: --app + --start-fullscreen (true full screen)
 
 3) Mac
    - Right-click mac/Bisync-POS.command → Open (first run)
@@ -19,5 +22,10 @@ These launchers open Bisync POS in an app window and request fullscreen.
    - ./linux/Bisync-POS.sh
    - Or copy Bisync-POS.desktop to ~/.local/share/applications/
 
-You can also open /POS in Chrome/Edge → Install app / Install Bisync POS
-for a native-feeling desktop icon with fullscreen display mode.
+5) Android / iOS (mostly Chrome)
+   - Open /POS?fs=1 in Chrome
+   - Tap "Full screen" (or the on-screen prompt)
+   - Or: Install app / Add to Home Screen for a display-mode:fullscreen POS
+
+The POS UI scales to the live device viewport (visualViewport + screen size)
+so phone, tablet, and desktop Chrome all fill the available display.

@@ -2,7 +2,7 @@
 Type=Application
 Name=Bisync POS
 Comment=Bisync Point of Sale (fullscreen)
-Exec=sh -c 'POS_URL="https://bisync-cloud-389272498937.asia-southeast1.run.app/POS?fs=1"; for bin in google-chrome google-chrome-stable chromium chromium-browser microsoft-edge; do command -v "$bin" >/dev/null 2>&1 && exec "$bin" --app="$POS_URL" --start-fullscreen; done; xdg-open "$POS_URL"'
+Exec=sh -c 'POS_URL="https://bisync-cloud-389272498937.asia-southeast1.run.app/POS?fs=1"; for bin in google-chrome google-chrome-stable chromium chromium-browser microsoft-edge; do command -v "$bin" >/dev/null 2>&1 && exec "$bin" --app="$POS_URL" --start-fullscreen --window-position=0,0 --no-first-run; done; xdg-open "$POS_URL"'
 Icon=utilities-terminal
 Terminal=false
 Categories=Office;Finance;

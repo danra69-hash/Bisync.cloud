@@ -38,6 +38,7 @@ export function buildPosStationUrl(
   const params = new URLSearchParams({
     c: String(companyId),
     l: locationExternalId,
+    fs: '1',
   })
   return `${origin}${path}?${params.toString()}`
 }

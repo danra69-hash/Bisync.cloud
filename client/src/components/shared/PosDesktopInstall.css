@@ -6,6 +6,8 @@
   padding: 0.4rem 0.65rem;
   background: #0f172a;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  z-index: 40;
 }
 
 .pos-desktop-btn {
@@ -46,10 +48,65 @@
   font-size: 0.72rem;
 }
 
+.pos-desktop-note--hint {
+  margin-left: auto;
+}
+
+.pos-desktop-fab {
+  position: fixed;
+  right: max(0.65rem, env(safe-area-inset-right));
+  bottom: max(0.65rem, env(safe-area-inset-bottom));
+  z-index: 70;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.45);
+}
+
+.pos-desktop-fab:hover {
+  background: rgba(15, 23, 42, 0.98);
+}
+
+.pos-desktop-fs-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-content: center;
+  gap: 0.45rem;
+  margin: 0;
+  border: 0;
+  padding: 1.5rem;
+  background: rgba(2, 6, 23, 0.72);
+  color: #f8fafc;
+  cursor: pointer;
+  text-align: center;
+  backdrop-filter: blur(4px);
+}
+
+.pos-desktop-fs-gate strong {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.pos-desktop-fs-gate span {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+  max-width: 22rem;
+  margin: 0 auto;
+  line-height: 1.4;
+}
+
 .pos-desktop-prompt {
   position: fixed;
-  right: 1rem;
-  bottom: 1rem;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
   z-index: 80;
   max-width: min(24rem, calc(100vw - 2rem));
 }
