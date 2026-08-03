@@ -1105,6 +1105,12 @@ export interface ActiveComboPromotion {
   }[];
 }
 
+export interface PosPromotionDepletionUnit {
+  code: string;
+  label: string;
+  qtyPerUnit: number;
+}
+
 export interface PosPromotionProductLine {
   id: number;
   productId: number;
@@ -1120,6 +1126,7 @@ export interface PosPromotion {
   id: number;
   companyId: number;
   name: string;
+  promotionKind?: 'timeBase' | 'prepaid' | string;
   startDate: string;
   endDate?: string | null;
   endDateOpen: boolean;
@@ -1130,6 +1137,16 @@ export interface PosPromotion {
   filterCategory?: string | null;
   filterGroup?: string | null;
   promoType: 'discountPercent' | 'discountPrice' | string;
+  validityPeriodValue?: number;
+  validityPeriodUnit?: 'days' | 'months' | string;
+  packageQty?: number;
+  packageUom?: string;
+  packageRrp?: number;
+  packageTotalValue?: number;
+  packageRpp?: number;
+  discountAmount?: number;
+  depletionMethod?: 'weight' | 'salesUnit' | string;
+  depletionUnits?: PosPromotionDepletionUnit[];
   active: boolean;
   status: 'Active' | 'Scheduled' | 'Inactive' | string;
   /** True when date/time/weekday window is in effect for the location clock. */
@@ -1138,6 +1155,45 @@ export interface PosPromotion {
   createdAt?: string;
   updatedAt?: string;
   products: PosPromotionProductLine[];
+}
+
+export interface PosPrepaidLedgerEntry {
+  id: number;
+  entryType: string;
+  qtyDelta: number;
+  unitCode: string;
+  unitLabel: string;
+  qtyPerUnit: number;
+  productId?: number | null;
+  locationExternalId?: string;
+  checkNumber?: number | null;
+  note: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface PosPrepaidPurchase {
+  id: number;
+  companyId: number;
+  locationExternalId: string;
+  posPromotionId: number;
+  promotionName: string;
+  productId: number;
+  productName: string;
+  posCustomerId?: number | null;
+  customerName: string;
+  customerMobile: string;
+  purchasedAt: string;
+  expiresAt?: string | null;
+  packageQty: number;
+  packageUom: string;
+  packageRpp: number;
+  balanceRemaining: number;
+  status: string;
+  checkNumber?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+  ledger?: PosPrepaidLedgerEntry[];
 }
 
 export interface PosPromotionActivePrice {
@@ -1385,6 +1441,17 @@ export interface CreatePosPromotionPayload {
   filterCategory?: string;
   filterGroup?: string;
   promoType: 'discountPercent' | 'discountPrice';
+  promotionKind?: 'timeBase' | 'prepaid';
+  validityPeriodValue?: number;
+  validityPeriodUnit?: 'days' | 'months';
+  packageQty?: number;
+  packageUom?: string;
+  packageRrp?: number;
+  packageTotalValue?: number;
+  packageRpp?: number;
+  discountAmount?: number;
+  depletionMethod?: 'weight' | 'salesUnit';
+  depletionUnits?: PosPromotionDepletionUnit[];
   createdBy?: string;
   products: {
     productId: number;
@@ -3569,6 +3636,42 @@ export const api = {
     fetchJsonWithMethod<PosPromotion>('/api/pos-promotions', 'POST', data),
   setPosPromotionActive: (id: number, active: boolean) =>
     fetchJsonWithMethod<PosPromotion>(`/api/pos-promotions/${id}/active`, 'PATCH', { active }),
+  posPrepaidPurchases: (
+    companyId: number,
+    opts?: { mobile?: string; status?: string; locationExternalId?: string },
+  ) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.mobile) params.set('mobile', opts.mobile);
+    if (opts?.status) params.set('status', opts.status);
+    if (opts?.locationExternalId) params.set('locationExternalId', opts.locationExternalId);
+    return fetchJson<PosPrepaidPurchase[]>(`/api/pos-prepaid/purchases?${params}`);
+  },
+  posPrepaidPurchaseDetail: (id: number, companyId?: number) => {
+    const params = new URLSearchParams();
+    if (companyId && companyId > 0) params.set('companyId', String(companyId));
+    const q = params.toString();
+    return fetchJson<PosPrepaidPurchase>(`/api/pos-prepaid/purchases/${id}${q ? `?${q}` : ''}`);
+  },
+  createPosPrepaidPurchase: (data: {
+    companyId: number;
+    locationExternalId: string;
+    promotionId: number;
+    productId: number;
+    customerName: string;
+    customerMobile: string;
+    checkNumber?: number;
+    createdBy?: string;
+  }) => fetchJsonWithMethod<PosPrepaidPurchase>('/api/pos-prepaid/purchase', 'POST', data),
+  depletePosPrepaid: (data: {
+    purchaseId: number;
+    companyId: number;
+    locationExternalId: string;
+    unitCode?: string;
+    qty: number;
+    productId?: number;
+    checkNumber?: number;
+    createdBy?: string;
+  }) => fetchJsonWithMethod<PosPrepaidPurchase>('/api/pos-prepaid/deplete', 'POST', data),
   posDevices: (companyId: number, locationExternalId?: string) => {
     const params = new URLSearchParams({ companyId: String(companyId) });
     if (locationExternalId) params.set('locationExternalId', locationExternalId);

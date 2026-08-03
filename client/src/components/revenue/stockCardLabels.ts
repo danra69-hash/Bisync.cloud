@@ -1,6 +1,10 @@
 import type { StockCardLedgerEntry } from '../../api'
 
-export function stockCardEntryTypeLabel(entryType: StockCardLedgerEntry['entryType'] | string): string {
+export function stockCardEntryTypeLabel(
+  entryType: StockCardLedgerEntry['entryType'] | string,
+  reason?: string,
+): string {
+  if (reason && /prepaid/i.test(reason)) return 'Pre-paid consumption'
   switch (entryType) {
     case 'balance_forward':
       return 'Opening Stock'

@@ -178,7 +178,7 @@ function StockCardItemCard({
                           </span>
                         </div>
                         <p className="mt-0.5 text-foreground">
-                          {stockCardEntryTypeLabel(entry.entryType)}{' '}
+                          {stockCardEntryTypeLabel(entry.entryType, entry.reason)}{' '}
                           <span className="tabular-nums">
                             {fmtQty(original, countryCode)}
                           </span>
@@ -219,15 +219,29 @@ function StockCardItemCard({
                         </span>
                       </div>
                       <p className="mt-0.5 text-foreground">
-                        {stockCardEntryTypeLabel(entry.entryType)}{' '}
+                        {stockCardEntryTypeLabel(entry.entryType, entry.reason)}{' '}
                         <span className="tabular-nums">
                           {fmtQty(entry.quantity, countryCode)}
                         </span>
                         {' · '}
                         {entry.uom}
                         {' · '}
-                        {entry.unitPrice > 0 ? rm(entry.unitPrice) : '—'}
+                        {entry.unitPrice > 0 ? (
+                          <>
+                            {rm(entry.unitPrice)}
+                            {/prepaid/i.test(entry.reason ?? '') ? (
+                              <span className="text-muted-foreground">
+                                {' '}· val {rm(entry.unitPrice * entry.quantity)}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : '—'}
                       </p>
+                      {/prepaid/i.test(entry.reason ?? '') && entry.reason ? (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
+                          {entry.reason}
+                        </p>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

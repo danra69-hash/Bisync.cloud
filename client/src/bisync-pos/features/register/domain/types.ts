@@ -48,6 +48,8 @@ export type CartLine = {
   lineKey?: string
   /** Quantified combination / replacement / weight detail for stock depletion. */
   saleDetail?: PosSaleVariableDetail
+  /** Optional override of catalog unit price (e.g. prepaid package RPP). */
+  unitPriceCents?: MoneyCents
 }
 
 export type OrderCharges = {

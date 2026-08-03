@@ -37,6 +37,15 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id'];
 type PromoType = 'discountPercent' | 'discountPrice';
 type RepeatMode = 'daily' | 'daysOfWeek';
+type PromotionKind = 'timeBase' | 'prepaid';
+type ValidityUnit = 'days' | 'months';
+type DepletionMethod = 'weight' | 'salesUnit';
+
+const DEFAULT_DEPLETION_UNITS = [
+  { code: 'glass', label: 'Glass', qtyPerUnit: 1 },
+  { code: 'pint', label: 'Pint', qtyPerUnit: 2 },
+  { code: 'tower', label: 'Tower', qtyPerUnit: 5 },
+];
 
 const WEEKDAYS = [
   { code: 'Mon', label: 'Mon' },
@@ -118,6 +127,7 @@ export function PosPromotionSchedulerPage({
   const [catalogLoading, setCatalogLoading] = useState(false);
 
   const [name, setName] = useState('');
+  const [promotionKind, setPromotionKind] = useState<PromotionKind>('timeBase');
   const [startDate, setStartDate] = useState(toDateInputValue(new Date()));
   const [endDate, setEndDate] = useState('');
   const [endDateOpen, setEndDateOpen] = useState(false);
@@ -130,6 +140,17 @@ export function PosPromotionSchedulerPage({
   const [promoType, setPromoType] = useState<PromoType>('discountPercent');
   const [bulkDiscountPercent, setBulkDiscountPercent] = useState('');
   const [draftByProductId, setDraftByProductId] = useState<Record<number, RowDraft>>({});
+  const [validityPeriodValue, setValidityPeriodValue] = useState('30');
+  const [validityPeriodUnit, setValidityPeriodUnit] = useState<ValidityUnit>('days');
+  const [packageQty, setPackageQty] = useState('1');
+  const [packageUom, setPackageUom] = useState('Bottle');
+  const [packageRrp, setPackageRrp] = useState('');
+  const [packageTotalValue, setPackageTotalValue] = useState('');
+  const [packageRpp, setPackageRpp] = useState('');
+  const [discountAmount, setDiscountAmount] = useState('');
+  const [depletionMethod, setDepletionMethod] = useState<DepletionMethod>('salesUnit');
+  const [depletionUnits, setDepletionUnits] = useState(DEFAULT_DEPLETION_UNITS);
+  const [selectedPrepaidProductId, setSelectedPrepaidProductId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<string | null>(null);
@@ -281,6 +302,7 @@ export function PosPromotionSchedulerPage({
 
   const resetCreateForm = () => {
     setName('');
+    setPromotionKind('timeBase');
     setStartDate(toDateInputValue(new Date()));
     setEndDate('');
     setEndDateOpen(false);
@@ -293,6 +315,17 @@ export function PosPromotionSchedulerPage({
     setPromoType('discountPercent');
     setBulkDiscountPercent('');
     setDraftByProductId(Object.fromEntries(products.map(p => [p.id, emptyRowDraft()])));
+    setValidityPeriodValue('30');
+    setValidityPeriodUnit('days');
+    setPackageQty('1');
+    setPackageUom('Bottle');
+    setPackageRrp('');
+    setPackageTotalValue('');
+    setPackageRpp('');
+    setDiscountAmount('');
+    setDepletionMethod('salesUnit');
+    setDepletionUnits(DEFAULT_DEPLETION_UNITS);
+    setSelectedPrepaidProductId(null);
     setSaveError(null);
   };
 
@@ -317,57 +350,146 @@ export function PosPromotionSchedulerPage({
       setSaveError('Date to must be on or after Date from.');
       return;
     }
-    if (!startTime || !endTime) {
-      setSaveError('Time from and Time to are required.');
-      return;
-    }
-    if (repeatMode === 'daysOfWeek' && daysOfWeek.length === 0) {
-      setSaveError('Select at least one day, or choose Repeat Daily.');
+
+    if (promotionKind === 'timeBase') {
+      if (!startTime || !endTime) {
+        setSaveError('Time from and Time to are required for Time Base promotions.');
+        return;
+      }
+      if (repeatMode === 'daysOfWeek' && daysOfWeek.length === 0) {
+        setSaveError('Select at least one day, or choose Repeat Daily.');
+        return;
+      }
+
+      const lines = filteredProducts
+        .map(product => {
+          const draft = draftByProductId[product.id] ?? emptyRowDraft();
+          if (!draft.included) return null;
+          const rrp = resolvePosMenuRrp(product, products);
+          const cogs = productCogs(product);
+          const discount = parsePositiveNumber(draft.discountPercent);
+          const rpp = parsePositiveNumber(draft.rpp);
+          if (discount == null || rpp == null || rrp <= 0) return null;
+          return {
+            productId: product.id,
+            rrp: roundMoney(rrp),
+            cogs: roundMoney(cogs),
+            rpp: roundMoney(rpp),
+            discountPercent: roundPercent(Math.min(100, discount)),
+          };
+        })
+        .filter((line): line is NonNullable<typeof line> => line != null);
+
+      if (lines.length === 0) {
+        setSaveError('Enter a discount or promotional price for at least one product in the table.');
+        return;
+      }
+
+      setSaving(true);
+      try {
+        await api.createPosPromotion({
+          companyId: selectedCompanyId,
+          name: name.trim(),
+          promotionKind: 'timeBase',
+          startDate,
+          endDate: endDateOpen ? undefined : endDate,
+          endDateOpen,
+          startTime,
+          endTime,
+          repeatMode,
+          daysOfWeek: repeatMode === 'daily' ? [] : daysOfWeek,
+          filterCategory: filterCategory === 'All' ? undefined : filterCategory,
+          filterGroup: filterGroup === 'All' ? undefined : filterGroup,
+          promoType,
+          products: lines,
+        });
+        setSaveOk(`Saved Time Base promotion with ${lines.length} product${lines.length === 1 ? '' : 's'}.`);
+        resetCreateForm();
+        setTab('active');
+        await loadPromotions();
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'Failed to save promotion.');
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
-    const lines = filteredProducts
-      .map(product => {
-        const draft = draftByProductId[product.id] ?? emptyRowDraft();
-        if (!draft.included) return null;
-        const rrp = resolvePosMenuRrp(product, products);
-        const cogs = productCogs(product);
-        const discount = parsePositiveNumber(draft.discountPercent);
-        const rpp = parsePositiveNumber(draft.rpp);
-        if (discount == null || rpp == null || rrp <= 0) return null;
-        return {
-          productId: product.id,
-          rrp: roundMoney(rrp),
-          cogs: roundMoney(cogs),
-          rpp: roundMoney(rpp),
-          discountPercent: roundPercent(Math.min(100, discount)),
-        };
-      })
-      .filter((line): line is NonNullable<typeof line> => line != null);
-
-    if (lines.length === 0) {
-      setSaveError('Enter a discount or promotional price for at least one product in the table.');
+    // Pre-paid promotion
+    const validity = Number.parseInt(validityPeriodValue, 10);
+    if (!Number.isFinite(validity) || validity <= 0) {
+      setSaveError('Validity period must be a positive number.');
       return;
     }
+    const qty = parsePositiveNumber(packageQty);
+    const rrp = parsePositiveNumber(packageRrp);
+    const total = parsePositiveNumber(packageTotalValue);
+    const rpp = parsePositiveNumber(packageRpp);
+    const discount = parsePositiveNumber(discountAmount) ?? 0;
+    if (qty == null || qty <= 0) {
+      setSaveError('Package QTY is required.');
+      return;
+    }
+    if (!packageUom.trim()) {
+      setSaveError('UOM is required.');
+      return;
+    }
+    if (rrp == null || rrp < 0 || rpp == null || rpp < 0) {
+      setSaveError('RRP and RPP are required.');
+      return;
+    }
+    if (!selectedPrepaidProductId) {
+      setSaveError('Select a POS product for this Pre-paid promotion.');
+      return;
+    }
+    const product = filteredProducts.find(p => p.id === selectedPrepaidProductId)
+      ?? products.find(p => p.id === selectedPrepaidProductId);
+    if (!product) {
+      setSaveError('Selected product was not found.');
+      return;
+    }
+    const totalValue = total ?? roundMoney(rrp * qty);
+    const computedDiscount = discount > 0 ? discount : roundMoney(Math.max(0, totalValue - rpp));
+    const cogs = productCogs(product);
+    const discountPercent = totalValue > 0
+      ? roundPercent(Math.min(100, (computedDiscount / totalValue) * 100))
+      : 0;
 
     setSaving(true);
     try {
       await api.createPosPromotion({
         companyId: selectedCompanyId,
         name: name.trim(),
+        promotionKind: 'prepaid',
         startDate,
         endDate: endDateOpen ? undefined : endDate,
         endDateOpen,
-        startTime,
-        endTime,
-        repeatMode,
-        daysOfWeek: repeatMode === 'daily' ? [] : daysOfWeek,
+        startTime: '00:00',
+        endTime: '23:59',
+        repeatMode: 'daily',
+        daysOfWeek: [],
         filterCategory: filterCategory === 'All' ? undefined : filterCategory,
         filterGroup: filterGroup === 'All' ? undefined : filterGroup,
-        promoType,
-        products: lines,
+        promoType: 'discountPrice',
+        validityPeriodValue: validity,
+        validityPeriodUnit,
+        packageQty: qty,
+        packageUom: packageUom.trim(),
+        packageRrp: roundMoney(rrp),
+        packageTotalValue: totalValue,
+        packageRpp: roundMoney(rpp),
+        discountAmount: computedDiscount,
+        depletionMethod,
+        depletionUnits: depletionMethod === 'salesUnit' ? depletionUnits : [],
+        products: [{
+          productId: product.id,
+          rrp: roundMoney(rrp),
+          cogs: roundMoney(cogs),
+          rpp: roundMoney(rpp),
+          discountPercent,
+        }],
       });
-      setSaveOk(`Saved promotion with ${lines.length} product${lines.length === 1 ? '' : 's'}.`);
+      setSaveOk('Saved Pre-paid promotion.');
       resetCreateForm();
       setTab('active');
       await loadPromotions();
@@ -485,12 +607,18 @@ export function PosPromotionSchedulerPage({
                             : (promo.daysOfWeek ?? []).join(', ') || '—'}
                         </td>
                         <td className="py-2 pr-3 text-muted-foreground">
-                          {promo.promoType === 'discountPrice' ? 'Discount by Price' : 'Discount by %'}
+                          {promo.promotionKind === 'prepaid'
+                            ? 'Pre-paid'
+                            : promo.promoType === 'discountPrice'
+                              ? 'Time Base · Price'
+                              : 'Time Base · %'}
                         </td>
                         <td className="py-2 pr-3 text-muted-foreground">{promo.products.length}</td>
                         <td className="py-2 pr-3">{promo.status}</td>
                         <td className="py-2 pr-3">
-                          {promo.inEffectNow ? (
+                          {promo.promotionKind === 'prepaid' ? (
+                            <span className="text-muted-foreground">Pre-paid</span>
+                          ) : promo.inEffectNow ? (
                             <span className="text-emerald-700 font-semibold">RPP on</span>
                           ) : (
                             <span className="text-muted-foreground">Off</span>
@@ -551,6 +679,36 @@ export function PosPromotionSchedulerPage({
           ) : null}
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="xl:col-span-4 flex flex-wrap items-center gap-4 rounded-md border border-border bg-muted/20 px-3 py-2">
+              <span className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                Promotion class *
+              </span>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer font-semibold">
+                <input
+                  type="checkbox"
+                  checked={promotionKind === 'timeBase'}
+                  onChange={e => {
+                    if (e.target.checked) setPromotionKind('timeBase');
+                  }}
+                />
+                Time Base Promotion
+              </label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer font-semibold">
+                <input
+                  type="checkbox"
+                  checked={promotionKind === 'prepaid'}
+                  onChange={e => {
+                    if (e.target.checked) setPromotionKind('prepaid');
+                  }}
+                />
+                Pre-paid Promotion
+              </label>
+              <p className="text-[11px] text-muted-foreground">
+                {promotionKind === 'timeBase'
+                  ? 'Happy Hour and other scheduled RPP windows.'
+                  : 'Bulk purchase (bottle / keg) depleted over visits.'}
+              </p>
+            </div>
             <div className="xl:col-span-2">
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                 Name of Promotion *
@@ -559,7 +717,7 @@ export function PosPromotionSchedulerPage({
                 className={`${inputCls} mt-1`}
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="e.g. Lunch Weekday Special"
+                placeholder={promotionKind === 'prepaid' ? 'e.g. House Whiskey Bottle Club' : 'e.g. Lunch Weekday Special'}
               />
             </div>
             <div>
@@ -600,23 +758,25 @@ export function PosPromotionSchedulerPage({
             </div>
             <div>
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                Time from *
+                Time from {promotionKind === 'timeBase' ? '*' : ''}
               </label>
               <input
                 type="time"
                 className={`${inputCls} mt-1`}
                 value={startTime}
+                disabled={promotionKind === 'prepaid'}
                 onChange={e => setStartTime(e.target.value)}
               />
             </div>
             <div>
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                Time to *
+                Time to {promotionKind === 'timeBase' ? '*' : ''}
               </label>
               <input
                 type="time"
                 className={`${inputCls} mt-1`}
                 value={endTime}
+                disabled={promotionKind === 'prepaid'}
                 onChange={e => setEndTime(e.target.value)}
               />
             </div>
@@ -624,7 +784,7 @@ export function PosPromotionSchedulerPage({
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                 Repeat
               </label>
-              <div className="mt-1 flex flex-wrap items-center gap-3">
+              <div className={`mt-1 flex flex-wrap items-center gap-3 ${promotionKind === 'prepaid' ? 'opacity-45 pointer-events-none' : ''}`}>
                 <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                   <input
                     type="checkbox"
@@ -690,79 +850,286 @@ export function PosPromotionSchedulerPage({
                 ))}
               </select>
             </div>
-            <div className="xl:col-span-2">
-              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
-                Promo Type
-              </label>
-              <div className="mt-1 flex flex-wrap gap-4">
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input
-                    type="radio"
-                    name="pos-promo-type"
-                    checked={promoType === 'discountPercent'}
-                    onChange={() => setPromoType('discountPercent')}
-                  />
-                  Discount by %
+            {promotionKind === 'timeBase' ? (
+              <div className="xl:col-span-2">
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                  Promo Type
                 </label>
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input
-                    type="radio"
-                    name="pos-promo-type"
-                    checked={promoType === 'discountPrice'}
-                    onChange={() => setPromoType('discountPrice')}
-                  />
-                  Discount by Price (RPP)
-                </label>
-              </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Edit Discount % or RPP on each row — both stay in sync.
-              </p>
-              {promoType === 'discountPercent' ? (
-                <div className="mt-2 flex flex-wrap items-end gap-2">
-                  <div>
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                      Apply % to filtered products
-                    </label>
+                <div className="mt-1 flex flex-wrap gap-4">
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                     <input
-                      className={`${inputCls} mt-1 w-28`}
-                      inputMode="decimal"
-                      value={bulkDiscountPercent}
-                      onChange={e => setBulkDiscountPercent(e.target.value)}
-                      placeholder="e.g. 15"
+                      type="radio"
+                      name="pos-promo-type"
+                      checked={promoType === 'discountPercent'}
+                      onChange={() => setPromoType('discountPercent')}
                     />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={applyBulkDiscount}
-                    className="text-xs border border-border rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
-                  >
-                    Apply
-                  </button>
+                    Discount by %
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pos-promo-type"
+                      checked={promoType === 'discountPrice'}
+                      onChange={() => setPromoType('discountPrice')}
+                    />
+                    Discount by Price (RPP)
+                  </label>
                 </div>
-              ) : null}
-            </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Edit Discount % or RPP on each row — both stay in sync.
+                </p>
+                {promoType === 'discountPercent' ? (
+                  <div className="mt-2 flex flex-wrap items-end gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                        Apply % to filtered products
+                      </label>
+                      <input
+                        className={`${inputCls} mt-1 w-28`}
+                        inputMode="decimal"
+                        value={bulkDiscountPercent}
+                        onChange={e => setBulkDiscountPercent(e.target.value)}
+                        placeholder="e.g. 15"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={applyBulkDiscount}
+                      className="text-xs border border-border rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Validity period *
+                  </label>
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      className={`${inputCls} w-24`}
+                      inputMode="numeric"
+                      value={validityPeriodValue}
+                      onChange={e => setValidityPeriodValue(e.target.value)}
+                    />
+                    <select
+                      className={`${inputCls} w-auto`}
+                      value={validityPeriodUnit}
+                      onChange={e => setValidityPeriodUnit(e.target.value as ValidityUnit)}
+                    >
+                      <option value="days">Days from purchase</option>
+                      <option value="months">Months from purchase</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    POS Product *
+                  </label>
+                  <select
+                    className={`${inputCls} mt-1`}
+                    value={selectedPrepaidProductId ?? ''}
+                    onChange={e => {
+                      const id = Number(e.target.value) || null;
+                      setSelectedPrepaidProductId(id);
+                      const product = filteredProducts.find(p => p.id === id) ?? products.find(p => p.id === id);
+                      if (product) {
+                        const rrp = resolvePosMenuRrp(product, products);
+                        setPackageRrp(String(rrp || ''));
+                        const qty = parsePositiveNumber(packageQty) ?? 1;
+                        const total = roundMoney(rrp * qty);
+                        setPackageTotalValue(String(total));
+                        if (!packageRpp) setPackageRpp(String(total));
+                        setDiscountAmount('0');
+                      }
+                    }}
+                  >
+                    <option value="">Select product…</option>
+                    {filteredProducts.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    QTY *
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    inputMode="decimal"
+                    value={packageQty}
+                    onChange={e => {
+                      setPackageQty(e.target.value);
+                      const qty = parsePositiveNumber(e.target.value);
+                      const rrp = parsePositiveNumber(packageRrp);
+                      if (qty != null && rrp != null) {
+                        const total = roundMoney(rrp * qty);
+                        setPackageTotalValue(String(total));
+                        const rpp = parsePositiveNumber(packageRpp);
+                        if (rpp != null) setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    UOM *
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    value={packageUom}
+                    onChange={e => setPackageUom(e.target.value)}
+                    placeholder="Bottle / Keg / Liter"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    RRP *
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    inputMode="decimal"
+                    value={packageRrp}
+                    onChange={e => {
+                      setPackageRrp(e.target.value);
+                      const rrp = parsePositiveNumber(e.target.value);
+                      const qty = parsePositiveNumber(packageQty) ?? 1;
+                      if (rrp != null) {
+                        const total = roundMoney(rrp * qty);
+                        setPackageTotalValue(String(total));
+                        const rpp = parsePositiveNumber(packageRpp);
+                        if (rpp != null) setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Total Value
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    inputMode="decimal"
+                    value={packageTotalValue}
+                    onChange={e => {
+                      setPackageTotalValue(e.target.value);
+                      const total = parsePositiveNumber(e.target.value);
+                      const rpp = parsePositiveNumber(packageRpp);
+                      if (total != null && rpp != null) {
+                        setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    RPP (prepaid price) *
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    inputMode="decimal"
+                    value={packageRpp}
+                    onChange={e => {
+                      setPackageRpp(e.target.value);
+                      const rpp = parsePositiveNumber(e.target.value);
+                      const total = parsePositiveNumber(packageTotalValue);
+                      if (rpp != null && total != null) {
+                        setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Discount Amount
+                  </label>
+                  <input
+                    className={`${inputCls} mt-1`}
+                    inputMode="decimal"
+                    value={discountAmount}
+                    onChange={e => setDiscountAmount(e.target.value)}
+                  />
+                </div>
+                <div className="xl:col-span-2">
+                  <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                    Depletion Method *
+                  </label>
+                  <div className="mt-1 flex flex-wrap gap-4">
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="radio"
+                        name="depletion-method"
+                        checked={depletionMethod === 'salesUnit'}
+                        onChange={() => setDepletionMethod('salesUnit')}
+                      />
+                      By sales unit (Glass / Pint / Tower)
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="radio"
+                        name="depletion-method"
+                        checked={depletionMethod === 'weight'}
+                        onChange={() => setDepletionMethod('weight')}
+                      />
+                      By weight
+                    </label>
+                  </div>
+                </div>
+                {depletionMethod === 'salesUnit' ? (
+                  <div className="xl:col-span-4">
+                    <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
+                      Sales units (qty depleted from package balance per serve)
+                    </label>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                      {depletionUnits.map((unit, idx) => (
+                        <div key={unit.code} className="flex items-center gap-2 border border-border rounded-md px-2 py-1.5">
+                          <span className="text-xs font-semibold w-14">{unit.label}</span>
+                          <input
+                            className={`${inputCls} py-1`}
+                            inputMode="decimal"
+                            value={String(unit.qtyPerUnit)}
+                            onChange={e => {
+                              const n = Number(e.target.value);
+                              setDepletionUnits(prev => prev.map((u, i) => (
+                                i === idx
+                                  ? { ...u, qtyPerUnit: Number.isFinite(n) && n > 0 ? n : u.qtyPerUnit }
+                                  : u
+                              )));
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
 
-          {catalogLoading ? (
-            <MillstoneLoader label="Loading POS products…" />
-          ) : (
-            <TableScrollContainer>
-              <table className="w-full text-xs min-w-[1100px]">
-                <ColGroup widths={[TABLE_COL_CHECK.style.width, '10%', '22%', '8%', '9%', '8%', '8%', '9%', '8%', '10%']} />
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="py-2 pr-2 font-semibold">Include</th>
-                    <th className="py-2 pr-2 font-semibold">Product Code</th>
-                    <th className="py-2 pr-2 font-semibold">Product</th>
-                    <th className="py-2 pr-2 font-semibold text-right">RRP</th>
-                    <th className="py-2 pr-2 font-semibold text-right">RRP Cogs</th>
-                    <th className="py-2 pr-2 font-semibold text-right">RRP Cogs%</th>
-                    <th className="py-2 pr-2 font-semibold text-right">RPP</th>
-                    <th className="py-2 pr-2 font-semibold text-right">RPP Cogs</th>
-                    <th className="py-2 pr-2 font-semibold text-right">RPP Cogs%</th>
-                    <th className="py-2 font-semibold text-right">Discount %</th>
-                  </tr>
-                </thead>
+          {promotionKind === 'timeBase' ? (
+            catalogLoading ? (
+              <MillstoneLoader label="Loading POS products…" />
+            ) : (
+              <TableScrollContainer>
+                <table className="w-full text-xs min-w-[1100px]">
+                  <ColGroup widths={[TABLE_COL_CHECK.style.width, '10%', '22%', '8%', '9%', '8%', '8%', '9%', '8%', '10%']} />
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="py-2 pr-2 font-semibold">Include</th>
+                      <th className="py-2 pr-2 font-semibold">Product Code</th>
+                      <th className="py-2 pr-2 font-semibold">Product</th>
+                      <th className="py-2 pr-2 font-semibold text-right">RRP</th>
+                      <th className="py-2 pr-2 font-semibold text-right">RRP Cogs</th>
+                      <th className="py-2 pr-2 font-semibold text-right">RRP Cogs%</th>
+                      <th className="py-2 pr-2 font-semibold text-right">RPP</th>
+                      <th className="py-2 pr-2 font-semibold text-right">RPP Cogs</th>
+                      <th className="py-2 pr-2 font-semibold text-right">RPP Cogs%</th>
+                      <th className="py-2 font-semibold text-right">Discount %</th>
+                    </tr>
+                  </thead>
                 <tbody>
                   {filteredProducts.length === 0 ? (
                     <tr>
@@ -861,7 +1228,8 @@ export function PosPromotionSchedulerPage({
                 </tbody>
               </table>
             </TableScrollContainer>
-          )}
+            )
+          ) : null}
         </div>
       )}
     </div>

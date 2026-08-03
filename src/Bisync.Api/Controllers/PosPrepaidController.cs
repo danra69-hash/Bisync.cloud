@@ -292,8 +292,10 @@ public class PosPrepaidController(
             : purchase.ProductId;
 
         var now = DateTime.UtcNow;
-        var note =
-            $"POS prepaid consumption — {promotion.Name} — {purchase.CustomerName}";
+        var unitRpp = purchase.PackageQty > 0
+            ? Math.Round(purchase.PackageRpp / purchase.PackageQty, 4, MidpointRounding.AwayFromZero)
+            : 0m;
+        var lineValue = Math.Round(depleteQty * unitRpp, 2, MidpointRounding.AwayFromZero);
 
         purchase.BalanceRemaining = Math.Round(
             purchase.BalanceRemaining - depleteQty,
@@ -306,6 +308,15 @@ public class PosPrepaidController(
         }
 
         purchase.UpdatedAt = now;
+        var note =
+            $"POS prepaid consumption — {promotion.Name} — {purchase.CustomerName}"
+            + $" — QTY {depleteQty:0.####} {purchase.PackageUom}"
+            + $" — RPP {unitRpp:0.####}"
+            + $" — value {lineValue:0.##}"
+            + $" — left {purchase.BalanceRemaining:0.####} {purchase.PackageUom}";
+        if (!string.IsNullOrWhiteSpace(unitLabel) && depletionMethod == "salesUnit")
+            note += $" — serve {unitLabel} × {request.Qty:0.####}";
+
         var ledger = new PosPrepaidLedger
         {
             PosPrepaidPurchaseId = purchase.Id,
@@ -323,13 +334,14 @@ public class PosPrepaidController(
         };
         db.PosPrepaidLedgers.Add(ledger);
 
-        // Depletes finished-goods / BOM stock via the same path as POS sales.
-        // Reason text lives on the prepaid ledger note (inventory service uses channel labels).
+        // Inventory depletes on redeem (not at package purchase) so Stock Card shows Pre-paid consumption.
         await productSaleInventory.RecordProductSaleAsync(
             inventoryProductId,
             [locationExternalId],
             depleteQty,
             "pos",
+            variableDetail: null,
+            reasonOverride: note,
             cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);

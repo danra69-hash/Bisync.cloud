@@ -1007,6 +1007,8 @@ public class StockCardService(
             if (IsProductSaleEntryType(log.EntryType))
             {
                 var entryType = log.EntryType.Trim().ToLowerInvariant();
+                var saleReason = FormatProductSaleReason(entryType, product.Name, log.BatchNumber);
+                var unitPrice = TryParsePrepaidUnitRpp(log.BatchNumber);
                 events.Add(new FifoEvent
                 {
                     Id = log.Id,
@@ -1015,8 +1017,8 @@ public class StockCardService(
                     Quantity = log.Quantity,
                     SignedQty = -log.Quantity,
                     Uom = uom,
-                    UnitPrice = 0,
-                    Reason = FormatProductSaleReason(entryType, product.Name),
+                    UnitPrice = unitPrice,
+                    Reason = saleReason,
                     ReferenceNumber = log.BatchNumber ?? string.Empty,
                     SourceLabel = entryType,
                 });
@@ -1268,14 +1270,44 @@ public class StockCardService(
         return normalized is "adjustment_in" or "adjustment_out";
     }
 
-    static string FormatProductSaleReason(string entryType, string productName)
+    static string FormatProductSaleReason(string entryType, string productName, string? batchNumber = null)
     {
+        if (!string.IsNullOrWhiteSpace(batchNumber)
+            && batchNumber.Contains("prepaid", StringComparison.OrdinalIgnoreCase))
+        {
+            return batchNumber.Trim();
+        }
+
         return entryType.Trim().ToLowerInvariant() switch
         {
             "online_order" => $"Online order — {productName}",
             "offline_order" => $"Offline order — {productName}",
             _ => $"POS sales — {productName}",
         };
+    }
+
+    static decimal TryParsePrepaidUnitRpp(string? batchNumber)
+    {
+        if (string.IsNullOrWhiteSpace(batchNumber)
+            || !batchNumber.Contains("prepaid", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0m;
+        }
+
+        // Expected fragment: "— RPP 12.5 —"
+        var marker = "RPP ";
+        var idx = batchNumber.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return 0m;
+        var slice = batchNumber[(idx + marker.Length)..].TrimStart();
+        var end = 0;
+        while (end < slice.Length && (char.IsDigit(slice[end]) || slice[end] is '.' or ','))
+            end++;
+        if (end <= 0) return 0m;
+        var raw = slice[..end].Replace(',', '.');
+        return decimal.TryParse(raw, System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : 0m;
     }
 
     static string ClassifyMovementEntryType(InventoryMovement movement)
