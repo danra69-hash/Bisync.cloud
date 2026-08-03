@@ -570,7 +570,7 @@ public class SalesModuleController(
 
     /// <summary>
     /// List Client Update rows.
-    /// salesTeamMemberId without view → all clients attached to that member.
+    /// salesTeamMemberId or hunter without view → full attached client list (latest interaction first).
     /// view=week|month → period rows with changes (optionally scoped by salesTeamMemberId/hunter).
     /// </summary>
     [HttpGet("client-updates")]

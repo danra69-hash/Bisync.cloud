@@ -126,9 +126,26 @@ public class SalesModuleClientUpdateService(
 
         var mode = (view ?? string.Empty).Trim().ToLowerInvariant();
 
-        // Member selected without a period → full attached client book for that hunter.
-        if (salesTeamMemberId is > 0 && mode is not ("week" or "month"))
-            return await ListAttachedClientsForMemberAsync(salesTeamMemberId.Value, ct);
+        // Member / hunter without a period → full attached client book (latest interaction first).
+        if (mode is not ("week" or "month"))
+        {
+            if (salesTeamMemberId is > 0)
+                return await ListAttachedClientsForMemberAsync(salesTeamMemberId.Value, ct);
+
+            if (!string.IsNullOrWhiteSpace(hunter))
+            {
+                var hunterKey = hunter.Trim();
+                var member = await db.SalesModuleTeamMembers.AsNoTracking()
+                    .Where(m => m.Active)
+                    .OrderBy(m => m.Name)
+                    .ToListAsync(ct);
+                var resolved = ResolveTeamMember(member, hunterKey, null);
+                if (resolved is not null)
+                    return await ListAttachedClientsForMemberAsync(resolved.Id, ct);
+
+                return await ListAllRowsForHunterNameAsync(hunterKey, ct);
+            }
+        }
 
         var rows = await GetCachedRowsAsync(ct);
 
@@ -202,9 +219,22 @@ public class SalesModuleClientUpdateService(
                 r.SalesTeamMemberId == memberId
                 || (!string.IsNullOrWhiteSpace(memberName)
                     && r.Hunter.Equals(memberName, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(r => r.Company, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.Brand, StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
+            .OrderByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
+            .ThenByDescending(r => r.Id)
+            .ThenBy(r => r.Company, StringComparer.OrdinalIgnoreCase)
+            .Select(Map)
+            .ToList();
+    }
+
+    /// <summary>All Client Update rows for a free-text hunter name, latest interaction first.</summary>
+    async Task<List<object>> ListAllRowsForHunterNameAsync(string hunterName, CancellationToken ct)
+    {
+        var key = hunterName.Trim();
+        var rows = await GetCachedRowsAsync(ct);
+        return rows
+            .Where(r => r.Hunter.Equals(key, StringComparison.OrdinalIgnoreCase)
+                || NormalizePersonToken(r.Hunter) == NormalizePersonToken(key))
+            .OrderByDescending(r => r.LastContactDate ?? r.DateCreated ?? DateTime.MinValue)
             .ThenByDescending(r => r.Id)
             .Select(Map)
             .ToList();
