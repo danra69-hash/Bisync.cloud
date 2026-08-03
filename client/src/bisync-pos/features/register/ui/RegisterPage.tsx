@@ -677,51 +677,36 @@ export function RegisterPage() {
     return { line: selected, product }
   }
 
-  function resolveTargetLine(department?: ProductDepartment, opts?: { requireSelection?: boolean }) {
+  /** When no row is highlighted, Modifier / SWAP always target the last ordered line. */
+  function resolveLastOrderedLine(): { line: CartLine; product: Product } | null {
     const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
     const byId = new Map(products.map(p => [p.id, p]))
-    if (selectedLineKey) {
-      const selected = lines.find(l => lineSelectionKey(l) === selectedLineKey)
-      if (selected) {
-        const product = byId.get(selected.productId)
-        if (!product) return null
-        if (department && product.department !== department) {
-          return null
-        }
-        return { line: selected, product }
-      }
-    }
-    if (opts?.requireSelection) return null
     for (let i = lines.length - 1; i >= 0; i -= 1) {
       const line = lines[i]
       const product = byId.get(line.productId)
-      if (!product) continue
-      if (!department || product.department === department) {
-        return { line, product }
-      }
+      if (product) return { line, product }
     }
     return null
   }
 
-  function openFoodModifier() {
-    if (!requireDuty()) return
+  function resolveModifierOrSwapTarget(): { line: CartLine; product: Product } | null {
     if (selectedLineKey) {
       const selected = findSelectedLine()
-      if (!selected) {
-        setSelectedLineKey(null)
-        flash('Select a Food line on the check, then tap Food Modifier.')
-        return
-      }
-      if (selected.product.department !== 'Food') {
-        flash(`“${selected.product.name}” is not a Food item. Select a Food line first.`)
-        return
-      }
-      setModifierTarget({ kind: 'food', ...selected })
+      if (selected) return selected
+      setSelectedLineKey(null)
+    }
+    return resolveLastOrderedLine()
+  }
+
+  function openFoodModifier() {
+    if (!requireDuty()) return
+    const target = resolveModifierOrSwapTarget()
+    if (!target) {
+      flash('Add an item first, then tap Food Modifier.')
       return
     }
-    const target = resolveTargetLine('Food')
-    if (!target) {
-      flash('Add a Food item first, or select a Food line on the check.')
+    if (target.product.department !== 'Food') {
+      flash(`“${target.product.name}” is not a Food item. Select a Food line, or order Food last.`)
       return
     }
     setSelectedLineKey(lineSelectionKey(target.line))
@@ -730,23 +715,13 @@ export function RegisterPage() {
 
   function openBeverageModifier() {
     if (!requireDuty()) return
-    if (selectedLineKey) {
-      const selected = findSelectedLine()
-      if (!selected) {
-        setSelectedLineKey(null)
-        flash('Select a Beverage line on the check, then tap Beverage Modifier.')
-        return
-      }
-      if (selected.product.department !== 'Beverage') {
-        flash(`“${selected.product.name}” is not a Beverage item. Select a Beverage line first.`)
-        return
-      }
-      setModifierTarget({ kind: 'beverage', ...selected })
+    const target = resolveModifierOrSwapTarget()
+    if (!target) {
+      flash('Add an item first, then tap Beverage Modifier.')
       return
     }
-    const target = resolveTargetLine('Beverage')
-    if (!target) {
-      flash('Add a Beverage item first, or select a Beverage line on the check.')
+    if (target.product.department !== 'Beverage') {
+      flash(`“${target.product.name}” is not a Beverage item. Select a Beverage line, or order Beverage last.`)
       return
     }
     setSelectedLineKey(lineSelectionKey(target.line))
@@ -764,23 +739,6 @@ export function RegisterPage() {
     modifierTarget?.kind === 'beverage' ? modifierTarget.product : null,
   )
 
-  const catalogById = new Map(
-    (liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS).map(p => [p.id, p]),
-  )
-  const selectedLineInfo = findSelectedLine()
-  const hasFoodLine = lines.some(l => catalogById.get(l.productId)?.department === 'Food')
-  const hasBeverageLine = lines.some(l => catalogById.get(l.productId)?.department === 'Beverage')
-  const hasSwapLine = lines.some(l => lineCanSwap(catalogById.get(l.productId)))
-  const canUseFoodModifier = selectedLineKey
-    ? selectedLineInfo?.product.department === 'Food'
-    : hasFoodLine
-  const canUseBeverageModifier = selectedLineKey
-    ? selectedLineInfo?.product.department === 'Beverage'
-    : hasBeverageLine
-  const canUseComponentSwap = selectedLineKey
-    ? lineCanSwap(selectedLineInfo?.product)
-    : hasSwapLine
-
   function lineCanSwap(product: Product | undefined): boolean {
     return Boolean(
       product?.isVariableComponent
@@ -788,35 +746,22 @@ export function RegisterPage() {
     )
   }
 
+  const selectedLineInfo = findSelectedLine()
+  const lastOrderedLine = resolveLastOrderedLine()
+  const modifierSwapFocus = selectedLineKey ? selectedLineInfo : lastOrderedLine
+  const canUseFoodModifier = modifierSwapFocus?.product.department === 'Food'
+  const canUseBeverageModifier = modifierSwapFocus?.product.department === 'Beverage'
+  const canUseComponentSwap = lineCanSwap(modifierSwapFocus?.product)
+
   function openComponentSwap() {
     if (!requireDuty()) return
-    if (selectedLineKey) {
-      const selected = findSelectedLine()
-      if (!selected) {
-        setSelectedLineKey(null)
-        flash('Select a Variable Component line on the check, then tap Component SWAP.')
-        return
-      }
-      if (!lineCanSwap(selected.product)) {
-        flash(`“${selected.product.name}” has no Component SWAP options. Select a swappable line.`)
-        return
-      }
-      handleSwapLine(selected.line)
+    const target = resolveModifierOrSwapTarget()
+    if (!target) {
+      flash('Add an item first, then tap Component SWAP.')
       return
     }
-    const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
-    const byId = new Map(products.map(p => [p.id, p]))
-    let target: { line: CartLine; product: Product } | null = null
-    for (let i = lines.length - 1; i >= 0; i -= 1) {
-      const line = lines[i]
-      const product = byId.get(line.productId)
-      if (lineCanSwap(product)) {
-        target = { line, product: product! }
-        break
-      }
-    }
-    if (!target) {
-      flash('Select or add a Variable Component item to SWAP.')
+    if (!lineCanSwap(target.product)) {
+      flash(`“${target.product.name}” has no Component SWAP options. Select a swappable line, or order one last.`)
       return
     }
     setSelectedLineKey(lineSelectionKey(target.line))
@@ -1511,8 +1456,10 @@ export function RegisterPage() {
               !onDuty
                 ? 'Unlock POS to edit modifiers'
                 : !canUseFoodModifier
-                  ? 'Select a Food line on the check'
-                  : 'Apply Food modifiers to the selected line'
+                  ? 'Select a Food line, or make the last ordered item Food'
+                  : selectedLineKey
+                    ? 'Apply Food modifiers to the selected line'
+                    : 'Apply Food modifiers to the last ordered line'
             }
             onClick={openFoodModifier}
           >
@@ -1526,8 +1473,10 @@ export function RegisterPage() {
               !onDuty
                 ? 'Unlock POS to edit modifiers'
                 : !canUseBeverageModifier
-                  ? 'Select a Beverage line on the check'
-                  : 'Apply Beverage modifiers to the selected line'
+                  ? 'Select a Beverage line, or make the last ordered item Beverage'
+                  : selectedLineKey
+                    ? 'Apply Beverage modifiers to the selected line'
+                    : 'Apply Beverage modifiers to the last ordered line'
             }
             onClick={openBeverageModifier}
           >
@@ -1541,8 +1490,10 @@ export function RegisterPage() {
               !onDuty
                 ? 'Unlock POS to SWAP components'
                 : !canUseComponentSwap
-                  ? 'Select a Variable Component line on the check'
-                  : 'SWAP components on the selected line'
+                  ? 'Select a Variable Component line, or order one last'
+                  : selectedLineKey
+                    ? 'SWAP components on the selected line'
+                    : 'SWAP components on the last ordered line'
             }
             onClick={openComponentSwap}
           >
