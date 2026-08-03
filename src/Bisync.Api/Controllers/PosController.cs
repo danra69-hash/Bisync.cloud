@@ -273,6 +273,117 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         }
     }
 
+    [HttpGet("floor-plan/versions")]
+    public async Task<ActionResult<object>> ListFloorPlanVersions(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null,
+        [FromQuery] int take = 20)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        if (cid is null || string.IsNullOrEmpty(loc))
+            return Ok(Array.Empty<object>());
+
+        try
+        {
+            await SchemaPatcher.EnsurePosFloorPlanVersionsTableAsync(db);
+            var limit = Math.Clamp(take, 1, 50);
+            var rows = await db.PosFloorPlanVersions.AsNoTracking()
+                .Where(x => x.CompanyId == cid.Value && x.LocationExternalId == loc)
+                .OrderByDescending(x => x.CapturedAt)
+                .Take(limit)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.CompanyId,
+                    x.LocationExternalId,
+                    x.Source,
+                    x.CapturedAt,
+                    tableCount = 0,
+                    layoutJson = x.LayoutJson,
+                })
+                .ToListAsync();
+
+            var shaped = rows.Select(r =>
+            {
+                var tables = 0;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(r.layoutJson ?? "{}");
+                    if (doc.RootElement.TryGetProperty("tables", out var t)
+                        && t.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        tables = t.GetArrayLength();
+                    }
+                }
+                catch { /* ignore */ }
+
+                return new
+                {
+                    r.Id,
+                    r.CompanyId,
+                    r.LocationExternalId,
+                    r.Source,
+                    r.CapturedAt,
+                    tableCount = tables,
+                    isStockDefault = PosFloorPlanGuard.IsStockDefaultLayout(r.layoutJson),
+                    isCustom = PosFloorPlanGuard.IsCustomLayout(r.layoutJson),
+                    layoutJson = r.layoutJson,
+                };
+            });
+
+            return Ok(shaped);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Could not list floor plan versions.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
+    [HttpPost("floor-plan/restore-version/{versionId:int}")]
+    public async Task<ActionResult<object>> RestoreFloorPlanVersion(
+        int versionId,
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        if (cid is null || string.IsNullOrEmpty(loc))
+            return BadRequest(new { message = "companyId and locationExternalId are required." });
+
+        try
+        {
+            await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
+            await SchemaPatcher.EnsurePosFloorPlanVersionsTableAsync(db);
+
+            var version = await db.PosFloorPlanVersions.AsNoTracking()
+                .FirstOrDefaultAsync(x =>
+                    x.Id == versionId
+                    && x.CompanyId == cid.Value
+                    && x.LocationExternalId == loc);
+            if (version is null)
+                return NotFound(new { message = "Floor plan version not found." });
+
+            return await UpsertFloorPlan(new UpsertFloorPlanRequest(
+                cid.Value,
+                loc,
+                version.LayoutJson,
+                Force: true));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Could not restore floor plan version.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
     [HttpGet("waitlist")]
     public async Task<ActionResult<object>> ListWaitlist(
         [FromQuery] int? companyId = null,

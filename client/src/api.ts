@@ -4122,6 +4122,34 @@ export const api = {
       layoutJson: string;
       updatedAt: string;
     }>('/api/pos/floor-plan', 'PUT', payload),
+  posFloorPlanVersions: (companyId: number, locationExternalId: string, take = 20) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationExternalId,
+      take: String(take),
+    });
+    return fetchJson<Array<{
+      id: number;
+      companyId: number;
+      locationExternalId: string;
+      source: string;
+      capturedAt: string;
+      tableCount: number;
+      isStockDefault: boolean;
+      isCustom: boolean;
+      layoutJson: string;
+    }>>(`/api/pos/floor-plan/versions?${params}`);
+  },
+  posFloorPlanRestoreVersion: (versionId: number, companyId: number, locationExternalId: string) =>
+    fetchJsonWithMethod<{
+      companyId: number;
+      locationExternalId: string;
+      layoutJson: string;
+      updatedAt: string;
+    }>(
+      `/api/pos/floor-plan/restore-version/${versionId}?companyId=${companyId}&locationExternalId=${encodeURIComponent(locationExternalId)}`,
+      'POST',
+    ),
   posWaitlistList: (companyId: number, locationExternalId: string, includeClosed = false) => {
     const params = new URLSearchParams({
       companyId: String(companyId),

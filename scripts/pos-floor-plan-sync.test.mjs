@@ -27,7 +27,11 @@ function isStockDefaultFloorPlan(plan) {
 }
 
 function chooseWinner({ hadScoped, localUpdatedAt, remoteUpdatedAt, local, remote }) {
-  if (!remote) return 'push-local'
+  if (!remote) {
+    // Never seed empty server from stock demo.
+    if (hadScoped && !isStockDefaultFloorPlan(local) && local?.tables?.length) return 'push-local'
+    return 'keep-local'
+  }
   const localMs = localUpdatedAt ? Date.parse(localUpdatedAt) : 0
   const remoteMs = remoteUpdatedAt ? Date.parse(remoteUpdatedAt) : 0
   const localIsStock = isStockDefaultFloorPlan(local)
@@ -35,9 +39,10 @@ function chooseWinner({ hadScoped, localUpdatedAt, remoteUpdatedAt, local, remot
   const canPushLocal =
     hadScoped
     && localMs > 0
+    && !localIsStock
     && (
-      (!localIsStock && remoteIsStock)
-      || (localMs > remoteMs && !(localIsStock && !remoteIsStock))
+      remoteIsStock
+      || localMs > remoteMs
     )
   return canPushLocal ? 'push-local' : 'remote-wins'
 }
@@ -86,6 +91,19 @@ describe('POS floor plan sync — never clobber DB with cold default', () => {
         remote: stock,
       }),
       'push-local',
+    )
+  })
+
+  it('never uploads stock demo when server is empty', () => {
+    assert.equal(
+      chooseWinner({
+        hadScoped: false,
+        localUpdatedAt: null,
+        remoteUpdatedAt: null,
+        local: stock,
+        remote: null,
+      }),
+      'keep-local',
     )
   })
 

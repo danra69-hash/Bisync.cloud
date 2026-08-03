@@ -1,5 +1,5 @@
 import { api, type Product as ApiProduct, type PosPromotion } from '../../../api'
-import { syncFloorPlan } from '../../features/order/domain/floorPlanSync'
+import { pullFloorPlanFromServer } from '../../features/order/domain/floorPlanSync'
 import { idbGet, idbSet } from './idbStore'
 import {
   loadStationActivation,
@@ -51,8 +51,8 @@ export async function downloadStationPackage(
     }
   }
 
-  // Floor plan → localStorage (existing sync path).
-  await syncFloorPlan(companyId, locationExternalId)
+  // Floor plan → device cache (force pull; never push stock demo back to server).
+  await pullFloorPlanFromServer(companyId, locationExternalId)
 
   const snapshot: PosCatalogSnapshot = {
     companyId,
