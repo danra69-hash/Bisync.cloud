@@ -1229,6 +1229,29 @@ export interface PosModifierGroup {
   attachments: PosModifierAttachment[];
 }
 
+export type PosConfigTypeKind = 'payment' | 'entertainment' | 'discount';
+
+export interface PosConfigType {
+  id: number;
+  companyId: number;
+  kind: PosConfigTypeKind | string;
+  name: string;
+  code: string;
+  sequence: number;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpsertPosConfigTypePayload {
+  companyId: number;
+  kind: PosConfigTypeKind | string;
+  name: string;
+  code: string;
+  sequence?: number;
+  active?: boolean;
+}
+
 export interface UpsertPosModifierGroupPayload {
   companyId: number;
   kind: PosModifierKind | string;
@@ -3581,6 +3604,21 @@ export const api = {
     fetchJsonWithMethod<PosModifierGroup>('/api/pos-modifier-groups/inherit-component-swap', 'POST', {
       companyId,
     }),
+  posConfigTypes: (companyId: number, opts?: { kind?: PosConfigTypeKind | string; includeInactive?: boolean }) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    if (opts?.kind) params.set('kind', opts.kind);
+    if (opts?.includeInactive === false) params.set('includeInactive', 'false');
+    else params.set('includeInactive', 'true');
+    return fetchJson<PosConfigType[]>(`/api/pos-config-types?${params}`);
+  },
+  createPosConfigType: (data: UpsertPosConfigTypePayload) =>
+    fetchJsonWithMethod<PosConfigType>('/api/pos-config-types', 'POST', data),
+  updatePosConfigType: (id: number, data: UpsertPosConfigTypePayload) =>
+    fetchJsonWithMethod<PosConfigType>(`/api/pos-config-types/${id}`, 'PUT', data),
+  setPosConfigTypeActive: (id: number, active: boolean) =>
+    fetchJsonWithMethod<PosConfigType>(`/api/pos-config-types/${id}/active`, 'PATCH', { active }),
+  deletePosConfigType: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-config-types/${id}`, 'DELETE'),
   posPrinterSdks: () => fetchJson<PosPrinterSdk[]>('/api/pos-devices/printer-sdks'),
   posDeviceNetworkSuggestions: (deviceType?: string) => {
     const params = new URLSearchParams();

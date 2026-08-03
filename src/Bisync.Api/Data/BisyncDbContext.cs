@@ -79,6 +79,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosModifierGroup> PosModifierGroups => Set<PosModifierGroup>();
     public DbSet<PosModifierOption> PosModifierOptions => Set<PosModifierOption>();
     public DbSet<PosModifierAttachment> PosModifierAttachments => Set<PosModifierAttachment>();
+    public DbSet<PosConfigType> PosConfigTypes => Set<PosConfigType>();
     public DbSet<PosFloorPlan> PosFloorPlans => Set<PosFloorPlan>();
     public DbSet<PosWaitlistEntry> PosWaitlistEntries => Set<PosWaitlistEntry>();
     public DbSet<PosQrOrder> PosQrOrders => Set<PosQrOrder>();
@@ -609,6 +610,14 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.TargetType).HasMaxLength(40);
             e.Property(x => x.TargetProductGroup).HasMaxLength(120);
             e.Property(x => x.TargetProductName).HasMaxLength(200);
+        });
+        modelBuilder.Entity<PosConfigType>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.Kind, x.Code }).IsUnique();
+            e.HasIndex(x => new { x.CompanyId, x.Kind, x.Active });
+            e.Property(x => x.Kind).HasMaxLength(40);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Code).HasMaxLength(40);
         });
         modelBuilder.Entity<PosPrinterSdk>(e =>
         {

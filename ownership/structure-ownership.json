@@ -740,7 +740,18 @@
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-03",
-      "notes": "Point-of-Sales bar — POS Config after Promotion Scheduler; outlet settings shell (tax/SC, dayparts, receipt, table QR, delivery)"
+      "notes": "Point-of-Sales bar — POS Config after Promotion Scheduler; Payment / Entertainment / Discount type tables"
+    },
+    {
+      "id": "dr.api.pos-config-types",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosConfigTypesController.cs",
+      "symbol": "PosConfigTypesController",
+      "route": "api/pos-config-types",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-03",
+      "notes": "POS Config lookup CRUD — payment, entertainment, and discount types per company"
     },
     {
       "id": "dr.api.pos-promotions",
