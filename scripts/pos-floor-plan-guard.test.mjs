@@ -43,16 +43,18 @@ function isStock(plan) {
   })
 }
 
-test('Weissbrau restore layout is not the stock demo', () => {
+test('Weissbrau restore layout is the current custom plan (not stock)', () => {
   const plan = JSON.parse(
     readFileSync(resolve(root, 'data/floor-plans/weissbrau-pavilion-kuala-lumpur.json'), 'utf8'),
   )
-  assert.equal(plan.tables.length, 29)
-  assert.equal(plan.zones.length, 4)
+  assert.equal(plan.tables.length, 36)
+  assert.equal(plan.zones.length, 3)
   assert.equal(isStock(plan), false)
-  assert.ok(plan.tables.some(t => t.label.startsWith('P')))
-  assert.ok(plan.tables.some(t => t.label.startsWith('I')))
-  assert.ok(plan.tables.some(t => t.label.startsWith('B')))
+  assert.ok(plan.tables.some(t => t.label === 'FP 1'))
+  assert.ok(plan.tables.some(t => t.label === 'TA 1'))
+  assert.ok(plan.tables.some(t => t.label === 'EE 1'))
+  // Retired patio seed markers must not be the active labels.
+  assert.equal(plan.tables.some(t => t.label === 'P1'), false)
 })
 
 test('stock demo still detects as stock', () => {

@@ -63,19 +63,7 @@ public static class PosFloorPlanCanonicalSeeder
                 continue;
             }
 
-            // Empty or stock demo — replace with canonical pavilion layout.
-            if (!string.Equals(row.LayoutJson, layoutJson, StringComparison.Ordinal))
-            {
-                db.PosFloorPlanVersions.Add(new PosFloorPlanVersion
-                {
-                    CompanyId = row.CompanyId,
-                    LocationExternalId = row.LocationExternalId,
-                    LayoutJson = row.LayoutJson,
-                    CapturedAt = now,
-                    Source = "canonical-seed",
-                });
-            }
-
+            // Empty or stock demo — replace with canonical pavilion layout (no version archive).
             row.LayoutJson = layoutJson;
             row.UpdatedAt = now;
             logger?.LogInformation("Restored canonical floor plan over empty/stock for {CompanyId}/{Location}", WeissbrauCompanyId, loc);
@@ -84,8 +72,27 @@ public static class PosFloorPlanCanonicalSeeder
         if (db.ChangeTracker.HasChanges())
             await db.SaveChangesAsync(cancellationToken);
 
+        // Drop prior version history so retired Pavilion layouts cannot be restored.
+        await ClearWeissbrauVersionsAsync(db, logger, cancellationToken);
+
         // If one alias already has a custom layout, mirror it to the other so activation cannot hit empty.
         await MirrorSisterLayoutsAsync(db, cancellationToken);
+    }
+
+    static async Task ClearWeissbrauVersionsAsync(
+        BisyncDbContext db,
+        ILogger? logger,
+        CancellationToken cancellationToken)
+    {
+        var versions = await db.PosFloorPlanVersions
+            .Where(x => x.CompanyId == WeissbrauCompanyId && WeissbrauLocations.Contains(x.LocationExternalId))
+            .ToListAsync(cancellationToken);
+        if (versions.Count == 0) return;
+        db.PosFloorPlanVersions.RemoveRange(versions);
+        await db.SaveChangesAsync(cancellationToken);
+        logger?.LogInformation(
+            "Cleared {Count} retired Weissbrau floor-plan version(s).",
+            versions.Count);
     }
 
     static async Task MirrorSisterLayoutsAsync(BisyncDbContext db, CancellationToken cancellationToken)
