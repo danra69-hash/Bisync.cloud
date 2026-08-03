@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { formatMoney } from '../../../core/types/money'
+import { formatPosCheckNumber } from '../../register/domain/checkNumber'
 import {
   CDS_SNAPSHOT_EVENT,
   loadCustomerDisplaySnapshot,
@@ -54,7 +55,7 @@ export function CustomerDisplayPage() {
           <p className="cds-display__code">CDS · Customer Display</p>
           <h1>Your order</h1>
           <p className="cds-display__meta">
-            #{snapshot.checkNumber}
+            #{formatPosCheckNumber(snapshot.checkNumber)}
             {snapshot.tableLabel ? ` · ${snapshot.tableLabel}` : ''}
             {` · ${diningLabel(snapshot.dining)}`}
             {snapshot.cover > 0 ? ` · ${snapshot.cover} covers` : ''}

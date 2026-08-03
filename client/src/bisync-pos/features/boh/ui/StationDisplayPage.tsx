@@ -8,6 +8,7 @@ import {
   type KitchenStation,
   type KitchenTicket,
 } from '../domain/kitchenTickets'
+import { formatPosCheckNumber } from '../../register/domain/checkNumber'
 import './StationDisplayPage.css'
 
 type Props = {
@@ -138,7 +139,7 @@ export function StationDisplayPage({ station, code, title, subtitle }: Props) {
                     {ticketTimestampLabel(ticket.createdAt)}
                   </time>
                   <span className="kitchen-docket__age">{ticketAgeLabel(ticket.createdAt, now)}</span>
-                  <span>#{ticket.checkNumber}</span>
+                  <span>#{formatPosCheckNumber(ticket.checkNumber)}</span>
                 </div>
               </header>
 
@@ -188,7 +189,7 @@ export function StationDisplayPage({ station, code, title, subtitle }: Props) {
                   <span className="kitchen-docket__age">{ticketAgeLabel(docket.oldestAt, now)}</span>
                   <span>
                     {docket.tickets.length === 1
-                      ? `#${docket.tickets[0].checkNumber}`
+                      ? `#${formatPosCheckNumber(docket.tickets[0].checkNumber)}`
                       : `${docket.tickets.length} tickets`}
                   </span>
                 </div>
@@ -199,7 +200,7 @@ export function StationDisplayPage({ station, code, title, subtitle }: Props) {
               {docket.tickets.map(ticket => (
                 <section key={ticket.id} className="kitchen-docket__check">
                   <p className="kitchen-docket__check-no">
-                    {docket.tickets.length > 1 ? <span>#{ticket.checkNumber}</span> : null}
+                    {docket.tickets.length > 1 ? <span>#{formatPosCheckNumber(ticket.checkNumber)}</span> : null}
                     <time dateTime={ticket.createdAt}>{ticketTimestampLabel(ticket.createdAt)}</time>
                     <span>{ticketAgeLabel(ticket.createdAt, now)}</span>
                     {ticket.dining ? <span>{ticket.dining}</span> : null}

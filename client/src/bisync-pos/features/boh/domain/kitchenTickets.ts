@@ -1,4 +1,5 @@
 import type { CartLine, Product, ProductDepartment } from '../../register/domain/types'
+import { formatPosCheckNumber } from '../../register/domain/checkNumber'
 import { summarizeSaleDetail } from '../../register/domain/saleDetail'
 
 export type KitchenStation = 'Bar' | 'Kitchen'
@@ -177,7 +178,7 @@ export function notifyStationsLineRemoved(opts: {
     ],
     createdAt,
     status: opts.mode,
-    notice: `${label} on #${opts.checkNumber}`,
+    notice: `${label} on #${formatPosCheckNumber(opts.checkNumber)}`,
   }
   persist([ticket, ...loadKitchenTickets()].slice(0, 80))
   tryPrintStationDocket(ticket)
@@ -191,6 +192,7 @@ function tryPrintStationDocket(ticket: KitchenTicket) {
     const items = ticket.items
       .map(i => `<li><strong>${i.quantity}×</strong> ${escapeHtml(i.name)}${i.detail ? `<div>${escapeHtml(i.detail)}</div>` : ''}</li>`)
       .join('')
+    const checkLabel = formatPosCheckNumber(ticket.checkNumber)
     w.document.write(`<!doctype html><html><head><title>${ticket.notice || 'Station docket'}</title>
 <style>
   body{font:14px/1.35 ui-sans-serif,system-ui,sans-serif;padding:16px;color:#111}
@@ -202,7 +204,7 @@ function tryPrintStationDocket(ticket: KitchenTicket) {
 </style></head><body>
   <h1>${escapeHtml(ticket.notice || ticket.status.toUpperCase())}</h1>
   <div class="meta">
-    ${escapeHtml(ticket.station)} · Table ${escapeHtml(ticket.tableLabel)} · #${ticket.checkNumber}<br/>
+    ${escapeHtml(ticket.station)} · Table ${escapeHtml(ticket.tableLabel)} · #${checkLabel}<br/>
     ${escapeHtml(ticketTimestampLabel(ticket.createdAt))} · ${escapeHtml(ticket.dining)}
   </div>
   <ul>${items}</ul>

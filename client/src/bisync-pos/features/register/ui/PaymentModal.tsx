@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { formatMoney } from '../../../core/types/money'
 import { TENDER_LABEL, type TenderType } from '../../cashier/domain/payments'
+import { formatPosCheckNumber } from '../domain/checkNumber'
 import './PaymentModal.css'
 
 type Props = {
@@ -46,7 +47,7 @@ export function PaymentModal({
       <div className="payment-modal__card">
         <header>
           <p className="payment-modal__eyebrow">Payment</p>
-          <h2>Check #{checkNumber}</h2>
+          <h2>Check #{formatPosCheckNumber(checkNumber)}</h2>
           <p>{tableLabel}</p>
         </header>
 

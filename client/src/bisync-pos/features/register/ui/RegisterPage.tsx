@@ -63,6 +63,7 @@ import {
   formatPickupLabel,
   type TakeawayPickup,
 } from '../domain/pickupTime'
+import { formatPosCheckNumber, nextPosCheckNumber } from '../domain/checkNumber'
 import {
   EMPTY_OPEN_CHARGES,
   lineIdentity,
@@ -142,7 +143,7 @@ export function RegisterPage() {
     line: CartLine
     product: Product
   } | null>(null)
-  const [checkNumber, setCheckNumber] = useState(() => Math.floor(1000 + Math.random() * 9000))
+  const [checkNumber, setCheckNumber] = useState(() => nextPosCheckNumber())
   const [firedQtyByLine, setFiredQtyByLine] = useState<Record<string, number>>({})
   const [firedAtByLine, setFiredAtByLine] = useState<Record<string, string>>({})
   const [removalTarget, setRemovalTarget] = useState<{
@@ -967,9 +968,9 @@ export function RegisterPage() {
     clearActiveRegisterSession()
     setActiveTableSession(null)
     if (tickets.length > 0) {
-      flash(`Order #${checkNumber} sent to ${stations}`)
+      flash(`Order #${formatPosCheckNumber(checkNumber)} sent to ${stations}`)
     } else {
-      flash(`Order #${checkNumber} saved · ${tableLabel}`)
+      flash(`Order #${formatPosCheckNumber(checkNumber)} saved · ${tableLabel}`)
     }
     goHome()
   }

@@ -29,5 +29,10 @@ if (existsSync(floorSyncTest)) {
   run('node', ['--test', 'scripts/pos-floor-plan-sync.test.mjs'], { cwd: REPO_ROOT })
 }
 
+const checkNumberTest = path.join(REPO_ROOT, 'scripts/pos-check-number.test.mjs')
+if (existsSync(checkNumberTest)) {
+  run('node', ['--test', 'scripts/pos-check-number.test.mjs'], { cwd: REPO_ROOT })
+}
+
 console.log('pre-pos: ok')
 

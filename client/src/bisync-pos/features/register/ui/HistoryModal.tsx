@@ -5,6 +5,7 @@ import {
   MOCK_CLOSED_CHECKS,
   type ClosedCheck,
 } from '../domain/history'
+import { formatPosCheckNumber } from '../domain/checkNumber'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './HistoryModal.css'
 
@@ -36,7 +37,7 @@ export function HistoryModal({ onClose }: Props) {
               </button>
             ) : null}
             <h2 id="history-title">
-              {selected ? `Check #${selected.checkNumber}` : 'History'}
+              {selected ? `Check #${formatPosCheckNumber(selected.checkNumber)}` : 'History'}
             </h2>
           </div>
           <button
@@ -60,7 +61,7 @@ export function HistoryModal({ onClose }: Props) {
                   className="history-list__item"
                   onClick={() => setSelected(check)}
                 >
-                  <span className="history-list__check">#{check.checkNumber}</span>
+                  <span className="history-list__check">#{formatPosCheckNumber(check.checkNumber)}</span>
                   <span className="history-list__meta">
                     {formatCheckClosedAt(check.closedAt)}
                   </span>

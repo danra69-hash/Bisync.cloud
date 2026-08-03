@@ -141,7 +141,9 @@ export function takeUnfiredLines(
   return { toFire, nextFiredQtyByLine: nextFired }
 }
 
-/** Parse `chk-1234` style floor order ids. */
+export { formatPosCheckNumber, nextPosCheckNumber } from './checkNumber'
+
+/** Parse `chk-123456` style floor order ids. */
 export function checkNumberFromOrderId(orderId?: string | null): number | null {
   if (!orderId) return null
   const match = /^chk-(\d+)$/i.exec(orderId.trim())

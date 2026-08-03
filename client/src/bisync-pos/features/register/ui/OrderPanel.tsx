@@ -1,6 +1,7 @@
 import type { CartLine, OrderCharges, Product } from '../domain/types'
 import { cartGrandTotal, cartSubtotal, removeLine } from '../domain/cart'
 import { saleDetailExtraChargeCents } from '../domain/saleDetail'
+import { formatPosCheckNumber } from '../domain/checkNumber'
 import { formatMoney } from '../../../core/types/money'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import './OrderPanel.css'
@@ -120,7 +121,7 @@ export function OrderPanel({
             <path d="M6 7h12l-1 12H7L6 7z" />
             <path d="M9 7V5a3 3 0 016 0v2" />
           </svg>
-          <h2>Check #{checkNumber}</h2>
+          <h2>Check #{formatPosCheckNumber(checkNumber)}</h2>
         </div>
         <label className="order-panel__cover">
           Cover

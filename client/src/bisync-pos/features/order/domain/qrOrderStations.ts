@@ -41,7 +41,7 @@ export async function acceptQrOrderToStations(order: PosQrOrder): Promise<{
   const tickets = fireCartToStations({
     lines,
     products,
-    checkNumber: 9000 + (order.id % 900),
+    checkNumber: 100000 + (order.id % 900000),
     tableLabel: order.tableLabel || 'QR',
     dining: 'dine-in',
   })
