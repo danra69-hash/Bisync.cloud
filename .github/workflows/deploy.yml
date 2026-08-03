@@ -249,6 +249,22 @@ jobs:
           done
           echo "Deploy verification OK"
 
+      - name: Restore canonical Weissbrau floor plan
+        run: |
+          set -euo pipefail
+          URL="$(gcloud run services describe "${SERVICE_NAME}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --format='value(status.url)')"
+          echo "Ensuring Pavilion floor plan is authoritative on ${URL}"
+          BASE_URL="${URL}" node scripts/restore-weissbrau-floor-plan.mjs
+          # Verify live layout is the custom pavilion plan (not T1–T8).
+          LAYOUT="$(curl -fsS "${URL}/api/pos/floor-plan?companyId=5&locationExternalId=weissbrau-pavilion-kuala-lumpur")"
+          echo "${LAYOUT}" | grep -q '"p01"'
+          echo "${LAYOUT}" | grep -q '"P1"'
+          ! echo "${LAYOUT}" | grep -q '"t1".*"T1".*"Patio"'
+          echo "Floor plan restore verified"
+
       - name: Post-deploy simulation (related functions)
         env:
           DEPLOY_SIM_BASE_URL: https://bisync-cloud-389272498937.asia-southeast1.run.app

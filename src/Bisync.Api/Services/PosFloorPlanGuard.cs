@@ -17,6 +17,23 @@ public static class PosFloorPlanGuard
         ("t8", "T8", 2, "Bar", "round", 10, 72, 12, 12),
     ];
 
+    /// <summary>Sister location IDs that must share one floor plan.</summary>
+    public static IReadOnlyList<string> LocationAliases(string? locationExternalId)
+    {
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        if (loc.Length == 0) return [];
+        if (string.Equals(loc, "weissbrau-pavilion", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(loc, "weissbrau-pavilion-kuala-lumpur", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                "weissbrau-pavilion-kuala-lumpur",
+                "weissbrau-pavilion",
+            ];
+        }
+        return [loc];
+    }
+
     public static bool IsEmptyLayout(string? layoutJson)
     {
         if (string.IsNullOrWhiteSpace(layoutJson)) return true;

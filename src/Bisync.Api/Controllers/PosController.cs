@@ -163,8 +163,16 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         try
         {
             await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
-            var row = await db.PosFloorPlans.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+            var aliases = PosFloorPlanGuard.LocationAliases(loc);
+            var rows = await db.PosFloorPlans.AsNoTracking()
+                .Where(x => x.CompanyId == cid.Value && aliases.Contains(x.LocationExternalId))
+                .ToListAsync();
+
+            var row = rows
+                .Where(r => PosFloorPlanGuard.IsCustomLayout(r.LayoutJson))
+                .OrderByDescending(r => r.UpdatedAt)
+                .FirstOrDefault()
+                ?? rows.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
 
             return Ok(new
             {
@@ -205,15 +213,39 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
             await SchemaPatcher.EnsurePosFloorPlansTableAsync(db);
             await SchemaPatcher.EnsurePosFloorPlanVersionsTableAsync(db);
 
-            var row = await db.PosFloorPlans
-                .FirstOrDefaultAsync(x => x.CompanyId == cid.Value && x.LocationExternalId == loc);
+            var aliases = PosFloorPlanGuard.LocationAliases(loc);
+            var rows = await db.PosFloorPlans
+                .Where(x => x.CompanyId == cid.Value && aliases.Contains(x.LocationExternalId))
+                .ToListAsync();
+            var row = rows.FirstOrDefault(x => x.LocationExternalId == loc)
+                ?? rows.OrderByDescending(x => x.UpdatedAt).FirstOrDefault();
+
+            var incomingStockOrEmpty = PosFloorPlanGuard.IsStockDefaultLayout(layoutJson)
+                || PosFloorPlanGuard.IsEmptyLayout(layoutJson);
+
+            // Never let the stock demo layout land — not even as a first write — unless force.
+            if (!body.Force && incomingStockOrEmpty)
+            {
+                var existingCustom = rows.FirstOrDefault(r => PosFloorPlanGuard.IsCustomLayout(r.LayoutJson));
+                if (existingCustom is not null || row is null)
+                {
+                    return Conflict(new
+                    {
+                        message = existingCustom is not null
+                            ? "Refused to overwrite a custom floor plan with the stock/empty demo layout. Pass force=true to override."
+                            : "Refused to save the stock/empty demo floor plan as the first layout. Design a custom plan, or pass force=true.",
+                        companyId = cid.Value,
+                        locationExternalId = loc,
+                        updatedAt = existingCustom?.UpdatedAt ?? row?.UpdatedAt,
+                    });
+                }
+            }
 
             // Never let the stock demo layout silently replace a custom venue design.
             if (row is not null
                 && !body.Force
                 && PosFloorPlanGuard.IsCustomLayout(row.LayoutJson)
-                && (PosFloorPlanGuard.IsStockDefaultLayout(layoutJson)
-                    || PosFloorPlanGuard.IsEmptyLayout(layoutJson)))
+                && incomingStockOrEmpty)
             {
                 return Conflict(new
                 {
@@ -224,43 +256,58 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
                 });
             }
 
-            if (row is null)
+            var now = DateTime.UtcNow;
+            PosFloorPlan? primary = null;
+
+            // Custom saves replace the plan on every sister location alias so activation
+            // against either externalId always sees the same layout.
+            var targets = PosFloorPlanGuard.IsCustomLayout(layoutJson) ? aliases : new[] { loc };
+            foreach (var targetLoc in targets)
             {
-                row = new PosFloorPlan
+                var target = rows.FirstOrDefault(x => x.LocationExternalId == targetLoc);
+                if (target is null)
                 {
-                    CompanyId = cid.Value,
-                    LocationExternalId = loc,
-                    LayoutJson = layoutJson,
-                    UpdatedAt = DateTime.UtcNow,
-                };
-                db.PosFloorPlans.Add(row);
-            }
-            else
-            {
-                if (!string.Equals(row.LayoutJson, layoutJson, StringComparison.Ordinal))
-                {
-                    db.PosFloorPlanVersions.Add(new PosFloorPlanVersion
+                    target = new PosFloorPlan
                     {
-                        CompanyId = row.CompanyId,
-                        LocationExternalId = row.LocationExternalId,
-                        LayoutJson = row.LayoutJson,
-                        CapturedAt = DateTime.UtcNow,
-                        Source = body.Force ? "force-overwrite" : "overwrite",
-                    });
+                        CompanyId = cid.Value,
+                        LocationExternalId = targetLoc,
+                        LayoutJson = layoutJson,
+                        UpdatedAt = now,
+                    };
+                    db.PosFloorPlans.Add(target);
+                    rows.Add(target);
+                }
+                else
+                {
+                    if (!string.Equals(target.LayoutJson, layoutJson, StringComparison.Ordinal))
+                    {
+                        db.PosFloorPlanVersions.Add(new PosFloorPlanVersion
+                        {
+                            CompanyId = target.CompanyId,
+                            LocationExternalId = target.LocationExternalId,
+                            LayoutJson = target.LayoutJson,
+                            CapturedAt = now,
+                            Source = body.Force ? "force-overwrite" : "overwrite",
+                        });
+                    }
+
+                    target.LayoutJson = layoutJson;
+                    target.UpdatedAt = now;
                 }
 
-                row.LayoutJson = layoutJson;
-                row.UpdatedAt = DateTime.UtcNow;
+                if (string.Equals(targetLoc, loc, StringComparison.OrdinalIgnoreCase))
+                    primary = target;
             }
 
+            primary ??= rows.FirstOrDefault(x => x.LocationExternalId == loc) ?? rows.FirstOrDefault();
             await db.SaveChangesAsync();
 
             return Ok(new
             {
-                companyId = row.CompanyId,
-                locationExternalId = row.LocationExternalId,
-                layoutJson = row.LayoutJson,
-                updatedAt = row.UpdatedAt,
+                companyId = primary!.CompanyId,
+                locationExternalId = loc,
+                layoutJson = primary.LayoutJson,
+                updatedAt = primary.UpdatedAt,
             });
         }
         catch (Exception ex)

@@ -70,10 +70,13 @@ RUN apt-get update \
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 COPY --from=api-build --chown=app:app /app/publish .
+# Canonical venue floor plans — restored on startup when DB is empty/stock.
+COPY --chown=app:app data/floor-plans/ /app/data/floor-plans/
 # /app itself is created as root; give the runtime user ownership so ephemeral
 # archives (COGS audit history, stock-card archive) can be created under ContentRoot.
 RUN mkdir -p /app/data-archives/cogs-audit-history/system \
              /app/data-archives/stock-card \
+             /app/data/floor-plans \
   && chown -R app:app /app
 USER $APP_UID
 EXPOSE 8080
