@@ -18,7 +18,7 @@
 .assign-table-modal__card {
   position: relative;
   width: min(560px, 100%);
-  max-height: min(80vh, 640px);
+  max-height: min(var(--pos-modal-max-h, calc(100dvh - 16px)), 640px);
   display: flex;
   flex-direction: column;
   background: var(--color-surface);

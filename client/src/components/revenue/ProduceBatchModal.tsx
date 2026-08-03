@@ -304,7 +304,7 @@ export function ProduceBatchModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="produce-batch-title"
-        className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-lg border border-border bg-card shadow-xl"
+        className="relative w-full max-w-3xl max-h-[var(--app-modal-max-h)] overflow-y-auto rounded-lg border border-border bg-card shadow-xl"
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3 sticky top-0 bg-card z-10">
           <h2 id="produce-batch-title" className="text-sm font-semibold">

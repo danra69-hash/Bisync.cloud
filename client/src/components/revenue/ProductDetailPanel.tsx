@@ -307,7 +307,7 @@ export function ProductDetailPanel({
         aria-label={isEditing ? `Edit product: ${product.name}` : `Product details: ${product.name}`}
         className={`${MODAL_SHELL_CLS} ${
           isEditing ? 'w-[min(98vw,1100px)]' : 'w-[min(96vw,920px)]'
-        } max-h-[94vh] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden`}
+        } max-h-[var(--app-modal-max-h)] bg-card border border-border rounded-lg shadow-xl flex flex-col overflow-hidden`}
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4 shrink-0">

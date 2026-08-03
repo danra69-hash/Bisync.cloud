@@ -19,7 +19,7 @@
   position: relative;
   z-index: 1;
   width: min(560px, 100%);
-  max-height: min(80svh, 720px);
+  max-height: min(var(--pos-modal-max-h, calc(100dvh - 16px)), 720px);
   display: flex;
   flex-direction: column;
   background: var(--color-surface);

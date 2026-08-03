@@ -1,5 +1,6 @@
 .checkin-modal {
-  --checkin-vh: 100dvh;
+  /* Prefer POS visual-viewport tokens; fall back to measured --checkin-vh. */
+  --checkin-vh: var(--pos-vh, 100dvh);
   position: fixed;
   inset: 0;
   z-index: 90;
@@ -11,7 +12,9 @@
     max(8px, env(safe-area-inset-bottom, 0px))
     max(8px, env(safe-area-inset-left, 0px));
   /* Prefer the live visual viewport on Android Chrome (URL bar / soft UI). */
+  height: 100%;
   height: var(--checkin-vh);
+  max-height: 100%;
   max-height: var(--checkin-vh);
   box-sizing: border-box;
 }

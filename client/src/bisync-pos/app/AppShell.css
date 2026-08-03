@@ -55,7 +55,8 @@
 @media (max-width: 900px) {
   .app-shell__body.has-home-nav {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    /* Floor canvas must keep the flexible row — auto collapsed it to ~0 after check-in. */
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 }
 

@@ -20,7 +20,7 @@
 .tax-svc-modal__card {
   position: relative;
   width: min(720px, calc(100vw - 16px));
-  max-height: calc(100dvh - 16px);
+  max-height: calc(var(--pos-vh, 100dvh) - 16px);
   overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);

@@ -1,6 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Centered dialogs must stay inside the live viewport on short / keyboard layouts. */
+:root {
+  --app-modal-max-h: calc(100dvh - 1rem);
+  --app-modal-max-w: calc(100vw - 1rem);
+}
+
+@supports (height: 100svh) {
+  :root {
+    --app-modal-max-h: calc(100svh - 1rem);
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

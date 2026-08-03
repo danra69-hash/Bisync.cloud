@@ -13,18 +13,21 @@ export function usePosViewportScale(rootRef: RefObject<HTMLElement | null>) {
 
     const apply = () => {
       const vv = window.visualViewport
+      // Prefer the live visual viewport (URL bar / soft keyboard) for modal fit.
+      const vvWidth = Math.round(vv?.width ?? 0)
+      const vvHeight = Math.round(vv?.height ?? 0)
       const width = Math.max(
         1,
-        root.clientWidth
-          || Math.round(vv?.width ?? 0)
+        vvWidth
+          || root.clientWidth
           || window.innerWidth
           || screen.availWidth
           || 1,
       )
       const height = Math.max(
         1,
-        root.clientHeight
-          || Math.round(vv?.height ?? 0)
+        vvHeight
+          || root.clientHeight
           || window.innerHeight
           || screen.availHeight
           || 1,
@@ -40,9 +43,16 @@ export function usePosViewportScale(rootRef: RefObject<HTMLElement | null>) {
       root.style.setProperty('--pos-ui-scale', scale.toFixed(3))
       root.style.setProperty('--pos-vw', `${width}px`)
       root.style.setProperty('--pos-vh', `${height}px`)
+      root.style.setProperty('--pos-vvh', `${height}px`)
       root.style.setProperty('--pos-screen-w', `${screen.width || width}px`)
       root.style.setProperty('--pos-screen-h', `${screen.height || height}px`)
       root.dataset.posViewport = `${width}x${height}`
+
+      // Keep the POS frame itself within the visual viewport on mobile browsers.
+      if (root.closest('.pos-standalone')) {
+        root.style.height = `${height}px`
+        root.style.maxHeight = `${height}px`
+      }
     }
 
     apply()

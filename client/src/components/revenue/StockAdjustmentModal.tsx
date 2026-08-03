@@ -167,7 +167,7 @@ export function StockAdjustmentModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="stock-adjustment-title"
-        className={`${MODAL_SHELL_CLS} w-full max-w-lg rounded-lg border border-border bg-card shadow-xl flex flex-col max-h-[90vh]`}
+        className={`${MODAL_SHELL_CLS} w-full max-w-lg rounded-lg border border-border bg-card shadow-xl flex flex-col max-h-[var(--app-modal-max-h)]`}
         onClick={e => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border shrink-0">

@@ -414,7 +414,7 @@ export function OrderCartModal({
       role="presentation"
     >
       <div
-        className={`w-full bg-card border border-border rounded-xl shadow-xl max-h-[92vh] flex flex-col overflow-hidden ${
+        className={`w-full bg-card border border-border rounded-xl shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col overflow-hidden ${
           step === 'success' ? 'max-w-5xl' : 'max-w-3xl'
         }`}
         onClick={e => e.stopPropagation()}

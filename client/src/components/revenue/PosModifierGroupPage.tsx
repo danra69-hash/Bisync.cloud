@@ -475,7 +475,7 @@ export function PosModifierGroupPage({ selectedCompanyId }: Props) {
 
       {formOpen ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-3">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-auto rounded-lg border border-border bg-background p-4 space-y-3 shadow-lg">
+          <div className="w-full max-w-2xl max-h-[var(--app-modal-max-h)] overflow-auto rounded-lg border border-border bg-background p-4 space-y-3 shadow-lg">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-semibold">{editingId ? 'Edit modifier group' : 'New modifier group'}</h3>
