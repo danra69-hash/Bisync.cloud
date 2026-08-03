@@ -17,6 +17,7 @@ import {
   productMatchesPosGroupFilter,
   productMatchesPosMenu,
   resolvePosMenuRrp,
+  listSelectedPosMenuUnits,
 } from '../../data/posCatalog';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { pageShellClass, TABLE_COL_CHECK, TABLE_COL_TOGGLE } from '../layout/pageLayout';
@@ -24,6 +25,7 @@ import { HrConfigTabBar } from '../admin/HrConfigTabBar';
 import { ColGroup } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
+import type { PosPromotionDepletionUnit } from '../../api';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -42,11 +44,66 @@ type PromotionKind = 'timeBase' | 'prepaid';
 type ValidityUnit = 'days' | 'months';
 type DepletionMethod = 'weight' | 'salesUnit';
 
-const DEFAULT_DEPLETION_UNITS = [
-  { code: 'glass', label: 'Glass', qtyPerUnit: 1 },
-  { code: 'pint', label: 'Pint', qtyPerUnit: 2 },
-  { code: 'tower', label: 'Tower', qtyPerUnit: 5 },
-];
+type PrepaidProductRow = {
+  key: string;
+  productId: number | null;
+};
+
+type RowDraft = {
+  included: boolean;
+  discountPercent: string;
+  rpp: string;
+};
+
+function newPrepaidRow(): PrepaidProductRow {
+  return { key: `pp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, productId: null };
+}
+
+/** UOM choices from the product record (yield / package / POS sell units). */
+function productUomChoices(product: Product, catalog: Product[]): string[] {
+  const posUnits = listSelectedPosMenuUnits(product, catalog).map(u => u.unitTitle);
+  const opts = [
+    product.yieldUom,
+    product.b2bPackageUnit,
+    product.parStockUom,
+    ...posUnits,
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of opts) {
+    const value = (raw || '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+/** Sales units for prepaid depletion — product POS units only (no Glass/Pint/Tower). */
+function productSalesDepletionUnits(product: Product, catalog: Product[]): PosPromotionDepletionUnit[] {
+  const units = listSelectedPosMenuUnits(product, catalog);
+  if (units.length > 0) {
+    return units.map(u => ({
+      code: u.unitKey,
+      label: u.unitTitle,
+      qtyPerUnit: 1,
+    }));
+  }
+  const fallback = (product.yieldUom || product.b2bPackageUnit || 'Unit').trim() || 'Unit';
+  return [{ code: fallback.toLowerCase().replace(/\s+/g, '-'), label: fallback, qtyPerUnit: 1 }];
+}
+
+function mergeSalesDepletionUnits(products: Product[], catalog: Product[]): PosPromotionDepletionUnit[] {
+  const byCode = new Map<string, PosPromotionDepletionUnit>();
+  for (const product of products) {
+    for (const unit of productSalesDepletionUnits(product, catalog)) {
+      if (!byCode.has(unit.code)) byCode.set(unit.code, unit);
+    }
+  }
+  return Array.from(byCode.values());
+}
 
 const WEEKDAYS = [
   { code: 'Mon', label: 'Mon' },
@@ -57,12 +114,6 @@ const WEEKDAYS = [
   { code: 'Sat', label: 'Sat' },
   { code: 'Sun', label: 'Sun' },
 ] as const;
-
-type RowDraft = {
-  included: boolean;
-  discountPercent: string;
-  rpp: string;
-};
 
 function toDateInputValue(date: Date) {
   const y = date.getFullYear();
@@ -144,14 +195,14 @@ export function PosPromotionSchedulerPage({
   const [validityPeriodValue, setValidityPeriodValue] = useState('30');
   const [validityPeriodUnit, setValidityPeriodUnit] = useState<ValidityUnit>('days');
   const [packageQty, setPackageQty] = useState('1');
-  const [packageUom, setPackageUom] = useState('Bottle');
+  const [packageUom, setPackageUom] = useState('');
   const [packageRrp, setPackageRrp] = useState('');
   const [packageTotalValue, setPackageTotalValue] = useState('');
   const [packageRpp, setPackageRpp] = useState('');
   const [discountAmount, setDiscountAmount] = useState('');
   const [depletionMethod, setDepletionMethod] = useState<DepletionMethod>('salesUnit');
-  const [depletionUnits, setDepletionUnits] = useState(DEFAULT_DEPLETION_UNITS);
-  const [selectedPrepaidProductId, setSelectedPrepaidProductId] = useState<number | null>(null);
+  const [depletionUnits, setDepletionUnits] = useState<PosPromotionDepletionUnit[]>([]);
+  const [prepaidProductRows, setPrepaidProductRows] = useState<PrepaidProductRow[]>([newPrepaidRow()]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<string | null>(null);
@@ -249,9 +300,93 @@ export function PosPromotionSchedulerPage({
     return promotions.filter(p => p.status === statusFilter);
   }, [promotions, statusFilter]);
 
+  const selectedPrepaidProducts = useMemo(() => {
+    const ids = prepaidProductRows.map(r => r.productId).filter((id): id is number => id != null && id > 0);
+    const unique = [...new Set(ids)];
+    return unique
+      .map(id => filteredProducts.find(p => p.id === id) ?? products.find(p => p.id === id))
+      .filter((p): p is Product => Boolean(p));
+  }, [prepaidProductRows, filteredProducts, products]);
+
+  const prepaidUomOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const opts: string[] = [];
+    for (const product of selectedPrepaidProducts) {
+      for (const uom of productUomChoices(product, products)) {
+        const key = uom.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        opts.push(uom);
+      }
+    }
+    return opts;
+  }, [selectedPrepaidProducts, products]);
+
   const productCogs = useCallback((product: Product) => {
     return calcProductCogs(product.totalCost ?? 0, product.packagingCost ?? 0, product);
   }, []);
+
+  /** Discount Amount = RRP total value − RPP (always derived). */
+  const syncPrepaidDiscount = useCallback((totalRaw: string, rppRaw: string) => {
+    const total = parsePositiveNumber(totalRaw);
+    const rpp = parsePositiveNumber(rppRaw);
+    if (total == null || rpp == null) {
+      setDiscountAmount('');
+      return;
+    }
+    setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
+  }, []);
+
+  const applyPrepaidTotals = useCallback((rrpRaw: string, qtyRaw: string, rppRaw: string) => {
+    const rrp = parsePositiveNumber(rrpRaw);
+    const qty = parsePositiveNumber(qtyRaw) ?? 1;
+    if (rrp == null) {
+      setPackageTotalValue('');
+      syncPrepaidDiscount('', rppRaw);
+      return;
+    }
+    const total = roundMoney(rrp * qty);
+    const totalStr = String(total);
+    setPackageTotalValue(totalStr);
+    syncPrepaidDiscount(totalStr, rppRaw);
+  }, [syncPrepaidDiscount]);
+
+  const refreshPrepaidFromProducts = useCallback((rows: PrepaidProductRow[]) => {
+    const selected = rows
+      .map(r => r.productId)
+      .filter((id): id is number => id != null && id > 0)
+      .map(id => filteredProducts.find(p => p.id === id) ?? products.find(p => p.id === id))
+      .filter((p): p is Product => Boolean(p));
+
+    setDepletionUnits(mergeSalesDepletionUnits(selected, products));
+
+    const uoms = selected.flatMap(p => productUomChoices(p, products));
+    const uniqueUoms = [...new Set(uoms.map(u => u.trim()).filter(Boolean))];
+    if (uniqueUoms.length > 0) {
+      setPackageUom(prev => {
+        if (prev && uniqueUoms.some(u => u.toLowerCase() === prev.toLowerCase())) return prev;
+        return uniqueUoms[0]!;
+      });
+    } else {
+      setPackageUom('');
+    }
+
+    const primary = selected[0];
+    if (primary) {
+      const rrp = resolvePosMenuRrp(primary, products);
+      const rrpStr = String(rrp || '');
+      setPackageRrp(rrpStr);
+      setPackageRpp(prev => {
+        const qty = parsePositiveNumber(packageQty) ?? 1;
+        const total = roundMoney(rrp * qty);
+        const nextRpp = prev.trim() ? prev : String(total);
+        setPackageTotalValue(String(total));
+        const rppN = parsePositiveNumber(nextRpp);
+        if (rppN != null) setDiscountAmount(String(roundMoney(Math.max(0, total - rppN))));
+        return nextRpp;
+      });
+    }
+  }, [filteredProducts, products, packageQty]);
 
   const updateDraft = (productId: number, patch: Partial<RowDraft>) => {
     setDraftByProductId(prev => ({
@@ -337,14 +472,14 @@ export function PosPromotionSchedulerPage({
     setValidityPeriodValue('30');
     setValidityPeriodUnit('days');
     setPackageQty('1');
-    setPackageUom('Bottle');
+    setPackageUom('');
     setPackageRrp('');
     setPackageTotalValue('');
     setPackageRpp('');
     setDiscountAmount('');
     setDepletionMethod('salesUnit');
-    setDepletionUnits(DEFAULT_DEPLETION_UNITS);
-    setSelectedPrepaidProductId(null);
+    setDepletionUnits([]);
+    setPrepaidProductRows([newPrepaidRow()]);
     setSaveError(null);
   };
 
@@ -444,35 +579,32 @@ export function PosPromotionSchedulerPage({
     const rrp = parsePositiveNumber(packageRrp);
     const total = parsePositiveNumber(packageTotalValue);
     const rpp = parsePositiveNumber(packageRpp);
-    const discount = parsePositiveNumber(discountAmount) ?? 0;
     if (qty == null || qty <= 0) {
       setSaveError('Package QTY is required.');
       return;
     }
     if (!packageUom.trim()) {
-      setSaveError('UOM is required.');
+      setSaveError('UOM is required — choose a Product UOM.');
       return;
     }
     if (rrp == null || rrp < 0 || rpp == null || rpp < 0) {
       setSaveError('RRP and RPP are required.');
       return;
     }
-    if (!selectedPrepaidProductId) {
-      setSaveError('Select a POS product for this Pre-paid promotion.');
-      return;
-    }
-    const product = filteredProducts.find(p => p.id === selectedPrepaidProductId)
-      ?? products.find(p => p.id === selectedPrepaidProductId);
-    if (!product) {
-      setSaveError('Selected product was not found.');
+    if (selectedPrepaidProducts.length === 0) {
+      setSaveError('Add at least one POS product for this Pre-paid promotion.');
       return;
     }
     const totalValue = total ?? roundMoney(rrp * qty);
-    const computedDiscount = discount > 0 ? discount : roundMoney(Math.max(0, totalValue - rpp));
-    const cogs = productCogs(product);
+    const computedDiscount = roundMoney(Math.max(0, totalValue - rpp));
     const discountPercent = totalValue > 0
       ? roundPercent(Math.min(100, (computedDiscount / totalValue) * 100))
       : 0;
+    const salesUnits = depletionMethod === 'salesUnit'
+      ? (depletionUnits.length > 0
+        ? depletionUnits
+        : mergeSalesDepletionUnits(selectedPrepaidProducts, products))
+      : [];
 
     setSaving(true);
     try {
@@ -499,16 +631,20 @@ export function PosPromotionSchedulerPage({
         packageRpp: roundMoney(rpp),
         discountAmount: computedDiscount,
         depletionMethod,
-        depletionUnits: depletionMethod === 'salesUnit' ? depletionUnits : [],
-        products: [{
-          productId: product.id,
-          rrp: roundMoney(rrp),
-          cogs: roundMoney(cogs),
-          rpp: roundMoney(rpp),
-          discountPercent,
-        }],
+        depletionUnits: salesUnits,
+        products: selectedPrepaidProducts.map(product => {
+          const lineRrp = resolvePosMenuRrp(product, products) || rrp;
+          const cogs = productCogs(product);
+          return {
+            productId: product.id,
+            rrp: roundMoney(lineRrp),
+            cogs: roundMoney(cogs),
+            rpp: roundMoney(rpp),
+            discountPercent,
+          };
+        }),
       });
-      setSaveOk('Saved Pre-paid promotion.');
+      setSaveOk(`Saved Pre-paid promotion with ${selectedPrepaidProducts.length} product${selectedPrepaidProducts.length === 1 ? '' : 's'}.`);
       resetCreateForm();
       setTab('active');
       await loadPromotions();
@@ -944,36 +1080,60 @@ export function PosPromotionSchedulerPage({
                     </select>
                   </div>
                 </div>
-                <div>
+                <div className="xl:col-span-2">
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                     POS Product *
                   </label>
-                  <select
-                    className={`${inputCls} mt-1`}
-                    value={selectedPrepaidProductId ?? ''}
-                    onChange={e => {
-                      const id = Number(e.target.value) || null;
-                      setSelectedPrepaidProductId(id);
-                      const product = filteredProducts.find(p => p.id === id) ?? products.find(p => p.id === id);
-                      if (product) {
-                        const rrp = resolvePosMenuRrp(product, products);
-                        setPackageRrp(String(rrp || ''));
-                        const qty = parsePositiveNumber(packageQty) ?? 1;
-                        const total = roundMoney(rrp * qty);
-                        setPackageTotalValue(String(total));
-                        if (!packageRpp) setPackageRpp(String(total));
-                        setDiscountAmount('0');
-                      }
-                    }}
-                  >
-                    <option value="">Select product…</option>
-                    {filteredProducts.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.group ? ` · ${normalizePosGroupLabel(p.group)}` : ''}
-                      </option>
+                  <div className="mt-1 space-y-2">
+                    {prepaidProductRows.map((row, rowIndex) => (
+                      <div key={row.key} className="flex flex-wrap items-center gap-2">
+                        <select
+                          className={`${inputCls} flex-1 min-w-[12rem]`}
+                          value={row.productId ?? ''}
+                          onChange={e => {
+                            const id = Number(e.target.value) || null;
+                            setPrepaidProductRows(prev => {
+                              const next = prev.map(r => (r.key === row.key ? { ...r, productId: id } : r));
+                              window.setTimeout(() => refreshPrepaidFromProducts(next), 0);
+                              return next;
+                            });
+                          }}
+                        >
+                          <option value="">Select product…</option>
+                          {filteredProducts.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                              {p.group ? ` · ${normalizePosGroupLabel(p.group)}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {prepaidProductRows.length > 1 ? (
+                          <button
+                            type="button"
+                            className="text-xs border border-border rounded-md px-2 py-1.5 text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              setPrepaidProductRows(prev => {
+                                const next = prev.filter(r => r.key !== row.key);
+                                const ensured = next.length > 0 ? next : [newPrepaidRow()];
+                                window.setTimeout(() => refreshPrepaidFromProducts(ensured), 0);
+                                return ensured;
+                              });
+                            }}
+                            aria-label={`Remove product row ${rowIndex + 1}`}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
                     ))}
-                  </select>
+                    <button
+                      type="button"
+                      className="text-xs border border-border rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground"
+                      onClick={() => setPrepaidProductRows(prev => [...prev, newPrepaidRow()])}
+                    >
+                      + Add
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
@@ -984,15 +1144,9 @@ export function PosPromotionSchedulerPage({
                     inputMode="decimal"
                     value={packageQty}
                     onChange={e => {
-                      setPackageQty(e.target.value);
-                      const qty = parsePositiveNumber(e.target.value);
-                      const rrp = parsePositiveNumber(packageRrp);
-                      if (qty != null && rrp != null) {
-                        const total = roundMoney(rrp * qty);
-                        setPackageTotalValue(String(total));
-                        const rpp = parsePositiveNumber(packageRpp);
-                        if (rpp != null) setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
-                      }
+                      const next = e.target.value;
+                      setPackageQty(next);
+                      applyPrepaidTotals(packageRrp, next, packageRpp);
                     }}
                   />
                 </div>
@@ -1000,12 +1154,19 @@ export function PosPromotionSchedulerPage({
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                     UOM *
                   </label>
-                  <input
+                  <select
                     className={`${inputCls} mt-1`}
                     value={packageUom}
                     onChange={e => setPackageUom(e.target.value)}
-                    placeholder="Bottle / Keg / Liter"
-                  />
+                    disabled={prepaidUomOptions.length === 0}
+                  >
+                    <option value="">
+                      {prepaidUomOptions.length === 0 ? 'Select a product first…' : 'Select UOM…'}
+                    </option>
+                    {prepaidUomOptions.map(uom => (
+                      <option key={uom} value={uom}>{uom}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
@@ -1016,15 +1177,9 @@ export function PosPromotionSchedulerPage({
                     inputMode="decimal"
                     value={packageRrp}
                     onChange={e => {
-                      setPackageRrp(e.target.value);
-                      const rrp = parsePositiveNumber(e.target.value);
-                      const qty = parsePositiveNumber(packageQty) ?? 1;
-                      if (rrp != null) {
-                        const total = roundMoney(rrp * qty);
-                        setPackageTotalValue(String(total));
-                        const rpp = parsePositiveNumber(packageRpp);
-                        if (rpp != null) setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
-                      }
+                      const next = e.target.value;
+                      setPackageRrp(next);
+                      applyPrepaidTotals(next, packageQty, packageRpp);
                     }}
                   />
                 </div>
@@ -1037,12 +1192,9 @@ export function PosPromotionSchedulerPage({
                     inputMode="decimal"
                     value={packageTotalValue}
                     onChange={e => {
-                      setPackageTotalValue(e.target.value);
-                      const total = parsePositiveNumber(e.target.value);
-                      const rpp = parsePositiveNumber(packageRpp);
-                      if (total != null && rpp != null) {
-                        setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
-                      }
+                      const next = e.target.value;
+                      setPackageTotalValue(next);
+                      syncPrepaidDiscount(next, packageRpp);
                     }}
                   />
                 </div>
@@ -1055,11 +1207,13 @@ export function PosPromotionSchedulerPage({
                     inputMode="decimal"
                     value={packageRpp}
                     onChange={e => {
-                      setPackageRpp(e.target.value);
-                      const rpp = parsePositiveNumber(e.target.value);
+                      const next = e.target.value;
+                      setPackageRpp(next);
                       const total = parsePositiveNumber(packageTotalValue);
-                      if (rpp != null && total != null) {
-                        setDiscountAmount(String(roundMoney(Math.max(0, total - rpp))));
+                      if (total == null) {
+                        applyPrepaidTotals(packageRrp, packageQty, next);
+                      } else {
+                        syncPrepaidDiscount(packageTotalValue, next);
                       }
                     }}
                   />
@@ -1069,11 +1223,15 @@ export function PosPromotionSchedulerPage({
                     Discount Amount
                   </label>
                   <input
-                    className={`${inputCls} mt-1`}
+                    className={`${inputCls} mt-1 bg-muted/40`}
                     inputMode="decimal"
                     value={discountAmount}
-                    onChange={e => setDiscountAmount(e.target.value)}
+                    readOnly
+                    title="Calculated as Total Value − RPP"
                   />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Auto = Total Value − RPP
+                  </p>
                 </div>
                 <div className="xl:col-span-2">
                   <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
@@ -1085,9 +1243,12 @@ export function PosPromotionSchedulerPage({
                         type="radio"
                         name="depletion-method"
                         checked={depletionMethod === 'salesUnit'}
-                        onChange={() => setDepletionMethod('salesUnit')}
+                        onChange={() => {
+                          setDepletionMethod('salesUnit');
+                          setDepletionUnits(mergeSalesDepletionUnits(selectedPrepaidProducts, products));
+                        }}
                       />
-                      By sales unit (Glass / Pint / Tower)
+                      By sales unit (product unit)
                     </label>
                     <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                       <input
@@ -1105,26 +1266,35 @@ export function PosPromotionSchedulerPage({
                     <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">
                       Sales units (qty depleted from package balance per serve)
                     </label>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                      {depletionUnits.map((unit, idx) => (
-                        <div key={unit.code} className="flex items-center gap-2 border border-border rounded-md px-2 py-1.5">
-                          <span className="text-xs font-semibold w-14">{unit.label}</span>
-                          <input
-                            className={`${inputCls} py-1`}
-                            inputMode="decimal"
-                            value={String(unit.qtyPerUnit)}
-                            onChange={e => {
-                              const n = Number(e.target.value);
-                              setDepletionUnits(prev => prev.map((u, i) => (
-                                i === idx
-                                  ? { ...u, qtyPerUnit: Number.isFinite(n) && n > 0 ? n : u.qtyPerUnit }
-                                  : u
-                              )));
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
+                    {depletionUnits.length === 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Select POS product(s) to load their product units.
+                      </p>
+                    ) : (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        {depletionUnits.map((unit, idx) => (
+                          <div key={unit.code} className="flex items-center gap-2 border border-border rounded-md px-2 py-1.5">
+                            <span className="text-xs font-semibold min-w-0 flex-1 truncate" title={unit.label}>
+                              {unit.label}
+                            </span>
+                            <input
+                              className={`${inputCls} py-1 w-20`}
+                              inputMode="decimal"
+                              value={String(unit.qtyPerUnit)}
+                              onChange={e => {
+                                const n = Number(e.target.value);
+                                setDepletionUnits(prev => prev.map((u, i) => (
+                                  i === idx
+                                    ? { ...u, qtyPerUnit: Number.isFinite(n) && n > 0 ? n : u.qtyPerUnit }
+                                    : u
+                                )));
+                              }}
+                              aria-label={`Qty per ${unit.label}`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </>
