@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { api, setApiTenantCompanyId, type AppUser, type Company, type LocationConfig } from '../../../api'
 import { parseCompanyModules } from '../../../data/companyModules'
 import { configLocationToDropdown } from '../../../utils/orgFilters'
@@ -9,6 +9,7 @@ import {
   type StationActivation,
 } from '../../core/station/stationActivation'
 import { downloadStationPackage } from '../../core/offline/posCatalogStore'
+import { useTouchClickSound } from '../../core/session/useTouchClickSound'
 import './StationActivationPage.css'
 
 type Props = {
@@ -31,6 +32,8 @@ export function StationActivationPage({
   preferredCompanyId = null,
   preferredLocationId = '',
 }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  useTouchClickSound(rootRef)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [user, setUser] = useState<AppUser | null>(null)
@@ -166,7 +169,7 @@ export function StationActivationPage({
   }
 
   return (
-    <div className="pos-activate">
+    <div ref={rootRef} className="pos-activate">
       <div className="pos-activate__card">
         <img src="/pwa-192x192.png" alt="" width={56} height={56} />
         <h1>Activate Bisync POS</h1>

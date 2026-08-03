@@ -6,6 +6,7 @@ import {
   type PosSessionValue,
 } from './core/session/PosSessionContext'
 import { usePosViewportScale } from './core/session/usePosViewportScale'
+import { useTouchClickSound } from './core/session/useTouchClickSound'
 import { mapApiProductsToPosCatalog } from './core/session/mapPosCatalog'
 import { api, type PosPromotion, type Product as ApiProduct } from '../api'
 import {
@@ -84,6 +85,7 @@ export function BisyncPosEmbed({
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   usePosViewportScale(rootRef)
+  useTouchClickSound(rootRef)
 
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([])
   const [promoRppByProductId, setPromoRppByProductId] = useState<Map<number, number>>(
