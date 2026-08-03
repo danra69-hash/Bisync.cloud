@@ -34,7 +34,7 @@ export function VendorProductImageLightbox({ productName, imageUrl, onClose }: P
     <>
       <div className={LIGHTBOX_OVERLAY_CLS} onClick={onClose} role="presentation" aria-hidden />
       <div
-        className={`${LIGHTBOX_SHELL_CLS} w-[min(96vw,960px)] max-h-[96vh] bg-card border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden`}
+        className={`${LIGHTBOX_SHELL_CLS} w-[min(96vw,960px)] max-h-[var(--app-modal-max-h)] bg-card border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden`}
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

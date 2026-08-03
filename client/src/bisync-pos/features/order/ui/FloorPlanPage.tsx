@@ -132,6 +132,31 @@ export function FloorPlanPage() {
     // (save navigates away and must not race a stale GET over the just-saved layout).
   }, [companyId, locationId, session?.offlineFirst]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional
 
+  // After Team QR + PIN unlock, force a server pull so the permanent venue layout
+  // appears immediately (stale device cache / cold start must not leave Home blank).
+  const wasLockedRef = useRef(locked)
+  useEffect(() => {
+    const wasLocked = wasLockedRef.current
+    wasLockedRef.current = locked
+    if (locked || !wasLocked || !companyId || !locationId) return
+    let cancelled = false
+    void pullFloorPlanFromServer(companyId, locationId)
+      .catch(() => syncFloorPlan(companyId, locationId))
+      .then(synced => {
+        if (cancelled || !synced) return
+        setPlan(synced)
+        setSyncNote(
+          synced.tables.length > 0
+            ? `Floor plan ready — ${synced.tables.length} tables`
+            : 'Floor plan empty on server — use Admin → Reload',
+        )
+        window.setTimeout(() => setSyncNote(null), 2800)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [locked, companyId, locationId])
+
   // Refresh when Reservation → Assign table updates the floor plan.
   useEffect(() => {
     function refreshFromAssignment() {
@@ -531,6 +556,13 @@ export function FloorPlanPage() {
             <div className="floor-lock-overlay" role="status" aria-live="polite">
               <strong>Home deactivated</strong>
               <span>Check in with Team QR, then enter Staff PIN to unlock POS</span>
+            </div>
+          ) : null}
+
+          {!locked && visible.tables.length === 0 ? (
+            <div className="floor-empty-overlay" role="status">
+              <strong>No floor plan on this station</strong>
+              <span>Use Admin → Reload to download the venue layout from the cloud.</span>
             </div>
           ) : null}
 

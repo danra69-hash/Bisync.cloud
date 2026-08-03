@@ -202,7 +202,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="dev-team-title"
-        className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-xl border border-border bg-card shadow-xl flex flex-col"
+        className="relative w-full max-w-3xl max-h-[var(--app-modal-max-h)] overflow-hidden rounded-xl border border-border bg-card shadow-xl flex flex-col"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
           <div>

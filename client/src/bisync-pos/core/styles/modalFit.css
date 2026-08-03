@@ -1,0 +1,60 @@
+/**
+ * Keep every POS popup inside the live device viewport.
+ * --pos-vh / --pos-vw are maintained by usePosViewportScale (visualViewport-aware).
+ * Fixed overlays are contained by .bisync-pos-root { transform }, so 100dvh alone
+ * can overflow the POS frame and clip footer/actions.
+ */
+.bisync-pos-root {
+  --pos-modal-gutter: 16px;
+  --pos-modal-max-h: calc(var(--pos-vh, 100dvh) - var(--pos-modal-gutter));
+  --pos-modal-max-w: calc(var(--pos-vw, 100%) - var(--pos-modal-gutter));
+}
+
+/* Overlay shells: fill the POS frame, not a taller browser vh. */
+.bisync-pos-root [class$='-modal'],
+.bisync-pos-root .checkin-modal,
+.bisync-pos-root .tax-svc-modal,
+.bisync-pos-root .team-modal {
+  box-sizing: border-box;
+  max-width: 100%;
+  max-height: 100%;
+  max-height: var(--pos-vh, 100dvh);
+  padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+}
+
+/* Dialog cards: always shrink to the available frame and scroll when needed. */
+.bisync-pos-root [class$='-modal__card'],
+.bisync-pos-root .team-modal {
+  box-sizing: border-box;
+  width: min(100%, var(--pos-modal-max-w, calc(100% - 16px)));
+  max-width: min(100%, var(--pos-modal-max-w, calc(100% - 16px)));
+  max-height: var(--pos-modal-max-h, calc(100dvh - 16px)) !important;
+  min-height: 0;
+}
+
+/* Prefer an internal scroll region when the card is a flex column. */
+.bisync-pos-root [class$='-modal__card'] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bisync-pos-root [class$='-modal__scroll'],
+.bisync-pos-root [class$='-modal__body'],
+.bisync-pos-root [class$='-modal__content'] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Cards without a dedicated scroll child still remain usable. */
+.bisync-pos-root [class$='-modal__card']:not(:has([class$='-modal__scroll'])):not(
+    :has([class$='-modal__body'])
+  ):not(:has([class$='-modal__content'])) {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}

@@ -463,7 +463,7 @@ export function PreCommittedPoPage({
   if (created) {
     return createPortal(
       <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40">
-        <div className="w-full max-w-5xl bg-card border border-border rounded-xl shadow-xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="w-full max-w-5xl bg-card border border-border rounded-xl shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-sans text-muted-foreground uppercase tracking-widest">Pre-committed PO</p>

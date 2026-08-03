@@ -100,7 +100,7 @@ export function VendorEngageModal({ vendor, saving, serverError, onClose, onConf
       role="presentation"
     >
       <div
-        className="w-full max-w-lg bg-card border border-border rounded-lg shadow-xl max-h-[90vh] flex flex-col overflow-hidden"
+        className="w-full max-w-lg bg-card border border-border rounded-lg shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

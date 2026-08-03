@@ -21,7 +21,7 @@ export function LegalModal({ title, version, onClose, children }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="legal-modal-title"
-        className="relative flex w-full max-w-3xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-herme-muted/60 bg-white shadow-xl"
+        className="relative flex w-full max-w-3xl max-h-[var(--app-modal-max-h)] flex-col overflow-hidden rounded-2xl border border-herme-muted/60 bg-white shadow-xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-herme-muted/50 px-5 py-4 shrink-0">

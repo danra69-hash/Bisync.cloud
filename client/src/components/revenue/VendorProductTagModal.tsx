@@ -448,7 +448,7 @@ export function VendorProductTagModal({
 
       <div
 
-        className={`${MODAL_SHELL_CLS} w-full max-w-6xl bg-card border border-border rounded-lg shadow-xl max-h-[90vh] flex flex-col`}
+        className={`${MODAL_SHELL_CLS} w-full max-w-6xl bg-card border border-border rounded-lg shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col`}
 
         onClick={e => e.stopPropagation()}
 

@@ -223,7 +223,7 @@ export function QuoteComparisonModal({
     <>
       <div className={MODAL_OVERLAY_CLS} onClick={onClose} role="presentation" aria-hidden />
       <div
-        className={`${MODAL_SHELL_CLS} w-full max-w-5xl bg-card border border-border rounded-lg shadow-xl max-h-[90vh] flex flex-col`}
+        className={`${MODAL_SHELL_CLS} w-full max-w-5xl bg-card border border-border rounded-lg shadow-xl max-h-[var(--app-modal-max-h)] flex flex-col`}
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

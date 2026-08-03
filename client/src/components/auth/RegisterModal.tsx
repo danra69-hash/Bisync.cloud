@@ -210,7 +210,7 @@ export function RegisterModal({ onClose, onOpenLogin }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="register-title"
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-herme-muted/60 bg-white shadow-xl"
+        className="relative w-full max-w-lg max-h-[var(--app-modal-max-h)] overflow-y-auto rounded-2xl border border-herme-muted/60 bg-white shadow-xl"
         onClick={e => e.stopPropagation()}
       >
         <button

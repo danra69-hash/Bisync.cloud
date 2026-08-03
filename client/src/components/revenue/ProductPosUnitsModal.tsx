@@ -71,7 +71,7 @@ export function ProductPosUnitsModal({
     <>
       <div className={MODAL_OVERLAY_CLS} onClick={saving ? undefined : onClose} role="presentation" aria-hidden />
       <div
-        className={`${MODAL_SHELL_CLS} w-[min(96vw,760px)] max-h-[92vh] flex flex-col`}
+        className={`${MODAL_SHELL_CLS} w-[min(96vw,760px)] max-h-[var(--app-modal-max-h)] flex flex-col`}
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
