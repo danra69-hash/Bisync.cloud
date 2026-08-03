@@ -15,6 +15,7 @@ import {
   type TableStatus,
   type ZoneKind,
 } from '../domain/tables'
+import { cloneJson } from '../domain/clonePlan'
 import {
   loadFloorPlanLocal,
   persistFloorPlanRemote,
@@ -66,7 +67,7 @@ export function FloorPlanPage() {
   const [selected, setSelected] = useState<Selection | null>(null)
   const [draft, setDraft] = useState<FloorPlanState | null>(() =>
     editRoute
-      ? structuredClone(
+      ? cloneJson(
           companyId > 0 && locationId
             ? loadFloorPlanLocal(companyId, locationId)
             : loadFloorPlan(),
@@ -111,7 +112,7 @@ export function FloorPlanPage() {
             && JSON.stringify(currentDraft) !== JSON.stringify(prev),
           )
           if (!dirty) {
-            setDraft(structuredClone(synced))
+            setDraft(cloneJson(synced))
           }
         }
         return synced
@@ -152,7 +153,7 @@ export function FloorPlanPage() {
         ? loadFloorPlanLocal(companyId, locationId)
         : loadFloorPlan()
     setPlan(latest)
-    setDraft(structuredClone(latest))
+    setDraft(cloneJson(latest))
     setEditing(true)
     setSelected(null)
     setDrag(null)

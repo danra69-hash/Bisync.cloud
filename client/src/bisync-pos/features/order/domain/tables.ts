@@ -1,3 +1,5 @@
+import { cloneJson } from './clonePlan'
+
 export type TableStatus = 'open' | 'ordered' | 'reserved'
 
 export type TableShape = 'square' | 'round' | 'oval' | 'rect'
@@ -320,7 +322,7 @@ function readStoredFloorPlan(): FloorPlanState | null {
           zones:
             Array.isArray(parsed.zones) && parsed.zones.length > 0
               ? parsed.zones
-              : structuredClone(MOCK_ZONES),
+              : cloneJson(MOCK_ZONES),
         }
       }
     }
@@ -331,7 +333,7 @@ function readStoredFloorPlan(): FloorPlanState | null {
       if (Array.isArray(tables) && tables.length > 0) {
         return {
           tables: normalizeTables(tables),
-          zones: structuredClone(MOCK_ZONES),
+          zones: cloneJson(MOCK_ZONES),
         }
       }
     }
@@ -343,7 +345,7 @@ function readStoredFloorPlan(): FloorPlanState | null {
 
 export function loadFloorPlan(): FloorPlanState {
   const stored = readStoredFloorPlan()
-  const base = stored ?? structuredClone(DEFAULT_FLOOR_PLAN)
+  const base = stored ?? cloneJson(DEFAULT_FLOOR_PLAN)
 
   try {
     if (!localStorage.getItem(FLOOR_ORDERS_RESET_KEY)) {

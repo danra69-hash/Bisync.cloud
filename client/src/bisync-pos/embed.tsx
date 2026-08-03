@@ -109,7 +109,7 @@ export function BisyncPosEmbed({
           })
           if (cancelled) return
           const next = new Map<number, number>()
-          for (const row of active.prices) {
+          for (const row of active.prices ?? []) {
             if (row.productId > 0 && Number.isFinite(row.rpp) && row.rpp >= 0) {
               next.set(row.productId, row.rpp)
             }
@@ -149,7 +149,7 @@ export function BisyncPosEmbed({
         })
         if (cancelled) return
         const next = new Map<number, number>()
-        for (const row of active.prices) {
+        for (const row of active.prices ?? []) {
           if (row.productId > 0 && Number.isFinite(row.rpp) && row.rpp >= 0) {
             next.set(row.productId, row.rpp)
           }

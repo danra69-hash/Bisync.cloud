@@ -37,6 +37,7 @@ export function findActivePrepaidPromotionForProduct(
     (p.promotionKind === 'prepaid' || p.promotionKind === 'Pre-paid')
     && p.active
     && p.status !== 'Inactive'
+    && Array.isArray(p.products)
     && p.products.some(line => line.productId === pid),
   ) ?? null
 }

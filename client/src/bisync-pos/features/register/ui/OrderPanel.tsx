@@ -34,6 +34,8 @@ type Props = {
   paymentBusy?: boolean
   /** Show Pre-paid redeem action when prepaid packages exist for the location. */
   prepaidAvailable?: boolean
+  /** Floor-plan tables for the location (replaces demo T1/T5 list). */
+  tableOptions?: Array<{ id: string; label: string }>
 }
 
 export function OrderPanel({
@@ -60,6 +62,7 @@ export function OrderPanel({
   activeTableLabel = null,
   paymentBusy = false,
   prepaidAvailable = false,
+  tableOptions = [],
 }: Props) {
   const byId = new Map(products.map((p) => [p.id, p]))
   const subtotal = cartSubtotal(lines, products)
@@ -97,13 +100,20 @@ export function OrderPanel({
         </select>
         <select value={table} onChange={(e) => onTableChange(e.target.value)}>
           <option value="">Select Table</option>
-          {activeTableLabel ? (
+          {activeTableLabel && table && !tableOptions.some(t => t.id === table) ? (
             <option value={table}>{activeTableLabel}</option>
           ) : null}
-          <option value="t1">Table 1</option>
-          <option value="t2">Table 2</option>
-          <option value="t5">Table 5</option>
-          <option value="t12">Table 12</option>
+          {tableOptions.length > 0
+            ? tableOptions.map(t => (
+                <option key={t.id} value={t.id}>{t.label}</option>
+              ))
+            : (
+              <>
+                <option value="t1">Table 1</option>
+                <option value="t2">Table 2</option>
+                <option value="t5">Table 5</option>
+              </>
+            )}
         </select>
       </div>
 

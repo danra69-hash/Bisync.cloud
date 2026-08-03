@@ -1,4 +1,5 @@
 import { api } from '../../../../api'
+import { cloneJson } from './clonePlan'
 import {
   DEFAULT_FLOOR_PLAN,
   FLOOR_STORAGE_KEY,
@@ -27,13 +28,29 @@ function scopedMetaKey(companyId: number, locationExternalId: string) {
   return `${FLOOR_STORAGE_KEY}:meta:${companyId}:${locationExternalId}`
 }
 
+function normalizeZones(zones: FloorPlanState['zones'] | undefined): FloorPlanState['zones'] {
+  if (!Array.isArray(zones) || zones.length === 0) return cloneJson(MOCK_ZONES)
+  return zones.map(zone => {
+    const kind =
+      zone?.kind === 'bar' || zone?.kind === 'kitchen' || zone?.kind === 'custom'
+        ? zone.kind
+        : 'custom'
+    return {
+      id: String(zone?.id || `zone-${Math.random().toString(36).slice(2, 7)}`),
+      kind,
+      label: String(zone?.label || (kind === 'bar' ? 'Bar' : kind === 'kitchen' ? 'Kitchen' : 'Area')),
+      x: Number.isFinite(zone?.x) ? Number(zone.x) : 4,
+      y: Number.isFinite(zone?.y) ? Number(zone.y) : 4,
+      w: Number.isFinite(zone?.w) ? Number(zone.w) : 16,
+      h: Number.isFinite(zone?.h) ? Number(zone.h) : 14,
+    }
+  })
+}
+
 function toPlan(tables: FloorTable[], zones: FloorPlanState['zones']): FloorPlanState {
   return {
     tables: normalizeTables(tables),
-    zones:
-      Array.isArray(zones) && zones.length > 0
-        ? zones
-        : structuredClone(MOCK_ZONES),
+    zones: normalizeZones(zones),
   }
 }
 
@@ -103,7 +120,7 @@ function readLegacyUnscoped(): FloorPlanState | null {
     if (legacy) {
       const tables = JSON.parse(legacy) as FloorTable[]
       if (Array.isArray(tables) && tables.length > 0) {
-        return toPlan(tables, structuredClone(MOCK_ZONES))
+        return toPlan(tables, cloneJson(MOCK_ZONES))
       }
     }
   } catch {
@@ -156,7 +173,7 @@ function peekFloorPlanLocal(companyId: number, locationExternalId: string): Loca
     /* ignore */
   }
 
-  const migrated = readLegacyUnscoped() ?? structuredClone(DEFAULT_FLOOR_PLAN)
+  const migrated = readLegacyUnscoped() ?? cloneJson(DEFAULT_FLOOR_PLAN)
   return {
     plan: migrated,
     updatedAt: null,
@@ -272,7 +289,7 @@ export async function syncFloorPlan(
     )
     return local
   } catch {
-    return local.tables.length > 0 ? local : structuredClone(DEFAULT_FLOOR_PLAN)
+    return local.tables.length > 0 ? local : cloneJson(DEFAULT_FLOOR_PLAN)
   }
 }
 
