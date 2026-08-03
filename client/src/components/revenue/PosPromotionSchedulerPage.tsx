@@ -7,13 +7,14 @@ import {
 import { inputCls } from '../../data/countries';
 import {
   getSiCategoryFilterOptions,
-  getSiGroupFilterOptions,
 } from '../../data/revenueManagement';
 import {
   calcProductCogs,
   formatCogsPercent,
 } from '../../data/productForm';
 import {
+  normalizePosGroupLabel,
+  productMatchesPosGroupFilter,
   productMatchesPosMenu,
   resolvePosMenuRrp,
 } from '../../data/posCatalog';
@@ -212,15 +213,33 @@ export function PosPromotionSchedulerPage({
     () => getSiCategoryFilterOptions(products.map(p => p.category || '')),
     [products],
   );
-  const groupOptions = useMemo(
-    () => getSiGroupFilterOptions(products.map(p => p.group || '')),
-    [products],
-  );
+  // POS groups only (normalized): "BEER DRAFT" and "Draught Beer" collapse together.
+  const groupOptions = useMemo(() => {
+    const source = filterCategory === 'All'
+      ? products
+      : products.filter(p => (p.category || '') === filterCategory);
+    const labels = Array.from(new Set(
+      source.map(p => normalizePosGroupLabel(p.group || '')).filter(Boolean),
+    )).sort((a, b) => a.localeCompare(b));
+    return ['All', ...labels];
+  }, [products, filterCategory]);
+
+  useEffect(() => {
+    if (filterGroup === 'All') return;
+    const normalized = normalizePosGroupLabel(filterGroup);
+    if (!groupOptions.includes(normalized) && !groupOptions.includes(filterGroup)) {
+      setFilterGroup('All');
+      return;
+    }
+    if (normalized !== filterGroup && groupOptions.includes(normalized)) {
+      setFilterGroup(normalized);
+    }
+  }, [filterGroup, groupOptions]);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       if (filterCategory !== 'All' && (p.category || '') !== filterCategory) return false;
-      if (filterGroup !== 'All' && (p.group || '') !== filterGroup) return false;
+      if (!productMatchesPosGroupFilter(p.group || '', filterGroup)) return false;
       return true;
     });
   }, [products, filterCategory, filterGroup]);
@@ -949,7 +968,10 @@ export function PosPromotionSchedulerPage({
                   >
                     <option value="">Select product…</option>
                     {filteredProducts.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.group ? ` · ${normalizePosGroupLabel(p.group)}` : ''}
+                      </option>
                     ))}
                   </select>
                 </div>

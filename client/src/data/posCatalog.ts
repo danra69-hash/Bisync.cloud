@@ -6,6 +6,35 @@ import {
 } from './productPosUnits';
 
 /**
+ * Collapse synonym POS product groups so filters / register tabs stay unified.
+ * e.g. "BEER DRAFT" / "Draft Beer" / "Draught Beer" → "Draught Beer".
+ */
+export function normalizePosGroupLabel(group: string): string {
+  const trimmed = group.trim();
+  if (!trimmed) return 'General';
+  const key = trimmed.toLowerCase().replace(/\s+/g, ' ');
+  if (
+    key === 'beer draft'
+    || key === 'draft beer'
+    || key === 'draught beer'
+    || key === 'draft'
+    || key === 'draught'
+  ) {
+    return 'Draught Beer';
+  }
+  if (key === 'bottle beer' || key === 'bottled beer' || key === 'beer bottle') {
+    return 'Bottled Beer';
+  }
+  return trimmed;
+}
+
+/** True when product group matches the selected filter after synonym normalization. */
+export function productMatchesPosGroupFilter(productGroup: string, filterGroup: string): boolean {
+  if (!filterGroup || filterGroup === 'All') return true;
+  return normalizePosGroupLabel(productGroup || '') === normalizePosGroupLabel(filterGroup);
+}
+
+/**
  * Company scoping for POS catalog surfaces.
  * Location selection gates the Point-of-Sales module and where sales post;
  * product locationExternalIds do not hide menu/test-tap tiles (those are
