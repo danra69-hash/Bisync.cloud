@@ -27,7 +27,7 @@ import {
   releaseFloorTable,
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
-import { persistFloorPlanRemote } from '../../order/domain/floorPlanSync'
+import { persistFloorTablePatch } from '../../order/domain/floorPlanSync'
 import { fireCartToStations, notifyStationsLineRemoved } from '../../boh/domain/kitchenTickets'
 import {
   clearCustomerDisplaySnapshot,
@@ -863,9 +863,16 @@ export function RegisterPage() {
 
     if (activeTableSession && !hasSavedOrder) {
       removeOpenCheckForTable(activeTableSession.tableId)
-      releaseFloorTable(activeTableSession.tableId)
       if (session?.companyId && session.locationId) {
-        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+        persistFloorTablePatch(session.companyId, session.locationId, activeTableSession.tableId, {
+          status: 'open',
+          pax: undefined,
+          openedAt: undefined,
+          orderId: undefined,
+          serverName: undefined,
+        })
+      } else {
+        releaseFloorTable(activeTableSession.tableId)
       }
     }
 
@@ -932,9 +939,19 @@ export function RegisterPage() {
         updatedAt: new Date().toISOString(),
       }
       upsertOpenCheck(openCheck)
-      markFloorTableOrdered(activeTableSession.tableId, orderId)
       if (session?.companyId && session.locationId) {
-        void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+        persistFloorTablePatch(
+          session.companyId,
+          session.locationId,
+          activeTableSession.tableId,
+          table => ({
+            status: 'ordered',
+            orderId,
+            openedAt: table.openedAt || new Date().toISOString(),
+          }),
+        )
+      } else {
+        markFloorTableOrdered(activeTableSession.tableId, orderId)
       }
     } else if (toFire.length === 0) {
       flash('Nothing new to send to Bar or Kitchen.')
@@ -1040,9 +1057,16 @@ export function RegisterPage() {
       const count = lines.reduce((n, l) => n + l.quantity, 0)
       if (activeTableSession) {
         removeOpenCheckForTable(activeTableSession.tableId)
-        releaseFloorTable(activeTableSession.tableId)
         if (session.companyId && session.locationId) {
-          void persistFloorPlanRemote(loadFloorPlan(), session.companyId, session.locationId)
+          persistFloorTablePatch(session.companyId, session.locationId, activeTableSession.tableId, {
+            status: 'open',
+            pax: undefined,
+            openedAt: undefined,
+            orderId: undefined,
+            serverName: undefined,
+          })
+        } else {
+          releaseFloorTable(activeTableSession.tableId)
         }
       }
       setLines([])

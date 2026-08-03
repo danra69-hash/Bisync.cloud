@@ -24,5 +24,10 @@ if (existsSync(dutyExemptTest)) {
   run('node', ['--test', 'scripts/pos-duty-checkin-exempt.test.mjs'], { cwd: REPO_ROOT })
 }
 
+const floorSyncTest = path.join(REPO_ROOT, 'scripts/pos-floor-plan-sync.test.mjs')
+if (existsSync(floorSyncTest)) {
+  run('node', ['--test', 'scripts/pos-floor-plan-sync.test.mjs'], { cwd: REPO_ROOT })
+}
+
 console.log('pre-pos: ok')
 

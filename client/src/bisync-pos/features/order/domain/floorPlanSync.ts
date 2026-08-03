@@ -3,7 +3,6 @@ import {
   DEFAULT_FLOOR_PLAN,
   FLOOR_STORAGE_KEY,
   FLOOR_STORAGE_KEY_LEGACY,
-  loadFloorPlan,
   MOCK_ZONES,
   normalizeTable,
   saveFloorPlan,
@@ -113,19 +112,64 @@ function readLegacyUnscoped(): FloorPlanState | null {
   return null
 }
 
-/** Local cache for a company/location, migrating the old global key once. */
-export function loadFloorPlanLocal(companyId: number, locationExternalId: string): FloorPlanState {
+/** True when the plan matches the stock demo layout (ids + labels), not a custom save. */
+export function isStockDefaultFloorPlan(plan: FloorPlanState | null | undefined): boolean {
+  if (!plan?.tables?.length) return false
+  const stock = DEFAULT_FLOOR_PLAN.tables
+  if (plan.tables.length !== stock.length) return false
+  const byId = new Map(stock.map(t => [t.id, t]))
+  return plan.tables.every(t => {
+    const s = byId.get(t.id)
+    if (!s) return false
+    return (
+      t.label === s.label
+      && t.seats === s.seats
+      && t.section === s.section
+      && t.shape === s.shape
+      && Math.abs(t.x - s.x) < 0.01
+      && Math.abs(t.y - s.y) < 0.01
+      && Math.abs(t.w - s.w) < 0.01
+      && Math.abs(t.h - s.h) < 0.01
+    )
+  })
+}
+
+type LocalPeek = {
+  plan: FloorPlanState
+  updatedAt: string | null
+  /** True only when a scoped key already existed for this company/location. */
+  hadScoped: boolean
+}
+
+function peekFloorPlanLocal(companyId: number, locationExternalId: string): LocalPeek {
   const key = scopedKey(companyId, locationExternalId)
   try {
     const scoped = parseStored(localStorage.getItem(key))
-    if (scoped) return scoped.plan
+    if (scoped) {
+      return {
+        plan: scoped.plan,
+        updatedAt: scoped.updatedAt || readLocalUpdatedAt(companyId, locationExternalId),
+        hadScoped: true,
+      }
+    }
   } catch {
     /* ignore */
   }
 
-  const migrated = readLegacyUnscoped() ?? loadFloorPlan()
-  saveFloorPlanLocal(migrated, companyId, locationExternalId)
-  return migrated
+  const migrated = readLegacyUnscoped() ?? structuredClone(DEFAULT_FLOOR_PLAN)
+  return {
+    plan: migrated,
+    updatedAt: null,
+    hadScoped: false,
+  }
+}
+
+/**
+ * Local cache for a company/location.
+ * Cold miss returns default/legacy WITHOUT writing a "now" stamp — sync must prefer DB.
+ */
+export function loadFloorPlanLocal(companyId: number, locationExternalId: string): FloorPlanState {
+  return peekFloorPlanLocal(companyId, locationExternalId).plan
 }
 
 export function saveFloorPlanLocal(
@@ -158,16 +202,15 @@ function plansLookEqual(a: FloorPlanState, b: FloorPlanState): boolean {
 
 /**
  * Resolve the floor plan for a location.
- * Prefer whichever side has the newer updatedAt so a just-saved local layout
- * is not clobbered by a stale GET before PUT finishes.
- * Empty server rows are seeded from local (custom or default) so DB stays populated.
+ * DB wins when local is a cold default/migration. Local only pushes when it was an
+ * intentional scoped save with a newer timestamp than the server.
  */
 export async function syncFloorPlan(
   companyId: number,
   locationExternalId: string,
 ): Promise<FloorPlanState> {
-  const local = loadFloorPlanLocal(companyId, locationExternalId)
-  const localUpdatedAt = readLocalUpdatedAt(companyId, locationExternalId)
+  const peeked = peekFloorPlanLocal(companyId, locationExternalId)
+  const local = peeked.plan
 
   try {
     const remote = await api.posFloorPlan(companyId, locationExternalId)
@@ -175,10 +218,24 @@ export async function syncFloorPlan(
     const remoteUpdatedAt = remote.updatedAt
 
     if (serverPlan) {
-      const localMs = parseTime(localUpdatedAt)
+      const localMs = parseTime(peeked.updatedAt)
       const remoteMs = parseTime(remoteUpdatedAt)
-      // Local newer (e.g. save in flight / offline edit) → keep local and push to DB.
-      if (localMs > remoteMs && !plansLookEqual(local, serverPlan)) {
+      const localIsStockDefault = isStockDefaultFloorPlan(local)
+      const remoteIsStockDefault = isStockDefaultFloorPlan(serverPlan)
+
+      // Never let a cold-cache default / unstamped migration overwrite a real DB layout.
+      // Also recover a custom scoped local over a stock remote that was stamped "newer"
+      // by the previous clobber bug.
+      const canPushLocal =
+        peeked.hadScoped
+        && localMs > 0
+        && !plansLookEqual(local, serverPlan)
+        && (
+          (!localIsStockDefault && remoteIsStockDefault)
+          || (localMs > remoteMs && !(localIsStockDefault && !remoteIsStockDefault))
+        )
+
+      if (canPushLocal) {
         await api.posFloorPlanUpsert({
           companyId,
           locationExternalId,
@@ -188,7 +245,8 @@ export async function syncFloorPlan(
         saveFloorPlanLocal(local, companyId, locationExternalId, stamp)
         return local
       }
-      // Remote wins (or equal) — keep DB as source of truth.
+
+      // Remote wins (or equal / cold local) — keep DB as source of truth.
       saveFloorPlanLocal(
         serverPlan,
         companyId,
@@ -198,7 +256,9 @@ export async function syncFloorPlan(
       return serverPlan
     }
 
-    // Server empty — promote local browser layout into DB so it remains persisted.
+    // Server empty — seed only from an intentional scoped save, or first-time stock/legacy.
+    // Do not invent a fresh "now" stamp on cold display-only defaults before this write;
+    // the upsert response stamp becomes the authoritative cache time.
     const uploaded = await api.posFloorPlanUpsert({
       companyId,
       locationExternalId,
@@ -244,4 +304,49 @@ export async function persistFloorPlanRemote(
     // Local cache still holds the layout; sync will retry upload when online.
     return false
   }
+}
+
+/**
+ * Patch one table's runtime status on the authoritative plan for this location.
+ * Fetches remote first so a cold stock cache cannot overwrite a custom cloud layout.
+ */
+export async function persistFloorTablePatch(
+  companyId: number,
+  locationExternalId: string,
+  tableId: string,
+  patch: Partial<FloorTable> | ((table: FloorTable) => Partial<FloorTable>),
+): Promise<FloorPlanState> {
+  const peeked = peekFloorPlanLocal(companyId, locationExternalId)
+  let base = peeked.plan
+
+  try {
+    const remote = await api.posFloorPlan(companyId, locationExternalId)
+    const serverPlan = parseFloorPlanJson(remote.layoutJson)
+    if (serverPlan) {
+      const localIsStock = isStockDefaultFloorPlan(base)
+      const remoteIsStock = isStockDefaultFloorPlan(serverPlan)
+      const localMs = parseTime(peeked.updatedAt)
+      const remoteMs = parseTime(remote.updatedAt)
+      if (
+        !peeked.hadScoped
+        || (localIsStock && !remoteIsStock)
+        || (remoteMs >= localMs && !(remoteIsStock && !localIsStock && peeked.hadScoped))
+      ) {
+        base = serverPlan
+      }
+    }
+  } catch {
+    /* offline — patch peeked local */
+  }
+
+  const next: FloorPlanState = {
+    ...base,
+    tables: base.tables.map(t => {
+      if (t.id !== tableId) return t
+      const delta = typeof patch === 'function' ? patch(t) : patch
+      return normalizeTable({ ...t, ...delta })
+    }),
+  }
+  await persistFloorPlanRemote(next, companyId, locationExternalId)
+  return next
 }
