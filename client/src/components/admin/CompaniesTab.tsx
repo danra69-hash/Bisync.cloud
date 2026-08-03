@@ -31,6 +31,16 @@ import { CompanyProfileFields } from './CompanyProfileFields';
 import { ToggleSwitch } from './ToggleSwitch';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import {
+  BUSINESS_HALF_HOUR_TIMES,
+  BUSINESS_WEEKDAYS,
+  BUSINESS_WEEKDAY_LABELS,
+  defaultBusinessHours,
+  parseBusinessHoursJson,
+  serializeBusinessHours,
+  validateBusinessHours,
+  type CompanyBusinessHours,
+} from '../../data/companyBusinessHours';
+import {
   defaultsForOutboundProvider,
   isMailRetrievalPort,
   normalizeOutboundProviderMode,
@@ -163,6 +173,7 @@ const blankCompany = (): CompanyDraft => ({
   businessTypesJson: '[]',
   vendorPolicyTagsJson: '[]',
   modulesJson: '[]',
+  businessHoursJson: serializeBusinessHours(defaultBusinessHours()),
   logoFileName: '',
   logoContentType: '',
   logoBase64: '',
@@ -200,6 +211,13 @@ function CompanyPanel({
   const [modules, setModules] = useState<AccessModule[]>(
     () => parseCompanyModules(company.modulesJson),
   );
+  const [businessHours, setBusinessHours] = useState<CompanyBusinessHours>(() => {
+    const parsed = parseBusinessHoursJson(company.businessHoursJson);
+    const configured = BUSINESS_WEEKDAYS.some(
+      day => parsed[day].closed || parsed[day].openFrom || parsed[day].openTo,
+    );
+    return configured ? parsed : defaultBusinessHours();
+  });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [smtpPasswordDraft, setSmtpPasswordDraft] = useState('');
@@ -244,6 +262,13 @@ function CompanyPanel({
     setBusinessTypes(parseStringArrayJson(company.businessTypesJson) as CompanyBusinessType[]);
     setVendorPolicyTags(parseStringArrayJson(company.vendorPolicyTagsJson) as CompanyVendorPolicyTag[]);
     setModules(parseCompanyModules(company.modulesJson));
+    {
+      const parsed = parseBusinessHoursJson(company.businessHoursJson);
+      const configured = BUSINESS_WEEKDAYS.some(
+        day => parsed[day].closed || parsed[day].openFrom || parsed[day].openTo,
+      );
+      setBusinessHours(configured ? parsed : defaultBusinessHours());
+    }
     setSmtpPasswordDraft('');
     setGraphClientSecretDraft('');
     setTestToEmail(company.email || company.smtpFromEmail || '');
@@ -301,6 +326,7 @@ function CompanyPanel({
       businessTypesJson: serializeStringArray(businessTypes),
       vendorPolicyTagsJson: serializeStringArray(vendorPolicyTags),
       modulesJson: serializeStringArray(modules),
+      businessHoursJson: serializeBusinessHours(businessHours),
       logoFileName: logoBase64 ? (form.logoFileName ?? '').trim() : '',
       logoContentType: logoBase64 ? (form.logoContentType ?? '').trim() : '',
       logoBase64,
@@ -420,6 +446,11 @@ function CompanyPanel({
     const modulesError = validateCompanyModules(modules);
     if (modulesError) {
       setError(modulesError);
+      return;
+    }
+    const hoursError = validateBusinessHours(businessHours);
+    if (hoursError) {
+      setError(hoursError);
       return;
     }
 
@@ -703,6 +734,106 @@ function CompanyPanel({
 
             <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">General Email</label>
             <input type="email" className={inputCls} value={form.email} onChange={e => set('email', e.target.value)} placeholder="hq@company.com" />
+
+            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+              <div>
+                <p className="text-xs font-semibold text-foreground">Business Hours (office)</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  HQ office hours for admin / non-shift staff attendance in HR.
+                  Separate from location operating hours. Minutes are :00 or :30 only.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[22rem]">
+                  <colgroup>
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '28%' }} />
+                    <col style={{ width: '28%' }} />
+                    <col style={{ width: 72 }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="py-1.5 pr-2 text-left font-medium">Day</th>
+                      <th className="py-1.5 px-1 text-left font-medium">From</th>
+                      <th className="py-1.5 px-1 text-left font-medium">To</th>
+                      <th className="py-1.5 pl-1 text-center font-medium">Closed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {BUSINESS_WEEKDAYS.map(day => {
+                      const row = businessHours[day];
+                      return (
+                        <tr key={day} className="border-b border-border/50">
+                          <td className="py-1.5 pr-2 font-medium whitespace-nowrap">
+                            {BUSINESS_WEEKDAY_LABELS[day]}
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <select
+                              className={`${selectCls} min-w-[6.5rem]`}
+                              value={row.openFrom}
+                              disabled={row.closed}
+                              onChange={e => {
+                                const openFrom = e.target.value;
+                                setBusinessHours(prev => ({
+                                  ...prev,
+                                  [day]: { ...prev[day], openFrom },
+                                }));
+                                setError(null);
+                              }}
+                              aria-label={`${BUSINESS_WEEKDAY_LABELS[day]} office from`}
+                            >
+                              <option value="">—</option>
+                              {BUSINESS_HALF_HOUR_TIMES.map(t => (
+                                <option key={`biz-from-${day}-${t}`} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <select
+                              className={`${selectCls} min-w-[6.5rem]`}
+                              value={row.openTo}
+                              disabled={row.closed}
+                              onChange={e => {
+                                const openTo = e.target.value;
+                                setBusinessHours(prev => ({
+                                  ...prev,
+                                  [day]: { ...prev[day], openTo },
+                                }));
+                                setError(null);
+                              }}
+                              aria-label={`${BUSINESS_WEEKDAY_LABELS[day]} office to`}
+                            >
+                              <option value="">—</option>
+                              {BUSINESS_HALF_HOUR_TIMES.map(t => (
+                                <option key={`biz-to-${day}-${t}`} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-1.5 pl-1 text-center">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary"
+                              checked={row.closed}
+                              onChange={e => {
+                                const closed = e.target.checked;
+                                setBusinessHours(prev => ({
+                                  ...prev,
+                                  [day]: closed
+                                    ? { openFrom: '', openTo: '', closed: true }
+                                    : { ...prev[day], closed: false },
+                                }));
+                                setError(null);
+                              }}
+                              aria-label={`${BUSINESS_WEEKDAY_LABELS[day]} closed`}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
             <div className="rounded-lg border border-border bg-card p-4 space-y-3">
               <div className="flex items-start gap-2">

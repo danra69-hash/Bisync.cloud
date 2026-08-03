@@ -1,6 +1,7 @@
 import { ApiError } from './client'
 import {
   createHrAttendance,
+  getHrEmployee,
   listHrAttendance,
   listHrShiftSchedules,
   nowTimeOnly,
@@ -9,6 +10,8 @@ import {
   type AttendanceStatusCode,
   type HrAttendanceRecord,
 } from './hr'
+import { resolveOfficeHoursForDate } from './officeHours'
+import { hrRequest } from './hrClient'
 import {
   clearMockAttendance,
   getMockStatus,
@@ -146,6 +149,40 @@ async function getHrStatus(
   return { openShift, todayPunches, policy }
 }
 
+async function resolveAdminOfficeSchedule(
+  employeeId: number,
+  date: string,
+): Promise<{ scheduledIn: string | null; scheduledOut: string | null }> {
+  try {
+    const employee = await getHrEmployee(employeeId)
+    if (employee.isShiftEmployee) {
+      return { scheduledIn: null, scheduledOut: null }
+    }
+    // Link employee → platform user → company office hours.
+    type UserRow = { employeeId?: number | null; companyId?: number | null }
+    type CompanyRow = { id: number; businessHoursJson?: string }
+    const [users, companies] = await Promise.all([
+      hrRequest<UserRow[]>('users').catch(() => [] as UserRow[]),
+      hrRequest<CompanyRow[]>('companies').catch(() => [] as CompanyRow[]),
+    ])
+    const user = users.find((u) => u.employeeId === employeeId)
+    const company =
+      (user?.companyId != null ? companies.find((c) => c.id === user.companyId) : null)
+      ?? companies[0]
+      ?? null
+    const office = resolveOfficeHoursForDate(company?.businessHoursJson, date)
+    if (!office || office.closed) {
+      return { scheduledIn: null, scheduledOut: null }
+    }
+    return {
+      scheduledIn: office.openFrom ? (office.openFrom.length === 5 ? `${office.openFrom}:00` : office.openFrom) : null,
+      scheduledOut: office.openTo ? (office.openTo.length === 5 ? `${office.openTo}:00` : office.openTo) : null,
+    }
+  } catch {
+    return { scheduledIn: null, scheduledOut: null }
+  }
+}
+
 async function punchHr(
   staff: AttendanceStaff,
   outletName: string | undefined,
@@ -163,9 +200,15 @@ async function punchHr(
     listHrShiftSchedules({ from: today, to: today, employeeId }),
   ])
   const existing = rows[0] ?? null
-  const schedule = schedules.find((s) => s.type === 'Work') ?? schedules[0] ?? null
-  const scheduledIn = schedule?.startTime ?? null
-  const scheduledOut = schedule?.endTime ?? null
+  const schedule = schedules.find((s) => s.type === 'Work') ?? null
+  let scheduledIn = schedule?.startTime ?? null
+  let scheduledOut = schedule?.endTime ?? null
+
+  if (!schedule) {
+    const office = await resolveAdminOfficeSchedule(employeeId, today)
+    scheduledIn = office.scheduledIn
+    scheduledOut = office.scheduledOut
+  }
 
   if (req.action === 'clockIn') {
     if (existing?.actualIn && !existing.actualOut) {

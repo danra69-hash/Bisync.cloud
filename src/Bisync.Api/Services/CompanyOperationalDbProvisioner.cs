@@ -288,6 +288,7 @@ public class CompanyOperationalDbProvisioner(
         BusinessTypesJson = company.BusinessTypesJson ?? "[]",
         VendorPolicyTagsJson = company.VendorPolicyTagsJson ?? "[]",
         ModulesJson = company.ModulesJson ?? "[]",
+        BusinessHoursJson = string.IsNullOrWhiteSpace(company.BusinessHoursJson) ? "{}" : company.BusinessHoursJson,
     };
 
     static AppUser CloneAppUserForSeed(AppUser user) => new()

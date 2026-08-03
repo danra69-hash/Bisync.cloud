@@ -125,6 +125,8 @@ export interface Company {
   businessTypesJson: string;
   vendorPolicyTagsJson: string;
   modulesJson: string;
+  /** HQ office hours JSON for admin (non-shift) HR attendance — not location opening hours. */
+  businessHoursJson?: string;
   /** Original filename for the company logo. */
   logoFileName?: string;
   /** MIME type, e.g. image/png. */

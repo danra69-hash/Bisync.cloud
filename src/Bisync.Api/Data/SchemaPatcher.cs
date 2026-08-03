@@ -45,6 +45,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoFileName", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoContentType", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "LogoBase64", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Companies", "BusinessHoursJson", "TEXT NOT NULL DEFAULT '{}'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "BusinessTypesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ModulesJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "VendorPolicyTagsJson", "TEXT NOT NULL DEFAULT '[]'");

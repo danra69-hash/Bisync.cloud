@@ -35,6 +35,7 @@ import {
   unlockPinPayload,
 } from './teamPin';
 import { punchHrAttendance } from './attendancePunch';
+import { resolveOfficeHoursForDate } from '../../data/companyBusinessHours';
 import { TeamHomeLanding, type TeamAppMode, type HrTab, type RmsTab } from './TeamHomeLanding';
 import './TeamPortal.css';
 
@@ -44,6 +45,8 @@ interface TeamPortalProps {
   leaveRequests: LeaveRequest[];
   shiftSchedules: ShiftSchedule[];
   publicHolidays: PublicHoliday[];
+  /** Company office hours for admin / non-shift attendance. */
+  businessHoursJson?: string | null;
   onSubmitLeave: (leave: {
     employeeId: number;
     type: LeaveType;
@@ -161,7 +164,7 @@ function clockNowLabel(d = new Date()) {
 }
 
 export default function TeamPortal({
-  employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, onSubmitLeave,
+  employees, leaveBalances, leaveRequests, shiftSchedules, publicHolidays, businessHoursJson = null, onSubmitLeave,
 }: TeamPortalProps) {
   const enrolledPin = loadPinEnrollment();
   const [step, setStep] = useState<PortalStep>('login');
@@ -476,6 +479,14 @@ export default function TeamPortal({
       }
       return { type: 'unscheduled', label: '—' };
     }
+    const office = resolveOfficeHoursForDate(businessHoursJson, dateStr);
+    if (office) {
+      if (office.closed) return { type: 'weekend', label: 'Off' };
+      if (office.openFrom && office.openTo) {
+        return { type: 'work', label: `${office.openFrom}–${office.openTo}` };
+      }
+      return { type: 'work', label: 'Work' };
+    }
     if (dow === 0 || dow === 6) return { type: 'weekend', label: 'Off' };
     return { type: 'work', label: 'Work' };
   };
@@ -527,6 +538,8 @@ export default function TeamPortal({
         date: TODAY,
         timeHhMm: parsed.time,
         shiftSchedules,
+        isShiftEmployee: teamEmp.isShiftEmployee,
+        businessHoursJson,
       });
       setTodayAttendance(record);
       showToast(
