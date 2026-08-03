@@ -1,10 +1,19 @@
 .checkin-modal {
+  --checkin-vh: 100dvh;
   position: fixed;
   inset: 0;
   z-index: 90;
   display: grid;
   place-items: center;
-  padding: var(--space-3);
+  padding:
+    max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  /* Prefer the live visual viewport on Android Chrome (URL bar / soft UI). */
+  height: var(--checkin-vh);
+  max-height: var(--checkin-vh);
+  box-sizing: border-box;
 }
 
 .checkin-modal__backdrop {
@@ -17,17 +26,28 @@
 
 .checkin-modal__card {
   position: relative;
-  width: min(420px, calc(100vw - 24px));
-  max-height: calc(100dvh - 24px);
-  overflow: auto;
+  width: min(420px, calc(100vw - 16px));
+  max-height: calc(var(--checkin-vh) - 16px);
+  overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
-  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  min-height: 0;
+}
+
+.checkin-modal__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .checkin-modal__header {
@@ -39,7 +59,7 @@
 
 .checkin-modal__header h2 {
   margin: 0 0 4px;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
 }
 
 .checkin-modal__header p {
@@ -84,13 +104,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) 0;
+  gap: 4px;
+  padding: var(--space-1) 0;
 }
 
 .checkin-modal__qr-block img {
-  width: 220px;
-  height: 220px;
+  width: auto;
+  height: auto;
+  max-width: 100%;
   display: block;
   background: #fff;
   border: 1px solid var(--color-border);
@@ -110,10 +131,16 @@
   letter-spacing: 0.04em;
 }
 
+/* PIN + keypad stay pinned to the bottom so Android never clips the last row. */
 .checkin-modal__pin-block {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
+  padding: var(--space-2) var(--space-4)
+    max(var(--space-3), env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .checkin-modal__pin-block > label {
@@ -131,13 +158,13 @@
 }
 
 .checkin-modal__pin-dots span {
-  height: 44px;
+  height: 40px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-bg);
   display: grid;
   place-items: center;
-  font-size: 1.4rem;
+  font-size: 1.25rem;
   color: var(--color-ink);
 }
 
@@ -149,19 +176,20 @@
 .checkin-modal__keypad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .checkin-modal__key {
-  height: 48px;
+  height: 44px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-ink);
   font: inherit;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 700;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .checkin-modal__key:hover:not(:disabled) {
@@ -175,7 +203,7 @@
 }
 
 .checkin-modal__key.is-action {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: var(--color-ink-muted);
 }
 
@@ -190,4 +218,20 @@
   margin: 0;
   color: var(--color-ink-muted);
   font-size: var(--pos-font-sm);
+}
+
+.checkin-modal.is-compact .checkin-modal__header p {
+  font-size: var(--pos-font-xs);
+}
+
+.checkin-modal.is-compact .checkin-modal__pin-dots span {
+  height: 34px;
+}
+
+.checkin-modal.is-compact .checkin-modal__key {
+  height: 40px;
+}
+
+.checkin-modal.is-compact .checkin-modal__status {
+  padding: 6px 8px;
 }

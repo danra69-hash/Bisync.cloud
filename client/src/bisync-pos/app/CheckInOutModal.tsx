@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { qrImageUrl } from '../core/config/qrTable'
 import { outletInitialFromLocation } from '../core/session/outletInitial'
 import { applyPosDutyPin } from '../core/session/posDutyPin'
@@ -19,6 +19,12 @@ type Props = {
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'] as const
 
+function viewportHeightPx(): number {
+  const vv = window.visualViewport?.height
+  if (typeof vv === 'number' && vv > 0) return Math.round(vv)
+  return window.innerHeight || 640
+}
+
 export function CheckInOutModal({
   locationExternalId,
   locationName,
@@ -30,9 +36,36 @@ export function CheckInOutModal({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [duty, setDuty] = useState<PosDutySession | null>(() => loadPosDutySession())
+  const [vh, setVh] = useState(() => viewportHeightPx())
+  const keypadRef = useRef<HTMLDivElement>(null)
+  const closedRef = useRef(false)
 
   const outletInitial = outletInitialFromLocation(locationName, locationExternalId)
   const qrPayload = buildCheckInQrPayload(outletInitial, now)
+  const compact = vh < 720
+  const qrSize = compact ? 132 : 200
+
+  function closeModal() {
+    if (closedRef.current) return
+    closedRef.current = true
+    onClose()
+  }
+
+  useEffect(() => {
+    const syncVh = () => setVh(viewportHeightPx())
+    syncVh()
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', syncVh)
+    vv?.addEventListener('scroll', syncVh)
+    window.addEventListener('resize', syncVh)
+    window.addEventListener('orientationchange', syncVh)
+    return () => {
+      vv?.removeEventListener('resize', syncVh)
+      vv?.removeEventListener('scroll', syncVh)
+      window.removeEventListener('resize', syncVh)
+      window.removeEventListener('orientationchange', syncVh)
+    }
+  }, [])
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 15_000)
@@ -47,23 +80,38 @@ export function CheckInOutModal({
       setDuty(next)
       onDutyChange(next)
     })
+    const poll = window.setInterval(() => {
+      void syncPosDutyWithHrAttendance().then(next => {
+        if (cancelled) return
+        setDuty(next)
+        onDutyChange(next)
+      })
+    }, 8_000)
     return () => {
       cancelled = true
+      window.clearInterval(poll)
     }
-    // Run once when the modal opens — not on every parent re-render.
+    // Run when the modal opens — not on every parent re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only sync
   }, [])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') closeModal()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    // closeModal is stable via closedRef
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    // Keep the PIN pad in view on short Android screens after open / duty change.
+    keypadRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [duty, vh])
 
   async function submitPin(nextPin: string) {
-    if (busy || nextPin.length !== 4) return
+    if (busy || nextPin.length !== 4 || closedRef.current) return
     setBusy(true)
     setError(null)
     try {
@@ -81,8 +129,8 @@ export function CheckInOutModal({
       setDuty(result.session)
       onDutyChange(result.session)
       setPin('')
-      // Close the QR / check-in page once duty starts (or ends).
-      onClose()
+      // Close as soon as QR check-in + PIN unlock succeed.
+      closeModal()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not verify PIN')
       setPin('')
@@ -92,7 +140,7 @@ export function CheckInOutModal({
   }
 
   function onKeyPad(key: (typeof KEYS)[number]) {
-    if (busy) return
+    if (busy || closedRef.current) return
     setError(null)
     if (key === 'C') {
       setPin('')
@@ -113,38 +161,45 @@ export function CheckInOutModal({
   }
 
   return (
-    <div className="checkin-modal" role="dialog" aria-modal="true" aria-labelledby="checkin-modal-title">
-      <button type="button" className="checkin-modal__backdrop" aria-label="Close" onClick={onClose} />
+    <div
+      className={`checkin-modal${compact ? ' is-compact' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="checkin-modal-title"
+      style={{ ['--checkin-vh' as string]: `${vh}px` }}
+    >
+      <button type="button" className="checkin-modal__backdrop" aria-label="Close" onClick={closeModal} />
       <div className="checkin-modal__card">
-        <header className="checkin-modal__header">
-          <div>
-            <h2 id="checkin-modal-title">Check in / out</h2>
-            <p>
-              Scan the POS QR in Team (/TEAM) to record attendance. After you are checked in, use your PIN
-              to unlock POS — PIN does not check you in or out.
-            </p>
+        <div className="checkin-modal__scroll">
+          <header className="checkin-modal__header">
+            <div>
+              <h2 id="checkin-modal-title">Check in / out</h2>
+              <p>
+                Scan QR in Team to check in, then enter PIN to unlock POS.
+              </p>
+            </div>
+            <button type="button" className="checkin-modal__close" onClick={closeModal} aria-label="Close">
+              ×
+            </button>
+          </header>
+
+          <div className="checkin-modal__status">
+            <strong>Staff attendance</strong>
+            <span>
+              {duty
+                ? 'Checked in — enter PIN to unlock, then this window closes.'
+                : 'Scan Team QR to check in, then enter PIN.'}
+            </span>
           </div>
-          <button type="button" className="checkin-modal__close" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </header>
 
-        <div className="checkin-modal__status">
-          <strong>Staff attendance</strong>
-          <span>
-            {duty
-              ? 'Ordering unlocked. Stay checked in via Team QR; PIN only controls POS unlock.'
-              : 'Ordering locked. Check in with Team QR, then enter PIN to unlock POS.'}
-          </span>
+          <div className="checkin-modal__qr-block">
+            <img src={qrImageUrl(qrPayload, qrSize)} alt={`Check-in QR ${qrPayload}`} width={qrSize} height={qrSize} />
+            <code className="checkin-modal__qr-code">{qrPayload}</code>
+            <span className="checkin-modal__qr-hint">Scan in Team (/TEAM)</span>
+          </div>
         </div>
 
-        <div className="checkin-modal__qr-block">
-          <img src={qrImageUrl(qrPayload, 220)} alt={`Check-in QR ${qrPayload}`} />
-          <code className="checkin-modal__qr-code">{qrPayload}</code>
-          <span className="checkin-modal__qr-hint">Attendance — scan in Team (/TEAM) to check in or out</span>
-        </div>
-
-        <div className="checkin-modal__pin-block">
+        <div className="checkin-modal__pin-block" ref={keypadRef}>
           <label htmlFor="checkin-pin-display">POS unlock PIN</label>
           <div id="checkin-pin-display" className="checkin-modal__pin-dots" aria-live="polite">
             {Array.from({ length: 4 }, (_, i) => (

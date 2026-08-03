@@ -342,6 +342,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       setDuty(result.session)
       void refreshDuty()
       closePinPad()
+      setCheckInOpen(false)
       if (result.warning) notify(result.warning)
       else notify('POS unlocked')
     } catch (err) {
