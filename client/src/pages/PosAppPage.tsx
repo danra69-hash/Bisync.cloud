@@ -1,6 +1,13 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type Company, type LocationConfig } from '../api';
 import { parseCompanyModules } from '../data/companyModules';
+import {
+  isDocumentFullscreen,
+  isStandaloneDisplay,
+  setPosViewportLock,
+  subscribeFullscreenChange,
+  wantsPosFullscreen,
+} from '../data/posKiosk';
 import { configLocationToDropdown } from '../utils/orgFilters';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 import { PosDesktopInstall } from '../components/shared/PosDesktopInstall';
@@ -82,8 +89,30 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
   const [locationId, setLocationId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [kioskActive, setKioskActive] = useState(
+    () => wantsPosFullscreen() || isStandaloneDisplay() || isDocumentFullscreen(),
+  );
   const entryLabel = ENTRY_LABEL[entry];
   const initialEntry = ENTRY_PATH[entry];
+
+  const onKioskChange = useCallback((active: boolean) => {
+    setKioskActive(active || wantsPosFullscreen() || isStandaloneDisplay());
+  }, []);
+
+  useEffect(() => {
+    setPosViewportLock(true);
+    const sync = () => {
+      setKioskActive(
+        isDocumentFullscreen() || isStandaloneDisplay() || wantsPosFullscreen(),
+      );
+    };
+    sync();
+    const unsub = subscribeFullscreenChange(sync);
+    return () => {
+      unsub();
+      setPosViewportLock(false);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -220,16 +249,26 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
     );
   }
 
+  const hideOrgChrome = kioskActive && (isDocumentFullscreen() || isStandaloneDisplay());
+
   return (
-    <div className="pos-standalone">
+    <div
+      className={[
+        'pos-standalone',
+        kioskActive ? 'pos-standalone--kiosk' : '',
+        hideOrgChrome ? 'pos-standalone--immersive' : '',
+      ].filter(Boolean).join(' ')}
+    >
       {entry === 'pos' ? (
         <PosDesktopInstall
           variant="card"
           companyId={companyId}
           locationId={locationId}
+          kioskMode
+          onKioskChange={onKioskChange}
         />
       ) : null}
-      {companies.length > 1 || locationOptions.length > 1 ? (
+      {!hideOrgChrome && (companies.length > 1 || locationOptions.length > 1) ? (
         <div className="pos-standalone-chrome">
           {companies.length > 1 ? (
             <label>

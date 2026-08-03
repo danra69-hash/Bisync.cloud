@@ -1,4 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  enterPosFullscreen,
+  exitPosFullscreen,
+  isAndroidDevice,
+  isDocumentFullscreen,
+  isIosDevice,
+  isStandaloneDisplay,
+  subscribeFullscreenChange,
+  wantsPosFullscreen,
+} from '../../data/posKiosk'
 import './PosDesktopInstall.css'
 
 const DISMISS_KEY = 'bisync-pos-desktop-install-dismissed'
@@ -9,68 +19,38 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-function isStandaloneDisplay() {
-  if (typeof window === 'undefined') return false
-  const mq = window.matchMedia?.(
-    '(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)',
-  )
-  return (
-    mq?.matches === true
-    || ('standalone' in navigator
-      && (navigator as Navigator & { standalone?: boolean }).standalone === true)
-  )
-}
-
-function isIos() {
-  if (typeof navigator === 'undefined') return false
-  return /iphone|ipad|ipod/i.test(navigator.userAgent)
-}
-
-async function enterFullscreen(el: Element | null = document.documentElement) {
-  if (!el) return false
-  const anyEl = el as Element & {
-    requestFullscreen?: () => Promise<void>
-    webkitRequestFullscreen?: () => Promise<void>
-    msRequestFullscreen?: () => Promise<void>
-  }
-  try {
-    if (anyEl.requestFullscreen) {
-      await anyEl.requestFullscreen()
-      return true
-    }
-    if (anyEl.webkitRequestFullscreen) {
-      await anyEl.webkitRequestFullscreen()
-      return true
-    }
-    if (anyEl.msRequestFullscreen) {
-      await anyEl.msRequestFullscreen()
-      return true
-    }
-  } catch {
-    return false
-  }
-  return false
-}
-
 type Props = {
   /** Compact toolbar row vs card prompt. */
   variant?: 'toolbar' | 'card'
   companyId?: number | null
   locationId?: string
+  /**
+   * When true (standalone /POS kiosk), hide the toolbar once fullscreen/PWA
+   * so the POS fills the whole device screen. A floating control remains.
+   */
+  kioskMode?: boolean
+  /** Notify parent when document fullscreen / display-mode changes. */
+  onKioskChange?: (active: boolean) => void
 }
 
 /**
  * Install / download Bisync POS for desktop and enter fullscreen kiosk use.
+ * Optimized for Google Chrome on Windows, Android, and iOS (Add to Home Screen).
  */
 export function PosDesktopInstall({
   variant = 'toolbar',
   companyId = null,
   locationId = '',
+  kioskMode = false,
+  onKioskChange,
 }: Props) {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
   const [cardVisible, setCardVisible] = useState(false)
   const [iosHelp, setIosHelp] = useState(false)
   const [fsNote, setFsNote] = useState<string | null>(null)
+  const [fullscreen, setFullscreen] = useState(() => isDocumentFullscreen() || isStandaloneDisplay())
+  const [needsGesture, setNeedsGesture] = useState(false)
+  const [chromeExpanded, setChromeExpanded] = useState(false)
 
   const posUrl = useMemo(() => {
     const url = new URL('/POS', window.location.origin)
@@ -81,13 +61,34 @@ export function PosDesktopInstall({
   }, [companyId, locationId])
 
   const desktopZipUrl = '/downloads/bisync-pos-desktop.zip'
+  const ios = isIosDevice()
+  const android = isAndroidDevice()
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('fs') === '1' || isStandaloneDisplay()) {
-      void enterFullscreen(document.documentElement)
+    const sync = () => {
+      const active = isDocumentFullscreen() || isStandaloneDisplay()
+      setFullscreen(active)
+      onKioskChange?.(active)
+      if (active) setNeedsGesture(false)
     }
-  }, [])
+    sync()
+    return subscribeFullscreenChange(sync)
+  }, [onKioskChange])
+
+  useEffect(() => {
+    if (!wantsPosFullscreen() && !isStandaloneDisplay()) return
+    let cancelled = false
+    void (async () => {
+      if (isStandaloneDisplay() || isDocumentFullscreen()) return
+      // Chrome blocks fullscreen without a user gesture — try once, then prompt.
+      const ok = await enterPosFullscreen(document.documentElement)
+      if (cancelled) return
+      if (!ok && !ios) setNeedsGesture(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [ios])
 
   useEffect(() => {
     if (variant !== 'card') return
@@ -115,14 +116,14 @@ export function PosDesktopInstall({
     const timer = window.setTimeout(() => {
       if (isStandaloneDisplay()) return
       setCardVisible(true)
-      if (isIos()) setIosHelp(true)
+      if (ios) setIosHelp(true)
     }, 900)
     return () => {
       window.clearTimeout(timer)
       window.removeEventListener('beforeinstallprompt', onBeforeInstall)
       window.removeEventListener('appinstalled', onInstalled)
     }
-  }, [variant])
+  }, [variant, ios])
 
   async function installPwa() {
     if (deferred) {
@@ -139,9 +140,22 @@ export function PosDesktopInstall({
   }
 
   async function goFullscreen() {
-    const ok = await enterFullscreen(document.documentElement)
-    setFsNote(ok ? 'Fullscreen on' : 'Use F11 or the desktop launcher for fullscreen.')
-    window.setTimeout(() => setFsNote(null), 2500)
+    const ok = await enterPosFullscreen(document.documentElement)
+    if (ok) {
+      setNeedsGesture(false)
+      setFsNote('Fullscreen on — POS matches your screen')
+      window.focus()
+    } else if (ios) {
+      setFsNote('On iPhone/iPad: Share → Add to Home Screen for full-screen POS.')
+    } else {
+      setFsNote('Tap Full screen again, or use the desktop Chrome launcher.')
+    }
+    window.setTimeout(() => setFsNote(null), 3200)
+  }
+
+  async function leaveFullscreen() {
+    await exitPosFullscreen()
+    setChromeExpanded(true)
   }
 
   function dismissCard() {
@@ -149,12 +163,20 @@ export function PosDesktopInstall({
     setCardVisible(false)
   }
 
-  const toolbar = (
+  const hideToolbar = kioskMode && fullscreen && !chromeExpanded
+  const showFab = kioskMode
+
+  const toolbar = hideToolbar ? null : (
     <div className="pos-desktop-toolbar" role="group" aria-label="POS desktop controls">
-      <button type="button" className="pos-desktop-btn" onClick={() => void goFullscreen()}>
+      <button type="button" className="pos-desktop-btn pos-desktop-btn--primary" onClick={() => void goFullscreen()}>
         Full screen
       </button>
-      <a className="pos-desktop-btn pos-desktop-btn--primary" href={desktopZipUrl} download>
+      {fullscreen ? (
+        <button type="button" className="pos-desktop-btn" onClick={() => void leaveFullscreen()}>
+          Exit full screen
+        </button>
+      ) : null}
+      <a className="pos-desktop-btn" href={desktopZipUrl} download>
         Download desktop
       </a>
       <button type="button" className="pos-desktop-btn" onClick={() => void installPwa()}>
@@ -164,15 +186,51 @@ export function PosDesktopInstall({
         Open POS window
       </a>
       {fsNote ? <span className="pos-desktop-note">{fsNote}</span> : null}
+      {android || (!ios && !android) ? (
+        <span className="pos-desktop-note pos-desktop-note--hint">
+          Best in Google Chrome · fills your device screen
+        </span>
+      ) : null}
+      {kioskMode && fullscreen ? (
+        <button
+          type="button"
+          className="pos-desktop-btn pos-desktop-btn--ghost"
+          onClick={() => setChromeExpanded(false)}
+        >
+          Hide bar
+        </button>
+      ) : null}
     </div>
   )
-
-  if (variant === 'toolbar') return toolbar
 
   return (
     <>
       {toolbar}
-      {cardVisible ? (
+      {showFab ? (
+        <button
+          type="button"
+          className="pos-desktop-fab"
+          aria-label={fullscreen ? 'POS screen controls' : 'Enter full screen'}
+          title={fullscreen ? 'Show controls' : 'Enter full screen'}
+          onClick={() => {
+            if (!fullscreen) void goFullscreen()
+            else setChromeExpanded(v => !v)
+          }}
+        >
+          {fullscreen ? '⋯' : '⛶'}
+        </button>
+      ) : null}
+      {needsGesture && !fullscreen ? (
+        <button
+          type="button"
+          className="pos-desktop-fs-gate"
+          onClick={() => void goFullscreen()}
+        >
+          <strong>Tap to enter full screen</strong>
+          <span>POS will fill your device screen and stay on top in Chrome</span>
+        </button>
+      ) : null}
+      {variant === 'card' && cardVisible ? (
         <div className="pos-desktop-prompt" role="dialog" aria-labelledby="pos-desktop-prompt-title">
           <div className="pos-desktop-prompt__card">
             <img src="/pwa-192x192.png" alt="" width={48} height={48} />
@@ -180,12 +238,12 @@ export function PosDesktopInstall({
               <strong id="pos-desktop-prompt-title">Install Bisync POS</strong>
               {iosHelp || !deferred ? (
                 <p>
-                  {isIos()
-                    ? 'Tap Share, then Add to Home Screen for a full-screen POS icon.'
-                    : 'Install the app, or download the desktop launcher for Windows / Mac / Linux fullscreen POS.'}
+                  {ios
+                    ? 'Tap Share, then Add to Home Screen for a full-screen POS icon that matches your iPhone/iPad display.'
+                    : 'Install the Chrome app, or download the desktop launcher for Windows fullscreen POS on top of other windows.'}
                 </p>
               ) : (
-                <p>Add Bisync POS to your desktop for one-tap full-screen use.</p>
+                <p>Add Bisync POS to your desktop for one-tap full-screen use that matches your screen size.</p>
               )}
             </div>
             <div className="pos-desktop-prompt__actions">
