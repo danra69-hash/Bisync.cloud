@@ -26,6 +26,16 @@ export class PosEmbedErrorBoundary extends Component<Props, State> {
     this.setState({ error: null })
   }
 
+  private hardReload = () => {
+    try {
+      // Drop stale register session that may reference removed demo table ids.
+      localStorage.removeItem('bisync-pos-active-register-session')
+    } catch {
+      /* ignore */
+    }
+    window.location.reload()
+  }
+
   render() {
     if (!this.state.error) return this.props.children
     const title = this.props.title || 'POS failed to load'
@@ -48,20 +58,37 @@ export class PosEmbedErrorBoundary extends Component<Props, State> {
             {this.state.error.message || 'Unexpected error in POS.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={this.retry}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 8,
-            border: '1px solid #d0d5dd',
-            background: '#fff',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Retry POS
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={this.retry}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: '1px solid #d0d5dd',
+              background: '#fff',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Retry POS
+          </button>
+          <button
+            type="button"
+            onClick={this.hardReload}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: '1px solid #0ea5e9',
+              background: '#0ea5e9',
+              color: '#04111d',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Reload POS
+          </button>
+        </div>
       </div>
     )
   }

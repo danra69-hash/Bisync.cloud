@@ -1,0 +1,92 @@
+.pos-desktop-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.65rem;
+  background: #0f172a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pos-desktop-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.4rem;
+  text-decoration: none;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.pos-desktop-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.pos-desktop-btn--primary {
+  background: #0ea5e9;
+  border-color: #0284c7;
+  color: #04111d;
+}
+
+.pos-desktop-btn--primary:hover {
+  background: #38bdf8;
+}
+
+.pos-desktop-btn--ghost {
+  opacity: 0.85;
+}
+
+.pos-desktop-note {
+  color: #94a3b8;
+  font-size: 0.72rem;
+}
+
+.pos-desktop-prompt {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  max-width: min(24rem, calc(100vw - 2rem));
+}
+
+.pos-desktop-prompt__card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem 0.75rem;
+  align-items: start;
+  padding: 0.85rem;
+  border-radius: 0.75rem;
+  background: #0f172a;
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 36px rgba(2, 6, 23, 0.45);
+}
+
+.pos-desktop-prompt__card img {
+  grid-row: span 2;
+  border-radius: 0.55rem;
+}
+
+.pos-desktop-prompt__copy strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.pos-desktop-prompt__copy p {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  line-height: 1.35;
+}
+
+.pos-desktop-prompt__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}

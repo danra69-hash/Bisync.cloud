@@ -27,7 +27,7 @@ import {
   releaseFloorTable,
   type ActiveRegisterSession,
 } from '../../order/domain/tables'
-import { persistFloorTablePatch } from '../../order/domain/floorPlanSync'
+import { loadFloorPlanLocal, persistFloorTablePatch } from '../../order/domain/floorPlanSync'
 import { fireCartToStations, notifyStationsLineRemoved } from '../../boh/domain/kitchenTickets'
 import {
   clearCustomerDisplaySnapshot,
@@ -128,7 +128,7 @@ export function RegisterPage() {
   const [activeTableSession, setActiveTableSession] = useState<ActiveRegisterSession | null>(
     () => loadActiveRegisterSession(),
   )
-  const [table, setTable] = useState(() => loadActiveRegisterSession()?.tableId ?? 't5')
+  const [table, setTable] = useState(() => loadActiveRegisterSession()?.tableId ?? '')
   const [takeawayPickup, setTakeawayPickup] = useState<TakeawayPickup | null>(null)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [comboProduct, setComboProduct] = useState<Product | null>(null)
@@ -297,6 +297,13 @@ export function RegisterPage() {
   const onDuty = !orderingLocked
 
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
+  const tableOptions = useMemo(() => {
+    const plan =
+      session?.companyId && session.locationId
+        ? loadFloorPlanLocal(session.companyId, session.locationId)
+        : loadFloorPlan()
+    return plan.tables.map(t => ({ id: t.id, label: t.label }))
+  }, [session?.companyId, session?.locationId])
 
   // Keep CDS in sync with the open register check (pre-payment only).
   useEffect(() => {
@@ -595,7 +602,11 @@ export function RegisterPage() {
     const target = prepaidCustomerTarget
     setPrepaidCustomerTarget(null)
     if (!target) return
-    const packageRpp = Number(target.promotion.packageRpp ?? target.promotion.products[0]?.rpp ?? 0)
+    const packageRpp = Number(
+      target.promotion.packageRpp
+      ?? target.promotion.products?.[0]?.rpp
+      ?? 0,
+    )
     const priceCents = Math.max(0, Math.round(packageRpp * 100))
     const note = encodePrepaidNote(
       target.promotion.id,
@@ -1381,6 +1392,7 @@ export function RegisterPage() {
         activeTableLabel={activeTableSession?.tableLabel ?? null}
         paymentBusy={charging}
         prepaidAvailable={prepaidPromotions.length > 0}
+        tableOptions={tableOptions}
         onAction={action => {
           if (!requireDuty()) return
           if (action === 'cancel') {

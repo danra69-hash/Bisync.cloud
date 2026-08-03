@@ -3,6 +3,7 @@ import { api, type Company, type LocationConfig } from '../api';
 import { parseCompanyModules } from '../data/companyModules';
 import { configLocationToDropdown } from '../utils/orgFilters';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
+import { PosDesktopInstall } from '../components/shared/PosDesktopInstall';
 import { PosEmbedErrorBoundary } from '../components/shared/PosEmbedErrorBoundary';
 import './PosAppPage.css';
 
@@ -221,6 +222,13 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
 
   return (
     <div className="pos-standalone">
+      {entry === 'pos' ? (
+        <PosDesktopInstall
+          variant="card"
+          companyId={companyId}
+          locationId={locationId}
+        />
+      ) : null}
       {companies.length > 1 || locationOptions.length > 1 ? (
         <div className="pos-standalone-chrome">
           {companies.length > 1 ? (
