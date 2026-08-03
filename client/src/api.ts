@@ -2586,6 +2586,8 @@ export interface Product {
   parStockUom: string;
   posEnabled: boolean;
   posDeliveryUnitsJson?: string;
+  /** POS Menu sales unit (company UOM / product unit label). */
+  posSalesUom?: string;
   active: boolean;
   companyId?: number | null;
   locationExternalIds?: string[];
@@ -2642,6 +2644,7 @@ export interface UpsertProductPayload {
 export interface PatchProductPayload {
   posEnabled?: boolean;
   posDeliveryUnits?: PosDeliveryUnitSelection[];
+  posSalesUom?: string;
   active?: boolean;
   rrp?: number;
   parStock?: number;

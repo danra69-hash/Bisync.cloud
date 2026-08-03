@@ -461,6 +461,8 @@ public class ProductsController(
                     .DistinctBy(unit => unit.unitKey),
                 JsonOptions);
         }
+        if (request.PosSalesUom is not null)
+            product.PosSalesUom = request.PosSalesUom.Trim();
         if (request.Active.HasValue && product.Active && !request.Active.Value)
         {
             var deactivateError = await DeactivationGuardService.ValidateB2bProductDeactivationAsync(db, product);
@@ -822,6 +824,7 @@ public class ProductsController(
         parStockUom = product.ParStockUom,
         posEnabled = product.PosEnabled,
         posDeliveryUnitsJson = product.PosDeliveryUnitsJson,
+        posSalesUom = product.PosSalesUom,
         active = product.Active,
         companyId = product.CompanyId,
         locationExternalIds = PurchaseOrderWorkflow.DeserializeLocationIds(product.LocationIdsJson),

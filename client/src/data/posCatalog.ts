@@ -107,6 +107,49 @@ export function resolvePosMenuRrp(
   return Number(product.rrp ?? 0);
 }
 
+/** POS Menu Sales Unit label — saved value, else primary POS unit / yield / package unit. */
+export function resolvePosSalesUom(
+  product: Product,
+  catalogProducts: Product[] = [],
+): string {
+  const saved = (product.posSalesUom ?? '').trim();
+  if (saved) return saved;
+  const units = listSelectedPosMenuUnits(product, catalogProducts);
+  if (units[0]?.unitTitle?.trim()) return units[0].unitTitle.trim();
+  const yieldUom = (product.yieldUom ?? '').trim();
+  if (yieldUom) return yieldUom;
+  const packageUnit = (product.b2bPackageUnit ?? '').trim();
+  if (packageUnit) return packageUnit;
+  return '';
+}
+
+/** UOM choices for the POS Menu Sales Unit dropdown (product units + catalog UOMs). */
+export function listPosSalesUomOptions(
+  product: Product,
+  catalogProducts: Product[] = [],
+  systemUoms: string[] = [],
+): string[] {
+  const fromProduct = [
+    ...listSelectedPosMenuUnits(product, catalogProducts).map(u => u.unitTitle),
+    ...collectProductPosUnitRows(product, catalogProducts).map(u => u.unitTitle),
+    product.yieldUom,
+    product.b2bPackageUnit,
+    product.parStockUom,
+    product.posSalesUom,
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...fromProduct, ...systemUoms]) {
+    const value = (raw || '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
 /**
  * POS sell price: in-effect promotion RPP when present, otherwise menu RRP.
  * `promoRppByProductId` comes from `/api/pos-promotions/active-prices`.
