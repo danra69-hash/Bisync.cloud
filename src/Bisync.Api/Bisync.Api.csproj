@@ -27,6 +27,10 @@
     <None Update="Data\Seeds\instant-sales-update.xlsx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\..\data\floor-plans\weissbrau-pavilion-kuala-lumpur.json" Link="data\floor-plans\weissbrau-pavilion-kuala-lumpur.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

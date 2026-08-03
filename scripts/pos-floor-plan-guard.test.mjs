@@ -58,3 +58,10 @@ test('Weissbrau restore layout is not the stock demo', () => {
 test('stock demo still detects as stock', () => {
   assert.equal(isStock(STOCK), true)
 })
+
+test('canonical seed file still present and custom', () => {
+  const planPath = resolve(root, 'data/floor-plans/weissbrau-pavilion-kuala-lumpur.json')
+  const plan = JSON.parse(readFileSync(planPath, 'utf8'))
+  assert.equal(isStock(plan), false)
+  assert.ok(plan.tables.length >= 20)
+})

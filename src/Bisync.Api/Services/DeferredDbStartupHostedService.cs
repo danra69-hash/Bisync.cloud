@@ -40,6 +40,14 @@ public sealed class DeferredDbStartupHostedService(
             await SchemaPatcher.EnsurePosWaitlistEntriesTableAsync(mergeDb);
             await SchemaPatcher.EnsurePosQrOrdersTableAsync(mergeDb);
             await PlatformOwnerIdentityMigrator.ApplyAsync(mergeDb, logger);
+            try
+            {
+                await PosFloorPlanCanonicalSeeder.EnsureCanonicalAsync(mergeDb, logger);
+            }
+            catch (Exception floorEx)
+            {
+                logger.LogError(floorEx, "Canonical floor plan seed failed; continuing startup");
+            }
         }
         catch (Exception mergeEx)
         {

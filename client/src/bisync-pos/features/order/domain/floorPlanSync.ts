@@ -334,6 +334,10 @@ export async function persistFloorPlanRemote(
   companyId: number,
   locationExternalId: string,
 ): Promise<boolean> {
+  // Never write the stock T1–T8 demo to the server — that clobbered custom venues.
+  if (isStockDefaultFloorPlan(plan) || plan.tables.length === 0) {
+    return false
+  }
   const stamp = new Date().toISOString()
   saveFloorPlanLocal(plan, companyId, locationExternalId, stamp)
   try {
