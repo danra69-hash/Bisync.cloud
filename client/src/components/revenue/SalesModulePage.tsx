@@ -81,8 +81,35 @@ function overviewDetailSortMs(row: Pick<SalesModuleClientUpdate, 'lastContactDat
   return Number.isNaN(ms) ? 0 : ms;
 }
 
+function overviewClientKey(row: SalesModuleClientUpdate): string | null {
+  const company = row.company?.trim().toLowerCase();
+  if (company) return company;
+  const brand = row.brand?.trim().toLowerCase();
+  return brand || null;
+}
+
+/** Full Overview client list: one row per client, most recent interaction first. */
 function sortOverviewClientDetails(rows: SalesModuleClientUpdate[]): SalesModuleClientUpdate[] {
-  return [...rows].sort((a, b) => overviewDetailSortMs(b) - overviewDetailSortMs(a));
+  const best = new Map<string, SalesModuleClientUpdate>();
+  const orphans: SalesModuleClientUpdate[] = [];
+  for (const row of rows) {
+    const key = overviewClientKey(row);
+    if (!key) {
+      orphans.push(row);
+      continue;
+    }
+    const prev = best.get(key);
+    if (
+      !prev
+      || overviewDetailSortMs(row) > overviewDetailSortMs(prev)
+      || (overviewDetailSortMs(row) === overviewDetailSortMs(prev) && row.id > prev.id)
+    ) {
+      best.set(key, row);
+    }
+  }
+  return [...best.values(), ...orphans].sort(
+    (a, b) => overviewDetailSortMs(b) - overviewDetailSortMs(a) || b.id - a.id,
+  );
 }
 
 type OverviewHunterDetail = {
@@ -409,19 +436,14 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     setOverviewDetailLoading(true);
     setError(null);
     try {
-      const periodOpts =
-        overviewView === 'week'
-          ? { view: 'week' as const, weekStart: overviewWeekStart }
-          : (() => {
-              const month = overviewPeriods?.months.find(m => m.value === overviewMonthValue);
-              return month
-                ? { view: 'month' as const, year: month.year, month: month.month }
-                : {};
-            })();
-      const rows = await api.salesModuleClientUpdates({
-        ...(memberId ? { salesTeamMemberId: memberId } : { hunter: row.hunter }),
-        ...periodOpts,
-      });
+      // Full attached client book for this hunter (not week/month period filter).
+      await api.rematchSalesModuleClientUpdateHunters().catch(() => undefined);
+      if (memberId) {
+        await api.salesModuleCompanies({ salesTeamMemberId: memberId }).catch(() => undefined);
+      }
+      const rows = await api.salesModuleClientUpdates(
+        memberId ? { salesTeamMemberId: memberId } : { hunter: row.hunter },
+      );
       const companyName = overview?.companyName?.trim().toLowerCase() ?? '';
       const scoped = companyName
         ? rows.filter(r =>
@@ -435,14 +457,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
     } finally {
       setOverviewDetailLoading(false);
     }
-  }, [
-    activeHunters,
-    overviewView,
-    overviewWeekStart,
-    overviewMonthValue,
-    overviewPeriods,
-    overview?.companyName,
-  ]);
+  }, [activeHunters, overview?.companyName]);
 
   const loadAppointments = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -1279,10 +1294,13 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                 <div>
                   <p className="text-sm font-semibold">{overviewDetailHunter.hunter}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    Client activity
-                    {overview?.periodLabel ? ` · ${overview.periodLabel}` : ''}
+                    Full client list
                     {overview?.companyName ? ` · ${overview.companyName}` : ''}
-                    {' · '}latest interaction first
+                    {' · '}
+                    {overviewDetailLoading
+                      ? '…'
+                      : `${overviewDetailRows.length} client${overviewDetailRows.length === 1 ? '' : 's'}`}
+                    {' · '}most recent interaction first
                   </p>
                 </div>
                 <button
@@ -1318,7 +1336,7 @@ export function SalesModulePage({ sessionEmail = '' }: Props) {
                     ) : overviewDetailRows.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">
-                          No client activity for this hunter in the selected period.
+                          No clients attached to this hunter yet. Import Excel on Client Update or add a company.
                         </td>
                       </tr>
                     ) : (
