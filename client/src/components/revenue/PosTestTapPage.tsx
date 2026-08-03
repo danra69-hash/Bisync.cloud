@@ -9,7 +9,6 @@ import {
 } from '../../data/posStationLinks'
 import { configLocationToDropdown } from '../../utils/orgFilters'
 import { MillstoneLoader } from '../shared/MillstoneLoader'
-import { PosDesktopInstall } from '../shared/PosDesktopInstall'
 import { PosEmbedErrorBoundary } from '../shared/PosEmbedErrorBoundary'
 import './PosTestTapPage.css'
 
@@ -163,19 +162,12 @@ export function PosTestTapPage({ selectedCompanyId, selectedLocationIds }: Props
         </nav>
       </div>
 
-      <PosDesktopInstall
-        variant="toolbar"
-        companyId={selectedCompanyId}
-        locationId={activeLocationId}
-      />
-
       {devicePanel ? (
         <div className="pos-test-tap__device-panel" aria-label="Open POS on external devices">
           <div className="pos-test-tap__device-copy">
             <p className="pos-test-tap__device-title">Test on phone / tablet / station</p>
             <p className="pos-test-tap__device-hint">
               Open a link on the other device, or scan the QR. No platform login — company and location are in the URL.
-              Use <strong>Download desktop</strong> for a Windows / Mac / Linux fullscreen launcher.
             </p>
             <ul className="pos-test-tap__device-list">
               {stationLinks.map(link => (
