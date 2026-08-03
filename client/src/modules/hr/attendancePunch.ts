@@ -1,5 +1,6 @@
 import { hrApi } from './api';
 import type { AttendanceRecord, ShiftSchedule } from './types';
+import { resolveOfficeHoursForDate } from '../../data/companyBusinessHours';
 
 function timeOnly(hhmm: string): string {
   return hhmm.length === 5 ? `${hhmm}:00` : hhmm;
@@ -25,18 +26,42 @@ export type AttendancePunchResult = {
  * - While in → check-out (sets / updates actualOut)
  * - After a completed out → check-in again (clears actualOut; original actualIn kept)
  * - Later outs update actualOut to the latest departure (first-in / last-out for the day)
+ *
+ * Expected times:
+ * - Shift staff → Work row on ShiftSchedule
+ * - Admin / non-shift staff → company Business Hours (office)
  */
 export async function punchHrAttendance(opts: {
   employeeId: number;
   date: string;
   timeHhMm: string;
   shiftSchedules?: ShiftSchedule[];
+  /** When false/undefined and no shift Work row, use company office hours. */
+  isShiftEmployee?: boolean;
+  /** Company BusinessHoursJson for admin staff late/expected times. */
+  businessHoursJson?: string | null;
 }): Promise<AttendancePunchResult> {
-  const { employeeId, date, timeHhMm, shiftSchedules = [] } = opts;
+  const {
+    employeeId,
+    date,
+    timeHhMm,
+    shiftSchedules = [],
+    isShiftEmployee = false,
+    businessHoursJson = null,
+  } = opts;
   const stamp = timeOnly(timeHhMm.slice(0, 5));
   const sched = shiftSchedules.find(s => s.employeeId === employeeId && s.date === date && s.type === 'Work');
-  const scheduledIn = sched?.startTime ? timeOnly(sched.startTime.slice(0, 5)) : null;
-  const scheduledOut = sched?.endTime ? timeOnly(sched.endTime.slice(0, 5)) : null;
+
+  let scheduledIn: string | null = sched?.startTime ? timeOnly(sched.startTime.slice(0, 5)) : null;
+  let scheduledOut: string | null = sched?.endTime ? timeOnly(sched.endTime.slice(0, 5)) : null;
+
+  if (!sched && !isShiftEmployee) {
+    const office = resolveOfficeHoursForDate(businessHoursJson, date);
+    if (office && !office.closed) {
+      scheduledIn = office.openFrom ? timeOnly(office.openFrom) : null;
+      scheduledOut = office.openTo ? timeOnly(office.openTo) : null;
+    }
+  }
 
   const rows = await hrApi.attendance.list(date, date, employeeId);
   let record = rows[0] ?? null;

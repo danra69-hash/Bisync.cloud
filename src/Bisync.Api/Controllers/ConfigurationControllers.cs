@@ -102,6 +102,7 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
             c.BusinessTypesJson,
             c.VendorPolicyTagsJson,
             c.ModulesJson,
+            c.BusinessHoursJson,
             logoFileName = c.LogoFileName ?? string.Empty,
             logoContentType = c.LogoContentType ?? string.Empty,
             logoBase64 = hasLogo ? (c.LogoBase64 ?? string.Empty) : string.Empty,
@@ -196,6 +197,8 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.LogoFileName = logoFileName;
         company.LogoContentType = logoContentType;
         company.LogoBase64 = logoBase64;
+        if (string.IsNullOrWhiteSpace(company.BusinessHoursJson))
+            company.BusinessHoursJson = "{}";
 
         await CompanyCodeService.EnsureCodeAsync(db, company);
         db.Companies.Add(company);
@@ -231,6 +234,9 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
         company.BusinessTypesJson = updated.BusinessTypesJson;
         company.VendorPolicyTagsJson = updated.VendorPolicyTagsJson;
         company.ModulesJson = updated.ModulesJson;
+        company.BusinessHoursJson = string.IsNullOrWhiteSpace(updated.BusinessHoursJson)
+            ? "{}"
+            : updated.BusinessHoursJson;
         company.LogoFileName = logoFileName;
         company.LogoContentType = logoContentType;
         company.LogoBase64 = logoBase64;

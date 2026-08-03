@@ -7,7 +7,7 @@ import { SortableTableHead, ColGroup, tableColWidth } from '../../components/sha
 import { tableHeaderCls, tableHeaderCompactCls } from '../../components/shared/tableHeaderStyles';
 import { sortTableRows, compareSortValues } from '../../utils/tableSort';
 import { Users, Calendar, FileText, Check, X, Clock, LayoutDashboard, Wallet, Settings, UserCheck } from 'lucide-react';
-import { api as bisyncApi, type AppUser } from '../../api';
+import { api as bisyncApi, type AppUser, type Company } from '../../api';
 import { hrApi as api } from './api';
 import EmployeePortal from './EmployeePortal';
 import TeamPortal from './TeamPortal';
@@ -127,6 +127,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
   const [employeeLevels, setEmployeeLevels] = useState<EmployeeLevel[]>([]);
   const [orgTree, setOrgTree] = useState<DivisionTreeNode[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [companyBusinessHoursJson, setCompanyBusinessHoursJson] = useState<string | null>(null);
 
   const [attendanceView, setAttendanceView] = useState<'month' | 'week'>('week');
   const [attendanceAnchorDate, setAttendanceAnchorDate] = useState(() => iso(new Date()));
@@ -297,6 +298,26 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
       requestAnimationFrame(() => scrollAttendanceTablesRight());
     }
   }, [activeTab, attendanceView, attendanceDates.length, scrollAttendanceTablesRight]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCompanyHours() {
+      if (!selectedCompanyId) {
+        setCompanyBusinessHoursJson(null);
+        return;
+      }
+      try {
+        const companies = await bisyncApi.companies();
+        if (cancelled) return;
+        const company = companies.find((c: Company) => c.id === selectedCompanyId);
+        setCompanyBusinessHoursJson(company?.businessHoursJson ?? null);
+      } catch {
+        if (!cancelled) setCompanyBusinessHoursJson(null);
+      }
+    }
+    void loadCompanyHours();
+    return () => { cancelled = true; };
+  }, [selectedCompanyId]);
 
   const platformUserFor = useCallback(
     (employee: Employee) =>
@@ -867,7 +888,10 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
                           return (
                             <td key={date} className="px-0.5 py-2 text-center text-[11px] border-l border-gray-200">
                               {record?.status === 'Present' || record?.status === 'Late' ? (
-                                <span className={record.status === 'Late' ? 'text-orange-600' : 'text-green-600'} title={record.status}>
+                                <span
+                                  className={record.status === 'Late' ? 'text-orange-600' : 'text-green-600'}
+                                  title={`${record.status}${hm(record.scheduledIn) ? ` · due ${hm(record.scheduledIn)}` : ''}${hm(record.actualIn) ? ` · in ${hm(record.actualIn)}` : ''}${hm(record.actualOut) ? ` · out ${hm(record.actualOut)}` : ''}`}
+                                >
                                   {hm(record.actualIn) || (record.status === 'Late' ? 'L' : 'P')}
                                   {hm(record.actualOut) ? (
                                     <span className="block text-[10px] text-gray-500">{hm(record.actualOut)}</span>
@@ -1103,6 +1127,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
             leaveRequests={leaveRequests}
             shiftSchedules={shiftSchedules}
             publicHolidays={publicHolidays}
+            businessHoursJson={companyBusinessHoursJson}
             onSubmitLeave={handlePortalSubmitLeave}
           />
         )}
@@ -1114,6 +1139,7 @@ export default function HrModule({ embedded = false, selectedCompanyId = null }:
             leaveRequests={leaveRequests}
             shiftSchedules={shiftSchedules}
             publicHolidays={publicHolidays}
+            businessHoursJson={companyBusinessHoursJson}
             onSubmitLeave={handlePortalSubmitLeave}
           />
         )}

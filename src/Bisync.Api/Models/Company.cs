@@ -53,5 +53,10 @@ public class Company
     public string VendorPolicyTagsJson { get; set; } = "[]";
     /// <summary>JSON array of enabled platform modules: RMS, POS, HRM, Accounting.</summary>
     public string ModulesJson { get; set; } = "[]";
+    /// <summary>
+    /// HQ office / business hours for admin (non-shift) staff attendance.
+    /// Shape: { monday: { openFrom, openTo, closed }, … }. Separate from location OpeningHoursJson.
+    /// </summary>
+    public string BusinessHoursJson { get; set; } = "{}";
     public ICollection<Location> Locations { get; set; } = new List<Location>();
 }
