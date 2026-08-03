@@ -101,6 +101,137 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
         });
     }
 
+    public record LanCheckRequest(
+        int CompanyId,
+        string? LocationExternalId,
+        string[]? ClientLocalIps);
+
+    /// <summary>
+    /// Combine this station's reported LAN IPs, API host NICs, and registered devices
+    /// for Device Setup network check.
+    /// </summary>
+    [HttpPost("lan-check")]
+    public async Task<ActionResult<object>> LanCheck(
+        [FromBody] LanCheckRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.CompanyId <= 0)
+            return BadRequest(new { message = "companyId is required." });
+
+        var clientIps = (request.ClientLocalIps ?? [])
+            .Select(ip => (ip ?? string.Empty).Trim())
+            .Where(ip => ip.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(16)
+            .ToArray();
+
+        var locationId = (request.LocationExternalId ?? string.Empty).Trim();
+        var q = db.PosDevices.AsNoTracking().Where(d => d.CompanyId == request.CompanyId);
+        if (!string.IsNullOrWhiteSpace(locationId))
+            q = q.Where(d => d.LocationExternalId == locationId);
+
+        var devices = await q
+            .OrderByDescending(d => d.Active)
+            .ThenBy(d => d.Name)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        var hostHints = BuildHostInterfaceHints();
+        var visible = devices.Select(d =>
+        {
+            var sameSubnet = false;
+            if (!string.IsNullOrWhiteSpace(d.HostAddress) && clientIps.Length > 0)
+            {
+                foreach (var cip in clientIps)
+                {
+                    if (SameIpv4Subnet(cip, d.HostAddress, d.SubnetMask))
+                    {
+                        sameSubnet = true;
+                        break;
+                    }
+                }
+            }
+
+            return new
+            {
+                id = d.Id,
+                name = d.Name,
+                deviceType = d.DeviceType,
+                deviceTypeLabel = DeviceTypeLabel(d.DeviceType),
+                connectionType = d.ConnectionType,
+                hostAddress = d.HostAddress,
+                port = d.Port,
+                macAddress = d.MacAddress,
+                active = d.Active,
+                sameSubnetAsStation = sameSubnet,
+                isLocalPeripheral = string.Equals(d.ConnectionType, "usb", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(d.ConnectionType, "bluetooth", StringComparison.OrdinalIgnoreCase),
+            };
+        }).ToArray();
+
+        return Ok(new
+        {
+            checkedAt = DateTime.UtcNow,
+            clientLocalIps = clientIps,
+            serverInterfaces = hostHints,
+            registeredDevices = visible,
+            privateRanges = new[]
+            {
+                new { cidr = "192.168.0.0/16", example = "192.168.1.10", label = "Home / small office" },
+                new { cidr = "10.0.0.0/8", example = "10.0.0.50", label = "Corporate LAN" },
+                new { cidr = "172.16.0.0/12", example = "172.16.0.20", label = "Private class B" },
+            },
+            note = clientIps.Length > 0
+                ? "Station LAN addresses detected in the browser. Registered devices on the same subnet are highlighted. Cloud APIs cannot ARP-scan your venue — add devices by IP or USB below."
+                : "Could not detect this station’s private IP in the browser. Enter device IPs manually, or use USB/Bluetooth for local peripherals.",
+        });
+    }
+
+    [HttpGet("printer-sdks/{sdkCode}/package")]
+    public async Task<IActionResult> DownloadSdkPackage(string sdkCode, CancellationToken cancellationToken)
+    {
+        await PosPrinterSdkCatalog.EnsureSeededAsync(db, cancellationToken);
+        var code = (sdkCode ?? string.Empty).Trim();
+        var sdk = await db.PosPrinterSdks.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SdkCode == code && s.Active, cancellationToken);
+        if (sdk is null)
+            return NotFound(new { message = $"SDK '{code}' not found." });
+
+        var package = new
+        {
+            packageType = "bisync-pos-printer-sdk",
+            sdkCode = sdk.SdkCode,
+            brand = sdk.Brand,
+            displayName = sdk.DisplayName,
+            protocol = sdk.Protocol,
+            version = sdk.Version,
+            description = sdk.Description,
+            modelHints = sdk.ModelHints,
+            defaultPort = sdk.DefaultPort,
+            supportedPaperWidthsMm = ParseWidths(sdk.SupportedPaperWidthsJson),
+            install = new
+            {
+                steps = new[]
+                {
+                    "Save this package on the POS station.",
+                    "In Device set up, select the printer and choose this SDK, then click Install driver.",
+                    "Complete paper width and alignment in printer setup.",
+                },
+                deployEndpoint = $"/api/pos-devices/{{deviceId}}/deploy-sdk",
+            },
+            downloadedAt = DateTime.UtcNow,
+        };
+
+        var json = JsonSerializer.Serialize(package, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var fileName = $"bisync-{sdk.SdkCode}-driver.json";
+        return File(bytes, "application/json", fileName);
+    }
+
     [HttpPost("network-probe")]
     public async Task<ActionResult<object>> ProbeNetwork(
         [FromBody] PosDeviceNetworkProbeRequest request,
@@ -487,6 +618,40 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
             || (bytes[0] == 192 && bytes[1] == 168);
     }
 
+    static bool SameIpv4Subnet(string a, string b, string? subnetMask)
+    {
+        if (!IPAddress.TryParse(a.Trim(), out var ipA) || !IPAddress.TryParse(b.Trim(), out var ipB))
+            return false;
+        if (ipA.AddressFamily != AddressFamily.InterNetwork || ipB.AddressFamily != AddressFamily.InterNetwork)
+            return false;
+
+        var maskText = string.IsNullOrWhiteSpace(subnetMask) ? "255.255.255.0" : subnetMask.Trim();
+        if (!IPAddress.TryParse(maskText, out var mask))
+            mask = IPAddress.Parse("255.255.255.0");
+
+        var aBytes = ipA.GetAddressBytes();
+        var bBytes = ipB.GetAddressBytes();
+        var mBytes = mask.GetAddressBytes();
+        for (var i = 0; i < 4; i++)
+        {
+            if ((aBytes[i] & mBytes[i]) != (bBytes[i] & mBytes[i]))
+                return false;
+        }
+        return true;
+    }
+
+    static int[] ParseWidths(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<int[]>(json) ?? [58, 80];
+        }
+        catch
+        {
+            return [58, 80];
+        }
+    }
+
     static object MapDevice(PosDevice d) => new
     {
         id = d.Id,
@@ -533,15 +698,7 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
 
     static object MapSdk(PosPrinterSdk s)
     {
-        int[] widths;
-        try
-        {
-            widths = JsonSerializer.Deserialize<int[]>(s.SupportedPaperWidthsJson) ?? [58, 80];
-        }
-        catch
-        {
-            widths = [58, 80];
-        }
+        var widths = ParseWidths(s.SupportedPaperWidthsJson);
 
         return new
         {
@@ -556,6 +713,7 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
             defaultPort = s.DefaultPort,
             supportedPaperWidthsMm = widths,
             active = s.Active,
+            downloadPath = $"/api/pos-devices/printer-sdks/{s.SdkCode}/package",
         };
     }
 }

@@ -14,6 +14,7 @@ import { StationDisplayPage } from './StationDisplayPage'
 import { CustomerDisplayPage } from './CustomerDisplayPage'
 import { QrOrderPage } from './QrOrderPage'
 import { TaxServiceChargeModal } from './TaxServiceChargeModal'
+import { DeviceSetupModal } from './DeviceSetupModal'
 import './BohPages.css'
 
 /** Kitchen Display System — food dockets grouped by table. */
@@ -178,7 +179,9 @@ export function BohSettingsPage() {
   const { qrTableMode, setQrTableMode } = useConfig()
   const session = usePosSessionOptional()
   const companyId = session?.companyId ?? 0
+  const locationId = session?.locationId ?? ''
   const [taxServiceOpen, setTaxServiceOpen] = useState(false)
+  const [deviceSetupOpen, setDeviceSetupOpen] = useState(false)
 
   const productGroups = useMemo(() => {
     const set = new Set<string>()
@@ -195,7 +198,11 @@ export function BohSettingsPage() {
       copy: 'Define tax and service % lines, then attach them by sales type and product group.',
       onClick: () => setTaxServiceOpen(true),
     },
-    { label: 'Printers / KDS', copy: 'Configuration placeholder' },
+    {
+      label: 'Device set up',
+      copy: 'LAN check, add printers / KDS / POS, install drivers, and manage local peripherals.',
+      onClick: () => setDeviceSetupOpen(true),
+    },
     { label: 'Delivery apps', copy: 'Configuration placeholder' },
   ]
 
@@ -203,7 +210,7 @@ export function BohSettingsPage() {
     <FeaturePage
       crumb="POS Setup"
       title="POS Setup"
-      subtitle="Restaurant-wide settings for table QR, tax & service, printers, and integrations."
+      subtitle="Restaurant-wide settings for table QR, tax & service, devices, and integrations."
     >
       <section className="config-section panel-card">
         <h3>Table QR mode</h3>
@@ -269,6 +276,13 @@ export function BohSettingsPage() {
           companyId={companyId}
           productGroups={productGroups}
           onClose={() => setTaxServiceOpen(false)}
+        />
+      )}
+      {deviceSetupOpen && (
+        <DeviceSetupModal
+          companyId={companyId}
+          locationId={locationId}
+          onClose={() => setDeviceSetupOpen(false)}
         />
       )}
     </FeaturePage>
