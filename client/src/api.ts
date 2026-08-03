@@ -1410,6 +1410,7 @@ export interface PosPrinterSdk {
   defaultPort: number;
   supportedPaperWidthsMm: number[];
   active: boolean;
+  downloadPath?: string;
 }
 
 export interface PosNetworkSuggestions {
@@ -1420,6 +1421,29 @@ export interface PosNetworkSuggestions {
   commonPorts: { port: number; label: string }[];
   hostInterfaces: { name: string; address: string; subnet: string; isPrivate: boolean }[];
   connectionTips: string[];
+}
+
+export interface PosLanCheckDevice {
+  id: number;
+  name: string;
+  deviceType: string;
+  deviceTypeLabel?: string;
+  connectionType: string;
+  hostAddress: string;
+  port?: number | null;
+  macAddress?: string;
+  active: boolean;
+  sameSubnetAsStation: boolean;
+  isLocalPeripheral: boolean;
+}
+
+export interface PosLanCheckResult {
+  checkedAt: string;
+  clientLocalIps: string[];
+  serverInterfaces: { name: string; address: string; subnet: string; isPrivate: boolean }[];
+  registeredDevices: PosLanCheckDevice[];
+  privateRanges: { cidr: string; example: string; label: string }[];
+  note: string;
 }
 
 export interface PosNetworkProbeResult {
@@ -3763,12 +3787,30 @@ export const api = {
   savePosTaxServiceConfig: (data: UpsertPosTaxServiceConfigPayload) =>
     fetchJsonWithMethod<PosTaxServiceConfig>('/api/pos-tax-service-config', 'PUT', data),
   posPrinterSdks: () => fetchJson<PosPrinterSdk[]>('/api/pos-devices/printer-sdks'),
+  downloadPosPrinterSdkPackage: (sdkCode: string) => {
+    const path = `/api/pos-devices/printer-sdks/${encodeURIComponent(sdkCode)}/package`;
+    return fetch(path).then(async (res) => {
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition') || '';
+      const match = cd.match(/filename="?([^";]+)"?/i);
+      return { blob, fileName: match?.[1] || `bisync-${sdkCode}-driver.json` };
+    });
+  },
   posDeviceNetworkSuggestions: (deviceType?: string) => {
     const params = new URLSearchParams();
     if (deviceType) params.set('deviceType', deviceType);
     const q = params.toString();
     return fetchJson<PosNetworkSuggestions>(`/api/pos-devices/network-suggestions${q ? `?${q}` : ''}`);
   },
+  posDeviceLanCheck: (data: {
+    companyId: number;
+    locationExternalId?: string;
+    clientLocalIps?: string[];
+  }) => fetchJsonWithMethod<PosLanCheckResult>('/api/pos-devices/lan-check', 'POST', data),
   probePosDeviceNetwork: (data: { hostAddress: string; port?: number; deviceType?: string }) =>
     fetchJsonWithMethod<PosNetworkProbeResult>('/api/pos-devices/network-probe', 'POST', data),
   deployPosPrinterSdk: (id: number) =>
