@@ -1,7 +1,11 @@
 import { NavLink } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { MODE_NAV, NAV_ICONS, type NavIconKey } from '../core/modes/nav'
 import { usePosMode } from '../core/modes/ModeProvider'
 import { ModeSwitcher } from '../core/modes/ModeSwitcher'
+import { usePosSessionOptional } from '../core/session/PosSessionContext'
+import { flushPosOutbox, outboxPendingCount } from '../core/offline/posOutbox'
+import { isOnline } from '../core/offline/posCatalogStore'
 import './Sidebar.css'
 
 type Props = {
@@ -11,7 +15,46 @@ type Props = {
 
 export function Sidebar({ open, onClose }: Props) {
   const { mode } = usePosMode()
+  const session = usePosSessionOptional()
   const groups = MODE_NAV[mode]
+  const [reloadNote, setReloadNote] = useState<string | null>(null)
+  const [pendingOps, setPendingOps] = useState(0)
+
+  useEffect(() => {
+    if (!open) return
+    void outboxPendingCount().then(setPendingOps).catch(() => setPendingOps(0))
+  }, [open])
+
+  async function handleReload() {
+    if (!session) return
+    setReloadNote(null)
+    if (!isOnline()) {
+      setReloadNote('Reload needs internet. POS stays on the last downloaded package.')
+      return
+    }
+    try {
+      await session.reloadStationData()
+      const flush = await flushPosOutbox()
+      setPendingOps(flush.remaining)
+      setReloadNote(
+        flush.flushed > 0
+          ? `Catalog reloaded · lifted ${flush.flushed} transaction(s)`
+          : 'Catalog, modifiers, promotions, and floor plan reloaded',
+      )
+    } catch (err) {
+      setReloadNote(err instanceof Error ? err.message : 'Reload failed')
+    }
+  }
+
+  async function handleLiftNow() {
+    const flush = await flushPosOutbox()
+    setPendingOps(flush.remaining)
+    setReloadNote(
+      flush.flushed > 0
+        ? `Lifted ${flush.flushed} transaction(s) to server`
+        : flush.errors[0] || 'No pending transactions',
+    )
+  }
 
   return (
     <>
@@ -96,6 +139,31 @@ export function Sidebar({ open, onClose }: Props) {
             </span>
             <span>Config</span>
           </NavLink>
+          <button
+            type="button"
+            className="sidebar__logout"
+            disabled={!session || session.reloading}
+            onClick={() => void handleReload()}
+            title="Re-download products, modifiers, promotions, and floor plan from the server"
+          >
+            <IconReload />
+            {session?.reloading ? 'Reloading…' : 'Reload'}
+          </button>
+          <button
+            type="button"
+            className="sidebar__logout"
+            onClick={() => void handleLiftNow()}
+            title="Upload pending device transactions to the server now"
+          >
+            <IconLift />
+            {pendingOps > 0 ? `Lift now (${pendingOps})` : 'Lift now'}
+          </button>
+          {reloadNote ? <p className="sidebar__reload-note">{reloadNote}</p> : null}
+          {session?.catalogDownloadedAt ? (
+            <p className="sidebar__reload-note">
+              Package {new Date(session.catalogDownloadedAt).toLocaleString()}
+            </p>
+          ) : null}
           <button type="button" className="sidebar__logout">
             <IconLogout />
             Sign out
@@ -375,6 +443,24 @@ function IconLogout() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M10 7V5a2 2 0 012-2h7v18h-7a2 2 0 01-2-2v-2" />
       <path d="M15 12H3m0 0l3-3m-3 3l3 3" />
+    </svg>
+  )
+}
+
+function IconReload() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 12a8 8 0 0114.1-5.1M20 12a8 8 0 01-14.1 5.1" />
+      <path d="M18 4v5h-5M6 20v-5h5" />
+    </svg>
+  )
+}
+
+function IconLift() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M12 19V5M12 5l-4 4M12 5l4 4" />
+      <path d="M5 19h14" />
     </svg>
   )
 }

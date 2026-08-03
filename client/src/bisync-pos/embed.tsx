@@ -7,7 +7,7 @@ import {
 } from './core/session/PosSessionContext'
 import { usePosViewportScale } from './core/session/usePosViewportScale'
 import { mapApiProductsToPosCatalog } from './core/session/mapPosCatalog'
-import { api, type Product as ApiProduct } from '../api'
+import { api, type PosPromotion, type Product as ApiProduct } from '../api'
 import {
   productMatchesPosMenu,
   productMatchesPosOrgScope,
@@ -16,6 +16,12 @@ import {
   hasConfiguredVariableComponentSlots,
   parseVariableComponentOptionsJson,
 } from '../data/productVariableComponent'
+import {
+  downloadStationPackage,
+  isOnline,
+  loadCatalogSnapshot,
+  type PosModifierGroupSnapshot,
+} from './core/offline/posCatalogStore'
 
 function includeInPosEmbedCatalog(
   product: ApiProduct,
@@ -35,8 +41,6 @@ import './index.css'
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap'
 const FONT_LINK_ID = 'bisync-pos-fonts'
-/** Refresh in-effect promo RPPs so schedule windows apply without a full reload. */
-const PROMO_PRICE_POLL_MS = 60_000
 
 function ensurePosFonts() {
   if (document.getElementById(FONT_LINK_ID)) return
@@ -65,15 +69,18 @@ type Props = {
   onLocationChange?: (locationId: string) => void
   /** Open a specific POS screen for standalone links (/POS, /KDS, /BDS, /CDS). */
   initialEntry?: string
+  /** Prefer device IndexedDB snapshot; only hit network on Admin Reload. */
+  offlineFirst?: boolean
 }
 
-/** Mountable Bisync POS UI for POS Test — live company catalog + demo POS shell. */
+/** Mountable Bisync POS UI — offline-first when activated as a station. */
 export function BisyncPosEmbed({
   companyId,
   locationId,
   locations = [],
   onLocationChange,
   initialEntry = '/order/floor',
+  offlineFirst = false,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   usePosViewportScale(rootRef)
@@ -82,9 +89,13 @@ export function BisyncPosEmbed({
   const [promoRppByProductId, setPromoRppByProductId] = useState<Map<number, number>>(
     () => new Map(),
   )
+  const [modifierGroups, setModifierGroups] = useState<PosModifierGroupSnapshot[]>([])
+  const [promotions, setPromotions] = useState<PosPromotion[]>([])
+  const [catalogDownloadedAt, setCatalogDownloadedAt] = useState<string | null>(null)
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [reloading, setReloading] = useState(false)
 
   useEffect(() => {
     ensurePosFonts()
@@ -96,6 +107,29 @@ export function BisyncPosEmbed({
       setCatalogLoading(true)
       setCatalogError(null)
       try {
+        if (offlineFirst) {
+          const snap = await loadCatalogSnapshot(companyId, locationId)
+          if (snap && !cancelled) {
+            const menu = snap.products.filter(p => includeInPosEmbedCatalog(p, companyId, locationId))
+            setApiProducts(menu)
+            const promoMap = new Map<number, number>()
+            for (const [k, v] of Object.entries(snap.promoRppByProductId ?? {})) {
+              const id = Number(k)
+              if (id > 0 && Number.isFinite(v)) promoMap.set(id, v)
+            }
+            setPromoRppByProductId(promoMap)
+            setModifierGroups(snap.modifierGroups ?? [])
+            setPromotions(snap.promotions ?? [])
+            setCatalogDownloadedAt(snap.downloadedAt)
+            setCatalogLoading(false)
+            return
+          }
+          // No snapshot yet — try network once (activation should have written it).
+          if (!isOnline()) {
+            throw new Error('No offline catalog on this device. Connect and use Admin → Reload.')
+          }
+        }
+
         const rows = await api.products(companyId)
         if (cancelled) return
         const menu = rows.filter(p => includeInPosEmbedCatalog(p, companyId, locationId))
@@ -118,6 +152,21 @@ export function BisyncPosEmbed({
         } catch {
           if (!cancelled) setPromoRppByProductId(new Map())
         }
+
+        try {
+          const [groups, promos] = await Promise.all([
+            api.posModifierGroups(companyId, { includeInactive: false }),
+            api.posPromotions(companyId),
+          ])
+          if (cancelled) return
+          setModifierGroups(groups)
+          setPromotions(promos)
+        } catch {
+          if (!cancelled) {
+            setModifierGroups([])
+            setPromotions([])
+          }
+        }
       } catch (e) {
         if (!cancelled) {
           setApiProducts([])
@@ -132,40 +181,7 @@ export function BisyncPosEmbed({
     return () => {
       cancelled = true
     }
-  }, [companyId, locationId, refreshKey])
-
-  // Keep promo windows current while the POS stays open across hour/day boundaries.
-  useEffect(() => {
-    let cancelled = false
-    async function refreshPromoPrices() {
-      if (apiProducts.length === 0) {
-        if (!cancelled) setPromoRppByProductId(new Map())
-        return
-      }
-      try {
-        const active = await api.posPromotionActivePrices(companyId, {
-          locationExternalId: locationId,
-          productIds: apiProducts.map(p => p.id),
-        })
-        if (cancelled) return
-        const next = new Map<number, number>()
-        for (const row of active.prices ?? []) {
-          if (row.productId > 0 && Number.isFinite(row.rpp) && row.rpp >= 0) {
-            next.set(row.productId, row.rpp)
-          }
-        }
-        setPromoRppByProductId(next)
-      } catch {
-        /* keep last known promo map */
-      }
-    }
-
-    const id = window.setInterval(() => void refreshPromoPrices(), PROMO_PRICE_POLL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(id)
-    }
-  }, [apiProducts, companyId, locationId])
+  }, [companyId, locationId, refreshKey, offlineFirst])
 
   const catalog = useMemo(
     () => mapApiProductsToPosCatalog(apiProducts, apiProducts, promoRppByProductId),
@@ -176,12 +192,38 @@ export function BisyncPosEmbed({
     setRefreshKey(k => k + 1)
   }, [])
 
+  const reloadStationData = useCallback(async () => {
+    if (!isOnline()) {
+      throw new Error('Reload requires an internet connection.')
+    }
+    setReloading(true)
+    setCatalogError(null)
+    try {
+      const snap = await downloadStationPackage(companyId, locationId)
+      const menu = snap.products.filter(p => includeInPosEmbedCatalog(p, companyId, locationId))
+      setApiProducts(menu)
+      const promoMap = new Map<number, number>()
+      for (const [k, v] of Object.entries(snap.promoRppByProductId ?? {})) {
+        const id = Number(k)
+        if (id > 0 && Number.isFinite(v)) promoMap.set(id, v)
+      }
+      setPromoRppByProductId(promoMap)
+      setModifierGroups(snap.modifierGroups ?? [])
+      setPromotions(snap.promotions ?? [])
+      setCatalogDownloadedAt(snap.downloadedAt)
+    } finally {
+      setReloading(false)
+    }
+  }, [companyId, locationId])
+
   const setLocationId = useCallback(
     (next: string) => {
       if (!next || next === locationId) return
+      // Activated stations stay bound to the confirmed location unless Admin Reload changes package.
+      if (offlineFirst) return
       onLocationChange?.(next)
     },
-    [locationId, onLocationChange],
+    [locationId, onLocationChange, offlineFirst],
   )
 
   const session = useMemo<PosSessionValue>(
@@ -194,6 +236,12 @@ export function BisyncPosEmbed({
       catalogLoading,
       catalogError,
       refreshCatalog,
+      reloadStationData,
+      reloading,
+      offlineFirst,
+      catalogDownloadedAt,
+      modifierGroups,
+      promotions,
     }),
     [
       companyId,
@@ -204,11 +252,15 @@ export function BisyncPosEmbed({
       catalogLoading,
       catalogError,
       refreshCatalog,
+      reloadStationData,
+      reloading,
+      offlineFirst,
+      catalogDownloadedAt,
+      modifierGroups,
+      promotions,
     ],
   )
 
-  // Keep one POS app instance so MemoryRouter navigation (POS Setup, Home, etc.)
-  // is not reset when catalog/session props refresh.
   const posApp = useMemo(
     () => <BisyncPosApp initialEntry={initialEntry} />,
     [initialEntry],

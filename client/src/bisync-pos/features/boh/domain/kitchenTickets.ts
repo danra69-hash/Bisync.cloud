@@ -1,6 +1,7 @@
 import type { CartLine, Product, ProductDepartment } from '../../register/domain/types'
 import { formatPosCheckNumber } from '../../register/domain/checkNumber'
 import { summarizeSaleDetail } from '../../register/domain/saleDetail'
+import { publishStationLan } from '../../../core/lan/stationLanBus'
 
 export type KitchenStation = 'Bar' | 'Kitchen'
 
@@ -48,6 +49,11 @@ export function loadKitchenTickets(): KitchenTicket[] {
 function persist(tickets: KitchenTicket[]) {
   localStorage.setItem(KDS_TICKETS_KEY, JSON.stringify(tickets))
   window.dispatchEvent(new Event(KDS_TICKETS_EVENT))
+  try {
+    publishStationLan('kds-tickets', tickets)
+  } catch {
+    /* ignore */
+  }
 }
 
 export function bumpKitchenTicket(id: string): void {

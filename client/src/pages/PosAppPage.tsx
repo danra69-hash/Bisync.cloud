@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { api, type Company, type LocationConfig } from '../api';
-import { parseCompanyModules } from '../data/companyModules';
+import { setApiTenantCompanyId } from '../api';
 import {
   isDocumentFullscreen,
   isStandaloneDisplay,
@@ -8,18 +7,22 @@ import {
   subscribeFullscreenChange,
   wantsPosFullscreen,
 } from '../data/posKiosk';
-import { configLocationToDropdown } from '../utils/orgFilters';
 import { MillstoneLoader } from '../components/shared/MillstoneLoader';
 import { PosDesktopInstall } from '../components/shared/PosDesktopInstall';
 import { PosEmbedErrorBoundary } from '../components/shared/PosEmbedErrorBoundary';
+import {
+  loadStationActivation,
+  readActivationSync,
+  type StationActivation,
+} from '../bisync-pos/core/station/stationActivation';
+import { joinStationLan } from '../bisync-pos/core/lan/stationLanBus';
+import { startPosSyncWorker } from '../bisync-pos/core/offline/posSyncWorker';
+import { StationActivationPage } from '../bisync-pos/features/station/StationActivationPage';
 import './PosAppPage.css';
 
 const BisyncPosEmbed = lazy(() =>
   import('../bisync-pos/embed').then(m => ({ default: m.BisyncPosEmbed })),
 );
-
-const STORAGE_COMPANY = 'bisync-pos-standalone-company';
-const STORAGE_LOCATION = 'bisync-pos-standalone-location';
 
 export type PosStandaloneEntry = 'pos' | 'kds' | 'bds' | 'cds'
 
@@ -35,25 +38,6 @@ const ENTRY_LABEL: Record<PosStandaloneEntry, string> = {
   kds: 'KDS',
   bds: 'BDS',
   cds: 'CDS',
-}
-
-function readStoredInt(key: string): number | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  } catch {
-    return null;
-  }
-}
-
-function readStoredString(key: string): string {
-  try {
-    return localStorage.getItem(key)?.trim() || '';
-  } catch {
-    return '';
-  }
 }
 
 /** Deep-link query: /POS?c=12&l=location-external-id */
@@ -72,23 +56,16 @@ function readQueryBootstrap(): { companyId: number | null; locationId: string } 
   }
 }
 
-function companyHasPos(company: Company) {
-  return parseCompanyModules(company.modulesJson).includes('POS');
-}
-
 type PosAppPageProps = {
   /** Which standalone screen to open (/POS, /KDS, /BDS, /CDS). */
   entry?: PosStandaloneEntry
 }
 
-/** Standalone POS shell at /POS — full-screen for phone / tablet / station testing. */
+/** Standalone POS shell — activates once, then runs offline from device store. */
 export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [locations, setLocations] = useState<LocationConfig[]>([]);
-  const [companyId, setCompanyId] = useState<number | null>(null);
-  const [locationId, setLocationId] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useMemo(() => readQueryBootstrap(), []);
+  const [activation, setActivation] = useState<StationActivation | null>(() => readActivationSync());
+  const [bootstrapping, setBootstrapping] = useState(true);
   const [kioskActive, setKioskActive] = useState(
     () => wantsPosFullscreen() || isStandaloneDisplay() || isDocumentFullscreen(),
   );
@@ -116,139 +93,48 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     void (async () => {
-      try {
-        const query = readQueryBootstrap();
-        const [companyRows, locationRows] = await Promise.all([
-          api.companies(),
-          api.locationsConfig(),
-        ]);
-        if (cancelled) return;
-
-        const posCompanies = companyRows.filter(c => c.active !== false && companyHasPos(c));
-        const pool = posCompanies.length > 0 ? posCompanies : companyRows.filter(c => c.active !== false);
-        setCompanies(pool);
-        setLocations(locationRows);
-
-        const storedCompany = readStoredInt(STORAGE_COMPANY);
-        const preferredCompany =
-          (query.companyId != null ? pool.find(c => c.id === query.companyId) : null)
-          ?? pool.find(c => c.id === storedCompany)
-          ?? pool.find(c => /weissbrau/i.test(c.name))
-          ?? pool[0]
-          ?? null;
-
-        if (!preferredCompany) {
-          setError('No company with Point-of-Sales is available.');
-          return;
-        }
-
-        setCompanyId(preferredCompany.id);
-
-        const activeLocs = locationRows
-          .filter(l => l.companyId === preferredCompany.id && l.active !== false)
-          .map(configLocationToDropdown)
-          .sort((a, b) => a.name.localeCompare(b.name));
-
-        const storedLoc = readStoredString(STORAGE_LOCATION);
-        const preferredLoc =
-          (query.locationId
-            ? activeLocs.find(l => l.externalId === query.locationId)?.externalId
-            : null)
-          ?? activeLocs.find(l => l.externalId === storedLoc)?.externalId
-          ?? activeLocs[0]?.externalId
-          ?? '';
-
-        setLocationId(preferredLoc);
-        if (!preferredLoc) {
-          setError('No active location found for this company.');
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unable to load POS.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      const stored = await loadStationActivation();
+      if (cancelled) return;
+      if (stored) {
+        setActivation(stored);
+        setApiTenantCompanyId(stored.companyId);
+        joinStationLan(stored.lanRoomId);
+        startPosSyncWorker();
       }
+      setBootstrapping(false);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  useEffect(() => {
-    if (companyId == null) return;
-    try {
-      localStorage.setItem(STORAGE_COMPANY, String(companyId));
-    } catch {
-      /* ignore */
-    }
-  }, [companyId]);
+  const onActivated = useCallback((next: StationActivation) => {
+    setActivation(next);
+    setApiTenantCompanyId(next.companyId);
+    joinStationLan(next.lanRoomId);
+    startPosSyncWorker();
+  }, []);
 
-  useEffect(() => {
-    if (!locationId) return;
-    try {
-      localStorage.setItem(STORAGE_LOCATION, locationId);
-    } catch {
-      /* ignore */
-    }
-  }, [locationId]);
-
-  const locationOptions = useMemo(() => {
-    if (companyId == null) return [];
-    return locations
-      .filter(l => l.companyId === companyId && l.active !== false)
-      .map(configLocationToDropdown)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [locations, companyId]);
-
-  const onCompanyChange = (nextId: number) => {
-    setCompanyId(nextId);
-    const nextLocs = locations
-      .filter(l => l.companyId === nextId && l.active !== false)
-      .map(configLocationToDropdown)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    setLocationId(nextLocs[0]?.externalId ?? '');
-  };
-
-  if (loading) {
-    return <MillstoneLoader layout="screen" size="lg" label={`Loading ${entryLabel}…`} />;
+  if (bootstrapping) {
+    return <MillstoneLoader layout="screen" size="lg" label={`Starting ${entryLabel}…`} />;
   }
 
-  if (error || companyId == null || !locationId) {
+  if (!activation) {
     return (
-      <div className="pos-standalone pos-standalone-error">
-        <p>{error || `Select a company and location to open ${entryLabel}.`}</p>
-        {companies.length > 0 ? (
-          <label className="pos-standalone-field">
-            <span>Company</span>
-            <select
-              value={companyId ?? ''}
-              onChange={e => onCompanyChange(Number(e.target.value))}
-            >
-              {companies.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        {locationOptions.length > 0 ? (
-          <label className="pos-standalone-field">
-            <span>Location</span>
-            <select value={locationId} onChange={e => setLocationId(e.target.value)}>
-              {locationOptions.map(l => (
-                <option key={l.externalId} value={l.externalId}>{l.name}</option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <button type="button" onClick={() => window.location.reload()}>Retry</button>
-      </div>
+      <StationActivationPage
+        onActivated={onActivated}
+        preferredCompanyId={query.companyId}
+        preferredLocationId={query.locationId}
+      />
     );
   }
 
+  const companyId = activation.companyId;
+  const locationId = activation.locationExternalId;
+  const locationOptions = [
+    { externalId: activation.locationExternalId, name: activation.locationName },
+  ];
   const hideOrgChrome = kioskActive && (isDocumentFullscreen() || isStandaloneDisplay());
 
   return (
@@ -268,33 +154,6 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
           onKioskChange={onKioskChange}
         />
       ) : null}
-      {!hideOrgChrome && (companies.length > 1 || locationOptions.length > 1) ? (
-        <div className="pos-standalone-chrome">
-          {companies.length > 1 ? (
-            <label>
-              <span>Company</span>
-              <select
-                value={companyId}
-                onChange={e => onCompanyChange(Number(e.target.value))}
-              >
-                {companies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {locationOptions.length > 1 ? (
-            <label>
-              <span>Location</span>
-              <select value={locationId} onChange={e => setLocationId(e.target.value)}>
-                {locationOptions.map(l => (
-                  <option key={l.externalId} value={l.externalId}>{l.name}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
-      ) : null}
 
       <div className="pos-standalone-frame">
         <PosEmbedErrorBoundary title={`${entryLabel} crashed`}>
@@ -309,8 +168,8 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
               companyId={companyId}
               locationId={locationId}
               locations={locationOptions}
-              onLocationChange={setLocationId}
               initialEntry={initialEntry}
+              offlineFirst
             />
           </Suspense>
         </PosEmbedErrorBoundary>

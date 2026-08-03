@@ -43,6 +43,8 @@ import {
 } from '../../../core/session/posDiningBridge'
 import { api } from '../../../../api'
 import type { PosPrepaidPurchase, PosPromotion } from '../../../../api'
+import { enqueueOutbox } from '../../../core/offline/posOutbox'
+import { isOnline } from '../../../core/offline/posCatalogStore'
 import { ProductGrid } from './ProductGrid'
 import { OrderPanel } from './OrderPanel'
 import { HistoryModal } from './HistoryModal'
@@ -191,6 +193,10 @@ export function RegisterPage() {
       setModifierGroups([])
       return
     }
+    if (session.offlineFirst && session.modifierGroups.length > 0) {
+      setModifierGroups(session.modifierGroups)
+      return
+    }
     let cancelled = false
     api.posModifierGroups(session.companyId)
       .then(rows => {
@@ -202,11 +208,16 @@ export function RegisterPage() {
     return () => {
       cancelled = true
     }
-  }, [session?.companyId])
+  }, [session?.companyId, session?.offlineFirst, session?.modifierGroups])
 
   useEffect(() => {
     if (!session?.companyId) {
       setPrepaidPromotions([])
+      return
+    }
+    if (session.offlineFirst && session.promotions.length > 0) {
+      setPrepaidPromotions(session.promotions.filter(p =>
+        p.promotionKind === 'prepaid' && p.active && p.status !== 'Inactive'))
       return
     }
     let cancelled = false
@@ -222,7 +233,7 @@ export function RegisterPage() {
     return () => {
       cancelled = true
     }
-  }, [session?.companyId])
+  }, [session?.companyId, session?.offlineFirst, session?.promotions])
 
   useEffect(() => {
     function openTakeaway() {
@@ -844,17 +855,26 @@ export function RegisterPage() {
         authorizedBy = auth.employeeName
         if (session?.companyId && session.locationId) {
           const productIdNum = Number(line.productId)
+          const useOutbox = Boolean(session.offlineFirst) || !isOnline()
           if (Number.isFinite(productIdNum) && productIdNum > 0) {
-            await api.createPosWastage({
+            const wastagePayload = {
               companyId: session.companyId,
               locationExternalId: session.locationId,
               productId: productIdNum,
               quantity: qty,
               checkNo: String(checkNumber),
               reason: payload.reason || 'POS void',
-            })
+            }
+            if (useOutbox) await enqueueOutbox('createPosWastage', wastagePayload)
+            else {
+              try {
+                await api.createPosWastage(wastagePayload)
+              } catch {
+                await enqueueOutbox('createPosWastage', wastagePayload)
+              }
+            }
           }
-          await api.posRecordVoid({
+          const voidPayload = {
             companyId: session.companyId,
             locationExternalId: session.locationId,
             checkNumber,
@@ -862,10 +882,18 @@ export function RegisterPage() {
             amountCents,
             reason: payload.reason,
             authorizedBy,
-          })
+          }
+          if (useOutbox) await enqueueOutbox('posRecordVoid', voidPayload)
+          else {
+            try {
+              await api.posRecordVoid(voidPayload)
+            } catch {
+              await enqueueOutbox('posRecordVoid', voidPayload)
+            }
+          }
         }
       } else if (session?.companyId && session.locationId) {
-        await api.posRecordCancel({
+        const cancelPayload = {
           companyId: session.companyId,
           locationExternalId: session.locationId,
           checkNumber,
@@ -873,7 +901,14 @@ export function RegisterPage() {
           amountCents,
           reason: payload.reason || undefined,
           canceledBy: authorizedBy,
-        }).catch(() => { /* best-effort reference log */ })
+        }
+        if (session.offlineFirst || !isOnline()) {
+          await enqueueOutbox('posRecordCancel', cancelPayload)
+        } else {
+          await api.posRecordCancel(cancelPayload).catch(async () => {
+            await enqueueOutbox('posRecordCancel', cancelPayload)
+          })
+        }
       }
 
       notifyStationsLineRemoved({
@@ -1148,6 +1183,8 @@ export function RegisterPage() {
 
       let recordedSales = 0
       let prepaidPackageLines = 0
+      const useOutbox = Boolean(session.offlineFirst) || !isOnline()
+
       for (const line of lines) {
         // Prepaid package purchase is paid now; inventory depletes later on Pre-paid redeem.
         if (parsePrepaidNote(line.note)) {
@@ -1157,10 +1194,10 @@ export function RegisterPage() {
         const productId = Number(line.productId)
         if (!Number.isFinite(productId) || productId <= 0) continue
         const detail = line.saleDetail
-        await api.recordProductSale(productId, {
+        const saleBody = {
           locationExternalIds: [locationId],
           quantitySold: line.quantity,
-          salesChannel: 'pos',
+          salesChannel: 'pos' as const,
           variableDetail: detail
             ? {
                 variableMode: detail.variableMode,
@@ -1171,7 +1208,16 @@ export function RegisterPage() {
                 replacementSelections: detail.replacementSelections,
               }
             : undefined,
-        })
+        }
+        if (useOutbox) {
+          await enqueueOutbox('recordProductSale', { productId, body: saleBody })
+        } else {
+          try {
+            await api.recordProductSale(productId, saleBody)
+          } catch {
+            await enqueueOutbox('recordProductSale', { productId, body: saleBody })
+          }
+        }
         recordedSales += 1
       }
       if (recordedSales === 0 && prepaidPackageLines === 0) {
@@ -1179,41 +1225,52 @@ export function RegisterPage() {
       }
 
       const methodLabel = TENDER_LABEL[payload.tender] || payload.tender
-      try {
-        await api.posRecordClosedCheck({
-          companyId: session.companyId,
-          locationExternalId: locationId,
-          checkNumber,
-          checkLabel: activeTableSession?.tableLabel || 'POS Register',
-          covers: cover > 0 ? cover : 1,
-          discountCents: charges.discountCents,
-          taxCents: charges.taxRegularCents + charges.taxAlcoholCents,
-          grossCents,
-          paymentMethod: payload.tender,
-          paymentAmountCents: grandCents,
-          paymentPurpose: methodLabel,
-        })
-      } catch {
-        /* inventory sale already recorded; EOD row is best-effort */
+      const closedCheckPayload = {
+        companyId: session.companyId,
+        locationExternalId: locationId,
+        checkNumber,
+        checkLabel: activeTableSession?.tableLabel || 'POS Register',
+        covers: cover > 0 ? cover : 1,
+        discountCents: charges.discountCents,
+        taxCents: charges.taxRegularCents + charges.taxAlcoholCents,
+        grossCents,
+        paymentMethod: payload.tender,
+        paymentAmountCents: grandCents,
+        paymentPurpose: methodLabel,
+      }
+      if (useOutbox) {
+        await enqueueOutbox('posRecordClosedCheck', closedCheckPayload)
+      } else {
+        try {
+          await api.posRecordClosedCheck(closedCheckPayload)
+        } catch {
+          await enqueueOutbox('posRecordClosedCheck', closedCheckPayload)
+        }
       }
 
       // Activate prepaid package accounts for prepaid package lines.
       for (const line of lines) {
         const prepaidMeta = parsePrepaidNote(line.note)
         if (!prepaidMeta) continue
-        try {
-          await api.createPosPrepaidPurchase({
-            companyId: session.companyId,
-            locationExternalId: locationId,
-            promotionId: prepaidMeta.promotionId,
-            productId: Number(line.productId),
-            customerName: prepaidMeta.customerName,
-            customerMobile: prepaidMeta.customerMobile,
-            checkNumber,
-            createdBy: duty?.employeeName || 'POS Staff',
-          })
-        } catch (err) {
-          flash(err instanceof Error ? err.message : 'Prepaid package save failed.')
+        const prepaidPayload = {
+          companyId: session.companyId,
+          locationExternalId: locationId,
+          promotionId: prepaidMeta.promotionId,
+          productId: Number(line.productId),
+          customerName: prepaidMeta.customerName,
+          customerMobile: prepaidMeta.customerMobile,
+          checkNumber,
+          createdBy: duty?.employeeName || 'POS Staff',
+        }
+        if (useOutbox) {
+          await enqueueOutbox('createPosPrepaidPurchase', prepaidPayload)
+        } else {
+          try {
+            await api.createPosPrepaidPurchase(prepaidPayload)
+          } catch (err) {
+            await enqueueOutbox('createPosPrepaidPurchase', prepaidPayload)
+            flash(err instanceof Error ? err.message : 'Prepaid queued for upload.')
+          }
         }
       }
 
