@@ -754,6 +754,17 @@
       "notes": "POS Config lookup CRUD — payment, entertainment, and discount types per company"
     },
     {
+      "id": "dr.api.pos-tax-service-config",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/PosTaxServiceConfigController.cs",
+      "symbol": "PosTaxServiceConfigController",
+      "route": "api/pos-tax-service-config",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-03",
+      "notes": "POS Setup tax and service-charge lines plus per sales-type product-group rules"
+    },
+    {
       "id": "dr.api.pos-promotions",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/PosPromotionsController.cs",

@@ -49,6 +49,24 @@
   padding: var(--space-4);
 }
 
+.panel-card--action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.panel-card--action:hover {
+  border-color: var(--color-primary);
+}
+
+.panel-card--action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .panel-card h3 {
   margin: 0 0 var(--space-2);
   font-size: 0.95rem;

@@ -82,6 +82,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosModifierOption> PosModifierOptions => Set<PosModifierOption>();
     public DbSet<PosModifierAttachment> PosModifierAttachments => Set<PosModifierAttachment>();
     public DbSet<PosConfigType> PosConfigTypes => Set<PosConfigType>();
+    public DbSet<PosTaxServiceConfig> PosTaxServiceConfigs => Set<PosTaxServiceConfig>();
     public DbSet<PosFloorPlan> PosFloorPlans => Set<PosFloorPlan>();
     public DbSet<PosFloorPlanVersion> PosFloorPlanVersions => Set<PosFloorPlanVersion>();
     public DbSet<PosWaitlistEntry> PosWaitlistEntries => Set<PosWaitlistEntry>();
