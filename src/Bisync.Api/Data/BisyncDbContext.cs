@@ -83,6 +83,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<PosModifierAttachment> PosModifierAttachments => Set<PosModifierAttachment>();
     public DbSet<PosConfigType> PosConfigTypes => Set<PosConfigType>();
     public DbSet<PosFloorPlan> PosFloorPlans => Set<PosFloorPlan>();
+    public DbSet<PosFloorPlanVersion> PosFloorPlanVersions => Set<PosFloorPlanVersion>();
     public DbSet<PosWaitlistEntry> PosWaitlistEntries => Set<PosWaitlistEntry>();
     public DbSet<PosQrOrder> PosQrOrders => Set<PosQrOrder>();
     public DbSet<PosPrinterSdk> PosPrinterSdks => Set<PosPrinterSdk>();
@@ -257,6 +258,12 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
         {
             e.HasIndex(x => new { x.CompanyId, x.LocationExternalId }).IsUnique();
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
+        });
+        modelBuilder.Entity<PosFloorPlanVersion>(e =>
+        {
+            e.HasIndex(x => new { x.CompanyId, x.LocationExternalId, x.CapturedAt });
+            e.Property(x => x.LocationExternalId).HasMaxLength(64);
+            e.Property(x => x.Source).HasMaxLength(40);
         });
         modelBuilder.Entity<PosWaitlistEntry>(e =>
         {

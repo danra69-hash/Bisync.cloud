@@ -4112,6 +4112,7 @@ export const api = {
     companyId: number;
     locationExternalId: string;
     layoutJson: string;
+    force?: boolean;
   }) =>
     fetchJsonWithMethod<{
       companyId: number;

@@ -1,0 +1,41 @@
+{
+  "tables": [
+    { "id": "p01", "label": "P1", "seats": 2, "status": "open", "section": "Patio", "shape": "round", "x": 38, "y": 8, "w": 9, "h": 10 },
+    { "id": "p02", "label": "P2", "seats": 2, "status": "open", "section": "Patio", "shape": "round", "x": 49, "y": 8, "w": 9, "h": 10 },
+    { "id": "p03", "label": "P3", "seats": 2, "status": "open", "section": "Patio", "shape": "round", "x": 60, "y": 8, "w": 9, "h": 10 },
+    { "id": "p04", "label": "P4", "seats": 2, "status": "open", "section": "Patio", "shape": "round", "x": 71, "y": 8, "w": 9, "h": 10 },
+    { "id": "p05", "label": "P5", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 38, "y": 22, "w": 10, "h": 12 },
+    { "id": "p06", "label": "P6", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 50, "y": 22, "w": 10, "h": 12 },
+    { "id": "p07", "label": "P7", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 62, "y": 22, "w": 10, "h": 12 },
+    { "id": "p08", "label": "P8", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 74, "y": 22, "w": 10, "h": 12 },
+    { "id": "p09", "label": "P9", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 38, "y": 38, "w": 10, "h": 12 },
+    { "id": "p10", "label": "P10", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 50, "y": 38, "w": 10, "h": 12 },
+    { "id": "p11", "label": "P11", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 62, "y": 38, "w": 10, "h": 12 },
+    { "id": "p12", "label": "P12", "seats": 4, "status": "open", "section": "Patio", "shape": "square", "x": 74, "y": 38, "w": 10, "h": 12 },
+    { "id": "p13", "label": "P13", "seats": 6, "status": "open", "section": "Patio", "shape": "rect", "x": 38, "y": 54, "w": 14, "h": 14 },
+    { "id": "p14", "label": "P14", "seats": 6, "status": "open", "section": "Patio", "shape": "rect", "x": 54, "y": 54, "w": 14, "h": 14 },
+    { "id": "p15", "label": "P15", "seats": 6, "status": "open", "section": "Patio", "shape": "rect", "x": 70, "y": 54, "w": 14, "h": 14 },
+    { "id": "p16", "label": "P16", "seats": 6, "status": "open", "section": "Patio", "shape": "rect", "x": 38, "y": 72, "w": 14, "h": 14 },
+    { "id": "p17", "label": "P17", "seats": 8, "status": "open", "section": "Patio", "shape": "rect", "x": 55, "y": 72, "w": 18, "h": 16 },
+    { "id": "p18", "label": "P18", "seats": 8, "status": "open", "section": "Patio", "shape": "rect", "x": 76, "y": 72, "w": 18, "h": 16 },
+
+    { "id": "i01", "label": "I1", "seats": 4, "status": "open", "section": "Indoor", "shape": "rect", "x": 4, "y": 18, "w": 13, "h": 14 },
+    { "id": "i02", "label": "I2", "seats": 4, "status": "open", "section": "Indoor", "shape": "rect", "x": 19, "y": 18, "w": 13, "h": 14 },
+    { "id": "i03", "label": "I3", "seats": 4, "status": "open", "section": "Indoor", "shape": "square", "x": 4, "y": 36, "w": 12, "h": 13 },
+    { "id": "i04", "label": "I4", "seats": 4, "status": "open", "section": "Indoor", "shape": "square", "x": 18, "y": 36, "w": 12, "h": 13 },
+    { "id": "i05", "label": "I5", "seats": 4, "status": "open", "section": "Indoor", "shape": "square", "x": 4, "y": 53, "w": 12, "h": 13 },
+    { "id": "i06", "label": "I6", "seats": 2, "status": "open", "section": "Indoor", "shape": "round", "x": 19, "y": 54, "w": 10, "h": 11 },
+    { "id": "i07", "label": "I7", "seats": 2, "status": "open", "section": "Indoor", "shape": "round", "x": 4, "y": 70, "w": 10, "h": 11 },
+
+    { "id": "b01", "label": "B1", "seats": 2, "status": "open", "section": "Bar", "shape": "oval", "x": 4, "y": 4, "w": 7, "h": 10 },
+    { "id": "b02", "label": "B2", "seats": 2, "status": "open", "section": "Bar", "shape": "oval", "x": 12, "y": 4, "w": 7, "h": 10 },
+    { "id": "b03", "label": "B3", "seats": 2, "status": "open", "section": "Bar", "shape": "oval", "x": 20, "y": 4, "w": 7, "h": 10 },
+    { "id": "b04", "label": "B4", "seats": 2, "status": "open", "section": "Bar", "shape": "oval", "x": 28, "y": 4, "w": 7, "h": 10 }
+  ],
+  "zones": [
+    { "id": "zone-bar", "kind": "bar", "label": "Bar", "x": 2, "y": 2, "w": 34, "h": 14 },
+    { "id": "zone-indoor", "kind": "custom", "label": "Indoor Dining", "x": 2, "y": 16, "w": 32, "h": 68 },
+    { "id": "zone-patio", "kind": "custom", "label": "Patio Alfresco", "x": 36, "y": 4, "w": 60, "h": 88 },
+    { "id": "zone-kitchen", "kind": "kitchen", "label": "Kitchen", "x": 86, "y": 2, "w": 12, "h": 18 }
+  ]
+}
