@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Restore the Weissbrau Pavilion POS floor plan to the live API.
+ * Restore the Weissbrau Pavilion POS floor plan to the live API and
+ * purge prior version history so older layouts cannot be restored.
  *
  * Usage:
  *   node scripts/restore-weissbrau-floor-plan.mjs
@@ -23,6 +24,8 @@ const layout = JSON.parse(
   readFileSync(resolve(root, 'data/floor-plans/weissbrau-pavilion-kuala-lumpur.json'), 'utf8'),
 )
 const seats = layout.tables.reduce((n, t) => n + (Number(t.seats) || 0), 0)
+const expectedTableCount = layout.tables.length
+const expectedLabels = new Set(layout.tables.map((t) => String(t.label || '')))
 
 console.log(`Restoring Weissbrau floor plan → ${base}`)
 console.log(`  tables=${layout.tables.length} zones=${layout.zones.length} seats≈${seats}`)
@@ -51,6 +54,22 @@ for (const locationExternalId of locations) {
 
 if (process.exitCode) process.exit(process.exitCode)
 
+// Purge prior version history so old Pavilion layouts cannot be restored.
+for (const locationExternalId of locations) {
+  const res = await fetch(
+    `${base}/api/pos/floor-plan/versions?companyId=${companyId}&locationExternalId=${encodeURIComponent(locationExternalId)}`,
+    { method: 'DELETE' },
+  )
+  const text = await res.text()
+  if (!res.ok) {
+    // Older revisions may not have the purge endpoint yet — warn but continue verify.
+    console.warn(`WARN clear versions ${locationExternalId}: ${res.status} ${text}`)
+    continue
+  }
+  const body = JSON.parse(text)
+  console.log(`Cleared versions ${locationExternalId}: removed=${body.removed ?? 0}`)
+}
+
 // Verify nested layoutJson (do not grep the outer API envelope).
 const primary = locations[0]
 const check = await fetch(
@@ -63,12 +82,20 @@ if (!check.ok) {
 const checked = await check.json()
 const verified = JSON.parse(checked.layoutJson || '{}')
 const ids = (verified.tables || []).map((t) => t.id)
-if (!ids.includes('p01') || !(verified.tables || []).some((t) => t.label === 'P1')) {
-  console.error('VERIFY FAIL: Pavilion tables missing (expected p01 / P1)')
+const labels = (verified.tables || []).map((t) => String(t.label || ''))
+if (verified.tables?.length !== expectedTableCount) {
+  console.error(`VERIFY FAIL: expected ${expectedTableCount} tables, got ${verified.tables?.length ?? 0}`)
   process.exit(1)
 }
 if (ids.includes('t1') && verified.tables.length === 8) {
   console.error('VERIFY FAIL: stock T1–T8 demo detected')
   process.exit(1)
 }
-console.log(`Verified ${primary}: ${verified.tables.length} tables (Pavilion)`)
+// Must match the committed canonical labels (not the retired P1–P18 patio seed).
+for (const label of expectedLabels) {
+  if (!labels.includes(label)) {
+    console.error(`VERIFY FAIL: missing expected label ${label}`)
+    process.exit(1)
+  }
+}
+console.log(`Verified ${primary}: ${verified.tables.length} tables (canonical Weissbrau)`)

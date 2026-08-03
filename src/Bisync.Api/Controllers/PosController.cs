@@ -431,6 +431,52 @@ public class PosController(BisyncDbContext db, ITenantContext tenant) : Controll
         }
     }
 
+    /// <summary>
+    /// Permanently delete floor-plan version history for a location (and sister aliases).
+    /// Used when a venue layout is declared the sole source of truth.
+    /// </summary>
+    [HttpDelete("floor-plan/versions")]
+    public async Task<ActionResult<object>> ClearFloorPlanVersions(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? locationExternalId = null)
+    {
+        var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
+        var loc = (locationExternalId ?? string.Empty).Trim();
+        if (cid is null || string.IsNullOrEmpty(loc))
+            return BadRequest(new { message = "companyId and locationExternalId are required." });
+
+        try
+        {
+            await SchemaPatcher.EnsurePosFloorPlanVersionsTableAsync(db);
+            var aliases = PosFloorPlanGuard.LocationAliases(loc);
+            var rows = await db.PosFloorPlanVersions
+                .Where(x => x.CompanyId == cid.Value && aliases.Contains(x.LocationExternalId))
+                .ToListAsync();
+            var removed = rows.Count;
+            if (removed > 0)
+            {
+                db.PosFloorPlanVersions.RemoveRange(rows);
+                await db.SaveChangesAsync();
+            }
+
+            return Ok(new
+            {
+                companyId = cid.Value,
+                locationExternalId = loc,
+                aliases,
+                removed,
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Could not clear floor plan versions.",
+                detail = ex.GetBaseException().Message,
+            });
+        }
+    }
+
     [HttpGet("waitlist")]
     public async Task<ActionResult<object>> ListWaitlist(
         [FromQuery] int? companyId = null,
