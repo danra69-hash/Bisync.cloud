@@ -218,9 +218,37 @@ function plansLookEqual(a: FloorPlanState, b: FloorPlanState): boolean {
 }
 
 /**
+ * Force-pull the server floor plan onto this device (activation / Admin Reload).
+ * Never uploads local stock/demo back to the server.
+ */
+export async function pullFloorPlanFromServer(
+  companyId: number,
+  locationExternalId: string,
+): Promise<FloorPlanState> {
+  const remote = await api.posFloorPlan(companyId, locationExternalId)
+  const serverPlan = parseFloorPlanJson(remote.layoutJson)
+  if (serverPlan) {
+    saveFloorPlanLocal(
+      serverPlan,
+      companyId,
+      locationExternalId,
+      remote.updatedAt || new Date().toISOString(),
+    )
+    return serverPlan
+  }
+  // Server empty — keep any intentional custom local; never stamp stock as authoritative.
+  const peeked = peekFloorPlanLocal(companyId, locationExternalId)
+  if (peeked.hadScoped && !isStockDefaultFloorPlan(peeked.plan)) {
+    return peeked.plan
+  }
+  return cloneJson(DEFAULT_FLOOR_PLAN)
+}
+
+/**
  * Resolve the floor plan for a location.
  * DB wins when local is a cold default/migration. Local only pushes when it was an
  * intentional scoped save with a newer timestamp than the server.
+ * Stock/demo layouts are never uploaded to the server.
  */
 export async function syncFloorPlan(
   companyId: number,
@@ -242,14 +270,15 @@ export async function syncFloorPlan(
 
       // Never let a cold-cache default / unstamped migration overwrite a real DB layout.
       // Also recover a custom scoped local over a stock remote that was stamped "newer"
-      // by the previous clobber bug.
+      // by the previous clobber bug. Never push stock/demo to the server.
       const canPushLocal =
         peeked.hadScoped
         && localMs > 0
+        && !localIsStockDefault
         && !plansLookEqual(local, serverPlan)
         && (
-          (!localIsStockDefault && remoteIsStockDefault)
-          || (localMs > remoteMs && !(localIsStockDefault && !remoteIsStockDefault))
+          remoteIsStockDefault
+          || localMs > remoteMs
         )
 
       if (canPushLocal) {
@@ -273,21 +302,24 @@ export async function syncFloorPlan(
       return serverPlan
     }
 
-    // Server empty — seed only from an intentional scoped save, or first-time stock/legacy.
-    // Do not invent a fresh "now" stamp on cold display-only defaults before this write;
-    // the upsert response stamp becomes the authoritative cache time.
-    const uploaded = await api.posFloorPlanUpsert({
-      companyId,
-      locationExternalId,
-      layoutJson: JSON.stringify(local),
-    })
-    saveFloorPlanLocal(
-      local,
-      companyId,
-      locationExternalId,
-      uploaded.updatedAt || new Date().toISOString(),
-    )
-    return local
+    // Server empty — only seed from an intentional custom scoped save.
+    // Never upload the stock T1–T8 demo (that clobber wiped Weissbrau previously).
+    if (peeked.hadScoped && !isStockDefaultFloorPlan(local) && local.tables.length > 0) {
+      const uploaded = await api.posFloorPlanUpsert({
+        companyId,
+        locationExternalId,
+        layoutJson: JSON.stringify(local),
+      })
+      saveFloorPlanLocal(
+        local,
+        companyId,
+        locationExternalId,
+        uploaded.updatedAt || new Date().toISOString(),
+      )
+      return local
+    }
+
+    return local.tables.length > 0 ? local : cloneJson(DEFAULT_FLOOR_PLAN)
   } catch {
     return local.tables.length > 0 ? local : cloneJson(DEFAULT_FLOOR_PLAN)
   }

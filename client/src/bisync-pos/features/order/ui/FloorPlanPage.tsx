@@ -19,6 +19,7 @@ import { cloneJson } from '../domain/clonePlan'
 import {
   loadFloorPlanLocal,
   persistFloorPlanRemote,
+  pullFloorPlanFromServer,
   syncFloorPlan,
 } from '../domain/floorPlanSync'
 import { FLOOR_PLAN_CHANGED_EVENT } from '../domain/reservations'
@@ -101,7 +102,13 @@ export function FloorPlanPage() {
     if (!companyId || !locationId) return
     let cancelled = false
     void (async () => {
-      const synced = await syncFloorPlan(companyId, locationId)
+      // Activated offline-first stations always pull the server layout when online
+      // so a stale T1–T8 device cache cannot keep hiding Weissbrau.
+      const synced = session?.offlineFirst
+        ? await pullFloorPlanFromServer(companyId, locationId).catch(() =>
+            syncFloorPlan(companyId, locationId),
+          )
+        : await syncFloorPlan(companyId, locationId)
       if (cancelled) return
       setPlan(prev => {
         // Refresh edit draft from DB unless the user already changed the layout.
@@ -123,7 +130,7 @@ export function FloorPlanPage() {
     }
     // Re-sync when company/location changes — not when toggling edit route
     // (save navigates away and must not race a stale GET over the just-saved layout).
-  }, [companyId, locationId]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional
+  }, [companyId, locationId, session?.offlineFirst]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional
 
   // Refresh when Reservation → Assign table updates the floor plan.
   useEffect(() => {
