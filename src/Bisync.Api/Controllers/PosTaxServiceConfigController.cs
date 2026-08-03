@@ -49,6 +49,8 @@ public class PosTaxServiceConfigController(BisyncDbContext db) : ControllerBase
         if (companyId <= 0)
             return BadRequest(new { message = "companyId is required." });
 
+        await SchemaPatcher.EnsurePosTaxServiceConfigsTableAsync(db);
+
         var row = await db.PosTaxServiceConfigs.AsNoTracking()
             .FirstOrDefaultAsync(r => r.CompanyId == companyId, cancellationToken);
 
@@ -65,6 +67,8 @@ public class PosTaxServiceConfigController(BisyncDbContext db) : ControllerBase
     {
         if (body.CompanyId <= 0)
             return BadRequest(new { message = "companyId is required." });
+
+        await SchemaPatcher.EnsurePosTaxServiceConfigsTableAsync(db);
 
         var taxes = NormalizeLines(body.Taxes, "Tax");
         var services = NormalizeLines(body.Services, "Service");
