@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import {
   PERMISSION_LABEL,
   ROLE_PERMISSIONS,
@@ -7,10 +8,12 @@ import {
 import { FeaturePage } from '../../common/FeaturePage'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import type { QrTableMode } from '../../../core/config/qrTable'
+import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { ColGroup } from '../../../../components/shared/SortableTableHead'
 import { StationDisplayPage } from './StationDisplayPage'
 import { CustomerDisplayPage } from './CustomerDisplayPage'
 import { QrOrderPage } from './QrOrderPage'
+import { TaxServiceChargeModal } from './TaxServiceChargeModal'
 import './BohPages.css'
 
 /** Kitchen Display System — food dockets grouped by table. */
@@ -173,12 +176,34 @@ export { EodPage } from './EodPage'
 
 export function BohSettingsPage() {
   const { qrTableMode, setQrTableMode } = useConfig()
+  const session = usePosSessionOptional()
+  const companyId = session?.companyId ?? 0
+  const [taxServiceOpen, setTaxServiceOpen] = useState(false)
+
+  const productGroups = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of session?.catalog ?? []) {
+      const g = (p.group || '').trim()
+      if (g) set.add(g)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [session?.catalog])
+
+  const setupPanels: { label: string; copy: string; onClick?: () => void }[] = [
+    {
+      label: 'Tax & service charge',
+      copy: 'Define tax and service % lines, then attach them by sales type and product group.',
+      onClick: () => setTaxServiceOpen(true),
+    },
+    { label: 'Printers / KDS', copy: 'Configuration placeholder' },
+    { label: 'Delivery apps', copy: 'Configuration placeholder' },
+  ]
 
   return (
     <FeaturePage
       crumb="POS Setup"
       title="POS Setup"
-      subtitle="Restaurant-wide settings for table QR, menus, printers, and integrations."
+      subtitle="Restaurant-wide settings for table QR, tax & service, printers, and integrations."
     >
       <section className="config-section panel-card">
         <h3>Table QR mode</h3>
@@ -219,15 +244,33 @@ export function BohSettingsPage() {
       </section>
 
       <div className="panel-grid" style={{ marginTop: 20 }}>
-        {['Menus & dayparts', 'Tax & service charge', 'Printers / KDS', 'Delivery apps'].map(
-          (label) => (
-            <div key={label} className="panel-card">
-              <h3>{label}</h3>
-              <p>Configuration placeholder</p>
+        {setupPanels.map((panel) =>
+          panel.onClick ? (
+            <button
+              key={panel.label}
+              type="button"
+              className="panel-card panel-card--action"
+              onClick={panel.onClick}
+            >
+              <h3>{panel.label}</h3>
+              <p>{panel.copy}</p>
+            </button>
+          ) : (
+            <div key={panel.label} className="panel-card">
+              <h3>{panel.label}</h3>
+              <p>{panel.copy}</p>
             </div>
           ),
         )}
       </div>
+
+      {taxServiceOpen && (
+        <TaxServiceChargeModal
+          companyId={companyId}
+          productGroups={productGroups}
+          onClose={() => setTaxServiceOpen(false)}
+        />
+      )}
     </FeaturePage>
   )
 }

@@ -1310,6 +1310,35 @@ export interface UpsertPosConfigTypePayload {
   active?: boolean;
 }
 
+export interface PosTaxServiceChargeLine {
+  id: string;
+  name: string;
+  percent: number;
+}
+
+export interface PosTaxServiceSalesTypeRule {
+  salesType: string;
+  taxIds: string[];
+  serviceIds: string[];
+  applyToAllProducts: boolean;
+  productGroups: string[];
+}
+
+export interface PosTaxServiceConfig {
+  companyId: number;
+  taxes: PosTaxServiceChargeLine[];
+  services: PosTaxServiceChargeLine[];
+  salesTypes: PosTaxServiceSalesTypeRule[];
+  updatedAt?: string | null;
+}
+
+export interface UpsertPosTaxServiceConfigPayload {
+  companyId: number;
+  taxes: PosTaxServiceChargeLine[];
+  services: PosTaxServiceChargeLine[];
+  salesTypes: PosTaxServiceSalesTypeRule[];
+}
+
 export interface UpsertPosModifierGroupPayload {
   companyId: number;
   kind: PosModifierKind | string;
@@ -3727,6 +3756,12 @@ export const api = {
     fetchJsonWithMethod<PosConfigType>(`/api/pos-config-types/${id}/active`, 'PATCH', { active }),
   deletePosConfigType: (id: number) =>
     fetchJsonWithMethod<void>(`/api/pos-config-types/${id}`, 'DELETE'),
+  posTaxServiceConfig: (companyId: number) => {
+    const params = new URLSearchParams({ companyId: String(companyId) });
+    return fetchJson<PosTaxServiceConfig>(`/api/pos-tax-service-config?${params}`);
+  },
+  savePosTaxServiceConfig: (data: UpsertPosTaxServiceConfigPayload) =>
+    fetchJsonWithMethod<PosTaxServiceConfig>('/api/pos-tax-service-config', 'PUT', data),
   posPrinterSdks: () => fetchJson<PosPrinterSdk[]>('/api/pos-devices/printer-sdks'),
   posDeviceNetworkSuggestions: (deviceType?: string) => {
     const params = new URLSearchParams();
