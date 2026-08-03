@@ -58,9 +58,21 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
+        // Never hijack API / auth / swagger navigations with the SPA shell.
+        navigateFallbackDenylist: [
+          /^\/api(?:\/|$)/i,
+          /^\/swagger(?:\/|$)/i,
+          /^\/health(?:\/|$)/i,
+        ],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
         // Main SPA chunk is large; still precache so POS installs offline-capable.
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api'),
+            handler: 'NetworkOnly',
+          },
+        ],
       },
       devOptions: {
         enabled: false,
