@@ -6,7 +6,6 @@ import { UsageDashboard } from '../components/dev/UsageDashboard';
 import { TenantRollupsPanel } from '../components/dev/TenantRollupsPanel';
 import { DemoLaunchPanel } from '../components/dev/DemoLaunchPanel';
 import { AutomatedQaPanel } from '../components/dev/AutomatedQaPanel';
-import { AuditTrailPanel } from '../components/dev/AuditTrailPanel';
 import { SystemAuditTrailTab } from '../components/admin/SystemAuditTrailTab';
 import { GhostSupportTab } from '../components/admin/GhostSupportTab';
 import { RefLibraryTab } from '../components/dev/RefLibraryTab';
@@ -17,6 +16,7 @@ import { DEV_CONSOLE_PATH } from '../config/devConsole';
 import { clearDevConsoleSession, getDevConsoleToken } from '../data/devConsoleSession';
 import {
   DEV_CONSOLE_TAB_IDS,
+  normalizeDevConsoleAccessTabs,
   type DevConsoleTabId,
   devConsoleAuthApi,
 } from '../data/devConsoleAuthApi';
@@ -37,7 +37,6 @@ const DEV_CONSOLE_TABS: { id: DevConsoleTab; label: string }[] = [
   { id: 'tenant-rollups', label: 'Tenant Rollups' },
   { id: 'sales-module', label: 'Sales Module' },
   { id: 'automated-qa', label: 'Automated QA' },
-  { id: 'qa-history', label: 'QA History' },
   { id: 'audit-trail', label: 'Audit Trail' },
   { id: 'ghost-support', label: 'Ghost Support' },
   { id: 'ref-library', label: 'Ref & Library' },
@@ -80,7 +79,10 @@ export function DevConsolePage() {
         isRoot: me.isRoot,
         accessTabs: me.isRoot
           ? [...DEV_CONSOLE_TAB_IDS]
-          : (me.accessTabs?.length ? me.accessTabs : ['overview']),
+          : (() => {
+              const normalized = normalizeDevConsoleAccessTabs(me.accessTabs);
+              return normalized.length > 0 ? normalized : ['overview'];
+            })(),
         expiresAt: me.expiresAt,
       });
     } catch {
@@ -291,9 +293,6 @@ export function DevConsolePage() {
         )}
         {tab === 'automated-qa' && (
           <AutomatedQaPanel triggeredBy={triggeredBy} />
-        )}
-        {tab === 'qa-history' && (
-          <AuditTrailPanel />
         )}
         {tab === 'audit-trail' && (
           <SystemAuditTrailTab allowDevConsoleAccess />

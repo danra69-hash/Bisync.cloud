@@ -12,7 +12,6 @@ export const DEV_CONSOLE_TAB_IDS = [
   'tenant-rollups',
   'sales-module',
   'automated-qa',
-  'qa-history',
   'audit-trail',
   'ghost-support',
   'ref-library',
@@ -24,12 +23,27 @@ export const DEV_CONSOLE_TAB_LABELS: Record<DevConsoleTabId, string> = {
   overview: 'Overview',
   'tenant-rollups': 'Tenant Rollups',
   'sales-module': 'Sales Module',
-  'automated-qa': 'QA',
-  'qa-history': 'QA History',
+  'automated-qa': 'Automated QA',
   'audit-trail': 'Audit Trail',
   'ghost-support': 'Ghost Support',
   'ref-library': 'Ref & Library',
 };
+
+/** Map legacy `qa-history` access into Automated QA (history lives under that tab). */
+export function normalizeDevConsoleAccessTabs(tabs: string[] | undefined | null): DevConsoleTabId[] {
+  const allowed = new Set<DevConsoleTabId>();
+  for (const raw of tabs ?? []) {
+    const key = raw.trim().toLowerCase();
+    if (key === 'qa-history') {
+      allowed.add('automated-qa');
+      continue;
+    }
+    if ((DEV_CONSOLE_TAB_IDS as readonly string[]).includes(key)) {
+      allowed.add(key as DevConsoleTabId);
+    }
+  }
+  return DEV_CONSOLE_TAB_IDS.filter(id => allowed.has(id));
+}
 
 export const DEV_CONSOLE_TEAM_TYPES = ['Management', 'Hunter', 'Farmer', 'Accounts'] as const;
 export type DevConsoleTeamType = (typeof DEV_CONSOLE_TEAM_TYPES)[number];
@@ -120,6 +134,7 @@ export type DevTeamUpsertPayload = {
 };
 
 function toProfile(session: DevSessionResult): DevConsoleProfile {
+  const normalized = normalizeDevConsoleAccessTabs(session.accessTabs);
   return {
     email: session.email,
     fullName: session.fullName,
@@ -127,7 +142,9 @@ function toProfile(session: DevSessionResult): DevConsoleProfile {
     expiresAt: session.expiresAt,
     position: session.position,
     teamType: session.teamType,
-    accessTabs: session.accessTabs ?? (session.isRoot ? [...DEV_CONSOLE_TAB_IDS] : ['overview']),
+    accessTabs: session.isRoot
+      ? [...DEV_CONSOLE_TAB_IDS]
+      : (normalized.length > 0 ? normalized : ['overview']),
   };
 }
 

@@ -5,6 +5,7 @@ import {
   DEV_CONSOLE_TAB_IDS,
   DEV_CONSOLE_TAB_LABELS,
   DEV_CONSOLE_TEAM_TYPES,
+  normalizeDevConsoleAccessTabs,
   devConsoleAuthApi,
   type DevConsoleTabId,
   type DevConsoleTeamType,
@@ -37,9 +38,7 @@ const EMPTY_FORM: FormState = {
 };
 
 function toForm(row: DevTeamUserRow): FormState {
-  const tabs = (row.accessTabs ?? []).filter((t): t is DevConsoleTabId =>
-    (DEV_CONSOLE_TAB_IDS as readonly string[]).includes(t),
-  );
+  const tabs = normalizeDevConsoleAccessTabs(row.accessTabs);
   return {
     id: row.id,
     fullName: row.fullName,
@@ -405,8 +404,13 @@ export function DevTeamPanel({ open, onClose }: Props) {
               </div>
 
               <fieldset className="space-y-2">
-                <legend className="text-[11px] uppercase tracking-wider text-muted-foreground">Access</legend>
-                <div className="grid grid-cols-2 gap-2">
+                <legend className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Access permission
+                </legend>
+                <p className="text-[11px] text-muted-foreground">
+                  Choose which Dev Console tabs this member can open. Automated QA includes the QA History table.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border border-border bg-muted/20 p-3">
                   {DEV_CONSOLE_TAB_IDS.map(tab => (
                     <label key={tab} className="inline-flex items-center gap-2 text-xs">
                       <input
