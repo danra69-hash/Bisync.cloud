@@ -15,6 +15,7 @@ import { CustomerDisplayPage } from './CustomerDisplayPage'
 import { QrOrderPage } from './QrOrderPage'
 import { TaxServiceChargeModal } from './TaxServiceChargeModal'
 import { DeviceSetupModal } from './DeviceSetupModal'
+import { DeliveryAppsModal } from './DeliveryAppsModal'
 import './BohPages.css'
 
 /** Kitchen Display System — food dockets grouped by table. */
@@ -182,6 +183,7 @@ export function BohSettingsPage() {
   const locationId = session?.locationId ?? ''
   const [taxServiceOpen, setTaxServiceOpen] = useState(false)
   const [deviceSetupOpen, setDeviceSetupOpen] = useState(false)
+  const [deliveryAppsOpen, setDeliveryAppsOpen] = useState(false)
 
   const productGroups = useMemo(() => {
     const set = new Set<string>()
@@ -203,7 +205,11 @@ export function BohSettingsPage() {
       copy: 'LAN check, add printers / KDS / POS, install drivers, and manage local peripherals.',
       onClick: () => setDeviceSetupOpen(true),
     },
-    { label: 'Delivery apps', copy: 'Configuration placeholder' },
+    {
+      label: 'Delivery apps',
+      copy: 'Connect Grab, foodpanda, and other delivery channels to this outlet.',
+      onClick: () => setDeliveryAppsOpen(true),
+    },
   ]
 
   return (
@@ -284,6 +290,9 @@ export function BohSettingsPage() {
           locationId={locationId}
           onClose={() => setDeviceSetupOpen(false)}
         />
+      )}
+      {deliveryAppsOpen && (
+        <DeliveryAppsModal onClose={() => setDeliveryAppsOpen(false)} />
       )}
     </FeaturePage>
   )

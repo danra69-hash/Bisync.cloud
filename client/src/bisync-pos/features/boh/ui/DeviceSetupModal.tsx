@@ -331,7 +331,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
   const printers = devices.filter((d) => d.deviceType === 'printer')
 
   return (
-    <div className="device-setup-modal" role="dialog" aria-modal="true" aria-labelledby="device-setup-title">
+    <div className="device-setup-modal pos-setup-sheet" role="dialog" aria-modal="true" aria-labelledby="device-setup-title">
       <button type="button" className="device-setup-modal__backdrop" aria-label="Close" onClick={onClose} />
       <div className="device-setup-modal__card">
         <header className="device-setup-modal__header">

@@ -278,12 +278,12 @@
   overflow: auto;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 960px), (max-height: 760px) {
   .tax-svc-modal {
     place-items: stretch;
     padding: 0;
     height: 100%;
-    max-height: var(--pos-vh, 100dvh);
+    max-height: var(--pos-vh, 100%);
   }
 
   .tax-svc-modal__card {
