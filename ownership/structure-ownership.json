@@ -1140,7 +1140,8 @@
       "route": "api/b2bsalesorders",
       "owner": "dra",
       "ownerEmail": "dra@cubevalue.com",
-      "createdAt": "2026-07-15"
+      "createdAt": "2026-07-15",
+      "notes": "Includes Holdout reserve, Delivery Order issue, and confirm-receipt → sold"
     },
     {
       "id": "dr.api.promotions",

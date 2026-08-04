@@ -1,5 +1,4 @@
 import { useMemo, useRef } from 'react';
-import { Plus } from 'lucide-react';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
 import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
@@ -13,8 +12,11 @@ import {
   hasActivationPeriod,
 } from '../../data/productForm';
 import { formatProductParStock } from '../../data/productParStock';
-import { SubProductBatchAdditionalUoms } from './SubProductBatchUomSection';
 import { SubProductBatchProduceFields } from './SubProductBatchProduceFields';
+import {
+  B2bProductionUomFields,
+  clampProductionAltUnits,
+} from './B2bProductionUomFields';
 import { tableHeaderCls } from '../shared/tableHeaderStyles';
 import { ColGroup } from '../shared/SortableTableHead';
 import { ProductEstimatedNutrientBox } from './ProductEstimatedNutrientBox';
@@ -43,8 +45,6 @@ type Props = {
   onParStockBlur?: () => void;
   yieldAltUnits?: AltUnitEntry[];
   onYieldAltUnitsChange?: (entries: AltUnitEntry[]) => void;
-  onAddBatchAdditionalUom?: () => void;
-  addBatchUomButtonCls?: string;
   onToggleLocation: (externalId: string) => void;
   onOpenProductionMethod?: () => void;
 };
@@ -148,8 +148,6 @@ export function ProductReadOnlyView({
   onParStockBlur,
   yieldAltUnits = [],
   onYieldAltUnitsChange,
-  onAddBatchAdditionalUom,
-  addBatchUomButtonCls = '',
   onToggleLocation,
   onOpenProductionMethod,
 }: Props) {
@@ -170,11 +168,6 @@ export function ProductReadOnlyView({
 
   const yieldUomLabel = product.yieldUom ? fromApiUom(product.yieldUom) : '';
   const parStockUomLabel = product.parStockUom ? fromApiUom(product.parStockUom) : '';
-  const b2bBatchUom = product.b2bPackageUnit?.trim() || '';
-  const batchUomForAdditional = product.isSubProduct ? yieldUomLabel : b2bBatchUom;
-  const batchQtyForAdditional = product.isSubProduct
-    ? (product.yieldQuantity > 0 ? String(product.yieldQuantity) : '')
-    : '1';
   const subProductUnitCost = product.isSubProduct && product.yieldQuantity > 0
     ? calcSubProductUnitCost(productCogs, String(product.yieldQuantity))
     : 0;
@@ -245,12 +238,12 @@ export function ProductReadOnlyView({
                   className="border-border"
                   readOnly
                 />
-                B2B
+                B2B Principal
               </label>
             </div>
             {product.isSubProduct ? (
               <p className="text-[10px] text-muted-foreground">
-                Sub-products are made or prepped as part of a B2C or B2B product.
+                Sub-products are made or prepped as part of a B2C or B2B Principal product.
               </p>
             ) : product.isVariableProduct ? (
               <p className="text-[10px] text-muted-foreground">
@@ -347,6 +340,16 @@ export function ProductReadOnlyView({
               <p className={fieldCls}>{product.name}</p>
             </div>
 
+            {product.b2cEnabled && !product.b2bEnabled ? (
+              <div className="space-y-1.5 max-w-xs">
+                <p className={labelCls}>Product UOM</p>
+                <p className={fieldCls}>{yieldUomLabel || '—'}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Used for product stock and as the default POS sales UOM.
+                </p>
+              </div>
+            ) : null}
+
             {!product.isVariableComponent && (product.aliases ?? []).length > 0 ? (
               <div className="space-y-2 pl-3 border-l-2 border-primary/20">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -396,33 +399,24 @@ export function ProductReadOnlyView({
                 <p className="text-sm font-semibold mt-1">{cogsPercent(productCogs, rrpValue)}</p>
               </div>
             </div>
-            {product.b2bEnabled && onYieldAltUnitsChange && batchUomForAdditional ? (
+            {product.b2bEnabled && onYieldAltUnitsChange ? (
               <div className="space-y-2">
-                <div className="flex gap-1.5 items-center max-w-md">
-                  <p className={`${fieldCls} flex-1`}>{batchUomForAdditional}</p>
-                  {onAddBatchAdditionalUom ? (
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onAddBatchAdditionalUom();
-                      }}
-                      disabled={saving || !batchUomForAdditional}
-                      className={addBatchUomButtonCls}
-                      title="Add additional UOM"
-                      aria-label="Add additional UOM"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  ) : null}
-                </div>
-                <SubProductBatchAdditionalUoms
-                  yieldQuantity={batchQtyForAdditional}
-                  yieldUom={batchUomForAdditional}
+                <p className="text-sm font-semibold">Production UOM</p>
+                <B2bProductionUomFields
+                  principalUnit={yieldUomLabel}
                   altUnits={yieldAltUnits}
-                  onAltUnitsChange={onYieldAltUnitsChange}
+                  disabled={saving || !yieldUomLabel}
+                  lockPrincipal
+                  onPrincipalChange={() => {
+                    /* Principal Production UOM is edited in the full product editor. */
+                  }}
+                  onAltUnitsChange={entries => onYieldAltUnitsChange(clampProductionAltUnits(entries))}
                 />
+                {!yieldUomLabel ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Set Principal Production UOM in Edit to configure alternate production units.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </>

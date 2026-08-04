@@ -974,6 +974,7 @@ export interface B2bSalesOrder {
   lockExpiryDate?: string | null;
   fulfilledDate?: string | null;
   deliveryOrderIssued?: boolean;
+  deliveryOrderId?: number | null;
   invoiceIssued?: boolean;
   shareToken?: string | null;
   customerAcceptedAt?: string | null;
@@ -981,6 +982,31 @@ export interface B2bSalesOrder {
   createdAt: string;
   updatedAt: string;
   lines: B2bSalesOrderLine[];
+}
+
+export interface DeliveryOrderLine {
+  id: number;
+  salesOrderLineId?: number | null;
+  productId: number;
+  productAliasId?: number | null;
+  productName: string;
+  locationExternalId: string;
+  quantity: number;
+  uom: string;
+}
+
+export interface DeliveryOrder {
+  id: number;
+  companyId: number;
+  doNumber: string;
+  issueDate: string;
+  salesOrderId: number;
+  sourcePurchaseOrderId?: number | null;
+  status: string;
+  receivedDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: DeliveryOrderLine[];
 }
 
 export interface B2bSalesOrderSharePayload {
@@ -2611,6 +2637,9 @@ export interface Product {
   category: string;
   group: string;
   isSubProduct: boolean;
+  isBiProduct?: boolean;
+  biOfProductId?: number | null;
+  biSellable?: boolean;
   isVariableProduct?: boolean;
   variableMode?: 'combination' | 'weight' | string;
   variableChoiceQty?: number;
@@ -2629,7 +2658,9 @@ export interface Product {
   previousTotalCost?: number | null;
   previousPackagingCost?: number | null;
   previousRrp?: number | null;
+  /** Batch yield for sub-products; 1 for B2C products. */
   yieldQuantity: number;
+  /** Product UOM for B2C; batch yield UOM for sub-products; optional principal production UOM for B2B. */
   yieldUom: string;
   yieldAltUnitsJson?: string;
   expiryPeriodDays: number;
@@ -2677,7 +2708,9 @@ export interface UpsertProductPayload {
   b2bPackageUnit?: string;
   b2bSalesConfigJson?: string;
   rrp?: number;
+  /** Batch yield for sub-products; send 1 for B2C products. */
   yieldQuantity?: number;
+  /** Product UOM for B2C; batch yield UOM for sub-products; optional principal production UOM for B2B. */
   yieldUom?: string;
   yieldAltUnitsJson?: string;
   expiryPeriodDays?: number;
@@ -2775,16 +2808,26 @@ export interface ReportPayload {
 export interface ProduceBatchPayload {
   locationExternalIds: string[];
   batchQty: number;
+  /** Entry UOM label (production or delivery). BatchQty is already in stock/base units. */
+  batchUom?: string;
   productionDate?: string;
   expiryDate?: string;
   overrideStock?: boolean;
   componentUsages?: { componentId: string; usedQty: number }[];
-  subProductOutputs?: { productId: number; quantity: number }[];
+  subProductOutputs?: {
+    productId?: number;
+    name?: string;
+    quantity: number;
+    costAttributionPct?: number;
+    isBiSubProduct?: boolean;
+    biSellable?: boolean;
+  }[];
 }
 
 export interface ProductionPreviewPayload {
   locationExternalIds: string[];
   batchQty: number;
+  batchUom?: string;
   componentUsages?: { componentId: string; usedQty: number }[];
 }
 
@@ -2798,6 +2841,7 @@ export interface ProductionPreviewResult {
 
 export interface PatchProductionBatchPayload {
   batchQty: number;
+  batchUom?: string;
   productionDate?: string;
   expiryDate?: string;
   overrideStock?: boolean;
@@ -3838,6 +3882,20 @@ export const api = {
       `/api/b2b-sales-orders/${orderId}/lines/${lineId}/ready-to-ship`,
       'POST',
     ),
+  reserveB2bSalesOrderHoldout: (id: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/reserve-holdout`, 'POST'),
+  issueB2bDeliveryOrder: (id: number) =>
+    fetchJsonWithMethod<{ order: B2bSalesOrder; deliveryOrder: DeliveryOrder }>(
+      `/api/b2b-sales-orders/${id}/issue-delivery-order`,
+      'POST',
+    ),
+  getB2bDeliveryOrder: (deliveryOrderId: number) =>
+    fetchJson<DeliveryOrder>(`/api/b2b-sales-orders/delivery-orders/${deliveryOrderId}`),
+  confirmB2bDeliveryOrderReceipt: (deliveryOrderId: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(
+      `/api/b2b-sales-orders/delivery-orders/${deliveryOrderId}/confirm-receipt`,
+      'POST',
+    ),
   ensureB2bSalesOrderShareToken: (id: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/ensure-share-token`, 'POST'),
   posCustomers: (companyId?: number) =>
@@ -4113,6 +4171,7 @@ export const api = {
   markProductToProduce: (productId: number, payload: {
     locationExternalIds: string[];
     batchQty: number;
+    batchUom?: string;
     productionDate?: string;
     overrideStock?: boolean;
   }) =>

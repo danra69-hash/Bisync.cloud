@@ -11,8 +11,9 @@ export const SUPPLY_SIDE_NAV_LABELS = new Set([
   'Sales Order',
 ]);
 
-/** Nav labels for B2B Product management (CK / warehouse and manufacturer only). */
+/** Nav labels for B2B Principal Product management (CK / warehouse and manufacturer only). */
 export const B2B_PRODUCT_NAV_LABELS = new Set([
+  'B2B Principal Product',
   'B2B Product',
 ]);
 

@@ -366,6 +366,63 @@ public class B2bSalesOrdersController(
         }
     }
 
+    [HttpPost("{id:int}/reserve-holdout")]
+    public async Task<ActionResult<object>> ReserveHoldout(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var order = await salesOrderService.ReserveHoldoutAsync(id, cancellationToken);
+            return Ok(MapOrder(order));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/issue-delivery-order")]
+    public async Task<ActionResult<object>> IssueDeliveryOrder(int id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var (order, deliveryOrder) = await salesOrderService.IssueDeliveryOrderAsync(id, cancellationToken);
+            return Ok(new
+            {
+                order = MapOrder(order),
+                deliveryOrder = MapDeliveryOrder(deliveryOrder),
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("delivery-orders/{deliveryOrderId:int}")]
+    public async Task<ActionResult<object>> GetDeliveryOrder(int deliveryOrderId, CancellationToken cancellationToken)
+    {
+        var deliveryOrder = await db.DeliveryOrders.AsNoTracking()
+            .Include(d => d.Lines)
+            .FirstOrDefaultAsync(d => d.Id == deliveryOrderId, cancellationToken);
+        if (deliveryOrder is null)
+            return NotFound(new { message = "Delivery order not found." });
+        return Ok(MapDeliveryOrder(deliveryOrder));
+    }
+
+    [HttpPost("delivery-orders/{deliveryOrderId:int}/confirm-receipt")]
+    public async Task<ActionResult<object>> ConfirmDeliveryOrderReceipt(int deliveryOrderId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var order = await salesOrderService.ConfirmDeliveryOrderReceiptAsync(deliveryOrderId, cancellationToken);
+            return Ok(MapOrder(order));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("release-expired-locks")]
     public async Task<ActionResult<object>> ReleaseExpiredLocks(CancellationToken cancellationToken)
     {
@@ -403,6 +460,7 @@ public class B2bSalesOrdersController(
         issuedDate = order.IssuedDate,
         lockExpiryDate = order.LockExpiryDate,
         deliveryOrderIssued = order.DeliveryOrderIssued,
+        deliveryOrderId = order.DeliveryOrderId,
         invoiceIssued = order.InvoiceIssued,
         fulfilledDate = order.FulfilledDate,
         shareToken = order.ShareToken,
@@ -424,6 +482,31 @@ public class B2bSalesOrdersController(
             promotionId = line.PromotionId,
             isCombo = line.IsCombo,
             status = line.Status,
+        }),
+    };
+
+    static object MapDeliveryOrder(DeliveryOrder deliveryOrder) => new
+    {
+        id = deliveryOrder.Id,
+        companyId = deliveryOrder.CompanyId,
+        doNumber = deliveryOrder.DoNumber,
+        issueDate = deliveryOrder.IssueDate,
+        salesOrderId = deliveryOrder.SalesOrderId,
+        sourcePurchaseOrderId = deliveryOrder.SourcePurchaseOrderId,
+        status = deliveryOrder.Status,
+        receivedDate = deliveryOrder.ReceivedDate,
+        createdAt = deliveryOrder.CreatedAt,
+        updatedAt = deliveryOrder.UpdatedAt,
+        lines = deliveryOrder.Lines.Select(line => new
+        {
+            id = line.Id,
+            salesOrderLineId = line.SalesOrderLineId,
+            productId = line.ProductId,
+            productAliasId = line.ProductAliasId,
+            productName = line.ProductName,
+            locationExternalId = line.LocationExternalId,
+            quantity = line.Quantity,
+            uom = line.Uom,
         }),
     };
 

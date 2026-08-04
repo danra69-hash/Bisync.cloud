@@ -17,6 +17,8 @@ public class B2bSalesOrder
     public string IssuedDate { get; set; } = string.Empty;
     public string LockExpiryDate { get; set; } = string.Empty;
     public bool DeliveryOrderIssued { get; set; }
+    /// <summary>Latest issued Delivery Order for this SO (P2 holdout → DO path).</summary>
+    public int? DeliveryOrderId { get; set; }
     public bool InvoiceIssued { get; set; }
     public string FulfilledDate { get; set; } = string.Empty;
     /// <summary>Public share token for customer link / WhatsApp.</summary>

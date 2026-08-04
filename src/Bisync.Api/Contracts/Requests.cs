@@ -914,8 +914,10 @@ public class UpsertProductRequest
     public string? B2bPackageUnit { get; set; }
     public string? B2bSalesConfigJson { get; set; }
     public decimal? Rrp { get; set; }
+    /// <summary>Batch yield for sub-products; defaults to 1 for B2C products.</summary>
     [Range(0, 999999999)]
     public decimal? YieldQuantity { get; set; }
+    /// <summary>Batch yield UOM for sub-products, Product UOM for B2C, Principal Production UOM for B2B.</summary>
     [MaxLength(20)]
     public string? YieldUom { get; set; }
     public string? YieldAltUnitsJson { get; set; }
@@ -973,6 +975,8 @@ public class ProductManagementActionRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
@@ -987,9 +991,18 @@ public class ProduceComponentUsageRequest
 
 public class ProduceSubProductOutputRequest
 {
+    /// <summary>Existing bi / sub-product catalog id. 0 creates a new bi product when Name is set.</summary>
     public int ProductId { get; set; }
+    /// <summary>Optional name when creating a bi-product on produce.</summary>
+    public string? Name { get; set; }
     [Range(0.0001, 999999999)]
     public decimal Quantity { get; set; }
+    /// <summary>Cost attribution percent (0–100). Weighted vs residual primary cost.</summary>
+    [Range(0, 100)]
+    public decimal CostAttributionPct { get; set; } = 100;
+    /// <summary>True → Bi-Sub-Product (not sellable). False → Bi-Product (optionally sellable).</summary>
+    public bool IsBiSubProduct { get; set; } = true;
+    public bool BiSellable { get; set; }
 }
 
 public class ProduceBatchRequest
@@ -997,6 +1010,8 @@ public class ProduceBatchRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
@@ -1011,6 +1026,8 @@ public class ProductionPreviewRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public List<ProduceComponentUsageRequest> ComponentUsages { get; set; } = [];
 }
 
@@ -1079,6 +1096,8 @@ public class PatchProductionBatchRequest
 {
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }

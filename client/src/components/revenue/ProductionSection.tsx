@@ -24,7 +24,7 @@ type TabDef = {
 };
 
 const ALL_TAB_ITEMS: TabDef[] = [
-  { id: 'b2bProduct', label: 'B2B Product', requiresB2bProduct: true },
+  { id: 'b2bProduct', label: 'B2B Principal Product', requiresB2bProduct: true },
   { id: 'activeOrder', label: 'Active Order', requiresSupply: true },
   { id: 'salesData', label: 'Sales Data' },
   { id: 'subProduct', label: 'Sub-Product' },

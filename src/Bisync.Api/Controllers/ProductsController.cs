@@ -127,6 +127,13 @@ public class ProductsController(
 
         var items = MapItems(request.Items);
         var packagingItems = MapPackagingItems(request.PackagingItems);
+        var requestedYieldUom = request.YieldUom?.Trim() ?? string.Empty;
+        var isB2cProduct = !request.IsSubProduct && request.B2cEnabled;
+        var productYieldUom = request.IsSubProduct || request.B2bEnabled
+            ? requestedYieldUom
+            : isB2cProduct
+                ? (string.IsNullOrWhiteSpace(requestedYieldUom) ? "pcs" : requestedYieldUom)
+                : string.Empty;
         var product = new Product
         {
             ProductId = productId,
@@ -144,8 +151,12 @@ public class ProductsController(
                 ? "{}"
                 : (string.IsNullOrWhiteSpace(request.B2bSalesConfigJson) ? "{}" : request.B2bSalesConfigJson),
             Rrp = request.IsSubProduct ? 0 : (request.Rrp ?? 0),
-            YieldQuantity = request.IsSubProduct ? (request.YieldQuantity ?? 0) : 0,
-            YieldUom = request.IsSubProduct ? (request.YieldUom?.Trim() ?? string.Empty) : string.Empty,
+            YieldQuantity = request.IsSubProduct
+                ? (request.YieldQuantity ?? 0)
+                : isB2cProduct
+                    ? request.YieldQuantity is > 0 ? request.YieldQuantity.Value : 1
+                    : 0,
+            YieldUom = productYieldUom,
             YieldAltUnitsJson = request.IsSubProduct || request.B2bEnabled
                 ? (string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson)
                 : "[]",
@@ -164,6 +175,7 @@ public class ProductsController(
                 && (request.PosEnabled ?? true)
                 ? """[{"unitKey":"b2c-retail"}]"""
                 : "[]",
+            PosSalesUom = isB2cProduct ? productYieldUom : string.Empty,
             Active = request.Active ?? true,
             TotalCost = items.Sum(i => i.Subtotal),
             PackagingCost = packagingItems.Sum(i => i.Subtotal),
@@ -246,6 +258,8 @@ public class ProductsController(
         var previousBatchLabel = product.IsSubProduct
             ? ProductCostRecalculator.FormatSubProductBatchLabel(product)
             : null;
+        var previousYieldUom = product.YieldUom;
+        var previousPosSalesUom = product.PosSalesUom;
         var beforeFields = ProductFieldChangeRecorder.Snapshot(product);
         var beforeRecipe = product.Items
             .Select(i => new ProductBomChangeRecorder.BomLineSnapshot(
@@ -294,14 +308,29 @@ public class ProductsController(
         else if (request.B2bEnabled)
         {
             product.YieldQuantity = 0;
-            product.YieldUom = string.Empty;
+            if (request.YieldUom is not null)
+                product.YieldUom = request.YieldUom.Trim();
             product.YieldAltUnitsJson = string.IsNullOrWhiteSpace(request.YieldAltUnitsJson) ? "[]" : request.YieldAltUnitsJson;
         }
         else
         {
-            product.YieldQuantity = 0;
-            product.YieldUom = string.Empty;
+            product.YieldQuantity = request.YieldQuantity is > 0 ? request.YieldQuantity.Value : 1;
+            product.YieldUom = string.IsNullOrWhiteSpace(request.YieldUom)
+                ? (string.IsNullOrWhiteSpace(previousYieldUom) ? "pcs" : previousYieldUom)
+                : request.YieldUom.Trim();
             product.YieldAltUnitsJson = "[]";
+            var yieldUomChanged = !string.Equals(
+                product.YieldUom,
+                previousYieldUom,
+                StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(previousPosSalesUom)
+                || (yieldUomChanged && string.Equals(
+                    previousPosSalesUom,
+                    previousYieldUom,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                product.PosSalesUom = product.YieldUom;
+            }
         }
         product.ExpiryPeriodDays = ResolveExpiryPeriodDays(request);
         product.ActivationPeriodHours = ResolveActivationPeriodHours(request);
@@ -796,6 +825,9 @@ public class ProductsController(
         category = product.Category,
         group = product.Group,
         isSubProduct = product.IsSubProduct,
+        isBiProduct = product.IsBiProduct,
+        biOfProductId = product.BiOfProductId,
+        biSellable = product.BiSellable,
         isVariableProduct = product.IsVariableProduct,
         variableMode = product.VariableMode,
         variableChoiceQty = product.VariableChoiceQty,

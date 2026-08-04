@@ -12,6 +12,10 @@ import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { api, ApiError, type Product, type ProductManagementSummary, type ProduceBatchShortage } from '../../api';
 import { resolveManagementBatchUnit } from '../../data/productForm';
+import {
+  convertProduceQtyToBase,
+  listProduceUomOptions,
+} from '../../data/productProduceUomOptions';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { labelsEqual } from '../../utils/labelMatch';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
@@ -99,7 +103,7 @@ const BATCH_TABLE_COLUMNS: SortableColumnDef<BatchSortColumn>[] = [
   { key: 'categoryGroup', label: 'Category / Group' },
   { key: 'batchUnit', label: 'Delivery Unit', sortable: false },
   { key: 'onHand', label: 'QTY On Hand / Batch Date / Expiry Date' },
-  { key: 'onOrder', label: 'QTY On Order', sortable: false },
+  { key: 'onOrder', label: 'QTY Holdout', sortable: false },
   { key: 'incubation', label: 'QTY in incubation / Time left', sortable: false },
   { key: 'qtyToProduce', label: 'QTY to Produce / Date requested', align: 'center' },
 ];
@@ -429,6 +433,7 @@ export function ProductManagementPage({
         await api.markProductToProduce(product.id, {
           locationExternalIds: selectedLocationIds,
           batchQty: payload.batchQty,
+          batchUom: payload.batchUom,
           productionDate: payload.productionDate,
           overrideStock: payload.overrideStock === true,
         });
@@ -436,6 +441,7 @@ export function ProductManagementPage({
         await api.produceProductBatches(product.id, {
           locationExternalIds: selectedLocationIds,
           batchQty: payload.batchQty,
+          batchUom: payload.batchUom,
           productionDate: payload.productionDate,
           expiryDate: payload.expiryDate,
           overrideStock: payload.overrideStock === true,
@@ -471,6 +477,7 @@ export function ProductManagementPage({
     try {
       await api.patchProductionBatch(produceTarget.batchLogId, {
         batchQty: payload.batchQty,
+        batchUom: payload.batchUom,
         productionDate: payload.productionDate,
         expiryDate: payload.expiryDate,
         overrideStock: payload.overrideStock === true,
@@ -622,8 +629,8 @@ export function ProductManagementPage({
   );
 
   const emptyMessage = viewMode === 'sub-product'
-    ? 'No active sub-products yet. Add sub-products on the Products page and link them to a B2C or B2B product.'
-    : 'No active B2B products yet. Enable B2B on a product on the Products page.';
+    ? 'No active sub-products yet. Add sub-products on the Products page and link them to a B2C or B2B Principal product.'
+    : 'No active B2B Principal products yet. Enable B2B Principal on a product on the Products page.';
 
   return (
     <div className={pageShellClass({ embedded })}>
@@ -854,7 +861,7 @@ export function ProductManagementPage({
                                 {isSummary ? (
                                   <div className="space-y-1.5">
                                     {stackedMetric(
-                                      'QTY On Order',
+                                      'QTY Holdout',
                                       formatOnOrderWithLocks(row.onOrderQty, row.onOrderLocks, countryCode),
                                     )}
                                   </div>
@@ -962,6 +969,7 @@ export function ProductManagementPage({
           key={`${produceTarget.product.id}-${produceTarget.purpose}-${produceTarget.batchLogId ?? 'new'}`}
           productName={produceTarget.product.name}
           batchUnit={produceTarget.product.batchUnit}
+          uomOptions={listProduceUomOptions(produceTarget.product).map(option => option.label)}
           defaultBatchQty={
             produceTarget.purpose === 'edit'
               ? (produceTarget.product.batchQty ?? 1)
@@ -971,6 +979,11 @@ export function ProductManagementPage({
           }
           isSubProduct={produceTarget.product.isSubProduct}
           isB2bProduct={!produceTarget.product.isSubProduct}
+          baseUnitCost={
+            produceTarget.product.isSubProduct && produceTarget.product.yieldQuantity > 0
+              ? produceTarget.product.totalCost / produceTarget.product.yieldQuantity
+              : produceTarget.product.totalCost
+          }
           expiryPeriodDays={produceTarget.product.expiryPeriodDays}
           purpose={produceTarget.purpose}
           batchNumber={produceTarget.product.batchNumber}
@@ -985,7 +998,9 @@ export function ProductManagementPage({
           components={produceComponents}
           previewLoading={previewLoading}
           subProductOptions={products
-            .filter(p => p.active && p.isSubProduct && p.id !== produceTarget.product.id)
+            .filter(p => p.active
+              && p.id !== produceTarget.product.id
+              && (p.isSubProduct || p.isBiProduct))
             .map(p => ({
               id: p.id,
               name: p.name,
@@ -993,6 +1008,11 @@ export function ProductManagementPage({
               batchUnit: resolveManagementBatchUnit(p),
             }))
             .sort((a, b) => a.name.localeCompare(b.name))}
+          convertQtyToBase={(enteredQty, batchUom) => convertProduceQtyToBase(
+            enteredQty,
+            batchUom,
+            listProduceUomOptions(produceTarget.product),
+          )}
           onClose={() => {
             const saving = produceTarget.purpose === 'edit'
               ? editingBatchId === produceTarget.batchLogId

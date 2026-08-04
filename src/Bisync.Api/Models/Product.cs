@@ -8,6 +8,12 @@ public class Product
     public string Category { get; set; } = string.Empty;
     public string Group { get; set; } = string.Empty;
     public bool IsSubProduct { get; set; }
+    /// <summary>Bi-Product / Bi-Sub-Product created from a production split of BiOfProductId.</summary>
+    public bool IsBiProduct { get; set; }
+    /// <summary>Principal B2B or Sub-Product this bi-product was split from.</summary>
+    public int? BiOfProductId { get; set; }
+    /// <summary>When true and not a Bi-Sub-Product, may sell externally. Bi-Sub-Product always false.</summary>
+    public bool BiSellable { get; set; }
     /// <summary>Sellable product with combination choices or weight-based pricing.</summary>
     public bool IsVariableProduct { get; set; }
     /// <summary>combination | weight</summary>
@@ -33,7 +39,9 @@ public class Product
     public decimal? PreviousPackagingCost { get; set; }
     public decimal? PreviousRrp { get; set; }
     public decimal YieldQuantity { get; set; }
+    /// <summary>B2C Product UOM; Sub-Product batch UOM; B2B Principal Production UOM.</summary>
     public string YieldUom { get; set; } = string.Empty;
+    /// <summary>Alternate production/batch UOMs JSON. For B2B Principal: up to 2 alts (1 alt = qty × principal).</summary>
     public string YieldAltUnitsJson { get; set; } = "[]";
     public int ExpiryPeriodDays { get; set; }
     public int ActivationPeriodHours { get; set; }

@@ -35,8 +35,12 @@ export function productToUpsertPayload(
     b2bPackageUnit: product.b2bPackageUnit,
     b2bSalesConfigJson: product.b2bSalesConfigJson,
     rrp: product.rrp,
-    yieldQuantity: product.isSubProduct ? product.yieldQuantity : undefined,
-    yieldUom: product.isSubProduct && product.yieldUom ? product.yieldUom : undefined,
+    yieldQuantity: product.isSubProduct || (product.b2cEnabled && !product.b2bEnabled)
+      ? (product.yieldQuantity > 0 ? product.yieldQuantity : 1)
+      : undefined,
+    yieldUom: (product.isSubProduct || (product.b2cEnabled && !product.b2bEnabled)) && product.yieldUom
+      ? product.yieldUom
+      : undefined,
     yieldAltUnitsJson: product.yieldAltUnitsJson,
     expiryPeriodDays: product.expiryPeriodDays,
     activationPeriodHours: product.activationPeriodHours,
