@@ -1019,8 +1019,21 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
             <button
               type="button"
               disabled={saving}
-              onClick={() => void api.deployPosPrinterSdk(setupDevice.id).then(r => {
+              onClick={() => void api.testPosPrinterPrint(setupDevice.id).then(r => {
                 flash(r.message)
+                if (!r.sent && !r.skipped) setError(r.message)
+              }).catch(e => setError(e instanceof Error ? e.message : String(e)))}
+              className="text-xs border border-primary/40 bg-primary/10 text-primary rounded-md px-3 py-1.5 font-semibold"
+            >
+              Test print
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void api.deployPosPrinterSdk(setupDevice.id).then(async r => {
+                flash(r.message)
+                const test = await api.testPosPrinterPrint(setupDevice.id).catch(() => null)
+                if (test) flash(test.message)
                 return loadDevices()
               }).catch(e => setError(e instanceof Error ? e.message : String(e)))}
               className="text-xs border border-border rounded-md px-3 py-1.5 font-semibold"
