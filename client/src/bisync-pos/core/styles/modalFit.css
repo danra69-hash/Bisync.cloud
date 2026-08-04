@@ -58,3 +58,56 @@
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+/*
+ * POS Setup sheets (Tax / Device / Delivery): use the entire POS frame on
+ * phones, small tablets, and short Android viewports so content is not clipped.
+ */
+@media (max-width: 960px), (max-height: 760px) {
+  .bisync-pos-root .pos-setup-sheet,
+  .bisync-pos-root .device-setup-modal.pos-setup-sheet,
+  .bisync-pos-root .tax-svc-modal.pos-setup-sheet,
+  .bisync-pos-root .delivery-apps-modal.pos-setup-sheet {
+    padding: 0 !important;
+    place-items: stretch !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    max-height: var(--pos-vh, 100%) !important;
+  }
+
+  .bisync-pos-root .pos-setup-sheet [class$='-modal__backdrop'] {
+    /* Full-bleed sheet — no dimmed letterbox around the card. */
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .bisync-pos-root .pos-setup-sheet [class$='-modal__card'] {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    border-radius: 0 !important;
+    border-left: 0;
+    border-right: 0;
+    box-shadow: none;
+  }
+
+  .bisync-pos-root .pos-setup-sheet [class$='-modal__header'],
+  .bisync-pos-root .pos-setup-sheet [class$='-modal__footer'] {
+    flex-shrink: 0;
+  }
+
+  .bisync-pos-root .pos-setup-sheet [class$='-modal__scroll'] {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  }
+}

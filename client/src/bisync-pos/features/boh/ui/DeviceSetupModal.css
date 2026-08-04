@@ -338,10 +338,12 @@
   align-items: center;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 960px), (max-height: 760px) {
   .device-setup-modal {
     place-items: stretch;
     padding: 0;
+    height: 100%;
+    max-height: var(--pos-vh, 100%);
   }
 
   .device-setup-modal__card {

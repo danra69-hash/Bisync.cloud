@@ -237,7 +237,7 @@ export function TaxServiceChargeModal({ companyId, productGroups, onClose }: Pro
   }
 
   return (
-    <div className="tax-svc-modal" role="dialog" aria-modal="true" aria-labelledby="tax-svc-title">
+    <div className="tax-svc-modal pos-setup-sheet" role="dialog" aria-modal="true" aria-labelledby="tax-svc-title">
       <button type="button" className="tax-svc-modal__backdrop" aria-label="Close" onClick={onClose} />
       <div className="tax-svc-modal__card">
         <header className="tax-svc-modal__header">
