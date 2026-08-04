@@ -523,11 +523,21 @@ public class ProductSaleInventoryService(
                 s => s.ProductId == product.Id && s.LocationExternalId == locationId,
                 cancellationToken);
 
-        if (stockRow is not null)
+        // B2C / finished goods may go negative; later inbound production prices the shortage on the stock card.
+        if (stockRow is null)
         {
-            stockRow.InStock = Math.Max(0, stockRow.InStock - quantitySold);
-            stockRow.UpdatedAt = DateTime.UtcNow;
+            stockRow = new ProductB2bLocationStock
+            {
+                ProductId = product.Id,
+                LocationExternalId = locationId,
+                InStock = 0,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            db.ProductB2bLocationStocks.Add(stockRow);
         }
+
+        stockRow.InStock -= quantitySold;
+        stockRow.UpdatedAt = DateTime.UtcNow;
 
         db.ProductProductionLogs.Add(new ProductProductionLog
         {

@@ -573,9 +573,6 @@ public class StockCardService(
 
         if (stockRow is null)
         {
-            if (signedQty <= 0)
-                return;
-
             db.ProductB2bLocationStocks.Add(new ProductB2bLocationStock
             {
                 ProductId = productId,
@@ -586,7 +583,8 @@ public class StockCardService(
             return;
         }
 
-        stockRow.InStock = Math.Max(0, stockRow.InStock + signedQty);
+        // Allow negative finished-goods balances (oversell → priced when inbound arrives).
+        stockRow.InStock += signedQty;
         stockRow.UpdatedAt = DateTime.UtcNow;
     }
 
@@ -1057,7 +1055,9 @@ public class StockCardService(
                     Quantity = log.Quantity,
                     SignedQty = entryType == "adjustment_in" ? log.Quantity : -log.Quantity,
                     Uom = uom,
-                    UnitPrice = 0,
+                    UnitPrice = entryType == "adjustment_in" && log.UnitPrice > 0
+                        ? log.UnitPrice
+                        : 0,
                     Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
                         ? $"Inventory adjustment — {product.Name}"
                         : $"Inventory adjustment — {log.BatchNumber}",

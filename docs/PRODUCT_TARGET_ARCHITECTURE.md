@@ -150,7 +150,7 @@ Equal-split exception: when every bi line is 100%, split `B` equally across prim
 | **P1** | Rename UX to B2B Principal; Production UOM principal + 2 alts; wire Produce UOM pickers | Done |
 | **P2** | Holdout bucket + DO entity (no price) + online PO → holdout → DO → sold | Done (`OnOrderQty`=Holdout; `DeliveryOrder` entity) |
 | **P3** | Bi-Product / Bi-Sub-Product + cost attribution + separate stock cards | Done (`ProductionCostAttribution`: bi unit = base×pct/100; primary residual) |
-| **P4** | B2C negative sales + price-on-inbound matching for finished goods | P0 |
+| **P4** | B2C negative sales + price-on-inbound matching for finished goods | Done (finished-goods InStock may go negative; stock-card inbound pays shortfalls) |
 | **P5** | Online store channel (future) | P0–P4 |
 
 ---
