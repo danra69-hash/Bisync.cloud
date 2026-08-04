@@ -1,6 +1,14 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react'
-import { api, setApiTenantCompanyId, type AppUser, type Company, type LocationConfig } from '../../../api'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import {
+  api,
+  setApiTenantCompanyId,
+  type AppUser,
+  type Company,
+  type LocationConfig,
+  type PosPrinterSdk,
+} from '../../../api'
 import { parseCompanyModules } from '../../../data/companyModules'
+import { defaultPortForDeviceType } from '../../../data/posDevices'
 import { configLocationToDropdown } from '../../../utils/orgFilters'
 import {
   canActivatePosStation,
@@ -19,13 +27,26 @@ type Props = {
   preferredLocationId?: string
 }
 
+type Phase = 'login' | 'location' | 'peripherals' | 'download'
+
 function companyHasPos(company: Company) {
   return parseCompanyModules(company.modulesJson).includes('POS')
 }
 
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 /**
  * First-time POS station activation: Administrator login → confirm location →
- * download catalog / modifiers / promotions / floor plan onto the device.
+ * optional printer driver install + test print → download catalog onto the device.
  */
 export function StationActivationPage({
   onActivated,
@@ -43,8 +64,17 @@ export function StationActivationPage({
   const [locationId, setLocationId] = useState(preferredLocationId)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [phase, setPhase] = useState<'login' | 'location' | 'download'>('login')
+  const [phase, setPhase] = useState<Phase>('login')
   const [progress, setProgress] = useState('')
+
+  const [sdks, setSdks] = useState<PosPrinterSdk[]>([])
+  const [sdksLoading, setSdksLoading] = useState(false)
+  const [selectedSdkCode, setSelectedSdkCode] = useState('')
+  const [printerName, setPrinterName] = useState('Kitchen Printer')
+  const [printerHost, setPrinterHost] = useState('')
+  const [printerPort, setPrinterPort] = useState(String(defaultPortForDeviceType('printer')))
+  const [printerStatus, setPrinterStatus] = useState<string | null>(null)
+  const [printerBusy, setPrinterBusy] = useState(false)
 
   const locationOptions = useMemo(() => {
     if (companyId == null) return []
@@ -53,6 +83,38 @@ export function StationActivationPage({
       .map(configLocationToDropdown)
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [locations, companyId])
+
+  const selectedSdk = useMemo(
+    () => sdks.find(s => s.sdkCode === selectedSdkCode) ?? null,
+    [sdks, selectedSdkCode],
+  )
+
+  useEffect(() => {
+    if (phase !== 'peripherals' || companyId == null) return
+    let cancelled = false
+    setSdksLoading(true)
+    setError(null)
+    void api.posPrinterSdks()
+      .then(rows => {
+        if (cancelled) return
+        const active = rows.filter(s => s.active !== false)
+        setSdks(active)
+        setSelectedSdkCode(prev => prev || active[0]?.sdkCode || '')
+        if (active[0]?.defaultPort) {
+          setPrinterPort(String(active[0].defaultPort))
+        }
+      })
+      .catch(err => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Could not load printer drivers from the server.')
+      })
+      .finally(() => {
+        if (!cancelled) setSdksLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [phase, companyId])
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault()
@@ -78,7 +140,6 @@ export function StationActivationPage({
       const scoped = loggedIn.companyId
         ? pool.filter(c => c.id === loggedIn.companyId || canActivatePosStation(loggedIn))
         : pool
-      // Super/System admin may see all POS companies; company admin sees theirs.
       const role = (loggedIn.role || '').toLowerCase()
       const visible =
         role.includes('system') || role.includes('super') || loggedIn.email?.toLowerCase() === 'dra@cubevalue.com'
@@ -116,7 +177,68 @@ export function StationActivationPage({
     }
   }
 
-  async function handleActivate() {
+  function goToPeripherals() {
+    if (!locationId) {
+      setError('Select a company location to activate this station.')
+      return
+    }
+    setError(null)
+    setPrinterStatus(null)
+    setPhase('peripherals')
+  }
+
+  async function installPrinterDriverAndTest() {
+    if (companyId == null || !locationId) {
+      setError('Select a company location first.')
+      return
+    }
+    if (!selectedSdkCode) {
+      setError('Select a printer driver from the list.')
+      return
+    }
+    if (!printerName.trim()) {
+      setError('Enter a printer name (e.g. Kitchen Printer).')
+      return
+    }
+
+    setPrinterBusy(true)
+    setError(null)
+    setPrinterStatus(null)
+    try {
+      setApiTenantCompanyId(companyId)
+      const pack = await api.downloadPosPrinterSdkPackage(selectedSdkCode)
+      downloadBlob(pack.blob, pack.fileName)
+      setPrinterStatus(`Downloaded ${pack.fileName}. Registering printer…`)
+
+      const created = await api.createPosDevice({
+        companyId,
+        locationExternalId: locationId,
+        name: printerName.trim(),
+        deviceType: 'printer',
+        connectionType: printerHost.trim() ? 'ethernet' : 'usb',
+        hostAddress: printerHost.trim(),
+        port: printerPort.trim() ? Number(printerPort) : defaultPortForDeviceType('printer'),
+        printerSdkCode: selectedSdkCode,
+        printerBrand: selectedSdk?.brand,
+        active: true,
+      })
+
+      const deployed = await api.deployPosPrinterSdk(created.id)
+      setPrinterStatus(`${deployed.message} Sending test print…`)
+      const test = await api.testPosPrinterPrint(created.id)
+      setPrinterStatus(
+        test.sent
+          ? `Driver installed on “${created.name}”. ${test.message}`
+          : `Driver installed on “${created.name}”. ${test.message}`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Printer driver install failed.')
+    } finally {
+      setPrinterBusy(false)
+    }
+  }
+
+  async function finishActivation() {
     if (!user || companyId == null || !locationId) {
       setError('Select a company location to activate this station.')
       return
@@ -157,7 +279,7 @@ export function StationActivationPage({
         catalogDownloadedAt: new Date().toISOString(),
       })
     } catch (err) {
-      setPhase('location')
+      setPhase('peripherals')
       setError(
         err instanceof Error
           ? err.message
@@ -170,13 +292,13 @@ export function StationActivationPage({
 
   return (
     <div ref={rootRef} className="pos-activate">
-      <div className="pos-activate__card">
+      <div className={`pos-activate__card${phase === 'peripherals' ? ' pos-activate__card--wide' : ''}`}>
         <img src="/pwa-192x192.png" alt="" width={56} height={56} />
         <h1>Activate Bisync POS</h1>
         <p className="pos-activate__lead">
-          First-time setup requires an Administrator login. Confirm the outlet location,
-          then this device downloads products, modifiers, promotions, and the floor plan
-          for offline use on your LAN.
+          First-time setup requires an Administrator login. Confirm the outlet, install any
+          printer drivers from the server, then download products, modifiers, promotions, and
+          the floor plan for offline use on your LAN.
         </p>
 
         {error ? <div className="pos-activate__error" role="alert">{error}</div> : null}
@@ -211,7 +333,7 @@ export function StationActivationPage({
           </form>
         ) : null}
 
-        {phase === 'location' || phase === 'download' ? (
+        {phase === 'location' ? (
           <div className="pos-activate__form">
             <p className="pos-activate__who">
               Signed in as <strong>{user?.fullName}</strong> ({user?.role})
@@ -248,17 +370,122 @@ export function StationActivationPage({
                 ))}
               </select>
             </label>
-            {phase === 'download' ? (
-              <p className="pos-activate__progress">{progress}</p>
+            <button
+              type="button"
+              disabled={busy || !locationId}
+              onClick={goToPeripherals}
+            >
+              Continue to printer drivers
+            </button>
+          </div>
+        ) : null}
+
+        {phase === 'peripherals' ? (
+          <div className="pos-activate__form">
+            <p className="pos-activate__who">
+              Outlet: <strong>{locationOptions.find(l => l.externalId === locationId)?.name || locationId}</strong>
+            </p>
+            <p className="pos-activate__section-title">Printer driver (from server)</p>
+            <p className="pos-activate__hint">
+              Select a driver packaged on Bisync, install it on this station’s printer, then a
+              test print runs automatically. You can skip and add printers later in POS Setup.
+            </p>
+
+            {sdksLoading ? (
+              <p className="pos-activate__progress">Loading drivers…</p>
+            ) : sdks.length === 0 ? (
+              <p className="pos-activate__hint">No printer drivers seeded on the server yet.</p>
             ) : (
-              <button
-                type="button"
-                disabled={busy || !locationId}
-                onClick={() => void handleActivate()}
-              >
-                Confirm &amp; download to this device
-              </button>
+              <ul className="pos-activate__sdk-list" role="listbox" aria-label="Printer drivers">
+                {sdks.map(sdk => (
+                  <li key={sdk.sdkCode}>
+                    <button
+                      type="button"
+                      className={`pos-activate__sdk${selectedSdkCode === sdk.sdkCode ? ' is-selected' : ''}`}
+                      disabled={printerBusy || busy}
+                      onClick={() => {
+                        setSelectedSdkCode(sdk.sdkCode)
+                        setPrinterPort(String(sdk.defaultPort || defaultPortForDeviceType('printer')))
+                      }}
+                    >
+                      <strong>{sdk.displayName}</strong>
+                      <span>{sdk.brand} · {sdk.protocol} · v{sdk.version}</span>
+                      <em>{sdk.description}</em>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
+
+            <label>
+              <span>Printer name</span>
+              <input
+                value={printerName}
+                onChange={e => setPrinterName(e.target.value)}
+                disabled={printerBusy || busy}
+                placeholder="Kitchen Printer"
+              />
+            </label>
+            <div className="pos-activate__row">
+              <label>
+                <span>Printer IP (LAN)</span>
+                <input
+                  value={printerHost}
+                  onChange={e => setPrinterHost(e.target.value)}
+                  disabled={printerBusy || busy}
+                  placeholder="192.168.1.50"
+                />
+              </label>
+              <label>
+                <span>Port</span>
+                <input
+                  value={printerPort}
+                  onChange={e => setPrinterPort(e.target.value)}
+                  disabled={printerBusy || busy}
+                  placeholder="9100"
+                />
+              </label>
+            </div>
+
+            {printerStatus ? (
+              <p className="pos-activate__progress" role="status">{printerStatus}</p>
+            ) : null}
+
+            <button
+              type="button"
+              className="pos-activate__secondary"
+              disabled={printerBusy || busy || !selectedSdkCode || sdksLoading}
+              onClick={() => void installPrinterDriverAndTest()}
+            >
+              {printerBusy ? 'Installing & test printing…' : 'Install selected driver & test print'}
+            </button>
+
+            <button
+              type="button"
+              disabled={busy || printerBusy}
+              onClick={() => void finishActivation()}
+            >
+              {printerStatus?.includes('Driver installed')
+                ? 'Finish — download catalog'
+                : 'Skip printer — download catalog'}
+            </button>
+            <button
+              type="button"
+              className="pos-activate__linkish"
+              disabled={busy || printerBusy}
+              onClick={() => {
+                setError(null)
+                setPhase('location')
+              }}
+            >
+              Back to location
+            </button>
+          </div>
+        ) : null}
+
+        {phase === 'download' ? (
+          <div className="pos-activate__form">
+            <p className="pos-activate__progress">{progress}</p>
           </div>
         ) : null}
       </div>
