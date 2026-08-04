@@ -3,8 +3,8 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding: var(--space-3);
-  gap: var(--space-3);
+  padding: var(--space-2);
+  gap: var(--space-2);
   box-sizing: border-box;
 }
 
@@ -28,7 +28,7 @@
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
+  gap: var(--space-2);
   min-height: 0;
   min-width: 0;
 }
@@ -37,27 +37,32 @@
   grid-template-columns: minmax(0, 1fr) 260px;
 }
 
-/* Keep the design aspect ratio so the right side nav does not squash table %. */
+/*
+ * Floor plan coordinates are % of the canvas. Stretch the canvas to the full
+ * stage so wide stations do not letterbox a tiny 16:10 box with empty margins
+ * while fixed-rem labels overflow and look like overlapping tables.
+ */
 .floor-canvas-stage {
-  container-type: size;
   width: 100%;
   height: 100%;
   min-width: 0;
-  /* Never collapse to 0 after check-in / mobile nav reflow (Android PWA). */
-  min-height: max(280px, 45dvh);
+  min-height: max(240px, 40dvh);
   flex: 1 1 auto;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
 }
 
 .floor-canvas {
+  /* Container queries scale table chrome to the live canvas size. */
+  container-type: size;
+  container-name: floor-canvas;
   position: relative;
-  /* Solid fallbacks first — some Android WebViews resolve cqw/cqh to 0. */
+  flex: 1 1 auto;
   width: 100%;
-  max-width: 100%;
-  aspect-ratio: 16 / 10;
-  height: auto;
-  min-height: 220px;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background:
@@ -66,14 +71,6 @@
   overflow: hidden;
   touch-action: none;
   user-select: none;
-}
-
-@supports (width: 1cqw) {
-  .floor-canvas {
-    width: min(100cqw, calc(100cqh * 16 / 10));
-    height: min(100cqh, calc(100cqw * 10 / 16));
-    min-height: 0;
-  }
 }
 
 .floor-canvas__grid {
@@ -173,15 +170,16 @@
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-md);
   color: var(--color-ink-subtle);
-  font-size: 0.72rem;
+  font-size: clamp(0.55rem, 1.4cqi, 0.72rem);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 8px 10px;
+  padding: clamp(4px, 0.8cqi, 8px) clamp(6px, 1cqi, 10px);
   box-sizing: border-box;
   z-index: 1;
   /* Zones are decorative during service — do not block table clicks. */
   pointer-events: none;
+  overflow: hidden;
 }
 
 .floor-zone__label {
@@ -244,12 +242,13 @@
 .floor-table {
   position: absolute;
   z-index: 2;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 8px;
+  gap: clamp(0px, 0.55cqi, 4px);
+  padding: clamp(2px, 0.9cqi, 8px);
   border: 2px solid var(--color-border);
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
@@ -257,17 +256,17 @@
   font: inherit;
   cursor: pointer;
   pointer-events: auto;
+  overflow: hidden;
   transition: box-shadow 120ms ease, border-color 120ms ease, transform 80ms ease;
 }
 
 .floor-table--square {
-  border-radius: 12px;
+  border-radius: clamp(6px, 1.2cqi, 12px);
 }
 
 .floor-table--round {
   border-radius: 50%;
-  aspect-ratio: 1 / 1;
-  height: auto;
+  /* Stay inside authored w×h % box (no aspect-ratio blowout on wide canvases). */
 }
 
 .floor-table--oval {
@@ -275,7 +274,7 @@
 }
 
 .floor-table--rect {
-  border-radius: 14px;
+  border-radius: clamp(8px, 1.4cqi, 14px);
 }
 
 .floor-table--open {
@@ -311,31 +310,58 @@
 }
 
 .floor-table__label {
-  font-size: 1.05rem;
+  font-size: clamp(0.58rem, 2.35cqi, 1.05rem);
   font-weight: 800;
   line-height: 1;
-}
-
-.floor-table__meta,
-.floor-table__server,
-.floor-table__reserved {
-  font-size: 0.68rem;
-  color: var(--color-ink-muted);
-  text-align: center;
-}
-
-.floor-table__reserved {
-  font-weight: 700;
-  color: #4b5563;
-  line-height: 1.2;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.floor-table__meta,
+.floor-table__server,
+.floor-table__reserved {
+  font-size: clamp(0.45rem, 1.45cqi, 0.68rem);
+  color: var(--color-ink-muted);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floor-table__reserved {
+  font-weight: 700;
+  color: #4b5563;
+  line-height: 1.2;
+}
+
 .floor-table .status-pill {
-  transform: scale(0.9);
+  transform: scale(clamp(0.62, 0.085cqi + 0.45, 0.9));
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* When the canvas is short (phone / bottom nav), drop secondary chrome first. */
+@container floor-canvas (max-height: 420px) {
+  .floor-table__meta,
+  .floor-table__server {
+    display: none;
+  }
+
+  .floor-table {
+    gap: 1px;
+    padding: clamp(2px, 0.7cqi, 6px);
+  }
+}
+
+@container floor-canvas (max-width: 520px) {
+  .floor-table .status-pill {
+    display: none;
+  }
 }
 
 .floor-inspector {

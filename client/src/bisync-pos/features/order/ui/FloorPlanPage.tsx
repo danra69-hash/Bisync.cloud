@@ -675,9 +675,7 @@ export function FloorPlanPage() {
                 left: `${table.x}%`,
                 top: `${table.y}%`,
                 width: `${table.w}%`,
-                ...(table.shape === 'round'
-                  ? {}
-                  : { height: `${table.h}%` }),
+                height: `${table.h}%`,
               }}
               disabled={locked && !editing}
               aria-disabled={locked}
