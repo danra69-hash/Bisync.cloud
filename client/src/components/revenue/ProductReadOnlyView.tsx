@@ -347,6 +347,16 @@ export function ProductReadOnlyView({
               <p className={fieldCls}>{product.name}</p>
             </div>
 
+            {product.b2cEnabled && !product.b2bEnabled ? (
+              <div className="space-y-1.5 max-w-xs">
+                <p className={labelCls}>Product UOM</p>
+                <p className={fieldCls}>{yieldUomLabel || '—'}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Used for product stock and as the default POS sales UOM.
+                </p>
+              </div>
+            ) : null}
+
             {!product.isVariableComponent && (product.aliases ?? []).length > 0 ? (
               <div className="space-y-2 pl-3 border-l-2 border-primary/20">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">

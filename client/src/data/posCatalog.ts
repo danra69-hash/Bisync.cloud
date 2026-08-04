@@ -107,20 +107,20 @@ export function resolvePosMenuRrp(
   return Number(product.rrp ?? 0);
 }
 
-/** POS Menu Sales Unit label — saved value, else primary POS unit / yield / package unit. */
+/** POS Menu Sales Unit label — saved value, Product UOM, selected unit, then legacy fallbacks. */
 export function resolvePosSalesUom(
   product: Product,
   catalogProducts: Product[] = [],
 ): string {
   const saved = (product.posSalesUom ?? '').trim();
   if (saved) return saved;
-  const units = listSelectedPosMenuUnits(product, catalogProducts);
-  if (units[0]?.unitTitle?.trim()) return units[0].unitTitle.trim();
   const yieldUom = (product.yieldUom ?? '').trim();
   if (yieldUom) return yieldUom;
+  const units = listSelectedPosMenuUnits(product, catalogProducts);
+  if (units[0]?.unitTitle?.trim()) return units[0].unitTitle.trim();
   const packageUnit = (product.b2bPackageUnit ?? '').trim();
   if (packageUnit) return packageUnit;
-  return '';
+  return 'pcs';
 }
 
 /** UOM choices for the POS Menu Sales Unit dropdown (product units + catalog UOMs). */

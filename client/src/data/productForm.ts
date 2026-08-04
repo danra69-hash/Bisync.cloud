@@ -165,6 +165,8 @@ export function getSubProductBatchSize(product: { yieldQuantity: number }): numb
 export function resolveManagementBatchUnit(
   product: {
     isSubProduct: boolean;
+    b2cEnabled: boolean;
+    b2bEnabled: boolean;
     yieldQuantity: number;
     yieldUom: string;
     b2bPackageUnit?: string;
@@ -174,6 +176,9 @@ export function resolveManagementBatchUnit(
   if (product.isSubProduct) {
     const batchLabel = formatSubProductBatchPackageUnit(product);
     if (batchLabel !== '—') return batchLabel;
+  }
+  if (product.b2cEnabled && !product.b2bEnabled && product.yieldUom.trim()) {
+    return fromApiUom(product.yieldUom) || product.yieldUom.trim();
   }
   return storedUnit?.trim() || product.b2bPackageUnit?.trim() || 'pcs';
 }

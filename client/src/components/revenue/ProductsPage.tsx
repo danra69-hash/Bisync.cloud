@@ -528,8 +528,8 @@ export function ProductsPage({
   const [b2cEnabled, setB2cEnabled] = useState(true);
   const [b2bEnabled, setB2bEnabled] = useState(false);
   const [rrp, setRrp] = useState('');
-  const [yieldQuantity, setYieldQuantity] = useState('');
-  const [yieldUom, setYieldUom] = useState('');
+  const [yieldQuantity, setYieldQuantity] = useState('1');
+  const [yieldUom, setYieldUom] = useState('Each');
   const [yieldAltUnits, setYieldAltUnits] = useState<AltUnitEntry[]>([]);
   const [expiryPeriodDays, setExpiryPeriodDays] = useState('');
   const [activationPeriodHours, setActivationPeriodHours] = useState('');
@@ -866,6 +866,7 @@ export function ProductsPage({
     ),
     [parStockUom, yieldUom, isSubProduct, b2bEnabled, b2bSalesConfig],
   );
+  const productUomOptionList = productParStockUomOptions(getKnownRecipeUnits(), yieldUom);
 
   useEffect(() => {
     if (!isSubProduct || !yieldUom.trim()) return;
@@ -922,8 +923,8 @@ export function ProductsPage({
     } else {
       setB2cEnabled(true);
       setB2bEnabled(false);
-      setYieldQuantity('');
-      setYieldUom('');
+      setYieldQuantity('1');
+      setYieldUom('Each');
       setYieldAltUnits([]);
       setActivationPeriodHours('');
       if (kind === 'variable') {
@@ -948,8 +949,8 @@ export function ProductsPage({
     setB2cEnabled(true);
     setB2bEnabled(false);
     setRrp('');
-    setYieldQuantity('');
-    setYieldUom('');
+    setYieldQuantity('1');
+    setYieldUom('Each');
     setYieldAltUnits([]);
     setExpiryPeriodDays('');
     setActivationPeriodHours('');
@@ -1008,8 +1009,9 @@ export function ProductsPage({
     setB2cEnabled(product.b2cEnabled);
     setB2bEnabled(product.b2bEnabled);
     setRrp(product.rrp > 0 ? String(product.rrp) : '');
-    setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : '');
-    setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : '');
+    const isB2cProduct = !product.isSubProduct && product.b2cEnabled && !product.b2bEnabled;
+    setYieldQuantity(product.yieldQuantity > 0 ? String(product.yieldQuantity) : (isB2cProduct ? '1' : ''));
+    setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : (isB2cProduct ? 'Each' : ''));
     const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
     const parsedB2bSales = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
     const loadedBatchUom = product.isSubProduct
@@ -1299,6 +1301,8 @@ export function ProductsPage({
     setB2cEnabled(true);
     setB2bEnabled(false);
     setB2bSalesConfig(blankB2bSalesConfig());
+    setYieldQuantity(current => (parseFloat(current) || 0) > 0 ? current : '1');
+    setYieldUom(current => current || 'Each');
   }
 
   function handleB2bEnabledChange(checked: boolean) {
@@ -1385,6 +1389,9 @@ export function ProductsPage({
         showSaveError('Incubation hours must be a whole number zero or greater, or leave blank for none.');
         return;
       }
+    } else if (b2cEnabled && !b2bEnabled && !yieldUom.trim()) {
+      showSaveError('Select a Product UOM.');
+      return;
     } else if (b2bEnabled) {
       const expiryDays = parseInt(expiryPeriodDays, 10);
       if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
@@ -1561,8 +1568,14 @@ export function ProductsPage({
         ? undefined
         : serializeB2bSalesConfig(b2bConfigForSave),
       rrp: effectiveRrp,
-      yieldQuantity: isSubProduct ? parseFloat(yieldQuantity) || 0 : undefined,
-      yieldUom: isSubProduct ? toApiUom(yieldUom) : undefined,
+      yieldQuantity: isSubProduct
+        ? parseFloat(yieldQuantity) || 0
+        : b2cEnabled && !b2bEnabled
+          ? 1
+          : undefined,
+      yieldUom: isSubProduct || (b2cEnabled && !b2bEnabled)
+        ? toApiUom(yieldUom)
+        : undefined,
       yieldAltUnitsJson: supportsBatchAdditionalUom
         ? serializeYieldAltUnits(isSubProduct ? clampSubProductAltUnits(yieldAltUnits) : yieldAltUnits)
         : undefined,
@@ -2054,6 +2067,26 @@ export function ProductsPage({
                     </div>
                   ) : null}
                 </div>
+
+                {b2cEnabled && !b2bEnabled ? (
+                  <div className="space-y-1.5 max-w-xs">
+                    <label className={labelCls} htmlFor="product-uom">Product UOM</label>
+                    <select
+                      id="product-uom"
+                      value={yieldUom}
+                      onChange={e => setYieldUom(e.target.value)}
+                      className={fieldCls}
+                    >
+                      <option value="">Select Product UOM…</option>
+                      {productUomOptionList.map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">
+                      Used for product stock and as the default POS sales UOM.
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                   <div>

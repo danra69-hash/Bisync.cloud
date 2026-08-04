@@ -2629,7 +2629,9 @@ export interface Product {
   previousTotalCost?: number | null;
   previousPackagingCost?: number | null;
   previousRrp?: number | null;
+  /** Batch yield for sub-products; 1 for B2C products. */
   yieldQuantity: number;
+  /** Product UOM for B2C; batch yield UOM for sub-products; optional principal production UOM for B2B. */
   yieldUom: string;
   yieldAltUnitsJson?: string;
   expiryPeriodDays: number;
@@ -2677,7 +2679,9 @@ export interface UpsertProductPayload {
   b2bPackageUnit?: string;
   b2bSalesConfigJson?: string;
   rrp?: number;
+  /** Batch yield for sub-products; send 1 for B2C products. */
   yieldQuantity?: number;
+  /** Product UOM for B2C; batch yield UOM for sub-products; optional principal production UOM for B2B. */
   yieldUom?: string;
   yieldAltUnitsJson?: string;
   expiryPeriodDays?: number;

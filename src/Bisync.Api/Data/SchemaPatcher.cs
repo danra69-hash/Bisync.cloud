@@ -561,6 +561,21 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldQuantity", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldUom", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "YieldAltUnitsJson", "TEXT NOT NULL DEFAULT '[]'");
+        var b2cProductUomBackfill = await db.Products
+            .Where(p => !p.IsSubProduct
+                && p.B2cEnabled
+                && p.Active
+                && (p.YieldUom == null || p.YieldUom.Trim() == string.Empty))
+            .ToListAsync();
+        foreach (var product in b2cProductUomBackfill)
+        {
+            product.YieldUom = "pcs";
+            if (product.YieldQuantity <= 0)
+                product.YieldQuantity = 1;
+        }
+        if (b2cProductUomBackfill.Count > 0)
+            await db.SaveChangesAsync();
+
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PackagingCost", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousTotalCost", "REAL NULL");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PreviousPackagingCost", "REAL NULL");

@@ -914,8 +914,10 @@ public class UpsertProductRequest
     public string? B2bPackageUnit { get; set; }
     public string? B2bSalesConfigJson { get; set; }
     public decimal? Rrp { get; set; }
+    /// <summary>Batch yield for sub-products; defaults to 1 for B2C products.</summary>
     [Range(0, 999999999)]
     public decimal? YieldQuantity { get; set; }
+    /// <summary>Batch yield UOM for sub-products, Product UOM for B2C, and optional principal production UOM for B2B.</summary>
     [MaxLength(20)]
     public string? YieldUom { get; set; }
     public string? YieldAltUnitsJson { get; set; }
