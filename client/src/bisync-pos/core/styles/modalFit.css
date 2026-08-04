@@ -60,55 +60,58 @@
 }
 
 /*
- * POS Setup sheets (Tax / Device / Delivery): always fill the entire POS frame.
- * Centered cards clip on tablets/Android; these setup flows need the full sheet.
+ * POS Setup sheets (Tax / Device / Delivery): opaque full-screen overlay in front
+ * of TopBar / side nav / page content. Portaled onto .bisync-pos-root.
  */
 .bisync-pos-root .pos-setup-sheet,
 .bisync-pos-root .device-setup-modal.pos-setup-sheet,
 .bisync-pos-root .tax-svc-modal.pos-setup-sheet,
 .bisync-pos-root .delivery-apps-modal.pos-setup-sheet {
-  padding: 0 !important;
-  place-items: stretch !important;
-  align-items: stretch !important;
-  justify-items: stretch !important;
-  display: grid !important;
+  position: absolute !important;
   inset: 0 !important;
+  z-index: 220 !important;
+  display: flex !important;
+  flex-direction: column !important;
   width: 100% !important;
   height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  max-height: var(--pos-vh, 100%) !important;
+  max-width: none !important;
+  max-height: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: var(--color-surface, #fff) !important;
+  box-sizing: border-box !important;
 }
 
 .bisync-pos-root .pos-setup-sheet [class$='-modal__backdrop'] {
-  /* Full-bleed sheet — no dimmed letterbox around the card. */
-  opacity: 0;
-  pointer-events: none;
+  display: none !important;
 }
 
 .bisync-pos-root .pos-setup-sheet [class$='-modal__card'] {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
   width: 100% !important;
-  max-width: 100% !important;
+  max-width: none !important;
   height: 100% !important;
-  max-height: 100% !important;
+  max-height: none !important;
   min-height: 0 !important;
+  margin: 0 !important;
+  border: none !important;
   border-radius: 0 !important;
-  border-left: 0;
-  border-right: 0;
-  box-shadow: none;
-  align-self: stretch !important;
-  justify-self: stretch !important;
+  box-shadow: none !important;
+  background: var(--color-surface, #fff) !important;
 }
 
 .bisync-pos-root .pos-setup-sheet [class$='-modal__header'],
 .bisync-pos-root .pos-setup-sheet [class$='-modal__footer'] {
-  flex-shrink: 0;
+  flex-shrink: 0 !important;
 }
 
 .bisync-pos-root .pos-setup-sheet [class$='-modal__scroll'] {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
 }

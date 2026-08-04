@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   api,
   type PosTaxServiceChargeLine,
   type PosTaxServiceConfig,
   type PosTaxServiceSalesTypeRule,
 } from '../../../../api'
+import { usePosOverlayHost } from '../../../core/ui/posOverlayHost'
 import './TaxServiceChargeModal.css'
 
 const SALES_TYPES: { id: string; label: string }[] = [
@@ -59,6 +61,7 @@ function normalizeConfig(raw: PosTaxServiceConfig | null, companyId: number): Po
 }
 
 export function TaxServiceChargeModal({ companyId, productGroups, onClose }: Props) {
+  const overlayHost = usePosOverlayHost()
   const [taxes, setTaxes] = useState<PosTaxServiceChargeLine[]>([])
   const [services, setServices] = useState<PosTaxServiceChargeLine[]>([])
   const [salesTypes, setSalesTypes] = useState<PosTaxServiceSalesTypeRule[]>(
@@ -236,9 +239,10 @@ export function TaxServiceChargeModal({ companyId, productGroups, onClose }: Pro
     }
   }
 
-  return (
+  if (!overlayHost) return null
+
+  return createPortal(
     <div className="tax-svc-modal pos-setup-sheet" role="dialog" aria-modal="true" aria-labelledby="tax-svc-title">
-      <button type="button" className="tax-svc-modal__backdrop" aria-label="Close" onClick={onClose} />
       <div className="tax-svc-modal__card">
         <header className="tax-svc-modal__header">
           <div>
@@ -396,7 +400,8 @@ export function TaxServiceChargeModal({ companyId, productGroups, onClose }: Pro
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    overlayHost,
   )
 }
 

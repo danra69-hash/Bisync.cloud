@@ -1,12 +1,16 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { usePosOverlayHost } from '../../../core/ui/posOverlayHost'
 import './DeliveryAppsModal.css'
 
 type Props = {
   onClose: () => void
 }
 
-/** Placeholder sheet for POS Setup → Delivery apps (fullscreen on small devices). */
+/** Fullscreen sheet for POS Setup → Delivery apps. */
 export function DeliveryAppsModal({ onClose }: Props) {
+  const overlayHost = usePosOverlayHost()
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -15,19 +19,15 @@ export function DeliveryAppsModal({ onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  return (
+  if (!overlayHost) return null
+
+  return createPortal(
     <div
       className="delivery-apps-modal pos-setup-sheet"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delivery-apps-title"
     >
-      <button
-        type="button"
-        className="delivery-apps-modal__backdrop"
-        aria-label="Close"
-        onClick={onClose}
-      />
       <div className="delivery-apps-modal__card">
         <header className="delivery-apps-modal__header">
           <div>
@@ -48,7 +48,6 @@ export function DeliveryAppsModal({ onClose }: Props) {
             <h3>Coming soon</h3>
             <p>
               Delivery app credentials, menu sync, and order intake will be configured here.
-              This sheet uses the full screen on phones and small tablets so nothing is clipped.
             </p>
             <ul>
               <li>GrabFood</li>
@@ -64,6 +63,7 @@ export function DeliveryAppsModal({ onClose }: Props) {
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    overlayHost,
   )
 }
