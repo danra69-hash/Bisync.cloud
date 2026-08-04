@@ -199,6 +199,30 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     }
   }
 
+  async function deleteDevice(device: PosDevice) {
+    if (
+      !window.confirm(
+        `Permanently delete “${device.name}” from this location? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
+    setBusyId(device.id)
+    setError(null)
+    setStatus(null)
+    try {
+      await api.deletePosDevice(device.id)
+      setStatus(`Deleted “${device.name}”.`)
+      if (renameId === device.id) setRenameId(null)
+      await load()
+      if (lan) void runNetworkCheck()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete device.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function commitRename(device: PosDevice) {
     const name = renameValue.trim()
     if (!name) {
@@ -468,6 +492,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     onRenameCancel={() => setRenameId(null)}
                     onRenameSave={() => void commitRename(d)}
                     onToggle={() => void toggleActive(d)}
+                    onDelete={() => void deleteDevice(d)}
                     onTestPrint={
                       d.deviceType === 'printer'
                         ? () => void runTestPrint(d)
@@ -612,6 +637,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     onRenameCancel={() => setRenameId(null)}
                     onRenameSave={() => void commitRename(d)}
                     onToggle={() => void toggleActive(d)}
+                    onDelete={() => void deleteDevice(d)}
                     onTestPrint={
                       d.deviceType === 'printer'
                         ? () => void runTestPrint(d)
@@ -700,6 +726,7 @@ function DeviceRow({
   onRenameCancel,
   onRenameSave,
   onToggle,
+  onDelete,
   onTestPrint,
 }: {
   device: PosDevice
@@ -711,6 +738,7 @@ function DeviceRow({
   onRenameCancel: () => void
   onRenameSave: () => void
   onToggle: () => void
+  onDelete: () => void
   onTestPrint?: () => void
 }) {
   return (
@@ -762,6 +790,15 @@ function DeviceRow({
             </button>
             <button type="button" className="device-setup-btn device-setup-btn--ghost" disabled={busy} onClick={onToggle}>
               {device.active ? 'Disable' : 'Enable'}
+            </button>
+            <button
+              type="button"
+              className="device-setup-btn device-setup-btn--danger"
+              disabled={busy}
+              onClick={onDelete}
+              title="Permanently delete this device from the database"
+            >
+              Delete
             </button>
           </>
         )}

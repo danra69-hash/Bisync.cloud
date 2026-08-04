@@ -3,11 +3,10 @@
   inset: 0;
   z-index: 90;
   display: grid;
-  place-items: center;
-  padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px))
-    max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  place-items: stretch;
+  padding: 0;
   box-sizing: border-box;
-  /* Android: keep the dialog inside the POS frame so scroll can reach footer content. */
+  width: 100%;
   height: 100%;
   max-height: var(--pos-vh, 100dvh);
 }
@@ -18,19 +17,21 @@
   border: none;
   background: rgba(16, 24, 40, 0.5);
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .device-setup-modal__card {
   position: relative;
-  width: min(820px, calc(100% - 0px));
-  /* Definite height so the flex scroll child works on Android WebView. */
-  height: min(920px, var(--pos-modal-max-h, calc(100dvh - 16px)));
-  max-height: var(--pos-modal-max-h, calc(100dvh - 16px));
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -162,6 +163,16 @@
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-primary-text, #fff);
+}
+
+.device-setup-btn--danger {
+  background: transparent;
+  border-color: #b42318;
+  color: #b42318;
+}
+
+.device-setup-btn--danger:hover:not(:disabled) {
+  background: rgba(180, 35, 24, 0.08);
 }
 
 .device-setup-input {
@@ -339,20 +350,6 @@
 }
 
 @media (max-width: 960px), (max-height: 760px) {
-  .device-setup-modal {
-    place-items: stretch;
-    padding: 0;
-    height: 100%;
-    max-height: var(--pos-vh, 100%);
-  }
-
-  .device-setup-modal__card {
-    width: 100%;
-    height: 100%;
-    max-height: 100%;
-    border-radius: 0;
-  }
-
   .device-setup-lan__grid,
   .device-setup-add {
     grid-template-columns: 1fr;
