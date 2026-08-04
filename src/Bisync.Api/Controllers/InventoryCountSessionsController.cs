@@ -13,7 +13,7 @@ public class InventoryCountSessionsController(InventoryCountService inventoryCou
         [FromQuery] int? companyId,
         [FromQuery] string? locationIds,
         [FromQuery] string? period,
-        [FromQuery] string? uomMode = "inventory")
+        [FromQuery] string? uomMode = "recipe")
     {
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
@@ -24,7 +24,7 @@ public class InventoryCountSessionsController(InventoryCountService inventoryCou
             companyId,
             locationIdList,
             period ?? string.Empty,
-            uomMode ?? "inventory");
+            "recipe");
 
         if (session is null)
             return new JsonResult((object?)null);
@@ -94,7 +94,7 @@ public class InventoryCountSessionsController(InventoryCountService inventoryCou
             body.CompanyId,
             locationIdList,
             body.PeriodMonth ?? string.Empty,
-            body.UomMode ?? "inventory",
+            "recipe",
             body.ItemTypeFilter ?? "all",
             body.GroupFilter ?? "All",
             body.CountDate ?? string.Empty,

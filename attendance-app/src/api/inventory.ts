@@ -36,7 +36,6 @@ export type InventoryDetailIngredient = {
   ingredientCategory?: string
   ingredientGroup?: string
   ingredientUOM?: string
-  ingredientInventoryUnit?: string
   actualQuantity?: number
   systemQuantity?: number
   systemValue?: number
@@ -150,7 +149,6 @@ export async function getInventoryDetail(
         ingredientCategory: row.ingredientCategory as string | undefined,
         ingredientGroup: row.ingredientGroup as string | undefined,
         ingredientUOM: row.ingredientUOM as string | undefined,
-        ingredientInventoryUnit: row.ingredientInventoryUnit as string | undefined,
         actualQuantity:
           row.actualQuantity != null ? Number(row.actualQuantity) : undefined,
         systemQuantity:
@@ -220,9 +218,7 @@ export type InventoryIngredientRow = {
   id: number
   name: string
   recipeUnit?: string
-  inventoryUnit?: string
   systemQuantity?: number
-  conversionRate?: number
   isLooseCount?: boolean
   packagingUnits?: InventoryPackagingUnit[]
   product?: InventoryProductInfo | null
@@ -411,11 +407,8 @@ function mapIngredientRow(row: Record<string, unknown>): InventoryIngredientRow 
     id,
     name: String(row.name ?? `Ingredient ${id}`),
     recipeUnit: row.recipeUnit as string | undefined,
-    inventoryUnit: row.inventoryUnit as string | undefined,
     systemQuantity:
       row.systemQuantity != null ? Number(row.systemQuantity) : undefined,
-    conversionRate:
-      row.conversionRate != null ? Number(row.conversionRate) : undefined,
     isLooseCount: Boolean(row.isLooseCount),
     packagingUnits: packaging,
     product: loose

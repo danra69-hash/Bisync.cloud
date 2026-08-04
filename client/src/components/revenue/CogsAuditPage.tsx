@@ -55,7 +55,6 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
   const money = (value: number) => formatPriceOrHidden(hidePrices, () => fmt2(value, countryCode));
   const [screen, setScreen] = useState<Screen>('summary');
   const [period, setPeriod] = useState(currentStockCardMonth);
-  const [uomMode, setUomMode] = useState<'inventory' | 'recipe'>('inventory');
   const [search, setSearch] = useState('');
   const [summary, setSummary] = useState<CogsAuditSummaryResult | null>(null);
   const [detail, setDetail] = useState<CogsAuditDetailResult | null>(null);
@@ -82,14 +81,14 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
     setLoading(true);
     setError(null);
     api
-      .cogsAuditSummary(selectedCompanyId, selectedLocationIds, { period, uomMode, itemType: 'component' })
+      .cogsAuditSummary(selectedCompanyId, selectedLocationIds, { period, itemType: 'component' })
       .then(setSummary)
       .catch(() => {
         setSummary(null);
         setError('Could not load COGS audit summary.');
       })
       .finally(() => setLoading(false));
-  }, [selectedCompanyId, selectedLocationIds, period, uomMode, freezeLiveLoad]);
+  }, [selectedCompanyId, selectedLocationIds, period, freezeLiveLoad]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -122,7 +121,7 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
         row.itemKey,
         selectedCompanyId,
         selectedLocationIds,
-        { period, uomMode },
+        { period },
       );
       setDetail(data);
     } catch {
@@ -322,19 +321,6 @@ export function CogsAuditPage({ selectedCompanyId, selectedLocationIds }: Props)
             ))}
           </select>
         </div>
-        {!isSystemHistoryView && (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-            <select
-              value={uomMode}
-              onChange={e => setUomMode(e.target.value as 'inventory' | 'recipe')}
-              className={`${filterSelectCls} min-w-[120px]`}
-            >
-              <option value="inventory">Inventory</option>
-              <option value="recipe">Recipe</option>
-            </select>
-          </div>
-        )}
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input

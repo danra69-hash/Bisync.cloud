@@ -61,13 +61,11 @@ public static class StockCardFifoDemoSeeder
             Category = "Food",
             Group = "Proteins",
             RecipeUom = "g",
-            InventoryUom = "kg",
             LastPriceRecipe = 0.042m,
-            LastPriceInventory = 42m,
             DailyUsage = 2.5m,
             OrderFreqDays = 3,
             StorageJson = JsonSerializer.Serialize(new[] { "Chiller" }),
-            DetailConfigJson = "{}",
+            DetailConfigJson = """{"altRecipeUnits":[{"fromQty":"1","qty":"1000","unit":"kg"}]}""",
             Active = true,
             LocationsJson = locationsJson,
         };
@@ -121,9 +119,9 @@ public static class StockCardFifoDemoSeeder
                 {
                     ComponentId = ingredient.ComponentId,
                     ComponentName = ingredient.Name,
-                    Quantity = poQtys[i],
-                    Uom = "kg",
-                    UnitPrice = poPrices[i],
+                    Quantity = poQtys[i] * 1000m,
+                    Uom = "g",
+                    UnitPrice = poPrices[i] / 1000m,
                     DateOrdered = po.OrderDate,
                     DateCreatedInStock = now.AddDays(-poDaysAgo[i]).AddHours(9 + i),
                     PurchaseOrderId = po.Id,
@@ -151,9 +149,9 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = 10,
-            Uom = "kg",
-            UnitPrice = 41m,
+            QtyDelta = 10_000,
+            Uom = "g",
+            UnitPrice = 0.041m,
             Reason = "Transfer in from Midtown",
             ReferenceType = "transfer_in",
             ReferenceId = refId++,
@@ -166,8 +164,8 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -35,
-            Uom = "kg",
+            QtyDelta = -35_000,
+            Uom = "g",
             Reason = "Production — Sub-product batch",
             ReferenceType = "production",
             ReferenceId = refId++,
@@ -180,8 +178,8 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -18,
-            Uom = "kg",
+            QtyDelta = -18_000,
+            Uom = "g",
             Reason = "POS sales depletion",
             ReferenceType = "pos_sale",
             ReferenceId = refId++,
@@ -194,8 +192,8 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -5,
-            Uom = "kg",
+            QtyDelta = -5_000,
+            Uom = "g",
             Reason = "Wastage — spoilage",
             ReferenceType = "wastage",
             ReferenceId = refId++,
@@ -208,8 +206,8 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -8,
-            Uom = "kg",
+            QtyDelta = -8_000,
+            Uom = "g",
             Reason = "Transfer out to Airport",
             ReferenceType = "transfer_out",
             ReferenceId = refId++,
@@ -222,8 +220,8 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -3,
-            Uom = "kg",
+            QtyDelta = -3_000,
+            Uom = "g",
             Reason = "Inventory adjustment — count short",
             ReferenceType = "inventory_adjustment",
             ReferenceId = refId++,
@@ -236,8 +234,8 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = 2,
-            Uom = "kg",
+            QtyDelta = 2_000,
+            Uom = "g",
             Reason = "Inventory adjustment — count found",
             ReferenceType = "inventory_adjustment",
             ReferenceId = refId++,
@@ -250,8 +248,8 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -12,
-            Uom = "kg",
+            QtyDelta = -12_000,
+            Uom = "g",
             Reason = "POS sales depletion",
             ReferenceType = "pos_sale",
             ReferenceId = refId++,
@@ -324,13 +322,11 @@ public static class StockCardFifoDemoSeeder
             Category = "Food",
             Group = "Proteins",
             RecipeUom = "g",
-            InventoryUom = "kg",
             LastPriceRecipe = 0.03m,
-            LastPriceInventory = 30m,
             DailyUsage = 500m,
             OrderFreqDays = 2,
             StorageJson = JsonSerializer.Serialize(new[] { "Chiller" }),
-            DetailConfigJson = "{}",
+            DetailConfigJson = """{"altRecipeUnits":[{"fromQty":"1","qty":"1000","unit":"kg"}]}""",
             Active = true,
             LocationsJson = JsonSerializer.Serialize(new[] { locationId, "midtown", "airport", "westend" }),
         };
@@ -344,9 +340,8 @@ public static class StockCardFifoDemoSeeder
         {
             existing.CompanyId ??= companyId;
             existing.RecipeUom = "g";
-            existing.InventoryUom = "kg";
             existing.LastPriceRecipe = 0.03m;
-            existing.LastPriceInventory = 30m;
+            existing.DetailConfigJson = """{"altRecipeUnits":[{"fromQty":"1","qty":"1000","unit":"kg"}]}""";
             existing.Active = true;
         }
 
@@ -364,9 +359,8 @@ public static class StockCardFifoDemoSeeder
             }
         }
 
-        // Pre-consolidation POS sales (Jul 1–3) in inventory UOM (kg) — Stock Card defaults to inventory.
-        // Same ratios as the worked example: 0.2+0.2+0.4+0.6+0.2+0.4 = 2.0 kg (= 2000 g).
-        var saleQtys = new[] { 0.2m, 0.2m, 0.4m, 0.6m, 0.2m, 0.4m };
+        // Pre-consolidation POS sales (Jul 1–3) in the principal recipe UOM.
+        var saleQtys = new[] { 200m, 200m, 400m, 600m, 200m, 400m };
         var saleAts = new[]
         {
             new DateTime(2026, 7, 1, 11, 0, 0, DateTimeKind.Utc),
@@ -385,25 +379,25 @@ public static class StockCardFifoDemoSeeder
                 ComponentName = ingredient.Name,
                 LocationExternalId = locationId,
                 QtyDelta = -saleQtys[i],
-                Uom = "kg",
+                Uom = "g",
                 UnitPrice = 0,
-                Reason = $"Integrity demo — POS sale {saleQtys[i]:0.###} kg (pre-consolidation)",
+                Reason = $"Integrity demo — POS sale {saleQtys[i]:0.###} g (pre-consolidation)",
                 ReferenceType = "pos_sale",
                 CompanyId = companyId,
                 CreatedAt = saleAts[i],
             });
         }
 
-        // Jul 4 consolidation inbound: 1 kg @ RM 30/kg.
+        // Jul 4 consolidation inbound: 1000 g @ RM 0.03/g.
         await AddMovementIfMissing(9210, new InventoryMovement
         {
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = locationId,
-            QtyDelta = 1m,
-            Uom = "kg",
-            UnitPrice = 30m,
-            Reason = "Integrity demo — physical inventory C/F 1 kg @ RM 30/kg",
+            QtyDelta = 1000m,
+            Uom = "g",
+            UnitPrice = 0.03m,
+            Reason = "Integrity demo — physical inventory C/F 1000 g @ RM 0.03/g",
             ReferenceType = "inventory_adjustment",
             CompanyId = companyId,
             CreatedAt = new DateTime(2026, 7, 4, 16, 0, 0, DateTimeKind.Utc),
@@ -415,10 +409,10 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = locationId,
-            QtyDelta = 0.8m,
-            Uom = "kg",
-            UnitPrice = 40m,
-            Reason = "Integrity demo — top-up inbound 0.8 kg @ RM 40/kg",
+            QtyDelta = 800m,
+            Uom = "g",
+            UnitPrice = 0.04m,
+            Reason = "Integrity demo — top-up inbound 800 g @ RM 0.04/g",
             ReferenceType = "inventory_adjustment",
             CompanyId = companyId,
             CreatedAt = new DateTime(2026, 7, 6, 9, 30, 0, DateTimeKind.Utc),
@@ -429,29 +423,29 @@ public static class StockCardFifoDemoSeeder
         return new
         {
             skipped = false,
-            message = "Integrity chicken-breast demo seeded (inventory UOM / kg).",
+            message = "Integrity chicken-breast demo seeded (principal recipe UOM / g).",
             componentId = ingredient.ComponentId,
             componentName,
             location = locationId,
             period = "2026-07",
-            uomMode = "inventory",
+            uomMode = "recipe",
             expected = new
             {
-                preConsolidationSalesKg = saleQtys.Sum(),
-                consolidationInboundKg = 1m,
-                consolidationUnitPricePerKg = 30m,
-                backfillCoversKg = 1m,
-                remainingShortAfterJul4Kg = 1m,
-                secondInboundKg = 0.8m,
-                secondInboundUnitPricePerKg = 40m,
-                onHandAfterJul6Kg = -0.2m,
+                preConsolidationSalesG = saleQtys.Sum(),
+                consolidationInboundG = 1000m,
+                consolidationUnitPricePerG = 0.03m,
+                backfillCoversG = 1000m,
+                remainingShortAfterJul4G = 1000m,
+                secondInboundG = 800m,
+                secondInboundUnitPricePerG = 0.04m,
+                onHandAfterJul6G = -200m,
                 notes = new[]
                 {
                     "Company: Bisync Hospitality Sdn Bhd (id 1)",
                     "Stock Card → search SC FIFO Integrity Chicken Breast",
-                    "Filters: Downtown · Inventory UOM · July 2026",
-                    "Jul 1–3 sales then Jul 4 C/F @ 30/kg backfills; Jul 6 top-up @ 40/kg",
-                    "On-hand after Jul 6 ≈ -0.2 kg with negative banner",
+                    "Filters: Downtown · Recipe UOM · July 2026",
+                    "Jul 1–3 sales then Jul 4 C/F @ 0.03/g backfills; Jul 6 top-up @ 0.04/g",
+                    "On-hand after Jul 6 ≈ -200 g with negative banner",
                 },
             },
             howToCheck = HowToCheck(ingredient.ComponentId),
@@ -465,7 +459,7 @@ public static class StockCardFifoDemoSeeder
         filters = new
         {
             period = "2026-07",
-            uomMode = "inventory",
+            uomMode = "recipe",
             location = "downtown",
             company = "Bisync Hospitality Sdn Bhd (id 1)",
         },
@@ -508,9 +502,9 @@ public static class StockCardFifoDemoSeeder
             {
                 ComponentId = ingredient.ComponentId,
                 ComponentName = ingredient.Name,
-                Quantity = 40m,
-                Uom = "kg",
-                UnitPrice = 50m,
+                Quantity = 40_000m,
+                Uom = "g",
+                UnitPrice = 0.05m,
                 DateOrdered = po.OrderDate,
                 DateCreatedInStock = new DateTime(2026, 7, 3, 10, 0, 0, DateTimeKind.Utc),
                 PurchaseOrderId = po.Id,
@@ -537,9 +531,9 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -30,
-            Uom = "kg",
-            Reason = "POS sales depletion — FIFO test (30 kg)",
+            QtyDelta = -30_000,
+            Uom = "g",
+            Reason = "POS sales depletion — FIFO test (30000 g)",
             ReferenceType = "pos_sale",
             CompanyId = companyId,
             CreatedAt = new DateTime(2026, 7, 2, 8, 0, 0, DateTimeKind.Utc),
@@ -550,9 +544,9 @@ public static class StockCardFifoDemoSeeder
             ComponentId = ingredient.ComponentId,
             ComponentName = ingredient.Name,
             LocationExternalId = "downtown",
-            QtyDelta = -25,
-            Uom = "kg",
-            Reason = "POS sales depletion — FIFO test (25 kg)",
+            QtyDelta = -25_000,
+            Uom = "g",
+            Reason = "POS sales depletion — FIFO test (25000 g)",
             ReferenceType = "pos_sale",
             CompanyId = companyId,
             CreatedAt = new DateTime(2026, 7, 4, 9, 0, 0, DateTimeKind.Utc),

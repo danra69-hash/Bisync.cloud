@@ -24,7 +24,6 @@ import {
 
 export type VendorProductTagApplyOptions = {
   recipeUnit: string;
-  inventoryUnit: string;
   componentUom: string;
   principalQty: string;
   yieldLossPct: string;
@@ -150,9 +149,7 @@ function uomSourceFromRow(row: ComponentRow): ComponentUomSource {
   const detail = resolveDetailConfigForRow(row);
   return {
     recipeUom: fromApiUom(row.recipeUOM),
-    inventoryUom: fromApiUom(row.inventoryUOM),
     altRecipeUnits: detail.altRecipeUnits,
-    altInventoryUnits: detail.altInventoryUnits,
   };
 }
 
@@ -164,12 +161,7 @@ function convertUnitPrice(
 ): number {
   if (!(priceFrom > 0)) return 0;
   if (!fromUom || !toUom || unitsEqual(fromUom, toUom)) return priceFrom;
-  const detail = resolveDetailConfigForRow(row);
-  const qty = convertComponentQtyBetweenUoms(1, fromUom, toUom, {
-    ...uomSourceFromRow(row),
-    convertFromInventoryQty: detail.convertFromInventoryQty,
-    convertToRecipeQty: detail.convertToRecipeQty,
-  });
+  const qty = convertComponentQtyBetweenUoms(1, fromUom, toUom, uomSourceFromRow(row));
   if (qty == null || !(qty > 0)) return priceFrom;
   return priceFrom / qty;
 }
@@ -221,51 +213,31 @@ export function resolveAttachedVendorPrincipalPricing(
  */
 export function resolveMyComponentLastUomPrice(
   row: ComponentRow,
-  uomFilter: 'principal' | 'inventory' | string = 'principal',
+  uomFilter: 'principal' | string = 'principal',
   catalog: VendorProductCatalogItem[] = applyVendorProductOverrides(),
 ): number {
   const recipeUom = fromApiUom(row.recipeUOM);
 
   if (row.hasPurchaseRecord) {
-    if (uomFilter === 'inventory' && (row.lastPriceInventory || 0) > 0) {
-      return row.lastPriceInventory || 0;
-    }
     if (uomFilter === 'principal' && (row.lastPriceRecipe || 0) > 0) {
       return row.lastPriceRecipe || 0;
     }
-    if (uomFilter !== 'inventory' && uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
+    if (uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
       const converted = convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
       if (converted > 0) return converted;
     }
   }
 
   // No usable purchase price yet — show the current price stored on the component.
-  if (uomFilter === 'inventory' && (row.lastPriceInventory || 0) > 0) {
-    return row.lastPriceInventory || 0;
-  }
   if (uomFilter === 'principal' && (row.lastPriceRecipe || 0) > 0) {
     return row.lastPriceRecipe || 0;
   }
-  if (uomFilter !== 'inventory' && uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
+  if (uomFilter !== 'principal' && (row.lastPriceRecipe || 0) > 0) {
     const converted = convertUnitPrice(row.lastPriceRecipe || 0, recipeUom, uomFilter, row);
     if (converted > 0) return converted;
   }
-  if ((row.lastPriceInventory || 0) > 0 && uomFilter === 'principal') {
-    const inventoryUom = fromApiUom(row.inventoryUOM);
-    const converted = convertUnitPrice(row.lastPriceInventory || 0, inventoryUom, recipeUom, row);
-    if (converted > 0) return converted;
-  }
-
   const vendor = resolveAttachedVendorPrincipalPricing(row, catalog);
-  if (!vendor) {
-    return uomFilter === 'inventory'
-      ? (row.lastPriceInventory || 0)
-      : (row.lastPriceRecipe || 0);
-  }
-
-  if (uomFilter === 'inventory') {
-    return vendor.deliveryPrice > 0 ? vendor.deliveryPrice : row.lastPriceInventory || 0;
-  }
+  if (!vendor) return row.lastPriceRecipe || 0;
 
   const targetUom = uomFilter === 'principal' ? recipeUom : uomFilter;
   if (vendor.principalPrice > 0) {
@@ -275,7 +247,7 @@ export function resolveMyComponentLastUomPrice(
   return row.lastPriceRecipe || 0;
 }
 
-/** Derive recipe/inventory prices from the primary tagged vendor product when missing. */
+/** Derive the principal component price from the primary tagged vendor product when missing. */
 export function syncComponentPricesFromPrimaryTag(row: ComponentRow): ComponentRow {
   const detail = resolveDetailConfigForRow(row);
   const primaryId = detail.taggedVendorProductIds[0];
@@ -305,36 +277,27 @@ export function syncComponentPricesFromPrimaryTag(row: ComponentRow): ComponentR
     : (parseFloat(detail.vendorProductLossYield[primaryId] ?? '0') || 0);
   const nettQty = calcNettUomQty(principalQty, lossYield);
   const yieldNettPrice = calcNettUomPrice(product.deliveryPrice, nettQty);
-  const inventoryUnit = fromApiUom(row.inventoryUOM);
   const receiptBasisQty = detail.splitUse?.enabled
     ? toSplitUseBasisQty(
       principalQty,
       componentUom,
-      detail.splitUse,
-      inventoryUnit,
       recipeUnit,
-      detail.convertFromInventoryQty || '1',
-      detail.convertToRecipeQty || '1',
     ) ?? undefined
     : undefined;
   const splitNettPrice = detail.splitUse?.enabled
     ? calcSplitUseNettUnitCost(
       product.deliveryPrice,
       detail.splitUse,
-      inventoryUnit,
       recipeUnit,
-      detail.convertFromInventoryQty || '1',
-      detail.convertToRecipeQty || '1',
       receiptBasisQty,
     )
     : 0;
-  // Full Split Use (nett = 0) keeps inventory delivery price; recipe nett may be 0.
+  // Full Split Use (nett = 0) leaves no principal parent-component value.
   const nettPrice = detail.splitUse?.enabled ? splitNettPrice : yieldNettPrice;
   if (detail.splitUse?.enabled && nettPrice <= 0 && product.deliveryPrice > 0) {
     return {
       ...row,
       lastPriceRecipe: 0,
-      lastPriceInventory: product.deliveryPrice,
     };
   }
 
@@ -343,7 +306,6 @@ export function syncComponentPricesFromPrimaryTag(row: ComponentRow): ComponentR
   return {
     ...row,
     lastPriceRecipe: nettPrice,
-    lastPriceInventory: product.deliveryPrice,
   };
 }
 
@@ -358,7 +320,6 @@ export function buildComponentRowWithVendorProductTag(
   }
 
   const recipeUnit = options.recipeUnit;
-  const inventoryUnit = options.inventoryUnit;
   const componentUom = options.componentUom;
   const lossYield = parseFloat(options.yieldLossPct) || 0;
 
@@ -409,12 +370,10 @@ export function buildComponentRowWithVendorProductTag(
   return {
     ...row,
     recipeUOM: toApiUom(recipeUnit),
-    inventoryUOM: toApiUom(inventoryUnit),
     storage: storages,
     detailConfig: nextDetail,
     detailConfigJson: serializeDetailConfig(nextDetail),
     attachedVendors: countComponentTaggedVendors({ detailConfig: nextDetail }),
-    lastPriceInventory: isPrimary ? product.deliveryPrice : row.lastPriceInventory,
     lastPriceRecipe: isPrimary && nettPrice > 0 ? nettPrice : row.lastPriceRecipe,
   };
 }
@@ -429,9 +388,7 @@ export function componentRowToIngredientPayload(row: ComponentRow): Ingredient {
     category: pricedRow.category,
     group: pricedRow.group,
     recipeUom: pricedRow.recipeUOM,
-    inventoryUom: pricedRow.inventoryUOM,
     lastPriceRecipe: pricedRow.lastPriceRecipe,
-    lastPriceInventory: pricedRow.lastPriceInventory,
     dailyUsage: pricedRow.dailyUsage,
     orderFreqDays: pricedRow.orderFreqDays,
     storageJson: JSON.stringify(pricedRow.storage),

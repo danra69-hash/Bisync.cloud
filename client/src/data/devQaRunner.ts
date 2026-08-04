@@ -280,9 +280,7 @@ async function createOneComponentBundle(
     category: 'Dry Goods',
     group: 'QA Power',
     recipeUom: 'Kg',
-    inventoryUom: 'Kg',
     lastPriceRecipe: unitPrice,
-    lastPriceInventory: unitPrice,
     dailyUsage: 2,
     orderFreqDays: 7,
     storageJson: JSON.stringify(['Dry Store']),
@@ -337,7 +335,6 @@ async function createOneComponentBundle(
   const tagged = {
     ...ingredient,
     lastPriceRecipe: unitPrice,
-    lastPriceInventory: unitPrice,
     attachedVendors: 1,
     detailConfigJson: tagDetailJson({
       catalogId: catalog.id,
@@ -1494,7 +1491,6 @@ const BASE_TASKS: TaskDef[] = [
 
       const stockRows = await api.stockCards(ctx.companyId, locIds, {
         itemType: 'component',
-        uomMode: 'inventory',
         period,
       });
       const qaComponentIds = new Set(ctx.components.map(c => c.componentId));
@@ -1517,7 +1513,6 @@ const BASE_TASKS: TaskDef[] = [
         companyId: ctx.companyId,
         locationIds: locIds.join(','),
         periodMonth: period,
-        uomMode: 'inventory',
         itemTypeFilter: 'component',
         groupFilter: 'All',
         countDate: todayIso(),
@@ -1536,7 +1531,6 @@ const BASE_TASKS: TaskDef[] = [
 
       const summary = await api.cogsAuditSummary(ctx.companyId, locIds, {
         period,
-        uomMode: 'inventory',
         itemType: 'component',
       });
       const history = await api.cogsAuditSystemHistory(50);

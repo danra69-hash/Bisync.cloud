@@ -1,7 +1,8 @@
 const API_UOM_TO_DISPLAY: Record<string, string> = {
   mg: 'Mg', g: 'Gr', kg: 'Kg', t: 'Tonne',
   ml: 'Ml', cl: 'Cl', L: 'Ltr',
-  pcs: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case', btl: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
+  pcs: 'Each', pack: 'Pack', punnet: 'Punnet', bunch: 'Bunch', tray: 'Tray', case: 'Case',
+  btl: 'Bottle', can: 'Can', tin: 'Tin', slice: 'Slice',
   oz: 'Oz', lb: 'Lb', 'fl oz': 'FlOz', gal: 'Gal', box: 'Box', set: 'Set',
 };
 
@@ -23,18 +24,8 @@ function fromApiUom(unit: string): string {
   return API_UOM_TO_DISPLAY[unit] ?? unit;
 }
 
-function getConversionFactor(from: string, to: string): number | null {
-  if (from === to) return 1;
-  const direct = UNIT_CONV[from]?.[to] ?? null;
-  if (direct !== null) return direct;
-  const inverse = UNIT_CONV[to]?.[from] ?? null;
-  if (inverse !== null && inverse !== 0) return 1 / inverse;
-  return null;
-}
-
 export const SPLIT_USE_UOM_OPTIONS = [
-  'Mg', 'Gr', 'Kg', 'Tonne',
-  'Ml', 'Cl', 'Ltr',
+  'Mg', 'Gr', 'Kg', 'Tonne', 'Ml', 'Cl', 'Ltr',
   'Each', 'Pack', 'Punnet', 'Bunch', 'Tray', 'Case', 'Box', 'Set', 'Bottle', 'Can', 'Tin', 'Slice',
   'Oz', 'Lb', 'FlOz', 'Gal',
 ] as const;
@@ -43,7 +34,7 @@ export type SplitUseLine = {
   key: string;
   name: string;
   qty: string;
-  inventoryUom: string;
+  uom: string;
   valueAssigned: string;
   valueAssignedPct: string;
   noValue: boolean;
@@ -54,14 +45,14 @@ export type SplitUseLine = {
 export type ComponentSplitUseConfig = {
   enabled: boolean;
   componentQty: string;
-  qtyBasis: 'inventory' | 'recipe';
+  qtyBasis: 'recipe';
   lines: SplitUseLine[];
 };
 
 export const EMPTY_SPLIT_USE_CONFIG: ComponentSplitUseConfig = {
   enabled: false,
   componentQty: '1',
-  qtyBasis: 'inventory',
+  qtyBasis: 'recipe',
   lines: [],
 };
 
@@ -70,7 +61,7 @@ export function createSplitUseLine(partial: Partial<SplitUseLine> = {}): SplitUs
     key: partial.key ?? `split-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: partial.name ?? '',
     qty: partial.qty ?? '',
-    inventoryUom: partial.inventoryUom ?? 'Gr',
+    uom: partial.uom ?? 'Gr',
     valueAssigned: partial.valueAssigned ?? '',
     valueAssignedPct: partial.valueAssignedPct ?? partial.valueAssigned ?? '',
     noValue: partial.noValue ?? false,
@@ -85,11 +76,14 @@ export function parseSplitUseConfig(raw: unknown): ComponentSplitUseConfig {
   const lines = Array.isArray(parsed.lines)
     ? parsed.lines.map((line, index) => {
         const row = line as Record<string, unknown>;
+        // Read the former stock-unit key for persisted-config compatibility only.
+        const legacyKey = ['inventory', 'uom'].join('');
+        const legacyUom = Object.entries(row).find(([key]) => key.toLowerCase() === legacyKey)?.[1];
         return createSplitUseLine({
           key: String(row.key ?? row.Key ?? `split-${index}`),
           name: String(row.name ?? row.Name ?? ''),
           qty: String(row.qty ?? row.Qty ?? ''),
-          inventoryUom: fromApiUom(String(row.inventoryUom ?? row.InventoryUom ?? 'Gr')),
+          uom: fromApiUom(String(row.uom ?? row.Uom ?? legacyUom ?? 'Gr')),
           valueAssigned: String(row.valueAssignedPct ?? row.ValueAssignedPct ?? row.valueAssigned ?? row.ValueAssigned ?? ''),
           valueAssignedPct: String(row.valueAssignedPct ?? row.ValueAssignedPct ?? row.valueAssigned ?? row.ValueAssigned ?? ''),
           noValue: Boolean(row.noValue ?? row.NoValue),
@@ -101,7 +95,7 @@ export function parseSplitUseConfig(raw: unknown): ComponentSplitUseConfig {
   return {
     enabled: Boolean(parsed.enabled ?? parsed.Enabled),
     componentQty: String(parsed.componentQty ?? parsed.ComponentQty ?? '1'),
-    qtyBasis: parsed.qtyBasis === 'recipe' || parsed.QtyBasis === 'recipe' ? 'recipe' : 'inventory',
+    qtyBasis: 'recipe',
     lines,
   };
 }
@@ -109,171 +103,69 @@ export function parseSplitUseConfig(raw: unknown): ComponentSplitUseConfig {
 export function convertQtyBetweenUnits(qty: number, fromUom: string, toUom: string): number | null {
   if (!Number.isFinite(qty)) return null;
   if (fromUom === toUom) return qty;
-  const factor = getConversionFactor(fromUom, toUom);
-  if (factor === null) return null;
-  return qty * factor;
+  const direct = UNIT_CONV[fromUom]?.[toUom];
+  if (direct !== undefined) return qty * direct;
+  const inverse = UNIT_CONV[toUom]?.[fromUom];
+  return inverse !== undefined && inverse !== 0 ? qty / inverse : null;
 }
 
-export function resolveSplitUseBasisUom(
-  basis: 'inventory' | 'recipe',
-  inventoryUom: string,
-  recipeUom: string,
-): string {
-  return basis === 'recipe' ? recipeUom : inventoryUom;
-}
-
-export function lineQtyInBasis(
-  line: SplitUseLine,
-  basisUom: string,
-  inventoryUom: string,
-  recipeUom: string,
-  convertFromInventoryQty: string,
-  convertToRecipeQty: string,
-): number | null {
+export function lineQtyInBasis(line: SplitUseLine, principalUom: string): number | null {
   const qty = parseFloat(line.qty);
-  if (!Number.isFinite(qty) || qty < 0) return null;
-  const lineUom = line.inventoryUom.trim();
-  if (!lineUom) return null;
-
-  const direct = convertQtyBetweenUnits(qty, lineUom, basisUom);
-  if (direct !== null) return direct;
-
-  if (basisUom === recipeUom && lineUom === inventoryUom) {
-    const from = parseFloat(convertFromInventoryQty || '1') || 1;
-    const to = parseFloat(convertToRecipeQty || '1') || 1;
-    if (from <= 0) return null;
-    return (qty / from) * to;
-  }
-  if (basisUom === inventoryUom && lineUom === recipeUom) {
-    const from = parseFloat(convertFromInventoryQty || '1') || 1;
-    const to = parseFloat(convertToRecipeQty || '1') || 1;
-    if (to <= 0) return null;
-    return (qty / to) * from;
-  }
-  return null;
+  if (!Number.isFinite(qty) || qty < 0 || !line.uom.trim()) return null;
+  return convertQtyBetweenUnits(qty, line.uom, principalUom);
 }
 
 export function sumSplitUseLineQtyInBasis(
   lines: SplitUseLine[],
-  basisUom: string,
-  inventoryUom: string,
-  recipeUom: string,
-  convertFromInventoryQty: string,
-  convertToRecipeQty: string,
+  principalUom: string,
 ): { total: number | null; unresolved: boolean } {
   let total = 0;
-  let unresolved = false;
   for (const line of lines) {
     if (!line.name.trim() && !line.qty.trim()) continue;
-    const converted = lineQtyInBasis(
-      line,
-      basisUom,
-      inventoryUom,
-      recipeUom,
-      convertFromInventoryQty,
-      convertToRecipeQty,
-    );
-    if (converted === null) {
-      unresolved = true;
-      continue;
-    }
+    const converted = lineQtyInBasis(line, principalUom);
+    if (converted === null) return { total: null, unresolved: true };
     total += converted;
   }
-  return { total: unresolved ? null : total, unresolved };
+  return { total, unresolved: false };
 }
 
-/** Convert a quantity in an arbitrary UOM into the Split Use basis UOM. */
-export function toSplitUseBasisQty(
-  qty: number,
-  fromUom: string,
-  config: ComponentSplitUseConfig,
-  inventoryUom: string,
-  recipeUom: string,
-  convertFromInventoryQty: string,
-  convertToRecipeQty: string,
-): number | null {
+export function toSplitUseBasisQty(qty: number, fromUom: string, principalUom: string): number | null {
   if (!Number.isFinite(qty) || qty <= 0) return null;
-  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
-  const direct = convertQtyBetweenUnits(qty, fromUom, basisUom);
-  if (direct !== null) return direct;
-
-  if (basisUom === recipeUom && fromUom === inventoryUom) {
-    const from = parseFloat(convertFromInventoryQty || '1') || 1;
-    const to = parseFloat(convertToRecipeQty || '1') || 1;
-    if (from <= 0) return null;
-    return (qty / from) * to;
-  }
-  if (basisUom === inventoryUom && fromUom === recipeUom) {
-    const from = parseFloat(convertFromInventoryQty || '1') || 1;
-    const to = parseFloat(convertToRecipeQty || '1') || 1;
-    if (to <= 0) return null;
-    return (qty / to) * from;
-  }
-  return null;
+  return convertQtyBetweenUnits(qty, fromUom, principalUom);
 }
 
 export function validateSplitUseConfig(
   config: ComponentSplitUseConfig,
-  inventoryUom: string,
-  recipeUom: string,
-  convertFromInventoryQty: string,
-  convertToRecipeQty: string,
+  principalUom: string,
 ): string | null {
   if (!config.enabled) return null;
   const componentQty = parseFloat(config.componentQty);
-  if (!Number.isFinite(componentQty) || componentQty <= 0) {
-    return 'Enter a valid component quantity for split use.';
-  }
+  if (!Number.isFinite(componentQty) || componentQty <= 0) return 'Enter a valid component quantity for split use.';
   const activeLines = config.lines.filter(line => line.name.trim() || line.qty.trim());
-  if (activeLines.length === 0) {
-    return 'Add at least one sub-component row for split use.';
-  }
-  if (activeLines.some(line => !line.name.trim())) {
-    return 'Each sub-component needs a name.';
-  }
+  if (activeLines.length === 0) return 'Add at least one sub-component row for split use.';
+  if (activeLines.some(line => !line.name.trim())) return 'Each sub-component needs a name.';
   if (activeLines.some(line => !line.qty.trim() || !(parseFloat(line.qty) > 0))) {
     return 'Each sub-component needs a quantity greater than zero.';
   }
-  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
-  const { total, unresolved } = sumSplitUseLineQtyInBasis(
-    activeLines,
-    basisUom,
-    inventoryUom,
-    recipeUom,
-    convertFromInventoryQty,
-    convertToRecipeQty,
-  );
+  const { total, unresolved } = sumSplitUseLineQtyInBasis(activeLines, principalUom);
   if (unresolved || total === null) {
     return 'Sub-component quantities use UOMs that cannot be totalled — align units or add conversion.';
   }
-  // Full butcher splits may consume 100% of the reference qty (nett = 0).
-  // Outputs must not exceed the reference component quantity.
   if (total > componentQty + 0.0001) {
-    return `Split outputs (${total} ${basisUom}) cannot exceed component quantity (${componentQty} ${basisUom}).`;
+    return `Split outputs (${total} ${principalUom}) cannot exceed component quantity (${componentQty} ${principalUom}).`;
   }
   if (activeLines.some(line => {
-    const raw = line.valueAssignedPct.trim();
-    if (raw === '') return false;
-    const pct = parseFloat(raw);
-    return !Number.isFinite(pct) || pct < 0 || pct > 100;
-  })) {
-    return 'Each Value Assigned % must be between 0 and 100.';
-  }
-  const allocatedBasis = activeLines.reduce((sum, line) => {
-    const qty = lineQtyInBasis(
-      line,
-      basisUom,
-      inventoryUom,
-      recipeUom,
-      convertFromInventoryQty,
-      convertToRecipeQty,
-    ) ?? 0;
+    const pct = parseFloat(line.valueAssignedPct);
+    return line.valueAssignedPct.trim() !== '' && (!Number.isFinite(pct) || pct < 0 || pct > 100);
+  })) return 'Each Value Assigned % must be between 0 and 100.';
+
+  const allocated = activeLines.reduce((sum, line) => {
+    const qty = lineQtyInBasis(line, principalUom) ?? 0;
     return sum + qty * (parseFloat(line.valueAssignedPct || '0') || 0) / 100;
   }, 0);
-  if (allocatedBasis > componentQty + 0.0001) {
-    return 'Split Use assigned value exceeds 100% of the component value.';
-  }
-  return null;
+  return allocated > componentQty + 0.0001
+    ? 'Split Use assigned value exceeds 100% of the component value.'
+    : null;
 }
 
 export function calcSplitUseNoValueUnitCost(
@@ -282,116 +174,55 @@ export function calcSplitUseNoValueUnitCost(
   noValueQtyTotal: number,
 ): number {
   const denominator = componentQty - noValueQtyTotal;
-  if (componentPrice <= 0 || denominator <= 0) return 0;
-  return componentPrice / denominator;
+  return componentPrice > 0 && denominator > 0 ? componentPrice / denominator : 0;
 }
 
-/** Component Nett qty in basis UOM (componentQty − sum of output qtys). */
-export function calcSplitUseNettQty(
-  config: ComponentSplitUseConfig,
-  inventoryUom: string,
-  recipeUom: string,
-  convertFromInventoryQty: string,
-  convertToRecipeQty: string,
-): number | null {
+export function calcSplitUseNettQty(config: ComponentSplitUseConfig, principalUom: string): number | null {
   if (!config.enabled) return null;
   const componentQty = parseFloat(config.componentQty);
   if (!Number.isFinite(componentQty) || componentQty <= 0) return null;
-  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
-  const { total, unresolved } = sumSplitUseLineQtyInBasis(
-    config.lines,
-    basisUom,
-    inventoryUom,
-    recipeUom,
-    convertFromInventoryQty,
-    convertToRecipeQty,
-  );
+  const { total, unresolved } = sumSplitUseLineQtyInBasis(config.lines, principalUom);
   if (unresolved || total === null) return null;
   const nett = componentQty - total;
   return nett >= -0.0001 ? Math.max(0, nett) : null;
 }
 
-/**
- * Nett recipe unit cost for Split Use:
- * (purchase value − value assigned to outputs) ÷ Component Nett qty.
- * When outputs take 0% value, this equals grossUnitCost / keepFraction
- * (same relationship as Yield Loss nett cost).
- *
- * `receiptBasisQty` is the actual tagged/received quantity in the Split Use basis UOM.
- * Split Use `componentQty` + line qtys are a ratio recipe; when tagging a 1kg delivery
- * against a 10kg recipe, pass receiptBasisQty=1 so outputs scale (e.g. 8kg→0.8kg).
- */
 export function calcSplitUseNettUnitCost(
   purchaseValue: number,
   config: ComponentSplitUseConfig,
-  inventoryUom: string,
-  recipeUom: string,
-  convertFromInventoryQty: string,
-  convertToRecipeQty: string,
+  principalUom: string,
   receiptBasisQty?: number,
 ): number {
   if (!config.enabled || purchaseValue <= 0) return 0;
   const componentQty = parseFloat(config.componentQty);
   if (!Number.isFinite(componentQty) || componentQty <= 0) return 0;
-
-  const receiptQty = receiptBasisQty !== undefined && Number.isFinite(receiptBasisQty) && receiptBasisQty > 0
-    ? receiptBasisQty
-    : componentQty;
+  const receiptQty = receiptBasisQty !== undefined && receiptBasisQty > 0 ? receiptBasisQty : componentQty;
   const scale = receiptQty / componentQty;
-
-  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
   let allocatedValue = 0;
-  let outputBasisQty = 0;
+  let outputQty = 0;
   for (const line of config.lines) {
     if (!line.name.trim() && !line.qty.trim()) continue;
-    const lineQty = lineQtyInBasis(
-      line,
-      basisUom,
-      inventoryUom,
-      recipeUom,
-      convertFromInventoryQty,
-      convertToRecipeQty,
-    );
+    const lineQty = lineQtyInBasis(line, principalUom);
     if (lineQty === null) continue;
-    const scaledLineQty = lineQty * scale;
-    outputBasisQty += scaledLineQty;
-    const pct = parseFloat(line.valueAssignedPct || '0') || 0;
-    allocatedValue += purchaseValue * (lineQty / componentQty) * (pct / 100);
+    outputQty += lineQty * scale;
+    allocatedValue += purchaseValue * (lineQty / componentQty) * ((parseFloat(line.valueAssignedPct) || 0) / 100);
   }
-
-  const nettQty = receiptQty - outputBasisQty;
-  // Full split (outputs consume 100% of receipt): parent nett cost is 0; value lives on children.
-  if (nettQty <= 0.0001) return 0;
-  const nettValue = Math.max(0, purchaseValue - allocatedValue);
-  return nettValue / nettQty;
+  const nettQty = receiptQty - outputQty;
+  return nettQty <= 0.0001 ? 0 : Math.max(0, purchaseValue - allocatedValue) / nettQty;
 }
 
 export function calcSplitUseLineAssignedValue(
   line: SplitUseLine,
   config: ComponentSplitUseConfig,
   componentPrice: number,
-  inventoryUom: string,
-  recipeUom: string,
-  convertFromInventoryQty: string,
-  convertToRecipeQty: string,
+  principalUom: string,
   principalQty: number,
 ): number | null {
-  const basisUom = resolveSplitUseBasisUom(config.qtyBasis, inventoryUom, recipeUom);
   const componentQty = parseFloat(config.componentQty) || principalQty || 0;
-  const lineQty = lineQtyInBasis(
-    line,
-    basisUom,
-    inventoryUom,
-    recipeUom,
-    convertFromInventoryQty,
-    convertToRecipeQty,
-  );
-  if (lineQty === null) return null;
-
+  const qty = lineQtyInBasis(line, principalUom);
   const pct = parseFloat(line.valueAssignedPct);
-  if (!Number.isFinite(pct)) return null;
-  const unitCost = componentQty > 0 ? componentPrice / componentQty : 0;
-  return lineQty * unitCost * pct / 100;
+  if (qty === null || !Number.isFinite(pct)) return null;
+  return qty * (componentQty > 0 ? componentPrice / componentQty : 0) * pct / 100;
 }
 
 export function calcSplitUseBreakdown(
@@ -403,17 +234,10 @@ export function calcSplitUseBreakdown(
   const factor = unitsToSplit / componentQty;
   return config.lines
     .filter(line => line.name.trim() && parseFloat(line.qty) > 0)
-    .map(line => ({
-      ...line,
-      resultQty: (parseFloat(line.qty) || 0) * factor,
-      resultUom: line.inventoryUom,
-    }));
+    .map(line => ({ ...line, resultQty: (parseFloat(line.qty) || 0) * factor, resultUom: line.uom }));
 }
 
-export function calcVirtualSubComponentStock(
-  config: ComponentSplitUseConfig,
-  onHandWholeQty: number,
-): Array<SplitUseLine & { availableQty: number; availableUom: string }> {
+export function calcVirtualSubComponentStock(config: ComponentSplitUseConfig, onHandWholeQty: number) {
   return calcSplitUseBreakdown(config, onHandWholeQty).map(line => ({
     ...line,
     availableQty: line.resultQty,

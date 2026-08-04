@@ -16,8 +16,6 @@ export type WastageProduct = {
 
 export type WastageProductDetail = WastageProduct & {
   recipeUnit?: string
-  inventoryUnit?: string
-  conversionRate?: number
   productionPrice?: number
   averagePrice?: number
   lowPrice?: number
@@ -156,7 +154,6 @@ export async function searchWastageIngredients(
       name,
       uom:
         (row.recipeUnit as string | undefined) ||
-        (row.inventoryUnit as string | undefined) ||
         undefined,
       code: (row.code as string | undefined) || undefined,
       availableQuantity: num(row.systemQuantity) ?? null,
@@ -220,8 +217,6 @@ export async function getWastageProductDetail(
   return {
     ...base,
     recipeUnit: (row.recipeUnitString as string | undefined) || base.uom,
-    inventoryUnit: (row.inventoryUnitString as string | undefined) || undefined,
-    conversionRate: num(row.conversionRate),
     productionPrice: num(row.productionPrice),
     averagePrice: num(row.averagePrice),
     lowPrice: num(row.lowPrice),

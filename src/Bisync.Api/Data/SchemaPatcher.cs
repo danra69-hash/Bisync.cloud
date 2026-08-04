@@ -1,6 +1,9 @@
 using Bisync.Api.Models;
 using Bisync.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
+using System.Globalization;
+using System.Text.Json.Nodes;
 
 namespace Bisync.Api.Data;
 
@@ -182,6 +185,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "CompanyId", "INTEGER");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStock", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Ingredients", "ParStockUom", "TEXT NOT NULL DEFAULT ''");
+        await MigrateIngredientRecipeUomsAsync(db);
         // Employee level leave Include flags — must exist before any request can read EmployeeLevels.
         // Keep in critical bootstrap (not only deferred HrStartup) so /api/employee-levels cannot 500.
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "EmployeeLevels", "AnnualLeaveEnabled", "BOOLEAN NOT NULL DEFAULT TRUE");
@@ -880,7 +884,7 @@ public static class SchemaPatcher
                 "CompanyId" INTEGER NULL,
                 "LocationIdsJson" TEXT NOT NULL DEFAULT '[]',
                 "PeriodMonth" TEXT NOT NULL DEFAULT '',
-                "UomMode" TEXT NOT NULL DEFAULT 'inventory',
+                "UomMode" TEXT NOT NULL DEFAULT 'recipe',
                 "ItemTypeFilter" TEXT NOT NULL DEFAULT 'all',
                 "GroupFilter" TEXT NOT NULL DEFAULT 'All',
                 "CountDate" TEXT NOT NULL DEFAULT '',
@@ -918,6 +922,13 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "InventoryCountSessions", "EffectiveDate", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "InventoryCountSessions", "AdjustmentsAppliedAt", "TEXT NULL");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "InventoryCountSessionLines", "SystemUnitPrice", "REAL NULL");
+        await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "InventoryCountSessions"
+            SET "UomMode" = 'recipe'
+            WHERE "UomMode" IS NULL OR LOWER("UomMode") <> 'recipe';
+            ALTER TABLE "InventoryCountSessions"
+                ALTER COLUMN "UomMode" SET DEFAULT 'recipe';
+            """);
 
         await InventoryCountHistorySeeder.EnsureAsync(db);
 
@@ -2289,6 +2300,253 @@ public static class SchemaPatcher
             ON "PosSaleDetails" ("CompanyId", "LocationExternalId", "CreatedAt");
             """);
     }
+
+    static async Task MigrateIngredientRecipeUomsAsync(BisyncDbContext db)
+    {
+        var hasLegacyUom = await DatabaseSchemaHelper.ColumnExistsAsync(db, "Ingredients", "InventoryUom");
+        var hasLegacyPrice = await DatabaseSchemaHelper.ColumnExistsAsync(db, "Ingredients", "LastPriceInventory");
+        var connection = db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+            await connection.OpenAsync();
+
+        try
+        {
+            var rows = new List<LegacyIngredientUomRow>();
+            await using (var command = connection.CreateCommand())
+            {
+                var legacyUomSql = hasLegacyUom ? "\"InventoryUom\"" : "NULL::text";
+                var legacyPriceSql = hasLegacyPrice ? "\"LastPriceInventory\"" : "NULL::numeric";
+                command.CommandText = $"""
+                    SELECT "Id", "RecipeUom", "DetailConfigJson", "LastPriceRecipe",
+                           {legacyUomSql} AS "LegacyUom",
+                           {legacyPriceSql} AS "LegacyPrice"
+                    FROM "Ingredients"
+                    ORDER BY "Id";
+                    """;
+
+                await using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    rows.Add(new LegacyIngredientUomRow(
+                        reader.GetInt32(0),
+                        reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                        reader.IsDBNull(2) ? "{}" : reader.GetString(2),
+                        ReadDatabaseDecimal(reader, 3),
+                        reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                        ReadDatabaseDecimal(reader, 5)));
+                }
+            }
+
+            foreach (var row in rows)
+            {
+                var root = ParseDetailConfig(row.DetailConfigJson);
+                var fromQty = ReadJsonDecimal(root, "convertFromInventoryQty", "ConvertFromInventoryQty");
+                var recipeQty = ReadJsonDecimal(root, "convertToRecipeQty", "ConvertToRecipeQty");
+                var hasConversion = HasAnyKey(
+                    root,
+                    "convertFromInventoryQty",
+                    "ConvertFromInventoryQty",
+                    "convertToRecipeQty",
+                    "ConvertToRecipeQty");
+                if (fromQty <= 0) fromQty = 1m;
+                if (recipeQty <= 0) recipeQty = 1m;
+
+                var alternatives = new JsonArray();
+                var seenUnits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                AddAlternatives(root["altRecipeUnits"] as JsonArray, alternatives, seenUnits);
+
+                var legacyUom = row.LegacyUom.Trim();
+                if (hasConversion
+                    && legacyUom.Length > 0
+                    && !string.Equals(legacyUom, row.RecipeUom.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    AddAlternative(
+                        new JsonObject
+                        {
+                            ["fromQty"] = FormatJsonDecimal(fromQty),
+                            ["qty"] = FormatJsonDecimal(recipeQty),
+                            ["unit"] = legacyUom,
+                        },
+                        alternatives,
+                        seenUnits);
+                }
+
+                AddAlternatives(root["altInventoryUnits"] as JsonArray, alternatives, seenUnits);
+                root["altRecipeUnits"] = alternatives;
+                RemoveKeys(
+                    root,
+                    "altInventoryUnits",
+                    "AltInventoryUnits",
+                    "convertFromInventoryQty",
+                    "ConvertFromInventoryQty",
+                    "convertToRecipeQty",
+                    "ConvertToRecipeQty");
+                NormalizeSplitUse(root);
+
+                var principalPrice = row.LastPriceRecipe;
+                if (principalPrice == 0 && row.LegacyPrice > 0)
+                {
+                    principalPrice = hasConversion
+                        ? row.LegacyPrice * fromQty / recipeQty
+                        : row.LegacyPrice;
+                }
+
+                await using var update = connection.CreateCommand();
+                update.CommandText = """
+                    UPDATE "Ingredients"
+                    SET "DetailConfigJson" = @detailConfig,
+                        "LastPriceRecipe" = @lastPrice
+                    WHERE "Id" = @id;
+                    """;
+                AddParameter(update, "@detailConfig", root.ToJsonString());
+                AddParameter(update, "@lastPrice", principalPrice);
+                AddParameter(update, "@id", row.Id);
+                await update.ExecuteNonQueryAsync();
+            }
+        }
+        finally
+        {
+            if (shouldClose)
+                await connection.CloseAsync();
+        }
+
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE "Ingredients" DROP COLUMN IF EXISTS "InventoryUom";
+            ALTER TABLE "Ingredients" DROP COLUMN IF EXISTS "LastPriceInventory";
+            """);
+    }
+
+    static JsonObject ParseDetailConfig(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new JsonObject();
+        try
+        {
+            return JsonNode.Parse(json) as JsonObject ?? new JsonObject();
+        }
+        catch
+        {
+            return new JsonObject();
+        }
+    }
+
+    static void AddAlternatives(
+        JsonArray? source,
+        JsonArray destination,
+        HashSet<string> seenUnits)
+    {
+        if (source is null)
+            return;
+        foreach (var node in source)
+        {
+            if (node is JsonObject alternative)
+                AddAlternative(alternative, destination, seenUnits);
+        }
+    }
+
+    static void AddAlternative(
+        JsonObject alternative,
+        JsonArray destination,
+        HashSet<string> seenUnits)
+    {
+        if (destination.Count >= 5)
+            return;
+        var unit = ReadJsonString(alternative, "unit", "Unit", "uom", "Uom").Trim();
+        if (unit.Length == 0 || !seenUnits.Add(unit))
+            return;
+
+        var fromQty = ReadJsonDecimal(alternative, "fromQty", "FromQty");
+        var recipeQty = ReadJsonDecimal(alternative, "qty", "Qty");
+        destination.Add(new JsonObject
+        {
+            ["fromQty"] = FormatJsonDecimal(fromQty > 0 ? fromQty : 1m),
+            ["qty"] = FormatJsonDecimal(recipeQty > 0 ? recipeQty : 1m),
+            ["unit"] = unit,
+        });
+    }
+
+    static void NormalizeSplitUse(JsonObject root)
+    {
+        var splitUse = root["splitUse"] as JsonObject ?? root["SplitUse"] as JsonObject;
+        if (splitUse is null)
+            return;
+
+        if (ReadJsonString(splitUse, "qtyBasis", "QtyBasis")
+            .Equals("inventory", StringComparison.OrdinalIgnoreCase))
+        {
+            splitUse["qtyBasis"] = "recipe";
+            splitUse.Remove("QtyBasis");
+        }
+
+        var lines = splitUse["lines"] as JsonArray ?? splitUse["Lines"] as JsonArray;
+        if (lines is null)
+            return;
+        foreach (var line in lines.OfType<JsonObject>())
+        {
+            var uom = ReadJsonString(line, "uom", "Uom", "inventoryUom", "InventoryUom");
+            if (!string.IsNullOrWhiteSpace(uom))
+                line["uom"] = uom.Trim();
+            line.Remove("inventoryUom");
+            line.Remove("InventoryUom");
+            line.Remove("Uom");
+        }
+    }
+
+    static bool HasAnyKey(JsonObject node, params string[] keys)
+        => keys.Any(node.ContainsKey);
+
+    static void RemoveKeys(JsonObject node, params string[] keys)
+    {
+        foreach (var key in keys)
+            node.Remove(key);
+    }
+
+    static string ReadJsonString(JsonObject node, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var value = node[key]?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return string.Empty;
+    }
+
+    static decimal ReadJsonDecimal(JsonObject node, params string[] keys)
+        => decimal.TryParse(
+            ReadJsonString(node, keys),
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out var value)
+            ? value
+            : 0m;
+
+    static decimal ReadDatabaseDecimal(System.Data.Common.DbDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+            return 0m;
+        return Convert.ToDecimal(reader.GetValue(ordinal), CultureInfo.InvariantCulture);
+    }
+
+    static string FormatJsonDecimal(decimal value)
+        => value.ToString("0.######", CultureInfo.InvariantCulture);
+
+    static void AddParameter(System.Data.Common.DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
+
+    sealed record LegacyIngredientUomRow(
+        int Id,
+        string RecipeUom,
+        string DetailConfigJson,
+        decimal LastPriceRecipe,
+        string LegacyUom,
+        decimal LegacyPrice);
 
     static async Task EnsureFifoIssueStockAsync(BisyncDbContext db)
     {

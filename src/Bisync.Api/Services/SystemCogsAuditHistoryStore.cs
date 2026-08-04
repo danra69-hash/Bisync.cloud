@@ -224,7 +224,7 @@ public sealed class SystemCogsAuditHistoryEntry
     public string PeriodMonth { get; set; } = string.Empty;
     public string MonthName { get; set; } = string.Empty;
     public int Year { get; set; }
-    public string UomMode { get; set; } = "inventory";
+    public string UomMode { get; set; } = "recipe";
     public bool IsRevised { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? RevisedAtUtc { get; set; }
@@ -281,7 +281,7 @@ public class SystemCogsAuditSnapshotService(
                     companyId,
                     [locationId],
                     periodMonth,
-                    string.IsNullOrWhiteSpace(uomMode) ? "inventory" : uomMode,
+                    "recipe",
                     "component",
                     cancellationToken);
 
@@ -295,7 +295,7 @@ public class SystemCogsAuditSnapshotService(
                     PeriodMonth = periodMonth.Trim(),
                     MonthName = monthName,
                     Year = year,
-                    UomMode = string.IsNullOrWhiteSpace(uomMode) ? "inventory" : uomMode,
+                    UomMode = "recipe",
                     CreatedAtUtc = DateTime.UtcNow,
                     Trigger = trigger,
                     IngredientCount = summary.IngredientCount,
@@ -361,7 +361,7 @@ public class SystemCogsAuditSnapshotService(
                 companyId,
                 [locationExternalId],
                 periodMonth,
-                string.IsNullOrWhiteSpace(uomMode) ? "inventory" : uomMode,
+                "recipe",
                 "component",
                 cancellationToken);
 
@@ -376,7 +376,7 @@ public class SystemCogsAuditSnapshotService(
                 PeriodMonth = periodMonth,
                 MonthName = monthName,
                 Year = year,
-                UomMode = string.IsNullOrWhiteSpace(uomMode) ? "inventory" : uomMode,
+                UomMode = "recipe",
                 CreatedAtUtc = now,
                 Trigger = $"Adjustment revised: {Truncate(reason, 120)}",
                 IngredientCount = summary.IngredientCount,

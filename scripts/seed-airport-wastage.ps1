@@ -191,8 +191,8 @@ $weekAgo = (Get-Date).AddDays(-7).ToString('yyyy-MM-dd')
 
 $c0 = $compPool[0]
 $c1 = $compPool[1]
-$c0Uom = if ($c0.inventoryUom) { [string]$c0.inventoryUom } elseif ($c0.recipeUom) { [string]$c0.recipeUom } else { 'kg' }
-$c1Uom = if ($c1.inventoryUom) { [string]$c1.inventoryUom } elseif ($c1.recipeUom) { [string]$c1.recipeUom } else { 'kg' }
+$c0Uom = if ($c0.recipeUom) { [string]$c0.recipeUom } else { 'kg' }
+$c1Uom = if ($c1.recipeUom) { [string]$c1.recipeUom } else { 'kg' }
 
 # Existing wastage this month (avoid duplicate POS checks)
 $month = (Get-Date).ToString('yyyy-MM')

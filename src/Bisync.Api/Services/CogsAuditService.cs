@@ -12,7 +12,7 @@ public class CogsAuditService(StockCardService stockCards)
         int? companyId,
         IReadOnlyList<string> locationIds,
         string? period,
-        string uomMode = "inventory",
+        string uomMode = "recipe",
         string itemType = "component",
         CancellationToken cancellationToken = default)
     {
@@ -29,7 +29,7 @@ public class CogsAuditService(StockCardService stockCards)
             companyId,
             locationIds,
             itemType,
-            uomMode,
+            "recipe",
             period,
             cancellationToken);
 
@@ -119,7 +119,7 @@ public class CogsAuditService(StockCardService stockCards)
         int? companyId,
         IReadOnlyList<string> locationIds,
         string? period,
-        string uomMode = "inventory",
+        string uomMode = "recipe",
         CancellationToken cancellationToken = default)
     {
         if (locationIds.Count == 0)
@@ -130,7 +130,7 @@ public class CogsAuditService(StockCardService stockCards)
             itemKey,
             companyId,
             locationIds,
-            uomMode,
+            "recipe",
             period,
             cancellationToken);
 

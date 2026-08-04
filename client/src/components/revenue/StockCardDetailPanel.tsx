@@ -38,13 +38,9 @@ type Props = {
 
   locationIds: string[];
 
-  uomMode: 'inventory' | 'recipe';
-
   selectedMonth: string;
 
   onClose: () => void;
-
-  onUomModeChange: (mode: 'inventory' | 'recipe') => void;
 
   onAdjusted?: () => void;
 
@@ -281,13 +277,9 @@ export function StockCardDetailPanel({
 
   locationIds,
 
-  uomMode,
-
   selectedMonth,
 
   onClose,
-
-  onUomModeChange,
 
   onAdjusted,
 
@@ -324,7 +316,7 @@ export function StockCardDetailPanel({
 
     setError(null);
 
-    return api.stockCardDetail(itemType, itemKey, companyId, locationIds, { uomMode, period: selectedMonth })
+    return api.stockCardDetail(itemType, itemKey, companyId, locationIds, { period: selectedMonth })
 
       .then(setDetail)
 
@@ -332,7 +324,7 @@ export function StockCardDetailPanel({
 
       .finally(() => setLoading(false));
 
-  }, [itemType, itemKey, companyId, locationIds, uomMode, selectedMonth]);
+  }, [itemType, itemKey, companyId, locationIds, selectedMonth]);
 
 
 
@@ -353,14 +345,6 @@ export function StockCardDetailPanel({
   }, [itemType, itemKey]);
 
 
-
-  const canToggleUom = useMemo(() => {
-
-    if (!detail) return false;
-
-    return detail.recipeUom.trim().toLowerCase() !== detail.inventoryUom.trim().toLowerCase();
-
-  }, [detail]);
 
   const splitUseConfig = useMemo(() => {
     if (!splitUseIngredient) return null;
@@ -449,31 +433,7 @@ export function StockCardDetailPanel({
 
           </div>
 
-          {canToggleUom ? (
-
-            <div className="flex flex-col gap-1">
-
-              <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">UOM</label>
-
-              <select
-
-                value={uomMode}
-
-                onChange={e => onUomModeChange(e.target.value as 'inventory' | 'recipe')}
-
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm font-sans min-w-[160px]"
-
-              >
-
-                <option value="inventory">Inventory UOM</option>
-
-                <option value="recipe">Component UOM</option>
-
-              </select>
-
-            </div>
-
-          ) : detail ? (
+          {detail ? (
 
             <div className="flex flex-col gap-1">
 
@@ -549,12 +509,9 @@ export function StockCardDetailPanel({
                   componentName={detail.name}
                   onHandQty={detail.onHandQty}
                   displayUom={detail.uom}
-                  inventoryUom={splitUseIngredient.inventoryUom}
                   recipeUom={splitUseIngredient.recipeUom}
-                  convertFromInventoryQty={parseDetailConfigJson(splitUseIngredient.detailConfigJson).convertFromInventoryQty}
-                  convertToRecipeQty={parseDetailConfigJson(splitUseIngredient.detailConfigJson).convertToRecipeQty}
                   componentPrice={splitUseIngredient.lastPriceRecipe}
-                  principalQty={parseFloat(parseDetailConfigJson(splitUseIngredient.detailConfigJson).convertToRecipeQty) || 1}
+                  principalQty={parseFloat(splitUseConfig.componentQty) || 1}
                 />
               </div>
             ) : null}
@@ -668,13 +625,11 @@ export function StockCardDetailPanel({
             itemName={detail.name}
             companyId={companyId}
             locationIds={locationIds}
-            uomMode={uomMode}
             periodStart={detail.periodStart}
             periodEnd={detail.periodEnd}
             isCurrentMonth={detail.isCurrentMonth}
             defaultUom={detail.uom}
             recipeUom={detail.recipeUom}
-            inventoryUom={detail.inventoryUom}
             onClose={() => setAdjustmentOpen(false)}
             onSaved={() => {
               void loadDetail();

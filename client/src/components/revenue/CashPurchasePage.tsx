@@ -8,7 +8,7 @@ import {
 } from '../../data/createOrder';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { refreshVendorProductPricesFromApi } from '../../data/vendorProductPrices';
-import { fromApiUom } from '../../data/componentForm';
+import { fromApiUom, getComponentUomChoices, resolveDetailConfigForRow } from '../../data/componentForm';
 import { ingredientToRow } from './smartIngredientShared';
 import { pageShellClass } from '../layout/pageLayout';
 import { useInfiniteScrollSlice } from '../../hooks/useInfiniteScrollSlice';
@@ -264,7 +264,8 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
 
   const uomOptions = useMemo(() => {
     if (!selectedComponent) return [];
-    const options = [selectedComponent.inventoryUOM, selectedComponent.recipeUOM]
+    const detail = resolveDetailConfigForRow(selectedComponent);
+    const options = getComponentUomChoices(selectedComponent.recipeUOM, detail.altRecipeUnits)
       .map(u => u.trim())
       .filter(Boolean);
     return [...new Set(options)];
@@ -280,11 +281,11 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
 
     setComponentUom(prev => {
       if (prev && uomOptions.includes(prev)) return prev;
-      return selectedComponent.inventoryUOM || selectedComponent.recipeUOM || '';
+      return selectedComponent.recipeUOM || '';
     });
 
     if (lastComponentIdRef.current !== selectedComponent.componentId) {
-      setDeliveryUnit(selectedComponent.inventoryUOM || selectedComponent.recipeUOM || '');
+      setDeliveryUnit(selectedComponent.recipeUOM || '');
       lastComponentIdRef.current = selectedComponent.componentId;
     }
   }, [selectedComponent, uomOptions]);
@@ -548,7 +549,7 @@ export function CashPurchasePage({ selectedCompanyId, selectedLocationIds }: Pro
                   type="text"
                   value={componentUom}
                   onChange={e => setComponentUom(e.target.value)}
-                  placeholder="Inventory UOM"
+                  placeholder="Component UOM"
                   className={fieldCls}
                   required
                 />

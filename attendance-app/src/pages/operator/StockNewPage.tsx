@@ -21,8 +21,7 @@ type Method = 'Spot' | 'Full'
 type FilterType = 'Category' | 'Storage'
 
 type QtyState = {
-  recipe: string
-  inventory: string
+  qty: string
 }
 
 type ActiveSection = {
@@ -121,27 +120,6 @@ function formatQty(value?: number | null) {
 function parseNum(value: string) {
   const n = Number(value)
   return Number.isFinite(n) ? n : 0
-}
-
-/** conversionRate = inventory units per 1 recipe unit */
-function recipeToInventory(recipeQty: number, rate?: number) {
-  if (!rate || rate <= 0) return recipeQty
-  return recipeQty * rate
-}
-
-function inventoryToRecipe(inventoryQty: number, rate?: number) {
-  if (!rate || rate <= 0) return inventoryQty
-  return inventoryQty / rate
-}
-
-function systemInInventory(systemRecipe?: number, rate?: number) {
-  if (systemRecipe == null) return null
-  return recipeToInventory(systemRecipe, rate)
-}
-
-function formatEditable(n: number) {
-  if (!Number.isFinite(n)) return '0'
-  return String(Math.round(n * 100) / 100)
 }
 
 export function OperatorStockNewPage() {
@@ -357,44 +335,24 @@ export function OperatorStockNewPage() {
   const savedCount = Object.keys(savedDrafts).length
 
   const totals = useMemo(() => {
-    let recipeTotal = 0
-    let inventoryTotal = 0
-    let systemRecipeTotal = 0
+    let countedTotal = 0
+    let systemTotal = 0
     for (const row of ingredients) {
       const qty = qtyById[row.id]
-      recipeTotal += parseNum(qty?.recipe ?? '0')
-      inventoryTotal += parseNum(qty?.inventory ?? '0')
-      systemRecipeTotal += Number(row.systemQuantity ?? 0)
+      countedTotal += parseNum(qty?.qty ?? '0')
+      systemTotal += Number(row.systemQuantity ?? 0)
     }
     return {
-      recipeTotal,
-      inventoryTotal,
-      systemRecipeTotal,
-      difference: recipeTotal - systemRecipeTotal,
+      countedTotal,
+      systemTotal,
+      difference: countedTotal - systemTotal,
     }
   }, [ingredients, qtyById])
 
-  function setRecipeQty(row: InventoryIngredientRow, value: string) {
+  function setQty(row: InventoryIngredientRow, value: string) {
     setQtyById((prev) => ({
       ...prev,
-      [row.id]: {
-        recipe: value,
-        inventory: formatEditable(
-          recipeToInventory(parseNum(value), row.conversionRate),
-        ),
-      },
-    }))
-  }
-
-  function setInventoryQty(row: InventoryIngredientRow, value: string) {
-    setQtyById((prev) => ({
-      ...prev,
-      [row.id]: {
-        inventory: value,
-        recipe: formatEditable(
-          inventoryToRecipe(parseNum(value), row.conversionRate),
-        ),
-      },
+      [row.id]: { qty: value },
     }))
   }
 
@@ -442,7 +400,7 @@ export function OperatorStockNewPage() {
     const saved = savedDrafts[key]?.qtyById
     const nextQty: Record<number, QtyState> = {}
     for (const row of rows) {
-      nextQty[row.id] = saved?.[row.id] || { recipe: '0', inventory: '0' }
+      nextQty[row.id] = saved?.[row.id] || { qty: '0' }
     }
     return nextQty
   }
@@ -466,7 +424,7 @@ export function OperatorStockNewPage() {
         rows.push(row)
         source[row.id] = catId
         if (!nextQty[row.id]) {
-          nextQty[row.id] = draft[row.id] || { recipe: '0', inventory: '0' }
+          nextQty[row.id] = draft[row.id] || { qty: '0' }
         }
       }
     }
@@ -601,7 +559,7 @@ export function OperatorStockNewPage() {
               stockTakeDate,
               inventories: catIngredients.map((row) => ({
                 ingredientId: row.id,
-                actualQuantity: parseNum(qtyById[row.id]?.recipe ?? '0'),
+                actualQuantity: parseNum(qtyById[row.id]?.qty ?? '0'),
                 remark: null,
                 location: null,
               })),
@@ -613,10 +571,7 @@ export function OperatorStockNewPage() {
           )
           const catQty: Record<number, QtyState> = {}
           for (const row of catIngredients) {
-            catQty[row.id] = qtyById[row.id] || {
-              recipe: '0',
-              inventory: '0',
-            }
+            catQty[row.id] = qtyById[row.id] || { qty: '0' }
           }
           results.push({
             key: key,
@@ -653,7 +608,7 @@ export function OperatorStockNewPage() {
           stockTakeDate,
           inventories: ingredients.map((row) => ({
             ingredientId: row.id,
-            actualQuantity: parseNum(qtyById[row.id]?.recipe ?? '0'),
+            actualQuantity: parseNum(qtyById[row.id]?.qty ?? '0'),
             remark: null,
             location: null,
           })),
@@ -792,12 +747,12 @@ export function OperatorStockNewPage() {
 
         <div className="card inventory-count-summary">
           <div>
-            <span className="muted">Total inventory qty</span>
-            <strong>{formatQty(totals.inventoryTotal)}</strong>
+            <span className="muted">Total counted qty</span>
+            <strong>{formatQty(totals.countedTotal)}</strong>
           </div>
           <div>
-            <span className="muted">System qty (recipe)</span>
-            <strong>{formatQty(totals.systemRecipeTotal)}</strong>
+            <span className="muted">System qty</span>
+            <strong>{formatQty(totals.systemTotal)}</strong>
           </div>
           <div>
             <span className="muted">Difference to system</span>
@@ -830,11 +785,10 @@ export function OperatorStockNewPage() {
 
         <div className="stack" style={{ gap: 10 }}>
           {ingredients.map((row) => {
-            const qty = qtyById[row.id] || { recipe: '0', inventory: '0' }
-            const recipeActual = parseNum(qty.recipe)
+            const qty = qtyById[row.id] || { qty: '0' }
+            const actual = parseNum(qty.qty)
             const system = Number(row.systemQuantity ?? 0)
-            const diff = recipeActual - system
-            const systemInv = systemInInventory(system, row.conversionRate)
+            const diff = actual - system
             const products = [
               ...(row.product?.productName ? [row.product] : []),
               ...(row.packagingUnits || [])
@@ -867,15 +821,12 @@ export function OperatorStockNewPage() {
                 <div className="inventory-count-system muted">
                   System qty: {formatQty(row.systemQuantity)}{' '}
                   {row.recipeUnit || ''}
-                  {systemInv != null && row.inventoryUnit
-                    ? ` · ${formatQty(systemInv)} ${row.inventoryUnit}`
-                    : ''}
                 </div>
 
                 <div className="inventory-count-qty-grid">
                   <label className="inventory-count-qty">
                     <span>
-                      Recipe UOM
+                      Principal Component UOM
                       {row.recipeUnit ? ` (${row.recipeUnit})` : ''}
                     </span>
                     <input
@@ -883,31 +834,13 @@ export function OperatorStockNewPage() {
                       inputMode="decimal"
                       step="0.01"
                       min="0"
-                      value={qty.recipe}
-                      onChange={(e) => setRecipeQty(row, e.target.value)}
-                    />
-                  </label>
-                  <label className="inventory-count-qty">
-                    <span>
-                      Inventory UOM
-                      {row.inventoryUnit ? ` (${row.inventoryUnit})` : ''}
-                    </span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.01"
-                      min="0"
-                      value={qty.inventory}
-                      onChange={(e) => setInventoryQty(row, e.target.value)}
+                      value={qty.qty}
+                      onChange={(e) => setQty(row, e.target.value)}
                     />
                   </label>
                 </div>
 
                 <div className="inventory-count-footer">
-                  <span className="muted">
-                    Inventory qty: {formatQty(parseNum(qty.inventory))}{' '}
-                    {row.inventoryUnit || ''}
-                  </span>
                   <span
                     className={
                       diff === 0
@@ -1211,12 +1144,12 @@ export function OperatorStockNewPage() {
 
           <div className="card inventory-count-summary">
             <div>
-              <span className="muted">Total inventory qty</span>
-              <strong>{formatQty(totals.inventoryTotal)}</strong>
+              <span className="muted">Total counted qty</span>
+              <strong>{formatQty(totals.countedTotal)}</strong>
             </div>
             <div>
-              <span className="muted">System qty (recipe)</span>
-              <strong>{formatQty(totals.systemRecipeTotal)}</strong>
+              <span className="muted">System qty</span>
+              <strong>{formatQty(totals.systemTotal)}</strong>
             </div>
             <div>
               <span className="muted">Difference to system</span>
@@ -1246,11 +1179,10 @@ export function OperatorStockNewPage() {
 
           <div className="stack" style={{ gap: 10 }}>
             {ingredients.map((row) => {
-              const qty = qtyById[row.id] || { recipe: '0', inventory: '0' }
-              const recipeActual = parseNum(qty.recipe)
+              const qty = qtyById[row.id] || { qty: '0' }
+              const actual = parseNum(qty.qty)
               const system = Number(row.systemQuantity ?? 0)
-              const diff = recipeActual - system
-              const systemInv = systemInInventory(system, row.conversionRate)
+              const diff = actual - system
               const sourceCatId = ingredientCategoryById[row.id]
               const sourceCatName =
                 (categories.data || []).find((c) => c.id === sourceCatId)
@@ -1292,15 +1224,12 @@ export function OperatorStockNewPage() {
                   <div className="inventory-count-system muted">
                     System qty: {formatQty(row.systemQuantity)}{' '}
                     {row.recipeUnit || ''}
-                    {systemInv != null && row.inventoryUnit
-                      ? ` · ${formatQty(systemInv)} ${row.inventoryUnit}`
-                      : ''}
                   </div>
 
                   <div className="inventory-count-qty-grid">
                     <label className="inventory-count-qty">
                       <span>
-                        Recipe UOM
+                        Principal Component UOM
                         {row.recipeUnit ? ` (${row.recipeUnit})` : ''}
                       </span>
                       <input
@@ -1308,31 +1237,13 @@ export function OperatorStockNewPage() {
                         inputMode="decimal"
                         step="0.01"
                         min="0"
-                        value={qty.recipe}
-                        onChange={(e) => setRecipeQty(row, e.target.value)}
-                      />
-                    </label>
-                    <label className="inventory-count-qty">
-                      <span>
-                        Inventory UOM
-                        {row.inventoryUnit ? ` (${row.inventoryUnit})` : ''}
-                      </span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        min="0"
-                        value={qty.inventory}
-                        onChange={(e) => setInventoryQty(row, e.target.value)}
+                        value={qty.qty}
+                        onChange={(e) => setQty(row, e.target.value)}
                       />
                     </label>
                   </div>
 
                   <div className="inventory-count-footer">
-                    <span className="muted">
-                      Inventory qty: {formatQty(parseNum(qty.inventory))}{' '}
-                      {row.inventoryUnit || ''}
-                    </span>
                     <span
                       className={
                         diff === 0

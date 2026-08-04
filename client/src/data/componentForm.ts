@@ -46,53 +46,6 @@ export function getConversionFactor(from: string, to: string): number | null {
   return null;
 }
 
-export function isConversionQtyAutoFilled(
-  fromUnit: string,
-  toUnit: string,
-  qty: string,
-  fromQty: string,
-): boolean {
-  const conv = getConversion(fromUnit, toUnit);
-  if (conv === null) return false;
-  const from = parseFloat(fromQty || '1') || 1;
-  const expected = conv * from;
-  const parsed = parseFloat(qty);
-  if (!Number.isFinite(parsed)) return false;
-  return Math.abs(parsed - expected) < 0.0001;
-}
-
-export function resolveInventoryToRecipeQty(
-  inventoryUnit: string,
-  recipeUnit: string,
-  fromQty: string,
-  currentQty?: string,
-): { fromQty: string; qty: string } {
-  if (inventoryUnit === recipeUnit) return { fromQty: '1', qty: '1' };
-  const from = parseFloat(fromQty || '1') || 1;
-  const conv = getConversion(inventoryUnit, recipeUnit);
-  return {
-    fromQty: fromQty || '1',
-    qty: conv !== null ? String(conv * from) : (currentQty?.trim() || ''),
-  };
-}
-
-function resolveInventoryToRecipeQtyOnLoad(
-  inventoryUnit: string,
-  recipeUnit: string,
-  fromQty: string,
-  storedQty?: string,
-): string {
-  if (inventoryUnit === recipeUnit) return storedQty?.trim() || '1';
-  const from = parseFloat(fromQty || '1') || 1;
-  const conv = getConversion(inventoryUnit, recipeUnit);
-  if (conv === null) return storedQty?.trim() || '';
-  const expected = String(conv * from);
-  const stored = storedQty?.trim();
-  if (!stored || stored === '1') return expected;
-  if (isConversionQtyAutoFilled(inventoryUnit, recipeUnit, stored, fromQty)) return stored;
-  return stored;
-}
-
 export function toApiUom(unit: string): string {
   const trimmed = unit.trim();
   if (!trimmed) return '';
@@ -137,9 +90,9 @@ export function fromApiUom(unit: string): string {
 
 export type AltUnitEntry = { fromQty: string; qty: string; unit: string };
 
-export const MAX_ALTERNATE_UOMS = 2;
+export const MAX_ALTERNATE_UOMS = 5;
 
-/** Principal component UOM plus up to two configured alternates. */
+/** Principal component UOM plus up to five configured alternates. */
 export function getComponentUomChoices(principalUnit: string, altUnits: AltUnitEntry[]): string[] {
   const alternates = altUnits.map(a => a.unit).filter(u => u && u !== principalUnit);
   return [...new Set([principalUnit, ...alternates])].slice(0, 1 + MAX_ALTERNATE_UOMS);
@@ -190,9 +143,6 @@ export function swapPrincipalWithAlternateUnit(
 
 export type ComponentDetailConfig = {
   altRecipeUnits: AltUnitEntry[];
-  altInventoryUnits: AltUnitEntry[];
-  convertFromInventoryQty: string;
-  convertToRecipeQty: string;
   taggedVendorProductIds: string[];
   vendorProductPrincipalQty: Record<string, string>;
   vendorProductLossYield: Record<string, string>;
@@ -208,9 +158,6 @@ export type ComponentDetailConfig = {
 
 export const EMPTY_COMPONENT_DETAIL_CONFIG: ComponentDetailConfig = {
   altRecipeUnits: [],
-  altInventoryUnits: [],
-  convertFromInventoryQty: '1',
-  convertToRecipeQty: '1',
   taggedVendorProductIds: [],
   vendorProductPrincipalQty: {},
   vendorProductLossYield: {},
@@ -226,9 +173,6 @@ export const EMPTY_COMPONENT_DETAIL_CONFIG: ComponentDetailConfig = {
 export function detailConfigFromForm(form: ComponentForm): ComponentDetailConfig {
   return {
     altRecipeUnits: form.altRecipeUnits,
-    altInventoryUnits: form.altInventoryUnits,
-    convertFromInventoryQty: form.convertFromInventoryQty,
-    convertToRecipeQty: form.convertToRecipeQty,
     taggedVendorProductIds: form.taggedVendorProductIds,
     vendorProductPrincipalQty: form.vendorProductPrincipalQty,
     vendorProductLossYield: form.vendorProductLossYield,
@@ -247,15 +191,17 @@ export function parseDetailConfigJson(json: string | null | undefined): Componen
   try {
     const parsed = JSON.parse(json) as Partial<ComponentDetailConfig>;
     return {
-      ...EMPTY_COMPONENT_DETAIL_CONFIG,
-      ...parsed,
-      altRecipeUnits: Array.isArray(parsed.altRecipeUnits) ? parsed.altRecipeUnits : [],
-      altInventoryUnits: Array.isArray(parsed.altInventoryUnits) ? parsed.altInventoryUnits : [],
+      altRecipeUnits: Array.isArray(parsed.altRecipeUnits)
+        ? parsed.altRecipeUnits.slice(0, MAX_ALTERNATE_UOMS)
+        : [],
       taggedVendorProductIds: Array.isArray(parsed.taggedVendorProductIds) ? parsed.taggedVendorProductIds : [],
       vendorProductPrincipalQty: parsed.vendorProductPrincipalQty ?? {},
       vendorProductLossYield: parsed.vendorProductLossYield ?? {},
       vendorProductComponentUom: parsed.vendorProductComponentUom ?? {},
       vendorProductLocations: parsed.vendorProductLocations ?? {},
+      vendor: parsed.vendor ?? '',
+      vendorProduct: parsed.vendorProduct ?? '',
+      deliveryUnitPrice: parsed.deliveryUnitPrice ?? '',
       expiryPeriodDays: parsed.expiryPeriodDays?.trim() ?? '',
       splitUse: parseSplitUseConfig(parsed.splitUse),
     };
@@ -277,7 +223,7 @@ export function readDetailConfigJsonFromIngredient(ingredient: {
 }
 
 export function resolveDetailConfigForRow(row: Pick<ComponentRow, 'detailConfig' | 'detailConfigJson'>): ComponentDetailConfig {
-  if (row.detailConfig) return row.detailConfig;
+  if (row.detailConfig) return parseDetailConfigJson(JSON.stringify(row.detailConfig));
   return parseDetailConfigJson(row.detailConfigJson);
 }
 
@@ -287,10 +233,10 @@ export function resolveDetailConfigJsonForSave(
 ): string {
   const merged = { ...row, ...partial };
   if (merged.detailConfig) {
-    return serializeDetailConfig(merged.detailConfig);
+    return serializeDetailConfig(parseDetailConfigJson(JSON.stringify(merged.detailConfig)));
   }
   if (merged.detailConfigJson && merged.detailConfigJson.trim() !== '' && merged.detailConfigJson !== '{}') {
-    return merged.detailConfigJson;
+    return serializeDetailConfig(parseDetailConfigJson(merged.detailConfigJson));
   }
   return serializeDetailConfig(EMPTY_COMPONENT_DETAIL_CONFIG);
 }
@@ -306,8 +252,6 @@ export type ComponentForm = {
   active: boolean;
   recipeUnit: string;
   altRecipeUnits: AltUnitEntry[];
-  inventoryUnit: string;
-  altInventoryUnits: AltUnitEntry[];
   vendor: string;
   vendorProduct: string;
   taggedVendorProductIds: string[];
@@ -316,8 +260,6 @@ export type ComponentForm = {
   vendorProductComponentUom: Record<string, string>;
   vendorProductLocations: Record<string, string[]>;
   deliveryUnitPrice: string;
-  convertFromInventoryQty: string;
-  convertToRecipeQty: string;
   lossYield: string;
   dailyUsage: string;
   orderFreqDays: string;
@@ -412,9 +354,7 @@ export type ComponentRow = {
   category: string;
   group: string;
   recipeUOM: string;
-  inventoryUOM: string;
   lastPriceRecipe: number;
-  lastPriceInventory: number;
   dailyUsage: number;
   orderFreqDays: number;
   parStock?: number;
@@ -442,7 +382,6 @@ export function toForm(
   companyCode?: string | null,
 ): ComponentForm {
   const recipeUnit = fromApiUom(row.recipeUOM);
-  const inventoryUnit = fromApiUom(row.inventoryUOM);
   const componentId = row.componentId
     || generateComponentId(companyCode, existingComponentIds);
   const detail = resolveDetailConfigForRow(row);
@@ -457,8 +396,6 @@ export function toForm(
     active: row.active,
     recipeUnit,
     altRecipeUnits: detail.altRecipeUnits.map(au => ({ ...au, fromQty: au.fromQty ?? '1' })),
-    inventoryUnit,
-    altInventoryUnits: detail.altInventoryUnits.map(au => ({ ...au, fromQty: au.fromQty ?? '1' })),
     vendor: detail.vendor,
     vendorProduct: detail.vendorProduct,
     taggedVendorProductIds: [...detail.taggedVendorProductIds],
@@ -466,14 +403,7 @@ export function toForm(
     vendorProductLossYield: { ...detail.vendorProductLossYield },
     vendorProductComponentUom: { ...detail.vendorProductComponentUom },
     vendorProductLocations: { ...detail.vendorProductLocations },
-    deliveryUnitPrice: detail.deliveryUnitPrice || String(row.lastPriceInventory),
-    convertFromInventoryQty: detail.convertFromInventoryQty || '1',
-    convertToRecipeQty: resolveInventoryToRecipeQtyOnLoad(
-      inventoryUnit,
-      recipeUnit,
-      detail.convertFromInventoryQty || '1',
-      detail.convertToRecipeQty,
-    ),
+    deliveryUnitPrice: detail.deliveryUnitPrice || String(row.lastPriceRecipe),
     lossYield: '0',
     dailyUsage: row.dailyUsage > 0 ? String(row.dailyUsage) : '',
     orderFreqDays: String(row.orderFreqDays > 0 ? row.orderFreqDays : 7),
@@ -487,9 +417,7 @@ export const blankComponentRow: ComponentRow = {
   category: 'Food',
   group: 'Proteins',
   recipeUOM: 'g',
-  inventoryUOM: 'kg',
   lastPriceRecipe: 0,
-  lastPriceInventory: 0,
   dailyUsage: 0,
   orderFreqDays: 7,
   parStock: 0,

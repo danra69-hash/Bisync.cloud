@@ -49,7 +49,7 @@ function IngredientRow({
         <div className="muted">
           {[
             row.ingredientGroup,
-            row.ingredientInventoryUnit || row.ingredientUOM,
+            row.ingredientUOM,
             storage ? row.location : null,
           ]
             .filter(Boolean)

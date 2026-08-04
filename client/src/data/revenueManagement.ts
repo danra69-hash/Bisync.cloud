@@ -268,9 +268,7 @@ export type IngredientRow = {
   category: string;
   group: string;
   recipeUOM: string;
-  inventoryUOM: string;
   lastPriceRecipe: number;
-  lastPriceInventory: number;
   dailyUsage: number;
   orderFreqDays: number;
   storage: string[];
@@ -281,11 +279,11 @@ export type IngredientRow = {
 };
 
 export const siDataInit: IngredientRow[] = [
-  { name: 'Wagyu Beef A5', category: 'Food', group: 'Proteins', recipeUOM: 'g', inventoryUOM: 'kg', lastPriceRecipe: 0.38, lastPriceInventory: 380, dailyUsage: 2.4, orderFreqDays: 3, storage: ['Freezer'], attachedProducts: 3, attachedVendors: 2, active: true, locations: ['downtown', 'midtown'] },
-  { name: 'Black Truffle', category: 'Food', group: 'Produce', recipeUOM: 'g', inventoryUOM: 'g', lastPriceRecipe: 1.8, lastPriceInventory: 1.8, dailyUsage: 45, orderFreqDays: 7, storage: ['Chiller'], attachedProducts: 2, attachedVendors: 1, active: true, locations: ['downtown'] },
-  { name: 'Burrata', category: 'Food', group: 'Dairy', recipeUOM: 'pcs', inventoryUOM: 'pcs', lastPriceRecipe: 8.75, lastPriceInventory: 8.75, dailyUsage: 8, orderFreqDays: 2, storage: ['Chiller'], attachedProducts: 4, attachedVendors: 1, active: true, locations: ['downtown', 'midtown', 'westend'] },
-  { name: 'Merlot Reserve 2019', category: 'Beverage', group: 'Spirits', recipeUOM: 'ml', inventoryUOM: 'btl', lastPriceRecipe: 0.127, lastPriceInventory: 95, dailyUsage: 3.2, orderFreqDays: 5, storage: ['Wine Cellar'], attachedProducts: 1, attachedVendors: 1, active: true, locations: ['all'] },
-  { name: 'Espresso Beans', category: 'Beverage', group: 'Beverages', recipeUOM: 'g', inventoryUOM: 'kg', lastPriceRecipe: 0.028, lastPriceInventory: 28, dailyUsage: 0.8, orderFreqDays: 10, storage: ['Dry Store'], attachedProducts: 2, attachedVendors: 1, active: true, locations: ['all'] },
+  { name: 'Wagyu Beef A5', category: 'Food', group: 'Proteins', recipeUOM: 'g', lastPriceRecipe: 0.38, dailyUsage: 2.4, orderFreqDays: 3, storage: ['Freezer'], attachedProducts: 3, attachedVendors: 2, active: true, locations: ['downtown', 'midtown'] },
+  { name: 'Black Truffle', category: 'Food', group: 'Produce', recipeUOM: 'g', lastPriceRecipe: 1.8, dailyUsage: 45, orderFreqDays: 7, storage: ['Chiller'], attachedProducts: 2, attachedVendors: 1, active: true, locations: ['downtown'] },
+  { name: 'Burrata', category: 'Food', group: 'Dairy', recipeUOM: 'pcs', lastPriceRecipe: 8.75, dailyUsage: 8, orderFreqDays: 2, storage: ['Chiller'], attachedProducts: 4, attachedVendors: 1, active: true, locations: ['downtown', 'midtown', 'westend'] },
+  { name: 'Merlot Reserve 2019', category: 'Beverage', group: 'Spirits', recipeUOM: 'ml', lastPriceRecipe: 0.127, dailyUsage: 3.2, orderFreqDays: 5, storage: ['Wine Cellar'], attachedProducts: 1, attachedVendors: 1, active: true, locations: ['all'] },
+  { name: 'Espresso Beans', category: 'Beverage', group: 'Beverages', recipeUOM: 'g', lastPriceRecipe: 0.028, dailyUsage: 0.8, orderFreqDays: 10, storage: ['Dry Store'], attachedProducts: 2, attachedVendors: 1, active: true, locations: ['all'] },
 ];
 
 export const VENDOR_DISTANCES: Record<string, number | 'online'> = {

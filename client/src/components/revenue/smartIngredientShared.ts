@@ -41,9 +41,7 @@ export function ingredientToRow(i: Ingredient): ComponentRow {
     category: i.category,
     group: i.group,
     recipeUOM: i.recipeUom,
-    inventoryUOM: i.inventoryUom,
     lastPriceRecipe: i.lastPriceRecipe,
-    lastPriceInventory: i.lastPriceInventory,
     dailyUsage: i.dailyUsage,
     orderFreqDays: i.orderFreqDays,
     parStock: i.parStock ?? 0,
@@ -77,9 +75,7 @@ export function rowToIngredient(row: ComponentRow, partial: Partial<ComponentRow
     category: merged.category,
     group: merged.group,
     recipeUom: merged.recipeUOM,
-    inventoryUom: merged.inventoryUOM,
     lastPriceRecipe: merged.lastPriceRecipe,
-    lastPriceInventory: merged.lastPriceInventory,
     dailyUsage: merged.dailyUsage,
     orderFreqDays: merged.orderFreqDays,
     parStock: merged.parStock ?? 0,
@@ -103,8 +99,8 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
   const sentHasTags = sentConfig.taggedVendorProductIds.length > 0;
   const savedHasTags = savedConfig.taggedVendorProductIds.length > 0;
   const tagsAdded = sentConfig.taggedVendorProductIds.length > savedConfig.taggedVendorProductIds.length;
-  const sentHasPrice = sent.lastPriceRecipe > 0 || sent.lastPriceInventory > 0;
-  const savedMissingPrice = savedRow.lastPriceRecipe === 0 && savedRow.lastPriceInventory === 0;
+  const sentHasPrice = sent.lastPriceRecipe > 0;
+  const savedMissingPrice = savedRow.lastPriceRecipe === 0;
 
   if (tagsAdded || (sentHasTags && sentHasPrice && (savedMissingPrice || !savedHasTags))) {
     const detailConfig = sentConfig.taggedVendorProductIds.length >= savedConfig.taggedVendorProductIds.length
@@ -115,7 +111,6 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
       ...savedRow,
       hasPurchaseRecord: preservePurchase,
       lastPriceRecipe: sent.lastPriceRecipe > 0 ? sent.lastPriceRecipe : savedRow.lastPriceRecipe,
-      lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
       detailConfig,
       detailConfigJson: serializeDetailConfig(detailConfig),
       attachedVendors: countComponentTaggedVendors({ detailConfig, detailConfigJson: serializeDetailConfig(detailConfig) }),
@@ -130,7 +125,6 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
       detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }),
       attachedVendors: countComponentTaggedVendors({ detailConfig: sentConfig, detailConfigJson: resolveDetailConfigJsonForSave({ detailConfig: sentConfig }) }),
       lastPriceRecipe: sent.lastPriceRecipe > 0 ? sent.lastPriceRecipe : savedRow.lastPriceRecipe,
-      lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
     };
   }
 
@@ -139,7 +133,6 @@ export function mergeSavedRow(saved: Ingredient, sent: ComponentRow): ComponentR
       ...savedRow,
       hasPurchaseRecord: preservePurchase,
       lastPriceRecipe: sent.lastPriceRecipe,
-      lastPriceInventory: sent.lastPriceInventory > 0 ? sent.lastPriceInventory : savedRow.lastPriceInventory,
     };
   }
 

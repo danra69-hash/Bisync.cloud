@@ -1,6 +1,8 @@
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Bisync.Api.Services;
 
@@ -97,7 +99,6 @@ public class StockCardService(
                     OnHandAverageCogs = summary.OnHandAverageCogs,
                     Uom = displayUom,
                     RecipeUom = ingredient.RecipeUom,
-                    InventoryUom = ingredient.InventoryUom,
                 });
             }
         }
@@ -149,7 +150,6 @@ public class StockCardService(
                     OnHandAverageCogs = summary.OnHandAverageCogs,
                     Uom = displayUom,
                     RecipeUom = product.YieldUom,
-                    InventoryUom = product.YieldUom,
                 });
                 continue;
             }
@@ -176,7 +176,6 @@ public class StockCardService(
                 OnHandAverageCogs = productSummary.OnHandAverageCogs,
                 Uom = productUom,
                 RecipeUom = product.B2bPackageUnit,
-                InventoryUom = product.B2bPackageUnit,
             });
         }
 
@@ -223,7 +222,6 @@ public class StockCardService(
                 ingredient.Name,
                 displayUom,
                 ingredient.RecipeUom,
-                ingredient.InventoryUom,
                 entries,
                 stockPeriod,
                 fifoResult.AverageCogs,
@@ -264,7 +262,6 @@ public class StockCardService(
             product.Group,
             product.Name,
             productUom,
-            product.IsSubProduct ? product.YieldUom : product.B2bPackageUnit,
             product.IsSubProduct ? product.YieldUom : product.B2bPackageUnit,
             productEntries,
             stockPeriod,
@@ -443,8 +440,7 @@ public class StockCardService(
             if (isInbound)
             {
                 var inboundUomResolved = ResolveInboundAdjustmentUom(
-                    ingredient.RecipeUom,
-                    ingredient.InventoryUom,
+                    ingredient,
                     displayUom,
                     inboundUom);
                 if (inboundUomResolved is null)
@@ -615,7 +611,6 @@ public class StockCardService(
         string name,
         string uom,
         string recipeUom,
-        string inventoryUom,
         List<StockCardLedgerEntry> entries,
         StockCardPeriod period,
         decimal currentAverageCogs,
@@ -711,7 +706,6 @@ public class StockCardService(
             Name = name,
             Uom = uom,
             RecipeUom = recipeUom,
-            InventoryUom = inventoryUom,
             BalanceForward = balanceForward,
             InboundQty = inbound,
             OutboundQty = outbound,
@@ -830,7 +824,6 @@ public class StockCardService(
         IReadOnlyDictionary<int, Product> productionProducts,
         CancellationToken cancellationToken)
     {
-        var normalizedUom = NormalizeUom(displayUom);
         var purchases = preloadedPurchases;
 
         if (companyId is int cid)
@@ -838,7 +831,6 @@ public class StockCardService(
 
         purchases = purchases
             .Where(p => LocationMatchesAny(p.LocationIdsJson, locationIds))
-            .Where(p => NormalizeUom(p.Uom) == normalizedUom)
             .ToList();
 
         var movements = preloadedMovements;
@@ -848,7 +840,6 @@ public class StockCardService(
 
         movements = movements
             .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
-            .Where(m => NormalizeUom(m.Uom) == normalizedUom)
             .ToList();
 
         var fifoResult = await BuildComponentFifoResultAsync(
@@ -863,25 +854,23 @@ public class StockCardService(
             poNumbers,
             productionProducts);
 
-        var monthPurchases = purchases
-            .Where(p => p.DateCreatedInStock >= period.MonthStart)
-            .Sum(p => p.Quantity);
-        var monthMovements = movements.Where(m => m.CreatedAt >= period.MonthStart).ToList();
-        var inboundMove = monthMovements.Where(m => m.QtyDelta > 0 && !IsAdjustmentMovement(m)).Sum(m => m.QtyDelta);
-        var outbound = monthMovements.Where(m => m.QtyDelta < 0 && !IsAdjustmentMovement(m)).Sum(m => -m.QtyDelta);
-        var adjustment = monthMovements.Where(m => IsAdjustmentMovement(m)).Sum(m => m.QtyDelta);
         var onHand = fifoResult.OnHandQty;
         var monthEntries = fifoResult.Events
             .Select(MapFifoToLedgerEntry)
             .Where(e => e.OccurredAt >= period.MonthStart && e.OccurredAt <= period.PeriodEnd)
             .ToList();
+        var inbound = monthEntries.Where(e => IsInboundSummaryType(e.EntryType)).Sum(e => e.Quantity);
+        var outbound = monthEntries.Where(e => IsOutboundSummaryType(e.EntryType)).Sum(e => e.Quantity);
+        var adjustment = monthEntries
+            .Where(e => e.EntryType is "adjustment_in" or "adjustment_out" or "adjustment")
+            .Sum(e => e.SignedQty);
         var averageCogs = ComputeOutboundAveragePrice(monthEntries, period.MonthStart, period.PeriodEnd);
         if (averageCogs <= 0)
             averageCogs = fifoResult.AverageCogs;
 
         return new StockMovementSummary
         {
-            InboundQty = monthPurchases + inboundMove,
+            InboundQty = inbound,
             OutboundQty = outbound,
             AdjustmentQty = adjustment,
             OnHandQty = onHand,
@@ -1118,7 +1107,6 @@ public class StockCardService(
         IReadOnlyDictionary<int, string>? poNumbersOverride = null,
         IReadOnlyDictionary<int, Product>? productionProductsOverride = null)
     {
-        var normalizedUom = NormalizeUom(displayUom);
         var purchases = purchasesOverride ?? await db.InventoryPurchases.AsNoTracking()
             .Where(p => p.ComponentId == ingredient.ComponentId)
             .ToListAsync(cancellationToken);
@@ -1154,8 +1142,10 @@ public class StockCardService(
         {
             if (!LocationMatchesAny(purchase.LocationIdsJson, locationIds))
                 continue;
-            if (NormalizeUom(purchase.Uom) != normalizedUom)
+            if (!TryResolvePrincipalRatio(ingredient, purchase.Uom, out var ratio))
                 continue;
+            var principalQuantity = purchase.Quantity * ratio;
+            var principalUnitPrice = ratio > 0 ? purchase.UnitPrice / ratio : purchase.UnitPrice;
 
             var entryType = purchase.PurchaseOrderId > 0 ? "purchase" : "cash_purchase";
             var poNumber = purchase.PurchaseOrderId > 0 && poNumbers.TryGetValue(purchase.PurchaseOrderId, out var num)
@@ -1189,10 +1179,10 @@ public class StockCardService(
                 Id = purchase.Id,
                 OccurredAt = purchase.DateCreatedInStock,
                 EntryType = entryType,
-                Quantity = purchase.Quantity,
-                SignedQty = purchase.Quantity,
-                Uom = purchase.Uom,
-                UnitPrice = purchase.UnitPrice,
+                Quantity = principalQuantity,
+                SignedQty = principalQuantity,
+                Uom = displayUom,
+                UnitPrice = principalUnitPrice,
                 Reason = reason,
                 ReferenceNumber = poNumber,
                 SourceLabel = sourceLabel,
@@ -1223,10 +1213,14 @@ public class StockCardService(
         var productionProducts = productionProductsOverride
             ?? await LoadProductionProductsForMovementsAsync(movements, cancellationToken);
 
-        foreach (var movement in movements.Where(m => NormalizeUom(m.Uom) == normalizedUom))
+        foreach (var movement in movements)
         {
+            if (!TryResolvePrincipalRatio(ingredient, movement.Uom, out var ratio))
+                continue;
             var entryType = ClassifyMovementEntryType(movement);
-            var qty = Math.Abs(movement.QtyDelta);
+            var signedQty = movement.QtyDelta * ratio;
+            var qty = Math.Abs(signedQty);
+            var principalUnitPrice = ratio > 0 ? movement.UnitPrice / ratio : movement.UnitPrice;
             var productionProduct = TryResolveProductionProduct(movement, productionProducts);
             events.Add(new FifoEvent
             {
@@ -1234,12 +1228,12 @@ public class StockCardService(
                 OccurredAt = movement.CreatedAt,
                 EntryType = entryType,
                 Quantity = qty,
-                SignedQty = movement.QtyDelta,
-                Uom = movement.Uom,
+                SignedQty = signedQty,
+                Uom = displayUom,
                 UnitPrice = entryType is "adjustment_out"
                     ? 0
-                    : movement.UnitPrice > 0
-                        ? movement.UnitPrice
+                    : principalUnitPrice > 0
+                        ? principalUnitPrice
                         : entryType is "adjustment_in"
                             ? 0
                             : ResolveComponentFallbackPrice(ingredient, displayUom),
@@ -1499,18 +1493,13 @@ public class StockCardService(
         => reason.Contains("adjust", StringComparison.OrdinalIgnoreCase);
 
     static decimal ResolveComponentFallbackPrice(Ingredient ingredient, string displayUom)
-    {
-        var normalized = NormalizeUom(displayUom);
-        var recipe = NormalizeUom(ingredient.RecipeUom);
-        if (normalized == recipe)
-            return ingredient.LastPriceRecipe;
-        return ingredient.LastPriceInventory;
-    }
+        => ingredient.LastPriceRecipe;
 
     static string ResolveComponentUom(Ingredient ingredient, string mode)
-        => string.Equals(mode, "recipe", StringComparison.OrdinalIgnoreCase)
-            ? ingredient.RecipeUom
-            : ingredient.InventoryUom;
+    {
+        var allowed = ResolveComponentUoms(ingredient);
+        return allowed.Count > 0 ? allowed[0] : string.Empty;
+    }
 
     static string ResolveProductUom(Product product)
     {
@@ -1525,28 +1514,117 @@ public class StockCardService(
         return string.IsNullOrWhiteSpace(product.B2bPackageUnit) ? "pcs" : product.B2bPackageUnit.Trim();
     }
 
-    static string NormalizeUomMode(string uomMode)
-        => string.Equals(uomMode, "recipe", StringComparison.OrdinalIgnoreCase) ? "recipe" : "inventory";
+    static string NormalizeUomMode(string uomMode) => "recipe";
 
     static string NormalizeUom(string uom) => uom.Trim().ToUpperInvariant();
 
     static string? ResolveInboundAdjustmentUom(
-        string recipeUom,
-        string inventoryUom,
+        Ingredient ingredient,
         string defaultUom,
         string? requestedUom)
     {
-        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            recipeUom.Trim(),
-            inventoryUom.Trim(),
-        };
+        var allowed = ResolveComponentUoms(ingredient).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(requestedUom))
             return allowed.Contains(defaultUom.Trim()) ? defaultUom.Trim() : null;
 
         var trimmed = requestedUom.Trim();
         return allowed.Contains(trimmed) ? trimmed : null;
+    }
+
+    static IReadOnlyList<string> ResolveComponentUoms(Ingredient ingredient)
+    {
+        var units = new List<string>();
+        if (!string.IsNullOrWhiteSpace(ingredient.RecipeUom))
+            units.Add(ingredient.RecipeUom.Trim());
+
+        if (string.IsNullOrWhiteSpace(ingredient.DetailConfigJson))
+            return units;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(ingredient.DetailConfigJson);
+            if (!doc.RootElement.TryGetProperty("altRecipeUnits", out var alternatives)
+                || alternatives.ValueKind != JsonValueKind.Array)
+                return units;
+
+            foreach (var alternative in alternatives.EnumerateArray())
+            {
+                if (alternative.ValueKind != JsonValueKind.Object
+                    || !alternative.TryGetProperty("unit", out var unitElement)
+                    || unitElement.ValueKind != JsonValueKind.String)
+                    continue;
+
+                var unit = unitElement.GetString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(unit)
+                    && !units.Contains(unit, StringComparer.OrdinalIgnoreCase))
+                    units.Add(unit);
+            }
+        }
+        catch (JsonException)
+        {
+            // Invalid optional detail config does not invalidate the principal recipe UOM.
+        }
+
+        return units;
+    }
+
+    static bool TryResolvePrincipalRatio(Ingredient ingredient, string? sourceUom, out decimal ratio)
+    {
+        ratio = 0;
+        var source = NormalizeUom(sourceUom ?? string.Empty);
+        var principal = NormalizeUom(ingredient.RecipeUom);
+        if (source.Length == 0 || principal.Length == 0)
+            return false;
+        if (source == principal)
+        {
+            ratio = 1m;
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(ingredient.DetailConfigJson))
+            return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(ingredient.DetailConfigJson);
+            if (!doc.RootElement.TryGetProperty("altRecipeUnits", out var alternatives)
+                || alternatives.ValueKind != JsonValueKind.Array)
+                return false;
+
+            foreach (var alternative in alternatives.EnumerateArray())
+            {
+                if (alternative.ValueKind != JsonValueKind.Object
+                    || !alternative.TryGetProperty("unit", out var unitElement)
+                    || unitElement.ValueKind != JsonValueKind.String
+                    || NormalizeUom(unitElement.GetString() ?? string.Empty) != source)
+                    continue;
+
+                var fromQty = ReadAlternativeQuantity(alternative, "fromQty");
+                var principalQty = ReadAlternativeQuantity(alternative, "qty");
+                if (fromQty <= 0 || principalQty <= 0)
+                    return false;
+                ratio = principalQty / fromQty;
+                return true;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    static decimal ReadAlternativeQuantity(JsonElement alternative, string propertyName)
+    {
+        if (!alternative.TryGetProperty(propertyName, out var value))
+            return 0;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number))
+            return number;
+        return value.ValueKind == JsonValueKind.String
+            && decimal.TryParse(value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : 0;
     }
 
     static bool ShouldInclude(string? itemTypeFilter, string itemType)
@@ -1787,7 +1865,6 @@ public sealed class StockCardListRow
     public decimal OnHandAverageCogs { get; init; }
     public string Uom { get; init; } = string.Empty;
     public string RecipeUom { get; init; } = string.Empty;
-    public string InventoryUom { get; init; } = string.Empty;
 }
 
 public sealed class StockCardDetail
@@ -1798,7 +1875,6 @@ public sealed class StockCardDetail
     public string Name { get; init; } = string.Empty;
     public string Uom { get; init; } = string.Empty;
     public string RecipeUom { get; init; } = string.Empty;
-    public string InventoryUom { get; init; } = string.Empty;
     public decimal BalanceForward { get; init; }
     public decimal InboundQty { get; init; }
     public decimal OutboundQty { get; init; }

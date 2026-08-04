@@ -224,13 +224,11 @@ export function unitPriceInPrincipalUom(
   if (direct !== null) return direct;
 
   const detail = resolveDetailConfigForRow(component);
-  const inventoryUom = fromApiUom(component.inventoryUOM);
-  if (sourceUom === inventoryUom) {
-    const fromQty = parseFloat(detail.convertFromInventoryQty) || 1;
-    const toQty = parseFloat(detail.convertToRecipeQty) || 1;
-    if (fromQty > 0 && toQty > 0) {
-      return unitPrice / (toQty / fromQty);
-    }
+  const alternate = detail.altRecipeUnits.find(alt => fromApiUom(alt.unit) === sourceUom);
+  if (alternate) {
+    const alternateQty = parseFloat(alternate.fromQty || '1') || 1;
+    const principalQty = parseFloat(alternate.qty || '1') || 1;
+    if (alternateQty > 0 && principalQty > 0) return unitPrice * alternateQty / principalQty;
   }
 
   return null;
@@ -427,7 +425,7 @@ export function buildCartItems(
       lineKey: line.key,
       componentId: line.component.componentId,
       componentName: line.component.name,
-      componentUom: line.component.inventoryUOM,
+      componentUom: line.component.recipeUOM,
       vendorProductId: line.vendorProduct.id,
       vendorExternalId: line.vendorProduct.vendorExternalId,
       vendorName: line.vendorProduct.vendorName,

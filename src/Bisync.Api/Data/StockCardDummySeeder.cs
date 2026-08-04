@@ -20,7 +20,7 @@ public static class StockCardDummySeeder
     private static readonly string[] ComponentGroups =
         ["Proteins", "Produce", "Dairy", "Dry Goods", "Seafood", "Beverages", "Packaging"];
 
-    private static readonly (string RecipeUom, string InventoryUom)[] UomPairs =
+    private static readonly (string RecipeUom, string AlternateUom)[] UomPairs =
     [
         ("g", "kg"),
         ("ml", "l"),
@@ -74,9 +74,6 @@ public static class StockCardDummySeeder
             var uom = UomPairs[sequence % UomPairs.Length];
             var componentId = await ComponentIdGenerator.GenerateAsync(db, companyCode, resolvedCompanyId);
             var priceRecipe = Math.Round((decimal)(rng.NextDouble() * 2 + 0.05), 4);
-            var priceInventory = uom.RecipeUom == uom.InventoryUom
-                ? priceRecipe
-                : Math.Round(priceRecipe * 1000, 2);
 
             var ingredient = new Ingredient
             {
@@ -86,20 +83,23 @@ public static class StockCardDummySeeder
                 Category = "Food",
                 Group = group,
                 RecipeUom = uom.RecipeUom,
-                InventoryUom = uom.InventoryUom,
                 LastPriceRecipe = priceRecipe,
-                LastPriceInventory = priceInventory,
                 DailyUsage = Math.Round((decimal)(rng.NextDouble() * 5 + 0.5), 2),
                 OrderFreqDays = 3 + (sequence % 5),
                 StorageJson = JsonSerializer.Serialize(new[] { "Chiller", "Dry Store" }[sequence % 2]),
-                DetailConfigJson = "{}",
+                DetailConfigJson = string.Equals(uom.RecipeUom, uom.AlternateUom, StringComparison.OrdinalIgnoreCase)
+                    ? "{}"
+                    : JsonSerializer.Serialize(new
+                    {
+                        altRecipeUnits = new[] { new { fromQty = "1", qty = "1000", unit = uom.AlternateUom } },
+                    }),
                 Active = true,
                 LocationsJson = locationsJson,
             };
             db.Ingredients.Add(ingredient);
             await db.SaveChangesAsync();
 
-            var displayUom = ingredient.InventoryUom;
+            var displayUom = ingredient.RecipeUom;
             var inboundQty = 80 + (sequence % 420);
             var outboundQty = 10 + (sequence % 60);
             var adjustQty = sequence % 7 == 0 ? -(2 + sequence % 8) : 0;
@@ -111,7 +111,7 @@ public static class StockCardDummySeeder
                 ComponentName = name,
                 Quantity = inboundQty,
                 Uom = displayUom,
-                UnitPrice = priceInventory,
+                UnitPrice = priceRecipe,
                 DateOrdered = DateOnly.FromDateTime(now.AddDays(-(20 + sequence % 40))),
                 DateCreatedInStock = now.AddDays(-(18 + sequence % 35)),
                 CompanyId = companyId,
@@ -125,7 +125,7 @@ public static class StockCardDummySeeder
                 LocationExternalId = LocationIds[sequence % LocationIds.Length],
                 QtyDelta = -outboundQty,
                 Uom = displayUom,
-                UnitPrice = priceInventory,
+                UnitPrice = priceRecipe,
                 Reason = "Production depletion",
                 ReferenceType = "production",
                 ReferenceId = sequence,
@@ -142,7 +142,7 @@ public static class StockCardDummySeeder
                     LocationExternalId = LocationIds[sequence % LocationIds.Length],
                     QtyDelta = adjustQty,
                     Uom = displayUom,
-                    UnitPrice = priceInventory,
+                    UnitPrice = priceRecipe,
                     Reason = "Inventory adjustment — count short",
                     ReferenceType = "inventory_adjustment",
                     ReferenceId = sequence,
@@ -162,7 +162,7 @@ public static class StockCardDummySeeder
                     ComponentName = name,
                     Quantity = extraInbound,
                     Uom = displayUom,
-                    UnitPrice = priceInventory,
+                    UnitPrice = priceRecipe,
                     DateOrdered = DateOnly.FromDateTime(now.AddDays(-(7 + sequence % 14))),
                     DateCreatedInStock = now.AddDays(-(6 + sequence % 10)),
                     PurchaseOrderId = 0,

@@ -43,14 +43,14 @@ public static class InventoryCountHistorySeeder
             locationJson,
             countDate: "2026-06-18",
             [
-                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.InventoryUom, 12.4m, 12.1m, wagyu.LastPriceInventory),
-                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.InventoryUom, 26m, 24m, burrata.LastPriceInventory),
+                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.RecipeUom, 12.4m, 12.1m, wagyu.LastPriceRecipe),
+                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.RecipeUom, 26m, 24m, burrata.LastPriceRecipe),
             ]);
 
         if (orange is not null)
         {
             spotJune.Lines.Add(Line(
-                "component", orange.ComponentId, orange.Name, orange.Group, orange.InventoryUom, 18.5m, 18.5m, orange.LastPriceInventory));
+                "component", orange.ComponentId, orange.Name, orange.Group, orange.RecipeUom, 18.5m, 18.5m, orange.LastPriceRecipe));
         }
 
         var spotMay = CreateSession(
@@ -62,8 +62,8 @@ public static class InventoryCountHistorySeeder
             locationJson,
             countDate: "2026-05-22",
             [
-                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.InventoryUom, 11.8m, 11.5m, wagyu.LastPriceInventory),
-                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.InventoryUom, 22m, 20m, burrata.LastPriceInventory),
+                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.RecipeUom, 11.8m, 11.5m, wagyu.LastPriceRecipe),
+                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.RecipeUom, 22m, 20m, burrata.LastPriceRecipe),
             ]);
 
         var fullJune = CreateSession(
@@ -75,15 +75,15 @@ public static class InventoryCountHistorySeeder
             locationJson,
             countDate: "2026-06-30",
             [
-                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.InventoryUom, 12.4m, 11.9m, wagyu.LastPriceInventory),
-                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.InventoryUom, 26m, 25m, burrata.LastPriceInventory),
+                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.RecipeUom, 12.4m, 11.9m, wagyu.LastPriceRecipe),
+                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.RecipeUom, 26m, 25m, burrata.LastPriceRecipe),
             ]);
         fullJune.ConfirmDeadlineAt = now.AddHours(48);
 
         if (orange is not null)
         {
             fullJune.Lines.Add(Line(
-                "component", orange.ComponentId, orange.Name, orange.Group, orange.InventoryUom, 18.5m, 17.2m, orange.LastPriceInventory));
+                "component", orange.ComponentId, orange.Name, orange.Group, orange.RecipeUom, 18.5m, 17.2m, orange.LastPriceRecipe));
         }
 
         var truffle = await db.Ingredients.FirstOrDefaultAsync(i => i.ComponentId == "CMP-BLACKT-001")
@@ -91,7 +91,7 @@ public static class InventoryCountHistorySeeder
         if (truffle is not null)
         {
             fullJune.Lines.Add(Line(
-                "component", truffle.ComponentId, truffle.Name, truffle.Group, truffle.InventoryUom, 0.45m, 0.42m, truffle.LastPriceInventory));
+                "component", truffle.ComponentId, truffle.Name, truffle.Group, truffle.RecipeUom, 0.45m, 0.42m, truffle.LastPriceRecipe));
         }
 
         var fullMay = CreateSession(
@@ -103,8 +103,8 @@ public static class InventoryCountHistorySeeder
             locationJson,
             countDate: "2026-05-31",
             [
-                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.InventoryUom, 11.2m, 11.0m, wagyu.LastPriceInventory),
-                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.InventoryUom, 20m, 19m, burrata.LastPriceInventory),
+                Line("component", wagyu.ComponentId, wagyu.Name, wagyu.Group, wagyu.RecipeUom, 11.2m, 11.0m, wagyu.LastPriceRecipe),
+                Line("component", burrata.ComponentId, burrata.Name, burrata.Group, burrata.RecipeUom, 20m, 19m, burrata.LastPriceRecipe),
             ]);
         fullMay.ConfirmedAt = now.AddDays(-33);
         fullMay.ConfirmedBy = "Sarah Chen";
@@ -114,7 +114,7 @@ public static class InventoryCountHistorySeeder
         if (orange is not null)
         {
             fullMay.Lines.Add(Line(
-                "component", orange.ComponentId, orange.Name, orange.Group, orange.InventoryUom, 16m, 15.5m, orange.LastPriceInventory));
+                "component", orange.ComponentId, orange.Name, orange.Group, orange.RecipeUom, 16m, 15.5m, orange.LastPriceRecipe));
         }
 
         db.InventoryCountSessions.AddRange(spotJune, spotMay, fullJune, fullMay);
@@ -138,7 +138,7 @@ public static class InventoryCountHistorySeeder
             CompanyId = CompanyId,
             LocationIdsJson = locationIdsJson,
             PeriodMonth = periodMonth,
-            UomMode = "inventory",
+            UomMode = "recipe",
             ItemTypeFilter = "component",
             GroupFilter = "All",
             CountDate = countDate,

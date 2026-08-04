@@ -12,7 +12,6 @@ import {
 export type CatalogEnsureResult = {
   groups: string[];
   recipeUoms: string[];
-  inventoryUoms: string[];
   storages: string[];
 };
 
@@ -512,9 +511,7 @@ function findNewValues(values: string[], knownValues: string[]): string[] {
 function collectDraftUoms(drafts: SmartComponentImportDraft[]): string[] {
   return drafts.flatMap(draft => [
     draft.recipeUom,
-    draft.inventoryUom,
     ...draft.altRecipeUnits.map(alt => alt.unit),
-    ...draft.altInventoryUnits.map(alt => alt.unit),
   ]);
 }
 
@@ -527,7 +524,6 @@ export function previewCatalogEnsuresFromPlan(
   return {
     groups: findNewValues(drafts.map(draft => draft.group), getKnownGroups(existingRows)),
     recipeUoms: findNewValues(uoms, getKnownRecipeUnits()),
-    inventoryUoms: findNewValues(uoms, getKnownRecipeUnits()),
     storages: findNewValues(drafts.flatMap(draft => draft.storage), getKnownStorageOptions()),
   };
 }
@@ -563,7 +559,6 @@ export function ensureComponentCatalogFromPlan(
   return {
     groups: ensureGroupsExist(drafts.map(draft => draft.group), existingRows, companyId).added,
     recipeUoms: ensureRecipeUnitsExist(uoms, companyId).added,
-    inventoryUoms: ensureRecipeUnitsExist(uoms, companyId).added,
     storages: ensureStorageOptionsExist(drafts.flatMap(draft => draft.storage), companyId).added,
   };
 }
@@ -584,11 +579,7 @@ export function normalizeImportDraft(
     category: resolveCategoryName(draft.category, existingRows),
     group: resolveGroupName(draft.group, existingRows),
     recipeUom: normalizeRecipeUnitInput(draft.recipeUom),
-    inventoryUom: normalizeRecipeUnitInput(draft.inventoryUom),
     altRecipeUnits: normalizeAltUnits(draft.altRecipeUnits),
-    altInventoryUnits: normalizeAltUnits(draft.altInventoryUnits),
     storage: draft.storage.map(resolveStorageName).filter(Boolean),
-    convertFromInventoryQty: draft.convertFromInventoryQty || '1',
-    convertToRecipeQty: draft.convertToRecipeQty || '1',
   };
 }

@@ -71,7 +71,7 @@ public sealed class ReportsService(
         string itemType = "component",
         CancellationToken ct = default)
     {
-        var rows = await stockCards.ListAsync(companyId, locationIds, itemType, "inventory", period, ct);
+        var rows = await stockCards.ListAsync(companyId, locationIds, itemType, "recipe", period, ct);
         var mapped = rows
             .Select(r => new Dictionary<string, object?>
             {

@@ -16,7 +16,6 @@ type Props = {
   rows: StockCardListRow[]
   companyId: number
   locationIds: string[]
-  uomMode: 'inventory' | 'recipe'
   selectedMonth: string
   onOpenDetail: (row: StockCardListRow) => void
 }
@@ -51,14 +50,12 @@ function StockCardItemCard({
   row,
   companyId,
   locationIds,
-  uomMode,
   selectedMonth,
   onOpenDetail,
 }: {
   row: StockCardListRow
   companyId: number
   locationIds: string[]
-  uomMode: 'inventory' | 'recipe'
   selectedMonth: string
   onOpenDetail: (row: StockCardListRow) => void
 }) {
@@ -74,7 +71,6 @@ function StockCardItemCard({
     setError(null)
     api
       .stockCardDetail(row.itemType, row.itemKey, companyId, locationIds, {
-        uomMode,
         period: selectedMonth,
       })
       .then(data => {
@@ -89,7 +85,7 @@ function StockCardItemCard({
     return () => {
       cancelled = true
     }
-  }, [row.itemType, row.itemKey, companyId, locationIds, uomMode, selectedMonth])
+  }, [row.itemType, row.itemKey, companyId, locationIds, selectedMonth])
 
   const inboundRows = useMemo(
     () => (detail?.entries ?? []).filter(isInboundLedgerEntry),
@@ -258,7 +254,6 @@ export function StockCardCardView({
   rows,
   companyId,
   locationIds,
-  uomMode,
   selectedMonth,
   onOpenDetail,
 }: Props) {
@@ -276,7 +271,6 @@ export function StockCardCardView({
           row={row}
           companyId={companyId}
           locationIds={locationIds}
-          uomMode={uomMode}
           selectedMonth={selectedMonth}
           onOpenDetail={onOpenDetail}
         />

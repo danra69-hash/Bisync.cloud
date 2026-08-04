@@ -34,11 +34,6 @@ function toEditableCreates(creates: SmartComponentImportDraft[]): EditableImport
 function patchCreate(
   row: EditableImportCreate,
   patch: Partial<SmartComponentImportDraft> & {
-    altRecipeUnit1?: string;
-    altRecipeConversion1?: string;
-    altInventoryUnit1?: string;
-    altInventoryConversion1?: string;
-    principalInventoryConversion?: string;
     templateParStock?: number;
     parStockUom?: string;
     storageText?: string;
@@ -46,39 +41,8 @@ function patchCreate(
 ): EditableImportCreate {
   const next: EditableImportCreate = { ...row, ...patch };
 
-  if (patch.altRecipeUnit1 !== undefined || patch.altRecipeConversion1 !== undefined) {
-    const unit = patch.altRecipeUnit1 ?? row.altRecipeUnits[0]?.unit ?? '';
-    const conversion = patch.altRecipeConversion1 ?? row.altRecipeUnits[0]?.qty ?? '';
-    next.altRecipeUnits = unit.trim()
-      ? [{ unit, fromQty: '1', qty: conversion }]
-      : [];
-  }
-
-  if (patch.altInventoryUnit1 !== undefined || patch.altInventoryConversion1 !== undefined) {
-    const unit = patch.altInventoryUnit1 ?? row.altInventoryUnits[0]?.unit ?? '';
-    const conversion = patch.altInventoryConversion1 ?? row.altInventoryUnits[0]?.qty ?? '';
-    next.altInventoryUnits = unit.trim()
-      ? [{ unit, fromQty: '1', qty: conversion }]
-      : [];
-  }
-
   if (patch.storageText !== undefined) {
     next.storage = patch.storageText.split(/[;|]/).map(value => value.trim()).filter(Boolean);
-  }
-
-  if (patch.principalInventoryConversion !== undefined) {
-    const conv = patch.principalInventoryConversion.trim();
-    if (!conv) {
-      next.convertFromInventoryQty = '1';
-      next.convertToRecipeQty = '1';
-    } else if (conv.includes('=')) {
-      const [left, right] = conv.split('=').map(part => part.trim());
-      next.convertFromInventoryQty = left || '1';
-      next.convertToRecipeQty = right || '1';
-    } else {
-      next.convertFromInventoryQty = '1';
-      next.convertToRecipeQty = conv;
-    }
   }
 
   if (patch.templateParStock !== undefined || patch.parStockUom !== undefined) {
@@ -136,8 +100,8 @@ export function SmartComponentImportNewComponentsPanel({
         <div className="flex-1 min-h-0 overflow-auto px-5 py-4 space-y-4">
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="overflow-auto max-h-[62vh]">
-              <table className="w-full text-xs min-w-[1400px]">
-                <ColGroup widths={[72, '8%', '7%', '7%', '12%', '8%', '8%', '6%', '8%', '7%', '7%', '6%', '6%', '6%', '6%', '6%']} />
+              <table className="w-full text-xs min-w-[1200px]">
+                <ColGroup widths={[72, '9%', '8%', '8%', '14%', '9%', '22%', '7%', '7%', '7%', '9%']} />
                 <thead className="bg-muted/40 sticky top-0 z-10">
                   <tr className="border-b border-border">
                     <TableHeaderCell>Active</TableHeaderCell>
@@ -146,12 +110,7 @@ export function SmartComponentImportNewComponentsPanel({
                     <TableHeaderCell>Group</TableHeaderCell>
                     <TableHeaderCell>Name</TableHeaderCell>
                     <TableHeaderCell>Principal Component</TableHeaderCell>
-                    <TableHeaderCell>Unit Alternate Component Unit 1</TableHeaderCell>
-                    <TableHeaderCell>Conversion 1</TableHeaderCell>
-                    <TableHeaderCell>Principal Inventory Unit</TableHeaderCell>
-                    <TableHeaderCell>Principal inventory Conversion</TableHeaderCell>
-                    <TableHeaderCell>Alt Inventory 1</TableHeaderCell>
-                    <TableHeaderCell>Inv Conversion 1</TableHeaderCell>
+                    <TableHeaderCell>Alternate UOMs (up to 5)</TableHeaderCell>
                     <TableHeaderCell>Par Stock</TableHeaderCell>
                     <TableHeaderCell>Par Stock UOM</TableHeaderCell>
                     <TableHeaderCell>Area</TableHeaderCell>
@@ -207,46 +166,37 @@ export function SmartComponentImportNewComponentsPanel({
                         />
                       </td>
                       <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.altRecipeUnits[0]?.unit ?? ''}
-                          onChange={e => updateRow(row.clientKey, { altRecipeUnit1: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.altRecipeUnits[0]?.qty ?? ''}
-                          onChange={e => updateRow(row.clientKey, { altRecipeConversion1: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.inventoryUom}
-                          onChange={e => updateRow(row.clientKey, { inventoryUom: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.convertToRecipeQty === '1' ? '' : (row.convertFromInventoryQty === '1' ? row.convertToRecipeQty : `${row.convertFromInventoryQty} = ${row.convertToRecipeQty}`)}
-                          onChange={e => updateRow(row.clientKey, { principalInventoryConversion: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.altInventoryUnits[0]?.unit ?? ''}
-                          onChange={e => updateRow(row.clientKey, { altInventoryUnit1: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className={`${inputCls} !text-xs !min-h-7`}
-                          value={row.altInventoryUnits[0]?.qty ?? ''}
-                          onChange={e => updateRow(row.clientKey, { altInventoryConversion1: e.target.value })}
-                        />
+                        <div className="space-y-1">
+                          {Array.from({ length: 5 }, (_, index) => {
+                            const alternate = row.altRecipeUnits[index] ?? { unit: '', fromQty: '1', qty: '' };
+                            const updateAlternate = (field: 'unit' | 'qty', value: string) => {
+                              const units = Array.from(
+                                { length: Math.max(row.altRecipeUnits.length, index + 1) },
+                                (_unused, unitIndex) => ({
+                                  ...(row.altRecipeUnits[unitIndex] ?? { unit: '', fromQty: '1', qty: '' }),
+                                  ...(unitIndex === index ? { [field]: value } : {}),
+                                }),
+                              );
+                              updateRow(row.clientKey, { altRecipeUnits: units });
+                            };
+                            return (
+                              <div key={index} className="grid grid-cols-[1fr_5rem] gap-1">
+                                <input
+                                  className={`${inputCls} !text-xs !min-h-7`}
+                                  value={alternate.unit}
+                                  placeholder={`UOM ${index + 1}`}
+                                  onChange={e => updateAlternate('unit', e.target.value)}
+                                />
+                                <input
+                                  className={`${inputCls} !text-xs !min-h-7`}
+                                  value={alternate.qty}
+                                  placeholder="× principal"
+                                  onChange={e => updateAlternate('qty', e.target.value)}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
                       </td>
                       <td className="px-2 py-2">
                         <input
@@ -266,9 +216,7 @@ export function SmartComponentImportNewComponentsPanel({
                           <option value="">—</option>
                           {componentParStockUomOptions({
                             recipeUom: row.recipeUom,
-                            inventoryUom: row.inventoryUom,
                             altRecipeUnits: row.altRecipeUnits,
-                            altInventoryUnits: row.altInventoryUnits,
                           }, row.parStockUom).map(unit => (
                             <option key={unit} value={unit}>{unit}</option>
                           ))}

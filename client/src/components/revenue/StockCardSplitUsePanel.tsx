@@ -5,7 +5,6 @@ import {
   calcSplitUseLineAssignedValue,
   calcVirtualSubComponentStock,
 } from '../../data/componentSplitUse';
-import { fromApiUom } from '../../data/componentForm';
 import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 import { inputCls, qtyPriceWidthCls } from '../layout/formControls';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
@@ -16,10 +15,7 @@ type Props = {
   componentName: string;
   onHandQty: number;
   displayUom: string;
-  inventoryUom: string;
   recipeUom: string;
-  convertFromInventoryQty: string;
-  convertToRecipeQty: string;
   componentPrice: number;
   principalQty: number;
 };
@@ -34,10 +30,7 @@ export function StockCardSplitUsePanel({
   componentName,
   onHandQty,
   displayUom,
-  inventoryUom,
   recipeUom,
-  convertFromInventoryQty,
-  convertToRecipeQty,
   componentPrice,
   principalQty,
 }: Props) {
@@ -123,10 +116,7 @@ export function StockCardSplitUsePanel({
                     line,
                     splitUse,
                     componentPrice,
-                    fromApiUom(inventoryUom),
-                    fromApiUom(recipeUom),
-                    convertFromInventoryQty,
-                    convertToRecipeQty,
+                    recipeUom,
                     principalQty,
                   );
                   return (

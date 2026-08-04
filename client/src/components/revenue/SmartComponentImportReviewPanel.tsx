@@ -74,7 +74,6 @@ export function SmartComponentImportReviewPanel({
   const hasCatalogAdds =
     catalogAdds.groups.length > 0
     || catalogAdds.recipeUoms.length > 0
-    || catalogAdds.inventoryUoms.length > 0
     || catalogAdds.storages.length > 0;
 
   function handleMergeComplete(resolutions: Record<string, string>) {
@@ -254,10 +253,10 @@ export function SmartComponentImportReviewPanel({
                 {catalogAdds.groups.length > 0 && (
                   <p><span className="font-medium text-foreground">Groups:</span> {catalogAdds.groups.join(', ')}</p>
                 )}
-                {[...new Set([...catalogAdds.recipeUoms, ...catalogAdds.inventoryUoms])].length > 0 && (
+                {catalogAdds.recipeUoms.length > 0 && (
                   <p>
                     <span className="font-medium text-foreground">UOMs:</span>{' '}
-                    {[...new Set([...catalogAdds.recipeUoms, ...catalogAdds.inventoryUoms])].join(', ')}
+                    {catalogAdds.recipeUoms.join(', ')}
                   </p>
                 )}
                 {catalogAdds.storages.length > 0 && (

@@ -48,7 +48,7 @@ function buildCartItemsFromEntries(
       lineKey: line.key,
       componentId: line.component.componentId,
       componentName: line.component.name,
-      componentUom: line.component.inventoryUOM,
+      componentUom: line.component.recipeUOM,
       vendorProductId: line.vendorProduct.id,
       vendorExternalId: line.vendorProduct.vendorExternalId,
       vendorName: line.vendorProduct.vendorName,
@@ -240,7 +240,7 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
           ? line.component.parStock
           : line.parStock,
         parStockUom: line.component.parStockUom
-          || line.component.inventoryUOM
+          || line.component.recipeUOM
           || line.parStockUom,
       }));
   }, [
@@ -567,7 +567,7 @@ export function TeamRmsOrderPage({ employeeName }: Props) {
       <ul className="team-rms-product-list">
         {lines.map(line => {
           const qty = cartQty[line.key] ?? 0;
-          const uom = line.parStockUom || line.component.inventoryUOM || '';
+          const uom = line.parStockUom || line.component.recipeUOM || '';
           return (
             <li key={line.key} className="team-rms-product">
               <div className="team-rms-product-main">
