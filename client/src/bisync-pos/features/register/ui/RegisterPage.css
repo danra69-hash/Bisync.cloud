@@ -180,12 +180,6 @@
   cursor: not-allowed;
 }
 
-.register__order-tool--swap {
-  border-color: var(--color-border-strong);
-  color: var(--color-primary-text);
-  background: color-mix(in srgb, var(--color-primary-soft) 70%, var(--color-surface));
-}
-
 .register__toast {
   position: absolute;
   left: 50%;

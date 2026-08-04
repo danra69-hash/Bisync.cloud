@@ -739,34 +739,11 @@ export function RegisterPage() {
     modifierTarget?.kind === 'beverage' ? modifierTarget.product : null,
   )
 
-  function lineCanSwap(product: Product | undefined): boolean {
-    return Boolean(
-      product?.isVariableComponent
-      && (product.variableComponentSlots?.length ?? 0) > 0,
-    )
-  }
-
   const selectedLineInfo = findSelectedLine()
   const lastOrderedLine = resolveLastOrderedLine()
   const modifierSwapFocus = selectedLineKey ? selectedLineInfo : lastOrderedLine
   const canUseFoodModifier = modifierSwapFocus?.product.department === 'Food'
   const canUseBeverageModifier = modifierSwapFocus?.product.department === 'Beverage'
-  const canUseComponentSwap = lineCanSwap(modifierSwapFocus?.product)
-
-  function openComponentSwap() {
-    if (!requireDuty()) return
-    const target = resolveModifierOrSwapTarget()
-    if (!target) {
-      flash('Add an item first, then tap Component SWAP.')
-      return
-    }
-    if (!lineCanSwap(target.product)) {
-      flash(`“${target.product.name}” has no Component SWAP options. Select a swappable line, or order one last.`)
-      return
-    }
-    setSelectedLineKey(lineSelectionKey(target.line))
-    handleSwapLine(target.line)
-  }
 
   function modifierInitialSelected(note: string | undefined, groups: ReturnType<typeof resolveToolbarModifierGroups>): string[] {
     if (!note?.trim() || groups.length === 0) return []
@@ -1481,23 +1458,6 @@ export function RegisterPage() {
             onClick={openBeverageModifier}
           >
             Beverage Modifier
-          </button>
-          <button
-            type="button"
-            className="register__order-tool register__order-tool--swap"
-            disabled={!onDuty || !canUseComponentSwap}
-            title={
-              !onDuty
-                ? 'Unlock POS to SWAP components'
-                : !canUseComponentSwap
-                  ? 'Select a Variable Component line, or order one last'
-                  : selectedLineKey
-                    ? 'SWAP components on the selected line'
-                    : 'SWAP components on the last ordered line'
-            }
-            onClick={openComponentSwap}
-          >
-            Component SWAP
           </button>
         </div>
       </div>
