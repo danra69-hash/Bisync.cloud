@@ -102,13 +102,14 @@ Rename mindset: **B2B Principal Product** (not just “B2B Product”).
 - Bi-product may later sell or be used internally at same or different price.
 - Bi-Sub-Product cannot sell standalone; only feeds further production.
 
-**Cost example (user rule):**  
-Produce 20 each at total RM 10.00 cost, of which 10 are bi-product with **50% attribution**:
+**Cost example (locked):**  
+Produce 20 each at base unit cost RM 10.00, of which 10 are bi-product with **50% attribution**:
 
-- Bi-product bears 50% of total cost → RM 5.00 / 10 = **RM 0.50 each**?  
-  User stated: “B2B product cost will be RM 15.00 each and bi-product cost will be RM 5 each” for that scenario — treat as **unit cost after attribution** as specified in UI acceptance tests when implementing (normalize formula in `ProductionCostAttribution` helper and lock with unit tests).
+- Batch total `B = 10 × 20 = 200`
+- Bi unit = `10 × 50% = RM 5`; bi share = `5 × 10 = 50`
+- Primary share = `200 − 50 = 150` → primary unit = `150 / 10 = RM 15`
 
-**Implementation note:** Capture formula in code + tests so Product vs Bi-product unit costs match the agreed worked example exactly.
+Equal-split exception: when every bi line is 100%, split `B` equally across primary + bi outputs.
 
 ### Gaps vs today
 - To Produce / Produced / actual component qty / incubation exist.
@@ -148,7 +149,7 @@ Produce 20 each at total RM 10.00 cost, of which 10 are bi-product with **50% at
 | **P0** | B2C Product UOM on detail + persist as sales/stock UOM | Done |
 | **P1** | Rename UX to B2B Principal; Production UOM principal + 2 alts; wire Produce UOM pickers | Done |
 | **P2** | Holdout bucket + DO entity (no price) + online PO → holdout → DO → sold | Done (`OnOrderQty`=Holdout; `DeliveryOrder` entity) |
-| **P3** | Bi-Product / Bi-Sub-Product + cost attribution + separate stock cards | P1 |
+| **P3** | Bi-Product / Bi-Sub-Product + cost attribution + separate stock cards | Done (`ProductionCostAttribution`: bi unit = base×pct/100; primary residual) |
 | **P4** | B2C negative sales + price-on-inbound matching for finished goods | P0 |
 | **P5** | Online store channel (future) | P0–P4 |
 
