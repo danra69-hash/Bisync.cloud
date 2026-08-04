@@ -492,6 +492,15 @@
   color: #166534;
 }
 
+.floor-side-nav__pin-hint {
+  margin: 0;
+  font-size: var(--pos-font-xs);
+  font-weight: 650;
+  color: var(--color-ink-muted);
+  text-align: center;
+  line-height: 1.35;
+}
+
 .floor-side-nav__pin-error {
   margin: 0;
   font-size: var(--pos-font-xs);
@@ -535,6 +544,9 @@
 @media (max-width: 720px) {
   .floor-side-nav {
     width: 100%;
+    max-height: min(52dvh, 480px);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .floor-side-nav__list {
@@ -569,5 +581,14 @@
   .floor-side-nav__pin,
   .floor-side-nav__admin {
     margin-top: var(--space-2);
+  }
+
+  /* Keep the PIN pad fully visible above the Android gesture / URL chrome. */
+  .floor-side-nav__pin {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: var(--color-surface, #fff);
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   }
 }

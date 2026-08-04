@@ -9,6 +9,13 @@ export type PosDutySession = {
 
 const KEY = 'bisync-pos-duty-session'
 export const POS_DUTY_SESSION_EVENT = 'bisync-pos-duty-session-changed'
+/** UI request to open the Staff PIN pad (e.g. from Home lock overlay). */
+export const POS_OPEN_STAFF_PIN_EVENT = 'bisync-pos-open-staff-pin'
+
+export function requestOpenStaffPinPad() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(POS_OPEN_STAFF_PIN_EVENT))
+}
 
 export function loadPosDutySession(): PosDutySession | null {
   try {
