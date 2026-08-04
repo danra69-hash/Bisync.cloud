@@ -567,6 +567,19 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
         return Ok(MapDevice(device));
     }
 
+    /// <summary>Permanently remove a POS device row from the database.</summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        var device = await db.PosDevices.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+        if (device is null)
+            return NotFound(new { message = "Device not found." });
+
+        db.PosDevices.Remove(device);
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
     async Task<(PosDevice? Device, string? Error)> ValidateAndNormalizeAsync(
         UpsertPosDeviceRequest request,
         CancellationToken cancellationToken)

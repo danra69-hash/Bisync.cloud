@@ -3785,6 +3785,8 @@ export const api = {
     fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}`, 'PUT', data),
   setPosDeviceActive: (id: number, active: boolean) =>
     fetchJsonWithMethod<PosDevice>(`/api/pos-devices/${id}/active`, 'PATCH', { active }),
+  deletePosDevice: (id: number) =>
+    fetchJsonWithMethod<void>(`/api/pos-devices/${id}`, 'DELETE'),
   posModifierGroups: (companyId: number, opts?: { kind?: string; includeInactive?: boolean }) => {
     const params = new URLSearchParams({ companyId: String(companyId) });
     if (opts?.kind) params.set('kind', opts.kind);
