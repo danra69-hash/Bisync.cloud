@@ -28,6 +28,12 @@ export function normalizePosGroupLabel(group: string): string {
   return trimmed;
 }
 
+/** RMS "Component SWAP" is a modifier source group — not a POS register menu tab. */
+export function isComponentSwapMenuGroup(group: string): boolean {
+  const key = normalizePosGroupLabel(group).toLowerCase().replace(/\s+/g, ' ');
+  return key === 'component swap' || key === 'componentswap' || key === 'component-swap';
+}
+
 /** True when product group matches the selected filter after synonym normalization. */
 export function productMatchesPosGroupFilter(productGroup: string, filterGroup: string): boolean {
   if (!filterGroup || filterGroup === 'All') return true;

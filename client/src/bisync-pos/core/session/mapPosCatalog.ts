@@ -1,11 +1,12 @@
 import type { Product as ApiProduct } from '../../../api'
 import {
+  isComponentSwapMenuGroup,
   normalizePosGroupLabel,
   resolvePosMenuRrp,
   resolvePosMenuSellPrice,
 } from '../../../data/posCatalog'
 
-export { normalizePosGroupLabel } from '../../../data/posCatalog'
+export { isComponentSwapMenuGroup, normalizePosGroupLabel } from '../../../data/posCatalog'
 import {
   calcWeightUnitRrp,
   parseVariableMode,
@@ -138,6 +139,8 @@ export function buildDepartmentGroups(catalog: PosProduct[]): {
 } {
   const byDept = new Map<ProductDepartment, Set<string>>()
   for (const product of catalog) {
+    // Component SWAP products stay in catalog for line SWAP / inherit — not as menu tabs.
+    if (isComponentSwapMenuGroup(product.group)) continue
     const set = byDept.get(product.department) ?? new Set<string>()
     set.add(product.group)
     byDept.set(product.department, set)
@@ -147,6 +150,7 @@ export function buildDepartmentGroups(catalog: PosProduct[]): {
   )
   const countByDeptGroup = new Map<string, number>()
   for (const product of catalog) {
+    if (isComponentSwapMenuGroup(product.group)) continue
     const key = `${product.department}\0${product.group}`
     countByDeptGroup.set(key, (countByDeptGroup.get(key) ?? 0) + 1)
   }
