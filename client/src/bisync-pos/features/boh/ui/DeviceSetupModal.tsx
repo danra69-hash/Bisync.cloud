@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   api,
   type PosDevice,
@@ -20,6 +21,7 @@ import {
   webUsbSupported,
   type LocalUsbPeripheral,
 } from '../domain/deviceLanCheck'
+import { usePosOverlayHost } from '../../../core/ui/posOverlayHost'
 import './DeviceSetupModal.css'
 
 type Props = {
@@ -60,6 +62,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 }
 
 export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
+  const overlayHost = usePosOverlayHost()
   const [devices, setDevices] = useState<PosDevice[]>([])
   const [sdks, setSdks] = useState<PosPrinterSdk[]>([])
   const [lan, setLan] = useState<PosLanCheckResult | null>(null)
@@ -102,14 +105,6 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
   useEffect(() => {
     void load()
   }, [load])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   async function runNetworkCheck() {
     if (companyId <= 0) return
@@ -354,9 +349,18 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
   )
   const printers = devices.filter((d) => d.deviceType === 'printer')
 
-  return (
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  if (!overlayHost) return null
+
+  return createPortal(
     <div className="device-setup-modal pos-setup-sheet" role="dialog" aria-modal="true" aria-labelledby="device-setup-title">
-      <button type="button" className="device-setup-modal__backdrop" aria-label="Close" onClick={onClose} />
       <div className="device-setup-modal__card">
         <header className="device-setup-modal__header">
           <div>
@@ -568,30 +572,26 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     ))}
                   </select>
                 </label>
-                {(draft.connectionType === 'ethernet' || draft.connectionType === 'wifi') && (
-                  <>
-                    <label>
-                      IP address
-                      <input
-                        className="device-setup-input"
-                        value={draft.hostAddress}
-                        placeholder="192.168.1.50"
-                        onChange={(e) => setDraft((d) => ({ ...d, hostAddress: e.target.value }))}
-                      />
-                    </label>
-                    <label>
-                      Port
-                      <input
-                        className="device-setup-input"
-                        value={draft.port}
-                        onChange={(e) => setDraft((d) => ({ ...d, port: e.target.value }))}
-                      />
-                    </label>
-                  </>
-                )}
+                <label>
+                  Host / IP
+                  <input
+                    className="device-setup-input"
+                    value={draft.hostAddress}
+                    placeholder="192.168.1.50"
+                    onChange={(e) => setDraft((d) => ({ ...d, hostAddress: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  Port
+                  <input
+                    className="device-setup-input"
+                    value={draft.port}
+                    onChange={(e) => setDraft((d) => ({ ...d, port: e.target.value }))}
+                  />
+                </label>
                 {draft.deviceType === 'printer' && (
                   <label>
-                    Driver / SDK
+                    Printer SDK
                     <select
                       className="device-setup-input"
                       value={draft.printerSdkCode}
@@ -712,7 +712,8 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    overlayHost,
   )
 }
 
