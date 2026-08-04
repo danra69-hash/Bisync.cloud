@@ -145,9 +145,9 @@ Produce 20 each at total RM 10.00 cost, of which 10 are bi-product with **50% at
 
 | Phase | Scope | Depends on |
 |---|---|---|
-| **P0** | B2C Product UOM on detail + persist as sales/stock UOM | Component UOM unify (done) |
-| **P1** | Rename UX to B2B Principal; Production UOM principal + 2 alts; wire Produce UOM pickers | P0 patterns |
-| **P2** | Holdout bucket + DO entity (no price) + online PO → holdout → DO → sold | P1 |
+| **P0** | B2C Product UOM on detail + persist as sales/stock UOM | Done |
+| **P1** | Rename UX to B2B Principal; Production UOM principal + 2 alts; wire Produce UOM pickers | Done |
+| **P2** | Holdout bucket + DO entity (no price) + online PO → holdout → DO → sold | Done (`OnOrderQty`=Holdout; `DeliveryOrder` entity) |
 | **P3** | Bi-Product / Bi-Sub-Product + cost attribution + separate stock cards | P1 |
 | **P4** | B2C negative sales + price-on-inbound matching for finished goods | P0 |
 | **P5** | Online store channel (future) | P0–P4 |

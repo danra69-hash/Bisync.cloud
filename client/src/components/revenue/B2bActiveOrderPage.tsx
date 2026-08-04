@@ -561,8 +561,7 @@ export function B2bActiveOrderPage({ selectedCompanyId, selectedLocationIds = []
                 && !row.order.deliveryOrderId;
               const canConfirmReceipt = Boolean(row.order.deliveryOrderId)
                 && row.order.status !== 'fulfilled';
-              const showOrderDoActions = row.key === `${row.order.id}-${(row.order.lines ?? [])[0]?.id ?? 0}`
-                || (row.order.lines ?? []).findIndex(line => line.id === row.line.id) === 0;
+              const showOrderDoActions = (row.order.lines ?? []).findIndex(line => line.id === row.line.id) === 0;
               const canMarkReady = (row.order.status || '').toLowerCase() === 'confirmed';
               const isOnline = (row.order.source || '').toLowerCase() === 'online_order';
               return (
