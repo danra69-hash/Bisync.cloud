@@ -19,8 +19,9 @@
 
 .tax-svc-modal__card {
   position: relative;
-  width: min(720px, calc(100vw - 16px));
-  max-height: calc(var(--pos-vh, 100dvh) - 16px);
+  width: min(720px, calc(100% - 0px));
+  height: min(880px, var(--pos-modal-max-h, calc(100dvh - 16px)));
+  max-height: var(--pos-modal-max-h, calc(100dvh - 16px));
   overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -278,6 +279,20 @@
 }
 
 @media (max-width: 640px) {
+  .tax-svc-modal {
+    place-items: stretch;
+    padding: 0;
+    height: 100%;
+    max-height: var(--pos-vh, 100dvh);
+  }
+
+  .tax-svc-modal__card {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+
   .tax-svc-lines__header,
   .tax-svc-lines__row {
     grid-template-columns: minmax(0, 1fr) 72px;
