@@ -361,9 +361,14 @@ export function FloorPlanPage() {
                 let w = clamp(xPct - t.x, 8, 100 - t.x)
                 let h = clamp(yPct - t.y, 8, 100 - t.y)
                 if (t.shape === 'round') {
-                  // Size from width %; aspect-ratio CSS keeps it a true circle.
-                  const size = clamp(w, 8, 100 - t.x)
-                  return normalizeTable({ ...t, w: size, h: size })
+                  // Keep a square footprint in plan % so round tables stay inscribed.
+                  const size = Math.max(
+                    clamp(w, 8, 100 - t.x),
+                    clamp(h, 8, 100 - t.y),
+                  )
+                  const maxSize = Math.min(100 - t.x, 100 - t.y)
+                  const next = clamp(size, 8, maxSize)
+                  return normalizeTable({ ...t, w: next, h: next })
                 }
                 return { ...t, w, h }
               }),
