@@ -30,6 +30,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             countryCode,
             timeZoneId,
             l.Active,
+            companyActive = l.Company != null && l.Company.Active,
             l.AddressLine1,
             l.AddressLine2,
             l.City,
@@ -59,9 +60,21 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             .FirstOrDefaultAsync(l => l.Id == id);
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetAll() =>
-        Ok(await db.Locations
+    public async Task<ActionResult<IEnumerable<object>>> GetAll([FromQuery] bool includeInactive = false)
+    {
+        var query = db.Locations
             .AsNoTracking()
+            .Include(l => l.Company)
+            .AsQueryable();
+
+        if (!includeInactive)
+        {
+            query = query.Where(l =>
+                l.Active
+                && (l.Company == null || l.Company.Active));
+        }
+
+        return Ok(await query
             .OrderBy(l => l.Name)
             .Select(l => new
             {
@@ -70,6 +83,8 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
                 l.Name,
                 l.Address,
                 l.CompanyId,
+                l.Active,
+                companyActive = l.Company != null && l.Company.Active,
                 l.AddressLine1,
                 l.AddressLine2,
                 l.City,
@@ -94,15 +109,26 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
                 l.CoversPrevYtd,
             })
             .ToListAsync());
+    }
 
     [HttpGet("config")]
-    public async Task<ActionResult<IEnumerable<object>>> GetConfig()
+    public async Task<ActionResult<IEnumerable<object>>> GetConfig([FromQuery] bool includeInactive = false)
     {
-        var locations = await db.Locations
+        var query = db.Locations
             .AsNoTracking()
             .Include(l => l.Company)
             .Include(l => l.PrincipalContact)
             .Include(l => l.SecondaryContact)
+            .AsQueryable();
+
+        if (!includeInactive)
+        {
+            query = query.Where(l =>
+                l.Active
+                && (l.Company == null || l.Company.Active));
+        }
+
+        var locations = await query
             .OrderBy(l => l.Name)
             .ToListAsync();
 

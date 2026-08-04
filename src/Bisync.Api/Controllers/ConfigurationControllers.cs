@@ -161,11 +161,17 @@ public class CompaniesController(BisyncDbContext db) : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetAll()
+    public async Task<ActionResult<IEnumerable<object>>> GetAll([FromQuery] bool includeInactive = false)
     {
-        var rows = await db.Companies
+        var query = db.Companies
             .AsNoTracking()
             .Include(c => c.Locations)
+            .AsQueryable();
+
+        if (!includeInactive)
+            query = query.Where(c => c.Active);
+
+        var rows = await query
             .OrderBy(c => c.Name)
             .ToListAsync();
         return Ok(rows.Select(c => MapCompany(c, c.Locations.Count)));

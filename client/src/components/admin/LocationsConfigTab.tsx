@@ -930,13 +930,18 @@ export function LocationsConfigTab({
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewDeactivated, setViewDeactivated] = useState(false);
   const [editLocation, setEditLocation] = useState<LocationConfig | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [togglingLocationId, setTogglingLocationId] = useState<number | null>(null);
 
-  function refreshList() {
+  function refreshList(includeInactive = viewDeactivated) {
     setLoading(true);
-    Promise.all([api.locationsConfig(), api.companies(), api.users()])
+    Promise.all([
+      api.locationsConfig({ includeInactive }),
+      api.companies({ includeInactive }),
+      api.users(),
+    ])
       .then(([locs, comps, usrs]) => {
         setLocations(locs);
         setCompanies(comps);
@@ -958,7 +963,11 @@ export function LocationsConfigTab({
     });
     setEditLocation(prev => (prev && prev.id === saved.id ? { ...prev, ...saved } : prev));
     onOrgDataChanged?.();
-    void Promise.all([api.locationsConfig(), api.companies(), api.users()])
+    void Promise.all([
+      api.locationsConfig({ includeInactive: viewDeactivated }),
+      api.companies({ includeInactive: viewDeactivated }),
+      api.users(),
+    ])
       .then(([locs, comps, usrs]) => {
         setCompanies(comps);
         setUsers(usrs);
@@ -1038,17 +1047,23 @@ export function LocationsConfigTab({
     }
   }
 
-  useEffect(() => { refreshList(); }, []);
+  useEffect(() => { refreshList(viewDeactivated); }, [viewDeactivated]);
 
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<LocationSortColumn>();
 
-  useEffect(() => { resetSort(); }, [locations, selectedCompanyId, resetSort]);
+  useEffect(() => { resetSort(); }, [locations, selectedCompanyId, viewDeactivated, resetSort]);
 
   const filteredLocations = useMemo(
-    () => selectedCompanyId
-      ? locations.filter(loc => loc.companyId === selectedCompanyId)
-      : locations,
-    [locations, selectedCompanyId],
+    () => {
+      let rows = selectedCompanyId
+        ? locations.filter(loc => loc.companyId === selectedCompanyId)
+        : locations;
+      if (!viewDeactivated) {
+        rows = rows.filter(loc => loc.active !== false);
+      }
+      return rows;
+    },
+    [locations, selectedCompanyId, viewDeactivated],
   );
 
   const sortedLocations = useMemo(
@@ -1093,12 +1108,28 @@ export function LocationsConfigTab({
         className="sticky z-[16] py-2 bg-background border-b border-border/60"
         style={{ top: 'var(--app-page-filters-height, 0px)' }}
       >
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {selectedCompanyId
-              ? `${filteredLocations.length} of ${locations.length} locations · filtered by company`
-              : `${locations.length} locations · each belongs to a company`}
-          </p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
+            <p className="text-xs text-muted-foreground">
+              {selectedCompanyId
+                ? `${filteredLocations.length} of ${locations.length} locations · filtered by company`
+                : `${filteredLocations.length} locations · each belongs to a company`}
+            </p>
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={viewDeactivated}
+                onChange={e => setViewDeactivated(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>
+                View deactivated locations
+                <span className="block text-[10px] font-normal">
+                  Include inactive locations and companies
+                </span>
+              </span>
+            </label>
+          </div>
           <button
             type="button"
             onClick={openCreate}

@@ -46,6 +46,8 @@ export interface Location {
   address: string;
   companyId?: number | null;
   companyName?: string | null;
+  active?: boolean;
+  companyActive?: boolean;
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
@@ -82,6 +84,8 @@ export interface LocationConfig {
   timeZoneId?: string;
   /** Inactive locations stay in Platform Config but are hidden from day-to-day selection. */
   active?: boolean;
+  /** False when the parent company is deactivated. */
+  companyActive?: boolean;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -3279,13 +3283,22 @@ async function fetchJsonWithMethod<T>(path: string, method: string, body?: unkno
 
 export const api = {
   health: () => fetchJson<{ status: string }>('/api/health'),
-  locations: () => fetchJson<Location[]>('/api/locations'),
-  locationsConfig: () => fetchJson<LocationConfig[]>('/api/locations/config'),
+  locations: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<Location[]>(`/api/locations${q}`);
+  },
+  locationsConfig: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<LocationConfig[]>(`/api/locations/config${q}`);
+  },
   createLocationConfig: (data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
     fetchJsonWithMethod<LocationConfig>('/api/locations/config', 'POST', data),
   updateLocationConfig: (id: number, data: Omit<LocationConfig, 'id' | 'externalId' | 'companyName' | 'countryCode' | 'principalContactName' | 'secondaryContactName' | 'profileOverridden'>) =>
     fetchJsonWithMethod<LocationConfig>(`/api/locations/${id}/config`, 'PUT', data),
-  companies: () => fetchJson<Company[]>('/api/companies'),
+  companies: (opts?: { includeInactive?: boolean }) => {
+    const q = opts?.includeInactive ? '?includeInactive=true' : '';
+    return fetchJson<Company[]>(`/api/companies${q}`);
+  },
   createCompany: (data: Omit<Company, 'id' | 'locationCount'>) => fetchJsonWithMethod<Company>('/api/companies', 'POST', data),
   updateCompany: (id: number, data: Company) => fetchJsonWithMethod<Company>(`/api/companies/${id}`, 'PUT', data),
   testCompanyOutboundEmail: (
