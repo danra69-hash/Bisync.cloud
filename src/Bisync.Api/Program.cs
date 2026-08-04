@@ -111,6 +111,8 @@ builder.Services.AddScoped<WastageService>();
 builder.Services.AddScoped<TransferService>();
 builder.Services.AddScoped<LocationPartitionService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
+builder.Services.AddScoped<TenantPlacementService>();
+builder.Services.AddScoped<TenantSchemaMigrationService>();
 builder.Services.AddScoped<TenantRollupService>();
 builder.Services.AddScoped<LocationSubscriptionService>();
 builder.Services.AddScoped<VendorRatingService>();

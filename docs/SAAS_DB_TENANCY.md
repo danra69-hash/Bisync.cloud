@@ -1,6 +1,8 @@
 # SaaS DB Tenancy
 
-Status of one-DB-per-company + location LIST partitions inside each operational database.
+Hybrid tenancy for Bisync SaaS. **AWS / 5,000-tenant target** is documented in `docs/AWS_TARGET_ARCHITECTURE.md` and `docs/AWS_MIGRATION_READINESS.md`.
+
+**Binding rule:** Do not assume one physical database per company for all tenants. Default placement is **shared** or **shard**; **dedicated** (`bisync_c_{id}`) is enterprise opt-in.
 
 ## Phase 1 — Location partitions ✅
 
@@ -14,35 +16,51 @@ Status of one-DB-per-company + location LIST partitions inside each operational 
 ## Phase 2 — Control plane registry + resolve connection ✅
 
 - `TenantConnections` registry (empty `ConnectionString` = shared `bisync`).
-- `ITenantConnectionResolver` / `TenantConnectionResolver` caches by companyId; resolves operational + archive (`{db}_archive` or `ArchiveConnectionString`).
+- Fields: `PlacementMode` (`shared` | `shard` | `dedicated`), `ShardId`, database + connection strings.
+- `ITenantConnectionResolver` / `TenantConnectionResolver` caches by companyId; resolves operational + archive.
 - `BisyncDbContext` options resolve via company header / `ITenantContext` (auth/health always use shared control plane).
 - Identity in `TenantContextMiddleware` always reads AppUsers from the shared connection.
+- `TenantPlacementService` assigns placement for new companies from `Tenancy:DefaultPlacementMode`.
 
-## Phase 3 — Provision company operational DB ✅
+## Phase 3 — Dedicated company operational DB (enterprise) ✅
 
-- `CompanyOperationalDbProvisioner` creates `bisync_c_{companyId}` + archive DB, runs EnsureCreated + SchemaPatcher, copies Company / Locations / owner AppUser, clears catalog seeds.
-- Updates `TenantConnections` with full connection strings (idempotent).
-- API: `POST /api/auth/provision-company-db` (`userId` or `companyId`).
-- Also attempted from `complete-location-onboarding` if not yet provisioned.
-- Client PaymentPage Continue calls provision after profile saves.
-- Flag: `Tenancy:ProvisionCompanyDatabases` (default `true` in appsettings / Production).
+- `CompanyOperationalDbProvisioner` creates `bisync_c_{companyId}` + archive DB when enabled.
+- Flag: `Tenancy:ProvisionCompanyDatabases` (still true in current GCP test; treat as **opt-in** for AWS 5k).
+- Prefer `Tenancy:DefaultPlacementMode` = `shared` or `shard` for scale.
 
-## Phase 4 — Per-company archive ✅
+## Phase 4 — Per-company / per-shard archive ✅
 
-- Provision creates `bisync_c_{companyId}_archive` and stores `ArchiveConnectionString` / `ArchiveDatabaseName`.
-- `StockCardArchiveService.ArchiveAllTenantsAsync` archives shared DB then each provisioned company into its archive (shared archive remains fallback for legacy/empty connection tenants).
+- Dedicated provision creates `bisync_c_{companyId}_archive`.
+- Shared/shard tenants use shared archive (or `{shard}_archive` when shard DBs are provisioned).
+
+## Phase 5 — Schema fan-out (AWS readiness) ✅ foundation
+
+- `TenantSchemaMigrationService` patches every distinct non-empty operational connection in the registry after deferred startup when `Tenancy:FanOutSchemaMigrations` is true.
+- Required so deploys do not leave shard/dedicated DBs schema-drifted.
+
+## Phase 6 — Integration outbox (AWS / accounting readiness) ✅ foundation
+
+- `IntegrationOutbox` table for durable cross-module events (POS close, COGS, payroll → accounting).
+- Dispatcher worker still required before high scale.
 
 ## Dev Console rollups ✅
 
-- `TenantRollupService` fans out across shared DB (company-scoped) + each provisioned `TenantConnections.ConnectionString`.
-- Snapshots stored in control-plane `TenantRollupSnapshots` (last 30 kept).
-- APIs: `GET /api/dev-console/usage` (auto-refresh if &gt;1h), `GET /api/dev-console/rollups`, `POST /api/dev-console/rollups/refresh`.
-- UI: System usage dashboard + **Tenant rollups** panel (DB mode, counts, Refresh).
+- `TenantRollupService` fans out across shared DB + each provisioned connection.
+- At 5k tenants this must move to queued workers (see readiness doc).
+
+## Configuration (`Tenancy` section)
+
+| Key | Purpose |
+|---|---|
+| `ProvisionCompanyDatabases` | Allow dedicated DB provision API / onboarding |
+| `DefaultPlacementMode` | `shared` (default) \| `shard` \| `dedicated` |
+| `ShardCount` / `ShardDatabasePrefix` | Shard naming `bisync_s_001`… |
+| `FanOutSchemaMigrations` | Run schema patch on all registry DBs |
+| `SchemaFanOutBatchSize` | Cap per startup pass |
 
 ## Limitations
 
-- Existing shared-DB tenants keep working while `ConnectionString` is empty.
-- After provision, business APIs with `X-Bisync-Company-Id` route to the company DB; auth stays on control plane.
-- Platform-admin tools that expect all data in the shared DB will not see operational rows in provisioned company databases.
-- `CREATE DATABASE` requires privileges on the PostgreSQL instance (Cloud SQL user must be allowed to create DBs).
-- Partition conversion can take time on large tables; failures are logged and retried on next startup.
+- GCP Cloud Run/SQL sizing is **dev/test only**.
+- Header-based company context is not production auth for AWS SaaS (JWT required).
+- Shard physical DB provisioning and RLS policies are still to be completed before 5k cutover.
+- Accounting GL tables not yet merged; post via outbox contracts when added.

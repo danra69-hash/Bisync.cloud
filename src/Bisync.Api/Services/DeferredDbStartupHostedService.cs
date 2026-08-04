@@ -85,6 +85,16 @@ public sealed class DeferredDbStartupHostedService(
             var partitions = sp.GetRequiredService<LocationPartitionService>();
             await partitions.EnsureLocationListPartitionsAsync();
             await partitions.EnsurePartitionsForAllLocationsAsync();
+
+            try
+            {
+                await sp.GetRequiredService<TenantSchemaMigrationService>().FanOutAsync(cancellationToken);
+            }
+            catch (Exception fanEx)
+            {
+                logger.LogError(fanEx, "Tenant schema fan-out failed; continuing startup");
+            }
+
             logger.LogInformation("Deferred DB startup: complete");
         }
         catch (Exception ex)
