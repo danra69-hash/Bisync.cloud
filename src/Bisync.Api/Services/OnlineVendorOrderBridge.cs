@@ -183,6 +183,21 @@ public static class OnlineVendorOrderBridge
 
         db.B2bSalesOrders.Add(salesOrder);
         await db.SaveChangesAsync();
-        return salesOrder;
+
+        // Online PO → Holdout with no period (stays until DO / confirm receipt).
+        try
+        {
+            var holdoutService = new B2bSalesOrderService(db);
+            salesOrder = await holdoutService.ReserveHoldoutAsync(salesOrder.Id);
+        }
+        catch (InvalidOperationException)
+        {
+            // Keep the sales summary even when holdout cannot be reserved yet (insufficient stock).
+            // Operator can retry after producing stock.
+        }
+
+        return await db.B2bSalesOrders
+            .Include(o => o.Lines)
+            .FirstAsync(o => o.Id == salesOrder.Id);
     }
 }

@@ -71,6 +71,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<ProductB2bLocationStock> ProductB2bLocationStocks => Set<ProductB2bLocationStock>();
     public DbSet<B2bSalesOrder> B2bSalesOrders => Set<B2bSalesOrder>();
     public DbSet<B2bSalesOrderLine> B2bSalesOrderLines => Set<B2bSalesOrderLine>();
+    public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
+    public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
     public DbSet<PosPromotion> PosPromotions => Set<PosPromotion>();

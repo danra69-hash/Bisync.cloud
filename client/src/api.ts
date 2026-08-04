@@ -974,6 +974,7 @@ export interface B2bSalesOrder {
   lockExpiryDate?: string | null;
   fulfilledDate?: string | null;
   deliveryOrderIssued?: boolean;
+  deliveryOrderId?: number | null;
   invoiceIssued?: boolean;
   shareToken?: string | null;
   customerAcceptedAt?: string | null;
@@ -981,6 +982,31 @@ export interface B2bSalesOrder {
   createdAt: string;
   updatedAt: string;
   lines: B2bSalesOrderLine[];
+}
+
+export interface DeliveryOrderLine {
+  id: number;
+  salesOrderLineId?: number | null;
+  productId: number;
+  productAliasId?: number | null;
+  productName: string;
+  locationExternalId: string;
+  quantity: number;
+  uom: string;
+}
+
+export interface DeliveryOrder {
+  id: number;
+  companyId: number;
+  doNumber: string;
+  issueDate: string;
+  salesOrderId: number;
+  sourcePurchaseOrderId?: number | null;
+  status: string;
+  receivedDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: DeliveryOrderLine[];
 }
 
 export interface B2bSalesOrderSharePayload {
@@ -3844,6 +3870,20 @@ export const api = {
   markB2bSalesOrderLineReadyToShip: (orderId: number, lineId: number) =>
     fetchJsonWithMethod<B2bSalesOrder>(
       `/api/b2b-sales-orders/${orderId}/lines/${lineId}/ready-to-ship`,
+      'POST',
+    ),
+  reserveB2bSalesOrderHoldout: (id: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(`/api/b2b-sales-orders/${id}/reserve-holdout`, 'POST'),
+  issueB2bDeliveryOrder: (id: number) =>
+    fetchJsonWithMethod<{ order: B2bSalesOrder; deliveryOrder: DeliveryOrder }>(
+      `/api/b2b-sales-orders/${id}/issue-delivery-order`,
+      'POST',
+    ),
+  getB2bDeliveryOrder: (deliveryOrderId: number) =>
+    fetchJson<DeliveryOrder>(`/api/b2b-sales-orders/delivery-orders/${deliveryOrderId}`),
+  confirmB2bDeliveryOrderReceipt: (deliveryOrderId: number) =>
+    fetchJsonWithMethod<B2bSalesOrder>(
+      `/api/b2b-sales-orders/delivery-orders/${deliveryOrderId}/confirm-receipt`,
       'POST',
     ),
   ensureB2bSalesOrderShareToken: (id: number) =>

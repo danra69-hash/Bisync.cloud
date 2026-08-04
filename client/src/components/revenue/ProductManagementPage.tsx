@@ -103,7 +103,7 @@ const BATCH_TABLE_COLUMNS: SortableColumnDef<BatchSortColumn>[] = [
   { key: 'categoryGroup', label: 'Category / Group' },
   { key: 'batchUnit', label: 'Delivery Unit', sortable: false },
   { key: 'onHand', label: 'QTY On Hand / Batch Date / Expiry Date' },
-  { key: 'onOrder', label: 'QTY On Order', sortable: false },
+  { key: 'onOrder', label: 'QTY Holdout', sortable: false },
   { key: 'incubation', label: 'QTY in incubation / Time left', sortable: false },
   { key: 'qtyToProduce', label: 'QTY to Produce / Date requested', align: 'center' },
 ];
@@ -861,7 +861,7 @@ export function ProductManagementPage({
                                 {isSummary ? (
                                   <div className="space-y-1.5">
                                     {stackedMetric(
-                                      'QTY On Order',
+                                      'QTY Holdout',
                                       formatOnOrderWithLocks(row.onOrderQty, row.onOrderLocks, countryCode),
                                     )}
                                   </div>
