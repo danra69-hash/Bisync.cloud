@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Bisync.Api.Contracts;
 using Bisync.Api.Data;
@@ -392,8 +393,122 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
             device = MapDevice(device),
             sdk = MapSdk(sdk),
             deployed = true,
-            message = $"Deployed {sdk.DisplayName} ({sdk.SdkCode}) for this printer. Continue with paper size & alignment setup.",
+            message = $"Deployed {sdk.DisplayName} ({sdk.SdkCode}) for this printer. Running test print…",
         });
+    }
+
+    /// <summary>
+    /// Send a short ESC/POS alignment slip to a linked network printer (TCP 9100-style).
+    /// Called automatically after driver install from Device Setup.
+    /// </summary>
+    [HttpPost("{id:int}/test-print")]
+    public async Task<ActionResult<object>> TestPrint(int id, CancellationToken cancellationToken)
+    {
+        var device = await db.PosDevices.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+        if (device is null)
+            return NotFound(new { message = "Device not found." });
+        if (!string.Equals(device.DeviceType, "printer", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Test print applies to Printer devices only." });
+
+        await PosPrinterSdkCatalog.EnsureSeededAsync(db, cancellationToken);
+        var sdkCode = string.IsNullOrWhiteSpace(device.PrinterSdkCode)
+            ? "generic-escpos"
+            : device.PrinterSdkCode.Trim();
+        var sdk = await db.PosPrinterSdks.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SdkCode == sdkCode, cancellationToken);
+        var sdkName = sdk?.DisplayName ?? sdkCode;
+
+        var connection = (device.ConnectionType ?? "").Trim().ToLowerInvariant();
+        if (connection is "usb" or "bluetooth")
+        {
+            return Ok(new
+            {
+                sent = false,
+                skipped = true,
+                device = MapDevice(device),
+                message =
+                    $"Driver is linked for “{device.Name}”. USB/Bluetooth test print must be sent from the station that owns the cable — use Test print after confirming the peripheral is selected on this device.",
+            });
+        }
+
+        var host = (device.HostAddress ?? string.Empty).Trim();
+        var port = device.Port is > 0 and <= 65535
+            ? device.Port.Value
+            : (sdk?.DefaultPort > 0 ? sdk.DefaultPort : 9100);
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return BadRequest(new
+            {
+                message = "Set the printer IP address before running a test print.",
+            });
+        }
+
+        var payload = BuildEscPosTestSlip(device, sdkName);
+        var started = DateTime.UtcNow;
+        try
+        {
+            using var client = new TcpClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(4));
+            await client.ConnectAsync(host, port, cts.Token);
+            await using var stream = client.GetStream();
+            await stream.WriteAsync(payload, cts.Token);
+            await stream.FlushAsync(cts.Token);
+
+            return Ok(new
+            {
+                sent = true,
+                skipped = false,
+                host,
+                port,
+                bytes = payload.Length,
+                durationMs = (int)(DateTime.UtcNow - started).TotalMilliseconds,
+                device = MapDevice(device),
+                message = $"Test print sent to {device.Name} ({host}:{port}). Check the printer for the Bisync slip.",
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return Ok(new
+            {
+                sent = false,
+                skipped = false,
+                host,
+                port,
+                durationMs = (int)(DateTime.UtcNow - started).TotalMilliseconds,
+                device = MapDevice(device),
+                message =
+                    $"Driver installed, but test print timed out reaching {host}:{port}. If Bisync is hosted in the cloud, run Test print from a POS on the same LAN as the printer.",
+            });
+        }
+        catch (SocketException ex)
+        {
+            return Ok(new
+            {
+                sent = false,
+                skipped = false,
+                host,
+                port,
+                durationMs = (int)(DateTime.UtcNow - started).TotalMilliseconds,
+                device = MapDevice(device),
+                message =
+                    $"Driver installed, but test print could not reach {host}:{port} ({ex.SocketErrorCode}). Confirm IP/port and that the printer is on the same LAN.",
+            });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new
+            {
+                sent = false,
+                skipped = false,
+                host,
+                port,
+                durationMs = (int)(DateTime.UtcNow - started).TotalMilliseconds,
+                device = MapDevice(device),
+                message = $"Driver installed, but test print failed: {ex.Message}",
+            });
+        }
     }
 
     [HttpPost("{id:int}/printer-setup")]
@@ -572,6 +687,37 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
             "kiosk" => 443,
             _ => 443,
         };
+
+    static byte[] BuildEscPosTestSlip(PosDevice device, string sdkName)
+    {
+        var align = string.Equals(device.PrintAlignment, "center", StringComparison.OrdinalIgnoreCase)
+            ? (byte)1
+            : (byte)0;
+        var width = device.PaperWidthMm is 58 or 80 or 112 ? device.PaperWidthMm : 80;
+        using var ms = new MemoryStream();
+        void WriteBytes(params byte[] bytes) => ms.Write(bytes, 0, bytes.Length);
+        void WriteLine(string text)
+        {
+            var line = Encoding.ASCII.GetBytes(text + "\n");
+            ms.Write(line, 0, line.Length);
+        }
+
+        WriteBytes(0x1B, 0x40); // Initialize
+        WriteBytes(0x1B, 0x61, align); // Alignment
+        WriteBytes(0x1B, 0x45, 0x01); // Bold on
+        WriteLine("Bisync POS");
+        WriteBytes(0x1B, 0x45, 0x00); // Bold off
+        WriteLine($"Test print · {sdkName}");
+        WriteLine($"Printer: {device.Name}");
+        WriteLine($"Paper {width}mm · align {(align == 1 ? "center" : "left")}");
+        WriteLine($"Margins L{device.PrintMarginLeft} R{device.PrintMarginRight}");
+        WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        WriteLine("------------------------");
+        WriteLine("Printer link OK");
+        WriteBytes(0x1B, 0x64, 0x04); // Feed lines
+        WriteBytes(0x1D, 0x56, 0x00); // Full cut
+        return ms.ToArray();
+    }
 
     static List<object> BuildHostInterfaceHints()
     {
