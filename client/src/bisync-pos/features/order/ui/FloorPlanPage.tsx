@@ -26,6 +26,7 @@ import { FLOOR_PLAN_CHANGED_EVENT } from '../domain/reservations'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import { formatOpenedAt, printTableQr } from '../../../core/config/qrTable'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
+import { requestOpenStaffPinPad } from '../../../core/session/posDutySession'
 import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import { OpenTableModal } from './OpenTableModal'
 import './FloorPlanPage.css'
@@ -512,8 +513,15 @@ export function FloorPlanPage() {
       {locked ? (
         <div className="floor-toolbar">
           <span className="floor-edit-hint" role="status">
-            Ordering locked — Team QR check-in, then Staff PIN to unlock POS
+            Floor locked — Team QR check-in, then enter Staff PIN on this device
           </span>
+          <button
+            type="button"
+            className="chip-btn chip-btn--primary"
+            onClick={() => requestOpenStaffPinPad()}
+          >
+            Enter Staff PIN
+          </button>
         </div>
       ) : editing ? (
         <div className="floor-toolbar">
@@ -554,8 +562,18 @@ export function FloorPlanPage() {
           <div className="floor-canvas__grid" aria-hidden />
           {locked ? (
             <div className="floor-lock-overlay" role="status" aria-live="polite">
-              <strong>Home deactivated</strong>
-              <span>Check in with Team QR, then enter Staff PIN to unlock POS</span>
+              <strong>Floor plan locked</strong>
+              <span>
+                Saving a PIN in Team does not unlock POS. After QR check-in, enter your
+                4-digit Staff PIN below to reveal tables.
+              </span>
+              <button
+                type="button"
+                className="floor-lock-overlay__cta"
+                onClick={() => requestOpenStaffPinPad()}
+              >
+                Enter Staff PIN
+              </button>
             </div>
           ) : null}
 
@@ -563,6 +581,28 @@ export function FloorPlanPage() {
             <div className="floor-empty-overlay" role="status">
               <strong>No floor plan on this station</strong>
               <span>Use Admin → Reload to download the venue layout from the cloud.</span>
+              <button
+                type="button"
+                className="floor-empty-overlay__cta"
+                onClick={() => {
+                  if (!companyId || !locationId) return
+                  setSyncNote('Downloading floor plan…')
+                  void pullFloorPlanFromServer(companyId, locationId)
+                    .catch(() => syncFloorPlan(companyId, locationId))
+                    .then(synced => {
+                      if (!synced) return
+                      setPlan(synced)
+                      setSyncNote(
+                        synced.tables.length > 0
+                          ? `Floor plan ready — ${synced.tables.length} tables`
+                          : 'Still empty on server — ask Admin to restore layout',
+                      )
+                      window.setTimeout(() => setSyncNote(null), 3200)
+                    })
+                }}
+              >
+                Reload floor plan
+              </button>
             </div>
           ) : null}
 

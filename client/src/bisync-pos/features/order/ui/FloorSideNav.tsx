@@ -4,6 +4,7 @@ import { MODE_META } from '../../../core/modes/types'
 import { usePosMode } from '../../../core/modes/ModeProvider'
 import { usePosSessionOptional } from '../../../core/session/PosSessionContext'
 import { applyPosDutyPin } from '../../../core/session/posDutyPin'
+import { POS_OPEN_STAFF_PIN_EVENT } from '../../../core/session/posDutySession'
 import { usePosDutySession } from '../../../core/session/usePosDutySession'
 import {
   POS_DINING_CHANGED_EVENT,
@@ -103,6 +104,35 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
   const [pinStatus, setPinStatus] = useState<string | null>(null)
+  const [pinHint, setPinHint] = useState<string | null>(null)
+
+  // Enabling a PIN in Team does not unlock POS — open the pad so staff enter it here.
+  useEffect(() => {
+    if (!locked) {
+      setPinPadOpen(false)
+      setPinHint(null)
+      return
+    }
+    setPinPadOpen(true)
+    setPin('')
+    setPinError(null)
+    setPinStatus(null)
+    setPinHint(
+      'After Team QR check-in, enter your 4-digit PIN here to show the floor plan.',
+    )
+  }, [locked])
+
+  useEffect(() => {
+    function onRequestOpenPin() {
+      setPinPadOpen(true)
+      setPin('')
+      setPinError(null)
+      setPinStatus(null)
+      setPinHint('Enter your Team / Staff PIN to unlock the floor plan.')
+    }
+    window.addEventListener(POS_OPEN_STAFF_PIN_EVENT, onRequestOpenPin)
+    return () => window.removeEventListener(POS_OPEN_STAFF_PIN_EVENT, onRequestOpenPin)
+  }, [])
 
   useEffect(() => {
     if (!locked) return
@@ -306,6 +336,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
     setPin('')
     setPinError(null)
     setPinStatus(null)
+    setPinHint(null)
   }
 
   function togglePinPad() {
@@ -314,11 +345,17 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
         setPin('')
         setPinError(null)
         setPinStatus(null)
+        setPinHint(null)
         return false
       }
       setPin('')
       setPinError(null)
       setPinStatus(null)
+      setPinHint(
+        locked
+          ? 'After Team QR check-in, enter your 4-digit PIN here to show the floor plan.'
+          : null,
+      )
       return true
     })
   }
@@ -507,7 +544,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
       >
         {locked ? (
           <p className="floor-side-nav__lock-banner" role="status">
-            Home locked — Team QR check-in, then PIN
+            Floor locked — QR check-in in Team, then enter Staff PIN here
           </p>
         ) : null}
         <div className="floor-side-nav__list">
@@ -764,6 +801,7 @@ export function FloorSideNav({ adminOpen, onToggleAdmin }: Props) {
                     </button>
                   ))}
                 </div>
+                {pinHint ? <p className="floor-side-nav__pin-hint">{pinHint}</p> : null}
                 {pinStatus ? <p className="floor-side-nav__pin-ok">{pinStatus}</p> : null}
                 {pinError ? <p className="floor-side-nav__pin-error" role="alert">{pinError}</p> : null}
                 {pinBusy ? <p className="floor-side-nav__pin-busy">Verifying…</p> : null}

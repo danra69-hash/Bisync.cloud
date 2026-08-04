@@ -31,10 +31,17 @@ export async function syncPosDutyWithHrAttendance(): Promise<PosDutySession | nu
   if (duty.employeeId <= 0) return duty
 
   try {
-    const rows = await hrApi.attendance.list(today, today, duty.employeeId)
-    const record = rows[0]
+    // Match unlock window (±1 day) so timezone skew cannot leave POS unlocked
+    // after Team QR check-out, or clear early when the device date differs.
+    const from = clockDate(new Date(Date.now() - 86_400_000))
+    const to = clockDate(new Date(Date.now() + 86_400_000))
+    const rows = await hrApi.attendance.list(from, to, duty.employeeId)
+    const open = rows.some(r => Boolean(r?.actualIn) && !r?.actualOut)
+    const checkedOutToday = rows.some(
+      r => r.date === today && Boolean(r.actualIn) && Boolean(r.actualOut),
+    )
     // Team / QR check-out sets actualOut while keeping actualIn (first-in / last-out).
-    if (record?.actualOut) {
+    if (!open && checkedOutToday) {
       clearPosDutySession()
       return null
     }

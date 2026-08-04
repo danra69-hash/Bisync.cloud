@@ -380,7 +380,7 @@ export default function TeamPortal({
       }
       setSettingsPin('');
       setSettingsPinConfirm('');
-      showToast('PIN saved for Team login and POS unlock.');
+      showToast('PIN saved. On POS, enter this PIN under Staff PIN after QR check-in to unlock the floor.');
     } catch (err) {
       setSettingsError(err instanceof Error ? err.message : 'Could not save PIN');
     } finally {

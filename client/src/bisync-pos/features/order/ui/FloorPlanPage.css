@@ -43,19 +43,21 @@
   width: 100%;
   height: 100%;
   min-width: 0;
-  /* Never collapse to 0 after check-in / mobile nav reflow. */
-  min-height: min(240px, 40dvh);
+  /* Never collapse to 0 after check-in / mobile nav reflow (Android PWA). */
+  min-height: max(280px, 45dvh);
+  flex: 1 1 auto;
   display: grid;
   place-items: center;
 }
 
 .floor-canvas {
   position: relative;
-  aspect-ratio: 16 / 10;
-  width: min(100cqw, calc(100cqh * 16 / 10));
-  height: min(100cqh, calc(100cqw * 10 / 16));
+  /* Solid fallbacks first — some Android WebViews resolve cqw/cqh to 0. */
+  width: 100%;
   max-width: 100%;
-  max-height: 100%;
+  aspect-ratio: 16 / 10;
+  height: auto;
+  min-height: 220px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   background:
@@ -66,11 +68,11 @@
   user-select: none;
 }
 
-@supports not (width: 1cqw) {
+@supports (width: 1cqw) {
   .floor-canvas {
-    width: 100%;
-    height: auto;
-    max-height: 100%;
+    width: min(100cqw, calc(100cqh * 16 / 10));
+    height: min(100cqh, calc(100cqw * 10 / 16));
+    min-height: 0;
   }
 }
 
@@ -100,7 +102,7 @@
   z-index: 40;
   display: grid;
   place-content: center;
-  gap: 6px;
+  gap: 8px;
   padding: var(--space-4);
   text-align: center;
   background: rgba(248, 250, 252, 0.72);
@@ -118,6 +120,28 @@
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-ink-muted);
+  max-width: 28rem;
+  justify-self: center;
+}
+
+.floor-lock-overlay__cta,
+.floor-empty-overlay__cta {
+  justify-self: center;
+  margin-top: 4px;
+  border: 0;
+  border-radius: var(--radius-md, 8px);
+  padding: 10px 16px;
+  background: var(--color-primary, #f37021);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.floor-lock-overlay__cta:active,
+.floor-empty-overlay__cta:active {
+  filter: brightness(0.95);
 }
 
 .floor-empty-overlay {
@@ -126,7 +150,7 @@
   z-index: 30;
   display: grid;
   place-content: center;
-  gap: 6px;
+  gap: 8px;
   padding: var(--space-4);
   text-align: center;
   pointer-events: none;

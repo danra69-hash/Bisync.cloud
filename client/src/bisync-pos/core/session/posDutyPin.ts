@@ -81,10 +81,13 @@ function buildSession(
 }
 
 async function hasOpenQrAttendance(employeeId: number): Promise<boolean> {
-  const today = clockDate()
-  const rows = await hrApi.attendance.list(today, today, employeeId)
-  const record = rows[0]
-  return Boolean(record?.actualIn) && !record?.actualOut
+  // Span yesterday→tomorrow so a device timezone offset vs Team QR punch
+  // cannot hide an open check-in around midnight.
+  const todayMs = Date.now()
+  const from = clockDate(new Date(todayMs - 86_400_000))
+  const to = clockDate(new Date(todayMs + 86_400_000))
+  const rows = await hrApi.attendance.list(from, to, employeeId)
+  return rows.some(record => Boolean(record?.actualIn) && !record?.actualOut)
 }
 
 /**
