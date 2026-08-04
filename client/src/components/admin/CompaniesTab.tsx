@@ -1203,13 +1203,14 @@ function CompanyPanel({
 export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => void }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewDeactivated, setViewDeactivated] = useState(false);
   const [panelDraft, setPanelDraft] = useState<Company | CompanyDraft | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [togglingCompanyId, setTogglingCompanyId] = useState<number | null>(null);
 
-  function refreshList() {
+  function refreshList(includeInactive = viewDeactivated) {
     setLoading(true);
-    api.companies()
+    api.companies({ includeInactive })
       .then(rows => {
         setCompanies(rows);
         // Keep the open panel in sync without remounting (companyKey stays the same,
@@ -1250,16 +1251,21 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
     }
   }
 
-  useEffect(() => { refreshList(); }, []);
+  useEffect(() => { refreshList(viewDeactivated); }, [viewDeactivated]);
 
   const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<CompanySortColumn>();
 
-  useEffect(() => { resetSort(); }, [companies, resetSort]);
+  useEffect(() => { resetSort(); }, [companies, viewDeactivated, resetSort]);
+
+  const visibleCompanies = useMemo(
+    () => (viewDeactivated ? companies : companies.filter(c => c.active)),
+    [companies, viewDeactivated],
+  );
 
   const sortedCompanies = useMemo(
     () =>
       sortTableRows(
-        companies,
+        visibleCompanies,
         sortColumn,
         sortDirection,
         {
@@ -1273,7 +1279,7 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
         },
         { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
       ),
-    [companies, sortColumn, sortDirection],
+    [visibleCompanies, sortColumn, sortDirection],
   );
 
   const scrollRootRef = useRef<HTMLDivElement>(null);
@@ -1287,8 +1293,24 @@ export function CompaniesTab({ onOrgDataChanged }: { onOrgDataChanged?: () => vo
   return (
     <div className="space-y-4">
       <PageStickyFilters opaque className="py-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">{companies.length} registered companies</p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
+            <p className="text-xs text-muted-foreground">{visibleCompanies.length} registered companies</p>
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={viewDeactivated}
+                onChange={e => setViewDeactivated(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>
+                View deactivated companies
+                <span className="block text-[10px] font-normal">
+                  Include inactive companies in this list
+                </span>
+              </span>
+            </label>
+          </div>
           <button
             type="button"
             onClick={() => { setIsNew(true); setPanelDraft(blankCompany()); }}
