@@ -93,7 +93,7 @@ function renderRevMgmtContent(
       <div className="p-2 sm:p-3 w-full min-w-0">
         <p className="text-sm text-muted-foreground">
           {isB2bProductNavLabel(label)
-            ? 'B2B products are available for Central Kitchen / Warehouse and Manufacturer.'
+            ? 'B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.'
             : 'Active Sales is available for Central Kitchen / Warehouse, Distributor, and Manufacturer.'}
         </p>
       </div>
@@ -177,6 +177,7 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
+    case 'B2B Principal Product':
     case 'B2B Product':
     case 'Product Management':
       return (

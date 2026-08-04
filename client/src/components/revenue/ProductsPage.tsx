@@ -114,17 +114,18 @@ import { SmartComponentPicker } from './SmartComponentPicker';
 import { ProductComponentPicker } from './ProductComponentPicker';
 import {
   loadYieldAltUnitsFromProduct,
+  parseYieldAltUnitsJson,
   refreshBatchAdditionalUoms,
   serializeYieldAltUnits,
 } from '../../data/productBatchUom';
 import {
-  createDefaultBatchAdditionalEntry,
-  SubProductBatchAdditionalUoms,
-} from './SubProductBatchUomSection';
-import {
   clampSubProductAltUnits,
   SubProductBatchProduceFields,
 } from './SubProductBatchProduceFields';
+import {
+  B2bProductionUomFields,
+  clampProductionAltUnits,
+} from './B2bProductionUomFields';
 import { pageShellClass, TABLE_SCROLL_CLS } from '../layout/pageLayout';
 import { filterSelectCls } from '../layout/formControls';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
@@ -840,10 +841,9 @@ export function ProductsPage({
   const supportsBatchAdditionalUom = isSubProduct || b2bEnabled;
 
   const batchUomForAdditional = useMemo(() => {
-    if (isSubProduct) return yieldUom.trim();
-    if (!b2bEnabled) return '';
-    return formatDeliveryUnitPath(b2bSalesConfig.principal.delivery).trim();
-  }, [isSubProduct, b2bEnabled, yieldUom, b2bSalesConfig]);
+    if (isSubProduct || b2bEnabled) return yieldUom.trim();
+    return '';
+  }, [isSubProduct, b2bEnabled, yieldUom]);
 
   const batchQtyForAdditional = isSubProduct
     ? (parseFloat(yieldQuantity) || 0)
@@ -874,9 +874,9 @@ export function ProductsPage({
   }, [isSubProduct, yieldUom]);
 
   useEffect(() => {
-    if (!supportsBatchAdditionalUom || !batchUomForAdditional) return;
+    if (!isSubProduct || !batchUomForAdditional) return;
     setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, batchQtyForAdditional, batchUomForAdditional));
-  }, [supportsBatchAdditionalUom, batchQtyForAdditional, batchUomForAdditional]);
+  }, [isSubProduct, batchQtyForAdditional, batchUomForAdditional]);
 
   useEffect(() => {
     if (parStockUom.trim()) return;
@@ -1014,19 +1014,18 @@ export function ProductsPage({
     setYieldUom(product.yieldUom ? fromApiUom(product.yieldUom) : (isB2cProduct ? 'Each' : ''));
     const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
     const parsedB2bSales = parseB2bSalesConfigJson(product.b2bSalesConfigJson);
-    const loadedBatchUom = product.isSubProduct
-      ? loadedYieldUom
-      : (product.b2bEnabled
-        ? (product.b2bPackageUnit?.trim()
-          || formatDeliveryUnitPath(parsedB2bSales.principal.delivery).trim())
-        : '');
-    const loadedBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
-    const loadedAlt = refreshBatchAdditionalUoms(
-      loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedBatchUom),
-      loadedBatchQty,
-      loadedBatchUom,
-    );
-    setYieldAltUnits(product.isSubProduct ? clampSubProductAltUnits(loadedAlt) : loadedAlt);
+    if (product.isSubProduct) {
+      const loadedAlt = refreshBatchAdditionalUoms(
+        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, loadedYieldUom),
+        product.yieldQuantity,
+        loadedYieldUom,
+      );
+      setYieldAltUnits(clampSubProductAltUnits(loadedAlt));
+    } else if (product.b2bEnabled) {
+      setYieldAltUnits(clampProductionAltUnits(parseYieldAltUnitsJson(product.yieldAltUnitsJson)));
+    } else {
+      setYieldAltUnits([]);
+    }
     setExpiryPeriodDays(product.expiryPeriodDays > 0 ? String(product.expiryPeriodDays) : '');
     setActivationPeriodHours(product.activationPeriodHours > 0 ? String(product.activationPeriodHours) : '');
     setParStock((product.parStock ?? 0) > 0 ? String(product.parStock) : '');
@@ -1312,11 +1311,12 @@ export function ProductsPage({
       return;
     }
     if (!hasB2bProductCapability) {
-      showSaveError('B2B products are available for Central Kitchen / Warehouse and Manufacturer.');
+      showSaveError('B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.');
       return;
     }
     setB2bEnabled(true);
     setB2cEnabled(false);
+    setYieldUom(current => current || 'Each');
     if (rrp.trim()) {
       setB2bSalesConfig(prev => ({
         ...prev,
@@ -1361,7 +1361,7 @@ export function ProductsPage({
       return;
     }
     if (!isSubProduct && b2bEnabled && !hasB2bProductCapability) {
-      showSaveError('B2B products are available for Central Kitchen / Warehouse and Manufacturer.');
+      showSaveError('B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.');
       return;
     }
 
@@ -1393,9 +1393,13 @@ export function ProductsPage({
       showSaveError('Select a Product UOM.');
       return;
     } else if (b2bEnabled) {
+      if (!yieldUom.trim()) {
+        showSaveError('Select a Principal Production UOM for B2B Principal products.');
+        return;
+      }
       const expiryDays = parseInt(expiryPeriodDays, 10);
       if (!Number.isFinite(expiryDays) || expiryDays <= 0) {
-        showSaveError('Enter an expiry period (days) greater than zero for B2B products.');
+        showSaveError('Enter an expiry period (days) greater than zero for B2B Principal products.');
         return;
       }
       const activation = parseOptionalActivationPeriodHours(activationPeriodHours);
@@ -1573,11 +1577,15 @@ export function ProductsPage({
         : b2cEnabled && !b2bEnabled
           ? 1
           : undefined,
-      yieldUom: isSubProduct || (b2cEnabled && !b2bEnabled)
+      yieldUom: isSubProduct || b2bEnabled || (b2cEnabled && !b2bEnabled)
         ? toApiUom(yieldUom)
         : undefined,
       yieldAltUnitsJson: supportsBatchAdditionalUom
-        ? serializeYieldAltUnits(isSubProduct ? clampSubProductAltUnits(yieldAltUnits) : yieldAltUnits)
+        ? serializeYieldAltUnits(
+          isSubProduct
+            ? clampSubProductAltUnits(yieldAltUnits)
+            : clampProductionAltUnits(yieldAltUnits),
+        )
         : undefined,
       expiryPeriodDays: (isSubProduct || b2bEnabled) ? parseInt(expiryPeriodDays, 10) || 0 : undefined,
       activationPeriodHours: supportsBatchAdditionalUom
@@ -1794,7 +1802,7 @@ export function ProductsPage({
                   className={`flex flex-wrap gap-4 rounded-md border px-3 py-2 ${
                     isSubProduct ? 'border-border bg-muted/30 opacity-70' : 'border-transparent'
                   }`}
-                  title={isSubProduct ? 'Sub-products are prep items used inside a B2C or B2B product.' : undefined}
+                  title={isSubProduct ? 'Sub-products are prep items used inside a B2C or B2B Principal product.' : undefined}
                 >
                   <label className={`inline-flex items-center gap-2 text-xs ${isSubProduct ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                     <input
@@ -1813,7 +1821,7 @@ export function ProductsPage({
                     }`}
                     title={
                       !hasB2bProductCapability
-                        ? 'B2B products are available for Central Kitchen / Warehouse and Manufacturer.'
+                        ? 'B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.'
                         : undefined
                     }
                   >
@@ -1825,12 +1833,12 @@ export function ProductsPage({
                       onChange={() => handleB2bEnabledChange(true)}
                       className="border-border disabled:cursor-not-allowed"
                     />
-                    B2B
+                    B2B Principal
                   </label>
                 </div>
                 {isSubProduct ? (
                   <p className="text-[10px] text-muted-foreground">
-                    Sub-products are made or prepped as part of a B2C or B2B product — they are not sold directly on a channel.
+                    Sub-products are made or prepped as part of a B2C or B2B Principal product — they are not sold directly on a channel.
                   </p>
                 ) : isVariableProduct ? (
                   <p className="text-[10px] text-muted-foreground">
@@ -1845,11 +1853,11 @@ export function ProductsPage({
                   </p>
                 ) : !hasB2bProductCapability ? (
                   <p className="text-[10px] text-muted-foreground">
-                    B2B products are available for Central Kitchen / Warehouse and Manufacturer.
+                    B2B Principal products are available for Central Kitchen / Warehouse and Manufacturer.
                   </p>
                 ) : (
                   <p className="text-[10px] text-muted-foreground">
-                    A product is either B2C (POS / takeaway / online retail) or B2B (wholesale sales orders).
+                    A product is either B2C (POS / takeaway / online retail) or B2B Principal (wholesale sales orders).
                   </p>
                 )}
               </div>
@@ -2280,43 +2288,18 @@ export function ProductsPage({
           {!isSubProduct && b2bEnabled ? (
             <section className="rounded-lg border border-border bg-card p-4 space-y-3">
               <div>
-                <p className="text-sm font-semibold">Additional UOM</p>
+                <p className="text-sm font-semibold">Production UOM</p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Alternate units for the principal B2B delivery unit
-                  {batchUomForAdditional ? ` (${batchUomForAdditional})` : ''}.
+                  Principal Production UOM plus up to two alternate production units for To Produce / Produced.
                 </p>
               </div>
-              {batchUomForAdditional ? (
-                <>
-                  <div className="flex gap-1.5 items-center max-w-md">
-                    <p className={`${fieldCls} flex-1`}>{batchUomForAdditional}</p>
-                    <button
-                      type="button"
-                      onClick={() => setYieldAltUnits(prev => createDefaultBatchAdditionalEntry(
-                        prev,
-                        String(batchQtyForAdditional),
-                        batchUomForAdditional,
-                      ))}
-                      disabled={!isEditing || saving}
-                      className={addBtnCls}
-                      title="Add additional UOM"
-                      aria-label="Add additional UOM"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                  <SubProductBatchAdditionalUoms
-                    yieldQuantity={String(batchQtyForAdditional)}
-                    yieldUom={batchUomForAdditional}
-                    altUnits={yieldAltUnits}
-                    onAltUnitsChange={setYieldAltUnits}
-                  />
-                </>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  Configure the principal delivery unit in B2B Sales to add alternate units.
-                </p>
-              )}
+              <B2bProductionUomFields
+                principalUnit={yieldUom}
+                altUnits={yieldAltUnits}
+                disabled={!isEditing || saving}
+                onPrincipalChange={setYieldUom}
+                onAltUnitsChange={entries => setYieldAltUnits(clampProductionAltUnits(entries))}
+              />
             </section>
           ) : null}
 

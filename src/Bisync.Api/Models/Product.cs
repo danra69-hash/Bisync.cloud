@@ -33,7 +33,9 @@ public class Product
     public decimal? PreviousPackagingCost { get; set; }
     public decimal? PreviousRrp { get; set; }
     public decimal YieldQuantity { get; set; }
+    /// <summary>B2C Product UOM; Sub-Product batch UOM; B2B Principal Production UOM.</summary>
     public string YieldUom { get; set; } = string.Empty;
+    /// <summary>Alternate production/batch UOMs JSON. For B2B Principal: up to 2 alts (1 alt = qty × principal).</summary>
     public string YieldAltUnitsJson { get; set; } = "[]";
     public int ExpiryPeriodDays { get; set; }
     public int ActivationPeriodHours { get; set; }

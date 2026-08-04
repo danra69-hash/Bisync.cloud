@@ -18,6 +18,9 @@ export type ProduceSubProductOption = {
 
 export type ProduceConfirmPayload = {
   batchQty: number;
+  /** Entered quantity before conversion to stock/base units. */
+  enteredQty?: number;
+  batchUom?: string;
   productionDate: string;
   expiryDate?: string;
   overrideStock?: boolean;
@@ -39,9 +42,11 @@ type SubOutputLine = {
 type Props = {
   productName: string;
   batchUnit: string;
+  /** Production + Delivery UOM choices (labels). When empty, falls back to batchUnit. */
+  uomOptions?: string[];
   defaultBatchQty: number;
   isSubProduct: boolean;
-  /** True when the product being produced is a B2B (parent) product. */
+  /** True when the product being produced is a B2B Principal (parent) product. */
   isB2bProduct?: boolean;
   expiryPeriodDays?: number;
   purpose: 'queue' | 'produce' | 'edit';
@@ -54,7 +59,10 @@ type Props = {
   subProductOptions?: ProduceSubProductOption[];
   previewLoading?: boolean;
   onClose: () => void;
-  onQtyChange?: (batchQty: number) => void;
+  /** Called with base/stock qty and the selected entry UOM. */
+  onQtyChange?: (batchQty: number, batchUom?: string) => void;
+  /** Convert entered qty in selected UOM to stock/base qty before preview/confirm. */
+  convertQtyToBase?: (enteredQty: number, batchUom: string) => number;
   onConfirm: (payload: ProduceConfirmPayload) => void;
 };
 
@@ -105,6 +113,7 @@ function toEditable(lines: ProduceBatchShortage[]): EditableComponent[] {
 export function ProduceBatchModal({
   productName,
   batchUnit,
+  uomOptions = [],
   defaultBatchQty,
   isSubProduct,
   isB2bProduct = !isSubProduct,
@@ -120,10 +129,19 @@ export function ProduceBatchModal({
   previewLoading = false,
   onClose,
   onQtyChange,
+  convertQtyToBase,
   onConfirm,
 }: Props) {
   const countryCode = useOrgCountryCode();
   const defaultExpiryDays = expiryPeriodDays > 0 ? expiryPeriodDays : 7;
+  const resolvedUomOptions = useMemo(() => {
+    const labels = uomOptions.map(label => label.trim()).filter(Boolean);
+    if (labels.length > 0) return [...new Set(labels)];
+    return batchUnit.trim() ? [batchUnit.trim()] : ['pcs'];
+  }, [uomOptions, batchUnit]);
+  const [selectedUom, setSelectedUom] = useState(
+    () => resolvedUomOptions[0] ?? batchUnit ?? 'pcs',
+  );
   const [batchQty, setBatchQty] = useState(
     defaultBatchQty > 0 ? String(defaultBatchQty) : '1',
   );
@@ -180,12 +198,20 @@ export function ProduceBatchModal({
   }, [components, purpose]);
 
   useEffect(() => {
+    if (!resolvedUomOptions.includes(selectedUom)) {
+      setSelectedUom(resolvedUomOptions[0] ?? batchUnit ?? 'pcs');
+    }
+  }, [resolvedUomOptions, selectedUom, batchUnit]);
+
+  useEffect(() => {
     const qty = Number.parseFloat(batchQty);
     if (!onQtyChange) return;
     if (!Number.isFinite(qty) || qty <= 0) return;
-    const t = window.setTimeout(() => onQtyChange(qty), 280);
+    const baseQty = convertQtyToBase ? convertQtyToBase(qty, selectedUom) : qty;
+    if (!(baseQty > 0)) return;
+    const t = window.setTimeout(() => onQtyChange(baseQty, selectedUom), 280);
     return () => window.clearTimeout(t);
-  }, [batchQty, onQtyChange]);
+  }, [batchQty, selectedUom, onQtyChange, convertQtyToBase]);
 
   const filteredSubOptions = useMemo(() => {
     const q = subFilter.trim().toLowerCase();
@@ -199,9 +225,14 @@ export function ProduceBatchModal({
     e?.preventDefault();
     setValidationError(null);
 
-    const qty = Number.parseFloat(batchQty);
-    if (!Number.isFinite(qty) || qty <= 0) {
+    const enteredQty = Number.parseFloat(batchQty);
+    if (!Number.isFinite(enteredQty) || enteredQty <= 0) {
       setValidationError('Enter a quantity greater than zero.');
+      return;
+    }
+    const qty = convertQtyToBase ? convertQtyToBase(enteredQty, selectedUom) : enteredQty;
+    if (!(qty > 0)) {
+      setValidationError('Could not convert quantity for the selected UOM.');
       return;
     }
 
@@ -233,6 +264,8 @@ export function ProduceBatchModal({
       }
       onConfirm({
         batchQty: qty,
+        enteredQty,
+        batchUom: selectedUom,
         productionDate,
         expiryDate,
         overrideStock,
@@ -244,6 +277,8 @@ export function ProduceBatchModal({
 
     onConfirm({
       batchQty: qty,
+      enteredQty,
+      batchUom: selectedUom,
       productionDate,
       overrideStock,
       componentUsages,
@@ -356,9 +391,23 @@ export function ProduceBatchModal({
                   disabled={saving}
                   autoFocus
                 />
-                <span className="text-xs font-medium text-muted-foreground shrink-0">
-                  × {batchUnit}
-                </span>
+                {resolvedUomOptions.length > 1 ? (
+                  <select
+                    className={`${filterSelectCls} max-w-[14rem] shrink-0`}
+                    value={selectedUom}
+                    disabled={saving}
+                    onChange={e => setSelectedUom(e.target.value)}
+                    aria-label="Production or delivery UOM"
+                  >
+                    {resolvedUomOptions.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-xs font-medium text-muted-foreground shrink-0">
+                    × {selectedUom}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -367,7 +416,7 @@ export function ProduceBatchModal({
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Output</p>
                 <div className="space-y-1 text-xs">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">B2B product QTY</span>
+                    <span className="text-muted-foreground">B2B Principal QTY</span>
                     <span className="font-semibold tabular-nums text-sky-700 dark:text-sky-300">
                       {isB2bProduct ? formatStockQty(b2bOutputQty, countryCode) : '—'}
                     </span>

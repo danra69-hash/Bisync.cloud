@@ -12,6 +12,10 @@ import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { api, ApiError, type Product, type ProductManagementSummary, type ProduceBatchShortage } from '../../api';
 import { resolveManagementBatchUnit } from '../../data/productForm';
+import {
+  convertProduceQtyToBase,
+  listProduceUomOptions,
+} from '../../data/productProduceUomOptions';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { labelsEqual } from '../../utils/labelMatch';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
@@ -429,6 +433,7 @@ export function ProductManagementPage({
         await api.markProductToProduce(product.id, {
           locationExternalIds: selectedLocationIds,
           batchQty: payload.batchQty,
+          batchUom: payload.batchUom,
           productionDate: payload.productionDate,
           overrideStock: payload.overrideStock === true,
         });
@@ -436,6 +441,7 @@ export function ProductManagementPage({
         await api.produceProductBatches(product.id, {
           locationExternalIds: selectedLocationIds,
           batchQty: payload.batchQty,
+          batchUom: payload.batchUom,
           productionDate: payload.productionDate,
           expiryDate: payload.expiryDate,
           overrideStock: payload.overrideStock === true,
@@ -471,6 +477,7 @@ export function ProductManagementPage({
     try {
       await api.patchProductionBatch(produceTarget.batchLogId, {
         batchQty: payload.batchQty,
+        batchUom: payload.batchUom,
         productionDate: payload.productionDate,
         expiryDate: payload.expiryDate,
         overrideStock: payload.overrideStock === true,
@@ -622,8 +629,8 @@ export function ProductManagementPage({
   );
 
   const emptyMessage = viewMode === 'sub-product'
-    ? 'No active sub-products yet. Add sub-products on the Products page and link them to a B2C or B2B product.'
-    : 'No active B2B products yet. Enable B2B on a product on the Products page.';
+    ? 'No active sub-products yet. Add sub-products on the Products page and link them to a B2C or B2B Principal product.'
+    : 'No active B2B Principal products yet. Enable B2B Principal on a product on the Products page.';
 
   return (
     <div className={pageShellClass({ embedded })}>
@@ -962,6 +969,7 @@ export function ProductManagementPage({
           key={`${produceTarget.product.id}-${produceTarget.purpose}-${produceTarget.batchLogId ?? 'new'}`}
           productName={produceTarget.product.name}
           batchUnit={produceTarget.product.batchUnit}
+          uomOptions={listProduceUomOptions(produceTarget.product).map(option => option.label)}
           defaultBatchQty={
             produceTarget.purpose === 'edit'
               ? (produceTarget.product.batchQty ?? 1)
@@ -993,6 +1001,11 @@ export function ProductManagementPage({
               batchUnit: resolveManagementBatchUnit(p),
             }))
             .sort((a, b) => a.name.localeCompare(b.name))}
+          convertQtyToBase={(enteredQty, batchUom) => convertProduceQtyToBase(
+            enteredQty,
+            batchUom,
+            listProduceUomOptions(produceTarget.product),
+          )}
           onClose={() => {
             const saving = produceTarget.purpose === 'edit'
               ? editingBatchId === produceTarget.batchLogId

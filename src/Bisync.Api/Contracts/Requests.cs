@@ -917,7 +917,7 @@ public class UpsertProductRequest
     /// <summary>Batch yield for sub-products; defaults to 1 for B2C products.</summary>
     [Range(0, 999999999)]
     public decimal? YieldQuantity { get; set; }
-    /// <summary>Batch yield UOM for sub-products, Product UOM for B2C, and optional principal production UOM for B2B.</summary>
+    /// <summary>Batch yield UOM for sub-products, Product UOM for B2C, Principal Production UOM for B2B.</summary>
     [MaxLength(20)]
     public string? YieldUom { get; set; }
     public string? YieldAltUnitsJson { get; set; }
@@ -975,6 +975,8 @@ public class ProductManagementActionRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
@@ -999,6 +1001,8 @@ public class ProduceBatchRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }
@@ -1013,6 +1017,8 @@ public class ProductionPreviewRequest
     public List<string> LocationExternalIds { get; set; } = [];
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public List<ProduceComponentUsageRequest> ComponentUsages { get; set; } = [];
 }
 
@@ -1081,6 +1087,8 @@ public class PatchProductionBatchRequest
 {
     [Range(0.0001, 999999999)]
     public decimal BatchQty { get; set; }
+    /// <summary>Entry UOM label (production or delivery). BatchQty is expected in stock/base units from the client.</summary>
+    public string? BatchUom { get; set; }
     public string? ProductionDate { get; set; }
     public string? ExpiryDate { get; set; }
     public bool OverrideStock { get; set; }

@@ -5,8 +5,6 @@ import { api, type PatchProductPayload, type Product } from '../../api';
 import { fromApiUom, type AltUnitEntry } from '../../data/componentForm';
 import {
   loadYieldAltUnitsFromProduct,
-  normalizedYieldAltUnitsFromEntries,
-  normalizedYieldAltUnitsJson,
   parseYieldAltUnitsJson,
   refreshBatchAdditionalUoms,
   serializeYieldAltUnits,
@@ -18,17 +16,12 @@ import {
   MODAL_SHELL_CLS,
 } from '../layout/sidePanelShared';
 import { createOverlayCloseHandlers } from './modalOverlayClose';
-import {
-  createDefaultBatchAdditionalEntry,
-} from './SubProductBatchUomSection';
 import { clampSubProductAltUnits } from './SubProductBatchProduceFields';
+import { clampProductionAltUnits } from './B2bProductionUomFields';
 import { ProductReadOnlyView } from './ProductReadOnlyView';
 import { ProductionMethodModal } from './ProductionMethodModal';
 import { ProductsPage } from './ProductsPage';
 import { productKeyFromParts } from '../../data/productProductionMethod';
-
-const addBtnCls =
-  'shrink-0 inline-flex items-center justify-center h-[34px] w-[34px] rounded-md border border-border bg-background hover:bg-muted/40 text-muted-foreground disabled:opacity-50';
 
 type Props = {
   product: Product;
@@ -82,26 +75,27 @@ export function ProductDetailPanel({
 
     if (initializedProductIdRef.current !== product.id) {
       initializedProductIdRef.current = product.id;
-      const initialBatchUom = product.isSubProduct
-        ? (product.yieldUom ? fromApiUom(product.yieldUom) : '')
-        : (product.b2bPackageUnit?.trim() || '');
-      const initialBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
-      const loadedAlt = refreshBatchAdditionalUoms(
-        loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, initialBatchUom),
-        initialBatchQty,
-        initialBatchUom,
-      );
-      setYieldAltUnits(product.isSubProduct ? clampSubProductAltUnits(loadedAlt) : loadedAlt);
+      const initialBatchUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+      if (product.isSubProduct) {
+        const loadedAlt = refreshBatchAdditionalUoms(
+          loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, initialBatchUom),
+          product.yieldQuantity,
+          initialBatchUom,
+        );
+        setYieldAltUnits(clampSubProductAltUnits(loadedAlt));
+      } else if (product.b2bEnabled) {
+        setYieldAltUnits(clampProductionAltUnits(parseYieldAltUnitsJson(product.yieldAltUnitsJson)));
+      } else {
+        setYieldAltUnits([]);
+      }
     }
   }, [product]);
 
   useEffect(() => {
-    const currentBatchUom = product.isSubProduct
-      ? (product.yieldUom ? fromApiUom(product.yieldUom) : '')
-      : (product.b2bPackageUnit?.trim() || '');
-    const currentBatchQty = product.isSubProduct ? product.yieldQuantity : 1;
-    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, currentBatchQty, currentBatchUom));
-  }, [product.id, product.isSubProduct, product.b2bEnabled, product.yieldQuantity, product.yieldUom, product.b2bPackageUnit]);
+    if (!product.isSubProduct) return;
+    const currentBatchUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
+    setYieldAltUnits(prev => refreshBatchAdditionalUoms(prev, product.yieldQuantity, currentBatchUom));
+  }, [product.id, product.isSubProduct, product.yieldQuantity, product.yieldUom]);
 
   useEffect(() => {
     if (!companyId) {
@@ -118,10 +112,7 @@ export function ProductDetailPanel({
   }, [companyId]);
 
   const loadedYieldUom = product.yieldUom ? fromApiUom(product.yieldUom) : '';
-  const batchUomForAdditional = product.isSubProduct
-    ? loadedYieldUom
-    : (product.b2bPackageUnit?.trim() || '');
-  const batchQtyForAdditional = product.isSubProduct ? product.yieldQuantity : 1;
+  const batchUomForAdditional = loadedYieldUom;
   const supportsBatchAdditionalUom = product.isSubProduct || product.b2bEnabled;
 
   const hasUnsavedChanges = useMemo(() => {
@@ -129,27 +120,20 @@ export function ProductDetailPanel({
     const parNext = parStockDraft.trim() === '' ? 0 : parseFloat(parStockDraft);
     const rrpChanged = Number.isFinite(rrpNext) && rrpNext >= 0 && rrpNext !== product.rrp;
     const parChanged = Number.isFinite(parNext) && parNext >= 0 && parNext !== (product.parStock ?? 0);
-    const serverAlt = normalizedYieldAltUnitsJson(
-      product.yieldAltUnitsJson,
-      batchQtyForAdditional,
-      batchUomForAdditional,
-    );
-    const nextEntries = product.isSubProduct ? clampSubProductAltUnits(yieldAltUnits) : yieldAltUnits;
-    const nextAlt = product.isSubProduct
-      ? serializeYieldAltUnits(nextEntries)
-      : normalizedYieldAltUnitsFromEntries(
-        nextEntries,
-        batchQtyForAdditional,
-        batchUomForAdditional,
-      );
+    const nextEntries = product.isSubProduct
+      ? clampSubProductAltUnits(yieldAltUnits)
+      : clampProductionAltUnits(yieldAltUnits);
+    const nextAlt = serializeYieldAltUnits(nextEntries);
     const compareServer = product.isSubProduct
       ? serializeYieldAltUnits(clampSubProductAltUnits(
         loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, batchUomForAdditional),
       ))
-      : serverAlt;
+      : serializeYieldAltUnits(clampProductionAltUnits(
+        parseYieldAltUnitsJson(product.yieldAltUnitsJson),
+      ));
     const altChanged = supportsBatchAdditionalUom && nextAlt !== compareServer;
     return rrpChanged || parChanged || altChanged;
-  }, [rrpDraft, parStockDraft, yieldAltUnits, product, batchUomForAdditional, batchQtyForAdditional, supportsBatchAdditionalUom]);
+  }, [rrpDraft, parStockDraft, yieldAltUnits, product, batchUomForAdditional, supportsBatchAdditionalUom]);
 
   async function patchProduct(payload: PatchProductPayload): Promise<boolean> {
     setSaving(true);
@@ -158,18 +142,18 @@ export function ProductDetailPanel({
       const updated = await api.patchProduct(product.id, payload);
       if (payload.yieldAltUnitsJson !== undefined) {
         const updatedYieldUom = updated.yieldUom ? fromApiUom(updated.yieldUom) : '';
-        const fromServer = loadYieldAltUnitsFromProduct(updated.yieldAltUnitsJson, updatedYieldUom);
-        const fallback = parseYieldAltUnitsJson(payload.yieldAltUnitsJson).map(entry => ({
-          ...entry,
-          unit: fromApiUom(entry.unit) || entry.unit,
-        }));
-        const entries = fromServer.length > 0 ? fromServer : fallback;
-        const refreshed = refreshBatchAdditionalUoms(
-          entries,
-          updated.yieldQuantity,
-          updatedYieldUom,
-        );
-        setYieldAltUnits(updated.isSubProduct ? clampSubProductAltUnits(refreshed) : refreshed);
+        const fromServer = parseYieldAltUnitsJson(updated.yieldAltUnitsJson || payload.yieldAltUnitsJson)
+          .map(entry => ({
+            ...entry,
+            unit: fromApiUom(entry.unit) || entry.unit,
+          }));
+        if (updated.isSubProduct) {
+          setYieldAltUnits(clampSubProductAltUnits(
+            refreshBatchAdditionalUoms(fromServer, updated.yieldQuantity, updatedYieldUom),
+          ));
+        } else {
+          setYieldAltUnits(clampProductionAltUnits(fromServer));
+        }
         onUpdated?.({
           ...updated,
           yieldAltUnitsJson: updated.yieldAltUnitsJson || payload.yieldAltUnitsJson,
@@ -211,23 +195,17 @@ export function ProductDetailPanel({
     }
 
     if (supportsBatchAdditionalUom) {
-      const nextEntries = product.isSubProduct ? clampSubProductAltUnits(yieldAltUnits) : yieldAltUnits;
-      const nextAlt = product.isSubProduct
-        ? serializeYieldAltUnits(nextEntries)
-        : normalizedYieldAltUnitsFromEntries(
-          nextEntries,
-          batchQtyForAdditional,
-          batchUomForAdditional,
-        );
+      const nextEntries = product.isSubProduct
+        ? clampSubProductAltUnits(yieldAltUnits)
+        : clampProductionAltUnits(yieldAltUnits);
+      const nextAlt = serializeYieldAltUnits(nextEntries);
       const serverAlt = product.isSubProduct
         ? serializeYieldAltUnits(clampSubProductAltUnits(
           loadYieldAltUnitsFromProduct(product.yieldAltUnitsJson, batchUomForAdditional),
         ))
-        : normalizedYieldAltUnitsJson(
-          product.yieldAltUnitsJson,
-          batchQtyForAdditional,
-          batchUomForAdditional,
-        );
+        : serializeYieldAltUnits(clampProductionAltUnits(
+          parseYieldAltUnitsJson(product.yieldAltUnitsJson),
+        ));
       if (nextAlt !== serverAlt) {
         payload.yieldAltUnitsJson = nextAlt;
       }
@@ -244,20 +222,11 @@ export function ProductDetailPanel({
   }
 
   function handleYieldAltUnitsChange(entries: AltUnitEntry[]) {
-    setYieldAltUnits(product.isSubProduct ? clampSubProductAltUnits(entries) : entries);
-  }
-
-  function addBatchAdditionalUom() {
-    const currentBatchUom = product.isSubProduct
-      ? (product.yieldUom ? fromApiUom(product.yieldUom) : '')
-      : (product.b2bPackageUnit?.trim() || '');
-    const next = createDefaultBatchAdditionalEntry(
-      yieldAltUnits,
-      product.isSubProduct && product.yieldQuantity > 0 ? String(product.yieldQuantity) : '1',
-      currentBatchUom,
+    setYieldAltUnits(
+      product.isSubProduct
+        ? clampSubProductAltUnits(entries)
+        : clampProductionAltUnits(entries),
     );
-    if (next.length === yieldAltUnits.length) return;
-    setYieldAltUnits(next);
   }
 
   async function toggleLocation(externalId: string) {
@@ -389,8 +358,6 @@ export function ProductDetailPanel({
                 onParStockChange={setParStockDraft}
                 yieldAltUnits={yieldAltUnits}
                 onYieldAltUnitsChange={handleYieldAltUnitsChange}
-                onAddBatchAdditionalUom={supportsBatchAdditionalUom && !product.isSubProduct ? addBatchAdditionalUom : undefined}
-                addBatchUomButtonCls={addBtnCls}
                 onToggleLocation={externalId => void toggleLocation(externalId)}
                 onOpenProductionMethod={() => setProductionMethodOpen(true)}
               />

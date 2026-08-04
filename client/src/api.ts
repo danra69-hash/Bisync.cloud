@@ -2779,6 +2779,8 @@ export interface ReportPayload {
 export interface ProduceBatchPayload {
   locationExternalIds: string[];
   batchQty: number;
+  /** Entry UOM label (production or delivery). BatchQty is already in stock/base units. */
+  batchUom?: string;
   productionDate?: string;
   expiryDate?: string;
   overrideStock?: boolean;
@@ -2789,6 +2791,7 @@ export interface ProduceBatchPayload {
 export interface ProductionPreviewPayload {
   locationExternalIds: string[];
   batchQty: number;
+  batchUom?: string;
   componentUsages?: { componentId: string; usedQty: number }[];
 }
 
@@ -2802,6 +2805,7 @@ export interface ProductionPreviewResult {
 
 export interface PatchProductionBatchPayload {
   batchQty: number;
+  batchUom?: string;
   productionDate?: string;
   expiryDate?: string;
   overrideStock?: boolean;
@@ -4117,6 +4121,7 @@ export const api = {
   markProductToProduce: (productId: number, payload: {
     locationExternalIds: string[];
     batchQty: number;
+    batchUom?: string;
     productionDate?: string;
     overrideStock?: boolean;
   }) =>
