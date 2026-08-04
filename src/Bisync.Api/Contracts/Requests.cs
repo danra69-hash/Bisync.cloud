@@ -991,9 +991,18 @@ public class ProduceComponentUsageRequest
 
 public class ProduceSubProductOutputRequest
 {
+    /// <summary>Existing bi / sub-product catalog id. 0 creates a new bi product when Name is set.</summary>
     public int ProductId { get; set; }
+    /// <summary>Optional name when creating a bi-product on produce.</summary>
+    public string? Name { get; set; }
     [Range(0.0001, 999999999)]
     public decimal Quantity { get; set; }
+    /// <summary>Cost attribution percent (0–100). Weighted vs residual primary cost.</summary>
+    [Range(0, 100)]
+    public decimal CostAttributionPct { get; set; } = 100;
+    /// <summary>True → Bi-Sub-Product (not sellable). False → Bi-Product (optionally sellable).</summary>
+    public bool IsBiSubProduct { get; set; } = true;
+    public bool BiSellable { get; set; }
 }
 
 public class ProduceBatchRequest

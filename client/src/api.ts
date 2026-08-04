@@ -2637,6 +2637,9 @@ export interface Product {
   category: string;
   group: string;
   isSubProduct: boolean;
+  isBiProduct?: boolean;
+  biOfProductId?: number | null;
+  biSellable?: boolean;
   isVariableProduct?: boolean;
   variableMode?: 'combination' | 'weight' | string;
   variableChoiceQty?: number;
@@ -2811,7 +2814,14 @@ export interface ProduceBatchPayload {
   expiryDate?: string;
   overrideStock?: boolean;
   componentUsages?: { componentId: string; usedQty: number }[];
-  subProductOutputs?: { productId: number; quantity: number }[];
+  subProductOutputs?: {
+    productId?: number;
+    name?: string;
+    quantity: number;
+    costAttributionPct?: number;
+    isBiSubProduct?: boolean;
+    biSellable?: boolean;
+  }[];
 }
 
 export interface ProductionPreviewPayload {

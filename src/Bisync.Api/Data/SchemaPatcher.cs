@@ -491,6 +491,9 @@ public static class SchemaPatcher
 
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "Rrp", "REAL NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "PosEnabled", "INTEGER NOT NULL DEFAULT 0");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsBiProduct", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Products", "BiOfProductId", "INTEGER");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "BiSellable", "BOOLEAN NOT NULL DEFAULT FALSE");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "IsVariableProduct", "BOOLEAN NOT NULL DEFAULT FALSE");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableMode", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "Products", "VariableChoiceQty", "NUMERIC NOT NULL DEFAULT 0");

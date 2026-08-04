@@ -4,10 +4,12 @@ import { Plus, X } from 'lucide-react';
 import { filterSelectCls, inlineNumberCls } from '../layout/formControls';
 import type { ProduceBatchShortage } from '../../api';
 import { fromApiUom } from '../../data/componentForm';
+import { allocateProductionCost } from '../../data/productionCostAttribution';
 import { formatCountryNumber } from '../../utils/numberFormat';
 import { useOrgCountryCode } from '../../context/OrgCountryContext';
 import { TableHeaderCell } from '../shared/TableHeaderCell';
 import { ColGroup } from '../shared/SortableTableHead';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 
 export type ProduceSubProductOption = {
   id: number;
@@ -25,7 +27,14 @@ export type ProduceConfirmPayload = {
   expiryDate?: string;
   overrideStock?: boolean;
   componentUsages: { componentId: string; usedQty: number }[];
-  subProductOutputs: { productId: number; quantity: number }[];
+  subProductOutputs: {
+    productId: number;
+    name?: string;
+    quantity: number;
+    costAttributionPct: number;
+    isBiSubProduct: boolean;
+    biSellable: boolean;
+  }[];
 };
 
 type EditableComponent = ProduceBatchShortage & {
@@ -36,7 +45,11 @@ type EditableComponent = ProduceBatchShortage & {
 type SubOutputLine = {
   key: string;
   productId: number;
+  name: string;
   quantity: string;
+  attributionPct: string;
+  isBiSubProduct: boolean;
+  biSellable: boolean;
 };
 
 type Props = {
@@ -48,6 +61,8 @@ type Props = {
   isSubProduct: boolean;
   /** True when the product being produced is a B2B Principal (parent) product. */
   isB2bProduct?: boolean;
+  /** Recipe unit cost used for live bi-product attribution preview. */
+  baseUnitCost?: number;
   expiryPeriodDays?: number;
   purpose: 'queue' | 'produce' | 'edit';
   batchNumber?: string | null;
@@ -117,6 +132,7 @@ export function ProduceBatchModal({
   defaultBatchQty,
   isSubProduct,
   isB2bProduct = !isSubProduct,
+  baseUnitCost = 0,
   expiryPeriodDays = 0,
   purpose,
   batchNumber = null,
@@ -154,9 +170,13 @@ export function ProduceBatchModal({
   const [expiryManuallyEdited, setExpiryManuallyEdited] = useState(purpose === 'edit');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [editableComponents, setEditableComponents] = useState<EditableComponent[]>(() => toEditable(components));
+  const { rm } = useCountryFormatters();
   const [subFilter, setSubFilter] = useState('');
   const [subPickId, setSubPickId] = useState('');
+  const [subPickName, setSubPickName] = useState('');
   const [subPickQty, setSubPickQty] = useState('1');
+  const [subPickPct, setSubPickPct] = useState('50');
+  const [subPickBiSub, setSubPickBiSub] = useState(true);
   const [subOutputs, setSubOutputs] = useState<SubOutputLine[]>([]);
 
   useEffect(() => {
@@ -249,9 +269,22 @@ export function ProduceBatchModal({
     const subProductOutputs = subOutputs
       .map(line => ({
         productId: line.productId,
+        name: line.name || undefined,
         quantity: Number.parseFloat(line.quantity),
+        costAttributionPct: Number.parseFloat(line.attributionPct) || 0,
+        isBiSubProduct: line.isBiSubProduct,
+        biSellable: line.biSellable,
       }))
-      .filter(line => line.productId > 0 && Number.isFinite(line.quantity) && line.quantity > 0);
+      .filter(line => (
+        (line.productId > 0 || Boolean(line.name?.trim()))
+        && Number.isFinite(line.quantity)
+        && line.quantity > 0
+      ));
+    const biTotal = subProductOutputs.reduce((sum, line) => sum + line.quantity, 0);
+    if (biTotal > qty) {
+      setValidationError('Bi-product quantities cannot exceed the produced quantity.');
+      return;
+    }
 
     if (purpose === 'produce' || purpose === 'edit') {
       if (!expiryDate) {
@@ -288,26 +321,59 @@ export function ProduceBatchModal({
 
   function addSubOutput() {
     const id = Number.parseInt(subPickId, 10);
-    if (!Number.isFinite(id) || id <= 0) {
-      setValidationError('Select a sub-product to add as output.');
+    const name = subPickName.trim();
+    const hasExisting = Number.isFinite(id) && id > 0;
+    if (!hasExisting && !name) {
+      setValidationError('Select an existing bi/sub-product or enter a new bi-product name.');
       return;
     }
     const qty = Number.parseFloat(subPickQty);
     if (!Number.isFinite(qty) || qty <= 0) {
-      setValidationError('Enter a sub-product quantity greater than zero.');
+      setValidationError('Enter a bi-product quantity greater than zero.');
       return;
     }
+    const pct = Number.parseFloat(subPickPct);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      setValidationError('Cost attribution % must be between 0 and 100.');
+      return;
+    }
+    const meta = hasExisting ? subProductOptions.find(p => p.id === id) : undefined;
     setValidationError(null);
-    setSubOutputs(prev => {
-      const existing = prev.find(p => p.productId === id);
-      if (existing) {
-        const nextQty = (Number.parseFloat(existing.quantity) || 0) + qty;
-        return prev.map(p => (p.productId === id ? { ...p, quantity: String(nextQty) } : p));
-      }
-      return [...prev, { key: `${id}-${Date.now()}`, productId: id, quantity: String(qty) }];
-    });
+    setSubOutputs(prev => [
+      ...prev,
+      {
+        key: `${hasExisting ? id : name}-${Date.now()}`,
+        productId: hasExisting ? id : 0,
+        name: hasExisting ? (meta?.name ?? name) : name,
+        quantity: String(qty),
+        attributionPct: String(pct),
+        isBiSubProduct: subPickBiSub || isSubProduct,
+        biSellable: !subPickBiSub && !isSubProduct,
+      },
+    ]);
     setSubPickQty('1');
+    setSubPickName('');
+    setSubPickId('');
   }
+
+  const attributionPreview = useMemo(() => {
+    const totalQty = Number.parseFloat(batchQty) || 0;
+    const biLines = subOutputs
+      .map(line => ({
+        key: line.key,
+        quantity: Number.parseFloat(line.quantity) || 0,
+        attributionPct: Number.parseFloat(line.attributionPct) || 0,
+      }))
+      .filter(line => line.quantity > 0);
+    const biTotal = biLines.reduce((sum, line) => sum + line.quantity, 0);
+    const primaryQty = Math.max(0, totalQty - biTotal);
+    return allocateProductionCost({
+      baseUnitCost,
+      totalQty,
+      primaryQty,
+      biLines,
+    });
+  }, [batchQty, subOutputs, baseUnitCost]);
 
   const displayError = validationError ?? error;
   const hasInsufficientComponents = editableComponents.some(
@@ -326,7 +392,9 @@ export function ProduceBatchModal({
       : `Produced — ${productName}`;
 
   const parsedBatchQty = Number.parseFloat(batchQty);
-  const b2bOutputQty = Number.isFinite(parsedBatchQty) && parsedBatchQty > 0 ? parsedBatchQty : 0;
+  const b2bOutputQty = attributionPreview.primaryQty > 0
+    ? attributionPreview.primaryQty
+    : (Number.isFinite(parsedBatchQty) && parsedBatchQty > 0 ? parsedBatchQty : 0);
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -437,10 +505,15 @@ export function ProduceBatchModal({
             ) : null}
           </div>
 
-          {purpose === 'produce' && !isSubProduct ? (
+          {purpose === 'produce' ? (
             <div className="space-y-2 rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50/40 dark:bg-violet-950/20 p-3">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200">
-                Sub-product output
+                Bi-product / Bi-Sub-Product output
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Split produced qty into primary + bi outputs. Cost attribution % weights bi unit cost; primary gets the residual.
+                Preview: primary {rm(attributionPreview.primaryUnitCost)} / bi{' '}
+                {attributionPreview.biLines[0] ? rm(attributionPreview.biLines[0].unitCost) : '—'}.
               </p>
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="space-y-1 min-w-[8rem] flex-1">
@@ -449,13 +522,13 @@ export function ProduceBatchModal({
                     id="sub-filter"
                     value={subFilter}
                     onChange={e => setSubFilter(e.target.value)}
-                    placeholder="Search sub-products…"
+                    placeholder="Search catalog…"
                     className={`${filterSelectCls} w-full`}
                     disabled={saving}
                   />
                 </div>
                 <div className="space-y-1 min-w-[12rem] flex-[2]">
-                  <label className="text-[10px] text-muted-foreground" htmlFor="sub-pick">Sub-product</label>
+                  <label className="text-[10px] text-muted-foreground" htmlFor="sub-pick">Existing bi / sub</label>
                   <select
                     id="sub-pick"
                     value={subPickId}
@@ -463,7 +536,7 @@ export function ProduceBatchModal({
                     className={`${filterSelectCls} w-full`}
                     disabled={saving}
                   >
-                    <option value="">Select…</option>
+                    <option value="">Create new…</option>
                     {filteredSubOptions.map(opt => (
                       <option key={opt.id} value={opt.id}>
                         {opt.name} ({opt.productId}) · {opt.batchUnit}
@@ -471,6 +544,19 @@ export function ProduceBatchModal({
                     ))}
                   </select>
                 </div>
+                {!subPickId ? (
+                  <div className="space-y-1 min-w-[10rem] flex-1">
+                    <label className="text-[10px] text-muted-foreground" htmlFor="bi-name">New name</label>
+                    <input
+                      id="bi-name"
+                      value={subPickName}
+                      onChange={e => setSubPickName(e.target.value)}
+                      placeholder="Bi-product name"
+                      className={`${filterSelectCls} w-full`}
+                      disabled={saving}
+                    />
+                  </div>
+                ) : null}
                 <div className="space-y-1 w-24">
                   <label className="text-[10px] text-muted-foreground" htmlFor="sub-qty">QTY</label>
                   <input
@@ -484,6 +570,29 @@ export function ProduceBatchModal({
                     disabled={saving}
                   />
                 </div>
+                <div className="space-y-1 w-24">
+                  <label className="text-[10px] text-muted-foreground" htmlFor="bi-pct">Cost %</label>
+                  <input
+                    id="bi-pct"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="any"
+                    value={subPickPct}
+                    onChange={e => setSubPickPct(e.target.value)}
+                    className={`${inlineNumberCls} w-full`}
+                    disabled={saving}
+                  />
+                </div>
+                <label className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground pb-1.5">
+                  <input
+                    type="checkbox"
+                    checked={subPickBiSub || isSubProduct}
+                    disabled={saving || isSubProduct}
+                    onChange={e => setSubPickBiSub(e.target.checked)}
+                  />
+                  Bi-Sub-Product
+                </label>
                 <button
                   type="button"
                   onClick={addSubOutput}
@@ -497,11 +606,17 @@ export function ProduceBatchModal({
                 <ul className="space-y-1 pt-1">
                   {subOutputs.map(line => {
                     const meta = subProductOptions.find(p => p.id === line.productId);
+                    const preview = attributionPreview.biLines.find(b => b.key === line.key);
                     return (
                       <li key={line.key} className="flex items-center gap-2 text-xs bg-card/80 rounded border border-border px-2 py-1.5">
                         <span className="flex-1 font-medium truncate">
-                          {meta?.name ?? `Product #${line.productId}`}
-                          <span className="text-muted-foreground font-mono text-[10px] ml-1">{meta?.productId}</span>
+                          {line.name || meta?.name || `Product #${line.productId}`}
+                          <span className="text-muted-foreground font-mono text-[10px] ml-1">
+                            {meta?.productId || (line.isBiSubProduct ? 'bi-sub' : 'bi')}
+                          </span>
+                          {preview ? (
+                            <span className="text-muted-foreground ml-1">· {rm(preview.unitCost)}/u</span>
+                          ) : null}
                         </span>
                         <input
                           type="number"
@@ -511,6 +626,17 @@ export function ProduceBatchModal({
                           onChange={e => setSubOutputs(prev => prev.map(p => (p.key === line.key ? { ...p, quantity: e.target.value } : p)))}
                           className={`${inlineNumberCls} w-20`}
                           disabled={saving}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="any"
+                          value={line.attributionPct}
+                          onChange={e => setSubOutputs(prev => prev.map(p => (p.key === line.key ? { ...p, attributionPct: e.target.value } : p)))}
+                          className={`${inlineNumberCls} w-16`}
+                          disabled={saving}
+                          title="Cost attribution %"
                         />
                         <span className="text-muted-foreground shrink-0">{meta?.batchUnit ?? 'pcs'}</span>
                         <button

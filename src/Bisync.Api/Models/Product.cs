@@ -8,6 +8,12 @@ public class Product
     public string Category { get; set; } = string.Empty;
     public string Group { get; set; } = string.Empty;
     public bool IsSubProduct { get; set; }
+    /// <summary>Bi-Product / Bi-Sub-Product created from a production split of BiOfProductId.</summary>
+    public bool IsBiProduct { get; set; }
+    /// <summary>Principal B2B or Sub-Product this bi-product was split from.</summary>
+    public int? BiOfProductId { get; set; }
+    /// <summary>When true and not a Bi-Sub-Product, may sell externally. Bi-Sub-Product always false.</summary>
+    public bool BiSellable { get; set; }
     /// <summary>Sellable product with combination choices or weight-based pricing.</summary>
     public bool IsVariableProduct { get; set; }
     /// <summary>combination | weight</summary>

@@ -979,6 +979,11 @@ export function ProductManagementPage({
           }
           isSubProduct={produceTarget.product.isSubProduct}
           isB2bProduct={!produceTarget.product.isSubProduct}
+          baseUnitCost={
+            produceTarget.product.isSubProduct && produceTarget.product.yieldQuantity > 0
+              ? produceTarget.product.totalCost / produceTarget.product.yieldQuantity
+              : produceTarget.product.totalCost
+          }
           expiryPeriodDays={produceTarget.product.expiryPeriodDays}
           purpose={produceTarget.purpose}
           batchNumber={produceTarget.product.batchNumber}
@@ -993,7 +998,9 @@ export function ProductManagementPage({
           components={produceComponents}
           previewLoading={previewLoading}
           subProductOptions={products
-            .filter(p => p.active && p.isSubProduct && p.id !== produceTarget.product.id)
+            .filter(p => p.active
+              && p.id !== produceTarget.product.id
+              && (p.isSubProduct || p.isBiProduct))
             .map(p => ({
               id: p.id,
               name: p.name,

@@ -986,6 +986,7 @@ public class StockCardService(
 
             if (string.Equals(log.EntryType, "produced", StringComparison.OrdinalIgnoreCase))
             {
+                var inboundUnitPrice = log.UnitPrice > 0 ? log.UnitPrice : productionUnitPrice;
                 events.Add(new FifoEvent
                 {
                     Id = log.Id,
@@ -994,7 +995,7 @@ public class StockCardService(
                     Quantity = log.Quantity,
                     SignedQty = log.Quantity,
                     Uom = uom,
-                    UnitPrice = productionUnitPrice,
+                    UnitPrice = inboundUnitPrice,
                     Reason = string.IsNullOrWhiteSpace(log.BatchNumber)
                         ? "Production recorded"
                         : $"Production batch {log.BatchNumber}",
