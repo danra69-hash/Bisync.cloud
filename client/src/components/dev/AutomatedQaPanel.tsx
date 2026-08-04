@@ -22,6 +22,7 @@ import {
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { ColGroup } from '../shared/SortableTableHead';
 import { QaLiveMonitorOverlay } from './QaLiveMonitorOverlay';
+import { AuditTrailPanel } from './AuditTrailPanel';
 
 type QaPanelTab = 'run' | 'history';
 
@@ -50,29 +51,6 @@ function StatusIcon({ status }: { status: QaStatus }) {
   if (status === 'skip') return <Circle size={14} className="text-muted-foreground" />;
   if (status === 'running') return <MillstoneLoader size="xs" layout="inline" label="" />;
   return <Circle size={14} className="text-muted-foreground" />;
-}
-
-function historyStatusClass(status: string): string {
-  const s = status.toLowerCase();
-  if (s === 'passed') return 'bg-emerald-500/15 text-emerald-700';
-  if (s === 'failed') return 'bg-red-500/15 text-red-700';
-  if (s === 'warning') return 'bg-amber-500/15 text-amber-800';
-  return 'bg-muted text-muted-foreground';
-}
-
-function parseHistoryTasks(resultsJson: string): QaTaskResult[] {
-  return parseQaAuditPayload(resultsJson).tasks;
-}
-
-function auditLifecycleLabel(row: DevQaHistoryRow): { label: string; className: string } {
-  const { audit } = parseQaAuditPayload(row.resultsJson);
-  if (audit?.dataLifecycle === 'disappeared') {
-    return { label: 'Disappeared', className: 'bg-muted text-muted-foreground' };
-  }
-  if (audit?.dataLifecycle === 'active') {
-    return { label: 'Active data', className: 'bg-sky-500/15 text-sky-800' };
-  }
-  return { label: 'Legacy', className: 'bg-muted text-muted-foreground' };
 }
 
 function StepDetailPanel({
@@ -294,7 +272,6 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
   const [runSummary, setRunSummary] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<'passed' | 'failed' | 'warning' | null>(null);
   const [history, setHistory] = useState<DevQaHistoryRow[]>([]);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [issue, setIssue] = useState<QaIssueViewModel | null>(null);
   const [fixing, setFixing] = useState(false);
   const [fixMessage, setFixMessage] = useState<string | null>(null);
@@ -306,10 +283,9 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
 
   const loadHistory = useCallback(async () => {
     try {
-      setHistoryError(null);
       setHistory(await devConsoleApi.qaHistory(40));
-    } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Failed to load QA History');
+    } catch {
+      // History table loads itself; this feed is only for purge visibility.
     }
   }, []);
 
@@ -323,34 +299,6 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
   function openStep(task: QaTaskResult, summary?: string | null, context?: PowerQaContext | null) {
     setFixMessage(null);
     setIssue(buildIssueView(task, context ?? runContext, summary ?? runSummary));
-  }
-
-  function openHistoryRow(row: DevQaHistoryRow) {
-    const { tasks: parsed, audit } = parseQaAuditPayload(row.resultsJson);
-    if (parsed.length === 0) return;
-    const problem = parsed.find(t => t.status === 'fail') ?? parsed.find(t => t.status === 'warn') ?? parsed[parsed.length - 1];
-    setTasks(parsed);
-    setRunSummary(row.summary);
-    setLastRunId(row.id);
-    setLastAudit(audit);
-    setRunStatus(
-      row.status === 'passed' || row.status === 'failed' || row.status === 'warning'
-        ? row.status
-        : null,
-    );
-    if (audit?.context) {
-      setRunContext({
-        ...audit.context,
-        components: audit.context.components ?? [],
-        purchaseOrders: audit.context.purchaseOrders ?? [],
-      });
-    } else {
-      setRunContext(null);
-    }
-    setTab('run');
-    openStep(problem, row.summary, audit?.context
-      ? { ...audit.context, components: audit.context.components ?? [], purchaseOrders: audit.context.purchaseOrders ?? [] }
-      : null);
   }
 
   async function persistAndFinish(
@@ -561,6 +509,18 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setTab(tab === 'history' ? 'run' : 'history')}
+            className={`inline-flex items-center gap-1.5 text-xs font-medium border rounded-md px-3 py-2 ${
+              tab === 'history'
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border hover:bg-muted'
+            }`}
+          >
+            <History size={13} />
+            QA History
+          </button>
           {canShowPurge && (
             <button
               type="button"
@@ -583,23 +543,6 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
             {running ? 'Running…' : 'Run automated QA'}
           </button>
         </div>
-      </div>
-
-      <div className="flex items-center gap-1 border-b border-border">
-        <button
-          type="button"
-          onClick={() => setTab('run')}
-          className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'run' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-        >
-          Run
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('history')}
-          className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px ${tab === 'history' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-        >
-          <History size={12} /> QA History
-        </button>
       </div>
 
       {runSummary && tab === 'run' && (
@@ -690,72 +633,7 @@ export function AutomatedQaPanel({ triggeredBy }: { triggeredBy: string }) {
         </div>
       )}
 
-      {tab === 'history' && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">QA History</h3>
-            <button type="button" onClick={() => void loadHistory()} className="text-[11px] text-primary hover:underline">Refresh</button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Results of completed Automated QA runs. Successful runs permanently delete operational data; only these history rows remain.
-          </p>
-          {historyError && (
-            <div className="px-3 py-2 rounded-md bg-destructive/10 text-destructive text-xs">{historyError}</div>
-          )}
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <table className="w-full text-xs">
-              <ColGroup widths={['14%', '10%', '10%', '16%', '50%']} />
-              <thead>
-                <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">When</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Data</th>
-                  <th className="px-3 py-2 font-medium">Triggered by</th>
-                  <th className="px-3 py-2 font-medium">Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map(row => {
-                  const parsed = parseHistoryTasks(row.resultsJson);
-                  const lifecycle = auditLifecycleLabel(row);
-                  const clickable = parsed.length > 0;
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`border-b border-border last:border-0 ${clickable ? 'cursor-pointer hover:bg-muted/30' : ''}`}
-                      onClick={() => { if (clickable) openHistoryRow(row); }}
-                    >
-                      <td className="px-3 py-2 font-sans whitespace-nowrap">{new Date(row.startedAt).toLocaleString()}</td>
-                      <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${historyStatusClass(row.status)}`}>
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${lifecycle.className}`}>
-                          {lifecycle.label}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">{row.triggeredBy || '—'}</td>
-                      <td className="px-3 py-2 text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          {row.summary || '—'}
-                          {clickable && <ChevronRight size={12} className="shrink-0" />}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {history.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No QA History yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {tab === 'history' && <AuditTrailPanel embedded />}
 
       {issue && (
         <StepDetailPanel
