@@ -20,7 +20,7 @@ export function FeaturePage({ crumb, title, subtitle, actions, children }: Props
         </div>
         {actions && <div className="feature-page__actions">{actions}</div>}
       </header>
-      {children}
+      <div className="feature-page__body">{children}</div>
     </div>
   )
 }

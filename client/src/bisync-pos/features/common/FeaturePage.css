@@ -1,5 +1,11 @@
 .feature-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: var(--space-5);
+  box-sizing: border-box;
 }
 
 .feature-page__header {
@@ -7,7 +13,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
 }
 
 .feature-page__crumb {
@@ -33,6 +40,17 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* Everything below the title scrolls on small / short viewports. */
+.feature-page__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: max(var(--space-5), env(safe-area-inset-bottom, 0px));
 }
 
 .panel-grid {
