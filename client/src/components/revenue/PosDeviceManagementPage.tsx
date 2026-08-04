@@ -334,7 +334,12 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
 
       if (saved.deviceType === 'printer') {
         const deployed = await api.deployPosPrinterSdk(saved.id)
-        flash(deployed.message)
+        const test = await api.testPosPrinterPrint(saved.id).catch(() => null)
+        flash(
+          test
+            ? `${deployed.message} ${test.message}`
+            : deployed.message,
+        )
         await loadDevices()
         openPrinterSetup(deployed.device)
         return

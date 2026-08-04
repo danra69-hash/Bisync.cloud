@@ -3862,6 +3862,17 @@ export const api = {
       `/api/pos-devices/${id}/deploy-sdk`,
       'POST',
     ),
+  testPosPrinterPrint: (id: number) =>
+    fetchJsonWithMethod<{
+      sent: boolean
+      skipped?: boolean
+      host?: string
+      port?: number
+      bytes?: number
+      durationMs?: number
+      device: PosDevice
+      message: string
+    }>(`/api/pos-devices/${id}/test-print`, 'POST'),
   savePosPrinterSetup: (
     id: number,
     data: {

@@ -165,7 +165,12 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
       })
       if (created.deviceType === 'printer' && draft.printerSdkCode) {
         const deployed = await api.deployPosPrinterSdk(created.id)
-        setStatus(deployed.message)
+        const test = await api.testPosPrinterPrint(created.id)
+        setStatus(
+          test.sent
+            ? `${deployed.message} ${test.message}`
+            : `${deployed.message} ${test.message}`,
+        )
       } else {
         setStatus(`Added ${created.name}.`)
       }
@@ -245,13 +250,33 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
       if (printerId) {
         setBusyId(printerId)
         const deployed = await api.deployPosPrinterSdk(printerId)
-        setStatus(`${deployed.message} Package downloaded: ${pack.fileName}`)
+        const test = await api.testPosPrinterPrint(printerId)
+        setStatus(
+          `${deployed.message} Package: ${pack.fileName}. ${test.message}`,
+        )
         await load()
       } else {
-        setStatus(`Downloaded ${pack.fileName}. Select a printer and Install to bind the driver.`)
+        setStatus(`Downloaded ${pack.fileName}. Select a printer and Install to bind the driver (then a test print runs).`)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Driver download failed.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function runTestPrint(device: PosDevice) {
+    if (device.deviceType !== 'printer') return
+    setBusyId(device.id)
+    setError(null)
+    setStatus(null)
+    try {
+      const result = await api.testPosPrinterPrint(device.id)
+      if (result.sent) setStatus(result.message)
+      else setStatus(result.message)
+      if (!result.sent && !result.skipped) setError(result.message)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Test print failed.')
     } finally {
       setBusyId(null)
     }
@@ -443,6 +468,11 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     onRenameCancel={() => setRenameId(null)}
                     onRenameSave={() => void commitRename(d)}
                     onToggle={() => void toggleActive(d)}
+                    onTestPrint={
+                      d.deviceType === 'printer'
+                        ? () => void runTestPrint(d)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -582,6 +612,11 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     onRenameCancel={() => setRenameId(null)}
                     onRenameSave={() => void commitRename(d)}
                     onToggle={() => void toggleActive(d)}
+                    onTestPrint={
+                      d.deviceType === 'printer'
+                        ? () => void runTestPrint(d)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -592,6 +627,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
             <h3>Drivers from server</h3>
             <p className="device-setup-hint">
               Download the driver package, then install it on a registered printer.
+              A test print runs automatically once the driver is installed.
             </p>
             {sdks.length === 0 ? (
               <p className="device-setup-empty">No printer SDKs seeded yet.</p>
@@ -664,6 +700,7 @@ function DeviceRow({
   onRenameCancel,
   onRenameSave,
   onToggle,
+  onTestPrint,
 }: {
   device: PosDevice
   busy: boolean
@@ -674,6 +711,7 @@ function DeviceRow({
   onRenameCancel: () => void
   onRenameSave: () => void
   onToggle: () => void
+  onTestPrint?: () => void
 }) {
   return (
     <div className={`device-setup-row${!device.active ? ' is-disabled' : ''}`}>
@@ -693,6 +731,7 @@ function DeviceRow({
           {device.connectionType}
           {device.hostAddress ? ` · ${device.hostAddress}` : ''}
           {device.port ? `:${device.port}` : ''}
+          {device.printerSdkCode ? ` · ${device.printerSdkCode}` : ''}
         </code>
       </div>
       <div className="device-setup-row__actions">
@@ -707,6 +746,17 @@ function DeviceRow({
           </>
         ) : (
           <>
+            {onTestPrint ? (
+              <button
+                type="button"
+                className="device-setup-btn device-setup-btn--primary"
+                disabled={busy}
+                onClick={onTestPrint}
+                title="Send a Bisync test slip to this printer"
+              >
+                {busy ? 'Printing…' : 'Test print'}
+              </button>
+            ) : null}
             <button type="button" className="device-setup-btn device-setup-btn--ghost" onClick={onRenameStart}>
               Rename
             </button>
