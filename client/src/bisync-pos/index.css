@@ -17,6 +17,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
   /* Contain position:fixed overlays (Admin sidebar, modals) inside the POS frame. */
   transform: translateZ(0);
 }
