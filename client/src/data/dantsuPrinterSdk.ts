@@ -13,8 +13,8 @@ export const DANTSU_PRINTER_SDK_VERSION = '3.4.0';
 
 export const DANTSU_PRINTER_SDK_SUMMARY =
   'Official Android library for ESC/POS thermal printers over Bluetooth, TCP/IP, and USB. '
-  + 'This is the sole printer SDK packaged for Bisync POS. Download the install zip onto the Android device, '
-  + 'then bind the driver in POS Setup.';
+  + 'Packaged for Bisync Android POS stations. For Windows LAN testing use the ESC/POS Windows package. '
+  + 'Download the install zip onto the Android device, then bind the driver in POS Setup.';
 
 export const DANTSU_PRINTER_SDK_UPSTREAM =
   'https://github.com/DantSu/ESCPOS-ThermalPrinter-Android';

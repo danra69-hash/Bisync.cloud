@@ -34,9 +34,17 @@ import {
   DANTSU_PRINTER_SDK_UPSTREAM,
   DANTSU_PRINTER_SDK_VERSION,
 } from '../../data/dantsuPrinterSdk';
+import {
+  WINDOWS_ESCPOS_SDK_DOWNLOAD_PATH,
+  WINDOWS_ESCPOS_SDK_REVISED_DATE,
+  WINDOWS_ESCPOS_SDK_STEPS,
+  WINDOWS_ESCPOS_SDK_SUMMARY,
+  WINDOWS_ESCPOS_SDK_TITLE,
+  WINDOWS_ESCPOS_SDK_VERSION,
+} from '../../data/windowsEscposSdk';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
-type LibraryEntryId = 'eula' | 'privacy' | 'dpa' | 'fifo' | 'nutrition' | 'dantsu-printer';
+type LibraryEntryId = 'eula' | 'privacy' | 'dpa' | 'fifo' | 'nutrition' | 'dantsu-printer' | 'windows-escpos';
 
 type LibraryEntry = {
   id: LibraryEntryId;
@@ -156,7 +164,7 @@ function DantsuPrinterSdkDetails({
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground leading-relaxed">{DANTSU_PRINTER_SDK_SUMMARY}</p>
       <p className="text-[11px] text-muted-foreground">
-        Version {DANTSU_PRINTER_SDK_VERSION} · Sole Bisync POS printer SDK · Bluetooth / TCP / USB
+        Version {DANTSU_PRINTER_SDK_VERSION} · Android POS printer SDK · Bluetooth / TCP / USB
       </p>
 
       <ol className="space-y-3 border-t border-border/60 pt-3">
@@ -198,6 +206,52 @@ function DantsuPrinterSdkDetails({
       </p>
       <p className="text-[10px] font-mono text-muted-foreground break-all">
         API · {DANTSU_PRINTER_SDK_DOWNLOAD_PATH}
+      </p>
+    </div>
+  );
+}
+
+function WindowsEscposSdkDetails({
+  downloading,
+  onDownload,
+}: {
+  downloading: boolean;
+  onDownload: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground leading-relaxed">{WINDOWS_ESCPOS_SDK_SUMMARY}</p>
+      <p className="text-[11px] text-muted-foreground">
+        Version {WINDOWS_ESCPOS_SDK_VERSION} · Windows LAN test · ESC/POS TCP 9100
+      </p>
+
+      <ol className="space-y-3 border-t border-border/60 pt-3">
+        {WINDOWS_ESCPOS_SDK_STEPS.map(step => (
+          <li key={step.id} className="grid gap-1 sm:grid-cols-[2.5rem_1fr]">
+            <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+              {step.number}.
+            </span>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-semibold">{step.title}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+        <button
+          type="button"
+          disabled={downloading}
+          onClick={onDownload}
+          className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+        >
+          {downloading ? 'Downloading…' : 'Download Windows LAN test package'}
+        </button>
+      </div>
+
+      <p className="text-[10px] font-mono text-muted-foreground break-all">
+        API · {WINDOWS_ESCPOS_SDK_DOWNLOAD_PATH}
       </p>
     </div>
   );
@@ -310,6 +364,7 @@ export function RefLibraryTab() {
   const [error, setError] = useState<string | null>(null);
   const [sqlCopied, setSqlCopied] = useState(false);
   const [sdkDownloading, setSdkDownloading] = useState(false);
+  const [windowsSdkDownloading, setWindowsSdkDownloading] = useState(false);
   const [expandedId, setExpandedId] = useState<LibraryEntryId | null>(null);
 
   const load = useCallback(async () => {
@@ -361,6 +416,26 @@ export function RefLibraryTab() {
     }
   }
 
+  async function handleDownloadWindowsSdk() {
+    setWindowsSdkDownloading(true);
+    setError(null);
+    try {
+      const pack = await api.downloadPosPrinterSdkPackage('escpos-lan-windows');
+      const url = URL.createObjectURL(pack.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = pack.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download Windows printer test package.');
+    } finally {
+      setWindowsSdkDownloading(false);
+    }
+  }
+
   const portalUrl = status?.portalUrl || 'https://fdc.nal.usda.gov/';
   const nutritionRevised = status?.lastSyncedAt ?? status?.lastCheckedAt;
 
@@ -390,6 +465,11 @@ export function RefLibraryTab() {
         id: 'dantsu-printer',
         title: DANTSU_PRINTER_SDK_TITLE,
         revisedLabel: DANTSU_PRINTER_SDK_REVISED_DATE,
+      },
+      {
+        id: 'windows-escpos',
+        title: WINDOWS_ESCPOS_SDK_TITLE,
+        revisedLabel: WINDOWS_ESCPOS_SDK_REVISED_DATE,
       },
       {
         id: 'nutrition',
@@ -443,6 +523,13 @@ export function RefLibraryTab() {
             onDownload={() => void handleDownloadDantsuSdk()}
           />
         );
+      case 'windows-escpos':
+        return (
+          <WindowsEscposSdkDetails
+            downloading={windowsSdkDownloading}
+            onDownload={() => void handleDownloadWindowsSdk()}
+          />
+        );
       case 'nutrition':
         return (
           <NutritionDetails status={status} loading={loading} portalUrl={portalUrl} />
@@ -461,7 +548,7 @@ export function RefLibraryTab() {
             Ref &amp; Library
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Click a title to expand details. Includes legal docs, FIFO guide, DantSu printer SDK, and nutrition library.
+            Click a title to expand details. Includes legal docs, FIFO guide, DantSu Android + Windows ESC/POS printer packages, and nutrition library.
           </p>
         </div>
         <div className="flex items-center gap-2">
