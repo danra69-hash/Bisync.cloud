@@ -116,6 +116,14 @@ export interface LocationConfig {
   /** Brand label on POS (defaults to location name). */
   conceptLabel?: string;
   conceptSortOrder?: number;
+  /** Original filename for the location logo (may differ from company logo). */
+  logoFileName?: string;
+  /** MIME type, e.g. image/png. */
+  logoContentType?: string;
+  /** Raw base64 logo bytes (no data-URL prefix). */
+  logoBase64?: string;
+  /** True when a location logo is stored. */
+  logoSet?: boolean;
 }
 
 export interface Company {
@@ -2152,6 +2160,8 @@ export interface VendorOrderPortal {
     city: string;
     stateProvince: string;
     postcode: string;
+    logoContentType?: string;
+    logoBase64?: string;
   } | null;
   vendor: {
     name: string;
@@ -2172,6 +2182,8 @@ export interface VendorOrderPortal {
     city: string;
     stateProvince: string;
     postcode: string;
+    logoContentType?: string;
+    logoBase64?: string;
   }[];
   items: VendorOrderPortalItem[];
 }

@@ -55,6 +55,12 @@ export function buildPurchaseOrderPdfDataFromPortal(portal: VendorOrderPortal): 
           email: company.email,
         }
       : { name: '—', address: '' },
+    companyLogo: company?.logoBase64
+      ? {
+          contentType: company.logoContentType,
+          base64: company.logoBase64,
+        }
+      : null,
     deliveryLocations: portal.deliveryLocations.map(loc => ({
       name: loc.name,
       address: formatAddress([
@@ -62,6 +68,12 @@ export function buildPurchaseOrderPdfDataFromPortal(portal: VendorOrderPortal): 
         loc.addressLine2,
         [loc.city, loc.stateProvince, loc.postcode].filter(Boolean).join(', '),
       ]),
+      logo: loc.logoBase64
+        ? {
+            contentType: loc.logoContentType,
+            base64: loc.logoBase64,
+          }
+        : null,
     })),
     vendor: {
       name: vendor.name,

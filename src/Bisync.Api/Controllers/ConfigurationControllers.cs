@@ -624,7 +624,10 @@ public record LocationConfigUpdate(
     bool Active = true,
     string? PhysicalSiteKey = null,
     string? ConceptLabel = null,
-    int? ConceptSortOrder = null
+    int? ConceptSortOrder = null,
+    string? LogoFileName = null,
+    string? LogoContentType = null,
+    string? LogoBase64 = null
 );
 
 public record LocationConfigCreate(
@@ -646,5 +649,8 @@ public record LocationConfigCreate(
     bool Active = true,
     string? PhysicalSiteKey = null,
     string? ConceptLabel = null,
-    int? ConceptSortOrder = null
+    int? ConceptSortOrder = null,
+    string? LogoFileName = null,
+    string? LogoContentType = null,
+    string? LogoBase64 = null
 );

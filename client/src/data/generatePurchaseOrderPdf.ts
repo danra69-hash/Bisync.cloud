@@ -11,9 +11,17 @@ export type PurchaseOrderPdfParty = {
   contact?: string;
 };
 
+export type PurchaseOrderPdfLogo = {
+  /** MIME type, e.g. image/png. */
+  contentType?: string;
+  /** Raw base64 (no data-URL prefix) or a data URL. */
+  base64?: string;
+};
+
 export type PurchaseOrderPdfLocation = {
   name: string;
   address: string;
+  logo?: PurchaseOrderPdfLogo | null;
 };
 
 export type PurchaseOrderPdfLine = {
@@ -34,6 +42,8 @@ export type PurchaseOrderPdfData = {
   deliveryDateHeading?: string;
   countryCode?: string;
   company: PurchaseOrderPdfParty;
+  /** Company logo for the PDF header (fallback when location has none / same logo). */
+  companyLogo?: PurchaseOrderPdfLogo | null;
   deliveryLocations: PurchaseOrderPdfLocation[];
   vendor: PurchaseOrderPdfParty;
   items: PurchaseOrderPdfLine[];
@@ -47,44 +57,74 @@ export type PurchaseOrderPdfData = {
 
 type JsPDFDoc = import('jspdf').jsPDF;
 
-let cachedLogoDataUrl: string | null | undefined;
+const PAGE_CONTENT_BOTTOM = 268;
+const FOOTER_Y = 287;
+
+let cachedPoweredByLogoDataUrl: string | null | undefined;
 
 async function loadJsPDF() {
   const { jsPDF } = await import('jspdf');
   return jsPDF;
 }
 
-async function loadLogoDataUrl(): Promise<string | null> {
-  if (cachedLogoDataUrl !== undefined) return cachedLogoDataUrl;
+function normalizeLogoBase64(raw?: string | null): string {
+  const value = (raw ?? '').trim();
+  if (!value) return '';
+  if (value.startsWith('data:')) {
+    const comma = value.indexOf(',');
+    return comma >= 0 ? value.slice(comma + 1).trim() : '';
+  }
+  return value;
+}
+
+function logoToDataUrl(logo?: PurchaseOrderPdfLogo | null): string | null {
+  if (!logo) return null;
+  const raw = (logo.base64 ?? '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('data:')) return raw;
+  const type = (logo.contentType ?? '').trim() || 'image/png';
+  return `data:${type};base64,${raw}`;
+}
+
+function jsPdfImageFormat(contentType?: string, dataUrl?: string | null): 'PNG' | 'JPEG' | 'WEBP' {
+  const type = (contentType ?? '').toLowerCase();
+  const src = (dataUrl ?? '').toLowerCase();
+  if (type.includes('jpeg') || type.includes('jpg') || src.startsWith('data:image/jpeg')) return 'JPEG';
+  if (type.includes('webp') || src.startsWith('data:image/webp')) return 'WEBP';
+  return 'PNG';
+}
+
+/** Prefer a delivery-location logo when it differs from the company logo; else company. */
+function resolveHeaderLogo(data: PurchaseOrderPdfData): PurchaseOrderPdfLogo | null {
+  const companyBase64 = normalizeLogoBase64(data.companyLogo?.base64);
+  for (const loc of data.deliveryLocations) {
+    const locationBase64 = normalizeLogoBase64(loc.logo?.base64);
+    if (locationBase64 && locationBase64 !== companyBase64) {
+      return loc.logo ?? null;
+    }
+  }
+  if (companyBase64) return data.companyLogo ?? null;
+  return null;
+}
+
+async function loadPoweredByLogoDataUrl(): Promise<string | null> {
+  if (cachedPoweredByLogoDataUrl !== undefined) return cachedPoweredByLogoDataUrl;
   try {
-    const response = await fetch('/favicon.svg');
+    const response = await fetch('/bisync-logo.png');
     if (!response.ok) {
-      cachedLogoDataUrl = null;
+      cachedPoweredByLogoDataUrl = null;
       return null;
     }
-    const svgText = await response.text();
-    const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('logo load failed'));
-      img.src = url;
+    const blob = await response.blob();
+    cachedPoweredByLogoDataUrl = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
     });
-    const canvas = document.createElement('canvas');
-    canvas.width = 96;
-    canvas.height = 96;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      cachedLogoDataUrl = null;
-      return null;
-    }
-    ctx.drawImage(img, 0, 0, 96, 96);
-    URL.revokeObjectURL(url);
-    cachedLogoDataUrl = canvas.toDataURL('image/png');
-    return cachedLogoDataUrl;
+    return cachedPoweredByLogoDataUrl;
   } catch {
-    cachedLogoDataUrl = null;
+    cachedPoweredByLogoDataUrl = null;
     return null;
   }
 }
@@ -113,6 +153,74 @@ function drawMultilineBlock(
   return cursor;
 }
 
+function drawHeaderLogo(
+  doc: JsPDFDoc,
+  data: PurchaseOrderPdfData,
+  margin: number,
+  y: number,
+): void {
+  const logo = resolveHeaderLogo(data);
+  const dataUrl = logoToDataUrl(logo);
+  if (dataUrl) {
+    try {
+      doc.addImage(dataUrl, jsPdfImageFormat(logo?.contentType, dataUrl), margin, y - 2, 18, 18);
+      return;
+    } catch {
+      // Fall through to initials tile.
+    }
+  }
+
+  doc.setFillColor(243, 112, 33);
+  doc.roundedRect(margin, y - 2, 18, 18, 2, 2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  const initials = data.company.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase() ?? '')
+    .join('');
+  doc.text(initials || 'CO', margin + 9, y + 9, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+}
+
+async function drawPoweredByFooterOnAllPages(doc: JsPDFDoc): Promise<void> {
+  const pageCount = doc.getNumberOfPages();
+  const pageWidth = 210;
+  const poweredByLogo = await loadPoweredByLogoDataUrl();
+  const label = 'Powered by';
+  const logoW = 22;
+  const logoH = 6.5;
+  const gap = 2.5;
+
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    const labelWidth = doc.getTextWidth(label);
+    const totalWidth = poweredByLogo ? labelWidth + gap + logoW : labelWidth;
+    const startX = (pageWidth - totalWidth) / 2;
+    const textY = FOOTER_Y;
+    doc.text(label, startX, textY);
+    if (poweredByLogo) {
+      try {
+        doc.addImage(poweredByLogo, 'PNG', startX + labelWidth + gap, textY - 5, logoW, logoH);
+      } catch {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(243, 112, 33);
+        doc.text('Bisync.cloud', startX + labelWidth + gap, textY);
+      }
+    } else {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(243, 112, 33);
+      doc.text('Bisync.cloud', startX + labelWidth + gap, textY);
+    }
+    doc.setTextColor(0, 0, 0);
+  }
+}
+
 async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData): Promise<void> {
   const margin = 14;
   const pageWidth = 210;
@@ -121,24 +229,7 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   const colRight = 110;
   let y = 16;
 
-  const logo = await loadLogoDataUrl();
-  if (logo) {
-    doc.addImage(logo, 'PNG', margin, y - 2, 18, 18);
-  } else {
-    doc.setFillColor(243, 112, 33);
-    doc.roundedRect(margin, y - 2, 18, 18, 2, 2, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    const initials = data.company.name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map(w => w[0]?.toUpperCase() ?? '')
-      .join('');
-    doc.text(initials || 'CO', margin + 9, y + 9, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
-  }
+  drawHeaderLogo(doc, data, margin, y);
 
   const labels = getPurchaseDocumentLabels(data.documentKind);
 
@@ -239,7 +330,7 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   for (const item of data.items) {
-    if (y > 248) {
+    if (y > PAGE_CONTENT_BOTTOM) {
       doc.addPage();
       y = 18;
     }
@@ -254,6 +345,11 @@ async function renderPurchaseOrderPage(doc: JsPDFDoc, data: PurchaseOrderPdfData
     doc.text(formatRm(item.taxAmount, data.countryCode), cols.tax, y, { align: 'right' });
     doc.text(formatRm(item.lineTotal, data.countryCode), cols.total, y, { align: 'right' });
     y += rowHeight;
+  }
+
+  if (y > PAGE_CONTENT_BOTTOM - 60) {
+    doc.addPage();
+    y = 18;
   }
 
   y += 2;
@@ -303,6 +399,7 @@ export async function createPurchaseOrderPdfBlob(data: PurchaseOrderPdfData): Pr
   const jsPDF = await loadJsPDF();
   const doc = new jsPDF();
   await renderPurchaseOrderPage(doc, data);
+  await drawPoweredByFooterOnAllPages(doc);
   return doc.output('blob');
 }
 
@@ -313,6 +410,7 @@ export async function createCombinedPurchaseOrderPdfBlob(orders: PurchaseOrderPd
     if (index > 0) doc.addPage();
     await renderPurchaseOrderPage(doc, orders[index]);
   }
+  await drawPoweredByFooterOnAllPages(doc);
   return doc.output('blob');
 }
 
