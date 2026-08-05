@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, MapPin, X } from 'lucide-react';
-import type { DropdownLocation } from '../../utils/orgFilters';
+import { physicalSiteGroups, type DropdownLocation } from '../../utils/orgFilters';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
 type Props = {
@@ -30,6 +30,7 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
 
   const allIds = locations.map(l => l.externalId);
   const allSelected = allIds.length > 0 && allIds.every(id => selected.includes(id));
+  const siteGroups = physicalSiteGroups(locations);
 
   function toggleAll() {
     if (disabled) return;
@@ -43,6 +44,17 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
     } else {
       onChange([...selected, externalId]);
     }
+  }
+
+  function selectSite(locationIds: string[]) {
+    if (disabled) return;
+    const set = new Set(selected);
+    const allOn = locationIds.every(id => set.has(id));
+    if (allOn) {
+      onChange(selected.filter(id => !locationIds.includes(id)));
+      return;
+    }
+    onChange([...new Set([...selected, ...locationIds])]);
   }
 
   function isChecked(externalId: string) {
@@ -101,24 +113,52 @@ export function LocationDropdown({ locations, selected, onChange, variant = 'def
           <div className="py-1 max-h-64 overflow-y-auto">
             {locations.length === 0 ? (
               <p className="px-4 py-3 text-xs text-muted-foreground">No locations for this company.</p>
-            ) : locations.map(loc => {
-              const checked = isChecked(loc.externalId);
-              return (
-                <button
-                  key={loc.externalId}
-                  onClick={() => toggleLocation(loc.externalId)}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted transition-colors text-left"
-                >
-                  <div className={`w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-primary border-primary' : 'border-border'}`}>
-                    {checked && <Check size={10} className="text-primary-foreground" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-foreground">{loc.name}</p>
-                    <p className="text-xs text-muted-foreground font-sans truncate">{loc.address}</p>
-                  </div>
-                </button>
-              );
-            })}
+            ) : (
+              <>
+                {siteGroups.map(site => {
+                  const checked = site.locationIds.every(id => isChecked(id));
+                  return (
+                    <button
+                      key={`site-${site.siteKey}`}
+                      onClick={() => selectSite(site.locationIds)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted transition-colors text-left border-b border-border/60"
+                    >
+                      <div className={`w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-primary border-primary' : 'border-border'}`}>
+                        {checked && <Check size={10} className="text-primary-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground">{site.label}</p>
+                        <p className="text-xs text-muted-foreground font-sans truncate">
+                          Combined revenue &amp; cost · {site.locationIds.length} concepts
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+                {locations.map(loc => {
+                  const checked = isChecked(loc.externalId);
+                  return (
+                    <button
+                      key={loc.externalId}
+                      onClick={() => toggleLocation(loc.externalId)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted transition-colors text-left"
+                    >
+                      <div className={`w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-primary border-primary' : 'border-border'}`}>
+                        {checked && <Check size={10} className="text-primary-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground">
+                          {loc.conceptLabel && loc.conceptLabel !== loc.name
+                            ? `${loc.conceptLabel} · ${loc.name}`
+                            : loc.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-sans truncate">{loc.address}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
 
           {selected.length > 0 && (

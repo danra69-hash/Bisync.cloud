@@ -17,11 +17,22 @@ import {
 } from '../domain/tables'
 import { cloneJson } from '../domain/clonePlan'
 import {
+  loadFloorPlanDocumentLocal,
   loadFloorPlanLocal,
-  persistFloorPlanRemote,
-  pullFloorPlanFromServer,
+  persistFloorPlanDocumentRemote,
+  pullFloorPlanDocumentFromServer,
+  saveFloorPlanDocumentLocal,
   syncFloorPlan,
 } from '../domain/floorPlanSync'
+import {
+  addFloorLevel,
+  documentToActivePlan,
+  removeFloorLevel,
+  renameFloorLevel,
+  replaceActiveFloor,
+  setActiveFloorKey,
+  type FloorPlanDocument,
+} from '../domain/multiFloor'
 import { FLOOR_PLAN_CHANGED_EVENT } from '../domain/reservations'
 import { useConfig } from '../../../core/config/ConfigProvider'
 import { formatOpenedAt, printTableQr } from '../../../core/config/qrTable'
@@ -60,6 +71,20 @@ export function FloorPlanPage() {
   const canvasRef = useRef<HTMLDivElement>(null)
   const companyId = session?.companyId ?? 0
   const locationId = session?.locationId ?? ''
+  const [doc, setDoc] = useState<FloorPlanDocument>(() =>
+    companyId > 0 && locationId
+      ? loadFloorPlanDocumentLocal(companyId, locationId)
+      : {
+          floors: [{
+            key: 'ground',
+            name: 'Ground floor',
+            sortOrder: 0,
+            tables: loadFloorPlan().tables,
+            zones: loadFloorPlan().zones,
+          }],
+          activeFloorKey: 'ground',
+        },
+  )
   const [plan, setPlan] = useState<FloorPlanState>(() =>
     companyId > 0 && locationId
       ? loadFloorPlanLocal(companyId, locationId)
@@ -82,7 +107,70 @@ export function FloorPlanPage() {
   const [syncNote, setSyncNote] = useState<string | null>(null)
   const [savingLayout, setSavingLayout] = useState(false)
   const draftRef = useRef<FloorPlanState | null>(null)
+  const docRef = useRef(doc)
   draftRef.current = draft
+  docRef.current = doc
+
+  function switchFloor(floorKey: string) {
+    if (floorKey === doc.activeFloorKey) return
+    const base = editing && draft ? replaceActiveFloor(doc, draft) : replaceActiveFloor(doc, plan)
+    const next = setActiveFloorKey(base, floorKey)
+    setDoc(next)
+    const active = documentToActivePlan(next)
+    setPlan(active)
+    if (editing) {
+      setDraft(cloneJson(active))
+      setSelected(null)
+    }
+    if (companyId > 0 && locationId) {
+      saveFloorPlanDocumentLocal(next, companyId, locationId)
+    }
+  }
+
+  function handleAddFloor() {
+    const base = editing && draft ? replaceActiveFloor(doc, draft) : replaceActiveFloor(doc, plan)
+    const next = addFloorLevel(base)
+    setDoc(next)
+    const active = documentToActivePlan(next)
+    setPlan(active)
+    if (editing) {
+      setDraft(cloneJson(active))
+      setSelected(null)
+    } else if (companyId > 0 && locationId) {
+      void persistFloorPlanDocumentRemote(next, companyId, locationId)
+    }
+    const name = next.floors.find(f => f.key === next.activeFloorKey)?.name || 'floor'
+    setSyncNote(`Added ${name} — design tables, then Save layout`)
+    window.setTimeout(() => setSyncNote(null), 3200)
+  }
+
+  function handleRemoveActiveFloor() {
+    if (doc.floors.length <= 1) return
+    if (!window.confirm(`Remove “${doc.floors.find(f => f.key === doc.activeFloorKey)?.name}”? Tables on that floor will be deleted.`)) {
+      return
+    }
+    const base = editing && draft ? replaceActiveFloor(doc, draft) : replaceActiveFloor(doc, plan)
+    const next = removeFloorLevel(base, base.activeFloorKey)
+    setDoc(next)
+    const active = documentToActivePlan(next)
+    setPlan(active)
+    if (editing) setDraft(cloneJson(active))
+    if (companyId > 0 && locationId) {
+      void persistFloorPlanDocumentRemote(next, companyId, locationId)
+    }
+  }
+
+  function handleRenameActiveFloor() {
+    const current = doc.floors.find(f => f.key === doc.activeFloorKey)
+    if (!current) return
+    const name = window.prompt('Floor name', current.name)?.trim()
+    if (!name || name === current.name) return
+    const next = renameFloorLevel(doc, current.key, name)
+    setDoc(next)
+    if (companyId > 0 && locationId) {
+      saveFloorPlanDocumentLocal(next, companyId, locationId)
+    }
+  }
 
   useEffect(() => {
     if (!locked) return
@@ -92,8 +180,12 @@ export function FloorPlanPage() {
     // Autosave in-progress layout before leaving edit mode on lockout.
     const pending = draftRef.current
     if (pending && companyId > 0 && locationId) {
-      void persistFloorPlanRemote(pending, companyId, locationId).then(ok => {
-        if (ok) setPlan(pending)
+      const nextDoc = replaceActiveFloor(docRef.current, pending)
+      void persistFloorPlanDocumentRemote(nextDoc, companyId, locationId).then(ok => {
+        if (ok) {
+          setDoc(nextDoc)
+          setPlan(pending)
+        }
       })
     }
     navigate('/order/floor', { replace: true })
@@ -103,16 +195,19 @@ export function FloorPlanPage() {
     if (!companyId || !locationId) return
     let cancelled = false
     void (async () => {
-      // Activated offline-first stations always pull the server layout when online
-      // so a stale T1–T8 device cache cannot keep hiding Weissbrau.
-      const synced = session?.offlineFirst
-        ? await pullFloorPlanFromServer(companyId, locationId).catch(() =>
-            syncFloorPlan(companyId, locationId),
-          )
-        : await syncFloorPlan(companyId, locationId)
+      const syncedDoc = session?.offlineFirst
+        ? await pullFloorPlanDocumentFromServer(companyId, locationId).catch(async () => {
+            await syncFloorPlan(companyId, locationId)
+            return loadFloorPlanDocumentLocal(companyId, locationId)
+          })
+        : await (async () => {
+            await syncFloorPlan(companyId, locationId)
+            return loadFloorPlanDocumentLocal(companyId, locationId)
+          })()
       if (cancelled) return
+      setDoc(syncedDoc)
+      const synced = documentToActivePlan(syncedDoc)
       setPlan(prev => {
-        // Refresh edit draft from DB unless the user already changed the layout.
         if (editRoute) {
           const currentDraft = draftRef.current
           const dirty = Boolean(
@@ -129,26 +224,28 @@ export function FloorPlanPage() {
     return () => {
       cancelled = true
     }
-    // Re-sync when company/location changes — not when toggling edit route
-    // (save navigates away and must not race a stale GET over the just-saved layout).
   }, [companyId, locationId, session?.offlineFirst]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional
 
-  // After Team QR + PIN unlock, force a server pull so the permanent venue layout
-  // appears immediately (stale device cache / cold start must not leave Home blank).
   const wasLockedRef = useRef(locked)
   useEffect(() => {
     const wasLocked = wasLockedRef.current
     wasLockedRef.current = locked
     if (locked || !wasLocked || !companyId || !locationId) return
     let cancelled = false
-    void pullFloorPlanFromServer(companyId, locationId)
-      .catch(() => syncFloorPlan(companyId, locationId))
-      .then(synced => {
-        if (cancelled || !synced) return
+    void pullFloorPlanDocumentFromServer(companyId, locationId)
+      .catch(async () => {
+        await syncFloorPlan(companyId, locationId)
+        return loadFloorPlanDocumentLocal(companyId, locationId)
+      })
+      .then(syncedDoc => {
+        if (cancelled || !syncedDoc) return
+        setDoc(syncedDoc)
+        const synced = documentToActivePlan(syncedDoc)
         setPlan(synced)
+        const tableCount = syncedDoc.floors.reduce((n, f) => n + f.tables.length, 0)
         setSyncNote(
-          synced.tables.length > 0
-            ? `Floor plan ready — ${synced.tables.length} tables`
+          tableCount > 0
+            ? `Floor plan ready — ${tableCount} tables · ${syncedDoc.floors.length} floor(s)`
             : 'Floor plan empty on server — use Admin → Reload',
         )
         window.setTimeout(() => setSyncNote(null), 2800)
@@ -158,15 +255,16 @@ export function FloorPlanPage() {
     }
   }, [locked, companyId, locationId])
 
-  // Refresh when Reservation → Assign table updates the floor plan.
   useEffect(() => {
     function refreshFromAssignment() {
       if (editing) return
-      const next =
-        companyId > 0 && locationId
-          ? loadFloorPlanLocal(companyId, locationId)
-          : loadFloorPlan()
-      setPlan(next)
+      if (companyId > 0 && locationId) {
+        const nextDoc = loadFloorPlanDocumentLocal(companyId, locationId)
+        setDoc(nextDoc)
+        setPlan(documentToActivePlan(nextDoc))
+        return
+      }
+      setPlan(loadFloorPlan())
     }
     window.addEventListener(FLOOR_PLAN_CHANGED_EVENT, refreshFromAssignment)
     return () => window.removeEventListener(FLOOR_PLAN_CHANGED_EVENT, refreshFromAssignment)
@@ -181,12 +279,17 @@ export function FloorPlanPage() {
       setResize(null)
       return
     }
-    const latest =
-      companyId > 0 && locationId
-        ? loadFloorPlanLocal(companyId, locationId)
-        : loadFloorPlan()
-    setPlan(latest)
-    setDraft(cloneJson(latest))
+    if (companyId > 0 && locationId) {
+      const latestDoc = loadFloorPlanDocumentLocal(companyId, locationId)
+      setDoc(latestDoc)
+      const latest = documentToActivePlan(latestDoc)
+      setPlan(latest)
+      setDraft(cloneJson(latest))
+    } else {
+      const latest = loadFloorPlan()
+      setPlan(latest)
+      setDraft(cloneJson(latest))
+    }
     setEditing(true)
     setSelected(null)
     setDrag(null)
@@ -206,22 +309,27 @@ export function FloorPlanPage() {
     openingTableId == null
       ? null
       : plan.tables.find((t) => t.id === openingTableId) ?? null
+  const showFloorSwitcher = doc.floors.length > 1 || editing
 
   function persistPlan(next: FloorPlanState) {
     setPlan(next)
+    const nextDoc = replaceActiveFloor(doc, next)
+    setDoc(nextDoc)
     if (companyId > 0 && locationId) {
-      void persistFloorPlanRemote(next, companyId, locationId)
+      void persistFloorPlanDocumentRemote(nextDoc, companyId, locationId)
     }
   }
 
   async function persistLayoutToDb(next: FloorPlanState): Promise<boolean> {
+    const nextDoc = replaceActiveFloor(doc, next)
+    setDoc(nextDoc)
     setPlan(next)
     if (!(companyId > 0 && locationId)) {
       setSyncNote('Select a company and location before saving the floor layout.')
       window.setTimeout(() => setSyncNote(null), 3200)
       return false
     }
-    const ok = await persistFloorPlanRemote(next, companyId, locationId)
+    const ok = await persistFloorPlanDocumentRemote(nextDoc, companyId, locationId)
     if (!ok) {
       setSyncNote('Saved on this device — could not reach the server. Will retry on next sync.')
       window.setTimeout(() => setSyncNote(null), 4200)
@@ -554,6 +662,43 @@ export function FloorPlanPage() {
         </div>
       ) : null}
 
+      {!locked && showFloorSwitcher ? (
+        <div className="floor-level-bar" role="tablist" aria-label="Floor plans">
+          {[...doc.floors]
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map(floor => (
+              <button
+                key={floor.key}
+                type="button"
+                role="tab"
+                aria-selected={floor.key === doc.activeFloorKey}
+                className={`floor-level-btn${floor.key === doc.activeFloorKey ? ' is-active' : ''}`}
+                onClick={() => switchFloor(floor.key)}
+              >
+                {floor.name}
+                <em>{floor.tables.length}</em>
+              </button>
+            ))}
+          {editing ? (
+            <>
+              <button type="button" className="floor-level-btn floor-level-btn--add" onClick={handleAddFloor}>
+                + Add floor
+              </button>
+              {doc.floors.length > 1 ? (
+                <>
+                  <button type="button" className="chip-btn" onClick={handleRenameActiveFloor}>
+                    Rename floor
+                  </button>
+                  <button type="button" className="chip-btn" onClick={handleRemoveActiveFloor}>
+                    Remove floor
+                  </button>
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className={`floor-workspace${editing && !locked ? ' is-editing' : ''}`}>
         <div className="floor-canvas-stage">
         <div
@@ -592,10 +737,15 @@ export function FloorPlanPage() {
                 onClick={() => {
                   if (!companyId || !locationId) return
                   setSyncNote('Downloading floor plan…')
-                  void pullFloorPlanFromServer(companyId, locationId)
-                    .catch(() => syncFloorPlan(companyId, locationId))
-                    .then(synced => {
-                      if (!synced) return
+                  void pullFloorPlanDocumentFromServer(companyId, locationId)
+                    .catch(async () => {
+                      await syncFloorPlan(companyId, locationId)
+                      return loadFloorPlanDocumentLocal(companyId, locationId)
+                    })
+                    .then(syncedDoc => {
+                      if (!syncedDoc) return
+                      setDoc(syncedDoc)
+                      const synced = documentToActivePlan(syncedDoc)
                       setPlan(synced)
                       setSyncNote(
                         synced.tables.length > 0

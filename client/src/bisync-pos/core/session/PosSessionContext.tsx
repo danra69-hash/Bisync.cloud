@@ -11,6 +11,11 @@ import type { PosModifierGroupSnapshot } from '../offline/posCatalogStore'
 export type PosLocationOption = {
   externalId: string
   name: string
+  /** Shared key for multi-concept physical sites. */
+  physicalSiteKey?: string
+  /** Brand label for POS concept buttons. */
+  conceptLabel?: string
+  conceptSortOrder?: number
 }
 
 export type PosSessionValue = {

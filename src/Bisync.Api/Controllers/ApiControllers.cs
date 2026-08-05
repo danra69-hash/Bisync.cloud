@@ -48,6 +48,9 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             openingHoursJson = string.IsNullOrWhiteSpace(l.OpeningHoursJson) ? "{}" : l.OpeningHoursJson,
             deliveryAllowTimeEnabled = l.DeliveryAllowTimeEnabled,
             deliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(l.DeliveryAllowPeriodsJson) ? "[]" : l.DeliveryAllowPeriodsJson,
+            physicalSiteKey = l.PhysicalSiteKey ?? string.Empty,
+            conceptLabel = string.IsNullOrWhiteSpace(l.ConceptLabel) ? l.Name : l.ConceptLabel,
+            conceptSortOrder = l.ConceptSortOrder,
         };
     }
 
@@ -107,6 +110,9 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
                 l.CoversPrevWtd,
                 l.CoversPrevMtd,
                 l.CoversPrevYtd,
+                physicalSiteKey = l.PhysicalSiteKey,
+                conceptLabel = string.IsNullOrWhiteSpace(l.ConceptLabel) ? l.Name : l.ConceptLabel,
+                conceptSortOrder = l.ConceptSortOrder,
             })
             .ToListAsync());
     }
@@ -183,6 +189,9 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             OpeningHoursJson = string.IsNullOrWhiteSpace(body.OpeningHoursJson) ? "{}" : body.OpeningHoursJson.Trim(),
             DeliveryAllowTimeEnabled = body.DeliveryAllowTimeEnabled,
             DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(body.DeliveryAllowPeriodsJson) ? "[]" : body.DeliveryAllowPeriodsJson.Trim(),
+            PhysicalSiteKey = (body.PhysicalSiteKey ?? string.Empty).Trim(),
+            ConceptLabel = (body.ConceptLabel ?? string.Empty).Trim(),
+            ConceptSortOrder = body.ConceptSortOrder ?? 0,
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
         };
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
@@ -250,6 +259,12 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         loc.DeliveryAllowTimeEnabled = body.DeliveryAllowTimeEnabled;
         if (body.DeliveryAllowPeriodsJson is not null)
             loc.DeliveryAllowPeriodsJson = string.IsNullOrWhiteSpace(body.DeliveryAllowPeriodsJson) ? "[]" : body.DeliveryAllowPeriodsJson.Trim();
+        if (body.PhysicalSiteKey is not null)
+            loc.PhysicalSiteKey = body.PhysicalSiteKey.Trim();
+        if (body.ConceptLabel is not null)
+            loc.ConceptLabel = body.ConceptLabel.Trim();
+        if (body.ConceptSortOrder is not null)
+            loc.ConceptSortOrder = body.ConceptSortOrder.Value;
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
         await db.SaveChangesAsync();

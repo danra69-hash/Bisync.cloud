@@ -69,4 +69,16 @@ public class Location
     /// Business calendar dates follow this zone; instant timestamps stay UTC.
     /// </summary>
     public string TimeZoneId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Shared key for concept-locations that operate in one physical site
+    /// (e.g. two brands under one company at the same mall address). Empty = standalone.
+    /// </summary>
+    public string PhysicalSiteKey { get; set; } = string.Empty;
+
+    /// <summary>Brand / concept label shown on POS menu (falls back to Name when empty).</summary>
+    public string ConceptLabel { get; set; } = string.Empty;
+
+    /// <summary>Sort order among sibling concepts on the same physical site.</summary>
+    public int ConceptSortOrder { get; set; }
 }

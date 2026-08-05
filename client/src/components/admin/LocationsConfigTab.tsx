@@ -159,6 +159,9 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     openingHoursJson: '{}',
     deliveryAllowTimeEnabled: false,
     deliveryAllowPeriodsJson: '[]',
+    physicalSiteKey: '',
+    conceptLabel: '',
+    conceptSortOrder: 0,
   };
 }
 
@@ -416,6 +419,9 @@ function LocationPanel({
         deliveryAllowTimeEnabled,
         deliveryAllowPeriodsJson,
         active: nextActive,
+        physicalSiteKey: form.physicalSiteKey ?? '',
+        conceptLabel: form.conceptLabel ?? '',
+        conceptSortOrder: form.conceptSortOrder ?? 0,
       });
       const next: LocationConfig = {
         ...form,
@@ -429,6 +435,9 @@ function LocationPanel({
         openingHoursJson: saved.openingHoursJson ?? openingHoursJson,
         deliveryAllowTimeEnabled: saved.deliveryAllowTimeEnabled ?? deliveryAllowTimeEnabled,
         deliveryAllowPeriodsJson: saved.deliveryAllowPeriodsJson ?? deliveryAllowPeriodsJson,
+        physicalSiteKey: saved.physicalSiteKey ?? form.physicalSiteKey ?? '',
+        conceptLabel: saved.conceptLabel ?? form.conceptLabel ?? '',
+        conceptSortOrder: saved.conceptSortOrder ?? form.conceptSortOrder ?? 0,
       };
       setForm({ ...next, active: nextActive });
       onSave(next);
@@ -528,6 +537,9 @@ function LocationPanel({
         deliveryAllowTimeEnabled,
         deliveryAllowPeriodsJson,
         active: locationActive,
+        physicalSiteKey: (form.physicalSiteKey ?? '').trim(),
+        conceptLabel: (form.conceptLabel ?? '').trim(),
+        conceptSortOrder: Number(form.conceptSortOrder) || 0,
       };
 
       setSaving(true);
@@ -631,6 +643,44 @@ function LocationPanel({
             onChange={setAddressParts}
             layout="compact"
           />
+
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <p className="text-xs font-semibold text-foreground">Multi-concept physical site</p>
+            <p className="text-xs text-muted-foreground font-sans">
+              When one venue runs two brands under this company, give both locations the same Physical site key.
+              POS shows brand buttons; reports can select the whole site for combined revenue and cost.
+              Backend ops stay per location.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Physical site key</label>
+                <input
+                  className={inputCls}
+                  value={form.physicalSiteKey ?? ''}
+                  placeholder="e.g. pavilion-kl"
+                  onChange={e => set('physicalSiteKey', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Concept / brand label</label>
+                <input
+                  className={inputCls}
+                  value={form.conceptLabel ?? ''}
+                  placeholder={form.name || 'Brand name on POS'}
+                  onChange={e => set('conceptLabel', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Concept sort</label>
+                <input
+                  className={inputCls}
+                  type="number"
+                  value={form.conceptSortOrder ?? 0}
+                  onChange={e => set('conceptSortOrder', Number(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+          </div>
 
           <CompanyProfileFields
             layout="compact"
@@ -1022,6 +1072,9 @@ export function LocationsConfigTab({
         vendorPolicyTagsJson: profile.vendorPolicyTagsJson ?? '[]',
         modulesJson: modulesPayload.modulesJson,
         active: location.active !== false,
+        physicalSiteKey: location.physicalSiteKey ?? '',
+        conceptLabel: location.conceptLabel ?? '',
+        conceptSortOrder: location.conceptSortOrder ?? 0,
       });
       setLocations(prev => prev.map(loc => (
         loc.id === location.id
@@ -1036,6 +1089,9 @@ export function LocationsConfigTab({
               modulesJson: saved.modulesJson ?? modulesPayload.effectiveModulesJson,
               modulesOverridden: saved.modulesOverridden,
               profileOverridden: saved.profileOverridden,
+              physicalSiteKey: saved.physicalSiteKey ?? location.physicalSiteKey ?? '',
+              conceptLabel: saved.conceptLabel ?? location.conceptLabel ?? '',
+              conceptSortOrder: saved.conceptSortOrder ?? location.conceptSortOrder ?? 0,
             }
           : loc
       )));

@@ -71,6 +71,11 @@ export interface Location {
   coversPrevWtd: number;
   coversPrevMtd: number;
   coversPrevYtd: number;
+  /** Sibling concept-locations share this key for one physical site. */
+  physicalSiteKey?: string;
+  /** Brand / concept label for POS menu buttons. */
+  conceptLabel?: string;
+  conceptSortOrder?: number;
 }
 
 export interface LocationConfig {
@@ -106,6 +111,11 @@ export interface LocationConfig {
   deliveryAllowTimeEnabled?: boolean;
   /** JSON array of { from, to } HH:mm periods. */
   deliveryAllowPeriodsJson?: string;
+  /** Shared physical-site key for multi-concept venues. */
+  physicalSiteKey?: string;
+  /** Brand label on POS (defaults to location name). */
+  conceptLabel?: string;
+  conceptSortOrder?: number;
 }
 
 export interface Company {

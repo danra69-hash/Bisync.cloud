@@ -10,15 +10,15 @@ import {
   type FloorPlanState,
   type FloorTable,
 } from './tables'
-
-type StoredFloorPlan = FloorPlanState & {
-  /** ISO timestamp of last local write / successful sync. */
-  updatedAt?: string
-}
-
-function normalizeTables(tables: FloorTable[]): FloorTable[] {
-  return tables.map(t => normalizeTable(t))
-}
+import {
+  documentToActivePlan,
+  emptyFloorPlanDocument,
+  parseFloorPlanDocument,
+  replaceActiveFloor,
+  serializeFloorPlanDocument,
+  singleFloorDocument,
+  type FloorPlanDocument,
+} from './multiFloor'
 
 function scopedKey(companyId: number, locationExternalId: string) {
   return `${FLOOR_STORAGE_KEY}:${companyId}:${locationExternalId}`
@@ -26,59 +26,6 @@ function scopedKey(companyId: number, locationExternalId: string) {
 
 function scopedMetaKey(companyId: number, locationExternalId: string) {
   return `${FLOOR_STORAGE_KEY}:meta:${companyId}:${locationExternalId}`
-}
-
-function normalizeZones(zones: FloorPlanState['zones'] | undefined): FloorPlanState['zones'] {
-  if (!Array.isArray(zones) || zones.length === 0) return cloneJson(MOCK_ZONES)
-  return zones.map(zone => {
-    const kind =
-      zone?.kind === 'bar' || zone?.kind === 'kitchen' || zone?.kind === 'custom'
-        ? zone.kind
-        : 'custom'
-    return {
-      id: String(zone?.id || `zone-${Math.random().toString(36).slice(2, 7)}`),
-      kind,
-      label: String(zone?.label || (kind === 'bar' ? 'Bar' : kind === 'kitchen' ? 'Kitchen' : 'Area')),
-      x: Number.isFinite(zone?.x) ? Number(zone.x) : 4,
-      y: Number.isFinite(zone?.y) ? Number(zone.y) : 4,
-      w: Number.isFinite(zone?.w) ? Number(zone.w) : 16,
-      h: Number.isFinite(zone?.h) ? Number(zone.h) : 14,
-    }
-  })
-}
-
-function toPlan(tables: FloorTable[], zones: FloorPlanState['zones']): FloorPlanState {
-  return {
-    tables: normalizeTables(tables),
-    zones: normalizeZones(zones),
-  }
-}
-
-export function parseFloorPlanJson(raw: string | null | undefined): FloorPlanState | null {
-  if (!raw?.trim()) return null
-  try {
-    const parsed = JSON.parse(raw) as StoredFloorPlan
-    if (!parsed?.tables?.length) return null
-    return toPlan(parsed.tables, parsed.zones)
-  } catch {
-    return null
-  }
-}
-
-function parseStored(raw: string | null | undefined): { plan: FloorPlanState; updatedAt: string | null } | null {
-  if (!raw?.trim()) return null
-  try {
-    const parsed = JSON.parse(raw) as StoredFloorPlan
-    if (!parsed?.tables?.length) return null
-    return {
-      plan: toPlan(parsed.tables, parsed.zones),
-      updatedAt: typeof parsed.updatedAt === 'string' && parsed.updatedAt.trim()
-        ? parsed.updatedAt
-        : null,
-    }
-  } catch {
-    return null
-  }
 }
 
 function readLocalUpdatedAt(companyId: number, locationExternalId: string): string | null {
@@ -109,18 +56,21 @@ function parseTime(value: string | null | undefined): number {
   return Number.isFinite(ms) ? ms : 0
 }
 
-function readLegacyUnscoped(): FloorPlanState | null {
+function readLegacyUnscoped(): FloorPlanDocument | null {
   try {
     const raw = localStorage.getItem(FLOOR_STORAGE_KEY)
     if (raw) {
-      const parsed = parseFloorPlanJson(raw)
+      const parsed = parseFloorPlanDocument(raw)
       if (parsed) return parsed
     }
     const legacy = localStorage.getItem(FLOOR_STORAGE_KEY_LEGACY)
     if (legacy) {
       const tables = JSON.parse(legacy) as FloorTable[]
       if (Array.isArray(tables) && tables.length > 0) {
-        return toPlan(tables, cloneJson(MOCK_ZONES))
+        return singleFloorDocument({
+          tables: tables.map(t => normalizeTable(t)),
+          zones: cloneJson(MOCK_ZONES),
+        })
       }
     }
   } catch {
@@ -151,8 +101,13 @@ export function isStockDefaultFloorPlan(plan: FloorPlanState | null | undefined)
   })
 }
 
+function isStockDefaultDocument(doc: FloorPlanDocument | null | undefined): boolean {
+  if (!doc || doc.floors.length !== 1) return false
+  return isStockDefaultFloorPlan(documentToActivePlan(doc))
+}
+
 type LocalPeek = {
-  plan: FloorPlanState
+  doc: FloorPlanDocument
   updatedAt: string | null
   /** True only when a scoped key already existed for this company/location. */
   hadScoped: boolean
@@ -161,10 +116,11 @@ type LocalPeek = {
 function peekFloorPlanLocal(companyId: number, locationExternalId: string): LocalPeek {
   const key = scopedKey(companyId, locationExternalId)
   try {
-    const scoped = parseStored(localStorage.getItem(key))
+    const raw = localStorage.getItem(key)
+    const scoped = parseFloorPlanDocument(raw)
     if (scoped) {
       return {
-        plan: scoped.plan,
+        doc: scoped,
         updatedAt: scoped.updatedAt || readLocalUpdatedAt(companyId, locationExternalId),
         hadScoped: true,
       }
@@ -173,20 +129,47 @@ function peekFloorPlanLocal(companyId: number, locationExternalId: string): Loca
     /* ignore */
   }
 
-  const migrated = readLegacyUnscoped() ?? cloneJson(DEFAULT_FLOOR_PLAN)
+  const migrated = readLegacyUnscoped() ?? emptyFloorPlanDocument()
   return {
-    plan: migrated,
+    doc: migrated,
     updatedAt: null,
     hadScoped: false,
   }
 }
 
+export function loadFloorPlanDocumentLocal(
+  companyId: number,
+  locationExternalId: string,
+): FloorPlanDocument {
+  return peekFloorPlanLocal(companyId, locationExternalId).doc
+}
+
 /**
- * Local cache for a company/location.
+ * Local cache for a company/location (active floor only).
  * Cold miss returns default/legacy WITHOUT writing a "now" stamp — sync must prefer DB.
  */
 export function loadFloorPlanLocal(companyId: number, locationExternalId: string): FloorPlanState {
-  return peekFloorPlanLocal(companyId, locationExternalId).plan
+  return documentToActivePlan(peekFloorPlanLocal(companyId, locationExternalId).doc)
+}
+
+export function saveFloorPlanDocumentLocal(
+  doc: FloorPlanDocument,
+  companyId: number,
+  locationExternalId: string,
+  updatedAt?: string | null,
+) {
+  const key = scopedKey(companyId, locationExternalId)
+  const stamp = updatedAt?.trim() || new Date().toISOString()
+  const payload = {
+    ...JSON.parse(serializeFloorPlanDocument(doc)),
+    // Keep floors + active key in local cache even when API serializes single-floor as legacy.
+    floors: doc.floors,
+    activeFloorKey: doc.activeFloorKey,
+    updatedAt: stamp,
+  }
+  localStorage.setItem(key, JSON.stringify(payload))
+  writeLocalUpdatedAt(companyId, locationExternalId, stamp)
+  saveFloorPlan(documentToActivePlan(doc))
 }
 
 export function saveFloorPlanLocal(
@@ -195,23 +178,14 @@ export function saveFloorPlanLocal(
   locationExternalId: string,
   updatedAt?: string | null,
 ) {
-  const key = scopedKey(companyId, locationExternalId)
-  const stamp = updatedAt?.trim() || new Date().toISOString()
-  const payload: StoredFloorPlan = {
-    tables: plan.tables,
-    zones: plan.zones,
-    updatedAt: stamp,
-  }
-  localStorage.setItem(key, JSON.stringify(payload))
-  writeLocalUpdatedAt(companyId, locationExternalId, stamp)
-  // Keep legacy key in sync so older helpers still see the active location plan.
-  saveFloorPlan(plan)
+  const peeked = peekFloorPlanLocal(companyId, locationExternalId)
+  const next = replaceActiveFloor(peeked.doc, plan)
+  saveFloorPlanDocumentLocal(next, companyId, locationExternalId, updatedAt)
 }
 
-function plansLookEqual(a: FloorPlanState, b: FloorPlanState): boolean {
+function docsLookEqual(a: FloorPlanDocument, b: FloorPlanDocument): boolean {
   try {
-    return JSON.stringify({ tables: a.tables, zones: a.zones })
-      === JSON.stringify({ tables: b.tables, zones: b.zones })
+    return serializeFloorPlanDocument(a) === serializeFloorPlanDocument(b)
   } catch {
     return false
   }
@@ -226,22 +200,44 @@ export async function pullFloorPlanFromServer(
   locationExternalId: string,
 ): Promise<FloorPlanState> {
   const remote = await api.posFloorPlan(companyId, locationExternalId)
-  const serverPlan = parseFloorPlanJson(remote.layoutJson)
-  if (serverPlan) {
-    saveFloorPlanLocal(
-      serverPlan,
+  const serverDoc = parseFloorPlanDocument(remote.layoutJson)
+  if (serverDoc) {
+    const stamped = {
+      ...serverDoc,
+      updatedAt: remote.updatedAt || new Date().toISOString(),
+    }
+    saveFloorPlanDocumentLocal(
+      stamped,
       companyId,
       locationExternalId,
-      remote.updatedAt || new Date().toISOString(),
+      stamped.updatedAt,
     )
-    return serverPlan
+    return documentToActivePlan(stamped)
   }
-  // Server empty — keep any intentional custom local; never stamp stock as authoritative.
   const peeked = peekFloorPlanLocal(companyId, locationExternalId)
-  if (peeked.hadScoped && !isStockDefaultFloorPlan(peeked.plan)) {
-    return peeked.plan
+  if (peeked.hadScoped && !isStockDefaultDocument(peeked.doc)) {
+    return documentToActivePlan(peeked.doc)
   }
   return cloneJson(DEFAULT_FLOOR_PLAN)
+}
+
+export async function pullFloorPlanDocumentFromServer(
+  companyId: number,
+  locationExternalId: string,
+): Promise<FloorPlanDocument> {
+  const remote = await api.posFloorPlan(companyId, locationExternalId)
+  const serverDoc = parseFloorPlanDocument(remote.layoutJson)
+  if (serverDoc) {
+    const stamped = {
+      ...serverDoc,
+      updatedAt: remote.updatedAt || new Date().toISOString(),
+    }
+    saveFloorPlanDocumentLocal(stamped, companyId, locationExternalId, stamped.updatedAt)
+    return stamped
+  }
+  const peeked = peekFloorPlanLocal(companyId, locationExternalId)
+  if (peeked.hadScoped && !isStockDefaultDocument(peeked.doc)) return peeked.doc
+  return emptyFloorPlanDocument()
 }
 
 /**
@@ -255,27 +251,26 @@ export async function syncFloorPlan(
   locationExternalId: string,
 ): Promise<FloorPlanState> {
   const peeked = peekFloorPlanLocal(companyId, locationExternalId)
-  const local = peeked.plan
+  const localDoc = peeked.doc
+  const local = documentToActivePlan(localDoc)
 
   try {
     const remote = await api.posFloorPlan(companyId, locationExternalId)
-    const serverPlan = parseFloorPlanJson(remote.layoutJson)
+    const serverDoc = parseFloorPlanDocument(remote.layoutJson)
     const remoteUpdatedAt = remote.updatedAt
 
-    if (serverPlan) {
+    if (serverDoc) {
       const localMs = parseTime(peeked.updatedAt)
       const remoteMs = parseTime(remoteUpdatedAt)
-      const localIsStockDefault = isStockDefaultFloorPlan(local)
-      const remoteIsStockDefault = isStockDefaultFloorPlan(serverPlan)
+      const localIsStockDefault = isStockDefaultDocument(localDoc)
+      const remoteIsStockDefault = isStockDefaultDocument(serverDoc)
+      const serverPlan = documentToActivePlan(serverDoc)
 
-      // Never let a cold-cache default / unstamped migration overwrite a real DB layout.
-      // Also recover a custom scoped local over a stock remote that was stamped "newer"
-      // by the previous clobber bug. Never push stock/demo to the server.
       const canPushLocal =
         peeked.hadScoped
         && localMs > 0
         && !localIsStockDefault
-        && !plansLookEqual(local, serverPlan)
+        && !docsLookEqual(localDoc, serverDoc)
         && (
           remoteIsStockDefault
           || localMs > remoteMs
@@ -285,16 +280,15 @@ export async function syncFloorPlan(
         await api.posFloorPlanUpsert({
           companyId,
           locationExternalId,
-          layoutJson: JSON.stringify(local),
+          layoutJson: serializeFloorPlanDocument(localDoc),
         })
         const stamp = new Date().toISOString()
-        saveFloorPlanLocal(local, companyId, locationExternalId, stamp)
+        saveFloorPlanDocumentLocal(localDoc, companyId, locationExternalId, stamp)
         return local
       }
 
-      // Remote wins (or equal / cold local) — keep DB as source of truth.
-      saveFloorPlanLocal(
-        serverPlan,
+      saveFloorPlanDocumentLocal(
+        { ...serverDoc, updatedAt: remoteUpdatedAt || new Date().toISOString() },
         companyId,
         locationExternalId,
         remoteUpdatedAt || new Date().toISOString(),
@@ -302,16 +296,14 @@ export async function syncFloorPlan(
       return serverPlan
     }
 
-    // Server empty — only seed from an intentional custom scoped save.
-    // Never upload the stock T1–T8 demo (that clobber wiped Weissbrau previously).
-    if (peeked.hadScoped && !isStockDefaultFloorPlan(local) && local.tables.length > 0) {
+    if (peeked.hadScoped && !isStockDefaultDocument(localDoc) && local.tables.length > 0) {
       const uploaded = await api.posFloorPlanUpsert({
         companyId,
         locationExternalId,
-        layoutJson: JSON.stringify(local),
+        layoutJson: serializeFloorPlanDocument(localDoc),
       })
-      saveFloorPlanLocal(
-        local,
+      saveFloorPlanDocumentLocal(
+        localDoc,
         companyId,
         locationExternalId,
         uploaded.updatedAt || new Date().toISOString(),
@@ -334,27 +326,37 @@ export async function persistFloorPlanRemote(
   companyId: number,
   locationExternalId: string,
 ): Promise<boolean> {
-  // Never write the stock T1–T8 demo to the server — that clobbered custom venues.
-  if (isStockDefaultFloorPlan(plan) || plan.tables.length === 0) {
+  const peeked = peekFloorPlanLocal(companyId, locationExternalId)
+  const doc = replaceActiveFloor(peeked.doc, plan)
+  return persistFloorPlanDocumentRemote(doc, companyId, locationExternalId)
+}
+
+export async function persistFloorPlanDocumentRemote(
+  doc: FloorPlanDocument,
+  companyId: number,
+  locationExternalId: string,
+): Promise<boolean> {
+  const active = documentToActivePlan(doc)
+  const totalTables = doc.floors.reduce((n, f) => n + f.tables.length, 0)
+  if ((doc.floors.length <= 1 && isStockDefaultFloorPlan(active)) || totalTables === 0) {
     return false
   }
   const stamp = new Date().toISOString()
-  saveFloorPlanLocal(plan, companyId, locationExternalId, stamp)
+  saveFloorPlanDocumentLocal(doc, companyId, locationExternalId, stamp)
   try {
     const saved = await api.posFloorPlanUpsert({
       companyId,
       locationExternalId,
-      layoutJson: JSON.stringify(plan),
+      layoutJson: serializeFloorPlanDocument(doc),
     })
-    saveFloorPlanLocal(
-      plan,
+    saveFloorPlanDocumentLocal(
+      doc,
       companyId,
       locationExternalId,
       saved.updatedAt || stamp,
     )
     return true
   } catch {
-    // Local cache still holds the layout; sync will retry upload when online.
     return false
   }
 }
@@ -370,14 +372,14 @@ export async function persistFloorTablePatch(
   patch: Partial<FloorTable> | ((table: FloorTable) => Partial<FloorTable>),
 ): Promise<FloorPlanState> {
   const peeked = peekFloorPlanLocal(companyId, locationExternalId)
-  let base = peeked.plan
+  let baseDoc = peeked.doc
 
   try {
     const remote = await api.posFloorPlan(companyId, locationExternalId)
-    const serverPlan = parseFloorPlanJson(remote.layoutJson)
-    if (serverPlan) {
-      const localIsStock = isStockDefaultFloorPlan(base)
-      const remoteIsStock = isStockDefaultFloorPlan(serverPlan)
+    const serverDoc = parseFloorPlanDocument(remote.layoutJson)
+    if (serverDoc) {
+      const localIsStock = isStockDefaultDocument(baseDoc)
+      const remoteIsStock = isStockDefaultDocument(serverDoc)
       const localMs = parseTime(peeked.updatedAt)
       const remoteMs = parseTime(remote.updatedAt)
       if (
@@ -385,14 +387,25 @@ export async function persistFloorTablePatch(
         || (localIsStock && !remoteIsStock)
         || (remoteMs >= localMs && !(remoteIsStock && !localIsStock && peeked.hadScoped))
       ) {
-        base = serverPlan
+        // Prefer the floor that contains the table id when multi-floor.
+        const floorWithTable = serverDoc.floors.find(f => f.tables.some(t => t.id === tableId))
+        baseDoc = floorWithTable
+          ? { ...serverDoc, activeFloorKey: floorWithTable.key }
+          : serverDoc
       }
     }
   } catch {
     /* offline — patch peeked local */
   }
 
-  const next: FloorPlanState = {
+  // If table is on another floor, switch active before patch.
+  const owning = baseDoc.floors.find(f => f.tables.some(t => t.id === tableId))
+  if (owning && owning.key !== baseDoc.activeFloorKey) {
+    baseDoc = { ...baseDoc, activeFloorKey: owning.key }
+  }
+
+  const base = documentToActivePlan(baseDoc)
+  const nextPlan: FloorPlanState = {
     ...base,
     tables: base.tables.map(t => {
       if (t.id !== tableId) return t
@@ -400,6 +413,13 @@ export async function persistFloorTablePatch(
       return normalizeTable({ ...t, ...delta })
     }),
   }
-  await persistFloorPlanRemote(next, companyId, locationExternalId)
-  return next
+  const nextDoc = replaceActiveFloor(baseDoc, nextPlan)
+  await persistFloorPlanDocumentRemote(nextDoc, companyId, locationExternalId)
+  return nextPlan
+}
+
+/** Re-export parse helper used by tests / callers expecting plan-only JSON. */
+export function parseFloorPlanJson(raw: string | null | undefined): FloorPlanState | null {
+  const doc = parseFloorPlanDocument(raw)
+  return doc ? documentToActivePlan(doc) : null
 }
