@@ -16,9 +16,13 @@ import {
 } from '../../../../data/posDevices'
 import {
   discoverLocalIpv4Addresses,
+  isPrivateIpv4,
   listAuthorizedUsbPeripherals,
+  loadStoredStationIpv4,
   requestUsbPeripheral,
+  resolveStationIpv4Addresses,
   scanLocalSubnetDevices,
+  storeStationIpv4,
   webUsbSupported,
   type DiscoveredLanHost,
   type LanSubnetScanProgress,
@@ -169,6 +173,9 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
   /** Role selection for newly discovered (not yet registered) hosts. */
   const [discoverAssignTypes, setDiscoverAssignTypes] = useState<Record<string, PosDeviceType>>({})
   const [linkingHost, setLinkingHost] = useState<string | null>(null)
+  /** Manual station IPv4 when browser WebRTC cannot detect it (common on Windows Chrome). */
+  const [stationIpOverride, setStationIpOverride] = useState(() => loadStoredStationIpv4() || '')
+  const [stationIpSource, setStationIpSource] = useState<'manual' | 'webrtc' | 'stored' | 'none' | null>(null)
 
   const load = useCallback(async () => {
     if (companyId <= 0) {
@@ -206,11 +213,26 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     setScanProgress(null)
     setLanScan(null)
     try {
-      const clientIps = await discoverLocalIpv4Addresses()
+      const manual = stationIpOverride.trim()
+      if (manual && !isPrivateIpv4(manual)) {
+        setError(
+          'Station IP must be a private address (10.x, 172.16–31.x, or 192.168.x). Check Windows → Network properties → IPv4 address.',
+        )
+        setCheckingLan(false)
+        return
+      }
+
+      const resolved = await resolveStationIpv4Addresses({ manualIp: manual || null })
+      const clientIps = resolved.ips
+      setStationIpSource(resolved.source)
+      if (clientIps[0] && !manual) {
+        setStationIpOverride(clientIps[0])
+      }
+
       setStatus(
         clientIps.length
           ? `Scanning ${clientIps[0]} subnet for connected devices… Allow local network access if the browser asks.`
-          : 'Detecting station IP…',
+          : 'No station IP yet — enter this PC’s IPv4 below (Windows: Network properties or ipconfig), then run Network check again.',
       )
 
       const [result, scan] = await Promise.all([
@@ -261,10 +283,18 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
       setUsbList(usb)
       const networkCount = result.registeredDevices.filter((d) => !d.isLocalPeripheral).length
       const liveCount = scan.hosts.filter((h) => !h.isStation).length
+      const sourceLabel =
+        resolved.source === 'manual'
+          ? 'manual station IP'
+          : resolved.source === 'stored'
+            ? 'saved station IP'
+            : resolved.source === 'webrtc'
+              ? 'browser detection'
+              : 'no station IP'
       setStatus(
         clientIps.length
-          ? `LAN scan complete on ${scan.subnetCidr || 'local subnet'} — ${liveCount} other host(s) responding, ${networkCount} registered. Assign roles below.`
-          : `LAN check complete — no private station IP detected. ${networkCount} registered device(s) listed — assign roles below or link by IP.`,
+          ? `LAN scan complete on ${scan.subnetCidr || 'local subnet'} (${sourceLabel}) — ${liveCount} other host(s) responding, ${networkCount} registered. Assign roles below or install printer SDKs.`
+          : `LAN check complete — no private station IP detected. Enter IPv4 below to scan. ${networkCount} registered device(s) listed.`,
       )
       if (scan.permission === 'denied') {
         setError(scan.note)
@@ -280,9 +310,14 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
 
   async function refreshLanAfterAssign(statusMessage: string) {
     try {
-      const clientIps = lan?.clientLocalIps?.length
-        ? lan.clientLocalIps
-        : await discoverLocalIpv4Addresses()
+      const resolved = await resolveStationIpv4Addresses({
+        manualIp: stationIpOverride.trim() || null,
+      })
+      const clientIps = resolved.ips.length
+        ? resolved.ips
+        : lan?.clientLocalIps?.length
+          ? lan.clientLocalIps
+          : await discoverLocalIpv4Addresses()
       const result = await api.posDeviceLanCheck({
         companyId,
         locationExternalId: locationId || undefined,
@@ -404,7 +439,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
       connectionType: 'ethernet',
       hostAddress: host.host,
       port: String(port),
-      printerSdkCode: 'dantsu-escpos-android',
+      printerSdkCode: preferredPrinterSdkCode(),
     })
     setShowAdd(false)
     setStatus(`Ready to link ${host.host} — review “Link new device” below and tap Link device.`)
@@ -435,7 +470,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
             port,
             printerSdkCode:
               deviceType === 'printer'
-                ? existing.printerSdkCode || 'dantsu-escpos-android'
+                ? existing.printerSdkCode || preferredPrinterSdkCode()
                 : '',
             active: true,
           }),
@@ -455,12 +490,20 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
         hostAddress: host.host,
         port,
         printerSdkCode:
-          deviceType === 'printer' ? 'dantsu-escpos-android' : undefined,
+          deviceType === 'printer' ? preferredPrinterSdkCode() : undefined,
         active: true,
       })
       const msg = `Linked “${created.name}” as ${created.deviceTypeLabel || deviceTypeLabel(deviceType)} at ${host.host}.`
       await load()
       await refreshLanAfterAssign(msg)
+      if (deviceType === 'printer') {
+        const sdk =
+          sdks.find((s) => s.sdkCode === preferredPrinterSdkCode()) || sdks[0]
+        if (sdk) {
+          setStatus(`${msg} Downloading printer SDK…`)
+          await downloadAndInstall(sdk, created.id)
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to link discovered device.')
     } finally {
@@ -726,7 +769,31 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
               lets you assign each as printer, kitchen display, bar display, POS, or kiosk. Allow local
               network access when the browser asks.
             </p>
-            {(checkingLan || lan) && (
+            <div className="device-setup-station-ip">
+              <label>
+                <span>Station IP (this PC)</span>
+                <input
+                  className="device-setup-input"
+                  value={stationIpOverride}
+                  placeholder="e.g. 192.168.70.131"
+                  inputMode="decimal"
+                  onChange={(e) => setStationIpOverride(e.target.value.trim())}
+                  onBlur={() => {
+                    const v = stationIpOverride.trim()
+                    if (isPrivateIpv4(v)) storeStationIpv4(v)
+                  }}
+                />
+              </label>
+              <p className="device-setup-hint device-setup-hint--tight">
+                Browsers often hide the private IP. On Windows: Settings → Network &amp; internet →
+                Ethernet/Wi‑Fi → Properties → <strong>IPv4 address</strong> (or run <code>ipconfig</code>).
+                Enter it here, then tap Network check to scan every host on that /24 and assign roles.
+                {stationIpSource
+                  ? ` Last scan used ${stationIpSource === 'manual' ? 'your entry' : stationIpSource === 'stored' ? 'saved IP' : stationIpSource === 'webrtc' ? 'browser detection' : 'no IP'}.`
+                  : ''}
+              </p>
+            </div>
+            {(checkingLan || lan || stationIpOverride.trim()) && (
               <div className="device-setup-lan">
                 {checkingLan && scanProgress && (
                   <p className="device-setup-note">
@@ -741,7 +808,12 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     <div>
                       <h4>This station</h4>
                       {lan.clientLocalIps.length === 0 ? (
-                        <p className="device-setup-empty">No private IP detected</p>
+                        <p className="device-setup-empty">
+                          No private IP from browser
+                          {stationIpOverride.trim()
+                            ? ` — scanning with ${stationIpOverride.trim()}`
+                            : ' — enter Station IP above'}
+                        </p>
                       ) : (
                         <ul>
                           {lan.clientLocalIps.map((ip) => (
@@ -873,6 +945,27 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                                       ? 'Assign link'
                                       : 'Link device'}
                                 </button>
+                                {(selected === 'printer' || h.suggestedDeviceType === 'printer') && !h.isStation ? (
+                                  <button
+                                    type="button"
+                                    className="device-setup-btn device-setup-btn--ghost"
+                                    disabled={busyId != null}
+                                    onClick={() => {
+                                      const sdk =
+                                        sdks.find((s) => s.sdkCode === preferredPrinterSdkCode())
+                                        || sdks[0]
+                                      if (!sdk) {
+                                        setError('No printer SDK available — open Drivers from server below.')
+                                        return
+                                      }
+                                      const linked = registeredMatchForHost(h.host)
+                                      void downloadAndInstall(sdk, linked?.id)
+                                    }}
+                                    title="Download and bind the printer SDK for this host"
+                                  >
+                                    Install SDK
+                                  </button>
+                                ) : null}
                               </div>
                             </li>
                           )
@@ -965,14 +1058,11 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                   </>
                 )}
 
-                {lan && <h4>Link new device on this network</h4>}
-                {lan && (
+                <h4>Link new device on this network</h4>
                   <p className="device-setup-hint">
-                    Enter the IP of a printer, KDS, or station on the same LAN, pick its role, and save
-                    the device link.
+                    Enter the IP of a printer, KDS, or station on the same LAN, pick its role, choose an
+                    SDK for printers, and save the device link — or assign from the scan list above.
                   </p>
-                )}
-                {lan && (
                 <div className="device-setup-link-new">
                   <label>
                     Name
@@ -1065,7 +1155,6 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     {saving ? 'Linking…' : 'Link device'}
                   </button>
                 </div>
-                )}
               </div>
             )}
           </section>
