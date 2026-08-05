@@ -3,6 +3,8 @@
 **Status:** Planning estimate  
 **Calculator:** [AWS Pricing Calculator → Bedrock AgentCore](https://calculator.aws/#/createCalculator/bedrockagentcore)  
 **Pricing refs:** [AgentCore pricing](https://aws.amazon.com/bedrock/agentcore/pricing/) · Claude Sonnet 4.6 $3/$15 per 1M in/out · Claude Haiku 4.5 $1/$5 per 1M in/out  
+**See also:** `docs/Bisync-AgentCore-AI-Light-to-Heavy.pdf` (light → very heavy bands).
+
 **Aligned with:** prior 1,000-location AWS stack (`docs/Bisync-AWS-Architecture-1000-Locations.pdf`) and platform AgentCore note (`docs/Bisync-AgentCore-AI-Usage-Estimate.md`)
 
 Currency: **USD**, On-Demand, excludes tax / AWS Support / shared Knowledge Base (OpenSearch) which is platform-shared, not billed per tenant.
