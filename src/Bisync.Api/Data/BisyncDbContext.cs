@@ -117,6 +117,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<WastageEntry> WastageEntries => Set<WastageEntry>();
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
     public DbSet<ReturnableGoodsReturn> ReturnableGoodsReturns => Set<ReturnableGoodsReturn>();
+    public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -409,6 +410,29 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.LocationExternalId).HasMaxLength(100);
             e.Property(x => x.SourceReferenceType).HasMaxLength(40);
             e.Property(x => x.SplitUseLineKey).HasMaxLength(100);
+        });
+        modelBuilder.Entity<CreditNote>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.CreditNoteDate });
+            e.HasIndex(x => x.PurchaseOrderId);
+            e.HasIndex(x => x.PurchaseOrderItemId);
+            e.HasIndex(x => x.Status);
+            e.Property(x => x.LocationExternalId).HasMaxLength(100);
+            e.Property(x => x.CreditNoteNumber).HasMaxLength(80);
+            e.Property(x => x.PoNumber).HasMaxLength(80);
+            e.Property(x => x.VendorExternalId).HasMaxLength(80);
+            e.Property(x => x.VendorName).HasMaxLength(200);
+            e.Property(x => x.VendorProductId).HasMaxLength(80);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.ComponentId).HasMaxLength(80);
+            e.Property(x => x.ComponentName).HasMaxLength(200);
+            e.Property(x => x.DeliveryUom).HasMaxLength(50);
+            e.Property(x => x.StockUom).HasMaxLength(50);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.CancelPoNumber).HasMaxLength(80);
+            e.Property(x => x.CancelDoOrInvoiceNumber).HasMaxLength(120);
+            e.Property(x => x.CancelledBy).HasMaxLength(200);
         });
         modelBuilder.Entity<TransferEntry>(e =>
         {

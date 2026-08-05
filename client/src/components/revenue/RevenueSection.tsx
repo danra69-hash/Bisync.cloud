@@ -147,7 +147,12 @@ function renderRevMgmtContent(
     case 'Returnable Goods':
       return <ReturnableGoodsPage selectedCompanyId={selectedCompanyId} />;
     case 'Credit Note':
-      return <CreditNotePage selectedCompanyId={selectedCompanyId} />;
+      return (
+        <CreditNotePage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'Cash Purchase':
       return (
         <CashPurchasePage

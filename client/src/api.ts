@@ -2354,6 +2354,80 @@ export interface CreateReturnableGoodsReturnPayload {
   creditNoteNumber: string;
 }
 
+export interface CreditNoteRow {
+  id: number;
+  companyId?: number | null;
+  locationExternalId: string;
+  creditNoteNumber: string;
+  creditNoteDate: string;
+  purchaseOrderId: number;
+  poNumber: string;
+  purchaseOrderItemId: number;
+  vendorExternalId?: string;
+  vendorName: string;
+  vendorProductId?: string;
+  productName: string;
+  componentId: string;
+  componentName: string;
+  deliveryUom: string;
+  deliveryUnitPrice: number;
+  quantity: number;
+  amount: number;
+  stockQuantity: number;
+  stockUom: string;
+  stockUnitPrice: number;
+  status: 'confirmed' | 'cancelled' | string;
+  cancelPurchaseOrderId?: number | null;
+  cancelPoNumber?: string;
+  cancelDoOrInvoiceNumber?: string;
+  cancelledAt?: string | null;
+  cancelledBy?: string;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface CreditNotePoSearchItem {
+  id: number;
+  vendorProductId?: string;
+  name: string;
+  componentId: string;
+  componentName: string;
+  unit: string;
+  componentUom?: string;
+  deliveredQuantity: number;
+  unitPrice: number;
+}
+
+export interface CreditNotePoSearchRow {
+  id: number;
+  poNumber: string;
+  vendorName: string;
+  vendorExternalId?: string;
+  status: string;
+  orderDate: string;
+  vendorDoNumber?: string | null;
+  vendorInvoiceNumber?: string | null;
+  locationExternalIds?: string[];
+  items: CreditNotePoSearchItem[];
+}
+
+export interface CreateCreditNotePayload {
+  companyId?: number | null;
+  purchaseOrderId: number;
+  purchaseOrderItemId: number;
+  quantity: number;
+  creditNoteNumber?: string;
+  creditNoteDate: string;
+  locationExternalId?: string;
+}
+
+export interface CancelCreditNotePayload {
+  companyId?: number | null;
+  cancelPoNumber: string;
+  cancelDoOrInvoiceNumber: string;
+  cancelledBy?: string;
+}
+
 export interface WastageEntry {
   id: number;
   companyId?: number | null;
@@ -4135,6 +4209,28 @@ export const api = {
     fetchJsonWithMethod<WastageEntry>('/api/wastage', 'POST', payload),
   createPosWastage: (payload: CreatePosWastagePayload) =>
     fetchJsonWithMethod<WastageEntry>('/api/wastage/pos', 'POST', payload),
+  creditNotes: (companyId?: number, locationIds?: string[]) => {
+    const params = new URLSearchParams();
+    if (companyId) params.set('companyId', String(companyId));
+    if (locationIds?.length) params.set('locationIds', locationIds.join(','));
+    const query = params.toString();
+    return fetchJson<CreditNoteRow[]>(`/api/credit-notes${query ? `?${query}` : ''}`);
+  },
+  searchCreditNotePurchaseOrders: (companyId: number, q?: string) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    if (q?.trim()) params.set('q', q.trim());
+    return fetchJson<CreditNotePoSearchRow[]>(`/api/credit-notes/po-search?${params.toString()}`);
+  },
+  createCreditNote: (payload: CreateCreditNotePayload) =>
+    fetchJsonWithMethod<CreditNoteRow>('/api/credit-notes', 'POST', payload),
+  updateCreditNoteNumber: (id: number, companyId: number, creditNoteNumber: string) =>
+    fetchJsonWithMethod<CreditNoteRow>(`/api/credit-notes/${id}`, 'PATCH', {
+      companyId,
+      creditNoteNumber,
+    }),
+  cancelCreditNote: (id: number, payload: CancelCreditNotePayload) =>
+    fetchJsonWithMethod<CreditNoteRow>(`/api/credit-notes/${id}/cancel`, 'POST', payload),
   transfers: (companyId: number | undefined, locationIds: string[], month?: string) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));

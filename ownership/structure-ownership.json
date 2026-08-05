@@ -1022,6 +1022,17 @@
       "createdAt": "2026-07-30"
     },
     {
+      "id": "dr.api.credit-notes",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CreditNotesController.cs",
+      "symbol": "CreditNotesController",
+      "route": "api/credit-notes",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "PO short-delivery credit notes with stock outbound and cancel revalue"
+    },
+    {
       "id": "dr.api.uom-rename",
       "kind": "api-controller",
       "path": "src/Bisync.Api/Controllers/UomRenameController.cs",
