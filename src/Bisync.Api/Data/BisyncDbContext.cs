@@ -118,6 +118,10 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
     public DbSet<TransferEntry> TransferEntries => Set<TransferEntry>();
     public DbSet<ReturnableGoodsReturn> ReturnableGoodsReturns => Set<ReturnableGoodsReturn>();
     public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
+    public DbSet<CentralStoreConfig> CentralStoreConfigs => Set<CentralStoreConfig>();
+    public DbSet<StoreRequisition> StoreRequisitions => Set<StoreRequisition>();
+    public DbSet<StoreRequisitionLine> StoreRequisitionLines => Set<StoreRequisitionLine>();
+    public DbSet<ProductionStockHold> ProductionStockHolds => Set<ProductionStockHold>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -433,6 +437,49 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.CancelPoNumber).HasMaxLength(80);
             e.Property(x => x.CancelDoOrInvoiceNumber).HasMaxLength(120);
             e.Property(x => x.CancelledBy).HasMaxLength(200);
+        });
+        modelBuilder.Entity<CentralStoreConfig>(e =>
+        {
+            e.HasIndex(x => x.CompanyId).IsUnique();
+            e.Property(x => x.StoreLocationExternalId).HasMaxLength(100);
+            e.Property(x => x.KitchenLocationExternalId).HasMaxLength(100);
+        });
+        modelBuilder.Entity<StoreRequisition>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.ProductId);
+            e.Property(x => x.RequisitionNumber).HasMaxLength(40);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.StoreLocationExternalId).HasMaxLength(100);
+            e.Property(x => x.KitchenLocationExternalId).HasMaxLength(100);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.IssuedBy).HasMaxLength(200);
+            e.HasMany(x => x.Lines)
+                .WithOne(l => l.StoreRequisition)
+                .HasForeignKey(l => l.StoreRequisitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<StoreRequisitionLine>(e =>
+        {
+            e.HasIndex(x => x.StoreRequisitionId);
+            e.Property(x => x.ComponentId).HasMaxLength(80);
+            e.Property(x => x.ComponentName).HasMaxLength(200);
+            e.Property(x => x.Uom).HasMaxLength(50);
+        });
+        modelBuilder.Entity<ProductionStockHold>(e =>
+        {
+            e.HasIndex(x => x.CompanyId);
+            e.HasIndex(x => new { x.CompanyId, x.Status });
+            e.HasIndex(x => x.LocationExternalId);
+            e.HasIndex(x => x.ProductId);
+            e.HasIndex(x => x.StoreRequisitionId);
+            e.Property(x => x.LocationExternalId).HasMaxLength(100);
+            e.Property(x => x.ComponentId).HasMaxLength(80);
+            e.Property(x => x.ComponentName).HasMaxLength(200);
+            e.Property(x => x.Uom).HasMaxLength(50);
+            e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20);
         });
         modelBuilder.Entity<TransferEntry>(e =>
         {

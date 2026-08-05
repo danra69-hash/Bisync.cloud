@@ -302,6 +302,18 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
           'PO short-delivery credit that posts stock outbound; cancel revalues free replacement receipts without restoring qty.',
         dbName: 'CreditNotes / InventoryMovements.ReferenceType=credit_note',
       },
+      {
+        term: 'Central Store',
+        meaning:
+          'Location that purchases and holds components for Production; To Produce creates a store requisition when activated.',
+        dbName: 'CentralStoreConfigs / StoreRequisitions',
+      },
+      {
+        term: 'Stock Hold',
+        meaning:
+          'Components issued from Central Store to the Production Kitchen, awaiting depletion when Produced is confirmed.',
+        dbName: 'ProductionStockHolds',
+      },
     ],
   },
   {

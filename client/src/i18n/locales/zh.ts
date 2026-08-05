@@ -138,6 +138,8 @@ export const zh = {
       cashPurchase: '现金采购',
       orderTemplate: '订单模板',
       production: '生产',
+      centralStore: '中央仓',
+      stockHold: '库存预留',
       stockCard: '库存卡',
       inventory: '库存',
       wastage: '损耗',

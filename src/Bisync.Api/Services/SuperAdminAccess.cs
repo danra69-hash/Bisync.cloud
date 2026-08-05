@@ -58,6 +58,7 @@ public static class SuperAdminAccess
     [
         "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder",
         "cashPurchase", "orderTemplate", "productManagement", "subProductManagement", "offlineSales",
+        "centralStore", "stockHold",
         "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage",
         "transfer", "createEdit", "componentConfig", "activateDeactivateVendorProducts",
         "createEditComponentGroup", "createEditStorageAssignment", "accountMapping",

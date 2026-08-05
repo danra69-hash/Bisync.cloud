@@ -3,10 +3,11 @@ import { pageShellClass } from '../layout/pageLayout';
 import { ProductManagementPage } from './ProductManagementPage';
 import { SalesDataPage } from './SalesDataPage';
 import { B2bActiveOrderPage } from './B2bActiveOrderPage';
+import { ProductionStockHoldPanel } from './ProductionStockHoldPanel';
 import { useRevMgmtPageLabel } from './RevMgmtTitleContext';
 import { useOrgBusinessCapabilities } from '../../hooks/useOrgSupplyCapability';
 
-export type ProductionTab = 'b2bProduct' | 'activeOrder' | 'salesData' | 'subProduct';
+export type ProductionTab = 'b2bProduct' | 'activeOrder' | 'salesData' | 'subProduct' | 'stockHold';
 
 type Props = {
   selectedCompanyId: number | null;
@@ -28,6 +29,7 @@ const ALL_TAB_ITEMS: TabDef[] = [
   { id: 'activeOrder', label: 'Active Order', requiresSupply: true },
   { id: 'salesData', label: 'Sales Data' },
   { id: 'subProduct', label: 'Sub-Product' },
+  { id: 'stockHold', label: 'Stock Hold' },
 ];
 
 export function ProductionSection({
@@ -56,6 +58,7 @@ export function ProductionSection({
     if (initialTab === 'activeOrder' && !hasSupplyCapability) {
       return hasB2bProductCapability ? 'b2bProduct' : 'subProduct';
     }
+    if (initialTab === 'stockHold') return 'stockHold';
     return initialTab;
   }, [initialTab, hasSupplyCapability, hasB2bProductCapability]);
 
@@ -111,6 +114,11 @@ export function ProductionSection({
         <ProductManagementPage
           embedded
           viewMode="sub-product"
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      ) : tab === 'stockHold' ? (
+        <ProductionStockHoldPanel
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

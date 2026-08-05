@@ -138,6 +138,8 @@ export const ja = {
       cashPurchase: '現金仕入',
       orderTemplate: '発注テンプレート',
       production: '生産',
+      centralStore: 'セントラルストア',
+      stockHold: 'ストックホールド',
       stockCard: '在庫カード',
       inventory: '在庫',
       wastage: '廃棄',

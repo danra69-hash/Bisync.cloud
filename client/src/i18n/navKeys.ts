@@ -35,6 +35,8 @@ export const REV_MGMT_ITEM_I18N: Record<string, string> = {
   'Cash Purchase': 'revMgmt.items.cashPurchase',
   'Order Template': 'revMgmt.items.orderTemplate',
   Production: 'revMgmt.items.production',
+  'Central Store': 'revMgmt.items.centralStore',
+  'Stock Hold': 'revMgmt.items.stockHold',
   'Stock Card': 'revMgmt.items.stockCard',
   Inventory: 'revMgmt.items.inventory',
   Wastage: 'revMgmt.items.wastage',

@@ -138,6 +138,8 @@ export const it = {
       cashPurchase: 'Acquisto contanti',
       orderTemplate: 'Modello ordine',
       production: 'Produzione',
+      centralStore: 'Magazzino centrale',
+      stockHold: 'Stock in attesa',
       stockCard: 'Scheda magazzino',
       inventory: 'Magazzino',
       wastage: 'Sprechi',

@@ -515,6 +515,28 @@
       "createdAt": "2026-08-05"
     },
     {
+      "id": "dr.page.central-store",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CentralStorePage.tsx",
+      "symbol": "CentralStorePage",
+      "route": "/revenue/central-store",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "Central Store activation, requisitions, and issue-to-kitchen"
+    },
+    {
+      "id": "dr.page.production-stock-hold",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/ProductionStockHoldPanel.tsx",
+      "symbol": "ProductionStockHoldPanel",
+      "route": "/revenue/production/stock-hold",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "Production tab — components issued from Central Store awaiting produce"
+    },
+    {
       "id": "dr.page.cogs-audit",
       "kind": "client-page",
       "path": "client/src/components/revenue/CogsAuditPage.tsx",
@@ -1031,6 +1053,17 @@
       "ownerEmail": "dra@cubevalue.com",
       "createdAt": "2026-08-05",
       "notes": "PO short-delivery credit notes with stock outbound and cancel revalue"
+    },
+    {
+      "id": "dr.api.central-store",
+      "kind": "api-controller",
+      "path": "src/Bisync.Api/Controllers/CentralStoreController.cs",
+      "symbol": "CentralStoreController",
+      "route": "api/central-store",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05",
+      "notes": "Central Store config, requisitions, issue, and production stock holds"
     },
     {
       "id": "dr.api.uom-rename",

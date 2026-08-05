@@ -136,6 +136,8 @@ export const en = {
       cashPurchase: 'Cash Purchase',
       orderTemplate: 'Order Template',
       production: 'Production',
+      centralStore: 'Central Store',
+      stockHold: 'Stock Hold',
       stockCard: 'Stock Card',
       inventory: 'Inventory',
       wastage: 'Wastage',

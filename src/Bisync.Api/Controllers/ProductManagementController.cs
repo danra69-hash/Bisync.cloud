@@ -13,6 +13,7 @@ namespace Bisync.Api.Controllers;
 public class ProductManagementController(
     BisyncDbContext db,
     ProductionInventoryService productionInventory,
+    CentralStoreService centralStore,
     B2bSalesOrderService salesOrderService) : ControllerBase
 {
     [HttpGet]
@@ -223,7 +224,10 @@ public class ProductManagementController(
     [HttpPost("{productId:int}/to-produce")]
     public async Task<ActionResult<object>> ToProduce(int productId, [FromBody] ProductManagementActionRequest request)
     {
-        var product = await db.Products.FirstOrDefaultAsync(p => p.Id == productId);
+        var product = await db.Products
+            .Include(p => p.Items)
+            .Include(p => p.PackagingItems)
+            .FirstOrDefaultAsync(p => p.Id == productId);
         if (product is null)
             return NotFound();
 
@@ -235,21 +239,31 @@ public class ProductManagementController(
             return BadRequest(new { message = "Enter a quantity greater than zero." });
 
         var productionDate = ResolveProductionDate(request.ProductionDate);
+        var storeConfig = product.CompanyId is int companyId
+            ? await centralStore.GetActiveConfigAsync(companyId)
+            : null;
+        var previewLocations = storeConfig is not null
+            ? new List<string> { storeConfig.StoreLocationExternalId }
+            : locationIds;
 
+        ProduceBatchResult? preview;
         try
         {
-            var preview = await productionInventory.PreviewRequirementsAsync(
+            preview = await productionInventory.PreviewRequirementsAsync(
                 productId,
-                locationIds,
+                previewLocations,
                 request.BatchQty);
 
             if (!request.OverrideStock && !preview.Success && preview.Components.Count > 0)
             {
                 return Conflict(new
                 {
-                    message = "Insufficient component stock for the quantity to produce. Override to queue anyway.",
+                    message = storeConfig is not null
+                        ? "Insufficient Central Store stock for the quantity to produce. Override to queue a store requisition anyway."
+                        : "Insufficient component stock for the quantity to produce. Override to queue anyway.",
                     shortages = preview.Shortages.Select(MapShortageLine),
                     components = preview.Components.Select(MapComponentLine),
+                    centralStoreActive = storeConfig is not null,
                 });
             }
         }
@@ -273,6 +287,24 @@ public class ProductManagementController(
             locationIds,
             product.CompanyId);
 
+        object? requisition = null;
+        if (storeConfig is not null && preview is not null && preview.Components.Count > 0)
+        {
+            try
+            {
+                var created = await centralStore.CreateRequisitionFromToProduceAsync(
+                    product,
+                    request.BatchQty,
+                    storeConfig,
+                    preview.Components);
+                requisition = CentralStoreService.MapRequisition(created);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         product.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
@@ -281,7 +313,15 @@ public class ProductManagementController(
             .Where(s => s.ProductId == productId && locationIds.Contains(s.LocationExternalId))
             .ToListAsync();
 
-        return Ok(await MapSummaryAsync(product, updatedRows));
+        return Ok(new
+        {
+            summary = await MapSummaryAsync(product, updatedRows),
+            storeRequisition = requisition,
+            centralStoreActive = storeConfig is not null,
+            message = requisition is not null
+                ? "Queued to produce and created a Central Store requisition."
+                : null,
+        });
     }
 
     [HttpPost("{productId:int}/produce")]
@@ -329,6 +369,8 @@ public class ProductManagementController(
                         components = componentResult.Components.Select(MapComponentLine),
                     });
                 }
+
+                await DepleteCentralStoreHoldsAsync(product, locationIds, componentResult);
             }
             catch (InvalidOperationException ex)
             {
@@ -355,6 +397,8 @@ public class ProductManagementController(
                         components = componentResult.Components.Select(MapComponentLine),
                     });
                 }
+
+                await DepleteCentralStoreHoldsAsync(product, locationIds, componentResult);
             }
             catch (InvalidOperationException ex)
             {
@@ -515,6 +559,29 @@ public class ProductManagementController(
     [HttpPost("{productId:int}/produced")]
     public Task<ActionResult<object>> Produced(int productId, [FromBody] ProduceBatchRequest request) =>
         Produce(productId, request);
+
+    async Task DepleteCentralStoreHoldsAsync(
+        Product product,
+        IReadOnlyList<string> locationIds,
+        ProduceBatchResult componentResult)
+    {
+        var usages = componentResult.Components
+            .Where(c => c.RequiredQty > 0)
+            .GroupBy(c => $"{c.ComponentId}\u001f{c.Uom}", StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                return (first.ComponentId, first.Uom, Qty: g.Sum(x => x.RequiredQty));
+            })
+            .ToList();
+        if (usages.Count == 0) return;
+
+        await centralStore.DepleteHoldsForProductionAsync(
+            product.Id,
+            product.CompanyId,
+            locationIds,
+            usages);
+    }
 
     static object MapComponentLine(ProduceComponentRequirement c) => new
     {
