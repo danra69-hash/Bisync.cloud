@@ -61,6 +61,7 @@ import {
 import { ModifierPickerModal } from './ModifierPickerModal'
 import { VoidCancelModal } from './VoidCancelModal'
 import { PaymentModal, type PaymentConfirmPayload } from './PaymentModal'
+import { DiscountModal, type DiscountApplyPayload } from './DiscountModal'
 import { CompulsoryModifierModal } from './CompulsoryModifierModal'
 import { TENDER_LABEL } from '../../cashier/domain/payments'
 import type { PosModifierGroup } from '../../../../api'
@@ -166,6 +167,9 @@ export function RegisterPage() {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [entertainmentTypes, setEntertainmentTypes] = useState<PosConfigType[]>([])
+  const [discountTypes, setDiscountTypes] = useState<PosConfigType[]>([])
+  const [discountOpen, setDiscountOpen] = useState(false)
+  const [discountError, setDiscountError] = useState<string | null>(null)
   const [prepaidPromotions, setPrepaidPromotions] = useState<PosPromotion[]>([])
   const [prepaidCustomerTarget, setPrepaidCustomerTarget] = useState<{
     product: Product
@@ -239,15 +243,23 @@ export function RegisterPage() {
   useEffect(() => {
     if (!session?.companyId) {
       setEntertainmentTypes([])
+      setDiscountTypes([])
       return
     }
     let cancelled = false
-    api.posConfigTypes(session.companyId, { kind: 'entertainment', includeInactive: false })
-      .then(rows => {
-        if (!cancelled) setEntertainmentTypes(rows.filter(r => r.active !== false))
+    Promise.all([
+      api.posConfigTypes(session.companyId, { kind: 'entertainment', includeInactive: false }),
+      api.posConfigTypes(session.companyId, { kind: 'discount', includeInactive: false }),
+    ])
+      .then(([ent, disc]) => {
+        if (cancelled) return
+        setEntertainmentTypes(ent.filter(r => r.active !== false))
+        setDiscountTypes(disc.filter(r => r.active !== false))
       })
       .catch(() => {
-        if (!cancelled) setEntertainmentTypes([])
+        if (cancelled) return
+        setEntertainmentTypes([])
+        setDiscountTypes([])
       })
     return () => {
       cancelled = true
@@ -1327,6 +1339,16 @@ export function RegisterPage() {
       const methodLabel = isEntertainment
         ? (payload.entertainment?.typeName || TENDER_LABEL.entertainment)
         : (TENDER_LABEL[payload.tender] || payload.tender)
+      const discountNote = settleCharges.discountLabel?.trim()
+        || (settleCharges.discountTypeCode
+          ? `${settleCharges.discountTypeCode} ${settleCharges.discountPercent ?? ''}%`
+          : '')
+      const basePurpose = isEntertainment
+        ? (payload.entertainment?.purpose || methodLabel)
+        : methodLabel
+      const paymentPurpose = discountNote && !isEntertainment
+        ? `${basePurpose} · ${discountNote}`.slice(0, 240)
+        : basePurpose
       const closedCheckPayload = {
         companyId: session.companyId,
         locationExternalId: locationId,
@@ -1340,9 +1362,7 @@ export function RegisterPage() {
         grossCents,
         paymentMethod: isEntertainment ? 'entertainment' : payload.tender,
         paymentAmountCents: grandCents,
-        paymentPurpose: isEntertainment
-          ? (payload.entertainment?.purpose || methodLabel)
-          : methodLabel,
+        paymentPurpose,
       }
       if (useOutbox) {
         await enqueueOutbox('posRecordClosedCheck', closedCheckPayload)
@@ -1596,6 +1616,10 @@ export function RegisterPage() {
         onCoverChange={setCover}
         onChange={setLines}
         onChargesChange={setCharges}
+        onEditDiscount={() => {
+          setDiscountError(null)
+          setDiscountOpen(true)
+        }}
         onSwapLine={handleSwapLine}
         onRemoveLine={handleRemoveLine}
         selectedLineKey={selectedLineKey}
@@ -1707,6 +1731,49 @@ export function RegisterPage() {
           onConfirm={(payload) => { void confirmRemoval(payload) }}
         />
       )}
+
+      {discountOpen ? (
+        <DiscountModal
+          subtotalCents={cartSubtotal(
+            lines,
+            liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS,
+          )}
+          cartLines={lines}
+          catalog={liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS}
+          discountTypes={discountTypes}
+          error={discountError}
+          onCancel={() => {
+            setDiscountOpen(false)
+            setDiscountError(null)
+          }}
+          onClear={() => {
+            setCharges(prev => ({
+              ...prev,
+              discountCents: 0,
+              discountTypeCode: undefined,
+              discountPercent: undefined,
+              discountReason: undefined,
+              discountLabel: undefined,
+            }))
+            setDiscountOpen(false)
+            setDiscountError(null)
+            flash('Discount cleared')
+          }}
+          onConfirm={(payload: DiscountApplyPayload) => {
+            setCharges(prev => ({
+              ...prev,
+              discountCents: payload.discountCents,
+              discountTypeCode: payload.typeCode,
+              discountPercent: payload.percentage,
+              discountReason: payload.reason || undefined,
+              discountLabel: payload.label,
+            }))
+            setDiscountOpen(false)
+            setDiscountError(null)
+            flash(`Discount · ${payload.label}`)
+          }}
+        />
+      ) : null}
 
       {paymentOpen && (
         <PaymentModal

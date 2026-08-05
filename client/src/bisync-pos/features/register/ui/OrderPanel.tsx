@@ -20,6 +20,8 @@ type Props = {
   onCoverChange: (cover: number) => void
   onChange: (lines: CartLine[]) => void
   onChargesChange: (charges: OrderCharges) => void
+  /** Opens PosConfig discount type picker (percentage + optional reason). */
+  onEditDiscount?: () => void
   onSwapLine?: (line: CartLine) => void
   /** When set, intercepts trash instead of silently removing the line. */
   onRemoveLine?: (line: CartLine) => void
@@ -52,6 +54,7 @@ export function OrderPanel({
   onCoverChange,
   onChange,
   onChargesChange,
+  onEditDiscount,
   onSwapLine,
   onRemoveLine,
   selectedLineKey = null,
@@ -70,7 +73,7 @@ export function OrderPanel({
   const hasItems = lines.length > 0
 
   function editCents(
-    key: keyof OrderCharges,
+    key: 'discountCents' | 'serviceCents' | 'taxRegularCents' | 'taxAlcoholCents',
     label: string,
   ) {
     const raw = window.prompt(label, String(charges[key] / 100))
@@ -264,7 +267,10 @@ export function OrderPanel({
           label="Discount"
           value={formatMoney(charges.discountCents)}
           editable
-          onEdit={() => editCents('discountCents', 'Discount ($)')}
+          onEdit={() => {
+            if (onEditDiscount) onEditDiscount()
+            else editCents('discountCents', 'Discount ($)')
+          }}
         />
         <SummaryRow
           label="Service"

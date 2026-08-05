@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  discountCentsFromPercent,
   findEntertainmentBlockedProducts,
+  findPosConfigBlockedProducts,
+  formatDiscountLabel,
   formatEntertainmentPurpose,
 } from '../client/src/data/entertainmentSettlement.ts'
 
@@ -27,7 +30,7 @@ describe('entertainment settlement helpers', () => {
   })
 
   it('includeAll overrides exceptions', () => {
-    const blocked = findEntertainmentBlockedProducts(
+    const blocked = findPosConfigBlockedProducts(
       {
         includeAll: true,
         exceptionGroups: ['Wine'],
@@ -41,5 +44,16 @@ describe('entertainment settlement helpers', () => {
   it('formats purpose with employee and reason', () => {
     const purpose = formatEntertainmentPurpose('STAFF', 'Jane Doe', 'VIP dinner')
     assert.equal(purpose, 'STAFF · Jane Doe — VIP dinner')
+  })
+
+  it('computes discount cents from percentage', () => {
+    assert.equal(discountCentsFromPercent(10000, 10), 1000)
+    assert.equal(discountCentsFromPercent(999, 100), 999)
+    assert.equal(discountCentsFromPercent(1000, 0), 0)
+  })
+
+  it('formats optional discount label', () => {
+    assert.equal(formatDiscountLabel('VIP', 15), 'VIP 15%')
+    assert.equal(formatDiscountLabel('VIP', 15, 'Manager courtesy'), 'VIP 15%: Manager courtesy')
   })
 })

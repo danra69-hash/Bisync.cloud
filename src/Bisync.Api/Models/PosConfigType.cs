@@ -2,7 +2,8 @@ namespace Bisync.Api.Models;
 
 /// <summary>
 /// Company-scoped POS lookup: payment, entertainment, or discount type.
-/// Entertainment rows may carry exception product groups/items and an Include-all override.
+/// Entertainment and discount rows may carry exception product groups/items and an Include-all override.
+/// Discount rows also carry a user-defined percentage.
 /// </summary>
 public class PosConfigType
 {
@@ -16,13 +17,15 @@ public class PosConfigType
     public int Sequence { get; set; }
     public bool Active { get; set; } = true;
     /// <summary>
-    /// Entertainment only: when true, override exception groups/items so every product is allowed.
+    /// Entertainment / discount: when true, override exception groups/items so every product is allowed.
     /// </summary>
     public bool IncludeAll { get; set; }
-    /// <summary>Entertainment only: JSON string[] of product group names that are not allowed.</summary>
+    /// <summary>Entertainment / discount: JSON string[] of product group names that are not allowed.</summary>
     public string ExceptionGroupsJson { get; set; } = "[]";
-    /// <summary>Entertainment only: JSON int[] of product ids that are not allowed.</summary>
+    /// <summary>Entertainment / discount: JSON int[] of product ids that are not allowed.</summary>
     public string ExceptionProductIdsJson { get; set; } = "[]";
+    /// <summary>Discount only: user-defined percentage (0–100).</summary>
+    public decimal Percentage { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

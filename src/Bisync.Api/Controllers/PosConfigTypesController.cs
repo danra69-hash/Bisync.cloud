@@ -26,7 +26,8 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
         bool Active = true,
         bool IncludeAll = false,
         string[]? ExceptionGroups = null,
-        int[]? ExceptionProductIds = null);
+        int[]? ExceptionProductIds = null,
+        decimal Percentage = 0);
 
     public record ActiveBody(bool Active);
 
@@ -98,7 +99,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             CreatedAt = now,
             UpdatedAt = now,
         };
-        ApplyEntertainmentFields(row, kind, body);
+        ApplyKindFields(row, kind, body);
         db.PosConfigTypes.Add(row);
         await db.SaveChangesAsync(cancellationToken);
         return Ok(Map(row));
@@ -138,7 +139,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
         row.Code = code;
         row.Sequence = Math.Max(0, body.Sequence);
         row.Active = body.Active;
-        ApplyEntertainmentFields(row, kind, body);
+        ApplyKindFields(row, kind, body);
         row.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(Map(row));
@@ -170,13 +171,15 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
         return NoContent();
     }
 
-    static void ApplyEntertainmentFields(PosConfigType row, string kind, UpsertRequest body)
+    static void ApplyKindFields(PosConfigType row, string kind, UpsertRequest body)
     {
-        if (kind != "entertainment")
+        var supportsExceptions = kind is "entertainment" or "discount";
+        if (!supportsExceptions)
         {
             row.IncludeAll = false;
             row.ExceptionGroupsJson = "[]";
             row.ExceptionProductIdsJson = "[]";
+            row.Percentage = 0;
             return;
         }
 
@@ -186,23 +189,36 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             // Include-all overrides exceptions — persist empty lists for clarity.
             row.ExceptionGroupsJson = "[]";
             row.ExceptionProductIdsJson = "[]";
-            return;
+        }
+        else
+        {
+            var groups = (body.ExceptionGroups ?? [])
+                .Select(g => (g ?? string.Empty).Trim())
+                .Where(g => g.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var productIds = (body.ExceptionProductIds ?? [])
+                .Where(id => id > 0)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToArray();
+
+            row.ExceptionGroupsJson = JsonSerializer.Serialize(groups, JsonOpts);
+            row.ExceptionProductIdsJson = JsonSerializer.Serialize(productIds, JsonOpts);
         }
 
-        var groups = (body.ExceptionGroups ?? [])
-            .Select(g => (g ?? string.Empty).Trim())
-            .Where(g => g.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var productIds = (body.ExceptionProductIds ?? [])
-            .Where(id => id > 0)
-            .Distinct()
-            .OrderBy(id => id)
-            .ToArray();
-
-        row.ExceptionGroupsJson = JsonSerializer.Serialize(groups, JsonOpts);
-        row.ExceptionProductIdsJson = JsonSerializer.Serialize(productIds, JsonOpts);
+        if (kind == "discount")
+        {
+            var pct = body.Percentage;
+            if (pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            row.Percentage = Math.Round(pct, 2, MidpointRounding.AwayFromZero);
+        }
+        else
+        {
+            row.Percentage = 0;
+        }
     }
 
     static string? Validate(UpsertRequest body)
@@ -221,6 +237,8 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             return "code must be 1–40 characters.";
         if (!code.All(c => char.IsLetterOrDigit(c) || c is '-' or '_'))
             return "code may only contain letters, digits, hyphen, and underscore.";
+        if (kind == "discount" && (body.Percentage < 0 || body.Percentage > 100))
+            return "percentage must be between 0 and 100.";
         return null;
     }
 
@@ -263,6 +281,8 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
     static object Map(PosConfigType row)
     {
         var isEntertainment = string.Equals(row.Kind, "entertainment", StringComparison.OrdinalIgnoreCase);
+        var isDiscount = string.Equals(row.Kind, "discount", StringComparison.OrdinalIgnoreCase);
+        var supportsExceptions = isEntertainment || isDiscount;
         return new
         {
             id = row.Id,
@@ -272,9 +292,10 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             code = row.Code,
             sequence = row.Sequence,
             active = row.Active,
-            includeAll = isEntertainment && row.IncludeAll,
-            exceptionGroups = isEntertainment ? ParseStringArray(row.ExceptionGroupsJson) : Array.Empty<string>(),
-            exceptionProductIds = isEntertainment ? ParseIntArray(row.ExceptionProductIdsJson) : Array.Empty<int>(),
+            includeAll = supportsExceptions && row.IncludeAll,
+            exceptionGroups = supportsExceptions ? ParseStringArray(row.ExceptionGroupsJson) : Array.Empty<string>(),
+            exceptionProductIds = supportsExceptions ? ParseIntArray(row.ExceptionProductIdsJson) : Array.Empty<int>(),
+            percentage = isDiscount ? row.Percentage : 0m,
             createdAt = row.CreatedAt,
             updatedAt = row.UpdatedAt,
         };
@@ -293,13 +314,13 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
         var now = DateTime.UtcNow;
         var toAdd = new List<PosConfigType>();
 
-        void Seed(string kind, (string Code, string Name, int Seq)[] rows)
+        void Seed(string kind, (string Code, string Name, int Seq, decimal Pct)[] rows)
         {
             have.TryGetValue(kind, out var codes);
             codes ??= new HashSet<string>();
             // Only seed a kind when the company has no rows of that kind yet.
             if (codes.Count > 0) return;
-            foreach (var (code, name, seq) in rows)
+            foreach (var (code, name, seq, pct) in rows)
             {
                 toAdd.Add(new PosConfigType
                 {
@@ -312,6 +333,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
                     IncludeAll = false,
                     ExceptionGroupsJson = "[]",
                     ExceptionProductIdsJson = "[]",
+                    Percentage = kind == "discount" ? pct : 0,
                     CreatedAt = now,
                     UpdatedAt = now,
                 });
@@ -320,25 +342,25 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
 
         Seed("payment",
         [
-            ("CASH", "Cash", 10),
-            ("CARD-EMV", "EMV Chip", 20),
-            ("TAP", "Tap to Pay", 30),
-            ("QR", "QR Pay", 40),
-            ("GIFT-CARD", "Gift Card", 50),
+            ("CASH", "Cash", 10, 0),
+            ("CARD-EMV", "EMV Chip", 20, 0),
+            ("TAP", "Tap to Pay", 30, 0),
+            ("QR", "QR Pay", 40, 0),
+            ("GIFT-CARD", "Gift Card", 50, 0),
         ]);
         Seed("entertainment",
         [
-            ("STAFF", "Staff Meal", 10),
-            ("COMP", "Complimentary", 20),
-            ("PROMO", "Promotional", 30),
-            ("MANAGER", "Manager Comp", 40),
+            ("STAFF", "Staff Meal", 10, 0),
+            ("COMP", "Complimentary", 20, 0),
+            ("PROMO", "Promotional", 30, 0),
+            ("MANAGER", "Manager Comp", 40, 0),
         ]);
         Seed("discount",
         [
-            ("PERCENT", "Percentage Discount", 10),
-            ("AMOUNT", "Fixed Amount", 20),
-            ("VIP", "VIP Discount", 30),
-            ("SENIOR", "Senior Citizen", 40),
+            ("PERCENT", "Percentage Discount", 10, 10),
+            ("AMOUNT", "Fixed Amount", 20, 0),
+            ("VIP", "VIP Discount", 30, 15),
+            ("SENIOR", "Senior Citizen", 40, 20),
         ]);
 
         if (toAdd.Count == 0) return;
