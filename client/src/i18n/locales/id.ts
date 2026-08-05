@@ -138,6 +138,8 @@ export const id = {
       cashPurchase: 'Pembelian Tunai',
       orderTemplate: 'Template Pesanan',
       production: 'Produksi',
+      centralStore: 'Central Store',
+      stockHold: 'Stock Hold',
       stockCard: 'Kartu Stok',
       inventory: 'Inventaris',
       wastage: 'Susut',

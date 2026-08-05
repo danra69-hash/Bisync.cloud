@@ -662,7 +662,7 @@ public class AuthController(
             foreach (var id in new[]
             {
                 "viewOrder", "createEditOrder", "approveOrder", "receiveOrder", "consolidateOrder", "cashPurchase", "orderTemplate",
-                "productManagement", "subProductManagement", "offlineSales",
+                "productManagement", "subProductManagement", "offlineSales", "centralStore", "stockHold",
                 "stockCard", "inventoryPost", "inventoryConfirmation", "inventoryAdjustment", "creditNote", "wastage", "transfer",
                 "createEdit", "componentConfig", "activateDeactivateVendorProducts", "createEditComponentGroup", "createEditStorageAssignment",
                 "viewVendorList", "viewVendorProducts", "comparePrice", "activateDeactivateVendor",

@@ -2428,6 +2428,68 @@ export interface CancelCreditNotePayload {
   cancelledBy?: string;
 }
 
+export interface CentralStoreConfig {
+  id?: number;
+  companyId?: number;
+  active: boolean;
+  storeLocationExternalId: string;
+  kitchenLocationExternalId: string;
+  activatedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface StoreRequisitionLine {
+  id: number;
+  componentId: string;
+  componentName: string;
+  uom: string;
+  requiredQty: number;
+  issuedQty: number;
+  unitPrice: number;
+}
+
+export interface StoreRequisition {
+  id: number;
+  companyId?: number | null;
+  requisitionNumber: string;
+  productId: number;
+  productName: string;
+  isSubProduct: boolean;
+  batchQty: number;
+  storeLocationExternalId: string;
+  kitchenLocationExternalId: string;
+  status: 'pending' | 'issued' | 'cancelled' | string;
+  requestedAt: string;
+  issuedAt?: string | null;
+  issuedBy?: string;
+  createdAt: string;
+  lines: StoreRequisitionLine[];
+}
+
+export interface ProductionStockHold {
+  id: number;
+  companyId?: number | null;
+  locationExternalId: string;
+  componentId: string;
+  componentName: string;
+  uom: string;
+  quantity: number;
+  unitPrice: number;
+  storeRequisitionId: number;
+  storeRequisitionLineId: number;
+  productId: number;
+  productName: string;
+  status: 'held' | 'depleted' | string;
+  createdAt: string;
+  depletedAt?: string | null;
+}
+
+export interface ActivateCentralStorePayload {
+  companyId?: number | null;
+  storeLocationExternalId: string;
+  kitchenLocationExternalId: string;
+}
+
 export interface WastageEntry {
   id: number;
   companyId?: number | null;
@@ -4231,6 +4293,40 @@ export const api = {
     }),
   cancelCreditNote: (id: number, payload: CancelCreditNotePayload) =>
     fetchJsonWithMethod<CreditNoteRow>(`/api/credit-notes/${id}/cancel`, 'POST', payload),
+  centralStoreConfig: (companyId: number) =>
+    fetchJson<CentralStoreConfig>(`/api/central-store/config?companyId=${companyId}`),
+  activateCentralStore: (payload: ActivateCentralStorePayload) =>
+    fetchJsonWithMethod<CentralStoreConfig>('/api/central-store/activate', 'POST', payload),
+  deactivateCentralStore: (companyId: number) =>
+    fetchJsonWithMethod<CentralStoreConfig>('/api/central-store/deactivate', 'POST', { companyId }),
+  storeRequisitions: (companyId: number, status?: string) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    if (status) params.set('status', status);
+    return fetchJson<StoreRequisition[]>(`/api/central-store/requisitions?${params.toString()}`);
+  },
+  issueStoreRequisition: (
+    id: number,
+    payload: { companyId: number; issuedBy?: string },
+  ) =>
+    fetchJsonWithMethod<StoreRequisition>(
+      `/api/central-store/requisitions/${id}/issue`,
+      'POST',
+      payload,
+    ),
+  productionStockHolds: (
+    companyId: number,
+    locationIds?: string[],
+    status?: string,
+  ) => {
+    const params = new URLSearchParams();
+    params.set('companyId', String(companyId));
+    if (locationIds?.length) params.set('locationIds', locationIds.join(','));
+    if (status) params.set('status', status);
+    return fetchJson<ProductionStockHold[]>(
+      `/api/central-store/stock-holds?${params.toString()}`,
+    );
+  },
   transfers: (companyId: number | undefined, locationIds: string[], month?: string) => {
     const params = new URLSearchParams();
     if (companyId) params.set('companyId', String(companyId));

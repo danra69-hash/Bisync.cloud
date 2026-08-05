@@ -138,6 +138,8 @@ export const ko = {
       cashPurchase: '현금 구매',
       orderTemplate: '주문 템플릿',
       production: '생산',
+      centralStore: '중앙 창고',
+      stockHold: '재고 보류',
       stockCard: '재고 카드',
       inventory: '재고',
       wastage: '폐기',

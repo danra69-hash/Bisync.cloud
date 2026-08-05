@@ -138,6 +138,8 @@ export const ms = {
       cashPurchase: 'Pembelian Tunai',
       orderTemplate: 'Templat Pesanan',
       production: 'Pengeluaran',
+      centralStore: 'Stor Pusat',
+      stockHold: 'Tahan Stok',
       stockCard: 'Kad Stok',
       inventory: 'Inventori',
       wastage: 'Pembaziran',

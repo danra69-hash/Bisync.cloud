@@ -734,11 +734,11 @@ public class StockCardService(
     }
 
     static bool IsInboundSummaryType(string entryType) =>
-        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "split_use_in";
+        entryType is "purchase" or "cash_purchase" or "transfer_in" or "adjustment_in" or "inbound" or "split_use_in" or "store_hold_in";
 
     static bool IsOutboundSummaryType(string entryType) =>
         // split_use is composition of inbound (not a true outbound leave).
-        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "credit_note" or "transfer_out" or "adjustment_out" or "outbound";
+        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "credit_note" or "store_issue" or "transfer_out" or "adjustment_out" or "outbound";
 
     static decimal ComputeOutboundAveragePrice(
         IEnumerable<StockCardLedgerEntry> entries,
@@ -1330,6 +1330,8 @@ public class StockCardService(
             return "wastage";
         if (refType == "credit_note" || reason.Contains("credit note"))
             return "credit_note";
+        if (refType is "store_issue" or "store_hold_in" || reason.Contains("store issue") || reason.Contains("store hold"))
+            return refType == "store_hold_in" || reason.Contains("store hold in") ? "store_hold_in" : "store_issue";
         if (refType == "split_use" || reason.Contains("split use"))
             return "split_use";
         if (refType == "inventory_adjustment" || IsAdjustmentMovement(movement))
@@ -1363,6 +1365,8 @@ public class StockCardService(
             "offline_order" => "Offline order sales depletion",
             "wastage" => "Wastage",
             "credit_note" => "Credit note",
+            "store_issue" => "Central Store issue",
+            "store_hold_in" => "Production stock hold",
             "split_use" => "Sub-component composition",
             "production" => productionProduct is null
                 ? "Production"

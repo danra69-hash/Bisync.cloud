@@ -138,6 +138,8 @@ export const th = {
       cashPurchase: 'ซื้อเงินสด',
       orderTemplate: 'เทมเพลตคำสั่งซื้อ',
       production: 'การผลิต',
+      centralStore: 'คลังกลาง',
+      stockHold: 'สต็อกพัก',
       stockCard: 'บัตรสต็อก',
       inventory: 'สินค้าคงคลัง',
       wastage: 'ของเสีย',

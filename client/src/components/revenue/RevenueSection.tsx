@@ -13,6 +13,7 @@ import { CashPurchasePage } from './CashPurchasePage';
 import { OrderTemplatePage } from './OrderTemplatePage';
 import { ReturnableGoodsPage } from './ReturnableGoodsPage';
 import { CreditNotePage } from './CreditNotePage';
+import { CentralStorePage } from './CentralStorePage';
 import { ProductsSection } from './ProductsSection';
 import { ProductionSection } from './ProductionSection';
 import { StockCardPage } from './StockCardPage';
@@ -185,6 +186,13 @@ function renderRevMgmtContent(
           selectedLocationIds={selectedLocationIds}
         />
       );
+    case 'Central Store':
+      return (
+        <CentralStorePage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
     case 'B2B Principal Product':
     case 'B2B Product':
     case 'Product Management':
@@ -209,6 +217,14 @@ function renderRevMgmtContent(
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
           initialTab="subProduct"
+        />
+      );
+    case 'Stock Hold':
+      return (
+        <ProductionSection
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+          initialTab="stockHold"
         />
       );
     case 'Stock Card':

@@ -36,6 +36,8 @@ export const RMS_TASK_GROUPS: RmsTaskGroup[] = [
       { id: 'productManagement', label: 'B2B Principal Product' },
       { id: 'subProductManagement', label: 'Sub-Product' },
       { id: 'offlineSales', label: 'Offline Sales / Sales Data' },
+      { id: 'centralStore', label: 'Central Store' },
+      { id: 'stockHold', label: 'Stock Hold' },
     ],
   },
   {

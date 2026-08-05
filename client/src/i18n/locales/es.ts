@@ -138,6 +138,8 @@ export const es = {
       cashPurchase: 'Compra al contado',
       orderTemplate: 'Plantilla de pedido',
       production: 'Producción',
+      centralStore: 'Almacén central',
+      stockHold: 'Stock en espera',
       stockCard: 'Ficha de stock',
       inventory: 'Inventario',
       wastage: 'Mermas',

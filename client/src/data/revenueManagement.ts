@@ -35,6 +35,7 @@ export const revMgmtNav: RevMgmtSection[] = [
         subtitle: 'Production',
         items: [
           { label: 'Production' },
+          { label: 'Central Store' },
         ],
       },
       {
