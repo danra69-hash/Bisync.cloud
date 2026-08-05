@@ -216,13 +216,23 @@
     background-color: var(--background);
   }
 
-  /* Any main-page table header sticks within its scrollport (covers ad-hoc tables too) */
-  [data-app-main] table > thead {
+  /*
+   * Stick table headers only inside an explicit table scrollport.
+   * Sticking every thead to [data-app-main] overlaps section titles / first rows
+   * when the nested table does not itself overflow (common for short lists).
+   */
+  [data-app-main] [data-table-scroll] > table > thead,
+  [data-app-main] [data-table-scroll] table > thead {
     position: sticky;
     top: 0;
     z-index: 10;
   }
 
+  [data-app-main] [data-table-scroll] table > thead th {
+    background-color: color-mix(in srgb, var(--muted) 55%, var(--card));
+  }
+
+  /* Non-scrolling tables keep a solid header background without sticky fight */
   [data-app-main] table > thead th {
     background-color: color-mix(in srgb, var(--muted) 55%, var(--card));
   }
