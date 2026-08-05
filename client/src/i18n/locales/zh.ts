@@ -68,6 +68,10 @@ export const zh = {
     label: '语言',
     choose: '选择语言',
   },
+  bisync101: {
+    title: 'Bisync101 — user guide & wiki',
+    open: 'Open Bisync101',
+  },
   header: {
     home: '首页',
     operationsOverview: '首页',

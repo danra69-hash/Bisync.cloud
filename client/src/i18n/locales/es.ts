@@ -68,6 +68,10 @@ export const es = {
     label: 'Idioma',
     choose: 'Elegir idioma',
   },
+  bisync101: {
+    title: 'Bisync101 — user guide & wiki',
+    open: 'Open Bisync101',
+  },
   header: {
     home: 'Inicio',
     operationsOverview: 'Inicio',

@@ -9,6 +9,8 @@ import {
 import { LoginModal } from '../components/auth/LoginModal';
 import { RegisterModal } from '../components/auth/RegisterModal';
 import { LanguageSelector } from '../components/layout/LanguageSelector';
+import { Bisync101Button } from '../components/bisync101/Bisync101Button';
+import { Bisync101Workspace } from '../components/bisync101/Bisync101Workspace';
 import { BrandEngineLockup } from '../components/layout/BrandEngineLockup';
 import { BisyncMarkTile } from '../components/layout/BisyncMark';
 import { setAppLocale } from '../i18n';
@@ -67,10 +69,21 @@ export function LandingPage() {
   const { t } = useAppTranslation();
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [bisync101Open, setBisync101Open] = useState(
+    () => window.location.hash.replace(/^#/, '').startsWith('bisync101'),
+  );
 
   // Public landing is English unless the visitor picked a language themselves.
   useEffect(() => {
     void setAppLocale(readStoredLocale());
+  }, []);
+
+  useEffect(() => {
+    function onHashChange() {
+      setBisync101Open(window.location.hash.replace(/^#/, '').startsWith('bisync101'));
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
   return (
@@ -107,6 +120,14 @@ export function LandingPage() {
 
           <div className="flex items-center gap-2">
             <LanguageSelector />
+            <Bisync101Button
+              onClick={() => {
+                setBisync101Open(true);
+                if (!window.location.hash.replace(/^#/, '').startsWith('bisync101')) {
+                  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#bisync101`);
+                }
+              }}
+            />
             <button
               type="button"
               onClick={() => setLoginOpen(true)}
@@ -359,6 +380,15 @@ export function LandingPage() {
           }}
         />
       )}
+      <Bisync101Workspace
+        open={bisync101Open}
+        onClose={() => {
+          setBisync101Open(false);
+          if (window.location.hash.replace(/^#/, '').startsWith('bisync101')) {
+            window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+          }
+        }}
+      />
     </div>
   );
 }

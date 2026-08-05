@@ -13,6 +13,7 @@ import {
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { StickyChromeSync } from './components/layout/StickyChromeSync';
+import { Bisync101Workspace } from './components/bisync101/Bisync101Workspace';
 import { RevenueSection } from './components/revenue/RevenueSection';
 import { HomePage } from './components/home/HomePage';
 import { SystemConfigurationPage } from './components/admin/SystemConfigurationPage';
@@ -118,6 +119,17 @@ export default function App() {
     revItem: string;
     createOrderPrefill?: CreateOrderPrefillItem[];
   } | null>(null);
+  const [bisync101Open, setBisync101Open] = useState(
+    () => window.location.hash.replace(/^#/, '').startsWith('bisync101'),
+  );
+
+  useEffect(() => {
+    function onHashChange() {
+      setBisync101Open(window.location.hash.replace(/^#/, '').startsWith('bisync101'));
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -448,6 +460,22 @@ export default function App() {
           }}
           onToggleDark={() => setDarkMode(v => !v)}
           onToggleEditLayout={() => setEditLayout(v => !v)}
+          onOpenBisync101={() => {
+            setBisync101Open(true);
+            if (!window.location.hash.replace(/^#/, '').startsWith('bisync101')) {
+              window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#bisync101`);
+            }
+          }}
+        />
+
+        <Bisync101Workspace
+          open={bisync101Open}
+          onClose={() => {
+            setBisync101Open(false);
+            if (window.location.hash.replace(/^#/, '').startsWith('bisync101')) {
+              window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+            }
+          }}
         />
 
         <OrgCountryProvider countryCode={orgCountryCode}>

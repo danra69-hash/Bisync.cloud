@@ -68,6 +68,10 @@ export const th = {
     label: 'ภาษา',
     choose: 'เลือกภาษา',
   },
+  bisync101: {
+    title: 'Bisync101 — user guide & wiki',
+    open: 'Open Bisync101',
+  },
   header: {
     home: 'หน้าแรก',
     operationsOverview: 'หน้าแรก',

@@ -68,6 +68,10 @@ export const ko = {
     label: '언어',
     choose: '언어 선택',
   },
+  bisync101: {
+    title: 'Bisync101 — user guide & wiki',
+    open: 'Open Bisync101',
+  },
   header: {
     home: '홈',
     operationsOverview: '홈',

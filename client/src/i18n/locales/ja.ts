@@ -68,6 +68,10 @@ export const ja = {
     label: '言語',
     choose: '言語を選択',
   },
+  bisync101: {
+    title: 'Bisync101 — user guide & wiki',
+    open: 'Open Bisync101',
+  },
   header: {
     home: 'ホーム',
     operationsOverview: 'ホーム',
