@@ -2,9 +2,11 @@
 
 import type { PosDeviceType } from '../../../../data/posDevices'
 
+const STATION_IP_STORAGE_KEY = 'bisync-pos-station-lan-ip'
+
 export type LocalNetworkAddress = {
   address: string
-  source: 'webrtc' | 'api'
+  source: 'webrtc' | 'api' | 'manual' | 'stored'
 }
 
 export type LocalUsbPeripheral = {
@@ -63,6 +65,16 @@ type FetchInitWithLocal = RequestInit & {
   targetAddressSpace?: 'local' | 'loopback' | 'public'
 }
 
+export function isPrivateIpv4(ip: string): boolean {
+  const octets = parseIpv4Octets(ip)
+  if (!octets) return false
+  const [a, b] = octets
+  if (a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  return false
+}
+
 function ipv4FromCandidate(candidate: string): string | null {
   // host candidate: ... 192.168.1.10 ...
   const m = candidate.match(
@@ -71,36 +83,124 @@ function ipv4FromCandidate(candidate: string): string | null {
   return m?.[1] ?? null
 }
 
-/** Discover this browser/station private IPv4 addresses via WebRTC ICE. */
+function collectPrivateIpsFromText(text: string, into: Set<string>) {
+  if (!text) return
+  const re =
+    /\b((?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3})\b/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text))) {
+    if (isPrivateIpv4(match[1])) into.add(match[1])
+  }
+}
+
+/** Persist last successful station IP for the next Network check. */
+export function loadStoredStationIpv4(): string | null {
+  try {
+    const raw = localStorage.getItem(STATION_IP_STORAGE_KEY)?.trim() || ''
+    return isPrivateIpv4(raw) ? raw : null
+  } catch {
+    return null
+  }
+}
+
+export function storeStationIpv4(ip: string): void {
+  if (!isPrivateIpv4(ip)) return
+  try {
+    localStorage.setItem(STATION_IP_STORAGE_KEY, ip.trim())
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function clearStoredStationIpv4(): void {
+  try {
+    localStorage.removeItem(STATION_IP_STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Discover this browser/station private IPv4 addresses via WebRTC ICE + SDP scrape.
+ * Chromium often mDNS-obfuscates host candidates — callers must support manual override.
+ */
 export async function discoverLocalIpv4Addresses(): Promise<string[]> {
   const found = new Set<string>()
   if (typeof RTCPeerConnection === 'undefined') return []
 
-  const pc = new RTCPeerConnection({ iceServers: [] })
-  try {
-    pc.createDataChannel('lan-check')
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-
-    await new Promise<void>((resolve) => {
-      const done = () => resolve()
-      const timer = window.setTimeout(done, 1500)
-      pc.onicecandidate = (ev) => {
-        if (!ev.candidate) {
-          window.clearTimeout(timer)
-          done()
-          return
-        }
-        const ip = ipv4FromCandidate(ev.candidate.candidate)
-        if (ip) found.add(ip)
+  async function runIce(iceServers: RTCIceServer[]): Promise<void> {
+    const pc = new RTCPeerConnection({ iceServers })
+    try {
+      pc.createDataChannel('lan-check')
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      if (pc.localDescription?.sdp) {
+        collectPrivateIpsFromText(pc.localDescription.sdp, found)
       }
-    })
-  } catch {
-    // WebRTC may be blocked; ignore.
-  } finally {
-    pc.close()
+
+      await new Promise<void>((resolve) => {
+        const done = () => resolve()
+        const timer = window.setTimeout(done, 2000)
+        pc.onicecandidate = (ev) => {
+          if (!ev.candidate) {
+            window.clearTimeout(timer)
+            done()
+            return
+          }
+          const cand = ev.candidate
+          const fromAddress =
+            typeof (cand as RTCIceCandidate & { address?: string }).address === 'string'
+              ? (cand as RTCIceCandidate & { address?: string }).address
+              : null
+          if (fromAddress && isPrivateIpv4(fromAddress)) found.add(fromAddress)
+          const fromLine = ipv4FromCandidate(cand.candidate || '')
+          if (fromLine) found.add(fromLine)
+        }
+      })
+
+      if (pc.localDescription?.sdp) {
+        collectPrivateIpsFromText(pc.localDescription.sdp, found)
+      }
+    } catch {
+      // WebRTC may be blocked; ignore.
+    } finally {
+      pc.close()
+    }
   }
+
+  // Host-only first (no STUN), then a short STUN pass — still keep only RFC1918.
+  await runIce([])
+  if (found.size === 0) {
+    await runIce([{ urls: 'stun:stun.l.google.com:19302' }])
+  }
+
   return [...found]
+}
+
+/**
+ * Resolve station IPs for LAN scan: manual override → WebRTC → last stored.
+ */
+export async function resolveStationIpv4Addresses(options?: {
+  manualIp?: string | null
+}): Promise<{ ips: string[]; source: 'manual' | 'webrtc' | 'stored' | 'none' }> {
+  const manual = (options?.manualIp || '').trim()
+  if (manual && isPrivateIpv4(manual)) {
+    storeStationIpv4(manual)
+    return { ips: [manual], source: 'manual' }
+  }
+
+  const webrtc = await discoverLocalIpv4Addresses()
+  if (webrtc.length > 0) {
+    storeStationIpv4(webrtc[0])
+    return { ips: webrtc, source: 'webrtc' }
+  }
+
+  const stored = loadStoredStationIpv4()
+  if (stored) {
+    return { ips: [stored], source: 'stored' }
+  }
+
+  return { ips: [], source: 'none' }
 }
 
 export function parseIpv4Octets(ip: string): number[] | null {
@@ -303,7 +403,8 @@ export async function scanLocalSubnetDevices(
       scannedHosts: 0,
       durationMs: 0,
       permission: 'unknown',
-      note: 'No private station IP detected — cannot scan the LAN from this browser. Enter device IPs manually.',
+      note:
+        'No private station IP detected — cannot scan the LAN from this browser. Enter this PC’s IPv4 (Windows: Settings → Network → Properties, or ipconfig) in Station IP below, then run Network check again.',
     }
   }
 

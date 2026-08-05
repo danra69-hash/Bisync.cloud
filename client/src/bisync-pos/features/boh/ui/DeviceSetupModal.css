@@ -477,3 +477,26 @@
     min-width: 0;
   }
 }
+
+.device-setup-station-ip {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface, #fff);
+  display: grid;
+  gap: 6px;
+}
+
+.device-setup-station-ip label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.device-setup-hint--tight {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
