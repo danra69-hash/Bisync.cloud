@@ -9,11 +9,11 @@ export const WINDOWS_ESCPOS_SDK_TITLE = 'ESC/POS LAN Test (Windows)';
 
 export const WINDOWS_ESCPOS_SDK_REVISED_DATE = '5 Aug 2026';
 
-export const WINDOWS_ESCPOS_SDK_VERSION = '1.0.0';
+export const WINDOWS_ESCPOS_SDK_VERSION = '1.1.0';
 
 export const WINDOWS_ESCPOS_SDK_SUMMARY =
-  'Windows package for testing ESC/POS thermal printers on the local network (TCP 9100). '
-  + 'DantSu is Android-only; use this on a Windows PC on the same LAN to prove the printer works, '
+  'Windows package to find ESC/POS printers on the LAN (real TCP scan) and send a test slip over port 9100. '
+  + 'Browsers often cannot see raw printers — run Find-BisyncPrinters on the venue PC, paste JSON into Device set up, '
   + 'then bind DantSu on the Android POS for production.';
 
 export const WINDOWS_ESCPOS_SDK_DOWNLOAD_PATH =
@@ -24,24 +24,24 @@ export const WINDOWS_ESCPOS_SDK_STEPS = [
     id: 'download',
     number: '1',
     title: 'Download the Windows package',
-    body: 'From POS Setup → Drivers, or Download below. Saves bisync-escpos-lan-windows-windows.zip.',
+    body: 'From POS Setup → Drivers / Device set up. Saves bisync-escpos-lan-windows-windows.zip.',
   },
   {
-    id: 'unzip',
+    id: 'find',
     number: '2',
-    title: 'Unzip on the Windows PC',
-    body: 'Use a PC on the same Wi‑Fi/LAN as the printer (not guest Wi‑Fi isolation).',
+    title: 'Find printers on the LAN',
+    body: 'Unzip on the venue Windows PC. Run Find-BisyncPrinters.cmd (enter Station IP e.g. 192.168.70.131). Copy the JSON.',
   },
   {
-    id: 'run',
+    id: 'import',
     number: '3',
-    title: 'Run the LAN test',
-    body: 'Double-click Test-BisyncPrinter.cmd and enter the printer IP, or run Test-BisyncPrinter.ps1 in PowerShell.',
+    title: 'Import into Device set up',
+    body: 'Paste the JSON under Import Windows scan, then Link / Assign each printer. Or use Add printer by IP if you already know the address.',
   },
   {
-    id: 'bind',
+    id: 'test',
     number: '4',
-    title: 'Bind in Bisync',
-    body: 'If the slip prints, register the printer in Device set up (SDK escpos-lan-windows or dantsu-escpos-android on the tablet).',
+    title: 'Optional test slip',
+    body: 'Run Test-BisyncPrinter.cmd with the printer IP to confirm ESC/POS over TCP 9100.',
   },
 ] as const;

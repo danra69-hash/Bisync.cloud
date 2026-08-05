@@ -34,9 +34,9 @@ public static class PosPrinterSdkCatalog
         Brand = "Bisync",
         DisplayName = "ESC/POS LAN Test (Windows)",
         Protocol = "escpos",
-        Version = "1.0.0",
+        Version = "1.1.0",
         Description =
-            "Windows LAN package — same ESC/POS dialect as DantSu, over TCP 9100. Run Test-BisyncPrinter on a Windows PC on the venue network to verify the printer before Android POS binding.",
+            "Windows LAN finder + ESC/POS test over TCP 9100 (same dialect as DantSu). Run Find-BisyncPrinters to discover printers browsers cannot see, then Test-BisyncPrinter for a test slip.",
         ModelHints = "windows,lan,tcp,9100,escpos,thermal,receipt,epson,generic",
         DefaultPort = 9100,
         SupportedPaperWidthsJson = "[58,80,112]",
