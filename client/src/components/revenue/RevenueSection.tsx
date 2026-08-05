@@ -12,6 +12,7 @@ import { OrderPage } from './OrderPage';
 import { CashPurchasePage } from './CashPurchasePage';
 import { OrderTemplatePage } from './OrderTemplatePage';
 import { ReturnableGoodsPage } from './ReturnableGoodsPage';
+import { CreditNotePage } from './CreditNotePage';
 import { ProductsSection } from './ProductsSection';
 import { ProductionSection } from './ProductionSection';
 import { StockCardPage } from './StockCardPage';
@@ -145,6 +146,8 @@ function renderRevMgmtContent(
       );
     case 'Returnable Goods':
       return <ReturnableGoodsPage selectedCompanyId={selectedCompanyId} />;
+    case 'Credit Note':
+      return <CreditNotePage selectedCompanyId={selectedCompanyId} />;
     case 'Cash Purchase':
       return (
         <CashPurchasePage

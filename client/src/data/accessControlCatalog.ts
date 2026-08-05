@@ -99,7 +99,10 @@ function rmsRows(): AccessControlRow[] {
   const extras = rowsFromGroups('Revenue Management', [
     {
       function: 'Order',
-      tasks: [{ label: 'Returnable Goods', id: 'returnableGoods' }],
+      tasks: [
+        { label: 'Returnable Goods', id: 'returnableGoods' },
+        { label: 'Credit Note', id: 'creditNote' },
+      ],
     },
     {
       function: 'Sales',

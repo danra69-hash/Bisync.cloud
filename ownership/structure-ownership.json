@@ -505,6 +505,16 @@
       "createdAt": "2026-07-30"
     },
     {
+      "id": "dr.page.credit-note",
+      "kind": "client-page",
+      "path": "client/src/components/revenue/CreditNotePage.tsx",
+      "symbol": "CreditNotePage",
+      "route": "/revenue/credit-note",
+      "owner": "dra",
+      "ownerEmail": "dra@cubevalue.com",
+      "createdAt": "2026-08-05"
+    },
+    {
       "id": "dr.page.cogs-audit",
       "kind": "client-page",
       "path": "client/src/components/revenue/CogsAuditPage.tsx",

@@ -132,6 +132,7 @@ export const es = {
     items: {
       myOrder: 'Mi pedido',
       returnableGoods: 'Bienes retornables',
+      creditNote: 'Nota de crédito',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'Compra al contado',

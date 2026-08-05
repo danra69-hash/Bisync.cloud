@@ -26,6 +26,7 @@ export const revMgmtNav: RevMgmtSection[] = [
         items: [
           { label: 'My Order' },
           { label: 'Returnable Goods' },
+          { label: 'Credit Note' },
           { label: 'Cash Purchase' },
           { label: 'Order Template' },
         ],

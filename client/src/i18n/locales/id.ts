@@ -132,6 +132,7 @@ export const id = {
     items: {
       myOrder: 'Pesanan Saya',
       returnableGoods: 'Barang Returnable',
+      creditNote: 'Nota Kredit',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'Pembelian Tunai',
