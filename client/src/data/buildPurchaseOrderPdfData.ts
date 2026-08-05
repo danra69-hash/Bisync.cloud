@@ -57,9 +57,21 @@ export function buildPurchaseOrderPdfData(params: {
       phone: params.company.phone,
       email: params.company.email,
     },
+    companyLogo: params.company.logoBase64
+      ? {
+          contentType: params.company.logoContentType,
+          base64: params.company.logoBase64,
+        }
+      : null,
     deliveryLocations: params.deliveryLocations.map(loc => ({
       name: loc.name,
       address: formatLocationAddress(loc),
+      logo: loc.logoBase64
+        ? {
+            contentType: loc.logoContentType,
+            base64: loc.logoBase64,
+          }
+        : null,
     })),
     vendor: {
       name: params.vendor?.name ?? params.group.vendorName,

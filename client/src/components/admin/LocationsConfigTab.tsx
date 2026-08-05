@@ -6,7 +6,7 @@ import { InfiniteScrollTableSentinel } from '../shared/infiniteScroll';
 import { SortableTableHeaderRow, TableColGroup, ColGroup, tableColWidth, type SortableColumnDef } from '../shared/SortableTableHead';
 import { TableScrollContainer } from '../shared/TableScrollContainer';
 import { compareSortValues, sortTableRows } from '../../utils/tableSort';
-import { Plus, X } from 'lucide-react';
+import { ImagePlus, Plus, X } from 'lucide-react';
 import { api, type Company, type LocationConfig, type AppUser } from '../../api';
 import { CountryAddressFields, getAddressValidationError } from '../shared/CountryAddressFields';
 import { getCountry, inputCls, selectCls } from '../../data/countries';
@@ -60,6 +60,55 @@ import {
 } from '../../data/locationDeliveryAllowTime';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { ToggleSwitch } from './ToggleSwitch';
+
+const MAX_LOCATION_LOGO_BYTES = 1_000_000;
+const ALLOWED_LOCATION_LOGO_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+]);
+
+function locationLogoPreviewSrc(logoBase64?: string, logoContentType?: string): string | null {
+  const raw = (logoBase64 ?? '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('data:')) return raw;
+  const type = (logoContentType ?? '').trim() || 'image/png';
+  return `data:${type};base64,${raw}`;
+}
+
+function readLocationLogoFile(file: File): Promise<{ fileName: string; contentType: string; base64: string }> {
+  return new Promise((resolve, reject) => {
+    const type = (file.type || '').toLowerCase();
+    if (!ALLOWED_LOCATION_LOGO_TYPES.has(type)) {
+      reject(new Error('Location logo must be PNG, JPEG, WebP, GIF, or SVG.'));
+      return;
+    }
+    if (file.size > MAX_LOCATION_LOGO_BYTES) {
+      reject(new Error('Location logo is too large (max 1 MB).'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const comma = result.indexOf(',');
+      const base64 = comma >= 0 ? result.slice(comma + 1) : result;
+      if (!base64) {
+        reject(new Error('Failed to read location logo.'));
+        return;
+      }
+      resolve({
+        fileName: file.name,
+        contentType: type === 'image/jpg' ? 'image/jpeg' : type,
+        base64,
+      });
+    };
+    reader.onerror = () => reject(new Error('Failed to read location logo.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 type LocationSortColumn =
   | 'location'
@@ -162,6 +211,10 @@ function blankLocation(companyId: number | null = null): LocationConfig {
     physicalSiteKey: '',
     conceptLabel: '',
     conceptSortOrder: 0,
+    logoFileName: '',
+    logoContentType: '',
+    logoBase64: '',
+    logoSet: false,
   };
 }
 
@@ -178,8 +231,13 @@ function LocationPanel({
   const [form, setForm] = useState(() => ({
     ...location,
     active: location.active !== false,
+    logoFileName: location.logoFileName ?? '',
+    logoContentType: location.logoContentType ?? '',
+    logoBase64: location.logoBase64 ?? '',
+    logoSet: Boolean(location.logoSet || location.logoBase64),
   }));
   const locationActive = form.active !== false;
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const initialCompany = companies.find(c => c.id === location.companyId);
   const [inheritsCompanyProfile, setInheritsCompanyProfile] = useState(
     () => isNew || location.profileOverridden !== true,
@@ -241,6 +299,10 @@ function LocationPanel({
     setForm({
       ...location,
       active: location.active !== false,
+      logoFileName: location.logoFileName ?? '',
+      logoContentType: location.logoContentType ?? '',
+      logoBase64: location.logoBase64 ?? '',
+      logoSet: Boolean(location.logoSet || location.logoBase64),
     });
     const initial = companies.find(c => c.id === location.companyId);
     const inherits = isNew || location.profileOverridden !== true;
@@ -259,6 +321,7 @@ function LocationPanel({
     setDeliveryAllowTimeEnabled(Boolean(location.deliveryAllowTimeEnabled));
     setDeliveryPeriods(parseDeliveryAllowPeriodsJson(location.deliveryAllowPeriodsJson));
     setError(null);
+    if (logoInputRef.current) logoInputRef.current.value = '';
     // Only re-hydrate when the edited location (or create/edit mode) changes — not when
     // the companies list is refreshed, which would wipe in-progress edits and clear errors.
   }, [location.id, isNew]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional
@@ -339,6 +402,48 @@ function LocationPanel({
     setError(null);
   }
 
+  function buildLogoPayload() {
+    const logoBase64 = (form.logoBase64 ?? '').trim();
+    return {
+      logoFileName: logoBase64 ? (form.logoFileName ?? '').trim() : '',
+      logoContentType: logoBase64 ? (form.logoContentType ?? '').trim() : '',
+      logoBase64,
+    };
+  }
+
+  async function handleLogoPick(file: File | null) {
+    if (!file) return;
+    try {
+      const logo = await readLocationLogoFile(file);
+      setForm(f => ({
+        ...f,
+        logoFileName: logo.fileName,
+        logoContentType: logo.contentType,
+        logoBase64: logo.base64,
+        logoSet: true,
+      }));
+      setError(null);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to read location logo.');
+    } finally {
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  }
+
+  function clearLogo() {
+    setForm(f => ({
+      ...f,
+      logoFileName: '',
+      logoContentType: '',
+      logoBase64: '',
+      logoSet: false,
+    }));
+    setError(null);
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  }
+
+  const logoPreviewSrc = locationLogoPreviewSrc(form.logoBase64, form.logoContentType);
+
   function updateDayHours(day: LocationWeekday, patch: Partial<LocationDayHours>) {
     const next = { ...patch };
     if (next.openFrom !== undefined) next.openFrom = normalizeTime(next.openFrom);
@@ -402,6 +507,7 @@ function LocationPanel({
       );
       const openingHoursJson = serializeOpeningHours(openingHours);
       const deliveryAllowPeriodsJson = serializeDeliveryAllowPeriods(deliveryPeriods);
+      const logo = buildLogoPayload();
       const saved = await api.updateLocationConfig(form.id, {
         companyId: form.companyId,
         name: form.name.trim() || form.name,
@@ -422,6 +528,7 @@ function LocationPanel({
         physicalSiteKey: form.physicalSiteKey ?? '',
         conceptLabel: form.conceptLabel ?? '',
         conceptSortOrder: form.conceptSortOrder ?? 0,
+        ...logo,
       });
       const next: LocationConfig = {
         ...form,
@@ -438,8 +545,19 @@ function LocationPanel({
         physicalSiteKey: saved.physicalSiteKey ?? form.physicalSiteKey ?? '',
         conceptLabel: saved.conceptLabel ?? form.conceptLabel ?? '',
         conceptSortOrder: saved.conceptSortOrder ?? form.conceptSortOrder ?? 0,
+        logoFileName: saved.logoFileName ?? logo.logoFileName,
+        logoContentType: saved.logoContentType ?? logo.logoContentType,
+        logoBase64: saved.logoBase64 ?? logo.logoBase64,
+        logoSet: Boolean(saved.logoSet ?? logo.logoBase64),
       };
-      setForm({ ...next, active: nextActive });
+      setForm({
+        ...next,
+        active: nextActive,
+        logoFileName: next.logoFileName ?? '',
+        logoContentType: next.logoContentType ?? '',
+        logoBase64: next.logoBase64 ?? '',
+        logoSet: Boolean(next.logoSet),
+      });
       onSave(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update location status.');
@@ -519,6 +637,7 @@ function LocationPanel({
       const modulesPayload = buildLocationModulesPayload(company, modules, inheritsCompanyProfile);
       const openingHoursJson = serializeOpeningHours(openingHours);
       const deliveryAllowPeriodsJson = serializeDeliveryAllowPeriods(deliveryPeriods);
+      const logo = buildLogoPayload();
 
       const payload = {
         companyId: form.companyId,
@@ -540,6 +659,7 @@ function LocationPanel({
         physicalSiteKey: (form.physicalSiteKey ?? '').trim(),
         conceptLabel: (form.conceptLabel ?? '').trim(),
         conceptSortOrder: Number(form.conceptSortOrder) || 0,
+        ...logo,
       };
 
       setSaving(true);
@@ -564,6 +684,10 @@ function LocationPanel({
         deliveryAllowTimeEnabled: saved.deliveryAllowTimeEnabled ?? deliveryAllowTimeEnabled,
         deliveryAllowPeriodsJson: saved.deliveryAllowPeriodsJson ?? deliveryAllowPeriodsJson,
         secondaryContactUserId: saved.secondaryContactUserId ?? form.secondaryContactUserId ?? null,
+        logoFileName: saved.logoFileName ?? logo.logoFileName,
+        logoContentType: saved.logoContentType ?? logo.logoContentType,
+        logoBase64: saved.logoBase64 ?? logo.logoBase64,
+        logoSet: Boolean(saved.logoSet ?? logo.logoBase64),
       });
       onClose();
     } catch (err) {
@@ -633,6 +757,63 @@ function LocationPanel({
               <label className="text-xs font-sans text-muted-foreground uppercase tracking-wider">Country</label>
               <div className={`${inputCls} bg-muted/40 text-foreground flex items-center`}>
                 {country.name}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/20 px-3 py-3">
+            <div className="flex items-start gap-3">
+              <div className="h-16 w-16 shrink-0 rounded-md border border-dashed border-border bg-background flex items-center justify-center overflow-hidden">
+                {logoPreviewSrc ? (
+                  <img
+                    src={logoPreviewSrc}
+                    alt={`${form.name || 'Location'} logo`}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <ImagePlus size={18} className="text-muted-foreground" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <p className="text-xs font-medium">Location Logo</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    PNG, JPEG, WebP, GIF, or SVG up to 1 MB. Used on PDFs when different from the company logo.
+                  </p>
+                  {form.logoFileName ? (
+                    <p className="text-[11px] text-muted-foreground mt-1 truncate" title={form.logoFileName}>
+                      {form.logoFileName}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => logoInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+                  >
+                    <ImagePlus size={12} />
+                    {logoPreviewSrc ? 'Replace Logo' : 'Upload Logo'}
+                  </button>
+                  {logoPreviewSrc ? (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={clearLogo}
+                      className="text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  className="hidden"
+                  onChange={e => void handleLogoPick(e.target.files?.[0] ?? null)}
+                />
               </div>
             </div>
           </div>

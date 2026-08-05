@@ -20,6 +20,7 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         var timeZoneId = string.IsNullOrWhiteSpace(l.TimeZoneId)
             ? OrgClock.ResolveTimeZoneId(countryCode, l.StateProvince)
             : l.TimeZoneId;
+        var hasLogo = !string.IsNullOrWhiteSpace(l.LogoBase64);
         return new
         {
             l.Id,
@@ -51,6 +52,10 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             physicalSiteKey = l.PhysicalSiteKey ?? string.Empty,
             conceptLabel = string.IsNullOrWhiteSpace(l.ConceptLabel) ? l.Name : l.ConceptLabel,
             conceptSortOrder = l.ConceptSortOrder,
+            logoFileName = l.LogoFileName ?? string.Empty,
+            logoContentType = l.LogoContentType ?? string.Empty,
+            logoBase64 = hasLogo ? (l.LogoBase64 ?? string.Empty) : string.Empty,
+            logoSet = hasLogo,
         };
     }
 
@@ -167,6 +172,17 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (modulesError is not null)
             return BadRequest(new { message = modulesError });
 
+        var logoError = LogoUploadRules.NormalizeAndValidate(
+            body.LogoFileName,
+            body.LogoContentType,
+            body.LogoBase64,
+            "Location",
+            out var logoFileName,
+            out var logoContentType,
+            out var logoBase64);
+        if (logoError is not null)
+            return BadRequest(new { message = logoError });
+
         await DatabaseSchemaHelper.TryResyncIdentitySequenceAsync(db, "Locations");
 
         var externalId = await GenerateUniqueExternalIdAsync(body.Name);
@@ -193,6 +209,9 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             ConceptLabel = (body.ConceptLabel ?? string.Empty).Trim(),
             ConceptSortOrder = body.ConceptSortOrder ?? 0,
             Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s))),
+            LogoFileName = logoFileName,
+            LogoContentType = logoContentType,
+            LogoBase64 = logoBase64,
         };
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
 
@@ -239,6 +258,30 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
         if (modulesError is not null)
             return BadRequest(new { message = modulesError });
 
+        // Logo fields are optional on update: omit to keep the existing logo; send empty to clear.
+        var logoProvided = body.LogoFileName is not null
+            || body.LogoContentType is not null
+            || body.LogoBase64 is not null;
+        string? logoFileName = null;
+        string? logoContentType = null;
+        string? logoBase64 = null;
+        if (logoProvided)
+        {
+            var logoError = LogoUploadRules.NormalizeAndValidate(
+                body.LogoFileName,
+                body.LogoContentType,
+                body.LogoBase64,
+                "Location",
+                out var normalizedFileName,
+                out var normalizedContentType,
+                out var normalizedBase64);
+            if (logoError is not null)
+                return BadRequest(new { message = logoError });
+            logoFileName = normalizedFileName;
+            logoContentType = normalizedContentType;
+            logoBase64 = normalizedBase64;
+        }
+
         var loc = await db.Locations.FindAsync(id);
         if (loc is null) return NotFound();
         loc.CompanyId = body.CompanyId;
@@ -265,6 +308,12 @@ public class LocationsController(BisyncDbContext db, LocationSubscriptionService
             loc.ConceptLabel = body.ConceptLabel.Trim();
         if (body.ConceptSortOrder is not null)
             loc.ConceptSortOrder = body.ConceptSortOrder.Value;
+        if (logoProvided)
+        {
+            loc.LogoFileName = logoFileName ?? string.Empty;
+            loc.LogoContentType = logoContentType ?? string.Empty;
+            loc.LogoBase64 = logoBase64 ?? string.Empty;
+        }
         loc.Address = string.Join(", ", new[] { body.AddressLine1, body.City, body.StateProvince, body.Postcode }.Where(s => !string.IsNullOrWhiteSpace(s)));
         OrgClock.AssignLocationTimeZone(loc, company.CountryCode);
         await db.SaveChangesAsync();

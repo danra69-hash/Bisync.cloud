@@ -81,4 +81,11 @@ public class Location
 
     /// <summary>Sort order among sibling concepts on the same physical site.</summary>
     public int ConceptSortOrder { get; set; }
+
+    /// <summary>Original filename for the location logo (optional; may differ from company logo).</summary>
+    public string LogoFileName { get; set; } = string.Empty;
+    /// <summary>MIME type of the location logo, e.g. image/png.</summary>
+    public string LogoContentType { get; set; } = string.Empty;
+    /// <summary>Raw base64 location logo bytes (no data-URL prefix).</summary>
+    public string LogoBase64 { get; set; } = string.Empty;
 }

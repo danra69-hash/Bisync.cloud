@@ -183,6 +183,8 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 company.City,
                 stateProvince = company.StateProvince,
                 company.Postcode,
+                logoContentType = company.LogoContentType ?? string.Empty,
+                logoBase64 = string.IsNullOrWhiteSpace(company.LogoBase64) ? string.Empty : company.LogoBase64,
             },
             vendor = new
             {
@@ -205,6 +207,8 @@ public class VendorOrderPortalController(BisyncDbContext db) : ControllerBase
                 l.City,
                 stateProvince = l.StateProvince,
                 l.Postcode,
+                logoContentType = l.LogoContentType ?? string.Empty,
+                logoBase64 = string.IsNullOrWhiteSpace(l.LogoBase64) ? string.Empty : l.LogoBase64,
             }),
             items = order.Items.Select(i => new
             {
