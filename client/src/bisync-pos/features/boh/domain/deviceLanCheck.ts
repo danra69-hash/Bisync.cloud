@@ -285,7 +285,7 @@ async function probeHttpPort(
   host: string,
   port: number,
   timeoutMs: number,
-): Promise<{ open: boolean; latencyMs: number }> {
+): Promise<{ open: boolean; latencyMs: number; signal?: string }> {
   const started = performance.now()
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
@@ -302,36 +302,114 @@ async function probeHttpPort(
     }
     await fetch(url, init)
     // Opaque / any completion after connect → treat as reachable.
-    return { open: true, latencyMs: Math.round(performance.now() - started) }
+    return { open: true, latencyMs: Math.round(performance.now() - started), signal: 'fetch-ok' }
   } catch (err) {
     const elapsed = Math.round(performance.now() - started)
     const name = err instanceof Error ? err.name : ''
-    // Abort ≈ filtered/open-but-slow or firewall drop — not a clear open.
+    const message = err instanceof Error ? err.message : String(err)
+    // Abort ≈ filtered/open-but-slow or firewall drop — not a clear open for HTTP ports.
     if (name === 'AbortError' || name === 'TimeoutError') {
-      return { open: false, latencyMs: elapsed }
+      return { open: false, latencyMs: elapsed, signal: 'timeout' }
     }
     // Fast network errors usually mean refused / unreachable.
-    return { open: false, latencyMs: elapsed }
+    return { open: false, latencyMs: elapsed, signal: message || 'error' }
   } finally {
     window.clearTimeout(timer)
   }
 }
 
-async function probeHost(
+/** Raw ESC/POS ports often reject HTTP; WebSocket / error heuristics can still spot an open TCP listener. */
+const RAW_PRINTER_PORTS = new Set([9100, 9101, 515])
+
+function probeWebSocketPort(
   host: string,
-  isStation: boolean,
+  port: number,
   timeoutMs: number,
+): Promise<{ open: boolean; latencyMs: number; signal: string }> {
+  const started = performance.now()
+  return new Promise((resolve) => {
+    let settled = false
+    let ws: WebSocket | null = null
+    const finish = (open: boolean, signal: string) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      try {
+        ws?.close()
+      } catch {
+        // ignore
+      }
+      resolve({ open, latencyMs: Math.round(performance.now() - started), signal })
+    }
+    const timer = window.setTimeout(() => finish(false, 'ws-timeout'), timeoutMs)
+    try {
+      ws = new WebSocket(`ws://${host}:${port}`)
+      ws.onopen = () => finish(true, 'ws-open')
+      ws.onmessage = () => finish(true, 'ws-message')
+      ws.onerror = () => {
+        const elapsed = performance.now() - started
+        // Refused connections fail almost immediately; protocol mismatch after TCP accept takes longer.
+        if (elapsed >= 40) finish(true, 'ws-error-after-connect')
+        else finish(false, 'ws-error-fast')
+      }
+      ws.onclose = (ev) => {
+        const elapsed = performance.now() - started
+        if (elapsed >= 40 && !ev.wasClean) finish(true, 'ws-close-after-connect')
+        else finish(false, 'ws-close')
+      }
+    } catch {
+      finish(false, 'ws-throw')
+    }
+  })
+}
+
+async function probePrinterPort(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<{ open: boolean; latencyMs: number; signal: string }> {
+  const httpTimeout = Math.max(timeoutMs, RAW_PRINTER_PORTS.has(port) ? 700 : timeoutMs)
+  const http = await probeHttpPort(host, port, httpTimeout)
+  if (http.open) {
+    return { open: true, latencyMs: http.latencyMs, signal: http.signal || 'fetch-ok' }
+  }
+
+  // Open raw TCP listeners often yield INVALID_HTTP_RESPONSE / EMPTY_RESPONSE after connect.
+  const msg = (http.signal || '').toLowerCase()
+  if (
+    RAW_PRINTER_PORTS.has(port)
+    && (msg.includes('invalid') || msg.includes('empty') || msg.includes('reset') || msg.includes('failed to fetch'))
+    && http.latencyMs >= 35
+  ) {
+    return { open: true, latencyMs: http.latencyMs, signal: `http-heuristic:${http.signal}` }
+  }
+
+  if (RAW_PRINTER_PORTS.has(port) || port === 8008) {
+    const ws = await probeWebSocketPort(host, port, Math.max(timeoutMs, 650))
+    if (ws.open) return ws
+  }
+
+  return { open: false, latencyMs: http.latencyMs, signal: http.signal || 'closed' }
+}
+
+/**
+ * Probe a single host for POS/printer ports (used by “Probe this IP” and subnet scan).
+ */
+export async function probeLanHost(
+  host: string,
+  options?: { isStation?: boolean; timeoutMs?: number },
 ): Promise<DiscoveredLanHost | null> {
+  const timeoutMs = options?.timeoutMs ?? 450
+  const isStation = Boolean(options?.isStation)
   const openPorts: number[] = []
   const labels: string[] = []
   let suggested: PosDeviceType = 'posOrderStation'
   let bestLatency = Number.POSITIVE_INFINITY
 
-  // Probe common ports; fetch(no-cors) reports reachable when TCP+HTTP responds.
-  // Stop after a couple of hits so /24 scans finish quickly.
-  // Raw ESC/POS listeners on 9100 may not answer HTTP — those still need manual IP link.
   for (const spec of LAN_PROBE_PORTS) {
-    const result = await probeHttpPort(host, spec.port, timeoutMs)
+    const result = RAW_PRINTER_PORTS.has(spec.port) || spec.port === 8008 || spec.port === 631
+      ? await probePrinterPort(host, spec.port, timeoutMs)
+      : await probeHttpPort(host, spec.port, timeoutMs)
     if (!result.open) continue
     openPorts.push(spec.port)
     labels.push(spec.label)
@@ -352,6 +430,14 @@ async function probeHost(
     latencyMs: Number.isFinite(bestLatency) ? bestLatency : 0,
     isStation,
   }
+}
+
+async function probeHost(
+  host: string,
+  isStation: boolean,
+  timeoutMs: number,
+): Promise<DiscoveredLanHost | null> {
+  return probeLanHost(host, { isStation, timeoutMs })
 }
 
 async function mapPool<T, R>(
@@ -475,7 +561,7 @@ export async function scanLocalSubnetDevices(
   }
   if (hosts.length === 0) {
     note +=
-      ' Devices that only accept raw TCP (and block HTTP/WebSocket probes) may not appear — link those by IP.'
+      ' ESC/POS printers on port 9100 often ignore browser HTTP probes — use “Add printer by IP” below, or run Find-BisyncPrinters.cmd from the Windows LAN package and paste the results.'
   }
 
   return {

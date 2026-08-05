@@ -19,6 +19,7 @@ import {
   isPrivateIpv4,
   listAuthorizedUsbPeripherals,
   loadStoredStationIpv4,
+  probeLanHost,
   requestUsbPeripheral,
   resolveStationIpv4Addresses,
   scanLocalSubnetDevices,
@@ -176,6 +177,11 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
   /** Manual station IPv4 when browser WebRTC cannot detect it (common on Windows Chrome). */
   const [stationIpOverride, setStationIpOverride] = useState(() => loadStoredStationIpv4() || '')
   const [stationIpSource, setStationIpSource] = useState<'manual' | 'webrtc' | 'stored' | 'none' | null>(null)
+  const [printerIpDraft, setPrinterIpDraft] = useState('')
+  const [printerNameDraft, setPrinterNameDraft] = useState('Kitchen Printer')
+  const [probingPrinter, setProbingPrinter] = useState(false)
+  const [windowsScanJson, setWindowsScanJson] = useState('')
+  const [importedHosts, setImportedHosts] = useState<DiscoveredLanHost[]>([])
 
   const load = useCallback(async () => {
     if (companyId <= 0) {
@@ -205,7 +211,165 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     void load()
   }, [load])
 
+  function mergeDiscoveredHosts(extra: DiscoveredLanHost[]) {
+    setLanScan((prev) => {
+      const base = prev ?? {
+        stationIps: stationIpOverride.trim() ? [stationIpOverride.trim()] : [],
+        subnetCidr: '',
+        hosts: [],
+        scannedHosts: 0,
+        durationMs: 0,
+        permission: 'unknown' as const,
+        note: 'Imported / probed hosts (browser scan may still miss raw ESC/POS printers).',
+      }
+      const byHost = new Map<string, DiscoveredLanHost>()
+      for (const h of base.hosts) byHost.set(h.host, h)
+      for (const h of extra) byHost.set(h.host, h)
+      const hosts = [...byHost.values()].sort((a, b) => {
+        if (a.isStation !== b.isStation) return a.isStation ? -1 : 1
+        const aPrint = a.suggestedDeviceType === 'printer' ? 0 : 1
+        const bPrint = b.suggestedDeviceType === 'printer' ? 0 : 1
+        if (aPrint !== bPrint) return aPrint - bPrint
+        return a.host.localeCompare(b.host, undefined, { numeric: true })
+      })
+      const nextDiscover: Record<string, PosDeviceType> = {}
+      for (const h of hosts) nextDiscover[h.host] = discoverAssignTypes[h.host] ?? h.suggestedDeviceType
+      setDiscoverAssignTypes((prevTypes) => ({ ...nextDiscover, ...prevTypes }))
+      return {
+        ...base,
+        hosts,
+        note: `Showing ${hosts.length} host(s). Raw printers on 9100 may only appear after Windows Find-BisyncPrinters import or Add printer by IP.`,
+      }
+    })
+  }
+
+  async function probeAndAddPrinterIp() {
+    const host = printerIpDraft.trim()
+    if (!isPrivateIpv4(host)) {
+      setError('Enter a private printer IP (e.g. 192.168.70.50).')
+      return
+    }
+    setProbingPrinter(true)
+    setError(null)
+    setStatus(`Probing ${host} for printer ports…`)
+    try {
+      const hit = await probeLanHost(host, { timeoutMs: 800 })
+      if (!hit) {
+        // Still allow linking — raw 9100 often invisible to the browser.
+        const fallback: DiscoveredLanHost = {
+          host,
+          openPorts: [9100],
+          labels: ['Assumed ESC/POS (browser could not confirm — link & test on Windows)'],
+          suggestedDeviceType: 'printer',
+          latencyMs: 0,
+          isStation: false,
+        }
+        mergeDiscoveredHosts([fallback])
+        setDiscoverAssignTypes((prev) => ({ ...prev, [host]: 'printer' }))
+        setLinkDraft({
+          name: printerNameDraft.trim() || `Printer ${host}`,
+          deviceType: 'printer',
+          connectionType: 'ethernet',
+          hostAddress: host,
+          port: '9100',
+          printerSdkCode: preferredPrinterSdkCode(),
+        })
+        setStatus(
+          `Browser could not confirm ${host} (common for ESC/POS). Form ready with port 9100 — tap Link device, then run Windows Test-BisyncPrinter / Find-BisyncPrinters if needed.`,
+        )
+        return
+      }
+      mergeDiscoveredHosts([hit])
+      const deviceType = hit.suggestedDeviceType === 'printer' ? 'printer' : hit.suggestedDeviceType
+      setDiscoverAssignTypes((prev) => ({ ...prev, [host]: deviceType }))
+      const port =
+        hit.openPorts.find((p) => p === 9100 || p === 9101 || p === 8008 || p === 631)
+        ?? hit.openPorts[0]
+        ?? 9100
+      setLinkDraft({
+        name: printerNameDraft.trim() || `Printer ${host}`,
+        deviceType,
+        connectionType: 'ethernet',
+        hostAddress: host,
+        port: String(port),
+        printerSdkCode: preferredPrinterSdkCode(),
+      })
+      setStatus(
+        `Found ${host} · ports ${hit.openPorts.join(', ') || '—'} (${hit.labels.join(', ')}). Review Link new device below and tap Link device.`,
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Probe failed.')
+    } finally {
+      setProbingPrinter(false)
+    }
+  }
+
+  function importWindowsScanJson() {
+    const raw = windowsScanJson.trim()
+    if (!raw) {
+      setError('Paste JSON from Find-BisyncPrinters.cmd (bisync-lan-find-result.json).')
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw) as {
+        stationIp?: string
+        subnetCidr?: string
+        hosts?: Array<{
+          host?: string
+          openPorts?: number[]
+          suggestedDeviceType?: string
+          isStation?: boolean
+        }>
+      }
+      const rows = Array.isArray(parsed.hosts) ? parsed.hosts : []
+      const mapped: DiscoveredLanHost[] = []
+      for (const row of rows) {
+        const host = String(row.host || '').trim()
+        if (!isPrivateIpv4(host)) continue
+        const openPorts = Array.isArray(row.openPorts)
+          ? row.openPorts.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0)
+          : []
+        const suggested = asPosDeviceType(row.suggestedDeviceType || 'printer')
+        mapped.push({
+          host,
+          openPorts,
+          labels: openPorts.length
+            ? openPorts.map((p) => (p === 9100 || p === 9101 ? `TCP ${p} ESC/POS` : `TCP ${p}`))
+            : ['Windows TCP scan'],
+          suggestedDeviceType: suggested,
+          latencyMs: 0,
+          isStation: Boolean(row.isStation),
+        })
+      }
+      if (mapped.length === 0) {
+        setError('No private hosts found in that JSON. Re-run Find-BisyncPrinters.cmd on the venue PC.')
+        return
+      }
+      if (parsed.stationIp && isPrivateIpv4(parsed.stationIp)) {
+        setStationIpOverride(parsed.stationIp)
+        storeStationIpv4(parsed.stationIp)
+      }
+      setImportedHosts(mapped)
+      mergeDiscoveredHosts(mapped)
+      setLan((prev) => prev ?? {
+        checkedAt: new Date().toISOString(),
+        note: `Imported Windows LAN scan (${parsed.subnetCidr || 'subnet'}).`,
+        clientLocalIps: parsed.stationIp && isPrivateIpv4(parsed.stationIp) ? [parsed.stationIp] : [],
+        serverInterfaces: [],
+        privateRanges: [],
+        registeredDevices: [],
+      })
+      setStatus(
+        `Imported ${mapped.length} host(s) from Windows scan${parsed.subnetCidr ? ` · ${parsed.subnetCidr}` : ''}. Assign Link as / Link device on each printer.`,
+      )
+      setError(null)
+    } catch {
+      setError('Invalid JSON. Paste the full output from Find-BisyncPrinters.ps1 / bisync-lan-find-result.json.')
+    }
+  }
+
   async function runNetworkCheck() {
+
     if (companyId <= 0) return
     setCheckingLan(true)
     setError(null)
@@ -793,7 +957,84 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                   : ''}
               </p>
             </div>
-            {(checkingLan || lan || stationIpOverride.trim()) && (
+
+            <div className="device-setup-printer-tools">
+              <h4>Add printer by IP</h4>
+              <p className="device-setup-hint device-setup-hint--tight">
+                Thermal printers on port <strong>9100</strong> often do <strong>not</strong> appear in the browser
+                Network check. Enter the printer IP from the sticker / router DHCP list, probe, then link.
+              </p>
+              <div className="device-setup-printer-tools__row">
+                <label>
+                  Printer IP
+                  <input
+                    className="device-setup-input"
+                    value={printerIpDraft}
+                    placeholder="192.168.70.50"
+                    onChange={(e) => setPrinterIpDraft(e.target.value.trim())}
+                  />
+                </label>
+                <label>
+                  Name
+                  <input
+                    className="device-setup-input"
+                    value={printerNameDraft}
+                    onChange={(e) => setPrinterNameDraft(e.target.value)}
+                    maxLength={200}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="device-setup-btn device-setup-btn--primary"
+                  disabled={probingPrinter || companyId <= 0}
+                  onClick={() => void probeAndAddPrinterIp()}
+                >
+                  {probingPrinter ? 'Probing…' : 'Probe & prepare link'}
+                </button>
+              </div>
+
+              <h4>Import Windows scan</h4>
+              <p className="device-setup-hint device-setup-hint--tight">
+                On this PC download <strong>ESC/POS LAN Test (Windows)</strong> under Drivers, unzip, run{' '}
+                <code>Find-BisyncPrinters.cmd</code> (Station IP e.g. <code>192.168.70.131</code>), then paste
+                the JSON here. That uses real TCP connects — the only reliable way to list raw 9100 printers.
+              </p>
+              <textarea
+                className="device-setup-input device-setup-input--json"
+                rows={4}
+                value={windowsScanJson}
+                placeholder='{ "source": "bisync-find-printers", "hosts": [ … ] }'
+                onChange={(e) => setWindowsScanJson(e.target.value)}
+              />
+              <div className="device-setup-printer-tools__row">
+                <button
+                  type="button"
+                  className="device-setup-btn device-setup-btn--primary"
+                  disabled={companyId <= 0}
+                  onClick={() => importWindowsScanJson()}
+                >
+                  Import Windows scan
+                </button>
+                <button
+                  type="button"
+                  className="device-setup-btn device-setup-btn--ghost"
+                  onClick={() => {
+                    const sdk = sdks.find((s) => s.sdkCode === WINDOWS_ESCPOS_SDK_CODE) || sdks.find((s) => s.platform === 'windows')
+                    if (sdk) void downloadAndInstall(sdk)
+                    else setError('Windows LAN package not loaded yet — open Drivers below after refresh.')
+                  }}
+                >
+                  Download Windows finder
+                </button>
+              </div>
+              {importedHosts.length > 0 ? (
+                <p className="device-setup-note">
+                  Last import: {importedHosts.length} host(s) — see Connected devices list below.
+                </p>
+              ) : null}
+            </div>
+
+            {(checkingLan || lan || stationIpOverride.trim() || lanScan || importedHosts.length > 0) && (
               <div className="device-setup-lan">
                 {checkingLan && scanProgress && (
                   <p className="device-setup-note">
@@ -858,9 +1099,9 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     </p>
                     {lanScan.hosts.length === 0 ? (
                       <p className="device-setup-empty">
-                        No responding hosts on common ports. Allow browser local-network access, confirm
-                        this tablet is on the venue Wi‑Fi/LAN, then scan again — or enter an IP under
-                        Link new device.
+                        No hosts answered the browser probe. ESC/POS printers on 9100 usually will not.
+                        Use <strong>Add printer by IP</strong> above, or run <code>Find-BisyncPrinters.cmd</code> on
+                        Windows and <strong>Import Windows scan</strong>.
                       </p>
                     ) : (
                       <ul className="device-setup-assign-list">
