@@ -18,7 +18,11 @@ import {
   discoverLocalIpv4Addresses,
   listAuthorizedUsbPeripherals,
   requestUsbPeripheral,
+  scanLocalSubnetDevices,
   webUsbSupported,
+  type DiscoveredLanHost,
+  type LanSubnetScanProgress,
+  type LanSubnetScanResult,
   type LocalUsbPeripheral,
 } from '../domain/deviceLanCheck'
 import { isAndroidDevice } from '../../../../data/posKiosk'
@@ -145,6 +149,11 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     deviceType: 'printer',
     connectionType: 'ethernet',
   }))
+  const [lanScan, setLanScan] = useState<LanSubnetScanResult | null>(null)
+  const [scanProgress, setScanProgress] = useState<LanSubnetScanProgress | null>(null)
+  /** Role selection for newly discovered (not yet registered) hosts. */
+  const [discoverAssignTypes, setDiscoverAssignTypes] = useState<Record<string, PosDeviceType>>({})
+  const [linkingHost, setLinkingHost] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (companyId <= 0) {
@@ -179,20 +188,51 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     setCheckingLan(true)
     setError(null)
     setStatus(null)
+    setScanProgress(null)
+    setLanScan(null)
     try {
       const clientIps = await discoverLocalIpv4Addresses()
-      const result = await api.posDeviceLanCheck({
-        companyId,
-        locationExternalId: locationId || undefined,
-        clientLocalIps: clientIps,
-      })
+      setStatus(
+        clientIps.length
+          ? `Scanning ${clientIps[0]} subnet for connected devices… Allow local network access if the browser asks.`
+          : 'Detecting station IP…',
+      )
+
+      const [result, scan] = await Promise.all([
+        api.posDeviceLanCheck({
+          companyId,
+          locationExternalId: locationId || undefined,
+          clientLocalIps: clientIps,
+        }),
+        scanLocalSubnetDevices(clientIps, {
+          timeoutMs: 320,
+          concurrency: 28,
+          onProgress: (p) => {
+            setScanProgress(p)
+            setStatus(
+              `Scanning ${p.subnetCidr}… ${p.scanned}/${p.total} hosts (${p.found} responding)`,
+            )
+          },
+        }),
+      ])
+
       setLan(result)
+      setLanScan(scan)
+      setScanProgress(null)
+
       const nextAssign: Record<number, PosDeviceType> = {}
       for (const d of result.registeredDevices) {
         if (d.isLocalPeripheral) continue
         nextAssign[d.id] = asPosDeviceType(d.deviceType)
       }
       setAssignTypes(nextAssign)
+
+      const nextDiscover: Record<string, PosDeviceType> = {}
+      for (const h of scan.hosts) {
+        nextDiscover[h.host] = h.suggestedDeviceType
+      }
+      setDiscoverAssignTypes(nextDiscover)
+
       if (clientIps[0] && !linkDraft.hostAddress.trim()) {
         const parts = clientIps[0].split('.')
         if (parts.length === 4) {
@@ -205,19 +245,21 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
       const usb = await listAuthorizedUsbPeripherals()
       setUsbList(usb)
       const networkCount = result.registeredDevices.filter((d) => !d.isLocalPeripheral).length
-      const sameSubnet = result.registeredDevices.filter(
-        (d) => !d.isLocalPeripheral && d.sameSubnetAsStation,
-      ).length
+      const liveCount = scan.hosts.filter((h) => !h.isStation).length
       setStatus(
         clientIps.length
-          ? `LAN check complete — station IP(s): ${clientIps.join(', ')}. ${networkCount} device(s) on this location${sameSubnet ? ` (${sameSubnet} same subnet)` : ''}. Assign each as printer, KDS, etc.`
+          ? `LAN scan complete on ${scan.subnetCidr || 'local subnet'} — ${liveCount} other host(s) responding, ${networkCount} registered. Assign roles below.`
           : `LAN check complete — no private station IP detected. ${networkCount} registered device(s) listed — assign roles below or link by IP.`,
       )
+      if (scan.permission === 'denied') {
+        setError(scan.note)
+      }
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'LAN check failed.')
     } finally {
       setCheckingLan(false)
+      setScanProgress(null)
     }
   }
 
@@ -322,6 +364,92 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
       setError(e instanceof Error ? e.message : 'Failed to link device.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  function registeredMatchForHost(host: string) {
+    const needle = host.trim().toLowerCase()
+    return devices.find(
+      (d) =>
+        (d.hostAddress || '').trim().toLowerCase() === needle &&
+        d.connectionType !== 'usb' &&
+        d.connectionType !== 'bluetooth',
+    )
+  }
+
+  function useDiscoveredHostInForm(host: DiscoveredLanHost) {
+    const deviceType = discoverAssignTypes[host.host] ?? host.suggestedDeviceType
+    const port =
+      host.openPorts.find((p) =>
+        deviceType === 'printer' ? p === 9100 || p === 9101 || p === 8008 || p === 631 : true,
+      ) ?? defaultPortForDeviceType(deviceType)
+    setLinkDraft({
+      name: host.isStation ? 'This POS station' : `Device ${host.host}`,
+      deviceType,
+      connectionType: 'ethernet',
+      hostAddress: host.host,
+      port: String(port),
+      printerSdkCode: 'dantsu-escpos-android',
+    })
+    setShowAdd(false)
+    setStatus(`Ready to link ${host.host} — review “Link new device” below and tap Link device.`)
+  }
+
+  async function linkDiscoveredHost(host: DiscoveredLanHost) {
+    if (companyId <= 0) return
+    if (!locationId) {
+      setError('Select a POS location before linking devices.')
+      return
+    }
+    const existing = registeredMatchForHost(host.host)
+    const deviceType = discoverAssignTypes[host.host] ?? host.suggestedDeviceType
+    const port =
+      host.openPorts.find((p) =>
+        deviceType === 'printer' ? p === 9100 || p === 9101 || p === 8008 || p === 631 : true,
+      ) ?? defaultPortForDeviceType(deviceType)
+
+    setLinkingHost(host.host)
+    setError(null)
+    try {
+      if (existing) {
+        const updated = await api.updatePosDevice(
+          existing.id,
+          upsertPayloadFromDevice(existing, {
+            deviceType,
+            hostAddress: host.host,
+            port,
+            printerSdkCode:
+              deviceType === 'printer'
+                ? existing.printerSdkCode || 'dantsu-escpos-android'
+                : '',
+            active: true,
+          }),
+        )
+        const msg = `Linked “${updated.name}” as ${updated.deviceTypeLabel || deviceTypeLabel(deviceType)} at ${host.host}.`
+        await load()
+        await refreshLanAfterAssign(msg)
+        return
+      }
+
+      const created = await api.createPosDevice({
+        companyId,
+        locationExternalId: locationId,
+        name: `Device ${host.host}`,
+        deviceType,
+        connectionType: 'ethernet',
+        hostAddress: host.host,
+        port,
+        printerSdkCode:
+          deviceType === 'printer' ? 'dantsu-escpos-android' : undefined,
+        active: true,
+      })
+      const msg = `Linked “${created.name}” as ${created.deviceTypeLabel || deviceTypeLabel(deviceType)} at ${host.host}.`
+      await load()
+      await refreshLanAfterAssign(msg)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to link discovered device.')
+    } finally {
+      setLinkingHost(null)
     }
   }
 
@@ -562,128 +690,257 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
               </button>
             </div>
             <p className="device-setup-hint">
-              Detects this station’s LAN IP, lists devices attached to this location’s network, and lets
-              you assign each as printer, kitchen display (KDS), bar display, POS station, or kiosk.
+              Scans this station’s local subnet for connected devices (printers, KDS, stations), then
+              lets you assign each as printer, kitchen display, bar display, POS, or kiosk. Allow local
+              network access when the browser asks.
             </p>
-            {lan && (
+            {(checkingLan || lan) && (
               <div className="device-setup-lan">
-                <p className="device-setup-note">{lan.note}</p>
-                <div className="device-setup-lan__grid">
-                  <div>
-                    <h4>This station</h4>
-                    {lan.clientLocalIps.length === 0 ? (
-                      <p className="device-setup-empty">No private IP detected</p>
-                    ) : (
-                      <ul>
-                        {lan.clientLocalIps.map((ip) => (
-                          <li key={ip}>
-                            <code>{ip}</code>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div>
-                    <h4>API host NICs</h4>
-                    {lan.serverInterfaces.length === 0 ? (
-                      <p className="device-setup-empty">None (typical on Cloud Run)</p>
-                    ) : (
-                      <ul>
-                        {lan.serverInterfaces.map((iface) => (
-                          <li key={`${iface.name}-${iface.address}`}>
-                            {iface.name}: <code>{iface.address}</code>
-                            {iface.subnet ? ` / ${iface.subnet}` : ''}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <h4>Devices on this network</h4>
-                <p className="device-setup-hint">
-                  Choose a role and tap <strong>Assign link</strong> to bind the device. Same-subnet
-                  hosts are highlighted first.
-                </p>
-                {lan.registeredDevices.filter((d) => !d.isLocalPeripheral).length === 0 ? (
-                  <p className="device-setup-empty">
-                    No network devices registered yet — use “Link new device” below with the IP from
-                    the device sticker or router.
+                {checkingLan && scanProgress && (
+                  <p className="device-setup-note">
+                    Scanning {scanProgress.subnetCidr}: {scanProgress.scanned}/{scanProgress.total}{' '}
+                    hosts checked · {scanProgress.found} responding
                   </p>
-                ) : (
-                  <ul className="device-setup-assign-list">
-                    {[...lan.registeredDevices]
-                      .filter((d) => !d.isLocalPeripheral)
-                      .sort((a, b) => Number(b.sameSubnetAsStation) - Number(a.sameSubnetAsStation))
-                      .map((d) => {
-                        const selected =
-                          assignTypes[d.id] ?? asPosDeviceType(d.deviceType)
-                        const dirty = selected !== asPosDeviceType(d.deviceType) || !d.active
-                        return (
-                          <li
-                            key={d.id}
-                            className={[
-                              'device-setup-assign-row',
-                              d.sameSubnetAsStation ? 'is-same-subnet' : '',
-                              !d.active ? 'is-inactive' : '',
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                          >
-                            <div className="device-setup-assign-row__info">
-                              <strong>{d.name}</strong>
-                              <code>
-                                {d.hostAddress || '—'}
-                                {d.port ? `:${d.port}` : ''}
-                                {d.connectionType ? ` · ${d.connectionType}` : ''}
-                              </code>
-                              <span className="device-setup-assign-row__meta">
-                                Current: {d.deviceTypeLabel || deviceTypeLabel(d.deviceType)}
-                                {d.sameSubnetAsStation ? ' · same subnet' : ''}
-                                {!d.active ? ' · disabled' : ''}
-                              </span>
-                            </div>
-                            <div className="device-setup-assign-row__actions">
-                              <label className="device-setup-assign-row__role">
-                                <span>Link as</span>
-                                <select
-                                  className="device-setup-input device-setup-input--compact"
-                                  value={selected}
-                                  onChange={(e) =>
-                                    setAssignTypes((prev) => ({
-                                      ...prev,
-                                      [d.id]: e.target.value as PosDeviceType,
-                                    }))
-                                  }
-                                  aria-label={`Assign role for ${d.name}`}
-                                >
-                                  {ASSIGNABLE_DEVICE_TYPES.map((t) => (
-                                    <option key={t.value} value={t.value}>
-                                      {t.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <button
-                                type="button"
-                                className="device-setup-btn device-setup-btn--primary"
-                                disabled={busyId === d.id || (!dirty && d.active)}
-                                onClick={() => void assignNetworkDevice(d)}
-                              >
-                                {busyId === d.id ? 'Saving…' : dirty ? 'Assign link' : 'Linked'}
-                              </button>
-                            </div>
+                )}
+                {lan && <p className="device-setup-note">{lan.note}</p>}
+                {lanScan && <p className="device-setup-note">{lanScan.note}</p>}
+                {lan && (
+                  <div className="device-setup-lan__grid">
+                    <div>
+                      <h4>This station</h4>
+                      {lan.clientLocalIps.length === 0 ? (
+                        <p className="device-setup-empty">No private IP detected</p>
+                      ) : (
+                        <ul>
+                          {lan.clientLocalIps.map((ip) => (
+                            <li key={ip}>
+                              <code>{ip}</code>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <h4>Subnet scan</h4>
+                      {lanScan ? (
+                        <ul>
+                          <li>
+                            Range: <code>{lanScan.subnetCidr || '—'}</code>
                           </li>
-                        )
-                      })}
-                  </ul>
+                          <li>
+                            Found: <strong>{lanScan.hosts.length}</strong> host(s) ·{' '}
+                            {lanScan.durationMs} ms
+                          </li>
+                          <li>
+                            Access:{' '}
+                            <code>{lanScan.permission}</code>
+                          </li>
+                        </ul>
+                      ) : checkingLan ? (
+                        <p className="device-setup-empty">Scanning…</p>
+                      ) : (
+                        <p className="device-setup-empty">Run Network check to scan</p>
+                      )}
+                    </div>
+                  </div>
                 )}
 
-                <h4>Link new device on this network</h4>
-                <p className="device-setup-hint">
-                  Enter the IP of a printer, KDS, or station on the same LAN, pick its role, and save
-                  the device link.
-                </p>
+                {lanScan && (
+                  <>
+                    <h4>Connected devices found on LAN</h4>
+                    <p className="device-setup-hint">
+                      Live hosts that answered common POS ports on this subnet. Assign a role and tap
+                      Assign link, or Use in form to edit the name first.
+                    </p>
+                    {lanScan.hosts.length === 0 ? (
+                      <p className="device-setup-empty">
+                        No responding hosts on common ports. Allow browser local-network access, confirm
+                        this tablet is on the venue Wi‑Fi/LAN, then scan again — or enter an IP under
+                        Link new device.
+                      </p>
+                    ) : (
+                      <ul className="device-setup-assign-list">
+                        {lanScan.hosts.map((h) => {
+                          const matched = registeredMatchForHost(h.host)
+                          const selected =
+                            discoverAssignTypes[h.host] ?? h.suggestedDeviceType
+                          return (
+                            <li
+                              key={h.host}
+                              className={[
+                                'device-setup-assign-row',
+                                'is-discovered',
+                                h.isStation ? 'is-station' : '',
+                                matched ? 'is-registered' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                            >
+                              <div className="device-setup-assign-row__info">
+                                <strong>
+                                  {h.isStation
+                                    ? 'This station'
+                                    : matched
+                                      ? matched.name
+                                      : `Host ${h.host}`}
+                                </strong>
+                                <code>
+                                  {h.host}
+                                  {h.openPorts.length ? ` · ports ${h.openPorts.join(', ')}` : ''}
+                                  {h.latencyMs ? ` · ${h.latencyMs} ms` : ''}
+                                </code>
+                                <span className="device-setup-assign-row__meta">
+                                  {h.labels.join(' · ') || 'Responding host'}
+                                  {matched
+                                    ? ` · registered as ${matched.deviceTypeLabel || deviceTypeLabel(matched.deviceType)}`
+                                    : ' · not linked yet'}
+                                </span>
+                              </div>
+                              <div className="device-setup-assign-row__actions">
+                                <label className="device-setup-assign-row__role">
+                                  <span>Link as</span>
+                                  <select
+                                    className="device-setup-input device-setup-input--compact"
+                                    value={selected}
+                                    onChange={(e) =>
+                                      setDiscoverAssignTypes((prev) => ({
+                                        ...prev,
+                                        [h.host]: e.target.value as PosDeviceType,
+                                      }))
+                                    }
+                                    aria-label={`Assign role for ${h.host}`}
+                                  >
+                                    {ASSIGNABLE_DEVICE_TYPES.map((t) => (
+                                      <option key={t.value} value={t.value}>
+                                        {t.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <button
+                                  type="button"
+                                  className="device-setup-btn device-setup-btn--ghost"
+                                  onClick={() => useDiscoveredHostInForm(h)}
+                                >
+                                  Use in form
+                                </button>
+                                <button
+                                  type="button"
+                                  className="device-setup-btn device-setup-btn--primary"
+                                  disabled={linkingHost === h.host || h.isStation}
+                                  onClick={() => void linkDiscoveredHost(h)}
+                                  title={
+                                    h.isStation
+                                      ? 'This is the current POS station'
+                                      : 'Create or update device link'
+                                  }
+                                >
+                                  {linkingHost === h.host
+                                    ? 'Saving…'
+                                    : matched
+                                      ? 'Assign link'
+                                      : 'Link device'}
+                                </button>
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </>
+                )}
+
+                {lan && (
+                  <>
+                    <h4>Registered devices on this network</h4>
+                    <p className="device-setup-hint">
+                      Choose a role and tap <strong>Assign link</strong> to bind the device. Same-subnet
+                      hosts are highlighted first.
+                    </p>
+                    {lan.registeredDevices.filter((d) => !d.isLocalPeripheral).length === 0 ? (
+                      <p className="device-setup-empty">
+                        No network devices registered yet — use “Link new device” below with the IP from
+                        the device sticker or router.
+                      </p>
+                    ) : (
+                      <ul className="device-setup-assign-list">
+                        {[...lan.registeredDevices]
+                          .filter((d) => !d.isLocalPeripheral)
+                          .sort((a, b) => Number(b.sameSubnetAsStation) - Number(a.sameSubnetAsStation))
+                          .map((d) => {
+                            const selected =
+                              assignTypes[d.id] ?? asPosDeviceType(d.deviceType)
+                            const dirty = selected !== asPosDeviceType(d.deviceType) || !d.active
+                            return (
+                              <li
+                                key={d.id}
+                                className={[
+                                  'device-setup-assign-row',
+                                  d.sameSubnetAsStation ? 'is-same-subnet' : '',
+                                  !d.active ? 'is-inactive' : '',
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ')}
+                              >
+                                <div className="device-setup-assign-row__info">
+                                  <strong>{d.name}</strong>
+                                  <code>
+                                    {d.hostAddress || '—'}
+                                    {d.port ? `:${d.port}` : ''}
+                                    {d.connectionType ? ` · ${d.connectionType}` : ''}
+                                  </code>
+                                  <span className="device-setup-assign-row__meta">
+                                    Current: {d.deviceTypeLabel || deviceTypeLabel(d.deviceType)}
+                                    {d.sameSubnetAsStation ? ' · same subnet' : ''}
+                                    {!d.active ? ' · disabled' : ''}
+                                  </span>
+                                </div>
+                                <div className="device-setup-assign-row__actions">
+                                  <label className="device-setup-assign-row__role">
+                                    <span>Link as</span>
+                                    <select
+                                      className="device-setup-input device-setup-input--compact"
+                                      value={selected}
+                                      onChange={(e) =>
+                                        setAssignTypes((prev) => ({
+                                          ...prev,
+                                          [d.id]: e.target.value as PosDeviceType,
+                                        }))
+                                      }
+                                      aria-label={`Assign role for ${d.name}`}
+                                    >
+                                      {ASSIGNABLE_DEVICE_TYPES.map((t) => (
+                                        <option key={t.value} value={t.value}>
+                                          {t.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className="device-setup-btn device-setup-btn--primary"
+                                    disabled={busyId === d.id || (!dirty && d.active)}
+                                    onClick={() => void assignNetworkDevice(d)}
+                                  >
+                                    {busyId === d.id ? 'Saving…' : dirty ? 'Assign link' : 'Linked'}
+                                  </button>
+                                </div>
+                              </li>
+                            )
+                          })}
+                      </ul>
+                    )}
+                  </>
+                )}
+
+                {lan && <h4>Link new device on this network</h4>}
+                {lan && (
+                  <p className="device-setup-hint">
+                    Enter the IP of a printer, KDS, or station on the same LAN, pick its role, and save
+                    the device link.
+                  </p>
+                )}
+                {lan && (
                 <div className="device-setup-link-new">
                   <label>
                     Name
@@ -776,6 +1033,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     {saving ? 'Linking…' : 'Link device'}
                   </button>
                 </div>
+                )}
               </div>
             )}
           </section>
