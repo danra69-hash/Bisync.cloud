@@ -1337,6 +1337,12 @@ export interface PosConfigType {
   code: string;
   sequence: number;
   active: boolean;
+  /** Entertainment: when true, override exception groups/items. */
+  includeAll?: boolean;
+  /** Entertainment: product groups that are not allowed. */
+  exceptionGroups?: string[];
+  /** Entertainment: product ids that are not allowed. */
+  exceptionProductIds?: number[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1348,6 +1354,9 @@ export interface UpsertPosConfigTypePayload {
   code: string;
   sequence?: number;
   active?: boolean;
+  includeAll?: boolean;
+  exceptionGroups?: string[];
+  exceptionProductIds?: number[];
 }
 
 export interface PosTaxServiceChargeLine {

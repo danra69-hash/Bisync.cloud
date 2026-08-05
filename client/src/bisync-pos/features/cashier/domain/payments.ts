@@ -4,6 +4,7 @@ export type TenderType =
   | 'qr'
   | 'cash'
   | 'gift-card'
+  | 'entertainment'
 
 export type SplitMethod = 'even' | 'by-seat' | 'by-item'
 
@@ -18,4 +19,5 @@ export const TENDER_LABEL: Record<TenderType, string> = {
   qr: 'QR Pay',
   cash: 'Cash',
   'gift-card': 'Gift Card',
+  entertainment: 'Entertainment',
 }

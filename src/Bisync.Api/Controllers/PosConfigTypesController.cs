@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bisync.Api.Data;
 using Bisync.Api.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -11,13 +12,21 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
 {
     public static readonly string[] ValidKinds = ["payment", "entertainment", "discount"];
 
+    static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     public record UpsertRequest(
         int CompanyId,
         string Kind,
         string Name,
         string Code,
         int Sequence = 0,
-        bool Active = true);
+        bool Active = true,
+        bool IncludeAll = false,
+        string[]? ExceptionGroups = null,
+        int[]? ExceptionProductIds = null);
 
     public record ActiveBody(bool Active);
 
@@ -89,6 +98,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
             CreatedAt = now,
             UpdatedAt = now,
         };
+        ApplyEntertainmentFields(row, kind, body);
         db.PosConfigTypes.Add(row);
         await db.SaveChangesAsync(cancellationToken);
         return Ok(Map(row));
@@ -128,6 +138,7 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
         row.Code = code;
         row.Sequence = Math.Max(0, body.Sequence);
         row.Active = body.Active;
+        ApplyEntertainmentFields(row, kind, body);
         row.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(Map(row));
@@ -159,6 +170,41 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
         return NoContent();
     }
 
+    static void ApplyEntertainmentFields(PosConfigType row, string kind, UpsertRequest body)
+    {
+        if (kind != "entertainment")
+        {
+            row.IncludeAll = false;
+            row.ExceptionGroupsJson = "[]";
+            row.ExceptionProductIdsJson = "[]";
+            return;
+        }
+
+        row.IncludeAll = body.IncludeAll;
+        if (body.IncludeAll)
+        {
+            // Include-all overrides exceptions — persist empty lists for clarity.
+            row.ExceptionGroupsJson = "[]";
+            row.ExceptionProductIdsJson = "[]";
+            return;
+        }
+
+        var groups = (body.ExceptionGroups ?? [])
+            .Select(g => (g ?? string.Empty).Trim())
+            .Where(g => g.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var productIds = (body.ExceptionProductIds ?? [])
+            .Where(id => id > 0)
+            .Distinct()
+            .OrderBy(id => id)
+            .ToArray();
+
+        row.ExceptionGroupsJson = JsonSerializer.Serialize(groups, JsonOpts);
+        row.ExceptionProductIdsJson = JsonSerializer.Serialize(productIds, JsonOpts);
+    }
+
     static string? Validate(UpsertRequest body)
     {
         if (body.CompanyId <= 0)
@@ -181,18 +227,58 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
     static string NormalizeCode(string? code) =>
         (code ?? string.Empty).Trim().ToUpperInvariant();
 
-    static object Map(PosConfigType row) => new
+    static string[] ParseStringArray(string? json)
     {
-        id = row.Id,
-        companyId = row.CompanyId,
-        kind = row.Kind,
-        name = row.Name,
-        code = row.Code,
-        sequence = row.Sequence,
-        active = row.Active,
-        createdAt = row.CreatedAt,
-        updatedAt = row.UpdatedAt,
-    };
+        if (string.IsNullOrWhiteSpace(json) || json.Trim() is "[]" or "null")
+            return [];
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(json, JsonOpts)?
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToArray() ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    static int[] ParseIntArray(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json.Trim() is "[]" or "null")
+            return [];
+        try
+        {
+            return JsonSerializer.Deserialize<int[]>(json, JsonOpts)?
+                .Where(id => id > 0)
+                .ToArray() ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    static object Map(PosConfigType row)
+    {
+        var isEntertainment = string.Equals(row.Kind, "entertainment", StringComparison.OrdinalIgnoreCase);
+        return new
+        {
+            id = row.Id,
+            companyId = row.CompanyId,
+            kind = row.Kind,
+            name = row.Name,
+            code = row.Code,
+            sequence = row.Sequence,
+            active = row.Active,
+            includeAll = isEntertainment && row.IncludeAll,
+            exceptionGroups = isEntertainment ? ParseStringArray(row.ExceptionGroupsJson) : Array.Empty<string>(),
+            exceptionProductIds = isEntertainment ? ParseIntArray(row.ExceptionProductIdsJson) : Array.Empty<int>(),
+            createdAt = row.CreatedAt,
+            updatedAt = row.UpdatedAt,
+        };
+    }
 
     async Task EnsureDefaultsAsync(int companyId, CancellationToken cancellationToken)
     {
@@ -223,6 +309,9 @@ public class PosConfigTypesController(BisyncDbContext db) : ControllerBase
                     Name = name,
                     Sequence = seq,
                     Active = true,
+                    IncludeAll = false,
+                    ExceptionGroupsJson = "[]",
+                    ExceptionProductIdsJson = "[]",
                     CreatedAt = now,
                     UpdatedAt = now,
                 });

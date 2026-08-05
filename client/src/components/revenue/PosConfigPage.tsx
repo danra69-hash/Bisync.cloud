@@ -3,6 +3,7 @@ import {
   api,
   type PosConfigType,
   type PosConfigTypeKind,
+  type Product,
   type UpsertPosConfigTypePayload,
 } from '../../api'
 import { inputCls } from '../../data/countries'
@@ -37,6 +38,9 @@ type Draft = {
   code: string
   sequence: string
   active: boolean
+  includeAll: boolean
+  exceptionGroups: string[]
+  exceptionProductIds: number[]
 }
 
 const emptyDraft = (): Draft => ({
@@ -44,6 +48,9 @@ const emptyDraft = (): Draft => ({
   code: '',
   sequence: '0',
   active: true,
+  includeAll: false,
+  exceptionGroups: [],
+  exceptionProductIds: [],
 })
 
 function suggestCode(name: string): string {
@@ -55,9 +62,15 @@ function suggestCode(name: string): string {
     .slice(0, 40)
 }
 
+function uniqueGroups(products: Product[]): string[] {
+  return [...new Set(products.map(p => (p.group || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b))
+}
+
 export function PosConfigPage({ selectedCompanyId }: Props) {
   const [tab, setTab] = useState<TabId>('payment')
   const [rows, setRows] = useState<PosConfigType[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -65,6 +78,7 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [codeTouched, setCodeTouched] = useState(false)
+  const [productQuery, setProductQuery] = useState('')
 
   const load = useCallback(async (companyId: number, kind: TabId) => {
     setLoading(true)
@@ -83,20 +97,58 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
   useEffect(() => {
     if (!selectedCompanyId) {
       setRows([])
+      setProducts([])
       return
     }
     void load(selectedCompanyId, tab)
   }, [selectedCompanyId, tab, load])
+
+  useEffect(() => {
+    if (!selectedCompanyId || tab !== 'entertainment') {
+      setProducts([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const catalog = await api.products(selectedCompanyId)
+        if (!cancelled) {
+          setProducts(catalog.filter(p => p.active !== false && !p.isSubProduct))
+        }
+      } catch {
+        if (!cancelled) setProducts([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCompanyId, tab])
 
   const sorted = useMemo(
     () => [...rows].sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name)),
     [rows],
   )
 
+  const productGroups = useMemo(() => uniqueGroups(products), [products])
+
+  const filteredProducts = useMemo(() => {
+    const q = productQuery.trim().toLowerCase()
+    const list = [...products].sort((a, b) => a.name.localeCompare(b.name))
+    if (!q) return list.slice(0, 80)
+    return list
+      .filter(p =>
+        p.name.toLowerCase().includes(q)
+        || p.group.toLowerCase().includes(q)
+        || String(p.id).includes(q),
+      )
+      .slice(0, 80)
+  }, [products, productQuery])
+
   function openAdd() {
     setEditingId(null)
     setDraft(emptyDraft())
     setCodeTouched(false)
+    setProductQuery('')
     setShowForm(true)
     setError(null)
   }
@@ -108,8 +160,12 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
       code: row.code,
       sequence: String(row.sequence),
       active: row.active,
+      includeAll: Boolean(row.includeAll),
+      exceptionGroups: [...(row.exceptionGroups ?? [])],
+      exceptionProductIds: [...(row.exceptionProductIds ?? [])],
     })
     setCodeTouched(true)
+    setProductQuery('')
     setShowForm(true)
     setError(null)
   }
@@ -119,6 +175,33 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
     setEditingId(null)
     setDraft(emptyDraft())
     setCodeTouched(false)
+    setProductQuery('')
+  }
+
+  function toggleExceptionGroup(group: string) {
+    setDraft(d => {
+      const has = d.exceptionGroups.some(g => g.toLowerCase() === group.toLowerCase())
+      return {
+        ...d,
+        includeAll: false,
+        exceptionGroups: has
+          ? d.exceptionGroups.filter(g => g.toLowerCase() !== group.toLowerCase())
+          : [...d.exceptionGroups, group],
+      }
+    })
+  }
+
+  function toggleExceptionProduct(productId: number) {
+    setDraft(d => {
+      const has = d.exceptionProductIds.includes(productId)
+      return {
+        ...d,
+        includeAll: false,
+        exceptionProductIds: has
+          ? d.exceptionProductIds.filter(id => id !== productId)
+          : [...d.exceptionProductIds, productId],
+      }
+    })
   }
 
   async function submitForm() {
@@ -141,6 +224,11 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
       code,
       sequence: Number.isFinite(sequence) ? Math.max(0, sequence) : 0,
       active: draft.active,
+    }
+    if (tab === 'entertainment') {
+      payload.includeAll = draft.includeAll
+      payload.exceptionGroups = draft.includeAll ? [] : draft.exceptionGroups
+      payload.exceptionProductIds = draft.includeAll ? [] : draft.exceptionProductIds
     }
     setSaving(true)
     setError(null)
@@ -182,6 +270,18 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
     }
   }
 
+  function exceptionSummary(row: PosConfigType): string {
+    if (row.kind !== 'entertainment') return '—'
+    if (row.includeAll) return 'Include all (no exceptions)'
+    const groups = row.exceptionGroups?.length ?? 0
+    const items = row.exceptionProductIds?.length ?? 0
+    if (groups === 0 && items === 0) return 'No exceptions'
+    const parts: string[] = []
+    if (groups > 0) parts.push(`${groups} group${groups === 1 ? '' : 's'}`)
+    if (items > 0) parts.push(`${items} item${items === 1 ? '' : 's'}`)
+    return `Blocked: ${parts.join(', ')}`
+  }
+
   if (!selectedCompanyId) {
     return (
       <div className={pageShellClass()}>
@@ -189,6 +289,11 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
       </div>
     )
   }
+
+  const isEntertainment = tab === 'entertainment'
+  const tableWidths = isEntertainment
+    ? ['22%', '14%', '10%', '10%', '24%', '20%']
+    : ['28%', '18%', '12%', '12%', '30%']
 
   return (
     <div className={pageShellClass({ spacing: 'default' })}>
@@ -281,6 +386,108 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
               <span>Active</span>
             </label>
           </div>
+
+          {isEntertainment ? (
+            <div className="space-y-3 border-t border-border/60 pt-3">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                At settlement this key zeros tax and service, settles the full check amount, and
+                requires employee name and reason. Exception groups/items below are not allowed
+                unless Include all is ticked.
+              </p>
+
+              <label className="flex items-start gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={draft.includeAll}
+                  onChange={e => {
+                    const includeAll = e.target.checked
+                    setDraft(d => ({
+                      ...d,
+                      includeAll,
+                      exceptionGroups: includeAll ? [] : d.exceptionGroups,
+                      exceptionProductIds: includeAll ? [] : d.exceptionProductIds,
+                    }))
+                  }}
+                />
+                <span>
+                  <span className="font-semibold">Include all</span>
+                  <span className="block text-muted-foreground text-[11px] mt-0.5">
+                    Override any exception — every product and group is allowed for this entertainment type.
+                  </span>
+                </span>
+              </label>
+
+              {!draft.includeAll ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <fieldset className="rounded-md border border-border/70 p-2.5 space-y-2">
+                    <legend className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Exception product groups
+                    </legend>
+                    {productGroups.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">No product groups in the catalog yet.</p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                        {productGroups.map(g => (
+                          <label key={g} className="flex items-center gap-2 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={draft.exceptionGroups.some(
+                                x => x.toLowerCase() === g.toLowerCase(),
+                              )}
+                              onChange={() => toggleExceptionGroup(g)}
+                            />
+                            <span>{g}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </fieldset>
+
+                  <fieldset className="rounded-md border border-border/70 p-2.5 space-y-2">
+                    <legend className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Exception items
+                    </legend>
+                    <input
+                      className={inputCls}
+                      value={productQuery}
+                      onChange={e => setProductQuery(e.target.value)}
+                      placeholder="Search products…"
+                    />
+                    {filteredProducts.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">No matching products.</p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                        {filteredProducts.map(p => (
+                          <label key={p.id} className="flex items-start gap-2 text-xs">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={draft.exceptionProductIds.includes(p.id)}
+                              onChange={() => toggleExceptionProduct(p.id)}
+                            />
+                            <span>
+                              <span className="font-medium text-foreground">{p.name}</span>
+                              {p.group ? (
+                                <span className="block text-[10px] text-muted-foreground">{p.group}</span>
+                              ) : null}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    {draft.exceptionProductIds.length > 0 ? (
+                      <p className="text-[10px] text-muted-foreground">
+                        {draft.exceptionProductIds.length} item
+                        {draft.exceptionProductIds.length === 1 ? '' : 's'} blocked
+                      </p>
+                    ) : null}
+                  </fieldset>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="flex justify-end">
             <button
               type="button"
@@ -302,20 +509,26 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
         ) : (
           <TableScrollContainer>
             <table className="w-full text-xs">
-              <ColGroup widths={['28%', '18%', '12%', '12%', '30%']} />
+              <ColGroup widths={tableWidths} />
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="px-2 py-2 font-semibold">Name</th>
                   <th className="px-2 py-2 font-semibold">Code</th>
                   <th className="px-2 py-2 font-semibold">Sequence</th>
                   <th className="px-2 py-2 font-semibold">Active</th>
+                  {isEntertainment ? (
+                    <th className="px-2 py-2 font-semibold">Exceptions</th>
+                  ) : null}
                   <th className="px-2 py-2 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-2 py-6 text-muted-foreground">
+                    <td
+                      colSpan={isEntertainment ? 6 : 5}
+                      className="px-2 py-6 text-muted-foreground"
+                    >
                       No {TAB_TITLE[tab].toLowerCase()}s yet. Add one to get started.
                     </td>
                   </tr>
@@ -332,6 +545,9 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
                           label={`Active ${row.name}`}
                         />
                       </td>
+                      {isEntertainment ? (
+                        <td className="px-2 py-2 text-muted-foreground">{exceptionSummary(row)}</td>
+                      ) : null}
                       <td className="px-2 py-2 text-right space-x-2 whitespace-nowrap">
                         <button
                           type="button"

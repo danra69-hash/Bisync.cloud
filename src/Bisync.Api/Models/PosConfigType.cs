@@ -2,6 +2,7 @@ namespace Bisync.Api.Models;
 
 /// <summary>
 /// Company-scoped POS lookup: payment, entertainment, or discount type.
+/// Entertainment rows may carry exception product groups/items and an Include-all override.
 /// </summary>
 public class PosConfigType
 {
@@ -14,6 +15,14 @@ public class PosConfigType
     public string Code { get; set; } = string.Empty;
     public int Sequence { get; set; }
     public bool Active { get; set; } = true;
+    /// <summary>
+    /// Entertainment only: when true, override exception groups/items so every product is allowed.
+    /// </summary>
+    public bool IncludeAll { get; set; }
+    /// <summary>Entertainment only: JSON string[] of product group names that are not allowed.</summary>
+    public string ExceptionGroupsJson { get; set; } = "[]";
+    /// <summary>Entertainment only: JSON int[] of product ids that are not allowed.</summary>
+    public string ExceptionProductIdsJson { get; set; } = "[]";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

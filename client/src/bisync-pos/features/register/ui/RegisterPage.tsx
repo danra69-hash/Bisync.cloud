@@ -43,7 +43,7 @@ import {
   publishPosDiningMode,
 } from '../../../core/session/posDiningBridge'
 import { api } from '../../../../api'
-import type { PosPrepaidPurchase, PosPromotion } from '../../../../api'
+import type { PosConfigType, PosPrepaidPurchase, PosPromotion } from '../../../../api'
 import { enqueueOutbox } from '../../../core/offline/posOutbox'
 import { isOnline } from '../../../core/offline/posCatalogStore'
 import { ProductGrid } from './ProductGrid'
@@ -60,9 +60,8 @@ import {
 } from '../domain/prepaidNotes'
 import { ModifierPickerModal } from './ModifierPickerModal'
 import { VoidCancelModal } from './VoidCancelModal'
-import { PaymentModal } from './PaymentModal'
+import { PaymentModal, type PaymentConfirmPayload } from './PaymentModal'
 import { CompulsoryModifierModal } from './CompulsoryModifierModal'
-import type { TenderType } from '../../cashier/domain/payments'
 import { TENDER_LABEL } from '../../cashier/domain/payments'
 import type { PosModifierGroup } from '../../../../api'
 import {
@@ -166,6 +165,7 @@ export function RegisterPage() {
   const [removalError, setRemovalError] = useState<string | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [entertainmentTypes, setEntertainmentTypes] = useState<PosConfigType[]>([])
   const [prepaidPromotions, setPrepaidPromotions] = useState<PosPromotion[]>([])
   const [prepaidCustomerTarget, setPrepaidCustomerTarget] = useState<{
     product: Product
@@ -235,6 +235,24 @@ export function RegisterPage() {
       cancelled = true
     }
   }, [session?.companyId, session?.offlineFirst, session?.promotions])
+
+  useEffect(() => {
+    if (!session?.companyId) {
+      setEntertainmentTypes([])
+      return
+    }
+    let cancelled = false
+    api.posConfigTypes(session.companyId, { kind: 'entertainment', includeInactive: false })
+      .then(rows => {
+        if (!cancelled) setEntertainmentTypes(rows.filter(r => r.active !== false))
+      })
+      .catch(() => {
+        if (!cancelled) setEntertainmentTypes([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session?.companyId])
 
   useEffect(() => {
     function openTakeaway() {
@@ -1230,10 +1248,7 @@ export function RegisterPage() {
     }
   }
 
-  async function confirmPayment(payload: {
-    tender: TenderType
-    cashReceivedCents?: number
-  }) {
+  async function confirmPayment(payload: PaymentConfirmPayload) {
     if (!session) {
       setPaymentError('POS session is not ready.')
       return
@@ -1244,10 +1259,26 @@ export function RegisterPage() {
     try {
       const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
       const grossCents = cartSubtotal(lines, products)
-      const grandCents = cartGrandTotal(lines, products, charges)
+      const isEntertainment = payload.tender === 'entertainment'
+      const settleCharges = isEntertainment
+        ? {
+            ...charges,
+            serviceCents: 0,
+            taxRegularCents: 0,
+            taxAlcoholCents: 0,
+          }
+        : charges
+      const grandCents = isEntertainment
+        ? Math.max(0, grossCents - settleCharges.discountCents)
+        : cartGrandTotal(lines, products, charges)
       const locationId = session.locationId
       if (!locationId) {
         throw new Error('No location selected for this POS session.')
+      }
+      if (isEntertainment) {
+        if (!payload.entertainment?.employeeName?.trim() || !payload.entertainment?.reason?.trim()) {
+          throw new Error('Employee name and reason are required for entertainment.')
+        }
       }
 
       let recordedSales = 0
@@ -1293,19 +1324,25 @@ export function RegisterPage() {
         throw new Error('No sellable products on this check. Check product IDs / catalog.')
       }
 
-      const methodLabel = TENDER_LABEL[payload.tender] || payload.tender
+      const methodLabel = isEntertainment
+        ? (payload.entertainment?.typeName || TENDER_LABEL.entertainment)
+        : (TENDER_LABEL[payload.tender] || payload.tender)
       const closedCheckPayload = {
         companyId: session.companyId,
         locationExternalId: locationId,
         checkNumber,
         checkLabel: activeTableSession?.tableLabel || 'POS Register',
         covers: cover > 0 ? cover : 1,
-        discountCents: charges.discountCents,
-        taxCents: charges.taxRegularCents + charges.taxAlcoholCents,
+        discountCents: settleCharges.discountCents,
+        taxCents: isEntertainment
+          ? 0
+          : settleCharges.taxRegularCents + settleCharges.taxAlcoholCents,
         grossCents,
-        paymentMethod: payload.tender,
+        paymentMethod: isEntertainment ? 'entertainment' : payload.tender,
         paymentAmountCents: grandCents,
-        paymentPurpose: methodLabel,
+        paymentPurpose: isEntertainment
+          ? (payload.entertainment?.purpose || methodLabel)
+          : methodLabel,
       }
       if (useOutbox) {
         await enqueueOutbox('posRecordClosedCheck', closedCheckPayload)
@@ -1366,7 +1403,11 @@ export function RegisterPage() {
       clearCustomerDisplaySnapshot()
       clearActiveRegisterSession()
       setActiveTableSession(null)
-      flash(`Paid via ${methodLabel} · ${count} item${count === 1 ? '' : 's'}`)
+      flash(
+        isEntertainment
+          ? `Entertainment · ${methodLabel} · ${count} item${count === 1 ? '' : 's'}`
+          : `Paid via ${methodLabel} · ${count} item${count === 1 ? '' : 's'}`,
+      )
       session.refreshCatalog()
       goHome()
     } catch (e) {
@@ -1679,6 +1720,15 @@ export function RegisterPage() {
             liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS,
             charges,
           )}
+          entertainmentAmountCents={Math.max(
+            0,
+            cartSubtotal(lines, liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS)
+              - charges.discountCents,
+          )}
+          cartLines={lines}
+          catalog={liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS}
+          entertainmentTypes={entertainmentTypes}
+          defaultEmployeeName={duty?.employeeName || ''}
           busy={charging}
           error={paymentError}
           onCancel={() => {

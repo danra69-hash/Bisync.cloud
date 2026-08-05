@@ -2152,10 +2152,16 @@ public static class SchemaPatcher
                 "Code" TEXT NOT NULL DEFAULT '',
                 "Sequence" INTEGER NOT NULL DEFAULT 0,
                 "Active" BOOLEAN NOT NULL DEFAULT TRUE,
+                "IncludeAll" BOOLEAN NOT NULL DEFAULT FALSE,
+                "ExceptionGroupsJson" TEXT NOT NULL DEFAULT '[]',
+                "ExceptionProductIdsJson" TEXT NOT NULL DEFAULT '[]',
                 "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
             );
             """);
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "IncludeAll", "BOOLEAN NOT NULL DEFAULT FALSE");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "ExceptionGroupsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "ExceptionProductIdsJson", "TEXT NOT NULL DEFAULT '[]'");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosConfigTypes_CompanyId_Kind_Code"
             ON "PosConfigTypes" ("CompanyId", "Kind", "Code");

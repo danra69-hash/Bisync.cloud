@@ -2039,7 +2039,7 @@ public class RecordPosClosedCheckRequest
     [MaxLength(40)]
     public string PaymentMethod { get; set; } = "cash";
     public long? PaymentAmountCents { get; set; }
-    [MaxLength(120)]
+    [MaxLength(240)]
     public string? PaymentPurpose { get; set; }
 }
 
