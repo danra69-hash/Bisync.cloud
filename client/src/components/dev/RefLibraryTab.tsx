@@ -461,7 +461,7 @@ export function RefLibraryTab() {
             Ref &amp; Library
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Click a title to expand details. List shows title and created or revised date.
+            Click a title to expand details. Includes legal docs, FIFO guide, DantSu printer SDK, and nutrition library.
           </p>
         </div>
         <div className="flex items-center gap-2">
