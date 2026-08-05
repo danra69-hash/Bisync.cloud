@@ -308,6 +308,20 @@ export function RegisterPage() {
   const groupColumns = Math.max(1, Math.ceil(groups.length / 2))
   const onDuty = !orderingLocked
 
+  const conceptLocations = useMemo(() => {
+    const locs = session?.locations ?? []
+    const active = locs.find(l => l.externalId === session?.locationId)
+    const siteKey = (active?.physicalSiteKey || '').trim()
+    if (!siteKey) return []
+    return locs
+      .filter(l => (l.physicalSiteKey || '').trim() === siteKey)
+      .sort(
+        (a, b) =>
+          (a.conceptSortOrder ?? 0) - (b.conceptSortOrder ?? 0)
+          || a.name.localeCompare(b.name),
+      )
+  }, [session?.locations, session?.locationId])
+
   const catalogForFilter = session ? liveCatalog : MOCK_PRODUCTS
   const tableOptions = useMemo(() => {
     const plan =
@@ -1392,6 +1406,28 @@ export function RegisterPage() {
               onChange={e => setProductQuery(e.target.value)}
             />
           </label>
+          {conceptLocations.length > 1 ? (
+            <div className="register__brands" role="tablist" aria-label="Brand concepts">
+              {conceptLocations.map(loc => {
+                const label = (loc.conceptLabel || loc.name).trim() || loc.name
+                const active = loc.externalId === session?.locationId
+                return (
+                  <button
+                    key={loc.externalId}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`register__brand${active ? ' is-active' : ''}`}
+                    onClick={() => {
+                      if (!active) session?.setLocationId(loc.externalId)
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
           <div className="register__departments" role="tablist" aria-label="Departments">
             {departments.map(d => (
               <button

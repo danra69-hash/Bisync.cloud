@@ -55,6 +55,9 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "TimeZoneId", "TEXT NOT NULL DEFAULT ''");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "SecondaryContactUserId", "INTEGER");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "Active", "INTEGER NOT NULL DEFAULT 1");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "PhysicalSiteKey", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ConceptLabel", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "Locations", "ConceptSortOrder", "INTEGER NOT NULL DEFAULT 0");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "ProductPolicyTag", "TEXT NOT NULL DEFAULT 'non-halal'");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "AllowPartialDelivery", "BOOLEAN NOT NULL DEFAULT FALSE");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "Vendors", "EngagedLocationIdsJson", "TEXT NOT NULL DEFAULT '[]'");

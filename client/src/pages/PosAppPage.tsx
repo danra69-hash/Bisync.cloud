@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { setApiTenantCompanyId } from '../api';
+import { api, setApiTenantCompanyId } from '../api';
 import {
   isDocumentFullscreen,
   isStandaloneDisplay,
@@ -125,11 +125,83 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
     );
   }
 
+  return (
+    <ActivatedPosShell
+      activation={activation}
+      entryLabel={entryLabel}
+      initialEntry={initialEntry}
+      kioskActive={kioskActive}
+    />
+  );
+}
+
+function ActivatedPosShell({
+  activation,
+  entryLabel,
+  initialEntry,
+  kioskActive,
+}: {
+  activation: StationActivation;
+  entryLabel: string;
+  initialEntry: string;
+  kioskActive: boolean;
+}) {
   const companyId = activation.companyId;
-  const locationId = activation.locationExternalId;
-  const locationOptions = [
-    { externalId: activation.locationExternalId, name: activation.locationName },
-  ];
+  const [locationId, setLocationId] = useState(activation.locationExternalId);
+  const [locationOptions, setLocationOptions] = useState<
+    Array<{
+      externalId: string;
+      name: string;
+      physicalSiteKey?: string;
+      conceptLabel?: string;
+      conceptSortOrder?: number;
+    }>
+  >([
+    {
+      externalId: activation.locationExternalId,
+      name: activation.locationName,
+    },
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.locationsConfig({ includeInactive: false })
+      .then(rows => {
+        if (cancelled) return;
+        const companyLocs = rows.filter(
+          l => l.companyId === companyId && l.active !== false,
+        );
+        const self = companyLocs.find(l => l.externalId === activation.locationExternalId);
+        const siteKey = (self?.physicalSiteKey || '').trim();
+        const siblings = (
+          siteKey
+            ? companyLocs.filter(l => (l.physicalSiteKey || '').trim() === siteKey)
+            : self
+              ? [self]
+              : companyLocs.filter(l => l.externalId === activation.locationExternalId)
+        ).sort(
+          (a, b) =>
+            (a.conceptSortOrder ?? 0) - (b.conceptSortOrder ?? 0)
+            || a.name.localeCompare(b.name),
+        );
+        setLocationOptions(
+          siblings.map(l => ({
+            externalId: l.externalId,
+            name: l.name,
+            physicalSiteKey: l.physicalSiteKey || undefined,
+            conceptLabel: (l.conceptLabel || '').trim() || l.name,
+            conceptSortOrder: l.conceptSortOrder ?? 0,
+          })),
+        );
+      })
+      .catch(() => {
+        /* keep activation single-location fallback */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, activation.locationExternalId]);
+
   const hideOrgChrome = kioskActive && (isDocumentFullscreen() || isStandaloneDisplay());
 
   return (
@@ -153,6 +225,7 @@ export function PosAppPage({ entry = 'pos' }: PosAppPageProps) {
               companyId={companyId}
               locationId={locationId}
               locations={locationOptions}
+              onLocationChange={setLocationId}
               initialEntry={initialEntry}
               offlineFirst
             />

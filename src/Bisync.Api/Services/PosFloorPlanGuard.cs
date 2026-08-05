@@ -40,6 +40,23 @@ public static class PosFloorPlanGuard
         try
         {
             using var doc = JsonDocument.Parse(layoutJson);
+            // Multi-floor document: empty only when every floor has zero tables.
+            if (doc.RootElement.TryGetProperty("floors", out var floors)
+                && floors.ValueKind == JsonValueKind.Array
+                && floors.GetArrayLength() > 0)
+            {
+                foreach (var floor in floors.EnumerateArray())
+                {
+                    if (floor.TryGetProperty("tables", out var floorTables)
+                        && floorTables.ValueKind == JsonValueKind.Array
+                        && floorTables.GetArrayLength() > 0)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
             if (!doc.RootElement.TryGetProperty("tables", out var tables)
                 || tables.ValueKind != JsonValueKind.Array)
             {
@@ -59,10 +76,30 @@ public static class PosFloorPlanGuard
         try
         {
             using var doc = JsonDocument.Parse(layoutJson);
+            // Multi-floor layouts are never the stock single-canvas demo.
+            if (doc.RootElement.TryGetProperty("floors", out var floors)
+                && floors.ValueKind == JsonValueKind.Array
+                && floors.GetArrayLength() > 1)
+            {
+                return false;
+            }
+
             if (!doc.RootElement.TryGetProperty("tables", out var tables)
                 || tables.ValueKind != JsonValueKind.Array)
             {
-                return false;
+                // Single floor stored inside floors[0]
+                if (doc.RootElement.TryGetProperty("floors", out var oneFloor)
+                    && oneFloor.ValueKind == JsonValueKind.Array
+                    && oneFloor.GetArrayLength() == 1
+                    && oneFloor[0].TryGetProperty("tables", out var nested)
+                    && nested.ValueKind == JsonValueKind.Array)
+                {
+                    tables = nested;
+                }
+                else
+                {
+                    return false;
+                }
             }
 
             if (tables.GetArrayLength() != StockTables.Length) return false;

@@ -621,7 +621,10 @@ public record LocationConfigUpdate(
     bool DeliveryAllowTimeEnabled = false,
     string? DeliveryAllowPeriodsJson = null,
     int? SecondaryContactUserId = null,
-    bool Active = true
+    bool Active = true,
+    string? PhysicalSiteKey = null,
+    string? ConceptLabel = null,
+    int? ConceptSortOrder = null
 );
 
 public record LocationConfigCreate(
@@ -640,5 +643,8 @@ public record LocationConfigCreate(
     bool DeliveryAllowTimeEnabled = false,
     string? DeliveryAllowPeriodsJson = null,
     int? SecondaryContactUserId = null,
-    bool Active = true
+    bool Active = true,
+    string? PhysicalSiteKey = null,
+    string? ConceptLabel = null,
+    int? ConceptSortOrder = null
 );
