@@ -42,9 +42,24 @@ import {
   WINDOWS_ESCPOS_SDK_TITLE,
   WINDOWS_ESCPOS_SDK_VERSION,
 } from '../../data/windowsEscposSdk';
+import {
+  PLATFORM_GLOSSARY_MODULES,
+  PLATFORM_GLOSSARY_REVISED_DATE,
+  PLATFORM_GLOSSARY_SUMMARY,
+  PLATFORM_GLOSSARY_TITLE,
+  type GlossaryModule,
+} from '../../data/platformGlossary';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
-type LibraryEntryId = 'eula' | 'privacy' | 'dpa' | 'fifo' | 'nutrition' | 'dantsu-printer' | 'windows-escpos';
+type LibraryEntryId =
+  | 'eula'
+  | 'privacy'
+  | 'dpa'
+  | 'platform-glossary'
+  | 'fifo'
+  | 'nutrition'
+  | 'dantsu-printer'
+  | 'windows-escpos';
 
 type LibraryEntry = {
   id: LibraryEntryId;
@@ -257,6 +272,92 @@ function WindowsEscposSdkDetails({
   );
 }
 
+function PlatformGlossaryDetails() {
+  const [query, setQuery] = useState('');
+
+  const filteredModules = useMemo((): GlossaryModule[] => {
+    const q = query.trim().toLowerCase();
+    if (!q) return PLATFORM_GLOSSARY_MODULES;
+    return PLATFORM_GLOSSARY_MODULES
+      .map(mod => ({
+        ...mod,
+        entries: mod.entries.filter(entry =>
+          [entry.term, entry.meaning, entry.dbName, mod.module]
+            .join(' ')
+            .toLowerCase()
+            .includes(q),
+        ),
+      }))
+      .filter(mod => mod.entries.length > 0);
+  }, [query]);
+
+  const matchCount = filteredModules.reduce((n, mod) => n + mod.entries.length, 0);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground leading-relaxed">{PLATFORM_GLOSSARY_SUMMARY}</p>
+      <p className="text-[11px] text-muted-foreground">
+        Columns: Term (business name) · Meaning · DB / API name
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search terms, meanings, or DB names…"
+          className="min-w-[12rem] flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+          aria-label="Search platform definitions"
+        />
+        <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+          {matchCount} term{matchCount === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {filteredModules.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No definitions match “{query.trim()}”.</p>
+      ) : (
+        <div className="space-y-5">
+          {filteredModules.map(mod => (
+            <section key={mod.id} className="space-y-2">
+              <h3 className="text-xs font-semibold border-b border-border/60 pb-1.5">
+                {mod.module}
+                <span className="ml-2 text-[10px] font-normal text-muted-foreground tabular-nums">
+                  {mod.entries.length}
+                </span>
+              </h3>
+              <div className="overflow-x-auto rounded-md border border-border/50">
+                <table className="w-full min-w-[36rem] text-left text-[11px]">
+                  <thead>
+                    <tr className="bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-2.5 py-1.5 font-semibold w-[22%]">Term</th>
+                      <th className="px-2.5 py-1.5 font-semibold w-[48%]">Meaning</th>
+                      <th className="px-2.5 py-1.5 font-semibold w-[30%]">DB / API</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {mod.entries.map(entry => (
+                      <tr key={`${mod.id}:${entry.term}`} className="align-top">
+                        <td className="px-2.5 py-2 font-medium text-foreground">{entry.term}</td>
+                        <td className="px-2.5 py-2 text-muted-foreground leading-relaxed">
+                          {entry.meaning}
+                        </td>
+                        <td className="px-2.5 py-2 font-mono text-[10px] text-foreground/90 break-all">
+                          {entry.dbName}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NutritionDetails({
   status,
   loading,
@@ -457,6 +558,11 @@ export function RefLibraryTab() {
         revisedLabel: LEGAL_EFFECTIVE_DATE,
       },
       {
+        id: 'platform-glossary',
+        title: PLATFORM_GLOSSARY_TITLE,
+        revisedLabel: PLATFORM_GLOSSARY_REVISED_DATE,
+      },
+      {
         id: 'fifo',
         title: FIFO_GUIDE_TITLE,
         revisedLabel: FIFO_GUIDE_REVISED_DATE,
@@ -502,6 +608,8 @@ export function RefLibraryTab() {
         return (
           <LegalDetails intro={DPA_INTRO} version={CURRENT_DPA_VERSION} path="/legal/dpa" />
         );
+      case 'platform-glossary':
+        return <PlatformGlossaryDetails />;
       case 'fifo':
         return (
           <FifoDetails
@@ -548,7 +656,7 @@ export function RefLibraryTab() {
             Ref &amp; Library
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Click a title to expand details. Includes legal docs, FIFO guide, DantSu Android + Windows ESC/POS printer packages, and nutrition library.
+            Click a title to expand details. Includes platform definitions by module, legal docs, FIFO guide, DantSu Android + Windows ESC/POS printer packages, and nutrition library.
           </p>
         </div>
         <div className="flex items-center gap-2">
