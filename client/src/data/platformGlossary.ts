@@ -430,6 +430,17 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
         dbName: 'POSPayments',
       },
       {
+        term: 'Discount Type',
+        meaning:
+          'Configured POS discount with a user-defined percentage. Exception groups/items are not allowed unless Include all overrides them. At apply time, reason is optional.',
+        dbName: 'PosConfigTypes (kind=discount) / Percentage / Exception* / IncludeAll',
+      },
+      {
+        term: 'Discount Percentage',
+        meaning: 'User-defined percent off the check subtotal for a discount type (0–100).',
+        dbName: 'PosConfigTypes.Percentage',
+      },
+      {
         term: 'POS Menu',
         meaning: 'Front-of-house catalog of POS-enabled B2C products.',
         dbName: 'Products (PosEnabled) + POS catalog',

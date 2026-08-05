@@ -57,4 +57,9 @@ export type OrderCharges = {
   serviceCents: MoneyCents
   taxRegularCents: MoneyCents
   taxAlcoholCents: MoneyCents
+  /** Optional audit from PosConfig discount apply. */
+  discountTypeCode?: string
+  discountPercent?: number
+  discountReason?: string
+  discountLabel?: string
 }

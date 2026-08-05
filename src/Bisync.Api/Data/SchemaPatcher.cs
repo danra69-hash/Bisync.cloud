@@ -2155,6 +2155,7 @@ public static class SchemaPatcher
                 "IncludeAll" BOOLEAN NOT NULL DEFAULT FALSE,
                 "ExceptionGroupsJson" TEXT NOT NULL DEFAULT '[]',
                 "ExceptionProductIdsJson" TEXT NOT NULL DEFAULT '[]',
+                "Percentage" NUMERIC(8,2) NOT NULL DEFAULT 0,
                 "CreatedAt" timestamp with time zone NOT NULL DEFAULT NOW(),
                 "UpdatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
             );
@@ -2162,6 +2163,7 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "IncludeAll", "BOOLEAN NOT NULL DEFAULT FALSE");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "ExceptionGroupsJson", "TEXT NOT NULL DEFAULT '[]'");
         await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "ExceptionProductIdsJson", "TEXT NOT NULL DEFAULT '[]'");
+        await DatabaseSchemaHelper.EnsureColumnAsync(db, "PosConfigTypes", "Percentage", "NUMERIC(8,2) NOT NULL DEFAULT 0");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosConfigTypes_CompanyId_Kind_Code"
             ON "PosConfigTypes" ("CompanyId", "Kind", "Code");

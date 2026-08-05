@@ -1,0 +1,128 @@
+.discount-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+}
+
+.discount-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.45);
+  cursor: pointer;
+}
+
+.discount-modal__card {
+  position: relative;
+  width: min(460px, 100%);
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #d8dee8);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: var(--shadow-md, 0 12px 40px rgba(0, 0, 0, 0.18));
+  padding: var(--space-4, 16px);
+  display: grid;
+  gap: 12px;
+  max-height: min(92vh, 720px);
+  overflow: auto;
+}
+
+.discount-modal__card h2 {
+  margin: 4px 0;
+  font-size: 1.15rem;
+}
+
+.discount-modal__card header p {
+  margin: 0;
+  color: var(--color-ink-muted, #64748b);
+  font-size: 0.9rem;
+}
+
+.discount-modal__eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-primary, #0f766e);
+}
+
+.discount-modal__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border, #d8dee8);
+  border-radius: 8px;
+  background: var(--color-bg, #f8fafc);
+}
+
+.discount-modal__total strong {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.discount-modal__field {
+  display: grid;
+  gap: 4px;
+}
+
+.discount-modal__field span {
+  font-size: 0.7rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-muted, #64748b);
+}
+
+.discount-modal__field input,
+.discount-modal__field select,
+.discount-modal__field textarea {
+  border: 1px solid var(--color-border, #d8dee8);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.discount-modal__field textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.discount-modal__error {
+  margin: 0;
+  color: var(--color-danger, #b91c1c);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.discount-modal__card footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.discount-modal__btn {
+  border: 1px solid var(--color-border, #d8dee8);
+  background: var(--color-surface, #fff);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.discount-modal__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.discount-modal__btn--apply {
+  background: var(--color-primary, #0f766e);
+  border-color: var(--color-primary, #0f766e);
+  color: #fff;
+}

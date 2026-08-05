@@ -41,6 +41,7 @@ type Draft = {
   includeAll: boolean
   exceptionGroups: string[]
   exceptionProductIds: number[]
+  percentage: string
 }
 
 const emptyDraft = (): Draft => ({
@@ -51,6 +52,7 @@ const emptyDraft = (): Draft => ({
   includeAll: false,
   exceptionGroups: [],
   exceptionProductIds: [],
+  percentage: '0',
 })
 
 function suggestCode(name: string): string {
@@ -104,7 +106,7 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
   }, [selectedCompanyId, tab, load])
 
   useEffect(() => {
-    if (!selectedCompanyId || tab !== 'entertainment') {
+    if (!selectedCompanyId || (tab !== 'entertainment' && tab !== 'discount')) {
       setProducts([])
       return
     }
@@ -163,6 +165,7 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
       includeAll: Boolean(row.includeAll),
       exceptionGroups: [...(row.exceptionGroups ?? [])],
       exceptionProductIds: [...(row.exceptionProductIds ?? [])],
+      percentage: String(row.percentage ?? 0),
     })
     setCodeTouched(true)
     setProductQuery('')
@@ -225,10 +228,18 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
       sequence: Number.isFinite(sequence) ? Math.max(0, sequence) : 0,
       active: draft.active,
     }
-    if (tab === 'entertainment') {
+    if (tab === 'entertainment' || tab === 'discount') {
       payload.includeAll = draft.includeAll
       payload.exceptionGroups = draft.includeAll ? [] : draft.exceptionGroups
       payload.exceptionProductIds = draft.includeAll ? [] : draft.exceptionProductIds
+    }
+    if (tab === 'discount') {
+      const pct = Number.parseFloat(draft.percentage)
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+        setError('Discount percentage must be between 0 and 100.')
+        return
+      }
+      payload.percentage = Math.round(pct * 100) / 100
     }
     setSaving(true)
     setError(null)
@@ -271,7 +282,7 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
   }
 
   function exceptionSummary(row: PosConfigType): string {
-    if (row.kind !== 'entertainment') return '—'
+    if (row.kind !== 'entertainment' && row.kind !== 'discount') return '—'
     if (row.includeAll) return 'Include all (no exceptions)'
     const groups = row.exceptionGroups?.length ?? 0
     const items = row.exceptionProductIds?.length ?? 0
@@ -291,9 +302,14 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
   }
 
   const isEntertainment = tab === 'entertainment'
-  const tableWidths = isEntertainment
-    ? ['22%', '14%', '10%', '10%', '24%', '20%']
-    : ['28%', '18%', '12%', '12%', '30%']
+  const isDiscount = tab === 'discount'
+  const supportsExceptions = isEntertainment || isDiscount
+  const tableWidths = isDiscount
+    ? ['18%', '12%', '10%', '10%', '10%', '20%', '20%']
+    : isEntertainment
+      ? ['22%', '14%', '10%', '10%', '24%', '20%']
+      : ['28%', '18%', '12%', '12%', '30%']
+  const tableColSpan = isDiscount ? 7 : isEntertainment ? 6 : 5
 
   return (
     <div className={pageShellClass({ spacing: 'default' })}>
@@ -387,12 +403,27 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
             </label>
           </div>
 
-          {isEntertainment ? (
+          {supportsExceptions ? (
             <div className="space-y-3 border-t border-border/60 pt-3">
+              {isDiscount ? (
+                <label className="text-xs text-muted-foreground space-y-1 block max-w-xs">
+                  <span>Discount percentage (%)</span>
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    value={draft.percentage}
+                    onChange={e => setDraft(d => ({ ...d, percentage: e.target.value }))}
+                    placeholder="10"
+                  />
+                </label>
+              ) : null}
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                At settlement this key zeros tax and service, settles the full check amount, and
-                requires employee name and reason. Exception groups/items below are not allowed
-                unless Include all is ticked.
+                {isDiscount
+                  ? 'At the register this type applies the configured % off the check subtotal. Exception groups/items below are not allowed unless Include all is ticked. Reason at apply time is optional.'
+                  : 'At settlement this key zeros tax and service, settles the full check amount, and requires employee name and reason. Exception groups/items below are not allowed unless Include all is ticked.'}
               </p>
 
               <label className="flex items-start gap-2 text-xs text-foreground">
@@ -413,7 +444,8 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
                 <span>
                   <span className="font-semibold">Include all</span>
                   <span className="block text-muted-foreground text-[11px] mt-0.5">
-                    Override any exception — every product and group is allowed for this entertainment type.
+                    Override any exception — every product and group is allowed for this{' '}
+                    {isDiscount ? 'discount' : 'entertainment'} type.
                   </span>
                 </span>
               </label>
@@ -516,7 +548,10 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
                   <th className="px-2 py-2 font-semibold">Code</th>
                   <th className="px-2 py-2 font-semibold">Sequence</th>
                   <th className="px-2 py-2 font-semibold">Active</th>
-                  {isEntertainment ? (
+                  {isDiscount ? (
+                    <th className="px-2 py-2 font-semibold">%</th>
+                  ) : null}
+                  {supportsExceptions ? (
                     <th className="px-2 py-2 font-semibold">Exceptions</th>
                   ) : null}
                   <th className="px-2 py-2 font-semibold text-right">Actions</th>
@@ -526,7 +561,7 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
                 {sorted.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={isEntertainment ? 6 : 5}
+                      colSpan={tableColSpan}
                       className="px-2 py-6 text-muted-foreground"
                     >
                       No {TAB_TITLE[tab].toLowerCase()}s yet. Add one to get started.
@@ -545,7 +580,12 @@ export function PosConfigPage({ selectedCompanyId }: Props) {
                           label={`Active ${row.name}`}
                         />
                       </td>
-                      {isEntertainment ? (
+                      {isDiscount ? (
+                        <td className="px-2 py-2 tabular-nums text-muted-foreground">
+                          {Number(row.percentage ?? 0)}%
+                        </td>
+                      ) : null}
+                      {supportsExceptions ? (
                         <td className="px-2 py-2 text-muted-foreground">{exceptionSummary(row)}</td>
                       ) : null}
                       <td className="px-2 py-2 text-right space-x-2 whitespace-nowrap">
