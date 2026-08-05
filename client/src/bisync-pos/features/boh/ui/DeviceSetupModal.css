@@ -253,9 +253,18 @@
   background: var(--color-surface);
 }
 
-.device-setup-assign-row.is-same-subnet {
+.device-setup-assign-row.is-same-subnet,
+.device-setup-assign-row.is-discovered {
   border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.device-setup-assign-row.is-station {
+  border-style: dashed;
+}
+
+.device-setup-assign-row.is-registered:not(.is-discovered) {
+  border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
 }
 
 .device-setup-assign-row.is-inactive {

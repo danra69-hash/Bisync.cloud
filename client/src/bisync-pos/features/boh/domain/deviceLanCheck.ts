@@ -1,5 +1,7 @@
 /** Client-side LAN / peripheral helpers for POS Device Setup. */
 
+import type { PosDeviceType } from '../../../../data/posDevices'
+
 export type LocalNetworkAddress = {
   address: string
   source: 'webrtc' | 'api'
@@ -12,6 +14,53 @@ export type LocalUsbPeripheral = {
   productName: string
   manufacturerName: string
   serialNumber: string
+}
+
+export type LanProbePort = {
+  port: number
+  label: string
+  suggestedDeviceType: PosDeviceType
+}
+
+/** Common POS / printer / display ports probed during Network check (order = probe priority). */
+export const LAN_PROBE_PORTS: LanProbePort[] = [
+  { port: 80, label: 'HTTP device / KDS', suggestedDeviceType: 'kitchenDisplay' },
+  { port: 9100, label: 'Raw ESC/POS printer', suggestedDeviceType: 'printer' },
+  { port: 8008, label: 'Epson ePOS HTTP', suggestedDeviceType: 'printer' },
+  { port: 443, label: 'HTTPS device', suggestedDeviceType: 'kitchenDisplay' },
+  { port: 8080, label: 'HTTP alt / KDS', suggestedDeviceType: 'kitchenDisplay' },
+  { port: 631, label: 'IPP printer', suggestedDeviceType: 'printer' },
+  { port: 9101, label: 'Alternate printer', suggestedDeviceType: 'printer' },
+]
+
+export type DiscoveredLanHost = {
+  host: string
+  openPorts: number[]
+  labels: string[]
+  suggestedDeviceType: PosDeviceType
+  latencyMs: number
+  isStation: boolean
+}
+
+export type LanSubnetScanProgress = {
+  scanned: number
+  total: number
+  found: number
+  subnetCidr: string
+}
+
+export type LanSubnetScanResult = {
+  stationIps: string[]
+  subnetCidr: string
+  hosts: DiscoveredLanHost[]
+  scannedHosts: number
+  durationMs: number
+  permission: 'granted' | 'denied' | 'unsupported' | 'unknown'
+  note: string
+}
+
+type FetchInitWithLocal = RequestInit & {
+  targetAddressSpace?: 'local' | 'loopback' | 'public'
 }
 
 function ipv4FromCandidate(candidate: string): string | null {
@@ -52,6 +101,291 @@ export async function discoverLocalIpv4Addresses(): Promise<string[]> {
     pc.close()
   }
   return [...found]
+}
+
+export function parseIpv4Octets(ip: string): number[] | null {
+  const parts = ip.trim().split('.')
+  if (parts.length !== 4) return null
+  const octets = parts.map((p) => Number(p))
+  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null
+  return octets
+}
+
+/** Build host list for a /24 around the station IP (excludes .0 and .255). */
+export function buildSubnetHostList(stationIp: string): { hosts: string[]; subnetCidr: string } | null {
+  const octets = parseIpv4Octets(stationIp)
+  if (!octets) return null
+  const prefix = `${octets[0]}.${octets[1]}.${octets[2]}`
+  const hosts: string[] = []
+  for (let i = 1; i <= 254; i++) {
+    hosts.push(`${prefix}.${i}`)
+  }
+  return { hosts, subnetCidr: `${prefix}.0/24` }
+}
+
+async function queryLocalNetworkPermission(): Promise<'granted' | 'denied' | 'prompt' | 'unsupported'> {
+  try {
+    const perms = navigator.permissions
+    if (!perms?.query) return 'unsupported'
+    // Chromium: local-network / local-network-access (name varies by version).
+    for (const name of ['local-network', 'local-network-access'] as const) {
+      try {
+        const status = await perms.query({ name: name as PermissionName })
+        if (status.state === 'granted') return 'granted'
+        if (status.state === 'denied') return 'denied'
+        if (status.state === 'prompt') return 'prompt'
+      } catch {
+        // try next name
+      }
+    }
+    return 'unsupported'
+  } catch {
+    return 'unsupported'
+  }
+}
+
+/**
+ * Trigger Chrome Local Network Access permission (secure context).
+ * Returns whether subsequent private-IP fetches are likely allowed.
+ */
+export async function ensureLocalNetworkAccess(samplePrivateIp: string): Promise<
+  'granted' | 'denied' | 'unsupported' | 'unknown'
+> {
+  const before = await queryLocalNetworkPermission()
+  if (before === 'granted') return 'granted'
+  if (before === 'denied') return 'denied'
+
+  const gatewayGuess = (() => {
+    const octets = parseIpv4Octets(samplePrivateIp)
+    if (!octets) return samplePrivateIp
+    return `${octets[0]}.${octets[1]}.${octets[2]}.1`
+  })()
+
+  try {
+    const init: FetchInitWithLocal = {
+      method: 'GET',
+      mode: 'no-cors',
+      cache: 'no-store',
+      targetAddressSpace: 'local',
+      signal: AbortSignal.timeout(2000),
+    }
+    await fetch(`http://${gatewayGuess}/`, init)
+  } catch {
+    // Permission prompt may still have appeared; connection failure is expected.
+  }
+
+  const after = await queryLocalNetworkPermission()
+  if (after === 'granted') return 'granted'
+  if (after === 'denied') return 'denied'
+  if (after === 'unsupported') return 'unsupported'
+  return 'unknown'
+}
+
+async function probeHttpPort(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<{ open: boolean; latencyMs: number }> {
+  const started = performance.now()
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  const url =
+    port === 443 ? `https://${host}/` : port === 80 ? `http://${host}/` : `http://${host}:${port}/`
+  try {
+    const init: FetchInitWithLocal = {
+      method: 'GET',
+      mode: 'no-cors',
+      cache: 'no-store',
+      redirect: 'manual',
+      targetAddressSpace: 'local',
+      signal: controller.signal,
+    }
+    await fetch(url, init)
+    // Opaque / any completion after connect → treat as reachable.
+    return { open: true, latencyMs: Math.round(performance.now() - started) }
+  } catch (err) {
+    const elapsed = Math.round(performance.now() - started)
+    const name = err instanceof Error ? err.name : ''
+    // Abort ≈ filtered/open-but-slow or firewall drop — not a clear open.
+    if (name === 'AbortError' || name === 'TimeoutError') {
+      return { open: false, latencyMs: elapsed }
+    }
+    // Fast network errors usually mean refused / unreachable.
+    return { open: false, latencyMs: elapsed }
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+async function probeHost(
+  host: string,
+  isStation: boolean,
+  timeoutMs: number,
+): Promise<DiscoveredLanHost | null> {
+  const openPorts: number[] = []
+  const labels: string[] = []
+  let suggested: PosDeviceType = 'posOrderStation'
+  let bestLatency = Number.POSITIVE_INFINITY
+
+  // Probe common ports; fetch(no-cors) reports reachable when TCP+HTTP responds.
+  // Stop after a couple of hits so /24 scans finish quickly.
+  // Raw ESC/POS listeners on 9100 may not answer HTTP — those still need manual IP link.
+  for (const spec of LAN_PROBE_PORTS) {
+    const result = await probeHttpPort(host, spec.port, timeoutMs)
+    if (!result.open) continue
+    openPorts.push(spec.port)
+    labels.push(spec.label)
+    if (result.latencyMs < bestLatency) bestLatency = result.latencyMs
+    if (openPorts.length === 1 || spec.suggestedDeviceType === 'printer') {
+      suggested = spec.suggestedDeviceType
+    }
+    if (openPorts.length >= 2) break
+  }
+
+  if (openPorts.length === 0) return null
+
+  return {
+    host,
+    openPorts,
+    labels,
+    suggestedDeviceType: suggested,
+    latencyMs: Number.isFinite(bestLatency) ? bestLatency : 0,
+    isStation,
+  }
+}
+
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+  onItemDone?: (done: number, total: number) => void,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  let completed = 0
+  const total = items.length
+
+  async function run() {
+    while (next < items.length) {
+      const index = next++
+      results[index] = await worker(items[index], index)
+      completed++
+      onItemDone?.(completed, total)
+    }
+  }
+
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, () => run())
+  await Promise.all(runners)
+  return results
+}
+
+/**
+ * Scan this station’s /24 for hosts that answer on common POS ports.
+ * Requires browser Local Network Access (Chrome) when the app is on a public HTTPS origin.
+ */
+export async function scanLocalSubnetDevices(
+  stationIps: string[],
+  options?: {
+    timeoutMs?: number
+    concurrency?: number
+    onProgress?: (progress: LanSubnetScanProgress) => void
+  },
+): Promise<LanSubnetScanResult> {
+  const started = performance.now()
+  const timeoutMs = options?.timeoutMs ?? 350
+  const concurrency = options?.concurrency ?? 32
+  const primary = stationIps[0]
+  if (!primary) {
+    return {
+      stationIps,
+      subnetCidr: '',
+      hosts: [],
+      scannedHosts: 0,
+      durationMs: 0,
+      permission: 'unknown',
+      note: 'No private station IP detected — cannot scan the LAN from this browser. Enter device IPs manually.',
+    }
+  }
+
+  const subnet = buildSubnetHostList(primary)
+  if (!subnet) {
+    return {
+      stationIps,
+      subnetCidr: '',
+      hosts: [],
+      scannedHosts: 0,
+      durationMs: 0,
+      permission: 'unknown',
+      note: 'Station IP is not a valid private IPv4 address.',
+    }
+  }
+
+  const permission = await ensureLocalNetworkAccess(primary)
+  if (permission === 'denied') {
+    return {
+      stationIps,
+      subnetCidr: subnet.subnetCidr,
+      hosts: [],
+      scannedHosts: 0,
+      durationMs: Math.round(performance.now() - started),
+      permission,
+      note: 'Local network access was blocked for this site. Allow local network access in the browser prompt (or site settings), then run Network check again.',
+    }
+  }
+
+  const stationSet = new Set(stationIps)
+  let found = 0
+  const probed = await mapPool(
+    subnet.hosts,
+    concurrency,
+    async (host) => {
+      const hit = await probeHost(host, stationSet.has(host), timeoutMs)
+      if (hit) found++
+      return hit
+    },
+    (scanned, total) => {
+      options?.onProgress?.({
+        scanned,
+        total,
+        found,
+        subnetCidr: subnet.subnetCidr,
+      })
+    },
+  )
+
+  const hosts = probed
+    .filter((h): h is DiscoveredLanHost => h != null)
+    .sort((a, b) => {
+      if (a.isStation !== b.isStation) return a.isStation ? -1 : 1
+      const aPrint = a.suggestedDeviceType === 'printer' ? 0 : 1
+      const bPrint = b.suggestedDeviceType === 'printer' ? 0 : 1
+      if (aPrint !== bPrint) return aPrint - bPrint
+      return a.host.localeCompare(b.host, undefined, { numeric: true })
+    })
+
+  const durationMs = Math.round(performance.now() - started)
+  let note = `Scanned ${subnet.subnetCidr} from this station — found ${hosts.length} reachable host(s) on common POS ports.`
+  if (permission === 'unsupported') {
+    note +=
+      ' This browser may not expose Local Network Access controls; results can be incomplete on public HTTPS origins.'
+  } else if (permission === 'unknown') {
+    note +=
+      ' If few hosts appear, allow Local Network Access when Chrome prompts, then scan again.'
+  }
+  if (hosts.length === 0) {
+    note +=
+      ' Devices that only accept raw TCP (and block HTTP/WebSocket probes) may not appear — link those by IP.'
+  }
+
+  return {
+    stationIps,
+    subnetCidr: subnet.subnetCidr,
+    hosts,
+    scannedHosts: subnet.hosts.length,
+    durationMs,
+    permission,
+    note,
+  }
 }
 
 type UsbLike = {
