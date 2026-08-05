@@ -132,6 +132,7 @@ export const ko = {
     items: {
       myOrder: '내 주문',
       returnableGoods: '반납 용기',
+      creditNote: '신용 전표',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: '현금 구매',

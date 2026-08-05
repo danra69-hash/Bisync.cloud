@@ -132,6 +132,7 @@ export const zh = {
     items: {
       myOrder: '我的订单',
       returnableGoods: '可退容器',
+      creditNote: '贷项通知单',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: '现金采购',

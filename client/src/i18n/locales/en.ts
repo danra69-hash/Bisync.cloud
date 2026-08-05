@@ -130,6 +130,7 @@ export const en = {
     items: {
       myOrder: 'My Order',
       returnableGoods: 'Returnable Goods',
+      creditNote: 'Credit Note',
       activePurchase: 'Active Purchase',
       activeSales: 'Active Sales',
       cashPurchase: 'Cash Purchase',
