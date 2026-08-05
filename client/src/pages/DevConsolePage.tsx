@@ -50,6 +50,7 @@ type DevSessionUser = {
   isRoot: boolean;
   accessTabs: string[];
   expiresAt: string;
+  mustChangePassword: boolean;
 };
 
 export function DevConsolePage() {
@@ -71,7 +72,7 @@ export function DevConsolePage() {
         return;
       }
       const me = await devConsoleAuthApi.me();
-      setSessionUser({
+      const nextUser: DevSessionUser = {
         email: me.email,
         fullName: me.fullName,
         position: me.position ?? '',
@@ -84,7 +85,12 @@ export function DevConsolePage() {
               return normalized.length > 0 ? normalized : ['overview'];
             })(),
         expiresAt: me.expiresAt,
-      });
+        mustChangePassword: me.mustChangePassword === true,
+      };
+      setSessionUser(nextUser);
+      if (nextUser.mustChangePassword) {
+        setChangePasswordOpen(true);
+      }
     } catch {
       clearDevConsoleSession();
       setSessionUser(null);
@@ -265,7 +271,7 @@ export function DevConsolePage() {
                 <div>
                   <p className="text-sm font-semibold">Team</p>
                   <p className="text-xs text-muted-foreground">
-                    Create Dev Console operators with tab access. Invitations are emailed separately from the main platform.
+                    Create Dev Console operators with tab access. Default password is Pass@123; members must change it after first login.
                   </p>
                 </div>
                 <button
@@ -312,7 +318,16 @@ export function DevConsolePage() {
       <DevTeamPanel open={teamOpen} onClose={() => setTeamOpen(false)} />
       <DevConsoleChangePasswordModal
         open={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
+        required={sessionUser.mustChangePassword}
+        onClose={() => {
+          if (sessionUser.mustChangePassword) return;
+          setChangePasswordOpen(false);
+        }}
+        onSuccess={() => {
+          setSessionUser(prev => (prev ? { ...prev, mustChangePassword: false } : prev));
+          setChangePasswordOpen(false);
+          void refreshSession();
+        }}
       />
     </div>
   );

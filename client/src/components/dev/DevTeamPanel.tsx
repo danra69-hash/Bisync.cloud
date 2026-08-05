@@ -134,9 +134,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
           accessTabs: form.accessTabs,
         });
         setInfo(
-          created.inviteUrl
-            ? `Invitation sent to ${created.email}. They must set a password before signing in.`
-            : `Created ${created.email}.`,
+          `Created ${created.email}. Default password is Pass@123 — they must change it after first login.`,
         );
       } else {
         await devConsoleAuthApi.updateTeamUser(form.id, {
@@ -162,10 +160,10 @@ export function DevTeamPanel({ open, onClose }: Props) {
     setInfo(null);
     try {
       const result = await devConsoleAuthApi.resendInvite(row.id);
-      setInfo(result.message || `Invitation resent to ${row.email}.`);
+      setInfo(result.message || `Password for ${row.email} reset to Pass@123.`);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend invite');
+      setError(err instanceof Error ? err.message : 'Failed to reset password');
     }
   }
 
@@ -210,7 +208,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
               Dev Console Team
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Platform operators for Dev Console only — separate from main app users and Sales Module hunters/farmers.
+              Platform operators for Dev Console only — default access password is Pass@123; members change it after first login.
             </p>
           </div>
           <button
@@ -238,7 +236,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
 
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              Super User only. New members receive an email invitation to set their password.
+              Super User only. New members start with Pass@123 and must change it after first login.
             </p>
             <button
               type="button"
@@ -289,11 +287,13 @@ export function DevTeamPanel({ open, onClose }: Props) {
                     <td className="px-3 py-2 text-xs">
                       {row.isRoot
                         ? 'Active'
-                        : row.invitePending
-                          ? 'Invite pending'
-                          : row.active
-                            ? 'Active'
-                            : 'Inactive'}
+                        : row.mustChangePassword
+                          ? 'Must change password'
+                          : row.invitePending
+                            ? 'Invite pending'
+                            : row.active
+                              ? 'Active'
+                              : 'Inactive'}
                     </td>
                     <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
                       {!row.isRoot && (
@@ -306,15 +306,13 @@ export function DevTeamPanel({ open, onClose }: Props) {
                             <Pencil size={11} />
                             Edit
                           </button>
-                          {row.invitePending && (
-                            <button
-                              type="button"
-                              onClick={() => void resendInvite(row)}
-                              className="text-xs text-primary hover:underline"
-                            >
-                              Resend invite
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => void resendInvite(row)}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Reset to Pass@123
+                          </button>
                           {row.hasPassword && (
                             <button
                               type="button"
@@ -427,7 +425,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
 
                 {form.id == null && (
                   <p className="text-[11px] text-muted-foreground">
-                    An invitation email will be sent. Access is enabled only after they set a password.
+                    They can sign in immediately with Pass@123, then must set a personal password on first login.
                   </p>
                 )}
               </div>
@@ -446,7 +444,7 @@ export function DevTeamPanel({ open, onClose }: Props) {
                   disabled={saving}
                   className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                 >
-                  {saving ? 'Saving…' : form.id == null ? 'Create & invite' : 'Save changes'}
+                  {saving ? 'Saving…' : form.id == null ? 'Create member' : 'Save changes'}
                 </button>
               </div>
             </form>

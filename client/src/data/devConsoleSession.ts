@@ -9,6 +9,7 @@ export type DevConsoleProfile = {
   position?: string;
   teamType?: string;
   accessTabs?: string[];
+  mustChangePassword?: boolean;
 };
 
 export function getDevConsoleToken(): string | null {

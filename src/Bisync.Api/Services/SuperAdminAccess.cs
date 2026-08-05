@@ -50,7 +50,7 @@ public static class SuperAdminAccess
     }
 
     /// <summary>Local/dev bootstrap only — override via BISYNC_SUPER_ADMIN_PASSWORD in production.</summary>
-    internal const string DefaultBootstrapPassword = "Pass@123";
+    public const string DefaultBootstrapPassword = "Pass@123";
 
     static readonly string[] Modules = ["RMS", "POS", "HRM", "Accounting"];
 

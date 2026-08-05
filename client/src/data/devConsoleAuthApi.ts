@@ -104,6 +104,7 @@ export type DevSessionResult = {
   teamType?: string;
   isRoot: boolean;
   accessTabs?: string[];
+  mustChangePassword?: boolean;
 };
 
 export type DevTeamUserRow = {
@@ -117,6 +118,7 @@ export type DevTeamUserRow = {
   isRoot: boolean;
   hasPassword: boolean;
   invitePending: boolean;
+  mustChangePassword?: boolean;
   hasGoogle: boolean;
   createdAt: string;
   createdByEmail: string;
@@ -142,6 +144,7 @@ function toProfile(session: DevSessionResult): DevConsoleProfile {
     expiresAt: session.expiresAt,
     position: session.position,
     teamType: session.teamType,
+    mustChangePassword: session.mustChangePassword === true,
     accessTabs: session.isRoot
       ? [...DEV_CONSOLE_TAB_IDS]
       : (normalized.length > 0 ? normalized : ['overview']),
@@ -184,6 +187,7 @@ export const devConsoleAuthApi = {
     accessTabs: string[];
     expiresAt: string;
     googleVerified: boolean;
+    mustChangePassword?: boolean;
   }>('/api/dev-console/auth/me'),
 
   logout: async () => {
@@ -248,7 +252,7 @@ export const devConsoleAuthApi = {
     ),
 
   resendInvite: (id: number) =>
-    fetchJson<{ message: string; inviteUrl?: string; email: string }>(
+    fetchJson<{ message: string; inviteUrl?: string; email: string; defaultPassword?: string }>(
       `/api/dev-console/auth/team/${id}/resend-invite`,
       { method: 'POST' },
     ),

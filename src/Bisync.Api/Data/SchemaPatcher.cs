@@ -1600,6 +1600,14 @@ public static class SchemaPatcher
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "InviteTokenExpiresAt", "TIMESTAMP");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "PasswordResetToken", "TEXT");
         await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "PasswordResetTokenExpiresAt", "TIMESTAMP");
+        var hadMustChangePassword = await DatabaseSchemaHelper.ColumnExistsAsync(db, "DevTeamUsers", "MustChangePassword");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "DevTeamUsers", "MustChangePassword", "BOOLEAN NOT NULL DEFAULT FALSE");
+        if (!hadMustChangePassword)
+        {
+            // One-shot rollout: every non-root operator starts on Pass@123 and must change it after first login.
+            await db.Database.ExecuteSqlRawAsync(
+                """UPDATE "DevTeamUsers" SET "MustChangePassword" = TRUE WHERE "IsRoot" = FALSE""");
+        }
         await TryCreateUniqueIndexAsync(db, "IX_DevTeamUsers_Email", "DevTeamUsers", "Email");
 
         await db.Database.ExecuteSqlRawAsync("""

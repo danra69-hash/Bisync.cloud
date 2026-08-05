@@ -16,6 +16,10 @@ public class DevTeamUser
     public string AccessJson { get; set; } = """{"tabs":["overview"]}""";
     public string PasswordHash { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
+    /// <summary>
+    /// When true, the member must change away from the default team password after first login.
+    /// </summary>
+    public bool MustChangePassword { get; set; }
     /// <summary>Permanent root account; cannot be deleted or deactivated.</summary>
     public bool IsRoot { get; set; }
     public string? GoogleSubject { get; set; }
