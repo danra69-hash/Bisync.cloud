@@ -255,6 +255,9 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
                 var entryName = Path.GetFileName(filePath);
                 if (string.IsNullOrWhiteSpace(entryName))
                     continue;
+                // Fresh manifest is written below — skip a stale copy from disk.
+                if (string.Equals(entryName, "bisync-driver.json", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 zip.CreateEntryFromFile(filePath, entryName, System.IO.Compression.CompressionLevel.Optimal);
             }
 
