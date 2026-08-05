@@ -4,10 +4,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Services;
 
-/// <summary>Seeds and resolves the POS printer SDK repository (DantSu only).</summary>
+/// <summary>Seeds and resolves the POS printer SDK repository (Android DantSu + Windows LAN ESC/POS).</summary>
 public static class PosPrinterSdkCatalog
 {
     public const string DantsuSdkCode = "dantsu-escpos-android";
+    public const string WindowsLanSdkCode = "escpos-lan-windows";
 
     public static readonly PosPrinterSdk DantsuSdk = new()
     {
@@ -27,7 +28,25 @@ public static class PosPrinterSdkCatalog
         ArtifactFolder = "dantsu-escpos-android",
     };
 
-    public static readonly IReadOnlyList<PosPrinterSdk> BuiltIn = [DantsuSdk];
+    public static readonly PosPrinterSdk WindowsLanSdk = new()
+    {
+        SdkCode = WindowsLanSdkCode,
+        Brand = "Bisync",
+        DisplayName = "ESC/POS LAN Test (Windows)",
+        Protocol = "escpos",
+        Version = "1.0.0",
+        Description =
+            "Windows LAN package — same ESC/POS dialect as DantSu, over TCP 9100. Run Test-BisyncPrinter on a Windows PC on the venue network to verify the printer before Android POS binding.",
+        ModelHints = "windows,lan,tcp,9100,escpos,thermal,receipt,epson,generic",
+        DefaultPort = 9100,
+        SupportedPaperWidthsJson = "[58,80,112]",
+        Platform = "windows",
+        PackageKind = "windows-lan-test",
+        ExternalUrl = "",
+        ArtifactFolder = "escpos-lan-windows",
+    };
+
+    public static readonly IReadOnlyList<PosPrinterSdk> BuiltIn = [DantsuSdk, WindowsLanSdk];
 
     public static async Task EnsureSeededAsync(BisyncDbContext db, CancellationToken cancellationToken = default)
     {
@@ -76,7 +95,7 @@ public static class PosPrinterSdkCatalog
             row.Active = true;
         }
 
-        // Remove every other printer driver from the catalog completely.
+        // Remove retired printer drivers from the catalog.
         foreach (var row in existingRows)
         {
             if (keep.Contains(row.SdkCode))
@@ -84,14 +103,14 @@ public static class PosPrinterSdkCatalog
             db.PosPrinterSdks.Remove(row);
         }
 
-        // Remap any devices still pointing at retired SDK codes.
+        // Remap devices still pointing at retired SDK codes (keep Android/Windows codes).
         var devices = await db.PosDevices
             .Where(d => d.DeviceType == "printer")
             .ToListAsync(cancellationToken);
         foreach (var device in devices)
         {
-            if (string.IsNullOrWhiteSpace(device.PrinterSdkCode)
-                || !string.Equals(device.PrinterSdkCode, DantsuSdkCode, StringComparison.OrdinalIgnoreCase))
+            var code = (device.PrinterSdkCode ?? string.Empty).Trim();
+            if (code.Length == 0 || !keep.Contains(code))
             {
                 device.PrinterSdkCode = DantsuSdkCode;
                 device.UpdatedAt = now;
@@ -103,7 +122,12 @@ public static class PosPrinterSdkCatalog
     }
 
     public static string SuggestSdkCode(string? brand = null, string? model = null, string? platformHint = null)
-        => DantsuSdkCode;
+    {
+        var hint = $"{platformHint} {brand} {model}".ToLowerInvariant();
+        if (hint.Contains("win", StringComparison.Ordinal))
+            return WindowsLanSdkCode;
+        return DantsuSdkCode;
+    }
 
     /// <summary>Resolve the on-disk folder for a vendored SDK package (AAR/zip/docs).</summary>
     public static string? ResolveArtifactDirectory(IWebHostEnvironment env, PosPrinterSdk sdk)

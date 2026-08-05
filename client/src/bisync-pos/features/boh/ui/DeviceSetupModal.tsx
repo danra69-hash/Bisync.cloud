@@ -26,8 +26,23 @@ import {
   type LocalUsbPeripheral,
 } from '../domain/deviceLanCheck'
 import { isAndroidDevice } from '../../../../data/posKiosk'
+import { WINDOWS_ESCPOS_SDK_CODE } from '../../../../data/windowsEscposSdk'
+import { DANTSU_PRINTER_SDK_CODE } from '../../../../data/dantsuPrinterSdk'
 import { usePosOverlayHost } from '../../../core/ui/posOverlayHost'
 import './DeviceSetupModal.css'
+
+function isWindowsDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform || ''
+  return /windows/i.test(ua) || /win/i.test(platform)
+}
+
+function preferredPrinterSdkCode(): string {
+  if (isWindowsDevice()) return WINDOWS_ESCPOS_SDK_CODE
+  if (isAndroidDevice()) return DANTSU_PRINTER_SDK_CODE
+  return DANTSU_PRINTER_SDK_CODE
+}
 
 type Props = {
   companyId: number
@@ -61,7 +76,7 @@ function blankDraft(): AddDraft {
     connectionType: 'ethernet',
     hostAddress: '',
     port: String(defaultPortForDeviceType('printer')),
-    printerSdkCode: 'dantsu-escpos-android',
+    printerSdkCode: preferredPrinterSdkCode(),
   }
 }
 
@@ -562,23 +577,32 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     try {
       const pack = await api.downloadPosPrinterSdkPackage(sdk.sdkCode)
       downloadBlob(pack.blob, pack.fileName)
+      const platform = (sdk.platform || '').toLowerCase()
       const androidHint =
-        (sdk.platform || '').toLowerCase() === 'android' || sdk.packageKind === 'android-aar'
+        platform === 'android' || sdk.packageKind === 'android-aar'
           ? isAndroidDevice()
             ? ' Package saved on this Android device — open Files/Downloads, unzip, and follow INSTALL.md to load the AAR.'
             : ' Android package downloaded — copy the zip onto the Android POS tablet and follow INSTALL.md.'
+          : ''
+      const windowsHint =
+        platform === 'windows'
+          ? ' Unzip on this Windows PC, run Test-BisyncPrinter.cmd, enter the printer IP (port 9100). The PC must be on the same LAN as the printer.'
           : ''
       if (printerId) {
         setBusyId(printerId)
         const deployed = await api.deployPosPrinterSdk(printerId)
         const test = await api.testPosPrinterPrint(printerId)
+        const lanNote =
+          !test.sent && isWindowsDevice()
+            ? ' Cloud Test print cannot reach LAN printers — use the Windows LAN test script you just downloaded.'
+            : ''
         setStatus(
-          `${deployed.message} Package: ${pack.fileName}.${androidHint} ${test.message}`,
+          `${deployed.message} Package: ${pack.fileName}.${androidHint || windowsHint} ${test.message}${lanNote}`,
         )
         await load()
       } else {
         setStatus(
-          `Downloaded ${pack.fileName}.${androidHint || ' Select a printer and Install to bind the driver (then a test print runs).'}`,
+          `Downloaded ${pack.fileName}.${androidHint || windowsHint || ' Select a printer and Install to bind the driver.'}`,
         )
       }
     } catch (e) {
@@ -596,8 +620,16 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     try {
       const result = await api.testPosPrinterPrint(device.id)
       if (result.sent) setStatus(result.message)
-      else setStatus(result.message)
-      if (!result.sent && !result.skipped) setError(result.message)
+      else {
+        setStatus(result.message)
+        if (!result.skipped && isWindowsDevice()) {
+          setError(
+            `${result.message} Tip: download “ESC/POS LAN Test (Windows)” below and run Test-BisyncPrinter.cmd with ${device.hostAddress || 'the printer IP'}.`,
+          )
+        } else if (!result.sent && !result.skipped) {
+          setError(result.message)
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Test print failed.')
     } finally {
@@ -1242,8 +1274,9 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
           <section className="device-setup-block">
             <h3>Drivers from server</h3>
             <p className="device-setup-hint">
-              Download the DantSu ESC/POS Android SDK package, then install it on a registered printer.
-              A test print runs automatically once the driver is installed.
+              {isWindowsDevice()
+                ? 'On Windows, download the ESC/POS LAN test package and run it against the printer IP on this PC (same Wi‑Fi/LAN). Cloud Test print cannot reach private LAN printers. Use DantSu on the Android POS for production.'
+                : 'Download DantSu for Android POS tablets, or the Windows ESC/POS LAN test package to verify a printer from a Windows PC on the same network.'}
             </p>
             {sdks.length === 0 ? (
               <p className="device-setup-empty">No printer SDKs seeded yet.</p>
@@ -1256,6 +1289,9 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                         {sdk.displayName}
                         {(sdk.platform || '').toLowerCase() === 'android' ? (
                           <span className="device-setup-sdk-badge"> Android</span>
+                        ) : null}
+                        {(sdk.platform || '').toLowerCase() === 'windows' ? (
+                          <span className="device-setup-sdk-badge"> Windows</span>
                         ) : null}
                       </strong>
                       <span>
@@ -1272,7 +1308,9 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                       >
                         {(sdk.platform || '').toLowerCase() === 'android'
                           ? 'Download for Android'
-                          : 'Download'}
+                          : (sdk.platform || '').toLowerCase() === 'windows'
+                            ? 'Download for Windows'
+                            : 'Download'}
                       </button>
                       {printers.length > 0 && (
                         <select

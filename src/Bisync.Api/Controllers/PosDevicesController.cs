@@ -203,7 +203,8 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
         if (!string.IsNullOrWhiteSpace(artifactDir) && Directory.Exists(artifactDir))
         {
             var zipBytes = BuildSdkZipPackage(sdk, artifactDir);
-            var zipName = $"bisync-{sdk.SdkCode}-android.zip";
+            var platformTag = string.IsNullOrWhiteSpace(sdk.Platform) ? "package" : sdk.Platform.Trim().ToLowerInvariant();
+            var zipName = $"bisync-{sdk.SdkCode}-{platformTag}.zip";
             return File(zipBytes, "application/zip", zipName);
         }
 

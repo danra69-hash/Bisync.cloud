@@ -1,0 +1,20 @@
+{
+  "packageType": "bisync-pos-printer-sdk",
+  "sdkCode": "escpos-lan-windows",
+  "brand": "Bisync",
+  "displayName": "ESC/POS LAN Test (Windows)",
+  "protocol": "escpos",
+  "platform": "windows",
+  "packageKind": "windows-lan-test",
+  "version": "1.0.0",
+  "description": "Windows LAN test package for ESC/POS thermal printers over TCP 9100 (same dialect as DantSu Android).",
+  "defaultPort": 9100,
+  "supportedPaperWidthsMm": [58, 80, 112],
+  "install": {
+    "steps": [
+      "Unzip on a Windows PC on the same LAN as the printer.",
+      "Run Test-BisyncPrinter.cmd (or the PowerShell script) with the printer IP.",
+      "In Bisync Device set up, bind the printer with SDK escpos-lan-windows, then use Android DantSu on the tablet for production printing."
+    ]
+  }
+}
