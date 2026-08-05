@@ -184,8 +184,8 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
                 new { cidr = "172.16.0.0/12", example = "172.16.0.20", label = "Private class B" },
             },
             note = clientIps.Length > 0
-                ? "Station LAN addresses detected in the browser. Registered devices on the same subnet are highlighted. Cloud APIs cannot ARP-scan your venue — add devices by IP or USB below."
-                : "Could not detect this station’s private IP in the browser. Enter device IPs manually, or use USB/Bluetooth for local peripherals.",
+                ? "Station LAN addresses detected in the browser. Devices registered for this location are listed below — assign each as printer, KDS, bar display, or POS station. Same-subnet hosts are highlighted. Cloud APIs cannot ARP-scan your venue; link additional devices by IP."
+                : "Could not detect this station’s private IP in the browser. Assign roles on registered devices below, link new ones by IP, or use USB/Bluetooth for local peripherals.",
         });
     }
 

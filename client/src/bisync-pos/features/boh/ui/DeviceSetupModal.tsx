@@ -40,6 +40,16 @@ type AddDraft = {
   printerSdkCode: string
 }
 
+/** Roles users can assign when linking a network device. */
+const ASSIGNABLE_DEVICE_TYPES: { value: PosDeviceType; label: string }[] = [
+  { value: 'printer', label: 'Printer' },
+  { value: 'kitchenDisplay', label: 'Kitchen Display (KDS)' },
+  { value: 'barDisplay', label: 'Bar Display (BDS)' },
+  { value: 'posMain', label: 'POS Main' },
+  { value: 'posOrderStation', label: 'POS Order Station' },
+  { value: 'kiosk', label: 'Kiosk' },
+]
+
 function blankDraft(): AddDraft {
   return {
     name: '',
@@ -48,6 +58,56 @@ function blankDraft(): AddDraft {
     hostAddress: '',
     port: String(defaultPortForDeviceType('printer')),
     printerSdkCode: 'dantsu-escpos-android',
+  }
+}
+
+function asPosDeviceType(value: string | undefined | null): PosDeviceType {
+  const hit = POS_DEVICE_TYPES.find((t) => t.value === value)
+  return hit?.value ?? 'printer'
+}
+
+function upsertPayloadFromDevice(
+  device: PosDevice,
+  patch: Partial<{
+    name: string
+    deviceType: PosDeviceType
+    connectionType: PosConnectionType
+    hostAddress: string
+    port: number | null
+    active: boolean
+    printerSdkCode: string
+  }>,
+) {
+  const deviceType = patch.deviceType ?? asPosDeviceType(device.deviceType)
+  const printerSdkCode =
+    patch.printerSdkCode !== undefined
+      ? patch.printerSdkCode
+      : deviceType === 'printer'
+        ? device.printerSdkCode || 'dantsu-escpos-android'
+        : device.printerSdkCode || undefined
+  return {
+    companyId: device.companyId,
+    locationExternalId: device.locationExternalId,
+    name: patch.name ?? device.name,
+    deviceType,
+    connectionType: patch.connectionType ?? (device.connectionType as PosConnectionType),
+    hostAddress: patch.hostAddress ?? device.hostAddress,
+    port: patch.port !== undefined ? patch.port : device.port,
+    macAddress: device.macAddress,
+    subnetMask: device.subnetMask,
+    gateway: device.gateway,
+    dnsPrimary: device.dnsPrimary,
+    dnsSecondary: device.dnsSecondary,
+    hostname: device.hostname,
+    printerSdkCode,
+    printerBrand: device.printerBrand,
+    printerModel: device.printerModel,
+    paperWidthMm: device.paperWidthMm,
+    printAlignment: device.printAlignment,
+    printMarginLeft: device.printMarginLeft,
+    printMarginRight: device.printMarginRight,
+    printerSetupComplete: device.printerSetupComplete,
+    active: patch.active ?? device.active,
   }
 }
 
@@ -78,6 +138,13 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
   const [renameId, setRenameId] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  /** Selected link role per registered network device (after Network check). */
+  const [assignTypes, setAssignTypes] = useState<Record<number, PosDeviceType>>({})
+  const [linkDraft, setLinkDraft] = useState<AddDraft>(() => ({
+    ...blankDraft(),
+    deviceType: 'printer',
+    connectionType: 'ethernet',
+  }))
 
   const load = useCallback(async () => {
     if (companyId <= 0) {
@@ -120,18 +187,141 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
         clientLocalIps: clientIps,
       })
       setLan(result)
+      const nextAssign: Record<number, PosDeviceType> = {}
+      for (const d of result.registeredDevices) {
+        if (d.isLocalPeripheral) continue
+        nextAssign[d.id] = asPosDeviceType(d.deviceType)
+      }
+      setAssignTypes(nextAssign)
+      if (clientIps[0] && !linkDraft.hostAddress.trim()) {
+        const parts = clientIps[0].split('.')
+        if (parts.length === 4) {
+          setLinkDraft((d) => ({
+            ...d,
+            hostAddress: `${parts[0]}.${parts[1]}.${parts[2]}.`,
+          }))
+        }
+      }
       const usb = await listAuthorizedUsbPeripherals()
       setUsbList(usb)
+      const networkCount = result.registeredDevices.filter((d) => !d.isLocalPeripheral).length
+      const sameSubnet = result.registeredDevices.filter(
+        (d) => !d.isLocalPeripheral && d.sameSubnetAsStation,
+      ).length
       setStatus(
         clientIps.length
-          ? `LAN check complete — station IP(s): ${clientIps.join(', ')}`
-          : 'LAN check complete — no private station IP detected in browser.',
+          ? `LAN check complete — station IP(s): ${clientIps.join(', ')}. ${networkCount} device(s) on this location${sameSubnet ? ` (${sameSubnet} same subnet)` : ''}. Assign each as printer, KDS, etc.`
+          : `LAN check complete — no private station IP detected. ${networkCount} registered device(s) listed — assign roles below or link by IP.`,
       )
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'LAN check failed.')
     } finally {
       setCheckingLan(false)
+    }
+  }
+
+  async function refreshLanAfterAssign(statusMessage: string) {
+    try {
+      const clientIps = lan?.clientLocalIps?.length
+        ? lan.clientLocalIps
+        : await discoverLocalIpv4Addresses()
+      const result = await api.posDeviceLanCheck({
+        companyId,
+        locationExternalId: locationId || undefined,
+        clientLocalIps: clientIps,
+      })
+      setLan(result)
+      const nextAssign: Record<number, PosDeviceType> = {}
+      for (const d of result.registeredDevices) {
+        if (d.isLocalPeripheral) continue
+        nextAssign[d.id] = asPosDeviceType(d.deviceType)
+      }
+      setAssignTypes(nextAssign)
+      setStatus(statusMessage)
+    } catch {
+      setStatus(statusMessage)
+    }
+  }
+
+  async function assignNetworkDevice(lanDevice: PosLanCheckResult['registeredDevices'][number]) {
+    const full = devices.find((d) => d.id === lanDevice.id)
+    if (!full) {
+      setError('Device not found — run Network check again.')
+      return
+    }
+    const deviceType = assignTypes[lanDevice.id] ?? asPosDeviceType(lanDevice.deviceType)
+    const portChanged = asPosDeviceType(full.deviceType) !== deviceType
+    setBusyId(full.id)
+    setError(null)
+    try {
+      const updated = await api.updatePosDevice(
+        full.id,
+        upsertPayloadFromDevice(full, {
+          deviceType,
+          port: portChanged ? defaultPortForDeviceType(deviceType) : full.port,
+          printerSdkCode:
+            deviceType === 'printer'
+              ? full.printerSdkCode || 'dantsu-escpos-android'
+              : '',
+          active: true,
+        }),
+      )
+      const msg = `Linked “${updated.name}” as ${updated.deviceTypeLabel || deviceTypeLabel(deviceType)}.`
+      await load()
+      await refreshLanAfterAssign(msg)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to assign device.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function linkNewNetworkDevice() {
+    if (companyId <= 0) return
+    if (!locationId) {
+      setError('Select a POS location before linking devices.')
+      return
+    }
+    if (!linkDraft.name.trim()) {
+      setError('Enter a name for the device link (e.g. Kitchen Printer).')
+      return
+    }
+    if (!linkDraft.hostAddress.trim()) {
+      setError('Enter the device IP / host on this network.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const created = await api.createPosDevice({
+        companyId,
+        locationExternalId: locationId,
+        name: linkDraft.name.trim(),
+        deviceType: linkDraft.deviceType,
+        connectionType: linkDraft.connectionType === 'wifi' ? 'wifi' : 'ethernet',
+        hostAddress: linkDraft.hostAddress.trim(),
+        port: linkDraft.port.trim() ? Number(linkDraft.port) : defaultPortForDeviceType(linkDraft.deviceType),
+        printerSdkCode:
+          linkDraft.deviceType === 'printer'
+            ? linkDraft.printerSdkCode || 'dantsu-escpos-android'
+            : undefined,
+        active: true,
+      })
+      const msg = `Linked “${created.name}” as ${created.deviceTypeLabel || deviceTypeLabel(created.deviceType)} at ${created.hostAddress || linkDraft.hostAddress}.`
+      setLinkDraft((d) => ({
+        ...blankDraft(),
+        connectionType: 'ethernet',
+        hostAddress: d.hostAddress.replace(/\d+$/, ''),
+        deviceType: 'printer',
+        port: String(defaultPortForDeviceType('printer')),
+      }))
+      await load()
+      await refreshLanAfterAssign(msg)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to link device.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -228,30 +418,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     setBusyId(device.id)
     setError(null)
     try {
-      await api.updatePosDevice(device.id, {
-        companyId: device.companyId,
-        locationExternalId: device.locationExternalId,
-        name,
-        deviceType: device.deviceType,
-        connectionType: device.connectionType,
-        hostAddress: device.hostAddress,
-        port: device.port,
-        macAddress: device.macAddress,
-        subnetMask: device.subnetMask,
-        gateway: device.gateway,
-        dnsPrimary: device.dnsPrimary,
-        dnsSecondary: device.dnsSecondary,
-        hostname: device.hostname,
-        printerSdkCode: device.printerSdkCode,
-        printerBrand: device.printerBrand,
-        printerModel: device.printerModel,
-        paperWidthMm: device.paperWidthMm,
-        printAlignment: device.printAlignment,
-        printMarginLeft: device.printMarginLeft,
-        printMarginRight: device.printMarginRight,
-        printerSetupComplete: device.printerSetupComplete,
-        active: device.active,
-      })
+      await api.updatePosDevice(device.id, upsertPayloadFromDevice(device, { name }))
       setRenameId(null)
       setStatus(`Renamed to ${name}.`)
       await load()
@@ -395,8 +562,8 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
               </button>
             </div>
             <p className="device-setup-hint">
-              Detects this station’s LAN IP, lists registered devices on the same network, and refreshes
-              local USB peripherals attached to this device.
+              Detects this station’s LAN IP, lists devices attached to this location’s network, and lets
+              you assign each as printer, kitchen display (KDS), bar display, POS station, or kiosk.
             </p>
             {lan && (
               <div className="device-setup-lan">
@@ -432,27 +599,183 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                     )}
                   </div>
                 </div>
-                <h4>Devices on network</h4>
+
+                <h4>Devices on this network</h4>
+                <p className="device-setup-hint">
+                  Choose a role and tap <strong>Assign link</strong> to bind the device. Same-subnet
+                  hosts are highlighted first.
+                </p>
                 {lan.registeredDevices.filter((d) => !d.isLocalPeripheral).length === 0 ? (
-                  <p className="device-setup-empty">No network devices registered yet.</p>
+                  <p className="device-setup-empty">
+                    No network devices registered yet — use “Link new device” below with the IP from
+                    the device sticker or router.
+                  </p>
                 ) : (
-                  <ul className="device-setup-device-list">
-                    {lan.registeredDevices
+                  <ul className="device-setup-assign-list">
+                    {[...lan.registeredDevices]
                       .filter((d) => !d.isLocalPeripheral)
-                      .map((d) => (
-                        <li key={d.id} className={d.sameSubnetAsStation ? 'is-same-subnet' : undefined}>
-                          <strong>{d.name}</strong>
-                          <span>{d.deviceTypeLabel || deviceTypeLabel(d.deviceType)}</span>
-                          <code>
-                            {d.hostAddress || '—'}
-                            {d.port ? `:${d.port}` : ''}
-                          </code>
-                          {d.sameSubnetAsStation && <em>same subnet</em>}
-                          {!d.active && <em>disabled</em>}
-                        </li>
-                      ))}
+                      .sort((a, b) => Number(b.sameSubnetAsStation) - Number(a.sameSubnetAsStation))
+                      .map((d) => {
+                        const selected =
+                          assignTypes[d.id] ?? asPosDeviceType(d.deviceType)
+                        const dirty = selected !== asPosDeviceType(d.deviceType) || !d.active
+                        return (
+                          <li
+                            key={d.id}
+                            className={[
+                              'device-setup-assign-row',
+                              d.sameSubnetAsStation ? 'is-same-subnet' : '',
+                              !d.active ? 'is-inactive' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                          >
+                            <div className="device-setup-assign-row__info">
+                              <strong>{d.name}</strong>
+                              <code>
+                                {d.hostAddress || '—'}
+                                {d.port ? `:${d.port}` : ''}
+                                {d.connectionType ? ` · ${d.connectionType}` : ''}
+                              </code>
+                              <span className="device-setup-assign-row__meta">
+                                Current: {d.deviceTypeLabel || deviceTypeLabel(d.deviceType)}
+                                {d.sameSubnetAsStation ? ' · same subnet' : ''}
+                                {!d.active ? ' · disabled' : ''}
+                              </span>
+                            </div>
+                            <div className="device-setup-assign-row__actions">
+                              <label className="device-setup-assign-row__role">
+                                <span>Link as</span>
+                                <select
+                                  className="device-setup-input device-setup-input--compact"
+                                  value={selected}
+                                  onChange={(e) =>
+                                    setAssignTypes((prev) => ({
+                                      ...prev,
+                                      [d.id]: e.target.value as PosDeviceType,
+                                    }))
+                                  }
+                                  aria-label={`Assign role for ${d.name}`}
+                                >
+                                  {ASSIGNABLE_DEVICE_TYPES.map((t) => (
+                                    <option key={t.value} value={t.value}>
+                                      {t.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                className="device-setup-btn device-setup-btn--primary"
+                                disabled={busyId === d.id || (!dirty && d.active)}
+                                onClick={() => void assignNetworkDevice(d)}
+                              >
+                                {busyId === d.id ? 'Saving…' : dirty ? 'Assign link' : 'Linked'}
+                              </button>
+                            </div>
+                          </li>
+                        )
+                      })}
                   </ul>
                 )}
+
+                <h4>Link new device on this network</h4>
+                <p className="device-setup-hint">
+                  Enter the IP of a printer, KDS, or station on the same LAN, pick its role, and save
+                  the device link.
+                </p>
+                <div className="device-setup-link-new">
+                  <label>
+                    Name
+                    <input
+                      className="device-setup-input"
+                      value={linkDraft.name}
+                      placeholder="Kitchen Printer"
+                      onChange={(e) => setLinkDraft((d) => ({ ...d, name: e.target.value }))}
+                      maxLength={200}
+                    />
+                  </label>
+                  <label>
+                    Link as
+                    <select
+                      className="device-setup-input"
+                      value={linkDraft.deviceType}
+                      onChange={(e) => {
+                        const deviceType = e.target.value as PosDeviceType
+                        setLinkDraft((d) => ({
+                          ...d,
+                          deviceType,
+                          port: String(defaultPortForDeviceType(deviceType)),
+                        }))
+                      }}
+                    >
+                      {ASSIGNABLE_DEVICE_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Host / IP
+                    <input
+                      className="device-setup-input"
+                      value={linkDraft.hostAddress}
+                      placeholder="192.168.1.50"
+                      onChange={(e) => setLinkDraft((d) => ({ ...d, hostAddress: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Port
+                    <input
+                      className="device-setup-input"
+                      value={linkDraft.port}
+                      onChange={(e) => setLinkDraft((d) => ({ ...d, port: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Connection
+                    <select
+                      className="device-setup-input"
+                      value={linkDraft.connectionType}
+                      onChange={(e) =>
+                        setLinkDraft((d) => ({
+                          ...d,
+                          connectionType: e.target.value as PosConnectionType,
+                        }))
+                      }
+                    >
+                      <option value="ethernet">Ethernet</option>
+                      <option value="wifi">Wi‑Fi</option>
+                    </select>
+                  </label>
+                  {linkDraft.deviceType === 'printer' && (
+                    <label>
+                      Printer SDK
+                      <select
+                        className="device-setup-input"
+                        value={linkDraft.printerSdkCode}
+                        onChange={(e) =>
+                          setLinkDraft((d) => ({ ...d, printerSdkCode: e.target.value }))
+                        }
+                      >
+                        {sdks.map((s) => (
+                          <option key={s.sdkCode} value={s.sdkCode}>
+                            {s.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    className="device-setup-btn device-setup-btn--primary"
+                    onClick={() => void linkNewNetworkDevice()}
+                    disabled={saving || companyId <= 0}
+                  >
+                    {saving ? 'Linking…' : 'Link device'}
+                  </button>
+                </div>
               </div>
             )}
           </section>
