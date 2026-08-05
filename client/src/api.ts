@@ -1439,6 +1439,10 @@ export interface PosPrinterSdk {
   modelHints: string;
   defaultPort: number;
   supportedPaperWidthsMm: number[];
+  platform?: string;
+  packageKind?: string;
+  externalUrl?: string;
+  hasBinaryPackage?: boolean;
   active: boolean;
   downloadPath?: string;
 }

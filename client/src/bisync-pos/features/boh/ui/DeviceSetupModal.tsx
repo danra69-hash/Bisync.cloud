@@ -21,6 +21,7 @@ import {
   webUsbSupported,
   type LocalUsbPeripheral,
 } from '../domain/deviceLanCheck'
+import { isAndroidDevice } from '../../../../data/posKiosk'
 import { usePosOverlayHost } from '../../../core/ui/posOverlayHost'
 import './DeviceSetupModal.css'
 
@@ -46,7 +47,7 @@ function blankDraft(): AddDraft {
     connectionType: 'ethernet',
     hostAddress: '',
     port: String(defaultPortForDeviceType('printer')),
-    printerSdkCode: 'generic-escpos',
+    printerSdkCode: isAndroidDevice() ? 'dantsu-escpos-android' : 'generic-escpos',
   }
 }
 
@@ -266,16 +267,24 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
     try {
       const pack = await api.downloadPosPrinterSdkPackage(sdk.sdkCode)
       downloadBlob(pack.blob, pack.fileName)
+      const androidHint =
+        (sdk.platform || '').toLowerCase() === 'android' || sdk.packageKind === 'android-aar'
+          ? isAndroidDevice()
+            ? ' Package saved on this Android device — open Files/Downloads, unzip, and follow INSTALL.md to load the AAR.'
+            : ' Android package downloaded — copy the zip onto the Android POS tablet and follow INSTALL.md.'
+          : ''
       if (printerId) {
         setBusyId(printerId)
         const deployed = await api.deployPosPrinterSdk(printerId)
         const test = await api.testPosPrinterPrint(printerId)
         setStatus(
-          `${deployed.message} Package: ${pack.fileName}. ${test.message}`,
+          `${deployed.message} Package: ${pack.fileName}.${androidHint} ${test.message}`,
         )
         await load()
       } else {
-        setStatus(`Downloaded ${pack.fileName}. Select a printer and Install to bind the driver (then a test print runs).`)
+        setStatus(
+          `Downloaded ${pack.fileName}.${androidHint || ' Select a printer and Install to bind the driver (then a test print runs).'}`,
+        )
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Driver download failed.')
@@ -329,7 +338,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
         hostAddress: '',
         macAddress: picked.serialNumber || `${picked.vendorId}:${picked.productId}`,
         hostname: picked.manufacturerName || '',
-        printerSdkCode: 'generic-escpos',
+        printerSdkCode: isAndroidDevice() ? 'dantsu-escpos-android' : 'generic-escpos',
         active: true,
       })
       setStatus(`Enabled local peripheral “${name}”. Rename it below if needed.`)
@@ -653,6 +662,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
             <h3>Drivers from server</h3>
             <p className="device-setup-hint">
               Download the driver package, then install it on a registered printer.
+              Android devices can install the DantSu ESC/POS SDK from this list.
               A test print runs automatically once the driver is installed.
             </p>
             {sdks.length === 0 ? (
@@ -662,9 +672,15 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                 {sdks.map((sdk) => (
                   <li key={sdk.sdkCode}>
                     <div>
-                      <strong>{sdk.displayName}</strong>
+                      <strong>
+                        {sdk.displayName}
+                        {(sdk.platform || '').toLowerCase() === 'android' ? (
+                          <span className="device-setup-sdk-badge"> Android</span>
+                        ) : null}
+                      </strong>
                       <span>
                         {sdk.brand} · {sdk.protocol} · v{sdk.version}
+                        {sdk.hasBinaryPackage ? ' · install package' : ''}
                       </span>
                       <em>{sdk.description}</em>
                     </div>
@@ -674,7 +690,9 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
                         className="device-setup-btn device-setup-btn--ghost"
                         onClick={() => void downloadAndInstall(sdk)}
                       >
-                        Download
+                        {(sdk.platform || '').toLowerCase() === 'android'
+                          ? 'Download for Android'
+                          : 'Download'}
                       </button>
                       {printers.length > 0 && (
                         <select

@@ -327,6 +327,20 @@
   font-size: 0.78rem;
 }
 
+.device-setup-sdk-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0b3d2e;
+  background: #d8efe4;
+  vertical-align: middle;
+}
+
 .device-setup-sdk-list span,
 .device-setup-sdk-list em {
   display: block;

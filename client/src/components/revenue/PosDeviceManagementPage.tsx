@@ -74,7 +74,9 @@ function blankDraft(locationId: string): Draft {
     hostname: '',
     printerBrand: '',
     printerModel: '',
-    printerSdkCode: 'generic-escpos',
+    printerSdkCode: typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent)
+      ? 'dantsu-escpos-android'
+      : 'generic-escpos',
     paperWidthMm: 80,
     printAlignment: 'left',
     printMarginLeft: '0',
@@ -808,7 +810,9 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
                     >
                       {sdks.map(sdk => (
                         <option key={sdk.sdkCode} value={sdk.sdkCode}>
-                          {sdk.displayName} ({sdk.sdkCode})
+                          {sdk.displayName}
+                          {(sdk.platform || '').toLowerCase() === 'android' ? ' · Android' : ''}
+                          {' '}({sdk.sdkCode})
                         </option>
                       ))}
                     </select>
@@ -912,7 +916,14 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
                           port: d.port || String(sdk.defaultPort),
                         }))}
                       >
-                        <span className="font-semibold text-foreground">{sdk.displayName}</span>
+                        <span className="font-semibold text-foreground">
+                          {sdk.displayName}
+                          {(sdk.platform || '').toLowerCase() === 'android' ? (
+                            <span className="ml-1 text-[9px] uppercase tracking-wide text-emerald-800 bg-emerald-100 px-1 py-0.5 rounded">
+                              Android
+                            </span>
+                          ) : null}
+                        </span>
                         <span className="block text-muted-foreground">{sdk.description}</span>
                       </button>
                     </li>

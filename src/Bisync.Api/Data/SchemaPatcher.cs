@@ -2058,6 +2058,10 @@ public static class SchemaPatcher
                 "CreatedAt" timestamp with time zone NOT NULL
             );
             """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "Platform", "TEXT NOT NULL DEFAULT 'any'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "PackageKind", "TEXT NOT NULL DEFAULT 'dialect'");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "ExternalUrl", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(db, "PosPrinterSdks", "ArtifactFolder", "TEXT NOT NULL DEFAULT ''");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_PosPrinterSdks_SdkCode"
             ON "PosPrinterSdks" ("SdkCode");

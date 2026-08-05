@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using Bisync.Api.Contracts;
@@ -14,7 +15,7 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/pos-devices")]
-public class PosDevicesController(BisyncDbContext db) : ControllerBase
+public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) : ControllerBase
 {
     static readonly HashSet<string> DeviceTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -198,6 +199,14 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
         if (sdk is null)
             return NotFound(new { message = $"SDK '{code}' not found." });
 
+        var artifactDir = PosPrinterSdkCatalog.ResolveArtifactDirectory(env, sdk);
+        if (!string.IsNullOrWhiteSpace(artifactDir) && Directory.Exists(artifactDir))
+        {
+            var zipBytes = BuildSdkZipPackage(sdk, artifactDir);
+            var zipName = $"bisync-{sdk.SdkCode}-android.zip";
+            return File(zipBytes, "application/zip", zipName);
+        }
+
         var package = new
         {
             packageType = "bisync-pos-printer-sdk",
@@ -205,11 +214,14 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
             brand = sdk.Brand,
             displayName = sdk.DisplayName,
             protocol = sdk.Protocol,
+            platform = sdk.Platform,
+            packageKind = sdk.PackageKind,
             version = sdk.Version,
             description = sdk.Description,
             modelHints = sdk.ModelHints,
             defaultPort = sdk.DefaultPort,
             supportedPaperWidthsMm = ParseWidths(sdk.SupportedPaperWidthsJson),
+            externalUrl = sdk.ExternalUrl,
             install = new
             {
                 steps = new[]
@@ -231,6 +243,59 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
         var bytes = System.Text.Encoding.UTF8.GetBytes(json);
         var fileName = $"bisync-{sdk.SdkCode}-driver.json";
         return File(bytes, "application/json", fileName);
+    }
+
+    static byte[] BuildSdkZipPackage(PosPrinterSdk sdk, string artifactDir)
+    {
+        using var ms = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var filePath in Directory.EnumerateFiles(artifactDir))
+            {
+                var entryName = Path.GetFileName(filePath);
+                if (string.IsNullOrWhiteSpace(entryName))
+                    continue;
+                zip.CreateEntryFromFile(filePath, entryName, System.IO.Compression.CompressionLevel.Optimal);
+            }
+
+            // Always include a fresh manifest so install UIs know the Bisync binding.
+            var manifest = new
+            {
+                packageType = "bisync-pos-printer-sdk",
+                sdkCode = sdk.SdkCode,
+                brand = sdk.Brand,
+                displayName = sdk.DisplayName,
+                protocol = sdk.Protocol,
+                platform = sdk.Platform,
+                packageKind = sdk.PackageKind,
+                version = sdk.Version,
+                description = sdk.Description,
+                defaultPort = sdk.DefaultPort,
+                supportedPaperWidthsMm = ParseWidths(sdk.SupportedPaperWidthsJson),
+                externalUrl = sdk.ExternalUrl,
+                install = new
+                {
+                    steps = new[]
+                    {
+                        "Unzip this package on the Android POS device (Files / Downloads).",
+                        "Install the AAR via Gradle/JitPack or copy ESCPOS-ThermalPrinter-Android-*.aar into your app libs/ (see INSTALL.md).",
+                        "In Bisync POS Setup, select this SDK on the printer and tap Install driver, then run Test print.",
+                    },
+                    deployEndpoint = $"/api/pos-devices/{{deviceId}}/deploy-sdk",
+                },
+                downloadedAt = DateTime.UtcNow,
+            };
+            var manifestJson = JsonSerializer.Serialize(manifest, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            });
+            var manifestEntry = zip.CreateEntry("bisync-driver.json", System.IO.Compression.CompressionLevel.Optimal);
+            using var writer = new StreamWriter(manifestEntry.Open());
+            writer.Write(manifestJson);
+        }
+
+        return ms.ToArray();
     }
 
     [HttpPost("network-probe")]
@@ -871,6 +936,10 @@ public class PosDevicesController(BisyncDbContext db) : ControllerBase
             modelHints = s.ModelHints,
             defaultPort = s.DefaultPort,
             supportedPaperWidthsMm = widths,
+            platform = string.IsNullOrWhiteSpace(s.Platform) ? "any" : s.Platform,
+            packageKind = string.IsNullOrWhiteSpace(s.PackageKind) ? "dialect" : s.PackageKind,
+            externalUrl = s.ExternalUrl ?? "",
+            hasBinaryPackage = !string.IsNullOrWhiteSpace(s.ArtifactFolder),
             active = s.Active,
             downloadPath = $"/api/pos-devices/printer-sdks/{s.SdkCode}/package",
         };

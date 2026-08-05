@@ -56,6 +56,14 @@ public class PosPrinterSdk
     public string ModelHints { get; set; } = string.Empty;
     public int DefaultPort { get; set; } = 9100;
     public string SupportedPaperWidthsJson { get; set; } = "[58,80]";
+    /// <summary>any | android | windows — which station OS this package targets.</summary>
+    public string Platform { get; set; } = "any";
+    /// <summary>dialect | android-aar | android-apk — how the download package is shaped.</summary>
+    public string PackageKind { get; set; } = "dialect";
+    /// <summary>Upstream docs / releases URL.</summary>
+    public string ExternalUrl { get; set; } = string.Empty;
+    /// <summary>Folder under Assets/PosPrinterSdks/{SdkCode} when a binary package is vendored.</summary>
+    public string ArtifactFolder { get; set; } = string.Empty;
     public bool Active { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

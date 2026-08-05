@@ -1,0 +1,20 @@
+{
+  "packageType": "bisync-pos-printer-sdk",
+  "sdkCode": "dantsu-escpos-android",
+  "brand": "DantSu",
+  "displayName": "ESCPOS ThermalPrinter Android",
+  "protocol": "escpos",
+  "platform": "android",
+  "packageKind": "android-aar",
+  "version": "3.4.0",
+  "defaultPort": 9100,
+  "supportedPaperWidthsMm": [58, 80, 112],
+  "connections": ["bluetooth", "tcp", "usb"],
+  "upstream": "https://github.com/DantSu/ESCPOS-ThermalPrinter-Android",
+  "jitpack": "com.github.DantSu:ESCPOS-ThermalPrinter-Android:3.4.0",
+  "artifacts": [
+    "ESCPOS-ThermalPrinter-Android-3.4.0.aar",
+    "ESCPOS-ThermalPrinter-Android-3.4.0-source.zip",
+    "INSTALL.md"
+  ]
+}

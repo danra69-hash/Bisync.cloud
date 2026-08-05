@@ -65,6 +65,14 @@ const ADAPTERS: PrinterSdkAdapter[] = [
   makeEscPosAdapter('citizen-escpos', 'Citizen', 'Citizen ESC/POS', 'escpos', 9100, [58, 80]),
   makeEscPosAdapter('bixolon-escpos', 'Bixolon', 'Bixolon ESC/POS', 'escpos', 9100, [58, 80]),
   makeEscPosAdapter('network-raw', 'Network', 'Raw TCP (port 9100)', 'raw', 9100, [58, 80, 112]),
+  makeEscPosAdapter(
+    'dantsu-escpos-android',
+    'DantSu',
+    'ESCPOS ThermalPrinter Android',
+    'escpos',
+    9100,
+    [58, 80, 112],
+  ),
 ];
 
 const byCode = new Map(ADAPTERS.map(a => [a.sdkCode, a]));
@@ -78,10 +86,15 @@ export function getPrinterSdkAdapter(sdkCode: string): PrinterSdkAdapter | null 
 }
 
 /** Auto-pick an adapter when a printer is connected (brand/model hints). */
-export function resolvePrinterSdkAdapter(brand?: string, model?: string): PrinterSdkAdapter {
+export function resolvePrinterSdkAdapter(brand?: string, model?: string, platformHint?: string): PrinterSdkAdapter {
+  const platform = (platformHint ?? '').trim().toLowerCase();
   const hay = `${brand ?? ''} ${model ?? ''}`.trim().toLowerCase();
+  if (platform === 'android' || hay.includes('android') || hay.includes('dantsu')) {
+    return byCode.get('dantsu-escpos-android')!;
+  }
   if (!hay) return byCode.get('generic-escpos')!;
   for (const adapter of ADAPTERS) {
+    if (adapter.sdkCode === 'dantsu-escpos-android') continue;
     if (hay.includes(adapter.brand.toLowerCase())) return adapter;
   }
   if (hay.includes('star')) return byCode.get('star-linemode')!;

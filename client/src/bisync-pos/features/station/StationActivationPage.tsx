@@ -18,6 +18,7 @@ import {
 } from '../../core/station/stationActivation'
 import { downloadStationPackage } from '../../core/offline/posCatalogStore'
 import { useTouchClickSound } from '../../core/session/useTouchClickSound'
+import { isAndroidDevice } from '../../../data/posKiosk'
 import './StationActivationPage.css'
 
 type Props = {
@@ -99,9 +100,20 @@ export function StationActivationPage({
         if (cancelled) return
         const active = rows.filter(s => s.active !== false)
         setSdks(active)
-        setSelectedSdkCode(prev => prev || active[0]?.sdkCode || '')
-        if (active[0]?.defaultPort) {
-          setPrinterPort(String(active[0].defaultPort))
+        setSelectedSdkCode(prev => {
+          if (prev) return prev
+          if (isAndroidDevice()) {
+            const android = active.find(s => (s.platform || '').toLowerCase() === 'android')
+            if (android) return android.sdkCode
+          }
+          return active[0]?.sdkCode || ''
+        })
+        const preferred =
+          (isAndroidDevice()
+            ? active.find(s => (s.platform || '').toLowerCase() === 'android')
+            : null) ?? active[0]
+        if (preferred?.defaultPort) {
+          setPrinterPort(String(preferred.defaultPort))
         }
       })
       .catch(err => {
@@ -208,7 +220,13 @@ export function StationActivationPage({
       setApiTenantCompanyId(companyId)
       const pack = await api.downloadPosPrinterSdkPackage(selectedSdkCode)
       downloadBlob(pack.blob, pack.fileName)
-      setPrinterStatus(`Downloaded ${pack.fileName}. Registering printer…`)
+      const androidNote =
+        (selectedSdk?.platform || '').toLowerCase() === 'android'
+          ? isAndroidDevice()
+            ? ' Unzip from Files/Downloads and follow INSTALL.md to load the AAR on this device.'
+            : ' Copy the Android zip onto the tablet and follow INSTALL.md.'
+          : ''
+      setPrinterStatus(`Downloaded ${pack.fileName}.${androidNote} Registering printer…`)
 
       const created = await api.createPosDevice({
         companyId,
@@ -388,7 +406,8 @@ export function StationActivationPage({
             <p className="pos-activate__section-title">Printer driver (from server)</p>
             <p className="pos-activate__hint">
               Select a driver packaged on Bisync, install it on this station’s printer, then a
-              test print runs automatically. You can skip and add printers later in POS Setup.
+              test print runs automatically. On Android, choose <strong>ESCPOS ThermalPrinter Android (DantSu)</strong> to
+              download the installable SDK package. You can skip and add printers later in POS Setup.
             </p>
 
             {sdksLoading ? (
@@ -408,7 +427,10 @@ export function StationActivationPage({
                         setPrinterPort(String(sdk.defaultPort || defaultPortForDeviceType('printer')))
                       }}
                     >
-                      <strong>{sdk.displayName}</strong>
+                      <strong>
+                        {sdk.displayName}
+                        {(sdk.platform || '').toLowerCase() === 'android' ? ' · Android' : ''}
+                      </strong>
                       <span>{sdk.brand} · {sdk.protocol} · v{sdk.version}</span>
                       <em>{sdk.description}</em>
                     </button>

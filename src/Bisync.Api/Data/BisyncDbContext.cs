@@ -674,6 +674,10 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.DisplayName).HasMaxLength(160);
             e.Property(x => x.Protocol).HasMaxLength(40);
             e.Property(x => x.Version).HasMaxLength(40);
+            e.Property(x => x.Platform).HasMaxLength(40);
+            e.Property(x => x.PackageKind).HasMaxLength(40);
+            e.Property(x => x.ExternalUrl).HasMaxLength(500);
+            e.Property(x => x.ArtifactFolder).HasMaxLength(160);
         });
         modelBuilder.Entity<B2bSalesOrder>(e =>
         {
