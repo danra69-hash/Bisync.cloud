@@ -47,7 +47,7 @@ function blankDraft(): AddDraft {
     connectionType: 'ethernet',
     hostAddress: '',
     port: String(defaultPortForDeviceType('printer')),
-    printerSdkCode: isAndroidDevice() ? 'dantsu-escpos-android' : 'generic-escpos',
+    printerSdkCode: 'dantsu-escpos-android',
   }
 }
 
@@ -338,7 +338,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
         hostAddress: '',
         macAddress: picked.serialNumber || `${picked.vendorId}:${picked.productId}`,
         hostname: picked.manufacturerName || '',
-        printerSdkCode: isAndroidDevice() ? 'dantsu-escpos-android' : 'generic-escpos',
+        printerSdkCode: 'dantsu-escpos-android',
         active: true,
       })
       setStatus(`Enabled local peripheral “${name}”. Rename it below if needed.`)
@@ -661,8 +661,7 @@ export function DeviceSetupModal({ companyId, locationId, onClose }: Props) {
           <section className="device-setup-block">
             <h3>Drivers from server</h3>
             <p className="device-setup-hint">
-              Download the driver package, then install it on a registered printer.
-              Android devices can install the DantSu ESC/POS SDK from this list.
+              Download the DantSu ESC/POS Android SDK package, then install it on a registered printer.
               A test print runs automatically once the driver is installed.
             </p>
             {sdks.length === 0 ? (

@@ -405,9 +405,8 @@ export function StationActivationPage({
             </p>
             <p className="pos-activate__section-title">Printer driver (from server)</p>
             <p className="pos-activate__hint">
-              Select a driver packaged on Bisync, install it on this station’s printer, then a
-              test print runs automatically. On Android, choose <strong>ESCPOS ThermalPrinter Android (DantSu)</strong> to
-              download the installable SDK package. You can skip and add printers later in POS Setup.
+              Install the DantSu ESC/POS Android printer SDK on this station’s printer, then a
+              test print runs automatically. You can skip and add printers later in POS Setup.
             </p>
 
             {sdksLoading ? (

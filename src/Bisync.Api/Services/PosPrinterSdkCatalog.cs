@@ -4,119 +4,38 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bisync.Api.Services;
 
-/// <summary>Seeds and resolves the POS printer SDK repository.</summary>
+/// <summary>Seeds and resolves the POS printer SDK repository (DantSu only).</summary>
 public static class PosPrinterSdkCatalog
 {
-    public static readonly IReadOnlyList<PosPrinterSdk> BuiltIn =
-    [
-        new()
-        {
-            SdkCode = "generic-escpos",
-            Brand = "Generic",
-            DisplayName = "Generic ESC/POS",
-            Protocol = "escpos",
-            Version = "1.0",
-            Description = "Standard ESC/POS thermal dialect for most network/USB printers.",
-            ModelHints = "generic,thermal,receipt",
-            DefaultPort = 9100,
-            SupportedPaperWidthsJson = "[58,80,112]",
-            Platform = "any",
-            PackageKind = "dialect",
-        },
-        new()
-        {
-            SdkCode = "epson-escpos",
-            Brand = "Epson",
-            DisplayName = "Epson ePOS / ESC/POS",
-            Protocol = "escpos",
-            Version = "1.0",
-            Description = "Epson TM-series thermal printers (TM-T20, TM-T88, TM-m30).",
-            ModelHints = "epson,tm-t20,tm-t88,tm-m30,tm-u220",
-            DefaultPort = 9100,
-            SupportedPaperWidthsJson = "[58,80]",
-            Platform = "any",
-            PackageKind = "dialect",
-        },
-        new()
-        {
-            SdkCode = "star-linemode",
-            Brand = "Star Micronics",
-            DisplayName = "Star Line Mode / ESC/POS",
-            Protocol = "star",
-            Version = "1.0",
-            Description = "Star mC-Print / TSP series network printers.",
-            ModelHints = "star,mc-print,tsp100,tsp143",
-            DefaultPort = 9100,
-            SupportedPaperWidthsJson = "[58,80]",
-            Platform = "any",
-            PackageKind = "dialect",
-        },
-        new()
-        {
-            SdkCode = "citizen-escpos",
-            Brand = "Citizen",
-            DisplayName = "Citizen ESC/POS",
-            Protocol = "escpos",
-            Version = "1.0",
-            Description = "Citizen CT-S / CT-E thermal printers.",
-            ModelHints = "citizen,ct-s,ct-e",
-            DefaultPort = 9100,
-            SupportedPaperWidthsJson = "[58,80]",
-            Platform = "any",
-            PackageKind = "dialect",
-        },
-        new()
-        {
-            SdkCode = "bixolon-escpos",
-            Brand = "Bixolon",
-            DisplayName = "Bixolon ESC/POS",
-            Protocol = "escpos",
-            Version = "1.0",
-            Description = "Bixolon SRP / SPP series receipt printers.",
-            ModelHints = "bixolon,srp,spp",
-            DefaultPort = 9100,
-            SupportedPaperWidthsJson = "[58,80]",
-            Platform = "any",
-            PackageKind = "dialect",
-        },
-        new()
-        {
-            SdkCode = "network-raw",
-            Brand = "Network",
-            DisplayName = "Raw TCP (port 9100)",
-            Protocol = "raw",
-            Version = "1.0",
-            Description = "Byte stream to a raw TCP printer port when brand SDK is unknown.",
-            ModelHints = "raw,jetdirect,9100",
-            DefaultPort = 9100,
-            SupportedPaperWidthsJson = "[58,80,112]",
-            Platform = "any",
-            PackageKind = "dialect",
-        },
-        new()
-        {
-            SdkCode = "dantsu-escpos-android",
-            Brand = "DantSu",
-            DisplayName = "ESCPOS ThermalPrinter Android",
-            Protocol = "escpos",
-            Version = "3.4.0",
-            Description =
-                "DantSu Android SDK for ESC/POS thermal printers (Bluetooth, TCP, USB). Download and install on the Android POS device.",
-            ModelHints = "dantsu,android,bluetooth,usb,escpos-thermalprinter",
-            DefaultPort = 9100,
-            SupportedPaperWidthsJson = "[58,80,112]",
-            Platform = "android",
-            PackageKind = "android-aar",
-            ExternalUrl = "https://github.com/DantSu/ESCPOS-ThermalPrinter-Android",
-            ArtifactFolder = "dantsu-escpos-android",
-        },
-    ];
+    public const string DantsuSdkCode = "dantsu-escpos-android";
+
+    public static readonly PosPrinterSdk DantsuSdk = new()
+    {
+        SdkCode = DantsuSdkCode,
+        Brand = "DantSu",
+        DisplayName = "ESCPOS ThermalPrinter Android",
+        Protocol = "escpos",
+        Version = "3.4.0",
+        Description =
+            "DantSu Android SDK for ESC/POS thermal printers (Bluetooth, TCP, USB). Download and install on the Android POS device.",
+        ModelHints = "dantsu,android,bluetooth,usb,escpos-thermalprinter,generic,thermal,receipt,epson,star,citizen,bixolon",
+        DefaultPort = 9100,
+        SupportedPaperWidthsJson = "[58,80,112]",
+        Platform = "android",
+        PackageKind = "android-aar",
+        ExternalUrl = "https://github.com/DantSu/ESCPOS-ThermalPrinter-Android",
+        ArtifactFolder = "dantsu-escpos-android",
+    };
+
+    public static readonly IReadOnlyList<PosPrinterSdk> BuiltIn = [DantsuSdk];
 
     public static async Task EnsureSeededAsync(BisyncDbContext db, CancellationToken cancellationToken = default)
     {
         var existingRows = await db.PosPrinterSdks.ToListAsync(cancellationToken);
         var byCode = existingRows.ToDictionary(s => s.SdkCode, StringComparer.OrdinalIgnoreCase);
         var now = DateTime.UtcNow;
+        var keep = new HashSet<string>(BuiltIn.Select(s => s.SdkCode), StringComparer.OrdinalIgnoreCase);
+
         foreach (var seed in BuiltIn)
         {
             if (!byCode.TryGetValue(seed.SdkCode, out var row))
@@ -142,7 +61,6 @@ public static class PosPrinterSdkCatalog
                 continue;
             }
 
-            // Keep catalog metadata in sync for built-in packages (esp. Android AAR updates).
             row.Brand = seed.Brand;
             row.DisplayName = seed.DisplayName;
             row.Protocol = seed.Protocol;
@@ -155,36 +73,37 @@ public static class PosPrinterSdkCatalog
             row.PackageKind = seed.PackageKind;
             row.ExternalUrl = seed.ExternalUrl;
             row.ArtifactFolder = seed.ArtifactFolder;
-            if (!row.Active && string.Equals(seed.SdkCode, "dantsu-escpos-android", StringComparison.OrdinalIgnoreCase))
-                row.Active = true;
+            row.Active = true;
+        }
+
+        // Remove every other printer driver from the catalog completely.
+        foreach (var row in existingRows)
+        {
+            if (keep.Contains(row.SdkCode))
+                continue;
+            db.PosPrinterSdks.Remove(row);
+        }
+
+        // Remap any devices still pointing at retired SDK codes.
+        var devices = await db.PosDevices
+            .Where(d => d.DeviceType == "printer")
+            .ToListAsync(cancellationToken);
+        foreach (var device in devices)
+        {
+            if (string.IsNullOrWhiteSpace(device.PrinterSdkCode)
+                || !string.Equals(device.PrinterSdkCode, DantsuSdkCode, StringComparison.OrdinalIgnoreCase))
+            {
+                device.PrinterSdkCode = DantsuSdkCode;
+                device.UpdatedAt = now;
+            }
         }
 
         if (db.ChangeTracker.HasChanges())
             await db.SaveChangesAsync(cancellationToken);
     }
 
-    public static string SuggestSdkCode(string? brand, string? model, string? platformHint = null)
-    {
-        var hay = $"{brand} {model}".Trim().ToLowerInvariant();
-        var platform = (platformHint ?? "").Trim().ToLowerInvariant();
-
-        if (platform is "android" || hay.Contains("android") || hay.Contains("dantsu"))
-            return "dantsu-escpos-android";
-
-        if (string.IsNullOrWhiteSpace(hay))
-            return "generic-escpos";
-
-        foreach (var sdk in BuiltIn)
-        {
-            if (string.Equals(sdk.Platform, "android", StringComparison.OrdinalIgnoreCase))
-                continue;
-            var hints = sdk.ModelHints.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (hints.Any(h => hay.Contains(h, StringComparison.OrdinalIgnoreCase)))
-                return sdk.SdkCode;
-        }
-
-        return "generic-escpos";
-    }
+    public static string SuggestSdkCode(string? brand = null, string? model = null, string? platformHint = null)
+        => DantsuSdkCode;
 
     /// <summary>Resolve the on-disk folder for a vendored SDK package (AAR/zip/docs).</summary>
     public static string? ResolveArtifactDirectory(IWebHostEnvironment env, PosPrinterSdk sdk)

@@ -1,8 +1,9 @@
 /**
  * Client-side printer SDK repository mirror.
- * Server catalog (PosPrinterSdks) is authoritative; this module maps SDK codes
- * to runtime adapters used when a printer device is connected on a station.
+ * Server catalog (PosPrinterSdks) is authoritative — Bisync ships DantSu only.
  */
+
+import { DANTSU_PRINTER_SDK_CODE } from '../../../data/dantsuPrinterSdk';
 
 export type PrinterPaperWidthMm = 58 | 80 | 112;
 export type PrinterAlignment = 'left' | 'center';
@@ -58,22 +59,16 @@ function makeEscPosAdapter(
   };
 }
 
-const ADAPTERS: PrinterSdkAdapter[] = [
-  makeEscPosAdapter('generic-escpos', 'Generic', 'Generic ESC/POS', 'escpos', 9100, [58, 80, 112]),
-  makeEscPosAdapter('epson-escpos', 'Epson', 'Epson ePOS / ESC/POS', 'escpos', 9100, [58, 80]),
-  makeEscPosAdapter('star-linemode', 'Star Micronics', 'Star Line Mode / ESC/POS', 'star', 9100, [58, 80]),
-  makeEscPosAdapter('citizen-escpos', 'Citizen', 'Citizen ESC/POS', 'escpos', 9100, [58, 80]),
-  makeEscPosAdapter('bixolon-escpos', 'Bixolon', 'Bixolon ESC/POS', 'escpos', 9100, [58, 80]),
-  makeEscPosAdapter('network-raw', 'Network', 'Raw TCP (port 9100)', 'raw', 9100, [58, 80, 112]),
-  makeEscPosAdapter(
-    'dantsu-escpos-android',
-    'DantSu',
-    'ESCPOS ThermalPrinter Android',
-    'escpos',
-    9100,
-    [58, 80, 112],
-  ),
-];
+const DANTSU = makeEscPosAdapter(
+  DANTSU_PRINTER_SDK_CODE,
+  'DantSu',
+  'ESCPOS ThermalPrinter Android',
+  'escpos',
+  9100,
+  [58, 80, 112],
+);
+
+const ADAPTERS: PrinterSdkAdapter[] = [DANTSU];
 
 const byCode = new Map(ADAPTERS.map(a => [a.sdkCode, a]));
 
@@ -82,22 +77,11 @@ export function listPrinterSdkAdapters(): PrinterSdkAdapter[] {
 }
 
 export function getPrinterSdkAdapter(sdkCode: string): PrinterSdkAdapter | null {
-  return byCode.get(sdkCode) ?? null;
+  if (!sdkCode) return DANTSU;
+  return byCode.get(sdkCode) ?? DANTSU;
 }
 
-/** Auto-pick an adapter when a printer is connected (brand/model hints). */
-export function resolvePrinterSdkAdapter(brand?: string, model?: string, platformHint?: string): PrinterSdkAdapter {
-  const platform = (platformHint ?? '').trim().toLowerCase();
-  const hay = `${brand ?? ''} ${model ?? ''}`.trim().toLowerCase();
-  if (platform === 'android' || hay.includes('android') || hay.includes('dantsu')) {
-    return byCode.get('dantsu-escpos-android')!;
-  }
-  if (!hay) return byCode.get('generic-escpos')!;
-  for (const adapter of ADAPTERS) {
-    if (adapter.sdkCode === 'dantsu-escpos-android') continue;
-    if (hay.includes(adapter.brand.toLowerCase())) return adapter;
-  }
-  if (hay.includes('star')) return byCode.get('star-linemode')!;
-  if (hay.includes('epson')) return byCode.get('epson-escpos')!;
-  return byCode.get('generic-escpos')!;
+/** Auto-pick an adapter when a printer is connected — always DantSu. */
+export function resolvePrinterSdkAdapter(_brand?: string, _model?: string, _platformHint?: string): PrinterSdkAdapter {
+  return DANTSU;
 }

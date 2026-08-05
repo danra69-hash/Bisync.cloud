@@ -74,9 +74,7 @@ function blankDraft(locationId: string): Draft {
     hostname: '',
     printerBrand: '',
     printerModel: '',
-    printerSdkCode: typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent)
-      ? 'dantsu-escpos-android'
-      : 'generic-escpos',
+    printerSdkCode: 'dantsu-escpos-android',
     paperWidthMm: 80,
     printAlignment: 'left',
     printMarginLeft: '0',
@@ -229,7 +227,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
       hostname: device.hostname || '',
       printerBrand: device.printerBrand || '',
       printerModel: device.printerModel || '',
-      printerSdkCode: device.printerSdkCode || 'generic-escpos',
+      printerSdkCode: device.printerSdkCode || 'dantsu-escpos-android',
       paperWidthMm: device.paperWidthMm === 58 || device.paperWidthMm === 80 || device.paperWidthMm === 112
         ? device.paperWidthMm
         : 80,
@@ -246,13 +244,13 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
       ...d,
       printerBrand: device.printerBrand || d.printerBrand,
       printerModel: device.printerModel || d.printerModel,
-      printerSdkCode: device.printerSdkCode || 'generic-escpos',
+      printerSdkCode: device.printerSdkCode || 'dantsu-escpos-android',
       paperWidthMm: device.paperWidthMm || 80,
       printAlignment: device.printAlignment === 'center' ? 'center' : 'left',
       printMarginLeft: String(device.printMarginLeft ?? 0),
       printMarginRight: String(device.printMarginRight ?? 0),
     }))
-    const adapter = getPrinterSdkAdapter(device.printerSdkCode || 'generic-escpos')
+    const adapter = getPrinterSdkAdapter(device.printerSdkCode || 'dantsu-escpos-android')
     setAlignmentPreview(
       adapter?.buildAlignmentTest({
         paperWidthMm: (device.paperWidthMm as 58 | 80 | 112) || 80,
@@ -1004,7 +1002,7 @@ export function PosDeviceManagementPage({ selectedCompanyId, selectedLocationIds
               type="button"
               className="mt-2 text-[11px] text-primary hover:underline"
               onClick={() => {
-                const adapter = getPrinterSdkAdapter(draft.printerSdkCode || 'generic-escpos')
+                const adapter = getPrinterSdkAdapter(draft.printerSdkCode || 'dantsu-escpos-android')
                 setAlignmentPreview(
                   adapter?.buildAlignmentTest({
                     paperWidthMm: draft.paperWidthMm as 58 | 80 | 112,

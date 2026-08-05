@@ -24,9 +24,19 @@ import {
   PRIVACY_POLICY_INTRO,
   PRIVACY_POLICY_TITLE,
 } from '../../data/privacyPolicy';
+import {
+  DANTSU_PRINTER_SDK_DOWNLOAD_PATH,
+  DANTSU_PRINTER_SDK_JITPACK,
+  DANTSU_PRINTER_SDK_REVISED_DATE,
+  DANTSU_PRINTER_SDK_STEPS,
+  DANTSU_PRINTER_SDK_SUMMARY,
+  DANTSU_PRINTER_SDK_TITLE,
+  DANTSU_PRINTER_SDK_UPSTREAM,
+  DANTSU_PRINTER_SDK_VERSION,
+} from '../../data/dantsuPrinterSdk';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 
-type LibraryEntryId = 'eula' | 'privacy' | 'dpa' | 'fifo' | 'nutrition';
+type LibraryEntryId = 'eula' | 'privacy' | 'dpa' | 'fifo' | 'nutrition' | 'dantsu-printer';
 
 type LibraryEntry = {
   id: LibraryEntryId;
@@ -131,6 +141,64 @@ function FifoDetails({
           {FIFO_ISSUE_STOCK_SQL}
         </pre>
       </div>
+    </div>
+  );
+}
+
+function DantsuPrinterSdkDetails({
+  downloading,
+  onDownload,
+}: {
+  downloading: boolean;
+  onDownload: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground leading-relaxed">{DANTSU_PRINTER_SDK_SUMMARY}</p>
+      <p className="text-[11px] text-muted-foreground">
+        Version {DANTSU_PRINTER_SDK_VERSION} · Sole Bisync POS printer SDK · Bluetooth / TCP / USB
+      </p>
+
+      <ol className="space-y-3 border-t border-border/60 pt-3">
+        {DANTSU_PRINTER_SDK_STEPS.map(step => (
+          <li key={step.id} className="grid gap-1 sm:grid-cols-[2.5rem_1fr]">
+            <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+              {step.number}.
+            </span>
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-xs font-semibold">{step.title}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+        <button
+          type="button"
+          disabled={downloading}
+          onClick={onDownload}
+          className="inline-flex items-center gap-1.5 text-xs border border-border rounded-md px-3 py-1.5 hover:bg-muted disabled:opacity-50"
+        >
+          {downloading ? 'Downloading…' : 'Download Android SDK package'}
+        </button>
+        <a
+          href={DANTSU_PRINTER_SDK_UPSTREAM}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+        >
+          Upstream on GitHub
+          <ExternalLink size={12} />
+        </a>
+      </div>
+
+      <p className="text-[10px] font-mono text-muted-foreground break-all">
+        JitPack · {DANTSU_PRINTER_SDK_JITPACK}
+      </p>
+      <p className="text-[10px] font-mono text-muted-foreground break-all">
+        API · {DANTSU_PRINTER_SDK_DOWNLOAD_PATH}
+      </p>
     </div>
   );
 }
@@ -241,6 +309,7 @@ export function RefLibraryTab() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [sdkDownloading, setSdkDownloading] = useState(false);
   const [expandedId, setExpandedId] = useState<LibraryEntryId | null>(null);
 
   const load = useCallback(async () => {
@@ -272,6 +341,26 @@ export function RefLibraryTab() {
     }
   }
 
+  async function handleDownloadDantsuSdk() {
+    setSdkDownloading(true);
+    setError(null);
+    try {
+      const pack = await api.downloadPosPrinterSdkPackage('dantsu-escpos-android');
+      const url = URL.createObjectURL(pack.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = pack.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download printer SDK package.');
+    } finally {
+      setSdkDownloading(false);
+    }
+  }
+
   const portalUrl = status?.portalUrl || 'https://fdc.nal.usda.gov/';
   const nutritionRevised = status?.lastSyncedAt ?? status?.lastCheckedAt;
 
@@ -296,6 +385,11 @@ export function RefLibraryTab() {
         id: 'fifo',
         title: FIFO_GUIDE_TITLE,
         revisedLabel: FIFO_GUIDE_REVISED_DATE,
+      },
+      {
+        id: 'dantsu-printer',
+        title: DANTSU_PRINTER_SDK_TITLE,
+        revisedLabel: DANTSU_PRINTER_SDK_REVISED_DATE,
       },
       {
         id: 'nutrition',
@@ -340,6 +434,13 @@ export function RefLibraryTab() {
                 })
                 .catch(() => setSqlCopied(false));
             }}
+          />
+        );
+      case 'dantsu-printer':
+        return (
+          <DantsuPrinterSdkDetails
+            downloading={sdkDownloading}
+            onDownload={() => void handleDownloadDantsuSdk()}
           />
         );
       case 'nutrition':

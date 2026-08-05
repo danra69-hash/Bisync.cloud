@@ -481,7 +481,7 @@ public class PosDevicesController(BisyncDbContext db, IWebHostEnvironment env) :
 
         await PosPrinterSdkCatalog.EnsureSeededAsync(db, cancellationToken);
         var sdkCode = string.IsNullOrWhiteSpace(device.PrinterSdkCode)
-            ? "generic-escpos"
+            ? PosPrinterSdkCatalog.DantsuSdkCode
             : device.PrinterSdkCode.Trim();
         var sdk = await db.PosPrinterSdks.AsNoTracking()
             .FirstOrDefaultAsync(s => s.SdkCode == sdkCode, cancellationToken);
