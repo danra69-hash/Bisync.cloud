@@ -163,8 +163,18 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
 
         var now = DateTimeOffset.UtcNow;
         var externalId = $"chk-{Guid.NewGuid():N}";
-        var payAmount = request.PaymentAmountCents ?? Math.Max(0, request.GrossCents - request.DiscountCents);
         var method = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "cash" : request.PaymentMethod.Trim();
+        var isEntertainment = string.Equals(method, "entertainment", StringComparison.OrdinalIgnoreCase);
+        var purpose = (request.PaymentPurpose ?? string.Empty).Trim();
+        if (isEntertainment && purpose.Length == 0)
+            return BadRequest(new { error = "Entertainment settlement requires employee name and reason (paymentPurpose)." });
+
+        // Entertainment settles the full check amount with no tax / service.
+        var taxCents = isEntertainment ? 0L : Math.Max(0, request.TaxCents);
+        var payAmount = request.PaymentAmountCents
+            ?? Math.Max(0, request.GrossCents - request.DiscountCents);
+        if (purpose.Length > 240)
+            purpose = purpose[..240];
 
         var closed = new PosClosedCheck
         {
@@ -175,7 +185,7 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
             CheckLabel = (request.CheckLabel ?? string.Empty).Trim(),
             Covers = Math.Max(1, request.Covers),
             DiscountCents = Math.Max(0, request.DiscountCents),
-            TaxCents = Math.Max(0, request.TaxCents),
+            TaxCents = taxCents,
             VoidCents = Math.Max(0, request.VoidCents),
             GrossCents = Math.Max(0, request.GrossCents),
             PaidAt = now,
@@ -191,7 +201,7 @@ public class PosEodController(BisyncDbContext db, ITenantContext tenant) : Contr
             PaidAt = now,
             Method = method,
             AmountCents = Math.Max(0, payAmount),
-            Purpose = (request.PaymentPurpose ?? string.Empty).Trim(),
+            Purpose = purpose,
         });
 
         await db.SaveChangesAsync();

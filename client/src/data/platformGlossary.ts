@@ -394,6 +394,22 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
     module: 'POS & Sales',
     entries: [
       {
+        term: 'Entertainment',
+        meaning:
+          'Non-revenue settlement key: zeros tax and service, settles the full check amount, and requires employee name + reason. Exception groups/items can be blocked unless Include all overrides them.',
+        dbName: 'PosConfigTypes (kind=entertainment) / PosPayments.Method = entertainment',
+      },
+      {
+        term: 'Include All (Entertainment)',
+        meaning: 'When ticked on an entertainment type, overrides all exception product groups and items so every product is allowed.',
+        dbName: 'PosConfigTypes.IncludeAll',
+      },
+      {
+        term: 'Entertainment Exception',
+        meaning: 'Product group or item that is not allowed when settling under that entertainment type (unless Include all).',
+        dbName: 'PosConfigTypes.ExceptionGroupsJson / ExceptionProductIdsJson',
+      },
+      {
         term: 'POS Session',
         meaning: 'Cash-drawer / shift period for one terminal — opened and closed with tallies.',
         dbName: 'POSSessions',

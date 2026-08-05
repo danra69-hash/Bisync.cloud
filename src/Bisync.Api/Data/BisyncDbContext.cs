@@ -206,7 +206,7 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.HasIndex(x => new { x.CompanyId, x.Method });
             e.Property(x => x.LocationExternalId).HasMaxLength(64);
             e.Property(x => x.Method).HasMaxLength(40);
-            e.Property(x => x.Purpose).HasMaxLength(80);
+            e.Property(x => x.Purpose).HasMaxLength(240);
             e.Property(x => x.CardIin).HasMaxLength(8);
             e.Property(x => x.CardIssuer).HasMaxLength(64);
             e.Property(x => x.CardLast4).HasMaxLength(4);
@@ -660,6 +660,8 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.Kind).HasMaxLength(40);
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Code).HasMaxLength(40);
+            e.Property(x => x.ExceptionGroupsJson).HasColumnType("text");
+            e.Property(x => x.ExceptionProductIdsJson).HasColumnType("text");
         });
         modelBuilder.Entity<PosTaxServiceConfig>(e =>
         {
