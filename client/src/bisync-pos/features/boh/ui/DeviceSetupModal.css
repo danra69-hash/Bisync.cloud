@@ -232,6 +232,94 @@
   color: var(--color-ink-muted);
 }
 
+.device-setup-assign-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.device-setup-assign-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.device-setup-assign-row.is-same-subnet {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.device-setup-assign-row.is-inactive {
+  opacity: 0.72;
+}
+
+.device-setup-assign-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 160px;
+  font-size: 0.72rem;
+}
+
+.device-setup-assign-row__info strong {
+  font-size: 0.78rem;
+}
+
+.device-setup-assign-row__info code,
+.device-setup-assign-row__meta {
+  color: var(--color-ink-muted);
+  font-size: 0.68rem;
+}
+
+.device-setup-assign-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px;
+}
+
+.device-setup-assign-row__role {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.65rem;
+  font-weight: 650;
+  color: var(--color-ink-muted);
+}
+
+.device-setup-link-new {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  margin-top: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.device-setup-link-new label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.device-setup-link-new .device-setup-btn {
+  align-self: end;
+}
+
 .device-setup-add {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -358,11 +446,25 @@
 
 @media (max-width: 960px), (max-height: 760px) {
   .device-setup-lan__grid,
-  .device-setup-add {
+  .device-setup-add,
+  .device-setup-link-new {
     grid-template-columns: 1fr;
   }
 
   .device-setup-device-list li {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .device-setup-assign-row__actions {
+    width: 100%;
+  }
+
+  .device-setup-assign-row__role {
+    flex: 1 1 auto;
+  }
+
+  .device-setup-assign-row__role .device-setup-input {
+    width: 100%;
+    min-width: 0;
   }
 }
