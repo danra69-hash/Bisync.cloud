@@ -8,6 +8,7 @@ import type { DropdownLocation } from '../../utils/orgFilters';
 
 import { LocationDropdown } from '../overview/LocationDropdown';
 import { LanguageSelector } from './LanguageSelector';
+import { Bisync101Button } from '../bisync101/Bisync101Button';
 import { BrandEngineLockup } from './BrandEngineLockup';
 import { NotificationBell } from './NotificationBell';
 import { HeaderOrgClock } from './HeaderOrgClock';
@@ -32,12 +33,13 @@ type Props = {
   onGoHome: () => void;
   onToggleDark: () => void;
   onToggleEditLayout: () => void;
+  onOpenBisync101: () => void;
 };
 
 export function Header({
   activeNav, darkMode, editLayout, companies, orgLoading, orgError, onRefreshOrg,
   selectedCompanyId, locations, selectedLocationIds, onCompanyChange, onLocationChange,
-  onToggleSidebar, onGoHome, onToggleDark, onToggleEditLayout,
+  onToggleSidebar, onGoHome, onToggleDark, onToggleEditLayout, onOpenBisync101,
 }: Props) {
   const { t, navLabel } = useAppTranslation();
   const selectableCompanies = companies.filter(c => c.active !== false);
@@ -142,6 +144,8 @@ export function Header({
         <NotificationBell />
 
         <LanguageSelector />
+
+        <Bisync101Button onClick={onOpenBisync101} />
       </div>
     </header>
   );

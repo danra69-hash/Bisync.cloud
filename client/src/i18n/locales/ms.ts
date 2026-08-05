@@ -68,6 +68,10 @@ export const ms = {
     label: 'Bahasa',
     choose: 'Pilih bahasa',
   },
+  bisync101: {
+    title: 'Bisync101 — user guide & wiki',
+    open: 'Open Bisync101',
+  },
   header: {
     home: 'Laman Utama',
     operationsOverview: 'Laman Utama',
