@@ -109,6 +109,7 @@ builder.Services.AddScoped<B2bSalesOrderService>();
 builder.Services.AddScoped<InventoryCountService>();
 builder.Services.AddScoped<WastageService>();
 builder.Services.AddScoped<TransferService>();
+builder.Services.AddScoped<CreditNoteService>();
 builder.Services.AddScoped<LocationPartitionService>();
 builder.Services.AddScoped<CompanyOperationalDbProvisioner>();
 builder.Services.AddScoped<TenantRollupService>();

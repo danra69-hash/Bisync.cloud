@@ -298,8 +298,9 @@ export const PLATFORM_GLOSSARY_MODULES: GlossaryModule[] = [
       },
       {
         term: 'Credit Note',
-        meaning: 'Purchasing credit raised against a vendor or PO.',
-        dbName: 'creditNote (access task) / credit note records',
+        meaning:
+          'PO short-delivery credit that posts stock outbound; cancel revalues free replacement receipts without restoring qty.',
+        dbName: 'CreditNotes / InventoryMovements.ReferenceType=credit_note',
       },
     ],
   },

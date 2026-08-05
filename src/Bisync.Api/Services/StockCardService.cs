@@ -738,7 +738,7 @@ public class StockCardService(
 
     static bool IsOutboundSummaryType(string entryType) =>
         // split_use is composition of inbound (not a true outbound leave).
-        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "adjustment_out" or "outbound";
+        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "credit_note" or "transfer_out" or "adjustment_out" or "outbound";
 
     static decimal ComputeOutboundAveragePrice(
         IEnumerable<StockCardLedgerEntry> entries,
@@ -1328,6 +1328,8 @@ public class StockCardService(
             return "offline_order";
         if (refType == "wastage" || reason.Contains("wastage") || reason.Contains("spoilage"))
             return "wastage";
+        if (refType == "credit_note" || reason.Contains("credit note"))
+            return "credit_note";
         if (refType == "split_use" || reason.Contains("split use"))
             return "split_use";
         if (refType == "inventory_adjustment" || IsAdjustmentMovement(movement))
@@ -1360,6 +1362,7 @@ public class StockCardService(
             "online_order" => "Online order sales depletion",
             "offline_order" => "Offline order sales depletion",
             "wastage" => "Wastage",
+            "credit_note" => "Credit note",
             "split_use" => "Sub-component composition",
             "production" => productionProduct is null
                 ? "Production"
