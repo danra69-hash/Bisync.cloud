@@ -319,7 +319,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
       </div>
 
       <div className="bg-card border border-teal-500/30 rounded-lg overflow-hidden">
-        <div data-table-title data-sticky-table-title className="px-4 py-3 border-b border-teal-500/20 bg-teal-500/5">
+        <div className="px-4 py-3 border-b border-teal-500/20 bg-teal-500/5">
           <h2 className="text-sm font-semibold">Pre-committed POs</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             Company-level commitments sit above regular purchases. Received &amp; consolidated updates only after
@@ -385,8 +385,8 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         </TableScrollContainer>
       </div>
 
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div data-table-title data-sticky-table-title className="px-4 py-3 border-b border-border">
+      <div className="bg-card border border-border rounded-lg overflow-hidden flex flex-col min-h-0">
+        <div className="px-4 py-3 border-b border-border shrink-0 bg-card">
           <h2 className="text-sm font-semibold">Unreconciled purchases</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             Issue regular POs as usual. Matching Pre-committed products use commitment delivery unit and price;
@@ -395,7 +395,7 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         </div>
         <TableScrollContainer
           ref={scrollRootRef}
-          className="max-h-[calc(100vh-12rem)] overflow-y-auto"
+          className="max-h-[calc(100vh-12rem)] overflow-y-auto min-h-0"
           tableId="revenue.active-purchase.open"
         >
           <table className="w-full">
