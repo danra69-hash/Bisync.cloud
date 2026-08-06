@@ -5,7 +5,9 @@ namespace Bisync.Api.Controllers;
 
 [ApiController]
 [Route("api/stock-cards")]
-public class StockCardController(StockCardService stockCardService) : ControllerBase
+public class StockCardController(
+    StockCardService stockCardService,
+    ReceivedPurchaseStockHealer receivedStockHealer) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List(
@@ -13,13 +15,30 @@ public class StockCardController(StockCardService stockCardService) : Controller
         [FromQuery] string? locationIds,
         [FromQuery] string? itemType = "all",
         [FromQuery] string? uomMode = "inventory",
-        [FromQuery] string? period = null)
+        [FromQuery] string? period = null,
+        CancellationToken cancellationToken = default)
     {
         var locationIdList = ParseLocationIds(locationIds);
         if (locationIdList.Count == 0)
             return Ok(Array.Empty<object>());
 
-        var rows = await stockCardService.ListAsync(companyId, locationIdList, itemType, uomMode ?? "inventory", period);
+        // Opportunistic heal: Received POs from before receive-posts-stock still get on-hand rows.
+        try
+        {
+            await receivedStockHealer.HealMissingReceivedStockAsync(cancellationToken);
+        }
+        catch
+        {
+            // Listing must still succeed even if heal fails.
+        }
+
+        var rows = await stockCardService.ListAsync(
+            companyId,
+            locationIdList,
+            itemType,
+            uomMode ?? "inventory",
+            period,
+            cancellationToken);
         return Ok(rows.Select(r => new
         {
             r.ItemType,
