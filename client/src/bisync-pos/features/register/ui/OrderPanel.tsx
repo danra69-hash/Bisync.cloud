@@ -314,8 +314,12 @@ export function OrderPanel({
         <button
           type="button"
           className="btn btn--move-product"
-          disabled={!hasItems || paymentBusy}
-          title="Move highlighted product line(s) to another table"
+          disabled={!hasItems || !hasHighlightedLines || paymentBusy}
+          title={
+            hasHighlightedLines
+              ? 'Move highlighted product line(s) to another table'
+              : 'Highlight one or more line items first'
+          }
           onClick={() => onAction('moveProduct')}
         >
           Move Product
