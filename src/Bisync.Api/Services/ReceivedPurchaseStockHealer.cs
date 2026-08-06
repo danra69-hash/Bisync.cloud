@@ -209,6 +209,7 @@ public sealed class ReceivedPurchaseStockHealer(
             .ToListAsync(cancellationToken);
 
         var rewritten = 0;
+        var rewrittenPurchaseIds = new List<int>();
         foreach (var purchase in purchases)
         {
             if (!items.TryGetValue(purchase.PurchaseOrderItemId, out var item))
@@ -282,6 +283,7 @@ public sealed class ReceivedPurchaseStockHealer(
             purchase.UnitPrice = price;
             purchase.Uom = stockUom;
             rewritten++;
+            rewrittenPurchaseIds.Add(purchase.Id);
             logger.LogInformation(
                 "Rewrote under-converted stock purchase {PurchaseId} for component {ComponentId}: {Packages} pkg → {Qty} {Uom} @ {Price}.",
                 purchase.Id,
@@ -293,7 +295,25 @@ public sealed class ReceivedPurchaseStockHealer(
         }
 
         if (rewritten > 0)
+        {
             await db.SaveChangesAsync(cancellationToken);
+            // Keep FIFO batches on the same PCU qty/UOM — otherwise credit notes / issues
+            // still see the old package residual (e.g. Short by 3787.79 when reversing 1 tub).
+            foreach (var purchase in purchases.Where(p => rewrittenPurchaseIds.Contains(p.Id)))
+            {
+                try
+                {
+                    await fifoBatches.SyncBatchFromPurchaseAsync(purchase, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Failed syncing FIFO batch after rewriting purchase {PurchaseId}.",
+                        purchase.Id);
+                }
+            }
+        }
 
         return rewritten;
     }

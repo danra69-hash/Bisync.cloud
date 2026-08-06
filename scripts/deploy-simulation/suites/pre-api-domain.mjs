@@ -8,6 +8,7 @@ const focused = [
   'scripts/yield-loss-calculation.test.mjs',
   'scripts/stockcard-lifo-average.test.mjs',
   'scripts/open-checks.test.mjs',
+  'scripts/fifo-batch-pcu-sync.test.mjs',
 ]
 
 for (const rel of focused) {
