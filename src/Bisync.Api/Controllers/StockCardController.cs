@@ -35,6 +35,7 @@ public class StockCardController(StockCardService stockCardService) : Controller
             uom = r.Uom,
             recipeUom = r.RecipeUom,
             inventoryUom = r.InventoryUom,
+            lastChangedAt = r.LastChangedAt,
         }));
     }
 

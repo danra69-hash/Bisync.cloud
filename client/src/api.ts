@@ -3207,6 +3207,8 @@ export interface StockCardListRow {
   uom: string;
   recipeUom: string;
   inventoryUom: string;
+  /** Most recent stock activity (ISO); used to sort latest → oldest. */
+  lastChangedAt?: string | null;
 }
 
 export type StockCardEntryType =
