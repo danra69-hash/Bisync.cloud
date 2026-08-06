@@ -206,12 +206,14 @@ function LedgerEntryRow({
   entry,
   countryCode,
   rm,
+  uomPrice,
   nested = false,
   groupStart = false,
 }: {
   entry: StockCardLedgerEntry;
   countryCode: string;
   rm: (value: number) => string;
+  uomPrice: (value: number) => string;
   nested?: boolean;
   groupStart?: boolean;
 }) {
@@ -245,7 +247,7 @@ function LedgerEntryRow({
       <td className="px-3 py-2.5 text-right tabular-nums">{outbound}</td>
       <td className="px-3 py-2.5">{entry.uom}</td>
       <td className="px-3 py-2.5 text-right tabular-nums">
-        {entry.unitPrice > 0 ? rm(entry.unitPrice) : '—'}
+        {entry.unitPrice > 0 ? uomPrice(entry.unitPrice) : '—'}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">
         {entry.subtotal > 0 ? rm(entry.subtotal) : '—'}
@@ -294,7 +296,7 @@ export function StockCardDetailPanel({
 }: Props) {
 
   const countryCode = useOrgCountryCode();
-  const { rm } = useCountryFormatters();
+  const { rm, uomPrice } = useCountryFormatters();
   const [detail, setDetail] = useState<StockCardDetail | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -513,7 +515,7 @@ export function StockCardDetailPanel({
 
               <SummaryCell
                 label="Avg outbound price"
-                value={detail.averageCogs > 0 ? rm(detail.averageCogs) : '—'}
+                value={detail.averageCogs > 0 ? uomPrice(detail.averageCogs) : '—'}
                 uom={`per ${detail.uom}`}
               />
 
@@ -595,6 +597,7 @@ export function StockCardDetailPanel({
                           entry={group.entry}
                           countryCode={countryCode}
                           rm={rm}
+                          uomPrice={uomPrice}
                           nested={group.entry.entryType === 'split_use' || group.entry.entryType === 'split_use_in'}
                         />,
                       ];
@@ -607,6 +610,7 @@ export function StockCardDetailPanel({
                         entry={parent}
                         countryCode={countryCode}
                         rm={rm}
+                        uomPrice={uomPrice}
                         nested={false}
                         groupStart={children.length > 0}
                       />,
@@ -639,7 +643,7 @@ export function StockCardDetailPanel({
                                       {qty} {entry.uom}
                                     </span>
                                     {entry.unitPrice > 0 ? (
-                                      <span className="tabular-nums">{rm(entry.unitPrice)} / {entry.uom}</span>
+                                      <span className="tabular-nums">{uomPrice(entry.unitPrice)} / {entry.uom}</span>
                                     ) : null}
                                   </div>
                                 );
@@ -711,7 +715,7 @@ function OnHandSummaryCell({
   onAdjust?: () => void;
 }) {
   const countryCode = useOrgCountryCode();
-  const { rm } = useCountryFormatters();
+  const { uomPrice } = useCountryFormatters();
   const activeLayers = layers.filter(l => l.quantity > 0);
   const resolvedOnHandAverageCogs =
     onHandAverageCogs > 0 ? onHandAverageCogs : computeOnHandAverageCogs(layers);
@@ -745,7 +749,7 @@ function OnHandSummaryCell({
               key={`${layer.unitPrice}-${layer.quantity}`}
               className="text-[11px] tabular-nums text-muted-foreground leading-snug"
             >
-              {fmtQty(layer.quantity, countryCode)} @ {rm(layer.unitPrice)}
+              {fmtQty(layer.quantity, countryCode)} @ {uomPrice(layer.unitPrice)}
             </li>
           ))}
         </ul>

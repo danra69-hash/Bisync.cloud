@@ -1,5 +1,6 @@
 import type { ProductComponentItem } from '../api';
 import { formatRm } from './createOrder';
+import { formatPrincipalUomPrice } from '../utils/numberFormat';
 import {
   formatNutritionValue,
   type NutritionalFactorRow,
@@ -144,7 +145,7 @@ async function renderProductionMethodPage(doc: JsPDFDoc, data: ProductionMethodP
         item.componentName || item.componentId || '—',
         item.componentUom || '—',
         String(item.quantity),
-        formatRm(item.componentUomPrice, countryCode),
+        formatPrincipalUomPrice(item.componentUomPrice, countryCode),
         formatRm(item.subtotal ?? item.componentUomPrice * item.quantity, countryCode),
       ];
       colX = tableX;

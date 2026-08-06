@@ -10,7 +10,8 @@ export function computeOnHandAverageCogs(layers: StockCardOnHandLayer[]): number
   if (totalQty <= 0) return 0;
 
   const totalValue = active.reduce((sum, layer) => sum + layer.quantity * layer.unitPrice, 0);
-  return Math.round((totalValue / totalQty) * 100) / 100;
+  // Keep 4dp — principal/stock UOM unit prices are stored and displayed at 4 decimals.
+  return Math.round((totalValue / totalQty) * 10000) / 10000;
 }
 
 export function OnHandCogsTrendIcon({ onHand, outbound }: { onHand: number; outbound: number }) {
@@ -27,11 +28,11 @@ export function OnHandCogsTrendIcon({ onHand, outbound }: { onHand: number; outb
 }
 
 export function AvgCogsWithTrend({ onHand, outbound }: { onHand: number; outbound: number }) {
-  const { rm } = useCountryFormatters();
+  const { uomPrice } = useCountryFormatters();
   if (onHand <= 0) return <>—</>;
   return (
     <span className="inline-flex items-center justify-end">
-      {rm(onHand)}
+      {uomPrice(onHand)}
       <OnHandCogsTrendIcon onHand={onHand} outbound={outbound} />
     </span>
   );

@@ -38,7 +38,7 @@ export function ProductionMethodModal({
   yieldQuantity = 1,
   onClose,
 }: Props) {
-  const { rm, countryCode } = useCountryFormatters();
+  const { rm, uomPrice, countryCode } = useCountryFormatters();
   const [draft, setDraft] = useState<ProductProductionMethod>(() => loadProductionMethod(productKey));
   const [printing, setPrinting] = useState(false);
   const [apiRows, setApiRows] = useState<ProductNutrientEstimateRow[] | null>(null);
@@ -234,7 +234,7 @@ export function ProductionMethodModal({
                       <td className="px-3 py-2 font-medium">{item.componentName || item.componentId}</td>
                       <td className="px-3 py-2">{item.componentUom || '—'}</td>
                       <td className="px-3 py-2">{item.quantity}</td>
-                      <td className="px-3 py-2">{rm(item.componentUomPrice)}</td>
+                      <td className="px-3 py-2">{uomPrice(item.componentUomPrice)}</td>
                       <td className="px-3 py-2 font-medium">{rm(item.subtotal ?? item.componentUomPrice * item.quantity)}</td>
                     </tr>
                   ))}

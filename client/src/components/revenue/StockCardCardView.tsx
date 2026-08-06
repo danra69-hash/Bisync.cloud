@@ -63,7 +63,7 @@ function StockCardItemCard({
   onOpenDetail: (row: StockCardListRow) => void
 }) {
   const countryCode = useOrgCountryCode()
-  const { rm } = useCountryFormatters()
+  const { rm, uomPrice } = useCountryFormatters()
   const cardRef = useRef<HTMLElement | null>(null)
   const [visible, setVisible] = useState(false)
   const [detail, setDetail] = useState<StockCardDetail | null>(null)
@@ -162,10 +162,10 @@ function StockCardItemCard({
             </p>
           </div>
         </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
+            <p className="mt-1.5 text-xs text-muted-foreground">
           On hand {fmtQty(detail?.onHandQty ?? row.onHandQty, countryCode)} · Avg COGS{' '}
           {(detail?.onHandAverageCogs ?? row.onHandAverageCogs) > 0
-            ? rm(detail?.onHandAverageCogs ?? row.onHandAverageCogs)
+            ? uomPrice(detail?.onHandAverageCogs ?? row.onHandAverageCogs)
             : '—'}
         </p>
       </header>
@@ -215,7 +215,7 @@ function StockCardItemCard({
                             </td>
                             <td className="px-2 py-1.5">{entry.uom || '—'}</td>
                             <td className="px-2 py-1.5 text-right tabular-nums">
-                              {entry.unitPrice > 0 ? rm(entry.unitPrice) : '—'}
+                              {entry.unitPrice > 0 ? uomPrice(entry.unitPrice) : '—'}
                             </td>
                             <td className="px-2 py-1.5 text-muted-foreground">
                               <span className="block">{formatInboundSequence(entry)}</span>
@@ -261,7 +261,7 @@ function StockCardItemCard({
                         {' · '}
                         {entry.unitPrice > 0 ? (
                           <>
-                            {rm(entry.unitPrice)}
+                            {uomPrice(entry.unitPrice)}
                             {/prepaid/i.test(entry.reason ?? '') ? (
                               <span className="text-muted-foreground">
                                 {' '}· val {rm(entry.unitPrice * entry.quantity)}

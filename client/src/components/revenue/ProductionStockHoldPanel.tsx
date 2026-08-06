@@ -28,7 +28,7 @@ function formatWhen(iso?: string | null) {
 }
 
 export function ProductionStockHoldPanel({ selectedCompanyId, selectedLocationIds }: Props) {
-  const { rm, number: formatNumber } = useCountryFormatters();
+  const { uomPrice, number: formatNumber } = useCountryFormatters();
   const [rows, setRows] = useState<ProductionStockHold[]>([]);
   const [status, setStatus] = useState<'held' | 'depleted' | 'all'>('held');
   const [loading, setLoading] = useState(false);
@@ -118,7 +118,7 @@ export function ProductionStockHoldPanel({ selectedCompanyId, selectedLocationId
                   <td className="px-2 py-1.5">{row.productName || '—'}</td>
                   <td className="px-2 py-1.5">{row.uom || '—'}</td>
                   <td className="px-2 py-1.5 text-right font-sans">{formatNumber(row.quantity)}</td>
-                  <td className="px-2 py-1.5 text-right font-sans">{rm(row.unitPrice)}</td>
+                  <td className="px-2 py-1.5 text-right font-sans">{uomPrice(row.unitPrice)}</td>
                   <td className="px-2 py-1.5 font-sans">{formatWhen(row.createdAt)}</td>
                   <td className="px-2 py-1.5 capitalize">{row.status}</td>
                   <td className="px-2 py-1.5 font-sans">{formatWhen(row.depletedAt)}</td>

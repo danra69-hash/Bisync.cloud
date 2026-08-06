@@ -35,7 +35,7 @@ function emptyOverview(): ReturnableGoodsOverview {
 }
 
 export function ReturnableGoodsPage({ selectedCompanyId }: Props) {
-  const { rm, number: formatNumber } = useCountryFormatters();
+  const { rm, uomPrice, number: formatNumber } = useCountryFormatters();
   const [overview, setOverview] = useState<ReturnableGoodsOverview>(emptyOverview());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -236,7 +236,7 @@ export function ReturnableGoodsPage({ selectedCompanyId }: Props) {
                 <tr key={row.id} className="border-b border-border/70">
                   <td className="px-2 py-1.5 font-medium text-foreground">{row.returnableItemName}</td>
                   <td className="px-2 py-1.5">{row.uom || '—'}</td>
-                  <td className="px-2 py-1.5 text-right font-sans">{rm(row.uomPrice)}</td>
+                  <td className="px-2 py-1.5 text-right font-sans">{uomPrice(row.uomPrice)}</td>
                   <td className="px-2 py-1.5 text-right font-sans">{formatNumber(row.qty)}</td>
                   <td className="px-2 py-1.5 text-right font-sans">{rm(row.amountTotal)}</td>
                   <td className="px-2 py-1.5 font-sans">{row.poNumber || '—'}</td>
@@ -306,7 +306,7 @@ export function ReturnableGoodsPage({ selectedCompanyId }: Props) {
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="text-[11px] uppercase tracking-wider text-muted-foreground">UOM Price</span>
-                      <input className={filterSelectCls} value={rm(unitPrice)} readOnly />
+                      <input className={filterSelectCls} value={uomPrice(unitPrice)} readOnly />
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Total Sum</span>

@@ -34,6 +34,7 @@ import { VendorEngageModal } from './VendorEngageModal';
 import { VendorProductTagModal } from './VendorProductTagModal';
 import { MillstoneLoader } from '../shared/MillstoneLoader';
 import { useShouldHidePrices } from '../../hooks/useShouldHidePrices';
+import { useCountryFormatters } from '../../hooks/useCountryFormatters';
 
 const tdCls = 'px-3 py-2.5 align-top border-r border-b border-border last:border-r-0';
 const COMPONENT_COL_WIDTH_PX = 220;
@@ -70,6 +71,7 @@ function ComparePriceCellView({
 }) {
   const [draftCost, setDraftCost] = useState('');
   const [costError, setCostError] = useState<string | null>(null);
+  const { countryCode } = useCountryFormatters();
   const { product } = slot;
   const cell = slot.pricing;
   const needsManual = cell ? !cell.autoResolvable && cell.principalQty <= 0 : false;
@@ -138,7 +140,7 @@ function ComparePriceCellView({
           <p className="font-sans text-[11px] text-muted-foreground">Qty / UOM only</p>
         ) : cell && cell.uomCost !== null && cell.uomCost > 0 ? (
           <p className={`font-sans text-[11px] font-semibold ${isBest ? 'text-[#5A7A2A]' : 'text-foreground'}`}>
-            {formatUomCost(cell.uomCost, cell.componentUom)}
+            {formatUomCost(cell.uomCost, cell.componentUom, countryCode)}
             {isBest && <span className="ml-1 text-xs font-bold uppercase">Best</span>}
           </p>
         ) : cell && needsManual ? (
