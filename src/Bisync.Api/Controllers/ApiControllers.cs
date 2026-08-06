@@ -1538,11 +1538,7 @@ public class PurchaseOrdersController(
         if (hygiene is null)
             return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
 
-        if (!allowPartial)
-        {
-            // Non-partial vendors: receiving short of ordered is still allowed, but consolidates as a full close later.
-        }
-        else
+        if (allowPartial)
         {
             foreach (var line in request.Items)
             {
@@ -1557,6 +1553,8 @@ public class PurchaseOrdersController(
             }
         }
 
+        await using var transaction = await db.Database.BeginTransactionAsync();
+
         ApplyWorkflowLines(order, request.Items, workflow: "receive");
         order.VendorDoNumber = vendorDoNumber;
         order.VendorInvoiceNumber = vendorInvoiceNumber;
@@ -1567,7 +1565,38 @@ public class PurchaseOrdersController(
         order.Status = PurchaseOrderWorkflow.StatusReceived;
         order.ReceivedAt = DateTime.UtcNow;
 
+        var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
+        var locationIdsJson = locationIds.Count > 0
+            ? order.LocationIdsJson
+            : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+        var locationExternalId = locationIds.Count > 0
+            ? locationIds[0].Trim().ToLowerInvariant()
+            : string.Empty;
+
+        if (!string.IsNullOrEmpty(locationExternalId))
+            await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+
+        var receiptCreatedAt = DateTime.UtcNow;
+        var postError = await PostReceivedStockAsync(
+            order,
+            request.Items,
+            allowPartial,
+            locationIdsJson,
+            locationExternalId,
+            receiptCreatedAt,
+            remarks: PurchaseOrderWorkflow.StockRemarkReceivedPending);
+        if (postError is not null)
+            return BadRequest(new { message = postError });
+
         await db.SaveChangesAsync();
+
+        var receiptPurchases = await db.InventoryPurchases
+            .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
+            .ToListAsync();
+        foreach (var purchase in receiptPurchases)
+            await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
+
+        await transaction.CommitAsync();
         return Ok(await MapPurchaseOrderAsync(order, allowPartial));
     }
 
@@ -1593,8 +1622,6 @@ public class PurchaseOrdersController(
             return BadRequest(new { message = "Hygiene & cleanliness rating is required (Satisfied, Acceptable, or Poor)." });
 
         await using var transaction = await db.Database.BeginTransactionAsync();
-        // Capture shipment qtys before cumulative update.
-        var shipmentByItemId = request.Items.ToDictionary(l => l.ItemId, l => l.Quantity);
         ApplyWorkflowLines(order, request.Items, workflow: "reconcile");
         if (quality is not null) order.ProductQualityRating = quality;
         if (hygiene is not null) order.HygieneRating = hygiene;
@@ -1606,45 +1633,135 @@ public class PurchaseOrdersController(
         var updatedVendorProductPrices = await VendorProductPriceService.ApplyReconciledPricesAsync(
             db, order.Items, order.Id);
 
-        var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
-        var locationIdsJson = locationIds.Count > 0
-            ? order.LocationIdsJson
-            : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
-        var locationExternalId = locationIds.Count > 0
-            ? locationIds[0].Trim().ToLowerInvariant()
-            : string.Empty;
+        // Accounting affirmation: clear "received" remarks on stock already posted at receive.
+        // Legacy POs received before this policy may have no pending stock — post without remarks.
+        var pendingPurchases = await db.InventoryPurchases
+            .Where(p => p.PurchaseOrderId == order.Id
+                && p.Remarks == PurchaseOrderWorkflow.StockRemarkReceivedPending)
+            .ToListAsync();
 
-        if (!string.IsNullOrEmpty(locationExternalId))
-            await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+        if (pendingPurchases.Count > 0)
+        {
+            foreach (var line in request.Items)
+            {
+                var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
+                if (item is null) continue;
+                var price = item.ReconciledUnitPrice ?? line.UnitPrice;
+                // Ops already posted on-hand at receive; consolidation affirms accounting cost only.
+                item.ReconciledQuantity = item.DeliveredQuantity;
 
-        var receiptCreatedAt = DateTime.UtcNow;
-        foreach (var line in request.Items)
+                var itemPending = pendingPurchases
+                    .Where(p => p.PurchaseOrderItemId == item.Id)
+                    .ToList();
+                if (itemPending.Count == 0) continue;
+
+                foreach (var purchase in itemPending)
+                {
+                    if (!item.IsReturnableDeposit && price > 0)
+                        purchase.UnitPrice = price;
+                    purchase.Remarks = string.Empty;
+                }
+            }
+
+            foreach (var purchase in pendingPurchases)
+                await fifoBatches.UpdateBatchUnitCostFromPurchaseAsync(purchase);
+        }
+        else
+        {
+            // Legacy path: stock was not posted at receive — post now as consolidated (no pending remarks).
+            var locationIds = PurchaseOrderWorkflow.DeserializeLocationIds(order.LocationIdsJson);
+            var locationIdsJson = locationIds.Count > 0
+                ? order.LocationIdsJson
+                : PurchaseOrderWorkflow.SerializeLocationIds(locationIds);
+            var locationExternalId = locationIds.Count > 0
+                ? locationIds[0].Trim().ToLowerInvariant()
+                : string.Empty;
+
+            if (!string.IsNullOrEmpty(locationExternalId))
+                await locationPartitions.EnsurePartitionsForLocationAsync(locationExternalId);
+
+            var receiptCreatedAt = DateTime.UtcNow;
+            var postError = await PostReceivedStockAsync(
+                order,
+                request.Items,
+                allowPartial,
+                locationIdsJson,
+                locationExternalId,
+                receiptCreatedAt,
+                remarks: string.Empty,
+                bumpDeliveredQuantity: true);
+            if (postError is not null)
+                return BadRequest(new { message = postError });
+
+            await db.SaveChangesAsync();
+            var receiptPurchases = await db.InventoryPurchases
+                .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
+                .ToListAsync();
+            foreach (var purchase in receiptPurchases)
+                await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
+        }
+
+        if (allowPartial)
+        {
+            // Stay active until Final delivery completed — rating not applied yet.
+            order.Status = PurchaseOrderWorkflow.StatusPartiallyDelivered;
+            order.ReconciledAt = null;
+        }
+        else
+        {
+            order.Status = PurchaseOrderWorkflow.StatusReconciled;
+            order.ReconciledAt = DateTime.UtcNow;
+            order.FinalDeliveryCompletedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return Ok(new
+        {
+            order = await MapPurchaseOrderAsync(order, allowPartial),
+            updatedVendorProductPrices,
+        });
+    }
+
+    /// <summary>
+    /// Posts inbound stock for a receive (or legacy consolidate) shipment.
+    /// When <paramref name="remarks"/> is the pending-consolidation remark, ops on-hand is visible on the stock card until accounting consolidates.
+    /// </summary>
+    async Task<string?> PostReceivedStockAsync(
+        PurchaseOrder order,
+        List<PurchaseOrderLineWorkflowRequest> lines,
+        bool allowPartial,
+        string locationIdsJson,
+        string locationExternalId,
+        DateTime receiptCreatedAt,
+        string remarks,
+        bool bumpDeliveredQuantity = true)
+    {
+        foreach (var line in lines)
         {
             var item = order.Items.FirstOrDefault(i => i.Id == line.ItemId);
             if (item is null) continue;
 
-            var shipmentQty = shipmentByItemId.GetValueOrDefault(line.ItemId, line.Quantity);
-            if (allowPartial)
+            var shipmentQty = line.Quantity;
+            if (bumpDeliveredQuantity)
             {
-                var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
-                if (shipmentQty > remaining + 0.0001m)
-                    return BadRequest(new
-                    {
-                        message = $"Consolidate qty for '{item.Name}' cannot exceed remaining {remaining:0.####}."
-                    });
-                item.DeliveredQuantity = DecimalRounding.ToDb(item.DeliveredQuantity + Math.Max(0m, shipmentQty));
-                item.ReconciledQuantity = item.DeliveredQuantity;
-            }
-            else
-            {
-                item.DeliveredQuantity = DecimalRounding.ToDb(Math.Max(0m, shipmentQty));
-                item.ReconciledQuantity = item.DeliveredQuantity;
+                if (allowPartial)
+                {
+                    var remaining = Math.Max(0m, item.Quantity - item.DeliveredQuantity);
+                    if (shipmentQty > remaining + 0.0001m)
+                        return $"Received qty for '{item.Name}' cannot exceed remaining {remaining:0.####}.";
+                    item.DeliveredQuantity = DecimalRounding.ToDb(item.DeliveredQuantity + Math.Max(0m, shipmentQty));
+                }
+                else
+                {
+                    item.DeliveredQuantity = DecimalRounding.ToDb(Math.Max(0m, shipmentQty));
+                }
             }
 
             var qty = shipmentQty;
-            var price = item.ReconciledUnitPrice ?? line.UnitPrice;
-            if (qty <= 0) continue; // out-of-stock / zero receipt — no inventory post
-            if (item.IsReturnableDeposit) continue; // deposit lines are financial only
+            var price = item.ReceivedUnitPrice ?? item.ReconciledUnitPrice ?? line.UnitPrice;
+            if (qty <= 0) continue;
+            if (item.IsReturnableDeposit) continue;
             var uom = string.IsNullOrWhiteSpace(line.ComponentUom)
                 ? (string.IsNullOrWhiteSpace(item.ComponentUom) ? item.Unit : item.ComponentUom)
                 : line.ComponentUom.Trim();
@@ -1672,7 +1789,8 @@ public class PurchaseOrdersController(
                             : locationIdsJson,
                         locationExternalId,
                         "purchase-order",
-                        item.Id);
+                        item.Id,
+                        remarks);
                     continue;
                 }
 
@@ -1688,6 +1806,7 @@ public class PurchaseOrdersController(
                     PurchaseOrderId = order.Id,
                     PurchaseOrderItemId = item.Id,
                     ProductExpiryDate = (item.ProductExpiryDate ?? string.Empty).Trim(),
+                    Remarks = remarks ?? string.Empty,
                     CompanyId = order.CompanyId,
                     LocationIdsJson = string.IsNullOrWhiteSpace(locationIdsJson)
                         ? PurchaseOrderWorkflow.SerializeLocationIds(
@@ -1698,39 +1817,11 @@ public class PurchaseOrdersController(
             }
             catch (InvalidOperationException ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return ex.Message;
             }
         }
 
-        if (allowPartial)
-        {
-            // Stay active until Final delivery completed — rating not applied yet.
-            order.Status = PurchaseOrderWorkflow.StatusPartiallyDelivered;
-            order.ReconciledAt = null;
-        }
-        else
-        {
-            order.Status = PurchaseOrderWorkflow.StatusReconciled;
-            order.ReconciledAt = DateTime.UtcNow;
-            order.FinalDeliveryCompletedAt = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync();
-
-        // Guide step 1: each reconciled inbound line becomes a distinct cost-segregated batch.
-        // Only register batches created in this shipment (avoid re-registering prior partial posts).
-        var receiptPurchases = await db.InventoryPurchases
-            .Where(p => p.PurchaseOrderId == order.Id && p.DateCreatedInStock == receiptCreatedAt)
-            .ToListAsync();
-        foreach (var purchase in receiptPurchases)
-            await fifoBatches.RecordReceiptFromPurchaseAsync(purchase);
-
-        await transaction.CommitAsync();
-        return Ok(new
-        {
-            order = await MapPurchaseOrderAsync(order, allowPartial),
-            updatedVendorProductPrices,
-        });
+        return null;
     }
 
     /// <summary>
@@ -1801,7 +1892,7 @@ public class PurchaseOrdersController(
 
     /// <summary>
     /// Sums DeliveredQuantity on release PO lines that drew from each pre-committed master line
-    /// (stock impact after receive + consolidate).
+    /// (stock on-hand posts at receive; DeliveredQuantity is bumped then).
     /// </summary>
     async Task<Dictionary<int, Dictionary<int, decimal>>> ResolveConsolidatedByMasterItemAsync(
         IReadOnlyList<int> masterIds)

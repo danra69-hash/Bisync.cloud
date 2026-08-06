@@ -322,8 +322,8 @@ export function ActivePurchasePage({ selectedCompanyId, embedded = false }: Prop
         <div className="px-4 py-3 border-b border-teal-500/20 bg-teal-500/5">
           <h2 className="text-sm font-semibold">Pre-committed POs</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Company-level commitments sit above regular purchases. Received &amp; consolidated updates only after
-            each drawdown PO is received and consolidated — masters do not affect inbound stock directly.
+            Company-level commitments sit above regular purchases. Received &amp; consolidated updates when
+            each drawdown PO is received into stock — masters do not affect inbound stock directly.
           </p>
         </div>
         <TableScrollContainer

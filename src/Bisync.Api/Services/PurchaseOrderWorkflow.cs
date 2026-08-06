@@ -18,6 +18,11 @@ public static class PurchaseOrderWorkflow
     public const string StatusCommitted = "Committed";
     public const string StatusCommitmentClosed = "Commitment Closed";
 
+    /// <summary>
+    /// Stock-card remark applied when ops confirms receive. Cleared on consolidate (accounting affirmation).
+    /// </summary>
+    public const string StockRemarkReceivedPending = "Received — pending consolidation";
+
     public static bool IsActive(PurchaseOrder order) =>
         !string.Equals(order.Status, StatusReconciled, StringComparison.OrdinalIgnoreCase)
         && !string.Equals(order.Status, StatusCommitmentClosed, StringComparison.OrdinalIgnoreCase);

@@ -145,12 +145,14 @@ public class SplitUseService(BisyncDbContext db)
         string locationExternalId,
         string sourceType,
         int sourceId,
+        string? remarks = null,
         CancellationToken cancellationToken = default)
     {
         var config = ReadConfig(parent)
             ?? throw new InvalidOperationException("Split Use is not enabled for this component.");
         if (receiptQuantity <= 0)
             throw new InvalidOperationException("Receipt quantity must be greater than zero.");
+        var stockRemarks = (remarks ?? string.Empty).Trim();
 
         var basisUom = config.QuantityBasis == "recipe" ? parent.RecipeUom : parent.InventoryUom;
         var receiptBasisQty = ConvertQuantity(receiptQuantity, receiptUom, basisUom, parent);
@@ -234,7 +236,8 @@ public class SplitUseService(BisyncDbContext db)
                 sourceType,
                 sourceId,
                 line.Key,
-                parent.ComponentId));
+                parent.ComponentId,
+                stockRemarks));
 
             // Allocate parent receipt into child stock (composition). Parent on-hand becomes
             // Component Nett; this is not a sale/transfer outbound — stock card labels it Split.
@@ -287,7 +290,8 @@ public class SplitUseService(BisyncDbContext db)
             sourceType,
             sourceId,
             "__gross__",
-            parent.ComponentId);
+            parent.ComponentId,
+            stockRemarks);
 
         db.InventoryPurchases.Add(parentPurchase);
         db.InventoryPurchases.AddRange(childPurchases);
@@ -331,7 +335,8 @@ public class SplitUseService(BisyncDbContext db)
         string sourceType,
         int sourceId,
         string lineKey,
-        string parentComponentId) => new()
+        string parentComponentId,
+        string remarks = "") => new()
         {
             ComponentId = componentId,
             ComponentName = componentName,
@@ -349,6 +354,7 @@ public class SplitUseService(BisyncDbContext db)
             SplitSourceId = sourceId,
             SplitLineKey = lineKey,
             SplitParentComponentId = parentComponentId,
+            Remarks = remarks ?? string.Empty,
         };
 
     static SplitUseConfig ParseAndValidate(JsonObject node, string inventoryUom, string recipeUom)

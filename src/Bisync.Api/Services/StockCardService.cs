@@ -1173,11 +1173,14 @@ public class StockCardService(
             var reason = isSplitChild
                 ? $"Split from {purchase.SplitParentComponentId}"
                     + (string.IsNullOrWhiteSpace(poNumber) ? string.Empty : $" — PO {poNumber}")
-                : entryType == "purchase"
-                    ? $"Purchase received — PO {poNumber}"
-                    : entryType == "cash_purchase"
-                        ? "Cash purchase"
-                        : "Stock inbound";
+                : !string.IsNullOrWhiteSpace(purchase.Remarks)
+                    ? $"{purchase.Remarks.Trim()}"
+                        + (string.IsNullOrWhiteSpace(poNumber) ? string.Empty : $" — PO {poNumber}")
+                    : entryType == "purchase"
+                        ? $"Purchase received — PO {poNumber}"
+                        : entryType == "cash_purchase"
+                            ? "Cash purchase"
+                            : "Stock inbound";
 
             var sourceLabel = isSplitChild
                 ? $"Split from {purchase.SplitParentComponentId}"
