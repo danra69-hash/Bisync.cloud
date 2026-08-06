@@ -691,7 +691,9 @@ public static class StockCardFifoEngine
 
     static bool IsOutboundConsume(string entryType) =>
         // split_use reduces parent on-hand to Component Nett after composition (not a sale).
-        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage" or "transfer_out" or "outbound" or "split_use";
+        // credit_note / store_issue are confirmed stock leaves and must appear on the ledger.
+        entryType is "production" or "pos_sale" or "online_order" or "offline_order" or "wastage"
+            or "transfer_out" or "outbound" or "split_use" or "credit_note" or "store_issue";
 
     static string FormatQty(decimal qty)
     {

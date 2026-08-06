@@ -145,6 +145,14 @@ function entryTypeLabel(entryType: StockCardLedgerEntry['entryType'], reason?: s
 
       return 'Outbound';
 
+    case 'credit_note':
+
+      return 'Credit note';
+
+    case 'store_issue':
+
+      return 'Store issue';
+
     default:
 
       return entryType;

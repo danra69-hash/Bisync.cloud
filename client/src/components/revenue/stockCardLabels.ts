@@ -40,6 +40,10 @@ export function stockCardEntryTypeLabel(
       return 'Split use'
     case 'split_use_in':
       return 'Split use in'
+    case 'credit_note':
+      return 'Credit note'
+    case 'store_issue':
+      return 'Store issue'
     default:
       return entryType.replace(/_/g, ' ')
   }
@@ -71,6 +75,8 @@ export function isOutboundLedgerEntry(entry: StockCardLedgerEntry): boolean {
     || entry.entryType === 'adjustment_out'
     || entry.entryType === 'outbound'
     || entry.entryType === 'split_use'
+    || entry.entryType === 'credit_note'
+    || entry.entryType === 'store_issue'
   )
 }
 
