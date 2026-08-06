@@ -35,7 +35,18 @@ function tenantHeaders(extra?: HeadersInit): HeadersInit {
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { headers: tenantHeaders() });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let message = `API error ${res.status}: ${path}`;
+    try {
+      const parsed = JSON.parse(text) as { message?: string; title?: string };
+      if (parsed.message) message = parsed.message;
+      else if (parsed.title) message = parsed.title;
+    } catch {
+      /* keep fallback */
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 
