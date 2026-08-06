@@ -270,7 +270,12 @@ function StockCardItemCard({
                           </>
                         ) : '—'}
                       </p>
-                      {/prepaid/i.test(entry.reason ?? '') && entry.reason ? (
+                      {entry.entryType === 'credit_note' && entry.referenceNumber ? (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                          {entry.referenceNumber}
+                          {entry.reason ? ` · ${entry.reason}` : ''}
+                        </p>
+                      ) : /prepaid/i.test(entry.reason ?? '') && entry.reason ? (
                         <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
                           {entry.reason}
                         </p>

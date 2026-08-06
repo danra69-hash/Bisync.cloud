@@ -9,6 +9,7 @@ const focused = [
   'scripts/stockcard-lifo-average.test.mjs',
   'scripts/open-checks.test.mjs',
   'scripts/fifo-batch-pcu-sync.test.mjs',
+  'scripts/stockcard-credit-note-outbound.test.mjs',
 ]
 
 for (const rel of focused) {

@@ -3254,7 +3254,10 @@ export type StockCardEntryType =
   | 'inbound'
   | 'outbound'
   | 'split_use'
-  | 'split_use_in';
+  | 'split_use_in'
+  | 'credit_note'
+  | 'store_issue'
+  | 'store_hold_in';
 
 export interface StockCardLedgerEntry {
   id: number;

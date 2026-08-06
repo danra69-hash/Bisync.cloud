@@ -1542,10 +1542,26 @@ public class StockCardService(
         if (productionProduct is not null && ShouldEnrichProductionReason(movement))
             return FormatProductionDeductionReason(productionProduct, movement);
 
+        var entryType = ClassifyMovementEntryType(movement);
+        if (entryType == "credit_note")
+        {
+            var raw = (movement.Reason ?? string.Empty).Trim();
+            if (raw.Length > 0)
+            {
+                var fifoIdx = raw.IndexOf("[fifo:", StringComparison.OrdinalIgnoreCase);
+                if (fifoIdx >= 0)
+                    raw = raw[..fifoIdx].Trim();
+                raw = raw.Replace('_', ' ').Trim();
+                if (raw.Length > 0)
+                    return raw;
+            }
+            return "Credit note";
+        }
+
         if (!string.IsNullOrWhiteSpace(movement.Reason))
             return movement.Reason.Replace('_', ' ');
 
-        return ClassifyMovementEntryType(movement) switch
+        return entryType switch
         {
             "transfer_in" => "Transfer in",
             "transfer_out" => "Transfer out",
@@ -1621,7 +1637,33 @@ public class StockCardService(
         if (productionProduct is not null && !string.IsNullOrWhiteSpace(productionProduct.ProductId))
             return productionProduct.ProductId.Trim();
 
+        var refType = (movement.ReferenceType ?? string.Empty).Trim().ToLowerInvariant();
+        if (refType == "credit_note" && movement.ReferenceId > 0)
+        {
+            // Stock Card outbound shows this as the credit-note transaction id.
+            var fifoTx = TryParseFifoTransactionId(movement.Reason);
+            return fifoTx is Guid tx
+                ? $"CN-{movement.ReferenceId} · TX {tx.ToString("N")[..8].ToUpperInvariant()}"
+                : $"CN-{movement.ReferenceId}";
+        }
+
         return movement.ReferenceId > 0 ? movement.ReferenceId.ToString() : string.Empty;
+    }
+
+    static Guid? TryParseFifoTransactionId(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            return null;
+        var marker = "[fifo:";
+        var start = reason.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+            return null;
+        start += marker.Length;
+        var end = reason.IndexOf(']', start);
+        if (end <= start)
+            return null;
+        var hex = reason[start..end].Trim();
+        return Guid.TryParseExact(hex, "N", out var id) ? id : null;
     }
 
     async Task<Dictionary<int, Product>> LoadProductionProductsForMovementsAsync(
