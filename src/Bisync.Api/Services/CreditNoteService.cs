@@ -19,6 +19,9 @@ public class CreditNoteService(
     /// </summary>
     public const decimal ErroneousTinyQuantity = 0.001m;
 
+    /// <summary>Minimum allowed credit qty (delivery packages). Anything below is purged as junk.</summary>
+    public const decimal MinAllowedCreditQuantity = 0.01m;
+
     static readonly Regex FifoTransactionMarker = new(
         @"\[fifo:([0-9a-fA-F]{32})\]",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -76,9 +79,9 @@ public class CreditNoteService(
     {
         if (quantity <= 0)
             throw new InvalidOperationException("Credit quantity must be greater than zero.");
-        if (quantity <= ErroneousTinyQuantity + 0.00005m)
+        if (quantity < MinAllowedCreditQuantity)
             throw new InvalidOperationException(
-                "Credit quantity looks invalid (≤ 0.0010 delivery units). Enter the shortfall in whole delivery packages.");
+                $"Credit quantity must be at least {MinAllowedCreditQuantity:0.##} delivery units (got {quantity:0.####}).");
 
         var order = await db.PurchaseOrders
             .Include(o => o.Items)
@@ -301,18 +304,20 @@ public class CreditNoteService(
     }
 
     /// <summary>
-    /// One-shot purge of confirmed/cancelled credit notes whose delivery qty is the erroneous
-    /// 0.0010 value (wrong PCU / conversion display). Reverses stock then deletes the rows.
+    /// Purge credit notes with delivery qty below the allowed minimum (e.g. displayed 0.0010).
+    /// Best-effort: stock reverse failures still remove the credit-note row so the UI clears.
     /// </summary>
     public async Task<int> PurgeErroneousTinyQuantityAsync(
         CancellationToken cancellationToken = default)
     {
-        var tiny = await db.CreditNotes
-            .Where(c =>
-                c.Quantity > 0
-                && c.Quantity <= ErroneousTinyQuantity + 0.00005m)
+        // Load candidates in memory — EF decimal compare against PG numeric can miss edge rows.
+        var candidates = await db.CreditNotes
             .OrderBy(c => c.Id)
             .ToListAsync(cancellationToken);
+
+        var tiny = candidates
+            .Where(c => c.Quantity > 0 && c.Quantity < MinAllowedCreditQuantity)
+            .ToList();
 
         if (tiny.Count == 0)
             return 0;
@@ -320,23 +325,63 @@ public class CreditNoteService(
         var purged = 0;
         foreach (var entry in tiny)
         {
-            await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
             try
             {
-                await ReverseStockEffectsAsync(entry, cancellationToken);
-                db.CreditNotes.Remove(entry);
-                await db.SaveChangesAsync(cancellationToken);
-                await tx.CommitAsync(cancellationToken);
-                purged++;
+                await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+                try
+                {
+                    try
+                    {
+                        await ReverseStockEffectsAsync(entry, cancellationToken);
+                    }
+                    catch
+                    {
+                        // Still delete the bad CN even if FIFO restore fails.
+                        var orphanMoves = await db.InventoryMovements
+                            .Where(m => m.ReferenceType == ReferenceType && m.ReferenceId == entry.Id)
+                            .ToListAsync(cancellationToken);
+                        if (orphanMoves.Count > 0)
+                            db.InventoryMovements.RemoveRange(orphanMoves);
+                    }
+
+                    db.CreditNotes.Remove(entry);
+                    await db.SaveChangesAsync(cancellationToken);
+                    await tx.CommitAsync(cancellationToken);
+                    purged++;
+                }
+                catch
+                {
+                    await tx.RollbackAsync(cancellationToken);
+                    // Detach and fall through to raw SQL force-delete.
+                    db.ChangeTracker.Clear();
+                    await ForceDeleteCreditNoteRowAsync(entry.Id, cancellationToken);
+                    purged++;
+                }
             }
             catch
             {
-                await tx.RollbackAsync(cancellationToken);
-                throw;
+                // Continue purging remaining tiny rows.
+                db.ChangeTracker.Clear();
             }
         }
 
         return purged;
+    }
+
+    async Task ForceDeleteCreditNoteRowAsync(int creditNoteId, CancellationToken cancellationToken)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM "InventoryMovements"
+            WHERE "ReferenceType" = {0} AND "ReferenceId" = {1}
+            """,
+            ReferenceType,
+            creditNoteId);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            DELETE FROM "CreditNotes" WHERE "Id" = {0}
+            """,
+            creditNoteId);
     }
 
     async Task ReverseStockEffectsAsync(CreditNote entry, CancellationToken cancellationToken)

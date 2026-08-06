@@ -17,8 +17,19 @@ public class CreditNotesController(
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> List(
         [FromQuery] int? companyId = null,
-        [FromQuery] string? locationIds = null)
+        [FromQuery] string? locationIds = null,
+        CancellationToken cancellationToken = default)
     {
+        // Drop junk tiny-qty rows (e.g. 0.0010) before the page reads them.
+        try
+        {
+            await creditNotes.PurgeErroneousTinyQuantityAsync(cancellationToken);
+        }
+        catch
+        {
+            // Listing must still succeed; purge is best-effort.
+        }
+
         var cid = TenantQuery.ResolveCompanyId(tenant, companyId);
         if (cid is null && !TenantQuery.AllowsAllCompanies(tenant, cid))
             return Ok(Array.Empty<object>());
@@ -38,7 +49,7 @@ public class CreditNotesController(
             .OrderByDescending(c => c.CreditNoteDate)
             .ThenByDescending(c => c.Id)
             .Take(500)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return Ok(rows.Select(CreditNoteService.Map));
     }
