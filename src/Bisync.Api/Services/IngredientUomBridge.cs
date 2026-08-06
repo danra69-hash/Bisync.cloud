@@ -19,9 +19,9 @@ public static class IngredientUomBridge
         if (quantity <= 0 || ingredient is null)
             return (quantity, (uom ?? string.Empty).Trim());
 
-        var selected = Normalize(uom);
-        var inventory = Normalize(ingredient.InventoryUom);
-        var recipe = Normalize(ingredient.RecipeUom);
+        var selected = UomCanonical.Normalize(uom);
+        var inventory = UomCanonical.Normalize(ingredient.InventoryUom);
+        var recipe = UomCanonical.Normalize(ingredient.RecipeUom);
 
         if (string.IsNullOrEmpty(selected))
             return (quantity, ingredient.InventoryUom?.Trim() ?? uom);
@@ -55,9 +55,9 @@ public static class IngredientUomBridge
         if (quantity <= 0 || ingredient is null)
             return (quantity, (uom ?? string.Empty).Trim());
 
-        var selected = Normalize(uom);
-        var inventory = Normalize(ingredient.InventoryUom);
-        var recipe = Normalize(ingredient.RecipeUom);
+        var selected = UomCanonical.Normalize(uom);
+        var inventory = UomCanonical.Normalize(ingredient.InventoryUom);
+        var recipe = UomCanonical.Normalize(ingredient.RecipeUom);
         var recipeLabel = string.IsNullOrWhiteSpace(ingredient.RecipeUom)
             ? (uom ?? string.Empty).Trim()
             : ingredient.RecipeUom.Trim();
@@ -85,8 +85,9 @@ public static class IngredientUomBridge
 
     /// <summary>
     /// Converts a received delivery-package quantity into Principal Component Unit for stock posting.
-    /// Uses tagged <c>vendorProductPrincipalQty</c> when available; otherwise converts inventory/component
-    /// UOM → recipe. Unit price is scaled so total value is preserved.
+    /// Formula: <c>stockQty = packages × tagged principal-per-package</c>,
+    /// <c>stockPrice = deliveryUnitPrice ÷ principal-per-package</c> (4dp).
+    /// Falls back to inventory↔recipe conversion when no vendor tag exists.
     /// </summary>
     public static (decimal Quantity, string Uom, decimal UnitPrice) ToInboundPrincipal(
         Ingredient ingredient,
@@ -103,10 +104,10 @@ public static class IngredientUomBridge
         var recipeLabel = string.IsNullOrWhiteSpace(ingredient.RecipeUom)
             ? sourceUom
             : ingredient.RecipeUom.Trim();
-        var recipe = Normalize(ingredient.RecipeUom);
-        var inventory = Normalize(ingredient.InventoryUom);
-        var selected = Normalize(sourceUom);
-        var delivery = Normalize(deliveryUom);
+        var recipe = UomCanonical.Normalize(ingredient.RecipeUom);
+        var inventory = UomCanonical.Normalize(ingredient.InventoryUom);
+        var selected = UomCanonical.Normalize(sourceUom);
+        var delivery = UomCanonical.Normalize(deliveryUom);
 
         // Prefer tagged principal qty: delivery packages × PCU-per-package.
         if (TryGetVendorPrincipalPerPackage(
@@ -116,49 +117,48 @@ public static class IngredientUomBridge
                 out var taggedComponentUom)
             && principalPerPackage > 0)
         {
-            var principalInRecipe = principalPerPackage;
-            var tagged = Normalize(taggedComponentUom);
-            if (!string.IsNullOrEmpty(tagged)
-                && !string.IsNullOrEmpty(recipe)
-                && tagged != recipe
-                && TryConvertQuantity(ingredient, principalPerPackage, taggedComponentUom, recipeLabel, out var convertedPrincipal))
+            // Already posted in PCU (qty ≈ packages × principal): do not multiply again.
+            if (!string.IsNullOrEmpty(recipe)
+                && selected == recipe
+                && LooksAlreadyConvertedToPrincipal(quantity, unitPrice, principalPerPackage))
             {
-                principalInRecipe = convertedPrincipal;
+                return (quantity, recipeLabel, DecimalRounding.ToDb(unitPrice));
             }
-            else if (!string.IsNullOrEmpty(tagged)
-                     && !string.IsNullOrEmpty(inventory)
-                     && tagged == inventory
-                     && !string.IsNullOrEmpty(recipe)
-                     && tagged != recipe)
-            {
-                var (converted, _) = ToRecipePreferred(ingredient, principalPerPackage, taggedComponentUom);
-                principalInRecipe = converted;
-            }
+
+            // Source already labeled as PCU but qty still looks like package count → convert.
+            // Also convert when source is delivery UOM / inventory / unknown.
+            var principalInRecipe = ResolvePrincipalInRecipeUom(
+                ingredient,
+                principalPerPackage,
+                taggedComponentUom,
+                recipeLabel,
+                recipe,
+                inventory);
 
             if (principalInRecipe > 0)
             {
-                var stockQty = quantity * principalInRecipe;
-                var stockPrice = stockQty > 0
-                    ? unitPrice / principalInRecipe
-                    : unitPrice;
+                var stockQty = DecimalRounding.ToDb(quantity * principalInRecipe);
+                var stockPrice = principalInRecipe > 0
+                    ? DecimalRounding.ToDb(unitPrice / principalInRecipe)
+                    : DecimalRounding.ToDb(unitPrice);
                 return (stockQty, recipeLabel, stockPrice);
             }
         }
 
         // Already PCU (or convertible inventory → PCU).
         if (!string.IsNullOrEmpty(recipe) && selected == recipe)
-            return (quantity, recipeLabel, unitPrice);
+            return (quantity, recipeLabel, DecimalRounding.ToDb(unitPrice));
 
         if (!string.IsNullOrEmpty(inventory) && selected == inventory
             && !string.IsNullOrEmpty(recipe) && recipe != inventory)
         {
             var (convertedQty, convertedUom) = ToRecipePreferred(ingredient, quantity, sourceUom);
-            if (convertedQty > 0 && quantity > 0 && ConvertedAwayFromSource(quantity, convertedQty, selected, Normalize(convertedUom)))
+            if (convertedQty > 0 && quantity > 0 && ConvertedAwayFromSource(quantity, convertedQty, selected, UomCanonical.Normalize(convertedUom)))
             {
-                var stockPrice = unitPrice * (quantity / convertedQty);
+                var stockPrice = DecimalRounding.ToDb(unitPrice * (quantity / convertedQty));
                 return (convertedQty, convertedUom, stockPrice);
             }
-            return (convertedQty, convertedUom, unitPrice);
+            return (convertedQty, convertedUom, DecimalRounding.ToDb(unitPrice));
         }
 
         // Qty may still be labeled with delivery UOM while ComponentUom was empty.
@@ -169,89 +169,58 @@ public static class IngredientUomBridge
         {
             // No principal factor — keep as-is but label PCU when recipe exists so stock card can show it.
             if (!string.IsNullOrEmpty(recipeLabel))
-                return (quantity, recipeLabel, unitPrice);
+                return (quantity, recipeLabel, DecimalRounding.ToDb(unitPrice));
         }
 
         var (fallbackQty, fallbackUom) = ToRecipePreferred(ingredient, quantity, sourceUom);
-        return (fallbackQty, fallbackUom, unitPrice);
+        return (fallbackQty, fallbackUom, DecimalRounding.ToDb(unitPrice));
     }
 
     /// <summary>
-    /// Converts quantity (and unit price) from <paramref name="fromUom"/> into <paramref name="toUom"/>
-    /// when both are the ingredient's recipe/inventory principals (or identical).
+    /// True when a posted stock row still looks like delivery-package qty @ delivery-package price
+    /// (needs packages × principal conversion).
+    /// <paramref name="deliveryPackageQty"/> must be the PO shipment/order package count, not the posted PCU qty.
     /// </summary>
-    public static bool TryConvertToUom(
+    public static bool NeedsDeliveryToPrincipalConversion(
         Ingredient ingredient,
-        decimal quantity,
-        decimal unitPrice,
-        string fromUom,
-        string toUom,
-        out decimal convertedQty,
-        out decimal convertedPrice)
+        decimal postedQty,
+        decimal postedUnitPrice,
+        decimal deliveryPackageQty,
+        decimal deliveryUnitPrice,
+        string? vendorProductId)
     {
-        convertedQty = quantity;
-        convertedPrice = unitPrice;
-        if (ingredient is null) return false;
-
-        var from = Normalize(fromUom);
-        var to = Normalize(toUom);
-        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+        if (ingredient is null || postedQty <= 0 || deliveryPackageQty <= 0)
             return false;
-        if (from == to)
+        if (!TryGetVendorPrincipalPerPackage(
+                ingredient.DetailConfigJson,
+                vendorProductId,
+                out var principal,
+                out _)
+            || principal <= 1.0000001m)
+            return false;
+
+        var expectedQty = DecimalRounding.ToDb(deliveryPackageQty * principal);
+        var expectedPrice = deliveryUnitPrice > 0
+            ? DecimalRounding.ToDb(deliveryUnitPrice / principal)
+            : 0m;
+
+        // Already correct.
+        if (NearlyEqual(postedQty, expectedQty)
+            && (expectedPrice <= 0 || NearlyEqual(postedUnitPrice, expectedPrice)))
+            return false;
+
+        // Posted qty still matches package count (never multiplied by principal).
+        if (NearlyEqual(postedQty, deliveryPackageQty))
             return true;
 
-        if (!TryConvertQuantity(ingredient, quantity, fromUom, toUom, out convertedQty))
-            return false;
-
-        if (quantity > 0 && convertedQty > 0)
-            convertedPrice = unitPrice * (quantity / convertedQty);
-        return true;
-    }
-
-    public static bool TryConvertQuantity(
-        Ingredient ingredient,
-        decimal quantity,
-        string fromUom,
-        string toUom,
-        out decimal convertedQty)
-    {
-        convertedQty = quantity;
-        if (ingredient is null) return false;
-
-        var from = Normalize(fromUom);
-        var to = Normalize(toUom);
-        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
-            return false;
-        if (from == to)
+        // Posted price still matches delivery package price (never divided by principal).
+        if (deliveryUnitPrice > 0 && NearlyEqual(postedUnitPrice, deliveryUnitPrice))
             return true;
-
-        var inventory = Normalize(ingredient.InventoryUom);
-        var recipe = Normalize(ingredient.RecipeUom);
-
-        if (string.IsNullOrEmpty(inventory) || string.IsNullOrEmpty(recipe) || inventory == recipe)
-            return false;
-
-        if (!TryGetRatio(ingredient.DetailConfigJson, out var inventoryPer, out var recipePer)
-            || inventoryPer <= 0
-            || recipePer <= 0)
-            return false;
-
-        if (from == inventory && to == recipe)
-        {
-            convertedQty = quantity * (recipePer / inventoryPer);
-            return true;
-        }
-
-        if (from == recipe && to == inventory)
-        {
-            convertedQty = quantity * (inventoryPer / recipePer);
-            return true;
-        }
 
         return false;
     }
 
-    static bool TryGetVendorPrincipalPerPackage(
+    public static bool TryGetVendorPrincipalPerPackage(
         string? detailConfigJson,
         string? vendorProductId,
         out decimal principalPerPackage,
@@ -288,6 +257,134 @@ public static class IngredientUomBridge
             return false;
         }
     }
+
+    /// <summary>
+    /// Converts quantity (and unit price) from <paramref name="fromUom"/> into <paramref name="toUom"/>
+    /// when both are the ingredient's recipe/inventory principals (or identical).
+    /// </summary>
+    public static bool TryConvertToUom(
+        Ingredient ingredient,
+        decimal quantity,
+        decimal unitPrice,
+        string fromUom,
+        string toUom,
+        out decimal convertedQty,
+        out decimal convertedPrice)
+    {
+        convertedQty = quantity;
+        convertedPrice = unitPrice;
+        if (ingredient is null) return false;
+
+        var from = UomCanonical.Normalize(fromUom);
+        var to = UomCanonical.Normalize(toUom);
+        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+            return false;
+        if (from == to)
+            return true;
+
+        if (!TryConvertQuantity(ingredient, quantity, fromUom, toUom, out convertedQty))
+            return false;
+
+        if (quantity > 0 && convertedQty > 0)
+            convertedPrice = DecimalRounding.ToDb(unitPrice * (quantity / convertedQty));
+        return true;
+    }
+
+    public static bool TryConvertQuantity(
+        Ingredient ingredient,
+        decimal quantity,
+        string fromUom,
+        string toUom,
+        out decimal convertedQty)
+    {
+        convertedQty = quantity;
+        if (ingredient is null) return false;
+
+        var from = UomCanonical.Normalize(fromUom);
+        var to = UomCanonical.Normalize(toUom);
+        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+            return false;
+        if (from == to)
+            return true;
+
+        var inventory = UomCanonical.Normalize(ingredient.InventoryUom);
+        var recipe = UomCanonical.Normalize(ingredient.RecipeUom);
+
+        if (string.IsNullOrEmpty(inventory) || string.IsNullOrEmpty(recipe) || inventory == recipe)
+            return false;
+
+        if (!TryGetRatio(ingredient.DetailConfigJson, out var inventoryPer, out var recipePer)
+            || inventoryPer <= 0
+            || recipePer <= 0)
+            return false;
+
+        if (from == inventory && to == recipe)
+        {
+            convertedQty = quantity * (recipePer / inventoryPer);
+            return true;
+        }
+
+        if (from == recipe && to == inventory)
+        {
+            convertedQty = quantity * (inventoryPer / recipePer);
+            return true;
+        }
+
+        return false;
+    }
+
+    static decimal ResolvePrincipalInRecipeUom(
+        Ingredient ingredient,
+        decimal principalPerPackage,
+        string taggedComponentUom,
+        string recipeLabel,
+        string recipe,
+        string inventory)
+    {
+        var principalInRecipe = principalPerPackage;
+        var tagged = UomCanonical.Normalize(taggedComponentUom);
+        if (!string.IsNullOrEmpty(tagged)
+            && !string.IsNullOrEmpty(recipe)
+            && tagged != recipe
+            && TryConvertQuantity(ingredient, principalPerPackage, taggedComponentUom, recipeLabel, out var convertedPrincipal))
+        {
+            principalInRecipe = convertedPrincipal;
+        }
+        else if (!string.IsNullOrEmpty(tagged)
+                 && !string.IsNullOrEmpty(inventory)
+                 && tagged == inventory
+                 && !string.IsNullOrEmpty(recipe)
+                 && tagged != recipe)
+        {
+            var (converted, _) = ToRecipePreferred(ingredient, principalPerPackage, taggedComponentUom);
+            principalInRecipe = converted;
+        }
+
+        return principalInRecipe;
+    }
+
+    /// <summary>
+    /// Heuristic: qty already looks like packages×principal (>> 1 package) and unit price
+    /// looks like deliveryPrice/principal (much smaller than a typical package price).
+    /// </summary>
+    static bool LooksAlreadyConvertedToPrincipal(
+        decimal quantity,
+        decimal unitPrice,
+        decimal principalPerPackage)
+    {
+        if (principalPerPackage <= 1.0000001m) return false;
+        // Converted qty is at least ~one full package worth of PCU.
+        if (quantity + 0.0001m < principalPerPackage) return false;
+        // Unit price should be a small fraction of package price after ÷ principal.
+        var packagesApprox = quantity / principalPerPackage;
+        if (packagesApprox < 0.5m) return false;
+        // If price × principal ≈ a plausible delivery price (> unitPrice itself), treat as converted.
+        var impliedDelivery = unitPrice * principalPerPackage;
+        return impliedDelivery > unitPrice * 1.5m;
+    }
+
+    static bool NearlyEqual(decimal a, decimal b, decimal tolerance = 0.00015m)
+        => Math.Abs(a - b) <= Math.Max(tolerance, Math.Abs(a) * 0.0001m);
 
     static bool TryGetMapDecimal(JsonElement map, string key, out decimal value)
     {
@@ -365,6 +462,4 @@ public static class IngredientUomBridge
         string sourceUom,
         string convertedUom)
         => sourceUom != convertedUom || Math.Abs(sourceQty - convertedQty) > 0.0000001m;
-
-    static string Normalize(string? uom) => (uom ?? string.Empty).Trim().ToUpperInvariant();
 }

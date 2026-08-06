@@ -735,9 +735,37 @@ export function parseDeliveryUnitPath(input: string): DeliveryUnitBreakdown | nu
   if (segments.length === 0) return null;
   const order = parseSegment(segments[0]);
   if (!order) return null;
-  const pack = segments[1] ? parseSegment(segments[1]) : order;
-  const unit = segments[2] ? parseSegment(segments[2]) : pack;
-  if (!pack || !unit) return null;
+
+  // 1 segment: "12tin" → 12 tin (do not cube orderQty across pack/unit).
+  if (segments.length === 1) {
+    return {
+      orderUnit: order.unit,
+      orderQty: order.qty || 1,
+      packUnit: order.unit,
+      packQty: 1,
+      unitUnit: order.unit,
+      unitQty: 1,
+    };
+  }
+
+  const pack = parseSegment(segments[1]);
+  if (!pack) return null;
+
+  // 2 segments: "1tub/3.75ltr" or "Tin/5ltr" → order unit contains pack measure once
+  // (avoid packQty×unitQty double-count when unit mirrors pack).
+  if (segments.length === 2) {
+    return {
+      orderUnit: order.unit,
+      orderQty: order.qty || 1,
+      packUnit: pack.unit,
+      packQty: pack.qty || 1,
+      unitUnit: pack.unit,
+      unitQty: 1,
+    };
+  }
+
+  const unit = parseSegment(segments[2]);
+  if (!unit) return null;
   return {
     orderUnit: order.unit,
     orderQty: order.qty || 1,
