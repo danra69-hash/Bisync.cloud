@@ -2152,6 +2152,12 @@ public static class SchemaPatcher
             CREATE INDEX IF NOT EXISTS "IX_PosDeviceSetupRules_CompanyId_ProductId"
             ON "PosDeviceSetupRules" ("CompanyId", "ProductId");
             """);
+        await DatabaseSchemaHelper.TryAddColumnAsync(
+            db, "PosDeviceSetupRules", "PrimaryDeviceType", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(
+            db, "PosDeviceSetupRules", "SecondaryDeviceType", "TEXT NOT NULL DEFAULT ''");
+        await DatabaseSchemaHelper.TryAddColumnAsync(
+            db, "PosDeviceSetupRules", "ConcurrentDeviceType", "TEXT NOT NULL DEFAULT ''");
     }
 
     static async Task EnsurePosDevicesTablesAsync(BisyncDbContext db)

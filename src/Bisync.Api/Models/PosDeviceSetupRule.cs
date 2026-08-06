@@ -23,6 +23,13 @@ public class PosDeviceSetupRule
     public int? SecondaryDeviceId { get; set; }
     /// <summary>Also receives the order at the same time as primary.</summary>
     public int? ConcurrentDeviceId { get; set; }
+    /// <summary>
+    /// Optional Device Type code (POS Config → Device Types) when routing by type
+    /// instead of a specific registered device.
+    /// </summary>
+    public string PrimaryDeviceType { get; set; } = string.Empty;
+    public string SecondaryDeviceType { get; set; } = string.Empty;
+    public string ConcurrentDeviceType { get; set; } = string.Empty;
     public int Sequence { get; set; }
     public bool Active { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -1378,6 +1378,12 @@ export interface PosDeviceSetupDeviceRef {
   active?: boolean;
 }
 
+export interface PosDeviceSetupTypeRef {
+  code: string;
+  name: string;
+  active?: boolean;
+}
+
 export interface PosDeviceSetupRule {
   id: number;
   companyId: number;
@@ -1389,9 +1395,15 @@ export interface PosDeviceSetupRule {
   primaryDeviceId?: number | null;
   secondaryDeviceId?: number | null;
   concurrentDeviceId?: number | null;
+  primaryDeviceType?: string;
+  secondaryDeviceType?: string;
+  concurrentDeviceType?: string;
   primaryDevice?: PosDeviceSetupDeviceRef | null;
   secondaryDevice?: PosDeviceSetupDeviceRef | null;
   concurrentDevice?: PosDeviceSetupDeviceRef | null;
+  primaryDeviceTypeRef?: PosDeviceSetupTypeRef | null;
+  secondaryDeviceTypeRef?: PosDeviceSetupTypeRef | null;
+  concurrentDeviceTypeRef?: PosDeviceSetupTypeRef | null;
   sequence: number;
   active: boolean;
   createdAt?: string;
@@ -1408,6 +1420,9 @@ export interface UpsertPosDeviceSetupRulePayload {
   primaryDeviceId?: number | null;
   secondaryDeviceId?: number | null;
   concurrentDeviceId?: number | null;
+  primaryDeviceType?: string;
+  secondaryDeviceType?: string;
+  concurrentDeviceType?: string;
   sequence?: number;
   active?: boolean;
 }

@@ -29,9 +29,9 @@ type Draft = {
   productCategory: string
   productGroup: string
   productId: string
-  primaryDeviceId: string
-  secondaryDeviceId: string
-  concurrentDeviceId: string
+  primaryTarget: string
+  secondaryTarget: string
+  concurrentTarget: string
   sequence: string
   active: boolean
 }
@@ -42,9 +42,9 @@ function emptyDraft(locationId: string): Draft {
     productCategory: '',
     productGroup: '',
     productId: '',
-    primaryDeviceId: '',
-    secondaryDeviceId: '',
-    concurrentDeviceId: '',
+    primaryTarget: '',
+    secondaryTarget: '',
+    concurrentTarget: '',
     sequence: '0',
     active: true,
   }
@@ -63,6 +63,37 @@ function deviceOptionLabel(device: PosDevice): string {
 function parseOptionalId(raw: string): number | null {
   const n = Number.parseInt(raw, 10)
   return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** Select value: `device:{id}` or `type:{code}`. */
+function deviceTargetValue(kind: 'device' | 'type', key: string | number): string {
+  return `${kind}:${key}`
+}
+
+function parseDeviceTarget(raw: string): {
+  deviceId: number | null
+  deviceType: string
+} {
+  const value = raw.trim()
+  if (!value) return { deviceId: null, deviceType: '' }
+  if (value.startsWith('device:')) {
+    return { deviceId: parseOptionalId(value.slice('device:'.length)), deviceType: '' }
+  }
+  if (value.startsWith('type:')) {
+    return { deviceId: null, deviceType: value.slice('type:'.length).trim() }
+  }
+  // Legacy numeric id
+  return { deviceId: parseOptionalId(value), deviceType: '' }
+}
+
+function targetFromRule(
+  deviceId: number | null | undefined,
+  deviceType: string | null | undefined,
+): string {
+  if (deviceId && deviceId > 0) return deviceTargetValue('device', deviceId)
+  const type = (deviceType ?? '').trim()
+  if (type) return deviceTargetValue('type', type)
+  return ''
 }
 
 type DeviceTypeDraft = {
@@ -122,12 +153,13 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
           locationExternalId: filterLocationId || undefined,
           includeInactive: true,
         }),
-        api.posDevices(selectedCompanyId, filterLocationId || undefined),
+        // Load company-wide devices so Primary/Secondary/Concurrent are not emptied by the list filter.
+        api.posDevices(selectedCompanyId),
         api.products(selectedCompanyId),
         api.posConfigTypes(selectedCompanyId, { kind: 'device', includeInactive: true }),
       ])
       setRules(ruleRows)
-      setDevices(deviceRows.filter(d => d.active !== false))
+      setDevices(deviceRows)
       setProducts(productRows.filter(p => p.active !== false && !p.isSubProduct))
       setDeviceTypes(typeRows)
     } catch (e) {
@@ -199,6 +231,27 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
     () => [...deviceTypes].sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name)),
     [deviceTypes],
   )
+
+  const activeDeviceTypes = useMemo(
+    () => sortedDeviceTypes.filter(t => t.active !== false),
+    [sortedDeviceTypes],
+  )
+
+  /** Devices available for the route form (scoped to draft location when set). */
+  const routeDeviceOptions = useMemo(() => {
+    const loc = draft.locationExternalId.trim().toLowerCase()
+    return devices
+      .filter(d => d.active !== false)
+      .filter(d => {
+        if (!loc) return true
+        const deviceLoc = (d.locationExternalId || '').trim().toLowerCase()
+        return !deviceLoc || deviceLoc === loc
+      })
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name) || a.deviceType.localeCompare(b.deviceType))
+  }, [devices, draft.locationExternalId])
+
+  const hasRouteTargets = activeDeviceTypes.length > 0 || routeDeviceOptions.length > 0
 
   function closeForm() {
     setShowForm(false)
@@ -303,9 +356,9 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
       productCategory: row.productCategory || '',
       productGroup: row.productGroup || '',
       productId: row.productId ? String(row.productId) : '',
-      primaryDeviceId: row.primaryDeviceId ? String(row.primaryDeviceId) : '',
-      secondaryDeviceId: row.secondaryDeviceId ? String(row.secondaryDeviceId) : '',
-      concurrentDeviceId: row.concurrentDeviceId ? String(row.concurrentDeviceId) : '',
+      primaryTarget: targetFromRule(row.primaryDeviceId, row.primaryDeviceType),
+      secondaryTarget: targetFromRule(row.secondaryDeviceId, row.secondaryDeviceType),
+      concurrentTarget: targetFromRule(row.concurrentDeviceId, row.concurrentDeviceType),
       sequence: String(row.sequence ?? 0),
       active: row.active !== false,
     })
@@ -313,11 +366,15 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
   }
 
   async function submitForm() {
-    const primaryDeviceId = parseOptionalId(draft.primaryDeviceId)
-    const secondaryDeviceId = parseOptionalId(draft.secondaryDeviceId)
-    const concurrentDeviceId = parseOptionalId(draft.concurrentDeviceId)
-    if (!primaryDeviceId && !secondaryDeviceId && !concurrentDeviceId) {
-      setError('Select at least one device (Primary, Secondary, or Concurrent).')
+    const primary = parseDeviceTarget(draft.primaryTarget)
+    const secondary = parseDeviceTarget(draft.secondaryTarget)
+    const concurrent = parseDeviceTarget(draft.concurrentTarget)
+    if (
+      !primary.deviceId && !primary.deviceType
+      && !secondary.deviceId && !secondary.deviceType
+      && !concurrent.deviceId && !concurrent.deviceType
+    ) {
+      setError('Select at least one device or device type (Primary, Secondary, or Concurrent).')
       return
     }
 
@@ -331,9 +388,12 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
       productGroup: draft.productGroup.trim(),
       productId,
       productName: product?.name ?? '',
-      primaryDeviceId,
-      secondaryDeviceId,
-      concurrentDeviceId,
+      primaryDeviceId: primary.deviceId,
+      secondaryDeviceId: secondary.deviceId,
+      concurrentDeviceId: concurrent.deviceId,
+      primaryDeviceType: primary.deviceType,
+      secondaryDeviceType: secondary.deviceType,
+      concurrentDeviceType: concurrent.deviceType,
       sequence: Number.isFinite(sequence) ? Math.max(0, sequence) : 0,
       active: draft.active,
     }
@@ -383,12 +443,57 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
 
   function renderDeviceCell(device: PosDeviceSetupRule['primaryDevice']) {
     if (!device) return <span className="text-muted-foreground">—</span>
-    const type = device.deviceType ? deviceTypeLabel(device.deviceType) || device.deviceType : ''
+    const type = device.deviceType
+      ? deviceTypeLabel(device.deviceType, activeDeviceTypes.map(t => ({
+        value: t.code,
+        label: t.name,
+        active: t.active,
+      }))) || device.deviceType
+      : ''
     return (
       <span className="text-foreground">
         {device.name}
-        {type ? <span className="text-muted-foreground"> · {type}</span> : null}
+        {type && type !== device.name ? (
+          <span className="text-muted-foreground"> · {type}</span>
+        ) : null}
       </span>
+    )
+  }
+
+  function renderRouteTargetSelect(
+    label: string,
+    value: string,
+    onChange: (next: string) => void,
+  ) {
+    return (
+      <label className="text-xs text-muted-foreground space-y-1">
+        <span>{label}</span>
+        <select
+          className={inputCls}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+        >
+          <option value="">—</option>
+          {activeDeviceTypes.length > 0 ? (
+            <optgroup label="Device types">
+              {activeDeviceTypes.map(t => (
+                <option key={`type-${t.code}`} value={deviceTargetValue('type', t.code)}>
+                  {t.name} ({t.code})
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+          {routeDeviceOptions.length > 0 ? (
+            <optgroup label="Registered devices">
+              {routeDeviceOptions.map(d => (
+                <option key={`device-${d.id}`} value={deviceTargetValue('device', d.id)}>
+                  {deviceOptionLabel(d)}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+        </select>
+      </label>
     )
   }
 
@@ -549,7 +654,8 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
           <h3 className="text-sm font-semibold text-foreground">Device routes</h3>
           <p className="text-xs text-muted-foreground mt-1">
             Route orders by product category, group, or product.
-            Primary receives the order (kitchen printer, KDS, bar printer, etc.).
+            Primary / Secondary / Concurrent pick from Device Types (above) or registered devices
+            in Device Management.
             Secondary is used when primary is unavailable.
             Concurrent receives the same order at the same time as primary.
           </p>
@@ -662,45 +768,18 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
                 ))}
               </select>
             </label>
-            <label className="text-xs text-muted-foreground space-y-1">
-              <span>Primary</span>
-              <select
-                className={inputCls}
-                value={draft.primaryDeviceId}
-                onChange={e => setDraft(d => ({ ...d, primaryDeviceId: e.target.value }))}
-              >
-                <option value="">—</option>
-                {devices.map(d => (
-                  <option key={d.id} value={d.id}>{deviceOptionLabel(d)}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-muted-foreground space-y-1">
-              <span>Secondary</span>
-              <select
-                className={inputCls}
-                value={draft.secondaryDeviceId}
-                onChange={e => setDraft(d => ({ ...d, secondaryDeviceId: e.target.value }))}
-              >
-                <option value="">—</option>
-                {devices.map(d => (
-                  <option key={d.id} value={d.id}>{deviceOptionLabel(d)}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-muted-foreground space-y-1">
-              <span>Concurrent</span>
-              <select
-                className={inputCls}
-                value={draft.concurrentDeviceId}
-                onChange={e => setDraft(d => ({ ...d, concurrentDeviceId: e.target.value }))}
-              >
-                <option value="">—</option>
-                {devices.map(d => (
-                  <option key={d.id} value={d.id}>{deviceOptionLabel(d)}</option>
-                ))}
-              </select>
-            </label>
+            {renderRouteTargetSelect('Primary', draft.primaryTarget, next =>
+              setDraft(d => ({ ...d, primaryTarget: next })))}
+            {renderRouteTargetSelect('Secondary', draft.secondaryTarget, next =>
+              setDraft(d => ({ ...d, secondaryTarget: next })))}
+            {renderRouteTargetSelect('Concurrent', draft.concurrentTarget, next =>
+              setDraft(d => ({ ...d, concurrentTarget: next })))}
+            {!hasRouteTargets ? (
+              <p className="text-xs text-destructive sm:col-span-2 lg:col-span-3" role="alert">
+                No Device Types or registered devices yet. Add a Device Type above, or register
+                devices under Device Management.
+              </p>
+            ) : null}
             <label className="text-xs text-muted-foreground space-y-1">
               <span>Sequence</span>
               <input
@@ -758,9 +837,9 @@ export function PosDeviceSetupTab({ selectedCompanyId, selectedLocationIds }: Pr
                 <tr>
                   <td colSpan={7} className="px-2 py-6 text-muted-foreground">
                     No device routes yet. Add one to send orders to kitchen / bar / printers.
-                    {devices.length === 0 ? (
+                    {!hasRouteTargets ? (
                       <span className="block mt-1">
-                        Register devices under Device Management first.
+                        Add Device Types above, or register devices under Device Management first.
                       </span>
                     ) : null}
                   </td>

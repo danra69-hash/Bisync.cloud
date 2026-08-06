@@ -701,6 +701,9 @@ public class BisyncDbContext(DbContextOptions<BisyncDbContext> options) : DbCont
             e.Property(x => x.ProductCategory).HasMaxLength(120);
             e.Property(x => x.ProductGroup).HasMaxLength(120);
             e.Property(x => x.ProductName).HasMaxLength(200);
+            e.Property(x => x.PrimaryDeviceType).HasMaxLength(80);
+            e.Property(x => x.SecondaryDeviceType).HasMaxLength(80);
+            e.Property(x => x.ConcurrentDeviceType).HasMaxLength(80);
         });
         modelBuilder.Entity<PosModifierGroup>(e =>
         {

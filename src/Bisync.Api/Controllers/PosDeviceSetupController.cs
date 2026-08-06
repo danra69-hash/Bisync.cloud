@@ -20,6 +20,9 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
         int? PrimaryDeviceId = null,
         int? SecondaryDeviceId = null,
         int? ConcurrentDeviceId = null,
+        string? PrimaryDeviceType = null,
+        string? SecondaryDeviceType = null,
+        string? ConcurrentDeviceType = null,
         int Sequence = 0,
         bool Active = true);
 
@@ -70,7 +73,8 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
                 .Where(d => deviceIds.Contains(d.Id))
                 .ToDictionaryAsync(d => d.Id, cancellationToken);
 
-        return Ok(rows.Select(r => Map(r, devices)));
+        var typeCatalog = await LoadDeviceTypeCatalogAsync(companyId, cancellationToken);
+        return Ok(rows.Select(r => Map(r, devices, typeCatalog)));
     }
 
     [HttpPost]
@@ -97,6 +101,15 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
             PrimaryDeviceId = NormalizeDeviceId(body.PrimaryDeviceId),
             SecondaryDeviceId = NormalizeDeviceId(body.SecondaryDeviceId),
             ConcurrentDeviceId = NormalizeDeviceId(body.ConcurrentDeviceId),
+            PrimaryDeviceType = NormalizeDeviceId(body.PrimaryDeviceId) is null
+                ? NormalizeDeviceType(body.PrimaryDeviceType)
+                : string.Empty,
+            SecondaryDeviceType = NormalizeDeviceId(body.SecondaryDeviceId) is null
+                ? NormalizeDeviceType(body.SecondaryDeviceType)
+                : string.Empty,
+            ConcurrentDeviceType = NormalizeDeviceId(body.ConcurrentDeviceId) is null
+                ? NormalizeDeviceType(body.ConcurrentDeviceType)
+                : string.Empty,
             Sequence = Math.Max(0, body.Sequence),
             Active = body.Active,
             CreatedAt = now,
@@ -107,7 +120,8 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
         await db.SaveChangesAsync(cancellationToken);
 
         var devices = await LoadDevicesAsync(row, cancellationToken);
-        return Ok(Map(row, devices));
+        var typeCatalog = await LoadDeviceTypeCatalogAsync(row.CompanyId, cancellationToken);
+        return Ok(Map(row, devices, typeCatalog));
     }
 
     [HttpPut("{id:int}")]
@@ -137,6 +151,15 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
         row.PrimaryDeviceId = NormalizeDeviceId(body.PrimaryDeviceId);
         row.SecondaryDeviceId = NormalizeDeviceId(body.SecondaryDeviceId);
         row.ConcurrentDeviceId = NormalizeDeviceId(body.ConcurrentDeviceId);
+        row.PrimaryDeviceType = row.PrimaryDeviceId is null
+            ? NormalizeDeviceType(body.PrimaryDeviceType)
+            : string.Empty;
+        row.SecondaryDeviceType = row.SecondaryDeviceId is null
+            ? NormalizeDeviceType(body.SecondaryDeviceType)
+            : string.Empty;
+        row.ConcurrentDeviceType = row.ConcurrentDeviceId is null
+            ? NormalizeDeviceType(body.ConcurrentDeviceType)
+            : string.Empty;
         row.Sequence = Math.Max(0, body.Sequence);
         row.Active = body.Active;
         row.UpdatedAt = DateTime.UtcNow;
@@ -144,7 +167,8 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
         await db.SaveChangesAsync(cancellationToken);
 
         var devices = await LoadDevicesAsync(row, cancellationToken);
-        return Ok(Map(row, devices));
+        var typeCatalog = await LoadDeviceTypeCatalogAsync(row.CompanyId, cancellationToken);
+        return Ok(Map(row, devices, typeCatalog));
     }
 
     [HttpPatch("{id:int}/active")]
@@ -164,7 +188,8 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
         await db.SaveChangesAsync(cancellationToken);
 
         var devices = await LoadDevicesAsync(row, cancellationToken);
-        return Ok(Map(row, devices));
+        var typeCatalog = await LoadDeviceTypeCatalogAsync(row.CompanyId, cancellationToken);
+        return Ok(Map(row, devices, typeCatalog));
     }
 
     [HttpDelete("{id:int}")]
@@ -186,10 +211,19 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
         if (body.CompanyId <= 0)
             return "companyId is required.";
 
-        if (body.PrimaryDeviceId is null or <= 0
-            && body.SecondaryDeviceId is null or <= 0
-            && body.ConcurrentDeviceId is null or <= 0)
-            return "Select at least one device (Primary, Secondary, or Concurrent).";
+        var primaryType = NormalizeDeviceType(body.PrimaryDeviceType);
+        var secondaryType = NormalizeDeviceType(body.SecondaryDeviceType);
+        var concurrentType = NormalizeDeviceType(body.ConcurrentDeviceType);
+
+        var hasDevice = body.PrimaryDeviceId is > 0
+            || body.SecondaryDeviceId is > 0
+            || body.ConcurrentDeviceId is > 0;
+        var hasType = primaryType.Length > 0
+            || secondaryType.Length > 0
+            || concurrentType.Length > 0;
+
+        if (!hasDevice && !hasType)
+            return "Select at least one device or device type (Primary, Secondary, or Concurrent).";
 
         foreach (var (label, deviceId) in new[]
                  {
@@ -206,6 +240,22 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
                 return $"{label} device #{id} was not found for this company.";
             if (!device.Active)
                 return $"{label} device “{device.Name}” is inactive.";
+        }
+
+        var typeCatalog = await LoadDeviceTypeCatalogAsync(body.CompanyId, cancellationToken);
+        foreach (var (label, typeCode) in new[]
+                 {
+                     ("Primary", primaryType),
+                     ("Secondary", secondaryType),
+                     ("Concurrent", concurrentType),
+                 })
+        {
+            if (typeCode.Length == 0)
+                continue;
+            if (!typeCatalog.ContainsKey(typeCode))
+                return $"{label} device type “{typeCode}” was not found. Add it under Device Types first.";
+            if (!typeCatalog[typeCode].Active)
+                return $"{label} device type “{typeCatalog[typeCode].Name}” is inactive.";
         }
 
         if (body.ProductId is int productId && productId > 0)
@@ -263,9 +313,33 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
             .ToDictionaryAsync(d => d.Id, cancellationToken);
     }
 
+    async Task<Dictionary<string, (string Name, bool Active)>> LoadDeviceTypeCatalogAsync(
+        int companyId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.PosConfigTypes.AsNoTracking()
+            .Where(r => r.CompanyId == companyId && r.Kind == "device")
+            .Select(r => new { r.Code, r.Name, r.Active })
+            .ToListAsync(cancellationToken);
+
+        var map = new Dictionary<string, (string Name, bool Active)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            var code = (row.Code ?? string.Empty).Trim();
+            if (code.Length == 0) continue;
+            map[code] = ((row.Name ?? code).Trim(), row.Active);
+        }
+        return map;
+    }
+
     static int? NormalizeDeviceId(int? id) => id is int v && v > 0 ? v : null;
 
-    static object Map(PosDeviceSetupRule row, IReadOnlyDictionary<int, PosDevice> devices)
+    static string NormalizeDeviceType(string? raw) => (raw ?? string.Empty).Trim();
+
+    static object Map(
+        PosDeviceSetupRule row,
+        IReadOnlyDictionary<int, PosDevice> devices,
+        IReadOnlyDictionary<string, (string Name, bool Active)> typeCatalog)
     {
         static object? DeviceRef(int? id, IReadOnlyDictionary<int, PosDevice> map)
         {
@@ -283,6 +357,17 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
             };
         }
 
+        static object? TypeRef(
+            string typeCode,
+            IReadOnlyDictionary<string, (string Name, bool Active)> catalog)
+        {
+            if (string.IsNullOrWhiteSpace(typeCode))
+                return null;
+            if (!catalog.TryGetValue(typeCode, out var entry))
+                return new { code = typeCode, name = typeCode, active = false };
+            return new { code = typeCode, name = entry.Name, active = entry.Active };
+        }
+
         return new
         {
             id = row.Id,
@@ -295,13 +380,39 @@ public class PosDeviceSetupController(BisyncDbContext db) : ControllerBase
             primaryDeviceId = row.PrimaryDeviceId,
             secondaryDeviceId = row.SecondaryDeviceId,
             concurrentDeviceId = row.ConcurrentDeviceId,
-            primaryDevice = DeviceRef(row.PrimaryDeviceId, devices),
-            secondaryDevice = DeviceRef(row.SecondaryDeviceId, devices),
-            concurrentDevice = DeviceRef(row.ConcurrentDeviceId, devices),
+            primaryDeviceType = row.PrimaryDeviceType,
+            secondaryDeviceType = row.SecondaryDeviceType,
+            concurrentDeviceType = row.ConcurrentDeviceType,
+            primaryDevice = DeviceRef(row.PrimaryDeviceId, devices)
+                ?? TypeRefAsDevice(row.PrimaryDeviceType, typeCatalog),
+            secondaryDevice = DeviceRef(row.SecondaryDeviceId, devices)
+                ?? TypeRefAsDevice(row.SecondaryDeviceType, typeCatalog),
+            concurrentDevice = DeviceRef(row.ConcurrentDeviceId, devices)
+                ?? TypeRefAsDevice(row.ConcurrentDeviceType, typeCatalog),
+            primaryDeviceTypeRef = TypeRef(row.PrimaryDeviceType, typeCatalog),
+            secondaryDeviceTypeRef = TypeRef(row.SecondaryDeviceType, typeCatalog),
+            concurrentDeviceTypeRef = TypeRef(row.ConcurrentDeviceType, typeCatalog),
             sequence = row.Sequence,
             active = row.Active,
             createdAt = row.CreatedAt,
             updatedAt = row.UpdatedAt,
         };
+
+        static object? TypeRefAsDevice(
+            string typeCode,
+            IReadOnlyDictionary<string, (string Name, bool Active)> catalog)
+        {
+            if (string.IsNullOrWhiteSpace(typeCode))
+                return null;
+            if (!catalog.TryGetValue(typeCode, out var entry))
+                return new { id = 0, name = typeCode, deviceType = typeCode, active = false };
+            return new
+            {
+                id = 0,
+                name = entry.Name,
+                deviceType = typeCode,
+                active = entry.Active,
+            };
+        }
     }
 }
