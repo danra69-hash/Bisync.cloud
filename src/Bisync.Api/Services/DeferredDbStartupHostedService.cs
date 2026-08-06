@@ -104,8 +104,9 @@ public sealed class DeferredDbStartupHostedService(
                     .PurgeErroneousTinyQuantityAsync(cancellationToken);
                 if (purged > 0)
                     logger.LogInformation(
-                        "Purged {Count} erroneous tiny-qty credit note(s) (≤ 0.0010).",
-                        purged);
+                        "Purged {Count} erroneous tiny-qty credit note(s) (< {MinQty}).",
+                        purged,
+                        CreditNoteService.MinAllowedCreditQuantity);
             }
             catch (Exception purgeEx)
             {
