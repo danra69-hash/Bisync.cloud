@@ -502,6 +502,320 @@ public sealed class ReportsService(
             });
     }
 
+    /// <summary>
+    /// Ops Expenses analysis — component consumption vs covers/checks for a week or month.
+    /// </summary>
+    public async Task<ReportPayload> OpsExpensesAnalysisAsync(
+        int? companyId,
+        IReadOnlyList<string> locationIds,
+        string period,
+        string? categories = null,
+        string? groups = null,
+        CancellationToken ct = default)
+    {
+        if (locationIds.Count == 0 || string.IsNullOrWhiteSpace(period))
+            return Empty("Ops Expenses Analysis", period ?? "");
+
+        var periodKey = period.Trim();
+        var previousKey = PreviousPeriodKey(periodKey);
+
+        var currentRows = await stockCards.ListAsync(
+            companyId, locationIds, "component", "inventory", periodKey, ct);
+        var previousRows = string.IsNullOrWhiteSpace(previousKey)
+            ? []
+            : await stockCards.ListAsync(
+                companyId, locationIds, "component", "inventory", previousKey, ct);
+
+        var previousByKey = previousRows.ToDictionary(
+            r => r.ItemKey,
+            r => r,
+            StringComparer.OrdinalIgnoreCase);
+
+        var categoryFilters = SplitCsv(categories);
+        var groupFilters = SplitCsv(groups);
+
+        var ingredients = await db.Ingredients.AsNoTracking()
+            .Where(i => i.Active)
+            .ToListAsync(ct);
+
+        if (companyId is int cid)
+            ingredients = ingredients.Where(i => i.CompanyId is null || i.CompanyId == cid).ToList();
+
+        var ingredientById = ingredients
+            .GroupBy(i => i.ComponentId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        // Default scope: Ops Expenses category when no explicit category/group chips.
+        var useDefaultOpsExpenses = categoryFilters.Count == 0 && groupFilters.Count == 0;
+
+        var stockPeriod = await ResolveReportPeriodBoundsAsync(periodKey, companyId, ct);
+        var salesOutboundByComponent = await LoadSalesOutboundQtyAsync(
+            companyId,
+            locationIds,
+            stockPeriod.Start,
+            stockPeriod.End,
+            ct);
+
+        var (totalCovers, totalChecks) = await LoadCoversAndChecksAsync(
+            companyId,
+            locationIds,
+            stockPeriod.Start,
+            stockPeriod.End,
+            ct);
+
+        var mapped = new List<Dictionary<string, object?>>();
+        foreach (var row in currentRows)
+        {
+            if (!ingredientById.TryGetValue(row.ItemKey, out var ingredient))
+                continue;
+
+            var category = (ingredient.Category ?? string.Empty).Trim();
+            var group = (ingredient.Group ?? row.Group ?? string.Empty).Trim();
+
+            if (useDefaultOpsExpenses)
+            {
+                if (!category.Equals("Ops Expenses", StringComparison.OrdinalIgnoreCase))
+                    continue;
+            }
+            else
+            {
+                if (categoryFilters.Count > 0
+                    && !categoryFilters.Any(c => c.Equals(category, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if (groupFilters.Count > 0
+                    && !groupFilters.Any(g => g.Equals(group, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+            }
+
+            var openingQty = row.OnHandQty - row.InboundQty + row.OutboundQty - row.AdjustmentQty;
+            var closingQty = row.OnHandQty;
+            var outboundSalesQty = salesOutboundByComponent.TryGetValue(row.ItemKey, out var sold)
+                ? sold
+                : 0m;
+            // Net theoretical consumption for the period.
+            var totalConsumptionQty = openingQty + row.InboundQty - closingQty;
+            if (totalConsumptionQty < 0)
+                totalConsumptionQty = outboundSalesQty;
+
+            var avgCogs = row.OnHandAverageCogs > 0 ? row.OnHandAverageCogs : row.AverageCogs;
+            var consumptionValue = totalConsumptionQty * avgCogs;
+
+            previousByKey.TryGetValue(row.ItemKey, out var prev);
+            var prevOpening = prev is null
+                ? 0m
+                : prev.OnHandQty - prev.InboundQty + prev.OutboundQty - prev.AdjustmentQty;
+            var prevClosing = prev?.OnHandQty ?? 0m;
+            var prevConsumption = prev is null
+                ? 0m
+                : prevOpening + prev.InboundQty - prevClosing;
+            if (prevConsumption < 0)
+                prevConsumption = prev?.OutboundQty ?? 0m;
+
+            var trend = totalConsumptionQty > prevConsumption + 0.0001m
+                ? "up"
+                : totalConsumptionQty < prevConsumption - 0.0001m
+                    ? "down"
+                    : "flat";
+
+            mapped.Add(new Dictionary<string, object?>
+            {
+                ["category"] = category,
+                ["group"] = group,
+                ["component"] = row.Name,
+                ["componentId"] = row.ItemKey,
+                ["uom"] = row.Uom,
+                ["openingStockQty"] = RoundQty(openingQty),
+                ["outboundSalesQty"] = RoundQty(outboundSalesQty),
+                ["closingStockQty"] = RoundQty(closingQty),
+                ["totalConsumptionQty"] = RoundQty(totalConsumptionQty),
+                ["totalCovers"] = totalCovers,
+                ["qtyPerCover"] = totalCovers > 0 ? RoundQty(totalConsumptionQty / totalCovers) : 0m,
+                ["valuePerCover"] = totalCovers > 0 ? RoundMoney(consumptionValue / totalCovers) : 0m,
+                ["totalChecks"] = totalChecks,
+                ["qtyPerCheck"] = totalChecks > 0 ? RoundQty(totalConsumptionQty / totalChecks) : 0m,
+                ["valuePerCheck"] = totalChecks > 0 ? RoundMoney(consumptionValue / totalChecks) : 0m,
+                ["consumptionValue"] = RoundMoney(consumptionValue),
+                ["previousConsumptionQty"] = RoundQty(prevConsumption),
+                ["trend"] = trend,
+            });
+        }
+
+        mapped = mapped
+            .OrderBy(r => (string?)r["category"], StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => (string?)r["group"], StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => (string?)r["component"], StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var filterOptions = new Dictionary<string, object?>
+        {
+            ["categories"] = ingredients
+                .Select(i => (i.Category ?? string.Empty).Trim())
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            ["groups"] = ingredients
+                .Select(i => (i.Group ?? string.Empty).Trim())
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+        };
+
+        return new ReportPayload(
+            "Ops Expenses Analysis",
+            periodKey,
+            new Dictionary<string, object?>
+            {
+                ["itemCount"] = mapped.Count,
+                ["totalCovers"] = totalCovers,
+                ["totalChecks"] = totalChecks,
+                ["totalConsumptionQty"] = mapped.Sum(r =>
+                    Convert.ToDecimal(r["totalConsumptionQty"], CultureInfo.InvariantCulture)),
+                ["totalConsumptionValue"] = mapped.Sum(r =>
+                    Convert.ToDecimal(r["consumptionValue"], CultureInfo.InvariantCulture)),
+                ["previousPeriod"] = previousKey,
+                ["filterOptions"] = filterOptions,
+            },
+            mapped);
+    }
+
+    async Task<(DateTime Start, DateTime End)> ResolveReportPeriodBoundsAsync(
+        string periodKey,
+        int? companyId,
+        CancellationToken ct)
+    {
+        _ = companyId;
+        _ = ct;
+        var now = DateTime.UtcNow;
+        if (TryParseWeekKeyLocal(periodKey, out var wy, out var ww))
+        {
+            var start = DateTime.SpecifyKind(ISOWeek.ToDateTime(wy, ww, DayOfWeek.Monday).Date, DateTimeKind.Utc);
+            var end = start.AddDays(7).AddSeconds(-1);
+            if (end > now) end = now;
+            return (start, end);
+        }
+
+        if (TryParseMonth(periodKey, out var monthStart, out var monthEndExclusive))
+        {
+            var start = monthStart.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            var end = monthEndExclusive.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddSeconds(-1);
+            if (end > now) end = now;
+            return (start, end);
+        }
+
+        var fallbackStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        return (fallbackStart, now);
+    }
+
+    async Task<Dictionary<string, decimal>> LoadSalesOutboundQtyAsync(
+        int? companyId,
+        IReadOnlyList<string> locationIds,
+        DateTime start,
+        DateTime end,
+        CancellationToken ct)
+    {
+        var movements = await db.InventoryMovements.AsNoTracking()
+            .Where(m => m.CreatedAt >= start && m.CreatedAt <= end && m.QtyDelta < 0)
+            .ToListAsync(ct);
+
+        if (companyId is int cid)
+            movements = movements.Where(m => m.CompanyId is null || m.CompanyId == cid).ToList();
+
+        movements = movements
+            .Where(m => StockLocationRules.MovementMatchesAny(m.LocationExternalId, locationIds))
+            .Where(IsSalesMovement)
+            .ToList();
+
+        return movements
+            .GroupBy(m => m.ComponentId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => RoundQty(g.Sum(m => -m.QtyDelta)),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    async Task<(int Covers, int Checks)> LoadCoversAndChecksAsync(
+        int? companyId,
+        IReadOnlyList<string> locationIds,
+        DateTime start,
+        DateTime end,
+        CancellationToken ct)
+    {
+        var startOffset = new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc));
+        var endOffset = new DateTimeOffset(DateTime.SpecifyKind(end, DateTimeKind.Utc));
+
+        var q = db.PosClosedChecks.AsNoTracking()
+            .Where(c => c.PaidAt >= startOffset && c.PaidAt <= endOffset);
+
+        if (companyId is int cid)
+            q = q.Where(c => c.CompanyId == cid);
+
+        var locSet = locationIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rows = await q.ToListAsync(ct);
+        rows = rows.Where(c => locSet.Contains(c.LocationExternalId)).ToList();
+
+        var checks = rows.Count;
+        var covers = rows.Sum(c => Math.Max(0, c.Covers));
+        return (covers, checks);
+    }
+
+    static bool IsSalesMovement(InventoryMovement movement)
+    {
+        var reference = (movement.ReferenceType ?? string.Empty).Trim().ToLowerInvariant();
+        if (reference is "pos_sale" or "online_order" or "offline_order")
+            return true;
+        var reason = (movement.Reason ?? string.Empty).Trim().ToLowerInvariant();
+        return reason.Contains("pos sale", StringComparison.Ordinal)
+            || reason.Contains("product sale", StringComparison.Ordinal)
+            || reason.Contains("online order", StringComparison.Ordinal)
+            || reason.Contains("offline order", StringComparison.Ordinal);
+    }
+
+    static string PreviousPeriodKey(string periodKey)
+    {
+        if (TryParseWeekKeyLocal(periodKey, out var year, out var week))
+        {
+            var start = ISOWeek.ToDateTime(year, week, DayOfWeek.Monday).AddDays(-7);
+            return $"{ISOWeek.GetYear(start):D4}-W{ISOWeek.GetWeekOfYear(start):D2}";
+        }
+
+        if (TryParseMonth(periodKey, out var monthStart, out _))
+        {
+            var prev = monthStart.AddMonths(-1);
+            return $"{prev:yyyy-MM}";
+        }
+
+        return string.Empty;
+    }
+
+    static bool TryParseWeekKeyLocal(string value, out int year, out int week)
+    {
+        year = 0;
+        week = 0;
+        var match = System.Text.RegularExpressions.Regex.Match(
+            (value ?? string.Empty).Trim(),
+            @"^(?<y>\d{4})-W(?<w>\d{1,2})$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success) return false;
+        if (!int.TryParse(match.Groups["y"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out year))
+            return false;
+        if (!int.TryParse(match.Groups["w"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out week))
+            return false;
+        return year is >= 2000 and <= 2100 && week is >= 1 and <= 53;
+    }
+
+    static List<string> SplitCsv(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+    static decimal RoundQty(decimal v) => Math.Round(v, 4, MidpointRounding.AwayFromZero);
+    static decimal RoundMoney(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
+
     static ReportPayload Empty(string title, string period) =>
         new(title, period, new Dictionary<string, object?>(), []);
 

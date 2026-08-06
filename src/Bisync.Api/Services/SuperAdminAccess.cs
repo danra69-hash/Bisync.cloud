@@ -66,7 +66,7 @@ public static class SuperAdminAccess
         "viewProductSubProduct", "manageProductSubProduct", "externalPosMapping",
         "manageCustomers", "customerGroup", "customerManagement", "manageSalesOrder", "approveSalesOrder",
         "manageInvoice", "promotionScheduler", "viewReports",
-        "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit",
+        "itemizedSalesSummary", "inventorySummary", "detailedPurchaseSummary", "productionReport", "wastageReport", "cogsAudit", "opsExpensesAnalysis",
         // hidePrices intentionally omitted — restriction policy, not a super-admin grant
     ];
 

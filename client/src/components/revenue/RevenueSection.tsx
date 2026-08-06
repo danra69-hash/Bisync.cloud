@@ -27,6 +27,7 @@ import { DetailedPurchaseSummaryReportPage } from './reports/DetailedPurchaseSum
 import { ProductionReportPage } from './reports/ProductionReportPage';
 import { WastageReportPage } from './reports/WastageReportPage';
 import { BcgMatrixReportPage } from './reports/BcgMatrixReportPage';
+import { OpsExpensesAnalysisReportPage } from './reports/OpsExpensesAnalysisReportPage';
 import { PromotionSchedulerPage } from './PromotionSchedulerPage';
 import { PosTestTapPage } from './PosTestTapPage';
 import { PosMenuPage } from './PosMenuPage';
@@ -300,6 +301,13 @@ function renderRevMgmtContent(
     case 'COGS Audit':
       return (
         <CogsAuditPage
+          selectedCompanyId={selectedCompanyId}
+          selectedLocationIds={selectedLocationIds}
+        />
+      );
+    case 'Ops Expenses Analysis':
+      return (
+        <OpsExpensesAnalysisReportPage
           selectedCompanyId={selectedCompanyId}
           selectedLocationIds={selectedLocationIds}
         />

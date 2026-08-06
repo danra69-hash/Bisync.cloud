@@ -5060,6 +5060,21 @@ export const api = {
     });
     return fetchJson<ReportPayload>(`/api/reports/bcg-matrix?${params}`);
   },
+  reportOpsExpensesAnalysis: (
+    companyId: number,
+    locationIds: string[],
+    period: string,
+    opts?: { categories?: string; groups?: string },
+  ) => {
+    const params = new URLSearchParams({
+      companyId: String(companyId),
+      locationIds: locationIds.join(','),
+      period,
+    });
+    if (opts?.categories) params.set('categories', opts.categories);
+    if (opts?.groups) params.set('groups', opts.groups);
+    return fetchJson<ReportPayload>(`/api/reports/ops-expenses-analysis?${params}`);
+  },
   systemAuditMonths: (params: { companyId?: number; locationId?: number } = {}) => {
     const q = new URLSearchParams();
     if (params.companyId != null) q.set('companyId', String(params.companyId));

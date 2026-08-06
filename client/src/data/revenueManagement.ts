@@ -111,6 +111,7 @@ export const revMgmtNav: RevMgmtSection[] = [
           { label: 'Wastage Report' },
           { label: 'BCG Matrix' },
           { label: 'COGS Audit' },
+          { label: 'Ops Expenses Analysis' },
         ],
       },
     ],

@@ -170,6 +170,7 @@ export const ja = {
       wastageReport: '廃棄レポート',
       bcgMatrix: 'BCGマトリクス',
       cogsAudit: 'COGS Audit',
+      opsExpensesAnalysis: 'Ops Expenses Analysis',
     },
     selectModule: '上部のナビゲーションバーからモジュールを選択してください。',
     alertsMessages: 'アラートとメッセージ',

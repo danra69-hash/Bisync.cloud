@@ -170,6 +170,7 @@ export const es = {
       wastageReport: 'Informe de mermas',
       bcgMatrix: 'Matriz BCG',
       cogsAudit: 'COGS Audit',
+      opsExpensesAnalysis: 'Ops Expenses Analysis',
     },
     selectModule: 'Seleccione un módulo en la barra de navegación superior.',
     alertsMessages: 'Alertas y mensajes',
