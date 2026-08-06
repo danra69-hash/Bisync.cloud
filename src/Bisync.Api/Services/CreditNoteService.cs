@@ -174,7 +174,8 @@ public class CreditNoteService(
             item.ComponentId, location, stockUom, cancellationToken);
         if (stockQty > onHand + StockCardFifoEngine.QtyEpsilon)
             throw new InvalidOperationException(
-                $"Insufficient stock on hand ({onHand:0.####} {stockUom}) to post credit note outbound of {stockQty:0.####} {stockUom}.");
+                $"Insufficient stock on hand ({onHand:0.####} {stockUom}) to post credit note outbound of {stockQty:0.####} {stockUom}"
+                + $" (credit {quantity:0.####} {deliveryUom} = {stockQty:0.####} {stockUom}).");
 
         var entry = new CreditNote
         {
@@ -205,25 +206,43 @@ public class CreditNoteService(
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
+            // Align FIFO batches with healed PCU purchase rows before deducting.
+            // Under-converted batches (still holding package qty) cause "Short by ~3787.79"
+            // when reversing 1 delivery unit that maps to ~3790 principal units.
+            foreach (var purchase in postedPurchases)
+                await fifoBatches.SyncBatchFromPurchaseAsync(purchase, cancellationToken);
+
             db.CreditNotes.Add(entry);
             await db.SaveChangesAsync(cancellationToken);
 
-            await componentStock.RecordDeductionAsync(
-                entry.ComponentId,
-                entry.ComponentName,
-                entry.LocationExternalId,
-                entry.StockQuantity,
-                entry.StockUom,
-                $"Credit note — PO {entry.PoNumber}"
-                    + (string.IsNullOrWhiteSpace(entry.CreditNoteNumber)
-                        ? string.Empty
-                        : $" / CN {entry.CreditNoteNumber}"),
-                ReferenceType,
-                entry.Id,
-                companyId,
-                cancellationToken,
-                createdAt: DateTime.UtcNow,
-                unitPriceOverride: entry.StockUnitPrice);
+            try
+            {
+                await componentStock.RecordDeductionAsync(
+                    entry.ComponentId,
+                    entry.ComponentName,
+                    entry.LocationExternalId,
+                    entry.StockQuantity,
+                    entry.StockUom,
+                    $"Credit note — PO {entry.PoNumber}"
+                        + (string.IsNullOrWhiteSpace(entry.CreditNoteNumber)
+                            ? string.Empty
+                            : $" / CN {entry.CreditNoteNumber}"),
+                    ReferenceType,
+                    entry.Id,
+                    companyId,
+                    cancellationToken,
+                    createdAt: DateTime.UtcNow,
+                    unitPriceOverride: entry.StockUnitPrice);
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("Insufficient stock", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"{ex.Message} Credit of {quantity:0.####} {deliveryUom} reverses {stockQty:0.####} {stockUom} on the stock card"
+                    + $" (ledger on hand {onHand:0.####} {stockUom})."
+                    + " If packages were received before principal conversion, stock layers may need a refresh — retry once; contact support if it persists.",
+                    ex);
+            }
 
             await db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
