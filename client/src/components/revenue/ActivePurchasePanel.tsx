@@ -52,7 +52,10 @@ type EditableLine = {
   unitPrice: string;
   taxAmount: string;
   issuedUnitPrice: number;
+  /** Inventory / component UOM — kept for stock posting payload. */
   componentUom: string;
+  /** Delivery pack path shown on PO / receive (e.g. 1box/12tin/400gr). */
+  deliveryPackage: string;
   halalCertNo: string;
   productExpiryDate: string;
   /** Optional temperature °C at receive/consolidate. */
@@ -94,6 +97,7 @@ function buildEditableLines(order: PurchaseOrder, mode: 'approve' | 'receive' | 
       taxAmount: tax > 0 ? String(tax) : '',
       issuedUnitPrice: issued,
       componentUom: item.componentUom || item.unit,
+      deliveryPackage: (item.deliveryPackage || item.unit || '').trim(),
       halalCertNo: item.halalCertNo ?? '',
       productExpiryDate: item.productExpiryDate?.trim() ?? '',
       receivedTemperature: item.receivedTemperature != null && Number.isFinite(item.receivedTemperature)
@@ -274,7 +278,7 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
     showOrderedReceivedColumns
       ? (showPartialDeliveryColumns ? 'QTY This shipment' : 'QTY Received')
       : null,
-    'UOM',
+    'Delivery Unit',
     !hidePrices && mode === 'reconcile' ? 'Issued price' : null,
     !hidePrices ? (showOrderedReceivedColumns || showCommitmentColumns ? 'Unit Price' : 'Unit price') : null,
     !hidePrices && showOrderedReceivedColumns ? 'Unit Price Received' : null,
@@ -293,8 +297,8 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
         return '14%';
       case 'Product':
         return '14%';
-      case 'UOM':
-        return '5%';
+      case 'Delivery Unit':
+        return '8%';
       case 'Halal cert no.':
         return '9%';
       case 'Expiry date':
@@ -804,16 +808,9 @@ export function ActivePurchasePanel({ order, onClose, onUpdated }: Props) {
                           </td>
                         )}
                         <td className="px-3 py-2">
-                          {readOnly ? (
-                            <span>{line.componentUom}</span>
-                          ) : (
-                            <input
-                              type="text"
-                              value={line.componentUom}
-                              onChange={e => updateLine(line.itemId, { componentUom: e.target.value })}
-                              className="w-16 rounded border border-border bg-background px-2 py-1"
-                            />
-                          )}
+                          <span className="text-xs" title={line.deliveryPackage || undefined}>
+                            {line.deliveryPackage || '—'}
+                          </span>
                         </td>
                         {!hidePrices && mode === 'reconcile' && (
                           <td className="px-3 py-2 font-sans text-muted-foreground">{rm(line.issuedUnitPrice)}</td>
