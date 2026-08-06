@@ -28,8 +28,10 @@ import {
   releaseFloorTable,
   setActiveRegisterSession,
   type ActiveRegisterSession,
+  type FloorTable,
 } from '../../order/domain/tables'
 import { loadFloorPlanLocal, persistFloorTablePatch } from '../../order/domain/floorPlanSync'
+import { FloorPlanTablePickerModal } from '../../order/ui/FloorPlanTablePickerModal'
 import { fireCartToStations, notifyStationsLineRemoved } from '../../boh/domain/kitchenTickets'
 import {
   clearCustomerDisplaySnapshot,
@@ -149,6 +151,8 @@ export function RegisterPage() {
   } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null)
+  const [selectedLineKeys, setSelectedLineKeys] = useState<string[]>([])
+  const [tablePickerMode, setTablePickerMode] = useState<'changeTable' | 'moveProduct' | null>(null)
   const [modifierTarget, setModifierTarget] = useState<{
     kind: 'food' | 'beverage'
     line: CartLine
@@ -320,6 +324,7 @@ export function RegisterPage() {
     setFiredQtyByLine(check.firedQtyByLine ?? {})
     setFiredAtByLine(check.firedAtByLine ?? {})
     setSelectedLineKey(null)
+    setSelectedLineKeys([])
   }, [liveCatalog, session])
 
   useEffect(() => {
@@ -621,7 +626,7 @@ export function RegisterPage() {
         next = setLineNote(next, product.id, labels.join(', '), target.lineKey)
       }
       setLines(next)
-      if (target) setSelectedLineKey(lineSelectionKey(target))
+      if (target) focusLineKey(lineSelectionKey(target))
     }
 
     if (product.pricedByWeight || product.variableMode === 'weight') {
@@ -685,6 +690,7 @@ export function RegisterPage() {
       },
     ])
     setSelectedLineKey(null)
+    setSelectedLineKeys([])
     flash(`Pre-paid · ${payload.customerName} · ${target.promotion.name}`)
   }
 
@@ -715,6 +721,24 @@ export function RegisterPage() {
     return line.lineKey ?? `pid:${line.productId}`
   }
 
+  function focusLineKey(key: string | null) {
+    setSelectedLineKey(key)
+    setSelectedLineKeys(key ? [key] : [])
+  }
+
+  function toggleLineHighlight(line: CartLine) {
+    const key = lineSelectionKey(line)
+    setSelectedLineKeys(prev => {
+      if (prev.includes(key)) {
+        const next = prev.filter(k => k !== key)
+        setSelectedLineKey(next[next.length - 1] ?? null)
+        return next
+      }
+      setSelectedLineKey(key)
+      return [...prev, key]
+    })
+  }
+
   function findSelectedLine(): { line: CartLine; product: Product } | null {
     if (!selectedLineKey) return null
     const products = liveCatalog.length > 0 ? liveCatalog : MOCK_PRODUCTS
@@ -742,7 +766,7 @@ export function RegisterPage() {
     if (selectedLineKey) {
       const selected = findSelectedLine()
       if (selected) return selected
-      setSelectedLineKey(null)
+      focusLineKey(null)
     }
     return resolveLastOrderedLine()
   }
@@ -758,7 +782,7 @@ export function RegisterPage() {
       flash(`“${target.product.name}” is not a Food item. Select a Food line, or order Food last.`)
       return
     }
-    setSelectedLineKey(lineSelectionKey(target.line))
+    focusLineKey(lineSelectionKey(target.line))
     setModifierTarget({ kind: 'food', ...target })
   }
 
@@ -773,7 +797,7 @@ export function RegisterPage() {
       flash(`“${target.product.name}” is not a Beverage item. Select a Beverage line, or order Beverage last.`)
       return
     }
-    setSelectedLineKey(lineSelectionKey(target.line))
+    focusLineKey(lineSelectionKey(target.line))
     setModifierTarget({ kind: 'beverage', ...target })
   }
 
@@ -813,7 +837,7 @@ export function RegisterPage() {
       flash(`“${target.product.name}” has no Component SWAP options. Select a swappable line, or order one last.`)
       return
     }
-    setSelectedLineKey(lineSelectionKey(target.line))
+    focusLineKey(lineSelectionKey(target.line))
     handleSwapLine(target.line)
   }
 
@@ -846,7 +870,7 @@ export function RegisterPage() {
       .filter(Boolean)
       .join(' · ')
     setLines(prev => setLineNote(prev, product.id, nextNote, line.lineKey))
-    setSelectedLineKey(lineSelectionKey(line))
+    focusLineKey(lineSelectionKey(line))
     flash(
       labels.length > 0
         ? `${product.name}: ${labels.join(', ')}`
@@ -877,7 +901,7 @@ export function RegisterPage() {
         ),
       )
     }
-    setSelectedLineKey(lineKey)
+    focusLineKey(lineKey)
     const pendingWeight = line.saleDetail?.enteredWeight && line.saleDetail.enteredWeight > 0
       ? {
           weight: line.saleDetail.enteredWeight,
@@ -1046,8 +1070,9 @@ export function RegisterPage() {
         delete next[id]
         return next
       })
-      if (selectedLineKey === id || selectedLineKey === line.lineKey) {
-        setSelectedLineKey(null)
+      if (selectedLineKey === id || selectedLineKey === line.lineKey || selectedLineKeys.includes(id) || (line.lineKey ? selectedLineKeys.includes(line.lineKey) : false)) {
+        setSelectedLineKeys(prev => prev.filter(k => k !== id && k !== line.lineKey))
+        setSelectedLineKey(prev => (prev === id || prev === line.lineKey ? null : prev))
       }
       setRemovalTarget(null)
       flash(
@@ -1202,43 +1227,35 @@ export function RegisterPage() {
     setPaymentOpen(true)
   }
 
-  function pickDestinationTable(
-    title: string,
-    excludeTableId?: string | null,
-  ): { id: string; label: string } | null {
-    const choices = tableOptions.filter(t => t.id && t.id !== (excludeTableId ?? ''))
-    if (choices.length === 0) {
+  function openChangeTablePicker() {
+    const fromId = activeTableSession?.tableId || table
+    if (!session?.companyId && tableOptions.length === 0) {
+      flash('No floor plan tables available.')
+      return
+    }
+    if (fromId && tableOptions.every(t => t.id === fromId) && tableOptions.length <= 1) {
       flash('No other tables available on this floor.')
-      return null
+      return
     }
-    const list = choices.map((t, i) => `${i + 1}. ${t.label}`).join('\n')
-    const raw = window.prompt(`${title}\n\n${list}\n\nEnter number or table name:`)
-    if (raw == null) return null
-    const trimmed = raw.trim()
-    if (!trimmed) return null
-    const byIndex = Number(trimmed)
-    if (Number.isFinite(byIndex) && byIndex >= 1 && byIndex <= choices.length) {
-      return choices[byIndex - 1]
+    setTablePickerMode('changeTable')
+  }
+
+  function openMoveProductPicker() {
+    if (lines.length === 0) {
+      flash('Add items before moving a product.')
+      return
     }
-    const lower = trimmed.toLowerCase()
-    const match = choices.find(
-      t => t.label.toLowerCase() === lower
-        || t.label.toLowerCase().includes(lower)
-        || t.id.toLowerCase() === lower,
-    )
-    if (!match) {
-      flash(`Table “${trimmed}” not found.`)
-      return null
+    if (selectedLineKeys.length === 0) {
+      flash('Highlight one or more line items, then tap Move Product.')
+      return
     }
-    return match
+    setTablePickerMode('moveProduct')
   }
 
   /** Move the entire open check / cart to another floor table. */
-  function handleChangeTable() {
+  function applyChangeTable(dest: FloorTable) {
     const fromId = activeTableSession?.tableId || table
     const fromLabel = activeTableSession?.tableLabel || (table ? `Table ${table}` : 'current table')
-    const dest = pickDestinationTable('Change Table — choose destination', fromId)
-    if (!dest) return
     if (dest.id === fromId) {
       flash(`Already on ${dest.label}.`)
       return
@@ -1303,59 +1320,65 @@ export function RegisterPage() {
     setActiveTableSession(nextSession)
     setTable(dest.id)
     hydratedTableIdRef.current = dest.id
+    setTablePickerMode(null)
     flash(`Changed table · ${fromLabel} → ${dest.label}`)
   }
 
-  /** Move the selected cart line onto another table’s open check. */
-  function handleMoveProduct() {
-    if (lines.length === 0) {
-      flash('Add items before moving a product.')
-      return
-    }
-    if (!selectedLineKey) {
-      flash('Select a product line first, then tap Move Product.')
-      return
-    }
-    const line = lines.find(l => lineSelectionKey(l) === selectedLineKey)
-    if (!line) {
-      flash('Select a product line first, then tap Move Product.')
+  /** Move highlighted cart line(s) onto another table’s open check. */
+  function applyMoveProduct(dest: FloorTable) {
+    const keys = selectedLineKeys
+    if (keys.length === 0) {
+      flash('Highlight one or more line items, then tap Move Product.')
       return
     }
     const fromId = activeTableSession?.tableId || table
-    const dest = pickDestinationTable('Move Product — choose destination table', fromId)
-    if (!dest) return
+    if (dest.id === fromId) {
+      flash(`Already on ${dest.label}.`)
+      return
+    }
 
-    const product = catalogForFilter.find(p => p.id === line.productId)
-    const productName = product?.name ?? `Item ${line.productId}`
-    const lineId = lineIdentity(line)
+    const moving = lines.filter(l => keys.includes(lineSelectionKey(l)))
+    if (moving.length === 0) {
+      flash('Highlight one or more line items, then tap Move Product.')
+      return
+    }
 
-    setLines(prev => prev.filter(l => lineSelectionKey(l) !== selectedLineKey))
+    const keySet = new Set(keys)
+    setLines(prev => prev.filter(l => !keySet.has(lineSelectionKey(l))))
     setFiredQtyByLine(prev => {
       const next = { ...prev }
-      delete next[lineId]
+      for (const line of moving) delete next[lineIdentity(line)]
       return next
     })
     setFiredAtByLine(prev => {
       const next = { ...prev }
-      delete next[lineId]
+      for (const line of moving) delete next[lineIdentity(line)]
       return next
     })
-    setSelectedLineKey(null)
+    focusLineKey(null)
 
     const destCheck = loadOpenCheckForTable(dest.id)
-    const movedFiredQty = firedQtyByLine[lineId] ?? 0
-    const movedFiredAt = firedAtByLine[lineId]
+    const movedFiredQty: Record<string, number> = {}
+    const movedFiredAt: Record<string, string> = {}
+    for (const line of moving) {
+      const lineId = lineIdentity(line)
+      const qty = firedQtyByLine[lineId] ?? 0
+      if (qty > 0) movedFiredQty[lineId] = qty
+      const at = firedAtByLine[lineId]
+      if (at) movedFiredAt[lineId] = at
+    }
+
     if (destCheck) {
       upsertOpenCheck({
         ...destCheck,
-        lines: [...destCheck.lines, line],
+        lines: [...destCheck.lines, ...moving],
         firedQtyByLine: {
           ...destCheck.firedQtyByLine,
-          ...(movedFiredQty > 0 ? { [lineId]: movedFiredQty } : {}),
+          ...movedFiredQty,
         },
         firedAtByLine: {
           ...(destCheck.firedAtByLine ?? {}),
-          ...(movedFiredAt ? { [lineId]: movedFiredAt } : {}),
+          ...movedFiredAt,
         },
         updatedAt: new Date().toISOString(),
       })
@@ -1366,12 +1389,12 @@ export function RegisterPage() {
         tableLabel: dest.label,
         orderId: `chk-${newCheckNumber}`,
         checkNumber: newCheckNumber,
-        lines: [line],
+        lines: moving,
         charges: { ...EMPTY_OPEN_CHARGES },
         dining: dining || 'dine-in',
         cover: 1,
-        firedQtyByLine: movedFiredQty > 0 ? { [lineId]: movedFiredQty } : {},
-        firedAtByLine: movedFiredAt ? { [lineId]: movedFiredAt } : {},
+        firedQtyByLine: movedFiredQty,
+        firedAtByLine: movedFiredAt,
         updatedAt: new Date().toISOString(),
       })
     }
@@ -1386,7 +1409,15 @@ export function RegisterPage() {
       markFloorTableOrdered(dest.id, destCheck?.orderId ?? `chk-${checkNumber}`)
     }
 
-    flash(`Moved ${productName} → ${dest.label}`)
+    setTablePickerMode(null)
+    const names = moving.map(line => {
+      const product = catalogForFilter.find(p => p.id === line.productId)
+      return product?.name ?? `Item ${line.productId}`
+    })
+    const label = names.length === 1
+      ? names[0]
+      : `${names.length} items`
+    flash(`Moved ${label} → ${dest.label}`)
   }
 
   // Pre-paid redeem modal kept for package sales flow; toolbar Pre-paid button removed.
@@ -1814,10 +1845,8 @@ export function RegisterPage() {
         onSwapLine={handleSwapLine}
         onRemoveLine={handleRemoveLine}
         selectedLineKey={selectedLineKey}
-        onSelectLine={(line) => {
-          const key = line.lineKey ?? `pid:${line.productId}`
-          setSelectedLineKey(prev => (prev === key ? null : key))
-        }}
+        selectedLineKeys={selectedLineKeys}
+        onSelectLine={toggleLineHighlight}
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenPickup={() => {
           if (dining === 'takeaway') setPickupModalOpen(true)
@@ -1840,16 +1869,30 @@ export function RegisterPage() {
             return
           }
           if (action === 'changeTable') {
-            handleChangeTable()
+            openChangeTablePicker()
             return
           }
           if (action === 'moveProduct') {
-            handleMoveProduct()
+            openMoveProductPicker()
             return
           }
           flash('Printing…')
         }}
       />
+
+      {tablePickerMode ? (
+        <FloorPlanTablePickerModal
+          companyId={session?.companyId ?? 0}
+          locationId={session?.locationId ?? ''}
+          mode={tablePickerMode}
+          excludeTableId={activeTableSession?.tableId || table || null}
+          onCancel={() => setTablePickerMode(null)}
+          onPick={(dest) => {
+            if (tablePickerMode === 'changeTable') applyChangeTable(dest)
+            else applyMoveProduct(dest)
+          }}
+        />
+      ) : null}
 
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
       {pickupModalOpen && (

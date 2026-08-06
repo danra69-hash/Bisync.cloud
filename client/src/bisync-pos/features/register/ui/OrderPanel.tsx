@@ -26,6 +26,8 @@ type Props = {
   /** When set, intercepts trash instead of silently removing the line. */
   onRemoveLine?: (line: CartLine) => void
   selectedLineKey?: string | null
+  /** Multi-highlight for Move Product (falls back to selectedLineKey). */
+  selectedLineKeys?: string[]
   onSelectLine?: (line: CartLine) => void
   onOpenHistory: () => void
   onOpenPickup?: () => void
@@ -58,6 +60,7 @@ export function OrderPanel({
   onSwapLine,
   onRemoveLine,
   selectedLineKey = null,
+  selectedLineKeys,
   onSelectLine,
   onOpenHistory,
   onOpenPickup,
@@ -70,6 +73,8 @@ export function OrderPanel({
   const subtotal = cartSubtotal(lines, products)
   const grandTotal = cartGrandTotal(lines, products, charges)
   const hasItems = lines.length > 0
+  const hasHighlightedLines = (selectedLineKeys?.length ?? 0) > 0
+    || Boolean(selectedLineKey)
 
   function editCents(
     key: 'discountCents' | 'serviceCents' | 'taxRegularCents' | 'taxAlcoholCents',
@@ -188,7 +193,8 @@ export function OrderPanel({
                 )
                 const rowKey = line.lineKey ?? `${line.productId}-${index}`
                 const selectionKey = line.lineKey ?? `pid:${line.productId}`
-                const isSelected = selectedLineKey != null && selectedLineKey === selectionKey
+                const selectedKeys = selectedLineKeys ?? (selectedLineKey ? [selectedLineKey] : [])
+                const isSelected = selectedKeys.includes(selectionKey)
                 return (
                   <tr
                     key={rowKey}
@@ -309,7 +315,7 @@ export function OrderPanel({
           type="button"
           className="btn btn--move-product"
           disabled={!hasItems || paymentBusy}
-          title="Move the selected product to another table"
+          title="Move highlighted product line(s) to another table"
           onClick={() => onAction('moveProduct')}
         >
           Move Product
