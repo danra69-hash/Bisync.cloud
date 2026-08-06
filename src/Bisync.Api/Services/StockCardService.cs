@@ -1725,7 +1725,7 @@ public class StockCardService(
     static string NormalizeUomMode(string uomMode)
         => string.Equals(uomMode, "recipe", StringComparison.OrdinalIgnoreCase) ? "recipe" : "inventory";
 
-    static string NormalizeUom(string uom) => uom.Trim().ToUpperInvariant();
+    static string NormalizeUom(string uom) => UomCanonical.Normalize(uom);
 
     static string? ResolveInboundAdjustmentUom(
         string recipeUom,
