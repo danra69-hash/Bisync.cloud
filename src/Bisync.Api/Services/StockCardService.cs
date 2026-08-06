@@ -98,6 +98,11 @@ public class StockCardService(
                     Uom = displayUom,
                     RecipeUom = ingredient.RecipeUom,
                     InventoryUom = ingredient.InventoryUom,
+                    LastChangedAt = ResolveComponentLastChangedAt(
+                        purchasesByComponent[ingredient.ComponentId],
+                        movementsByComponent[ingredient.ComponentId],
+                        locationIds,
+                        companyId),
                 });
             }
         }
@@ -150,6 +155,10 @@ public class StockCardService(
                     Uom = displayUom,
                     RecipeUom = product.YieldUom,
                     InventoryUom = product.YieldUom,
+                    LastChangedAt = ResolveProductLastChangedAt(
+                        logsByProduct[product.Id],
+                        locationIds,
+                        stockPeriod),
                 });
                 continue;
             }
@@ -177,10 +186,19 @@ public class StockCardService(
                 Uom = productUom,
                 RecipeUom = product.B2bPackageUnit,
                 InventoryUom = product.B2bPackageUnit,
+                LastChangedAt = ResolveProductLastChangedAt(
+                    logsByProduct[product.Id],
+                    locationIds,
+                    stockPeriod),
             });
         }
 
-        return rows;
+        // Always list latest stock activity first for List + Card views.
+        return rows
+            .OrderByDescending(r => r.LastChangedAt ?? DateTime.MinValue)
+            .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.ItemKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task<StockCardDetail?> GetDetailAsync(
@@ -1567,6 +1585,58 @@ public class StockCardService(
         return itemTypeFilter.Replace(' ', '-').Equals(itemType, StringComparison.OrdinalIgnoreCase);
     }
 
+    static DateTime? ResolveComponentLastChangedAt(
+        IEnumerable<InventoryPurchase> purchases,
+        IEnumerable<InventoryMovement> movements,
+        IReadOnlyList<string> locationIds,
+        int? companyId)
+    {
+        DateTime? last = null;
+
+        foreach (var purchase in purchases)
+        {
+            if (companyId is int cid && purchase.CompanyId is int pcid && pcid != cid)
+                continue;
+            if (!LocationMatchesAny(purchase.LocationIdsJson, locationIds))
+                continue;
+            if (last is null || purchase.DateCreatedInStock > last)
+                last = purchase.DateCreatedInStock;
+        }
+
+        foreach (var movement in movements)
+        {
+            if (companyId is int cid && movement.CompanyId is int mcid && mcid != cid)
+                continue;
+            if (!StockLocationRules.MovementMatchesAny(movement.LocationExternalId, locationIds))
+                continue;
+            if (last is null || movement.CreatedAt > last)
+                last = movement.CreatedAt;
+        }
+
+        return last;
+    }
+
+    static DateTime? ResolveProductLastChangedAt(
+        IEnumerable<ProductProductionLog> logs,
+        IReadOnlyList<string> locationIds,
+        StockCardPeriod period)
+    {
+        DateTime? last = null;
+
+        foreach (var log in logs)
+        {
+            if (!LogMatchesAnyLocation(log.LocationIdsJson, locationIds))
+                continue;
+            var occurredAt = ParseProductionDate(log.ProductionDate) ?? log.CreatedAt;
+            if (occurredAt < period.ArchiveCutoff || occurredAt > period.PeriodEnd)
+                continue;
+            if (last is null || occurredAt > last)
+                last = occurredAt;
+        }
+
+        return last;
+    }
+
     static bool MatchesIngredientLocations(Ingredient ingredient, IReadOnlyList<string> locationIds)
     {
         var locs = PurchaseOrderWorkflow.DeserializeLocationIds(ingredient.LocationsJson);
@@ -1799,6 +1869,8 @@ public sealed class StockCardListRow
     public string Uom { get; init; } = string.Empty;
     public string RecipeUom { get; init; } = string.Empty;
     public string InventoryUom { get; init; } = string.Empty;
+    /// <summary>Most recent stock activity for this item in the selected locations/period.</summary>
+    public DateTime? LastChangedAt { get; init; }
 }
 
 public sealed class StockCardDetail

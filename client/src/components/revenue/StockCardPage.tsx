@@ -34,6 +34,7 @@ type Props = {
 const ITEM_TYPES = ['All', 'Product', 'Sub-Product', 'Smart Component'] as const;
 
 type StockCardSortColumn =
+  | 'lastChangedAt'
   | 'type'
   | 'group'
   | 'name'
@@ -55,6 +56,12 @@ const STOCK_CARD_TABLE_COLUMNS: SortableColumnDef<StockCardSortColumn>[] = [
   { key: 'onHandQty', label: 'Qty on hand', align: 'right', ...tableColWidth('10%') },
   { key: 'avgCogs', label: 'Avg COGS', align: 'right', ...tableColWidth('11%') },
 ];
+
+function lastChangedSortValue(row: StockCardListRow): number {
+  if (!row.lastChangedAt) return 0;
+  const ts = Date.parse(row.lastChangedAt);
+  return Number.isFinite(ts) ? ts : 0;
+}
 
 function fmtQty(value: number, countryCode: string) {
   if (!Number.isFinite(value)) return formatCountryNumber(0, countryCode);
@@ -125,7 +132,10 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
   const [listVersion, setListVersion] = useState(0);
   const [viewMode, setViewMode] = useState<StockCardViewMode>('list');
   const scrollRootRef = useRef<HTMLDivElement>(null);
-  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<StockCardSortColumn>();
+  const { sortColumn, sortDirection, toggleSort, resetSort } = useTableSort<StockCardSortColumn>(
+    'lastChangedAt',
+    'desc',
+  );
 
   useEffect(() => {
     resetSort();
@@ -174,9 +184,10 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
     () =>
       sortTableRows(
         filteredRows,
-        sortColumn,
-        sortDirection,
+        sortColumn ?? 'lastChangedAt',
+        sortColumn ? sortDirection : 'desc',
         {
+          lastChangedAt: row => lastChangedSortValue(row),
           type: row => itemTypeLabel(row.itemType),
           group: row => row.group || '',
           name: row => row.name,
@@ -187,7 +198,13 @@ export function StockCardPage({ selectedCompanyId, selectedLocationIds }: Props)
           onHandQty: row => row.onHandQty,
           avgCogs: row => row.onHandAverageCogs,
         },
-        { tieBreaker: (a, b) => compareSortValues(a.name, b.name) },
+        {
+          tieBreaker: (a, b) => {
+            const byChange = compareSortValues(lastChangedSortValue(b), lastChangedSortValue(a));
+            if (byChange !== 0) return byChange;
+            return compareSortValues(a.name, b.name);
+          },
+        },
       ),
     [filteredRows, sortColumn, sortDirection],
   );
